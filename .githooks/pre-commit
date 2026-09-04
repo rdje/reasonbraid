@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — repo-hygiene gate; block the commit on any doctrine breach.
+#
+# Activated once per clone with:  git config core.hooksPath .githooks
+# CI runs the SAME enforcer, so the discipline holds even if a local hook is
+# bypassed with --no-verify (the CI run is the "no matter what" backstop).
+#
+# This hook is harness-agnostic: it fires identically for Claude Code, Codex,
+# Gemini, Cursor, or a human — the discipline lives in git, not in any one agent.
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+
+# KNOWLEDGE_MAP.md is DERIVED. Regenerate + stage it here so map-drift is
+# structurally impossible before the enforcer verifies it. (Optional subsystem:
+# skipped cleanly if the knowledge-map generator is absent.)
+if [ -x "$ROOT/knowledge-map/scripts/gen_knowledge_map.sh" ]; then
+  MAP="$("$ROOT/knowledge-map/scripts/gen_knowledge_map.sh" --print-map-path)"
+  "$ROOT/knowledge-map/scripts/gen_knowledge_map.sh" > "$MAP"
+  git add "$MAP" 2>/dev/null || true
+fi
+
+# The single general doctrine enforcer (registry + driver) — runs every
+# mechanizable check and exits nonzero on any breach.
+"$ROOT/scripts/check_doctrines.sh"

@@ -1,0 +1,14 @@
+# Workspace root. Add crates under crates/*. Rename/replace the starter `app` crate with
+# your project's crates (cargo-generate substitutes {{project-name}} if you use that path).
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# Shared lints so every crate inherits the same strictness (opt in per crate with
+# `[lints] workspace = true`). clippy runs at deny-warnings in `make check` / CI.
+[workspace.lints.clippy]
+all = "warn"

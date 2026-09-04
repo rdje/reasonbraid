@@ -1,0 +1,10 @@
+[book]
+title = "Project Book"
+description = "The public-facing documentation surface. Keep it in lockstep with the code (see COMMIT.md)."
+authors = ["<your name>"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+git-repository-url = ""

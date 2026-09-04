@@ -1,0 +1,7 @@
+# This repository's own instrument signatures, ADDED to the universal defaults.
+# One extended regular expression per line. See .doctrine/README.md.
+#
+# The probe drivers under docs/tasks/artifacts/ print this summary line:
+probes: [0-9]+ pass / [0-9]+ fail
+# The doctrine driver prints this:
+=== all doctrines green ===

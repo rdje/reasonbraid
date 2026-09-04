@@ -1,0 +1,18 @@
+name: doctrines
+# E4 enforcement: the SAME doctrine enforcer the pre-commit hook runs, so a locally
+# --no-verify'd commit still fails here.
+on:
+  push:
+  pull_request:
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Make spine scripts executable
+        run: chmod +x scripts/*.sh knowledge-map/scripts/*.sh .githooks/pre-commit .githooks/commit-msg || true
+      - name: Run the doctrine enforcer
+        run: scripts/check_doctrines.sh

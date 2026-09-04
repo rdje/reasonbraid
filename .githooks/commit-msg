@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg — require a work-unit-id-shaped leading token in the subject.
+#
+# Permissive by design: it rejects only blank/garbage-led subjects. The full
+# convention — a work-unit id that also names the owning task-tree leaf, e.g.
+#   "<PROJECT>-<AREA>-<NNNN> (leaf <TREE>.<n>): <summary>"
+# — is carried by COMMIT.md + review, with this hook + CI as the backstop.
+subject="$(head -1 "$1")"
+if ! printf '%s' "$subject" | grep -Eq '^[A-Za-z][A-Za-z0-9._-]+'; then
+  echo "commit-msg: subject must begin with an identifier-shaped work-unit id" >&2
+  echo "  e.g. '<PROJECT>-<AREA>-<NNNN> (leaf <TREE>.<n>): <summary>'" >&2
+  exit 1
+fi
+# NO AGENT TRAILERS (COMMIT.md, pre-commit safety rules): a commit message ends with its own last
+# line. The known agent/tool attribution shapes are refused here mechanically, because the harness
+# that adds them does so by default and a rule nobody enforces loses to a default every time.
+# A human co-author's `Co-Authored-By:` is not matched — only agent names and agent mail domains.
+AGENT_TRAILER_RE='^(co-authored-by|co-authored-by):.*(claude|codex|gemini|copilot|chatgpt|openai|cursor|aider|noreply@anthropic|noreply@openai|noreply@google)|^claude-session:|^(generated with|🤖 generated with) |^[[:space:]]*🤖 '
+if grep -v '^#' "$1" | grep -iEq "$AGENT_TRAILER_RE"; then
+  echo "commit-msg: the message carries an agent/tool attribution trailer, which this repository forbids (COMMIT.md):" >&2
+  grep -v '^#' "$1" | grep -iE "$AGENT_TRAILER_RE" | sed 's/^/    /' >&2
+  echo "  A commit message ends with its own last line. Remove the trailer and commit again." >&2
+  exit 1
+fi
+exit 0

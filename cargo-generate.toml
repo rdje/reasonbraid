@@ -1,0 +1,12 @@
+# cargo-generate.toml — enables `cargo generate --git <bedrock-url> --name <project>`.
+#
+# cargo-generate copies the discipline spine into a new project directory. After it runs
+# (or after using GitHub's "Use this template" button), finalize the project with:
+#
+#     ./scripts/bootstrap.sh <project-name>
+#
+# which installs the git hooks, sets the crate + roadmap name, generates the Knowledge Map,
+# and verifies the enforcer. That one step is the canonical post-copy action for BOTH the
+# cargo-generate and the GitHub-template paths, so naming works the same either way.
+[template]
+description = "bedrock — a Rust discipline-spine template: durable memory, task-trees, strict commits, mechanical doctrine enforcement, knowledge map, mdBook."

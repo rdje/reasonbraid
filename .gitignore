@@ -1,0 +1,16 @@
+# Rust build output
+/target
+**/*.rs.bk
+
+# Commit workflow scratch (must stay untracked — see COMMIT.md)
+git_message_brief.txt
+
+# Generated artifacts are regenerated locally, never tracked (see COMMIT.md)
+/generated
+
+# Logs & OS cruft
+*.log
+.DS_Store
+
+# Note: Cargo.lock is intentionally NOT ignored — binary/application projects should
+# commit it for reproducible builds. If this becomes a library-only workspace, add it.

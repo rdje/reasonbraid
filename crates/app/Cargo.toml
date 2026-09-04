@@ -1,7 +1,7 @@
 # Starter crate — replace with your project's crate(s). If you use cargo-generate, the
 # package name is substituted from {{project-name}}.
 [package]
-name = "app"
+name = "reasonbraid"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true

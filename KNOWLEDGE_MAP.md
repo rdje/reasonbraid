@@ -11,8 +11,8 @@
 
 ## Active task-trees
 
-- [`BEDROCK-MAINTENANCE.md`](docs/tasks/BEDROCK-MAINTENANCE.md)
+- [`BOOTSTRAP.md`](docs/tasks/BOOTSTRAP.md)
 
 ## Decision records
 
-- [`reference_bedrock_provenance.md`](docs/decisions/reference_bedrock_provenance.md)
+- _none yet_

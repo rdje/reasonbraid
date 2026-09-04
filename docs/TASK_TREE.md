@@ -48,8 +48,4 @@ on the same commit. One commit per completed leaf.
 
 | Tree | Status | Frontier (next leaf) | Owner |
 | --- | --- | --- | --- |
-| [`BEDROCK-MAINTENANCE`](tasks/BEDROCK-MAINTENANCE.md) | `active` | `.2` — the PGEN→bedrock transfer loop + backlog | repo-local |
-
-> _Note: `BEDROCK-MAINTENANCE` is bedrock's own maintenance tree (see `MAINTAINING.md`). A
-> project generated from bedrock (via `scripts/bootstrap.sh`) starts with no trees — that
-> row is removed and you seed your own from `ROADMAP.md`._
+| [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock; seed your first real tree from `ROADMAP.md` | repo-local |

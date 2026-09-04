@@ -5,13 +5,6 @@ tracking, a strict commit workflow, and mechanical doctrine enforcement. The spi
 enforced at the **git level** (hooks + CI), so it holds regardless of which agent or
 human is working. Follow it exactly.
 
-<!-- BEDROCK-MAINTAINER-NOTE:START (removed by scripts/bootstrap.sh de-template) -->
-> **Maintaining bedrock itself?** If a `MAINTAINING.md` exists at the repo root, this IS the
-> bedrock discipline-spine template and your job is to improve the template (not to start a
-> project from it) — **read `MAINTAINING.md` first**, then resume from `MEMORY.md` →
-> `docs/tasks/BEDROCK-MAINTENANCE.md`. (A project generated from bedrock has no
-> `MAINTAINING.md`; ignore this note.)
-<!-- BEDROCK-MAINTAINER-NOTE:END -->
 
 
 1. Read `README.md` — project objective, layout, standard commands.

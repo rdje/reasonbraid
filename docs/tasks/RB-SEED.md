@@ -46,11 +46,11 @@ the trees rather than from chat.
   Commit: pending until `COMMIT.md` step 6
 
 - ID: `RB-SEED.2`
-  Status: `pending`
+  Status: `done`
   Goal: convert the entire v0.4.1 roadmap and Phase 0 kickoff into detailed task-trees (`PROGRAM`, `PHASE-0` … `PHASE-9`) and register them
   Acceptance: every phase, WP, backlog item 1–40, gate G0–G9, and ADR 001–028 maps to a named leaf; `docs/TASK_TREE.md` lists the active programme trees
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-SEED-0002`
 
 - ID: `RB-SEED.3`
   Status: `pending`
@@ -63,8 +63,7 @@ the trees rather than from chat.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `RB-SEED.2` | `pending` | roadmap is not yet represented as task-trees |
-| 2 | `RB-SEED.3` | `pending` | CLAIM_VERIFICATION is not adopted |
+| 1 | `RB-SEED.3` | `pending` | CLAIM_VERIFICATION is not adopted |
 
 ## Decisions
 
@@ -102,14 +101,17 @@ a later leaf stages code.
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-05` | `RB-SEED.1` | `rg KICKOFF.md ROADMAP.md` → 2 hits (header + §20.1.2); `rg ROADMAP.md KICKOFF.md` → 2 hits (governing roadmap + companion note); `wc -lc MEMORY.md` → 19 lines / 912 bytes; `scripts/check_doctrines.sh` after regenerating `KNOWLEDGE_MAP.md` | companion pair cross-linked; layer-A under cap; doctrines re-run at commit |
+| `2026-09-05` | `RB-SEED.2` | census: phase trees 0-9 present; gates G0-G9 named; ADR 001-028 mapped in PROGRAM.md; KICKOFF WP0-WP8 leaves present | see census command in this commit |
 
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `RB-SEED.1` | `REASONBRAID-SEED-0001 (leaf RB-SEED.1): land ROADMAP v0.4.1 and companion KICKOFF` | docs only; no product code |
+| `RB-SEED.2` | `REASONBRAID-SEED-0002 (leaf RB-SEED.2): convert v0.4.1 roadmap into task-trees` | PROGRAM + PHASE-0…PHASE-9 |
 
 ## Changelog
 
 - `2026-09-05`: Created task tree.
 - `2026-09-05`: `RB-SEED.1` landed the roadmap pair. Frontier is `RB-SEED.2`.
+- `2026-09-05`: `RB-SEED.2` converted the programme. Frontier is `RB-SEED.3`.

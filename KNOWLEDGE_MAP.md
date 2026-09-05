@@ -12,6 +12,17 @@
 ## Active task-trees
 
 - [`BOOTSTRAP.md`](docs/tasks/BOOTSTRAP.md)
+- [`PHASE-0.md`](docs/tasks/PHASE-0.md)
+- [`PHASE-1.md`](docs/tasks/PHASE-1.md)
+- [`PHASE-2.md`](docs/tasks/PHASE-2.md)
+- [`PHASE-3.md`](docs/tasks/PHASE-3.md)
+- [`PHASE-4.md`](docs/tasks/PHASE-4.md)
+- [`PHASE-5.md`](docs/tasks/PHASE-5.md)
+- [`PHASE-6.md`](docs/tasks/PHASE-6.md)
+- [`PHASE-7.md`](docs/tasks/PHASE-7.md)
+- [`PHASE-8.md`](docs/tasks/PHASE-8.md)
+- [`PHASE-9.md`](docs/tasks/PHASE-9.md)
+- [`PROGRAM.md`](docs/tasks/PROGRAM.md)
 - [`RB-SEED.md`](docs/tasks/RB-SEED.md)
 
 ## Decision records

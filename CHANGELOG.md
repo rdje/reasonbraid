@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-05 — convert v0.4.1 roadmap into task-trees (`RB-SEED.2`)
+
+- Added `docs/tasks/PROGRAM.md` (phase/track/gate/backlog/ADR/demo map) and `PHASE-0`…`PHASE-9`.
+- Phase 0 follows companion `KICKOFF.md` WP0–WP8 (issues 1–15) plus G0 contract drafts.
+- Later phases stay `proposed` until their predecessor exit gate.
+
 ## 2026-09-05 — land ROADMAP v0.4.1 and companion KICKOFF.md (`RB-SEED.1`)
 
 - Replaced the bedrock placeholder `ROADMAP.md` with ReasonBraid v0.4.1 (execution baseline).

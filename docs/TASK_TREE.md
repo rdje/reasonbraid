@@ -49,4 +49,15 @@ on the same commit. One commit per completed leaf.
 | Tree | Status | Frontier (next leaf) | Owner |
 | --- | --- | --- | --- |
 | [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock | repo-local |
-| [`RB-SEED`](tasks/RB-SEED.md) | `active` | `.2` — convert Phases 0–9, gates, ADRs, backlog into task-trees | repo-local |
+| [`RB-SEED`](tasks/RB-SEED.md) | `active` | `.3` — adopt CLAIM_VERIFICATION | repo-local |
+| [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-0` | repo-local |
+| [`PHASE-0`](tasks/PHASE-0.md) | `pending` | `.0.1` — ADR-001 working name (blocked on `RB-SEED` done) | repo-local |
+| [`PHASE-1`](tasks/PHASE-1.md) | `proposed` | `.1` — LAN monolith (blocked on Phase 0 go) | repo-local |
+| [`PHASE-2`](tasks/PHASE-2.md) | `proposed` | `.1` — identity/recovery | repo-local |
+| [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |
+| [`PHASE-4`](tasks/PHASE-4.md) | `proposed` | `.1` — resource registry | repo-local |
+| [`PHASE-5`](tasks/PHASE-5.md) | `proposed` | `.1` — workflow profiles | repo-local |
+| [`PHASE-6`](tasks/PHASE-6.md) | `proposed` | `.1` — semantic policy | repo-local |
+| [`PHASE-7`](tasks/PHASE-7.md) | `proposed` | `.1` — Internet hardening | repo-local |
+| [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |
+| [`PHASE-9`](tasks/PHASE-9.md) | `proposed` | `.1` — stable release | repo-local |

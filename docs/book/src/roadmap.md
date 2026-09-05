@@ -39,8 +39,8 @@ governance), not a mandatory single-file sequence.
 
 Phase 0 does not implement the product. It must answer six kill-risk questions
 with code, measurements, failures, and decisions that constrain Phase 1. The
-work packages are WP0–WP8 in `KICKOFF.md`. Execution is tracked in task-trees
-under `docs/tasks/` once `RB-SEED.2` converts the programme.
+work packages are WP0–WP8 in `KICKOFF.md`. Execution is tracked in `docs/tasks/PHASE-0.md`.
+The programme map is `docs/tasks/PROGRAM.md`.
 
 The first credible product milestone after Phase 0 is Demonstration A: a
 trustworthy LAN conversation between two nodes, with crash/reconnect, duplicate

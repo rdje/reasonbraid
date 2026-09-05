@@ -12,8 +12,8 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `RB-SEED` → frontier leaf `RB-SEED.2` (`pending`)
-- **Next action:** convert the entire v0.4.1 roadmap and Phase 0 kickoff into detailed task-trees (`RB-SEED.2`).
+- **Active tree:** `RB-SEED` → frontier leaf `RB-SEED.3` (`pending`)
+- **Next action:** adopt `docs/CLAIM_VERIFICATION.md` (`RB-SEED.3`), then start `PHASE-0.0.1`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `RB-SEED.1`.
+- **In-flight uncommitted work:** none after `RB-SEED.2`.
 - **Blockers:** none.

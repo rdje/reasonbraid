@@ -81,11 +81,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0003`
 
 - ID: `PHASE-0.0.4`
-  Status: `pending`
+  Status: `done`
   Goal: create `docs/risks.md` seeded from `ROADMAP.md` §25 (not a copy of the whole table)
   Acceptance: live risk register exists and names owners/triggers
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0004`
 
 - ID: `PHASE-0.0.5`
   Status: `pending`
@@ -301,7 +301,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.4` | `pending` | live risk register before experiments accumulate untracked risk |
+| 1 | `PHASE-0.0.5` | `pending` | external dependency ledger skeleton |
 | 2 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
 `RB-SEED` is `done`. This tree is executable.
@@ -329,6 +329,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `2026-09-05` | `PHASE-0.0.1` | ADR-001 written; README landing page; `wc -lc README.md` under README-STABILITY caps | working name internal-only |
 | `2026-09-05` | `PHASE-0.0.2` | `test -f docs/adr/TEMPLATE.md docs/evidence/TEMPLATE.md docs/adr/INDEX.md docs/evidence/INDEX.md` | templates present |
 | `2026-09-05` | `PHASE-0.0.3` | `test -f docs/parking-lot.md`; table has Idea / Why not now / Revisit trigger / Date parked | file exists |
+| `2026-09-05` | `PHASE-0.0.4` | `test -f docs/risks.md`; seven live rows with owner role + stop trigger | not a copy of §25 |
 
 ## Commit Log
 
@@ -337,6 +338,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `PHASE-0.0.1` | `REASONBRAID-PHASE0-0001` | ADR-001 + README landing page |
 | `PHASE-0.0.2` | `REASONBRAID-PHASE0-0002` | adr/evidence templates |
 | `PHASE-0.0.3` | `REASONBRAID-PHASE0-0003` | parking-lot.md |
+| `PHASE-0.0.4` | `REASONBRAID-PHASE0-0004` | docs/risks.md |
 
 ## Changelog
 
@@ -344,3 +346,4 @@ that constrain Phase 1. Phase 0 does not implement the product.
 - `2026-09-05`: `PHASE-0.0.1` ADR-001. Frontier is `.0.2`.
 - `2026-09-05`: `PHASE-0.0.2` templates. Frontier is `.0.3`.
 - `2026-09-05`: `PHASE-0.0.3` parking lot. Frontier is `.0.4`.
+- `2026-09-05`: `PHASE-0.0.4` risks. Frontier is `.0.5`.

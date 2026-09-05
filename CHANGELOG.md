@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-05 — live risk register (`PHASE-0.0.4`)
+
+- Added `docs/risks.md`: Phase 0 subset of `ROADMAP.md` §25 with owner roles and stop/reframe triggers.
+
 ## 2026-09-05 — parking lot (`PHASE-0.0.3`)
 
 - Added `docs/parking-lot.md`: non-blocking ideas need a revisit trigger or they are dropped.

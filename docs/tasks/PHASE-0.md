@@ -316,7 +316,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ## Open Questions
 
 - Which real harness is first (Codex-family vs Claude-family) — decided in `PHASE-0.4.2` after the fake adapter.
-- **Project license is unresolved.** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the bedrock default) but no `LICENSE` file exists, and the actual choice is a director decision coupled to ADR-001 (no release until the name clears). Does not block `.0.7`; must be settled before any release or `cargo publish`.
+- **Project license is unresolved — director-deferred (2026-09-06).** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the bedrock default) but no `LICENSE` file exists; the director will resolve the choice later. Coupled to ADR-001 (no release until the name clears). Does not block the frontier; must be settled before any release or `cargo publish`.
 
 ## Blockers
 

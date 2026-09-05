@@ -16,4 +16,5 @@
 - **Next action:** G0 contract drafts — glossary, requirement IDs, lifecycle tables, threat-model skeleton, governance-charter draft (not yet normative).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after `PHASE-0.0.7`.
+- **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Blockers:** none.

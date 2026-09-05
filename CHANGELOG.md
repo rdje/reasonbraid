@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-05 — ADR and evidence templates (`PHASE-0.0.2`)
+
+- Added `docs/adr/TEMPLATE.md` + `INDEX.md` (shape taken from ADR-001).
+- Added `docs/evidence/TEMPLATE.md` + `INDEX.md` (question, options, fixture, result, deletion plan).
+
 ## 2026-09-05 — ADR-001 uncleared working name (`PHASE-0.0.1`)
 
 - Recorded `docs/adr/001-uncleared-working-name.md`: ReasonBraid is internal-only until professional clearance.

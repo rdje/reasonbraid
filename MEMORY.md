@@ -12,8 +12,8 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.5` (`pending`)
-- **Next action:** `docs/dependencies/external-ledger.yaml` skeleton from `ROADMAP.md` §7.4 / §28.
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.6` (`pending`)
+- **Next action:** record accountable architecture + release/security gate owners in a decision record.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.0.4`.
+- **In-flight uncommitted work:** none after `PHASE-0.0.5`.
 - **Blockers:** none.

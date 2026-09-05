@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-06 — external dependency ledger (`PHASE-0.0.5`)
+
+- Added `docs/dependencies/external-ledger.yaml`: `ROADMAP.md` §7.4 schema skeleton with MCP/A2A/Codex/Claude rows stubbed from the 2026-09-04 corrected baseline (§28.1).
+
 ## 2026-09-05 — live risk register (`PHASE-0.0.4`)
 
 - Added `docs/risks.md`: Phase 0 subset of `ROADMAP.md` §25 with owner roles and stop/reframe triggers.

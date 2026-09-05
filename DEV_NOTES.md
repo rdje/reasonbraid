@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — external dependency ledger skeleton
+
+- Created `docs/dependencies/external-ledger.yaml` from `ROADMAP.md` §7.4: one entry per protocol/SDK/CLI/provider/harness, `checked_at` dated, a `revalidation_trigger` per row.
+- Stubbed MCP, A2A, Codex, and Claude rows from the 2026-09-04 corrected baseline (§28.1). `license` is `"unverified"` until a spike records it from package metadata — never asserted from memory.
+- Validated with `ruby -ryaml` (4 entries, required fields present) so the file parses clean before it is committed.
+
 ## _(2026-09-05)_ — KICKOFF.md is a companion, not a second roadmap
 
 - Director dropped both `ROADMAP.md` (v0.4.1 master) and `KICKOFF.md` (Phase 0 execution).

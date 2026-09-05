@@ -1,0 +1,152 @@
+# docs/dependencies/external-ledger.yaml
+#
+# External dependency ledger (ROADMAP.md §7.4). One entry per protocol, SDK, CLI,
+# provider, or harness the project may depend on. CI warns on expired checks; release
+# gates require fresh records for every exposed compatibility profile. Prose must never
+# permanently assert SDK maturity — `checked_at` is deliberately dated.
+#
+# Fields per entry (ROADMAP.md §7.4, plus two documented additions):
+#   name, kind, owner, source_url, checked_at,
+#   tested_versions, protocol_versions, license,
+#   supported_features, transports, auth_modes,
+#   known_semantic_losses, conformance_results,
+#   security_notes, upgrade_policy, revalidation_trigger,
+#   baseline
+#
+# Conventions:
+#   - `kind` classifies the row (protocol / sdk / cli / provider / harness), per the
+#     §7.4 preamble "for every protocol, SDK, CLI, provider, and harness".
+#   - `checked_at` is the last date a human/tool revalidated the row against primary
+#     sources. A stale `checked_at` makes the row un-trusted for release gates.
+#   - `tested_versions` / `protocol_versions` are pinned only at the relevant spike
+#     (PHASE-0.4) or release gate. An empty list means "not yet pinned", never "any".
+#   - `license` is "unverified" until a spike records it from the package metadata —
+#     never asserted from memory (docs/CLAIM_VERIFICATION.md, leg 1).
+#   - `baseline` carries the dated, corrected fact this row was stubbed from
+#     (ROADMAP.md §28.1, 2026-09-04), so the reasoning is recoverable without re-reading
+#     the roadmap.
+#   - `revalidation_trigger` names the condition that makes `checked_at` stale and
+#     forces a fresh check before the next release gate.
+#
+# Next rows (not this leaf): PostgreSQL, NATS JetStream, and the candidate Rust
+# ecosystem (Tokio, Axum, SQLx, Rusqlite, Rustls, tracing/OpenTelemetry, policy parsing)
+# from ROADMAP.md §7.3 / §28.2.
+
+schema_version: 1
+
+entries:
+  - name: "Model Context Protocol (MCP) — official Rust SDK"
+    kind: "protocol + sdk"
+    owner: "Model Context Protocol (modelcontextprotocol)"
+    source_url: "https://github.com/modelcontextprotocol/rust-sdk"
+    checked_at: "2026-09-04"
+    tested_versions: []        # pin a tested release at the MCP interop spike
+    protocol_versions:
+      - "2026-07-28"
+    license: "unverified"
+    supported_features: []     # tools / resources / prompts / subscriptions — fill at spike
+    transports: []             # Streamable HTTP etc. — fill at spike
+    auth_modes: []             # OAuth → tenant identity mapping — fill at spike
+    known_semantic_losses: []  # loss-of-semantics matrix — fill at spike
+    conformance_results: []    # conformance fixtures not yet run
+    security_notes: []         # none yet
+    upgrade_policy: "pin a tested release + protocol profile; revalidate against the SDK changelog"
+    revalidation_trigger: >-
+      MCP specification or Rust SDK major/minor release; before the interop spike and
+      again at each release gate that claims MCP compatibility.
+    baseline: >-
+      2026-09-04: the official Rust SDK documents a stable 3.x line supporting the MCP
+      2026-07-28 specification (https://modelcontextprotocol.io/specification/2026-07-28).
+      The long-lived subscriptions/listen stream has no automatic reconnect resumption, so
+      ReasonBraid owns durable cursor + dedup state and discloses any upstream replay gap
+      (ROADMAP.md §9.6). Roadmap §7.3 names `rmcp`; §28.1 corrects this to the official
+      rust-sdk — reconcile the crate name at the spike.
+
+  - name: "Agent2Agent Protocol (A2A) — official Rust SDK"
+    kind: "protocol + sdk"
+    owner: "A2A Project (a2aproject)"
+    source_url: "https://github.com/a2aproject/a2a-rs"
+    checked_at: "2026-09-04"
+    tested_versions: []        # pin exact compatible versions at the spike; commit Cargo.lock
+    protocol_versions:
+      - "v1"
+    license: "unverified"
+    supported_features: []     # agent cards / tasks / messages / artifacts — fill at spike
+    transports:                # transports the SDK describes (ROADMAP.md §28.1)
+      - "json-rpc"
+      - "rest"
+      - "grpc"
+      - "sse"
+      - "protobuf"
+    auth_modes: []             # fill at spike
+    known_semantic_losses: []  # authority / budget / evidence / decision-rule / policy losses
+    conformance_results: []    # fixtures not yet run
+    security_notes: []
+    upgrade_policy: >-
+      pin exact tested releases and Cargo.lock; use a Git SHA only for an explicitly
+      documented unreleased fix.
+    revalidation_trigger: >-
+      A2A spec or SDK release; before the interop spike and at each release gate that
+      claims A2A compatibility.
+    baseline: >-
+      2026-09-04: A2A has a current v1 specification (https://a2a-protocol.org/latest/specification/)
+      and an official Rust SDK that describes JSON-RPC, REST, gRPC, SSE, and protobuf support.
+      Component crates are published on crates.io (e.g. a2a-lf, a2a-server-lf, a2a-client-lf);
+      the CLI is published as a2a-cli. The crates remain pre-1.0, so compatibility must be
+      demonstrated rather than inferred from SemVer (ROADMAP.md §9.7). A2A is an interoperability
+      facade, never ReasonBraid's governance protocol.
+
+  - name: "OpenAI Codex (Codex-family CLI)"
+    kind: "cli + harness"
+    owner: "OpenAI"
+    source_url: "https://github.com/openai/codex"
+    checked_at: "2026-09-04"
+    tested_versions: []        # verify the installed version at the adapter spike
+    protocol_versions: []
+    license: "unverified"
+    supported_features: []     # fill at spike (MCP participation, sessions, approvals, cancellation)
+    transports: []             # fill at spike
+    auth_modes: []             # fill at spike
+    known_semantic_losses: []
+    conformance_results: []
+    security_notes: []
+    upgrade_policy: >-
+      verify the installed version and supported invocation mode rather than infer
+      capabilities from the roadmap.
+    revalidation_trigger: >-
+      Codex CLI release or documented invocation-mode change; before the first real
+      Codex-family adapter (PHASE-0.4.2) and at each release gate that claims it.
+    baseline: >-
+      2026-09-04: the openai/codex repository is the primary implementation/integration
+      reference for Codex-family CLI behavior (ROADMAP.md §28.1). The adapter must verify
+      the installed version and supported invocation mode rather than infer capabilities
+      from the roadmap.
+
+  - name: "Claude Agent SDK (formerly Claude Code SDK)"
+    kind: "sdk + sidecar/cli"
+    owner: "Anthropic"
+    source_url: "https://code.claude.com/docs/en/agent-sdk/overview"
+    checked_at: "2026-09-04"
+    tested_versions: []        # pin the sidecar/CLI version at the adapter spike
+    protocol_versions: []
+    license: "unverified"
+    supported_features: []     # fill at spike
+    transports: []             # fill at spike
+    auth_modes: []             # fill at spike
+    known_semantic_losses: []
+    conformance_results: []
+    security_notes: []         # subscription-credit usage must comply with current vendor terms
+    upgrade_policy: >-
+      use a supervised sidecar/CLI or protocol boundary; never assume a first-party Rust
+      SDK, and revalidate against the official overview + migration guide.
+    revalidation_trigger: >-
+      Agent SDK release or billing/availability change; before the first real Claude-family
+      adapter (PHASE-0.4.2) and at each release gate that claims it.
+    baseline: >-
+      2026-09-04: Anthropic's former Claude Code SDK is now the Claude Agent SDK. Official
+      first-party SDK documentation describes Python and TypeScript, so a Rust core must use
+      a supervised sidecar/CLI or protocol boundary rather than assume a first-party Rust SDK.
+      Anthropic also documents subscription-plan Agent SDK credit for eligible users, but
+      billing/availability remains an external, revalidated fact (ROADMAP.md §28.1). Secondary
+      sources: migration guide https://code.claude.com/docs/en/agent-sdk/migration-guide and
+      plan-credit support article https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.

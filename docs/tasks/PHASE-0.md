@@ -88,11 +88,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0004`
 
 - ID: `PHASE-0.0.5`
-  Status: `pending`
+  Status: `done`
   Goal: `docs/dependencies/external-ledger.yaml` skeleton (`ROADMAP.md` §7.4 / §28)
   Acceptance: schema has name, owner, source_url, checked_at, versions, revalidation_trigger; MCP/A2A/Codex/Claude rows stubbed from the 2026-09-04 baseline
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0005`
+  promotion: declined (routine scaffold slice — ledger schema already normative in ROADMAP.md §7.4; no new durable cross-cutting fact)
 
 - ID: `PHASE-0.0.6`
   Status: `pending`
@@ -301,7 +302,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.5` | `pending` | external dependency ledger skeleton |
+| 1 | `PHASE-0.0.6` | `pending` | record accountable owners (architecture + release/security gate) |
 | 2 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
 `RB-SEED` is `done`. This tree is executable.
@@ -330,6 +331,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `2026-09-05` | `PHASE-0.0.2` | `test -f docs/adr/TEMPLATE.md docs/evidence/TEMPLATE.md docs/adr/INDEX.md docs/evidence/INDEX.md` | templates present |
 | `2026-09-05` | `PHASE-0.0.3` | `test -f docs/parking-lot.md`; table has Idea / Why not now / Revisit trigger / Date parked | file exists |
 | `2026-09-05` | `PHASE-0.0.4` | `test -f docs/risks.md`; seven live rows with owner role + stop trigger | not a copy of §25 |
+| `2026-09-06` | `PHASE-0.0.5` | `ruby -ryaml -e 'YAML.load_file(...)'` → `entries=4`, `SCHEMA OK`; MCP/A2A/Codex/Claude rows carry name, owner, source_url, checked_at, versions, revalidation_trigger | ledger skeleton created |
 
 ## Commit Log
 
@@ -339,6 +341,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `PHASE-0.0.2` | `REASONBRAID-PHASE0-0002` | adr/evidence templates |
 | `PHASE-0.0.3` | `REASONBRAID-PHASE0-0003` | parking-lot.md |
 | `PHASE-0.0.4` | `REASONBRAID-PHASE0-0004` | docs/risks.md |
+| `PHASE-0.0.5` | `REASONBRAID-PHASE0-0005` | external-ledger.yaml |
 
 ## Changelog
 
@@ -347,3 +350,4 @@ that constrain Phase 1. Phase 0 does not implement the product.
 - `2026-09-05`: `PHASE-0.0.2` templates. Frontier is `.0.3`.
 - `2026-09-05`: `PHASE-0.0.3` parking lot. Frontier is `.0.4`.
 - `2026-09-05`: `PHASE-0.0.4` risks. Frontier is `.0.5`.
+- `2026-09-06`: `PHASE-0.0.5` external dependency ledger skeleton. Frontier is `.0.6`.

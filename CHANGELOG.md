@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-05 — ADR-001 uncleared working name (`PHASE-0.0.1`)
+
+- Recorded `docs/adr/001-uncleared-working-name.md`: ReasonBraid is internal-only until professional clearance.
+- README is now a ReasonBraid landing page (private repo; no public namespace claims).
+
 ## 2026-09-05 — adopt claim-verification (`RB-SEED.3`)
 
 - Project-owned `docs/CLAIM_VERIFICATION.md` (portable architecture #5).

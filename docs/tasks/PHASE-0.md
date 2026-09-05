@@ -59,12 +59,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Children: `PHASE-0.0.1` … `PHASE-0.0.8`
 
 - ID: `PHASE-0.0.1`
-  Status: `pending`
+  Status: `done`
   Goal: ADR-001 — ReasonBraid as an uncleared working name; block public namespace commitments
   Acceptance: ADR recorded; no crates.io/domain/handle reservation assumed; rename remains mechanical
   Roadmap: §2.7, backlog 1, ADR 001
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0001`
 
 - ID: `PHASE-0.0.2`
   Status: `pending`
@@ -301,10 +301,9 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.1` | `pending` | ADR-001 must block public namespaces before any public-facing artifact |
-| 2 | `PHASE-0.0.2` | `pending` | templates before experiments |
-| 3 | `PHASE-0.0.3` | `pending` | parking lot before freeze-violating ideas have nowhere to go |
-| 4 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
+| 1 | `PHASE-0.0.2` | `pending` | templates before experiments |
+| 2 | `PHASE-0.0.3` | `pending` | parking lot before freeze-violating ideas have nowhere to go |
+| 3 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -328,13 +327,15 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-05` | (tree created) | mapped from `KICKOFF.md` WP0–WP8 and issues 1–15 | pending execution |
+| `2026-09-05` | `PHASE-0.0.1` | ADR-001 written; README landing page; `wc -lc README.md` under README-STABILITY caps | working name internal-only |
 
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
-| (none yet) | pending | created by `RB-SEED.2` |
+| `PHASE-0.0.1` | `REASONBRAID-PHASE0-0001` | ADR-001 + README landing page |
 
 ## Changelog
 
 - `2026-09-05`: Created from `KICKOFF.md` + `ROADMAP.md` §20.2.
+- `2026-09-05`: `PHASE-0.0.1` ADR-001. Frontier is `.0.2`.

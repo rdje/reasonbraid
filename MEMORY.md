@@ -12,8 +12,8 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.1` (`pending`)
-- **Next action:** ADR-001 — ReasonBraid as an uncleared working name; block public namespace commitments.
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.2` (`pending`)
+- **Next action:** ADR and evidence-report templates under `docs/adr/` and `docs/evidence/`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `RB-SEED.3`.
+- **In-flight uncommitted work:** none after `PHASE-0.0.1`.
 - **Blockers:** none.

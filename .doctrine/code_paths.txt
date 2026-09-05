@@ -1,0 +1,11 @@
+# What counts as a CODE change for TASK-ACCEPTANCE in this repository.
+# One extended regular expression per line. See .doctrine/README.md.
+#
+# The built-in default matches any path component named `src/`, which would treat
+# `docs/book/src/` (mdBook chapters) as product code. ReasonBraid's Rust lives
+# under `crates/`; scripts and the Makefile are the other executable surfaces.
+(^|/)crates/
+(^|/)scripts/
+\.rs$
+\.sh$
+(^|/)Makefile$

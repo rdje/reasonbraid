@@ -1,7 +1,7 @@
 [book]
-title = "Project Book"
-description = "The public-facing documentation surface. Keep it in lockstep with the code (see COMMIT.md)."
-authors = ["<your name>"]
+title = "ReasonBraid"
+description = "Agent deliberation and governance platform — public documentation surface. Keep it in lockstep with the code (see COMMIT.md)."
+authors = ["ReasonBraid"]
 language = "en"
 src = "src"
 

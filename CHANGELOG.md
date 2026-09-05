@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-05 — land ROADMAP v0.4.1 and companion KICKOFF.md (`RB-SEED.1`)
+
+- Replaced the bedrock placeholder `ROADMAP.md` with ReasonBraid v0.4.1 (execution baseline).
+- Tracked `KICKOFF.md` as the Phase 0 companion: scope/gates in `ROADMAP.md`, day-to-day Phase 0 execution in `KICKOFF.md`.
+- Recorded `docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md` and `docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md`.
+- mdBook introduction now describes ReasonBraid rather than the template skeleton.
+
 ## bedrock-scaffold 0.6.1 — creating a project is foolproof through its first commit
 
 `BEDROCK-MAINTENANCE.2.7`.

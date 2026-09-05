@@ -48,4 +48,5 @@ on the same commit. One commit per completed leaf.
 
 | Tree | Status | Frontier (next leaf) | Owner |
 | --- | --- | --- | --- |
-| [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock; seed your first real tree from `ROADMAP.md` | repo-local |
+| [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock | repo-local |
+| [`RB-SEED`](tasks/RB-SEED.md) | `active` | `.2` — convert Phases 0–9, gates, ADRs, backlog into task-trees | repo-local |

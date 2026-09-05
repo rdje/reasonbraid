@@ -12,7 +12,9 @@
 ## Active task-trees
 
 - [`BOOTSTRAP.md`](docs/tasks/BOOTSTRAP.md)
+- [`RB-SEED.md`](docs/tasks/RB-SEED.md)
 
 ## Decision records
 
-- _none yet_
+- [`2026-09-05_kickoff-companion-to-roadmap.md`](docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md)
+- [`2026-09-05_roadmap-v0.4.1-frozen.md`](docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md)

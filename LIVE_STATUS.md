@@ -7,5 +7,7 @@ summarize the snapshot in every commit-workflow completion message.
 | Area | Status | Notes |
 | --- | --- | --- |
 | Discipline spine (`bedrock`) | Done | memory architecture · task-trees · commit workflow · doctrine enforcement · mdBook skeleton |
-| Roadmap seeded into task-trees | Not Started | drop your roadmap in `ROADMAP.md`, run `scripts/bootstrap.sh` |
-| _(your first milestone)_ | Not Started | — |
+| Roadmap pair landed (`ROADMAP.md` + companion `KICKOFF.md`) | Done | `RB-SEED.1`; v0.4.1 frozen; Phase 0 companion is `KICKOFF.md` |
+| Roadmap seeded into task-trees | Not Started | `RB-SEED.2` converts Phases 0–9, gates, ADRs, backlog |
+| Claim-verification architecture | Not Started | `RB-SEED.3` |
+| Phase 0 — contracts and kill-risk experiments | Not Started | blocked on `RB-SEED` completing |

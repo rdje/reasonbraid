@@ -6,4 +6,5 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
-| _none yet_ | | |
+| [2026-09-05_kickoff-companion-to-roadmap.md](2026-09-05_kickoff-companion-to-roadmap.md) | decision | `KICKOFF.md` is the Phase 0 companion to `ROADMAP.md` |
+| [2026-09-05_roadmap-v0.4.1-frozen.md](2026-09-05_roadmap-v0.4.1-frozen.md) | decision | roadmap v0.4.1 frozen until Phase 0+1 evidence |

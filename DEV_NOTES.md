@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-05)_ — KICKOFF.md is a companion, not a second roadmap
+
+- Director dropped both `ROADMAP.md` (v0.4.1 master) and `KICKOFF.md` (Phase 0 execution).
+- They are one pair: the master is frozen scope/gates; the kickoff is the Phase 0 task board.
+- Promoted to `docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md` (`answers:` present).
+
 ## _(2026-09-04)_ — a template's trial must include the first commit
 
 - Every gate was green on the generated project and the first commit still failed: the doctrines judge STAGED

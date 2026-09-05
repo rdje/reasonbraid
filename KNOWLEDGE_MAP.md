@@ -27,5 +27,6 @@
 
 ## Decision records
 
+- [`2026-09-05_claim-verification-adopted.md`](docs/decisions/2026-09-05_claim-verification-adopted.md)
 - [`2026-09-05_kickoff-companion-to-roadmap.md`](docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md)
 - [`2026-09-05_roadmap-v0.4.1-frozen.md`](docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md)

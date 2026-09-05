@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-0`
-- Status: `pending`
+- Status: `active`
 - Roadmap lane: Phase 0 (`ROADMAP.md` §20.2)
 - Created: `2026-09-05`
 - Owner: repo-local workflow
@@ -47,7 +47,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ## Task Tree
 
 - ID: `PHASE-0`
-  Status: `pending`
+  Status: `active`
   Goal: answer the six kill-risk questions with executable evidence
   Children: `PHASE-0.0` … `PHASE-0.8`
 
@@ -306,7 +306,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | 3 | `PHASE-0.0.3` | `pending` | parking lot before freeze-violating ideas have nowhere to go |
 | 4 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
-Do not start this tree until `RB-SEED` is `done` (pivot rule).
+`RB-SEED` is `done`. This tree is executable.
 
 ## Decisions
 
@@ -321,7 +321,7 @@ Do not start this tree until `RB-SEED` is `done` (pivot rule).
 
 ## Blockers
 
-- `RB-SEED` must finish before this tree becomes `active`.
+- None.
 
 ## Verification Log
 

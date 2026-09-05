@@ -14,7 +14,9 @@ human is working. Follow it exactly.
    result: use or build a diagnostic tool FIRST; never guess a root cause.
 4. Read `DOCTRINE_ENFORCEMENT.md` — how every mechanizable doctrine is enforced, and the
    task-acceptance checklist a change MUST pass.
-5. Resume from `MEMORY.md` (the bounded layer-A resume pointer) → the active task-tree's
+5. Read `docs/CLAIM_VERIFICATION.md` — a published number is checked by re-derive,
+   falsify, and durability (three different questions), not by repeating the same pass.
+6. Resume from `MEMORY.md` (the bounded layer-A resume pointer) → the active task-tree's
    frontier under `docs/tasks/`.
 
 ## The non-negotiables
@@ -26,7 +28,8 @@ human is working. Follow it exactly.
   (index there). Convert relative dates to absolute.
 - **Commit per `COMMIT.md`** after each completed leaf, with the work-unit id in the
   subject. A code change must pass the `TOOLBOX.md` / `DOCTRINE_ENFORCEMENT.md` acceptance
-  checklist (root cause + addressed + no regression) in its task leaf.
+  checklist (root cause + addressed + no regression) in its task leaf. A published
+  measurement follows `docs/CLAIM_VERIFICATION.md` (re-derive · falsify · durability).
 - **Activate the hooks once per clone:** `git config core.hooksPath .githooks`. The
   pre-commit hook runs `scripts/check_doctrines.sh` (the general enforcer); CI runs the
   same. These are git-level and harness-agnostic.

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-05 — adopt claim-verification (`RB-SEED.3`)
+
+- Project-owned `docs/CLAIM_VERIFICATION.md` (portable architecture #5).
+- Bootstrap (`CLAUDE.md`) now requires the three legs before publishing a number.
+- `RB-SEED` complete; Phase 0 frontier is ADR-001.
+
 ## 2026-09-05 — convert v0.4.1 roadmap into task-trees (`RB-SEED.2`)
 
 - Added `docs/tasks/PROGRAM.md` (phase/track/gate/backlog/ADR/demo map) and `PHASE-0`…`PHASE-9`.

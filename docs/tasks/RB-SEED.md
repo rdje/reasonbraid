@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `RB-SEED`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: programme setup (pre-Phase 0)
 - Created: `2026-09-05`
 - Owner: repo-local workflow
@@ -34,7 +34,7 @@ the trees rather than from chat.
 ## Task Tree
 
 - ID: `RB-SEED`
-  Status: `active`
+  Status: `done`
   Goal: seed the ReasonBraid programme from the dropped roadmap pair
   Children: `RB-SEED.1`, `RB-SEED.2`, `RB-SEED.3`
 
@@ -53,17 +53,17 @@ the trees rather than from chat.
   Commit: `REASONBRAID-SEED-0002`
 
 - ID: `RB-SEED.3`
-  Status: `pending`
+  Status: `done`
   Goal: adopt `docs/CLAIM_VERIFICATION.md` (portable architecture #5) as a project-owned copy
   Acceptance: file present; bootstrap points at it; decision record exists; adoption checklist items that can be done without product claims are recorded
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-SEED-0003`
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `RB-SEED.3` | `pending` | CLAIM_VERIFICATION is not adopted |
+| — | (none) | `done` | next executable work is `PHASE-0.0.1` |
 
 ## Decisions
 
@@ -102,6 +102,7 @@ a later leaf stages code.
 | --- | --- | --- | --- |
 | `2026-09-05` | `RB-SEED.1` | `rg KICKOFF.md ROADMAP.md` → 2 hits (header + §20.1.2); `rg ROADMAP.md KICKOFF.md` → 2 hits (governing roadmap + companion note); `wc -lc MEMORY.md` → 19 lines / 912 bytes; `scripts/check_doctrines.sh` after regenerating `KNOWLEDGE_MAP.md` | companion pair cross-linked; layer-A under cap; doctrines re-run at commit |
 | `2026-09-05` | `RB-SEED.2` | census: phase trees 0-9 present; gates G0-G9 named; ADR 001-028 mapped in PROGRAM.md; KICKOFF WP0-WP8 leaves present | see census command in this commit |
+| `2026-09-05` | `RB-SEED.3` | `test -f docs/CLAIM_VERIFICATION.md`; `rg CLAIM_VERIFICATION CLAUDE.md`; decision record with `answers:` | adopted; no product numbers to sweep |
 
 ## Commit Log
 
@@ -109,9 +110,11 @@ a later leaf stages code.
 | --- | --- | --- |
 | `RB-SEED.1` | `REASONBRAID-SEED-0001 (leaf RB-SEED.1): land ROADMAP v0.4.1 and companion KICKOFF` | docs only; no product code |
 | `RB-SEED.2` | `REASONBRAID-SEED-0002 (leaf RB-SEED.2): convert v0.4.1 roadmap into task-trees` | PROGRAM + PHASE-0…PHASE-9 |
+| `RB-SEED.3` | `REASONBRAID-SEED-0003 (leaf RB-SEED.3): adopt claim-verification architecture` | `docs/CLAIM_VERIFICATION.md` |
 
 ## Changelog
 
 - `2026-09-05`: Created task tree.
 - `2026-09-05`: `RB-SEED.1` landed the roadmap pair. Frontier is `RB-SEED.2`.
 - `2026-09-05`: `RB-SEED.2` converted the programme. Frontier is `RB-SEED.3`.
+- `2026-09-05`: `RB-SEED.3` adopted claim-verification. Tree `done`. Next: `PHASE-0.0.1`.

@@ -12,8 +12,8 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.3` (`pending`)
-- **Next action:** create `docs/parking-lot.md` with a revisit-trigger convention.
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.4` (`pending`)
+- **Next action:** create `docs/risks.md` seeded from `ROADMAP.md` §25.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.0.2`.
+- **In-flight uncommitted work:** none after `PHASE-0.0.3`.
 - **Blockers:** none.

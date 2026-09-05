@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-05 — parking lot (`PHASE-0.0.3`)
+
+- Added `docs/parking-lot.md`: non-blocking ideas need a revisit trigger or they are dropped.
+
 ## 2026-09-05 — ADR and evidence templates (`PHASE-0.0.2`)
 
 - Added `docs/adr/TEMPLATE.md` + `INDEX.md` (shape taken from ADR-001).

@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-06 — accountable owners (`PHASE-0.0.6`)
+
+- Recorded `docs/decisions/2026-09-06_accountable-owners.md`: Richard DJE is accountable for both final architecture decisions and release/security gate records (one person, both roles).
+
 ## 2026-09-06 — external dependency ledger (`PHASE-0.0.5`)
 
 - Added `docs/dependencies/external-ledger.yaml`: `ROADMAP.md` §7.4 schema skeleton with MCP/A2A/Codex/Claude rows stubbed from the 2026-09-04 corrected baseline (§28.1).

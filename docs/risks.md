@@ -6,7 +6,8 @@ actions. Likelihood/impact here are still qualitative until experiments update
 them. “Stop/reframe” means pause or narrow the affected claim, not abandon
 useful infrastructure.
 
-Owner roles are titles until `PHASE-0.0.6` names people.
+Owner roles resolve to Richard DJE (architecture + security), per
+`PHASE-0.0.6` / `docs/decisions/2026-09-06_accountable-owners.md`.
 
 | ID | Risk | Phase 0 action | Stop/reframe trigger | Owner role | Status |
 | --- | --- | --- | --- | --- | --- |

@@ -12,8 +12,8 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.6` (`pending`)
-- **Next action:** record accountable architecture + release/security gate owners in a decision record.
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.0.7` (`pending`)
+- **Next action:** CI/dependency/license/secret-scan skeleton (`deny.toml`, CI workflow) beyond bedrock `make check`/`make gate`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.0.5`.
+- **In-flight uncommitted work:** none after `PHASE-0.0.6`.
 - **Blockers:** none.

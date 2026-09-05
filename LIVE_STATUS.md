@@ -10,4 +10,4 @@ summarize the snapshot in every commit-workflow completion message.
 | Roadmap pair landed (`ROADMAP.md` + companion `KICKOFF.md`) | Done | `RB-SEED.1`; v0.4.1 frozen; Phase 0 companion is `KICKOFF.md` |
 | Roadmap seeded into task-trees | Done | `PROGRAM` + `PHASE-0`…`PHASE-9`; census in `RB-SEED.2` |
 | Claim-verification architecture | Done | `docs/CLAIM_VERIFICATION.md`; `RB-SEED.3` |
-| Phase 0 — contracts and kill-risk experiments | In Progress | `.0.1`–`.0.5` done; frontier `.0.6` accountable owners |
+| Phase 0 — contracts and kill-risk experiments | In Progress | `.0.1`–`.0.6` done; frontier `.0.7` CI/dependency skeleton |

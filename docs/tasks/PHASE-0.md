@@ -96,11 +96,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   promotion: declined (routine scaffold slice — ledger schema already normative in ROADMAP.md §7.4; no new durable cross-cutting fact)
 
 - ID: `PHASE-0.0.6`
-  Status: `pending`
+  Status: `done`
   Goal: record accountable architecture-decision owner and release/security gate owner
   Acceptance: named in a decision record even if one person fills several roles
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0006`
 
 - ID: `PHASE-0.0.7`
   Status: `pending`
@@ -302,7 +302,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.6` | `pending` | record accountable owners (architecture + release/security gate) |
+| 1 | `PHASE-0.0.7` | `pending` | CI/dependency/license/secret-scan skeleton beyond bedrock |
 | 2 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
 `RB-SEED` is `done`. This tree is executable.
@@ -316,7 +316,6 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ## Open Questions
 
 - Which real harness is first (Codex-family vs Claude-family) — decided in `PHASE-0.4.2` after the fake adapter.
-- Accountable human owners for architecture vs gates — `PHASE-0.0.6`.
 
 ## Blockers
 
@@ -332,6 +331,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `2026-09-05` | `PHASE-0.0.3` | `test -f docs/parking-lot.md`; table has Idea / Why not now / Revisit trigger / Date parked | file exists |
 | `2026-09-05` | `PHASE-0.0.4` | `test -f docs/risks.md`; seven live rows with owner role + stop trigger | not a copy of §25 |
 | `2026-09-06` | `PHASE-0.0.5` | `ruby -ryaml -e 'YAML.load_file(...)'` → `entries=4`, `SCHEMA OK`; MCP/A2A/Codex/Claude rows carry name, owner, source_url, checked_at, versions, revalidation_trigger | ledger skeleton created |
+| `2026-09-06` | `PHASE-0.0.6` | `test -f docs/decisions/2026-09-06_accountable-owners.md`; names Richard DJE for both roles; INDEX row added; risks.md owner-roles note resolved | owners named |
 
 ## Commit Log
 
@@ -342,6 +342,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `PHASE-0.0.3` | `REASONBRAID-PHASE0-0003` | parking-lot.md |
 | `PHASE-0.0.4` | `REASONBRAID-PHASE0-0004` | docs/risks.md |
 | `PHASE-0.0.5` | `REASONBRAID-PHASE0-0005` | external-ledger.yaml |
+| `PHASE-0.0.6` | `REASONBRAID-PHASE0-0006` | accountable-owners decision record |
 
 ## Changelog
 
@@ -351,3 +352,4 @@ that constrain Phase 1. Phase 0 does not implement the product.
 - `2026-09-05`: `PHASE-0.0.3` parking lot. Frontier is `.0.4`.
 - `2026-09-05`: `PHASE-0.0.4` risks. Frontier is `.0.5`.
 - `2026-09-06`: `PHASE-0.0.5` external dependency ledger skeleton. Frontier is `.0.6`.
+- `2026-09-06`: `PHASE-0.0.6` accountable owners named (Richard DJE, both roles). Frontier is `.0.7`.

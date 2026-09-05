@@ -103,12 +103,13 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0006`
 
 - ID: `PHASE-0.0.7`
-  Status: `pending`
+  Status: `done`
   Goal: CI/dependency/license/secret-scan skeleton beyond bedrock `make check`/`make gate`
   Acceptance: documented commands; `deny.toml` or equivalent policy; no public-release claim
   Roadmap: backlog 8
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0007`
+  promotion: declined (supply-chain policy is recorded authoritatively in deny.toml + docs/ci.md; no durable cross-cutting fact beyond the scaffold)
 
 - ID: `PHASE-0.0.8`
   Status: `pending`
@@ -302,8 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.7` | `pending` | CI/dependency/license/secret-scan skeleton beyond bedrock |
-| 2 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
+| 1 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -316,10 +316,33 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ## Open Questions
 
 - Which real harness is first (Codex-family vs Claude-family) — decided in `PHASE-0.4.2` after the fake adapter.
+- **Project license is unresolved.** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the bedrock default) but no `LICENSE` file exists, and the actual choice is a director decision coupled to ADR-001 (no release until the name clears). Does not block `.0.7`; must be settled before any release or `cargo publish`.
 
 ## Blockers
 
 - None.
+
+## Acceptance Checklist (PHASE-0.0.7)
+
+The Makefile edit is the CODE change owned by this leaf (per `.doctrine/code_paths.txt`);
+`deny.toml`, `.github/workflows/supply-chain.yml`, and `docs/ci.md` are non-code. Enforced by
+the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — ROADMAP §16.10 / backlog 8 / KICKOFF §3 require
+  "dependency/advisory/license checks" and "secret scanning", but bedrock's `make check`
+  covers only fmt/clippy/test and `make gate` only doctrine — no `deny`/`secret-scan` target
+  existed. `make -n check` resolves the whole Rust gate to:
+  `cargo fmt --all -- --check` → `cargo clippy --all-targets --all-features -- -D warnings` → `cargo test --all`
+  (nothing scans dependencies, licenses, or secrets)
+- [x] **ADDRESSED (verified)** — added `deny.toml`, `.github/workflows/supply-chain.yml`,
+  `docs/ci.md`, and Makefile `deny`/`secret-scan` targets. `make -n deny` → `cargo deny check`;
+  `make -n secret-scan` → `gitleaks detect --source . --redact` (dry-runs confirm the recipes are wired)
+- [x] **NO REGRESSION** — `make gate` → `=== all doctrines green ===` (13/13); `make check` →
+  `test result: ok. 1 passed; 0 failed; 0 ignored` (fmt/clippy/test all pass)
+- [x] **FIX** — Makefile gains `deny` (→ `cargo deny check`) and `secret-scan` (→ `gitleaks detect --source . --redact`)
+  targets plus help text; `.PHONY` extended with both.
+- [x] **LOCKSTEP** — `docs/ci.md` documents the commands and the no-release-claim boundary; the Makefile
+  help text and `deny.toml` header point at it.
 
 ## Verification Log
 
@@ -332,6 +355,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `2026-09-05` | `PHASE-0.0.4` | `test -f docs/risks.md`; seven live rows with owner role + stop trigger | not a copy of §25 |
 | `2026-09-06` | `PHASE-0.0.5` | `ruby -ryaml -e 'YAML.load_file(...)'` → `entries=4`, `SCHEMA OK`; MCP/A2A/Codex/Claude rows carry name, owner, source_url, checked_at, versions, revalidation_trigger | ledger skeleton created |
 | `2026-09-06` | `PHASE-0.0.6` | `test -f docs/decisions/2026-09-06_accountable-owners.md`; names Richard DJE for both roles; INDEX row added; risks.md owner-roles note resolved | owners named |
+| `2026-09-06` | `PHASE-0.0.7` | `make -n deny`→`cargo deny check`; `make -n secret-scan`→`gitleaks detect --source . --redact`; `make gate` 13/13; `make check` 1 test ok; `deny.toml`+`supply-chain.yml`+`docs/ci.md` present | supply-chain skeleton; no release claim |
 
 ## Commit Log
 
@@ -343,6 +367,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 | `PHASE-0.0.4` | `REASONBRAID-PHASE0-0004` | docs/risks.md |
 | `PHASE-0.0.5` | `REASONBRAID-PHASE0-0005` | external-ledger.yaml |
 | `PHASE-0.0.6` | `REASONBRAID-PHASE0-0006` | accountable-owners decision record |
+| `PHASE-0.0.7` | `REASONBRAID-PHASE0-0007` | deny.toml + supply-chain workflow + Makefile deny/secret-scan |
 
 ## Changelog
 
@@ -353,3 +378,4 @@ that constrain Phase 1. Phase 0 does not implement the product.
 - `2026-09-05`: `PHASE-0.0.4` risks. Frontier is `.0.5`.
 - `2026-09-06`: `PHASE-0.0.5` external dependency ledger skeleton. Frontier is `.0.6`.
 - `2026-09-06`: `PHASE-0.0.6` accountable owners named (Richard DJE, both roles). Frontier is `.0.7`.
+- `2026-09-06`: `PHASE-0.0.7` supply-chain skeleton (deny.toml, supply-chain CI, `make deny`/`make secret-scan`). Frontier is `.0.8`.

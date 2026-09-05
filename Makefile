@@ -1,7 +1,7 @@
 # Makefile — standard commands. `make gate` = the doctrine enforcer; `make check` = Rust.
 SHELL := /usr/bin/env bash
 
-.PHONY: help gate check fmt clippy test book hooks bootstrap update-scaffold
+.PHONY: help gate check fmt clippy test deny secret-scan book hooks bootstrap update-scaffold
 
 help:
 	@echo "make gate            - run the doctrine enforcer (scripts/check_doctrines.sh)"
@@ -9,6 +9,8 @@ help:
 	@echo "make fmt             - cargo fmt --all"
 	@echo "make clippy          - cargo clippy --all-targets -- -D warnings"
 	@echo "make test            - cargo test --all"
+	@echo "make deny            - cargo deny check: advisories/bans/licenses/sources (requires cargo-deny)"
+	@echo "make secret-scan     - gitleaks detect (secret scan; requires gitleaks)"
 	@echo "make book            - build the mdBook (requires mdbook)"
 	@echo "make hooks           - install the git hooks (core.hooksPath=.githooks)"
 	@echo "make bootstrap       - first-time project bootstrap"
@@ -30,6 +32,13 @@ clippy:
 
 test:
 	cargo test --all
+
+# Supply-chain checks (wired into .github/workflows/supply-chain.yml — see docs/ci.md).
+deny:
+	cargo deny check
+
+secret-scan:
+	gitleaks detect --source . --redact
 
 book:
 	mdbook build docs/book

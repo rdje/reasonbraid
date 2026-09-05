@@ -1,0 +1,59 @@
+# deny.toml — cargo-deny policy for the ReasonBraid workspace.
+#
+# A DEPENDENCY / ADVISORY / LICENSE policy skeleton (ROADMAP.md §16.10, backlog 8,
+# KICKOFF.md §3). It is NOT a release artifact and carries NO public-release claim:
+# SBOM generation, signed provenance, and release-signing are the G9 / §16.12 gates,
+# deferred until there is something to release.
+#
+# Section and field names follow the current cargo-deny schema (EmbarkStudios/cargo-deny
+# `deny.toml`). The workspace currently has ZERO dependencies (the starter crate declares
+# none), so every rule below is dormant until the first real dependency lands in WP1 —
+# that commit MUST re-run `cargo deny check` and loosen/tighten any field that proved
+# wrong against a real graph.
+#
+# Severity vocabulary: "deny" = fail the check, "warn" = report only, "allow" = ignore.
+
+[graph]
+# Platform targets the dependency graph is resolved for. Linux = the server host and CI;
+# macOS = the development host. Windows is not a Phase 0 target.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+all-features = true
+
+[advisories]
+# RustSec advisories for direct and transitive dependencies.
+unmaintained = "deny"   # an unmaintained crate is a standing risk in a security-sensitive project
+unsound = "all"         # consider every advisory in the `unsound` class
+ignore = []
+
+[bans]
+multiple-versions = "deny"  # two versions of one crate hide a split decision — force a choice
+wildcards = "deny"          # wildcard version reqs are a reproducibility/supply-chain hazard
+deny = []
+skip = []
+skip-tree = []
+
+[bans.std-replacements]
+scope = "workspace"
+
+[sources]
+unknown-registry = "deny"   # only crates.io (and explicit allow-list below) is a known source
+unknown-git = "deny"        # no unpinned git dependencies
+
+[licenses]
+# Permissive-only by construction: a license not in `allow` is not permitted (no copyleft).
+confidence-threshold = 0.93  # require high confidence when a license is inferred from text
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+exceptions = []

@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-06 — supply-chain skeleton (`PHASE-0.0.7`)
+
+- Added `deny.toml` (cargo-deny: advisories/bans/licenses/sources), `.github/workflows/supply-chain.yml` (cargo-deny + gitleaks secret scan), and `docs/ci.md`; the Makefile gained `make deny` / `make secret-scan`. Explicitly a *skeleton* — no SBOM, provenance, or release-signing claim.
+
 ## 2026-09-06 — accountable owners (`PHASE-0.0.6`)
 
 - Recorded `docs/decisions/2026-09-06_accountable-owners.md`: Richard DJE is accountable for both final architecture decisions and release/security gate records (one person, both roles).

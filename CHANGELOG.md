@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — G0 contract drafts (`PHASE-0.0.8`)
+
+- Added the five G0 contract drafts under `spec/`, all headed "draft — not normative": `README.md` (orientation + traceability map), `glossary.md` (frozen term distinctions), `requirements.md` (stable `ID-*`/`AUTH-*`/`THREAD-*`/`DELIV-*`/`BUDGET-*` requirement catalogue), `lifecycle.md` (orthogonal lifecycle tables), `threat-model.md` (11 trust boundaries + assets/adversaries/abuse/mitigations), and `governance/charter.md` (bootstrap human root = Richard DJE).
+- Recorded `docs/decisions/2026-09-06_g0-contract-id-scheme.md` (`answers:` present): `THREAD-*` and `BUDGET-*` are added to the §19.1 prefix list to name the five §20.2 G0 boundaries; `RES-*`/`POL-*`/`SEC-*` reserved for later phases; contract drafts live in `spec/`.
+
 ## 2026-09-06 — supply-chain skeleton (`PHASE-0.0.7`)
 
 - Added `deny.toml` (cargo-deny: advisories/bans/licenses/sources), `.github/workflows/supply-chain.yml` (cargo-deny + gitleaks secret scan), and `docs/ci.md`; the Makefile gained `make deny` / `make secret-scan`. Explicitly a *skeleton* — no SBOM, provenance, or release-signing claim.

@@ -32,3 +32,4 @@
 - [`2026-09-05_kickoff-companion-to-roadmap.md`](docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md)
 - [`2026-09-05_roadmap-v0.4.1-frozen.md`](docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md)
 - [`2026-09-06_accountable-owners.md`](docs/decisions/2026-09-06_accountable-owners.md)
+- [`2026-09-06_g0-contract-id-scheme.md`](docs/decisions/2026-09-06_g0-contract-id-scheme.md)

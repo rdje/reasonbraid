@@ -112,12 +112,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   promotion: declined (supply-chain policy is recorded authoritatively in deny.toml + docs/ci.md; no durable cross-cutting fact beyond the scaffold)
 
 - ID: `PHASE-0.0.8`
-  Status: `pending`
+  Status: `done`
   Goal: G0 contract drafts — glossary, requirement IDs, lifecycle tables, threat-model skeleton, governance-charter draft (not yet normative)
   Acceptance: stable IDs exist for identity/authority/thread/delivery/budget; threat-model skeleton lists trust boundaries; charter draft names bootstrap root authority as a human
   Roadmap: §20.2 deliverables; backlog 2, 4, 7
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0008`
 
 ### WP1 — Minimal contracts (`KICKOFF` issues 2–3; backlog 3, 5, 6)
 
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.0.8` | `pending` | G0 drafts ride with WP0, not after experiments |
+| 1 | `PHASE-0.1.1` | `pending` | WP1 minimal contracts: strong IDs first (role/incarnation/run/attempt not confusable) |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -356,6 +356,7 @@ the `TASK-ACCEPTANCE` doctrine.
 | `2026-09-06` | `PHASE-0.0.5` | `ruby -ryaml -e 'YAML.load_file(...)'` → `entries=4`, `SCHEMA OK`; MCP/A2A/Codex/Claude rows carry name, owner, source_url, checked_at, versions, revalidation_trigger | ledger skeleton created |
 | `2026-09-06` | `PHASE-0.0.6` | `test -f docs/decisions/2026-09-06_accountable-owners.md`; names Richard DJE for both roles; INDEX row added; risks.md owner-roles note resolved | owners named |
 | `2026-09-06` | `PHASE-0.0.7` | `make -n deny`→`cargo deny check`; `make -n secret-scan`→`gitleaks detect --source . --redact`; `make gate` 13/13; `make check` 1 test ok; `deny.toml`+`supply-chain.yml`+`docs/ci.md` present | supply-chain skeleton; no release claim |
+| `2026-09-06` | `PHASE-0.0.8` | `test -f spec/{README,glossary,requirements,lifecycle,threat-model}.md spec/governance/charter.md`; five G0 ID prefixes (ID/AUTH/THREAD/DELIV/BUDGET) assigned in `spec/requirements.md`; threat-model lists 11 trust boundaries; charter names Richard DJE as bootstrap human root; decision record `2026-09-06_g0-contract-id-scheme.md` + INDEX row | G0 contract drafts, all "draft — not normative" |
 
 ## Commit Log
 
@@ -368,6 +369,7 @@ the `TASK-ACCEPTANCE` doctrine.
 | `PHASE-0.0.5` | `REASONBRAID-PHASE0-0005` | external-ledger.yaml |
 | `PHASE-0.0.6` | `REASONBRAID-PHASE0-0006` | accountable-owners decision record |
 | `PHASE-0.0.7` | `REASONBRAID-PHASE0-0007` | deny.toml + supply-chain workflow + Makefile deny/secret-scan |
+| `PHASE-0.0.8` | `REASONBRAID-PHASE0-0008` | G0 contract drafts under `spec/` + ID-scheme decision record |
 
 ## Changelog
 
@@ -379,3 +381,4 @@ the `TASK-ACCEPTANCE` doctrine.
 - `2026-09-06`: `PHASE-0.0.5` external dependency ledger skeleton. Frontier is `.0.6`.
 - `2026-09-06`: `PHASE-0.0.6` accountable owners named (Richard DJE, both roles). Frontier is `.0.7`.
 - `2026-09-06`: `PHASE-0.0.7` supply-chain skeleton (deny.toml, supply-chain CI, `make deny`/`make secret-scan`). Frontier is `.0.8`.
+- `2026-09-06`: `PHASE-0.0.8` G0 contract drafts under `spec/` (glossary, requirements, lifecycle, threat-model, governance/charter) + `docs/decisions/2026-09-06_g0-contract-id-scheme.md`. Frontier is `.1.1`.

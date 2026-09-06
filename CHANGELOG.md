@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-06 — `.1.6` UI direction decided: a vanilla static page served by `rb-server` (`PHASE-1.6`)
+
+- The director adopted the recommendation (2026-09-06): the `.1.6` Web UI is a **vanilla static page served by `rb-server`** — plain HTML + JS, no frontend build pipeline, no framework. It mirrors the existing read surfaces (threads, nodes, inbox, budgets, audit timeline) and the CLI stays the primary, fully-covering surface. Decision recorded: `docs/decisions/2026-09-06_ui-direction.md` (`answers:`); the leaf's Note carries the direction for the decomposition. Tree-only commit; `make gate` 13/13.
+
 ## 2026-09-06 — The stderr-drain race: reproduced and fixed in both adapters (`PHASE-1-MAINT-2`)
 
 - The tracked one-off `codex_adapter` failure (from the `.1.3.1` verification, then nameless) **reproduced with the failing test captured** during the `.1.5.3` verification: `nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an **EMPTY stderr tail** — the spawned stderr-drain task had not consumed the pipe's tail when the EOF path snapshotted the buffer after `child.wait()`. A real race: load only widens the scheduling window.

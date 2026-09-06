@@ -356,6 +356,12 @@ conversation without binding-governance claims.
   Status: `proposed`
   Goal: basic Web UI/CLI for threads, nodes, inbox, budgets, audit timeline
   Backlog: 18
+  Note: direction DECIDED by the director (`2026-09-06`, following the
+    recommendation): the UI is a **vanilla static page served by `rb-server`** —
+    no frontend build pipeline, no framework; it mirrors the existing read
+    surfaces and the CLI stays the primary surface. Recorded in
+    `docs/decisions/2026-09-06_ui-direction.md`. Decompose (gap census first:
+    which inspection surfaces exist, which the page renders) on pickup.
 
 - ID: `PHASE-1.7`
   Status: `proposed`

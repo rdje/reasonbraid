@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — WP8 gate package: the subtraction record is the architecture ratchet's counterweight
+
+- **The SubtractionRecord forced honest accounting of what Phase 0 did NOT do.** §19.8's shape turns "we didn't get to X" into a decision with a revisit trigger. The deferrals that matter most: the authenticated streaming channel + workload identity (revisit: any non-loopback exposure), the second real adapter (revisit: Phase 1), and the shared wire crate (revisit: a second consumer — the per-side `deny_unknown_fields` duplication is deliberate until then).
+- **The 2×-estimate gate is arithmetic, not vibes.** Phase 0 measured ≈ 9.5 engineer-weeks against the roadmap's 8–14 range — no review triggered — but the number is now written down where a future phase can compare against it (§20.1.2: "re-estimate from measured throughput").
+- **Two new risk rows came straight out of the `.7` real run** — provider run-to-run variance on identical prompts (code-002 single: 1.000 → 0.667 across runs) and ~16k ambient input tokens per real call. Both were observable only because the harness recorded ACTUAL usage and kept per-case scores; an average-only report would have hidden both.
+- **The go decision is drafted, not self-signed.** ADR-002 is `proposed` with the GO recommendation and a pending signature line — the accountable owner (the director) signs; an agent drafting the package must not close its own gate.
+- No new code in this leaf (documents + registers only) — the TASK-ACCEPTANCE boxes record that the gate's evidence comes from the WP1–WP7 suites, not from new tooling. **Frontier: exhausted; awaiting the signature.**
+
 ## _(2026-09-07)_ — WP7 benchmark: the first real run falsified the harness before any claim could ride on it
 
 - **The scripted oracle CANNOT see prompt-wiring bugs — the real run can.** The critique/revise workflow rendered the SAME template for the critique and the revision leg, so every revision call was instructed to critique: all four real `critique_revise` rows came back with NO confidence line (`structure_valid: false`) and fact-001's "revision" broke a correct answer (1.0 → 0.0). The scripted agent answers by ROLE and never reads the prompt, so the corpus self-test stayed green through the whole defect. Lesson: prompt wiring needs a prompt-level check — the corpus now carries `the_critique_and_revision_prompts_are_distinct` (distinct templates, role-naming instructions), and the workflow renders `critique`/`revision` separately.

@@ -294,17 +294,17 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP8 — Phase 0 decision and subtraction package (`KICKOFF` issue 15)
 
 - ID: `PHASE-0.8`
-  Status: `pending`
+  Status: `done`
   Goal: evidence manifest, ADR set, subtraction record, Phase 1 go/rework/pivot/stop
   Depends on: completed experiments
   Children: `PHASE-0.8.1`
 
 - ID: `PHASE-0.8.1`
-  Status: `pending`
+  Status: `done`
   Goal: publish Phase 0 evidence manifest, ADR set, `SubtractionRecord`, and Phase 1 decision
   Acceptance: G0 evidence for identity/authority/thread/delivery/budget; named owner signs go/rework/pivot/stop; 2×-estimate review if total exceeds 28 engineer-weeks; v0.5.0 still forbidden
-  Verification: pending
-  Commit: pending
+  Verification: recorded below (the ADR-002 signature is the ONE out-of-band item — see Blockers)
+  Commit: `REASONBRAID-PHASE0-0025`
 
 ### Maintenance — spine/policy upkeep
 
@@ -320,8 +320,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.8` | `pending` | WP8 Phase 0 decision and subtraction package (evidence manifest, ADR set, subtraction record, Phase 1 go/rework/pivot/stop) — the benchmark (`.7`) and the vertical slice (`.6.2`) are its evidence inputs |
-| 2 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision found at session start (2026-09-07); owned, queued after the Phase 0 leaves, blocked on the director's word |
+| 1 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision found at session start (2026-09-07); owned, queued after the Phase 0 leaves, blocked on the director's word |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -339,7 +338,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 ## Blockers
 
-- None.
+- **ADR-002 signature (director-owned, the Phase 0 exit gate's one remaining item).** The WP8 package is published (evidence manifest, ADR set, SubtractionRecord, refreshed risk register); ADR-002 carries the GO recommendation with a pending signature line. Phase 0's formal exit (KICKOFF §7: "a named owner signs a go, rework, pivot, or stop record") closes when the director signs it.
 
 ## Acceptance Checklist (PHASE-0.0.7)
 
@@ -1029,6 +1028,38 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
   + INDEX row; mdBook `benchmark.md` + SUMMARY; CHANGELOG, DEV_NOTES, MEMORY,
   LIVE_STATUS, `knowledge-map/subsystems.md` updated; this tree's log below.
 
+## Acceptance Checklist (PHASE-0.8.1)
+
+Documents + registers only — no `.rs`/`.sh`/`Makefile` code change in this leaf
+(per `.doctrine/code_paths.txt`; the gate's evidence is the WP1–WP7 suites,
+cited, not re-run into new tooling).
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — KICKOFF WP8 (`issue 15`) + `ROADMAP.md`
+  §20.2/§19.8: Phase 0 cannot exit without the evidence manifest, the ADR
+  decisions for the seven required topics, the SubtractionRecord, a refreshed
+  risk register, and an explicit go/rework/pivot/stop — none of which existed
+  as a gate package (they were scattered across leaves).
+- [x] **ADDRESSED (verified)** — `docs/evidence/2026-09-07_phase0-evidence-manifest.md`
+  maps each G0 boundary (identity/authority/thread/delivery/budget) to its
+  suites and commands (all previously run and recorded: 5+9+5+7+13+7+6 live-PG,
+  2 CLI e2e, 12 demo checks, 8×4 benchmark oracle, 36 real Codex calls);
+  `docs/decisions/2026-09-07_phase0-adr-set.md` maps every required ADR topic to
+  its accepted record; the SubtractionRecord carries non-empty lists throughout
+  (§19.8); ADR-002 (proposed) recommends GO; `docs/risks.md` refreshed (two new
+  rows from the `.7` run); the 2×-estimate review is NOT triggered (≈9.5
+  engineer-weeks vs the 8–14 range — arithmetic recorded in the SubtractionRecord).
+- [x] **NO REGRESSION** — `make check` → all offline suites green (no code
+  changed); `make gate` → `=== all doctrines green ===` (13/13); `make deny` →
+  advisories/bans/licenses/sources ok; `make secret-scan` → no leaks; `make
+  book` → HTML written.
+- [x] **FIX** — the four gate documents + ADR INDEX + evidence INDEX + decision
+  INDEX + the risk-register refresh (R-AMB disposition, R-VALUE narrowing,
+  R-VARIANCE/R-OVERHEAD additions).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this tree's log
+  below, `docs/TASK_TREE.md` frontier. The one out-of-band item — the owner's
+  signature on ADR-002 — is recorded in Blockers (an agent drafts the package;
+  the accountable owner closes the gate).
+
 ## Verification Log
 
 
@@ -1059,6 +1090,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `2026-09-06` | `PHASE-0.6.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed` (`command_api`) + `test result: ok. 2 passed` (`cli_end_to_end`, the REAL `rb` binary) against live PostgreSQL 16.15 — full flow (bootstrap → create → invite → auto-accepted contribution → challenge → revise → close) inspected through the API only (ordered 6-event timeline + 8 digest-carrying audit records); denials recorded and effect-free; replay returns the original result / conflicts typed; invalid transitions deterministic; forged fields + bad headers rejected; challenge targets checked; `make check` → fmt clean + clippy no warnings + all 28 suites green offline; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-06_control-api-cli.md` + INDEX row; mdBook cli chapter + SUMMARY entry | WP6 control-API + CLI landed: every thread command runs claim → authorize → validate (locked projection) → apply (+ ceiling) in ONE transaction, rejections are idempotent results, and inspection never touches the database |
 | `2026-09-07` | `PHASE-0.6.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 6 passed` (`node_work`) + `5 + 9 + 5 + 7 + 13 + 7` (all server suites) + `2 passed` (`cli_end_to_end`) against live PostgreSQL 16.15 — invite dispatches work WITH a reservation (public handshake view), one contribution despite duplicates at BOTH layers (receipt dedupe + claim replay), challenge → revise → revision answers the challenge, budget-denied work enqueued without a reservation + a denial row, post-close results stored as idempotent rejections, ordinary channel events stay receipts; then `bash scripts/demo_two_host.sh` → ALL acceptance checks PASS (real SIGKILL kill points: server restart, node killed after the durable dispatch boundary → `outcome_unknown` bounded + never retried, duplicate delivery re-POSTed verbatim, budget exhaustion refused at both boundaries, closure preserving contribution + unresolved challenge) with the evidence bundle; `make check` → fmt clean + clippy no warnings + all 29 suites green offline; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-07_node-channel-wiring.md` + INDEX row; mdBook two-host-demo chapter + SUMMARY entry; `make demo` + CI pg-tests job wired | WP6 node wiring + two-host demo proven: dispatch rides the command transaction, node results fold in claim-first keyed on the inbox command id, no silent retry, and the demo script IS the acceptance test; **WP6 complete** |
 | `2026-09-07` | `PHASE-0.7` | `cargo test -p reasonbraid-adapter` → `test result: ok. 7 passed` (grader) + `test result: ok. 5 passed` (`bench_harness`: the scripted agent reproduces the corpus oracle EXACTLY — computed == expected scores over 8 cases × 4 workflows, call accounting 1/2/3/3, structure validity, unresolved-register fidelity, the honesty trap, no-independence-score report hygiene + spread-bearing aggregates + factual-only Brier, and the critique/revision prompt-split guard) + `9 + 12` existing suites; `rb-bench --agent scripted` → full report with corpus/prompt digests; REAL run `RB_LIVE_CODEX=1 … --max-calls 36` → 16/16 rows structure-valid with scores, confidences, citations, and provider-reported tokens (`docs/evidence/2026-09-07_benchmark-codex-run.md`); the FIRST real run caught two harness defects the scripted oracle cannot see (revision leg re-rendering the CRITIQUE template — no confidence lines + one broken answer; the honesty trap flagging the question's own echoed year) — both fixed with regression tests; `make check` → fmt clean + clippy no warnings + all offline suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (regex, sha2, clap added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-07_deliberation-benchmark.md` + INDEX; evidence report + INDEX; mdBook benchmark chapter + SUMMARY | WP7 benchmark proven: deterministic graders (never an LLM judge), corpus-carried oracle, per-case confidence + spread, no independence score, env-gated call-budgeted real mode; real result on the sample is the accepted NULL (structure did not beat single at 2–4× cost) — the routing claim narrows honestly for WP8 |
+| `2026-09-07` | `PHASE-0.8.1` | `test -f` over the four gate documents + INDEX rows; `make check` → all offline suites green (no code changed in this leaf); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; SubtractionRecord lists verified non-empty (grep) — removed 1 / deferred 9 / narrowed 4 / rejected 4 / avoided 7 / fallbacks 4 / eliminated 5; risk register `wc -l` grew by the two new rows; ADR-002 `proposed` with the signature line | WP8 gate package published: G0 evidence manifest + ADR set + SubtractionRecord + GO recommendation; **the Phase 0 tree is exhausted** — the formal exit awaits the director's signature on ADR-002 |
 
 ## Commit Log
 
@@ -1087,6 +1119,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `PHASE-0.6.1` | `REASONBRAID-PHASE0-0022` | `crates/reasonbraid-server` thread domain + control API + `rb-server` binary + `migrations/0006` (enrollments) + `crates/reasonbraid-cli` (the eight verbs; repo-local state dir) + command-API + real-binary e2e suites + control-api-cli decision record; mdBook cli chapter; core gains `thread_close` + the deterministic actor handle |
 | `PHASE-0.6.2` | `REASONBRAID-PHASE0-0023` | node wiring: invite/challenge dispatch work items + best-effort reservations in the command transaction; `apply_node_result_in_tx` folds node results in claim-first keyed on the inbox command id; in-tx channel/budget variants; the `rb-node` worker + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs`; `scripts/demo_two_host.sh` (the acceptance-test demo + evidence bundle) + `make demo` + CI/harness wiring; node-channel-wiring decision record; mdBook two-host-demo chapter |
 | `PHASE-0.7` | `REASONBRAID-PHASE0-0024` | the WP7 benchmark: `src/bench/` (corpus/grader/scripted/workflows/report) + the `rb-bench` binary + `bench/v1/` corpus/prompts + `tests/bench_harness.rs` (corpus-carried oracle self-test); two real-run-caught fixes with regression tests (critique/revision prompt split; honesty-trap echoed numbers); deliberation-benchmark decision record; evidence report + INDEX; mdBook benchmark chapter |
+| `PHASE-0.8.1` | `REASONBRAID-PHASE0-0025` | the WP8 gate package: evidence manifest + ADR set + SubtractionRecord + ADR-002 (GO, proposed) + risk-register refresh (two new rows) + INDEX rows; no code change |
 
 ## Changelog
 
@@ -1114,3 +1147,4 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 - `2026-09-06`: `PHASE-0.6.1` WP6 control API + CLI — `crates/reasonbraid-server` gains the thread domain (`threads.rs`: the six operations, the projection, core-machine validation, dev rules) + the control API (`api.rs`: enroll bootstrap, `/v1/threads` command/query/audit surface, trusted dev principal header + deterministic UUIDv5 actor handle, SHA-256 request hash, ONE transaction per command — claim → authorize → validate against the locked projection → apply (+ ceiling), with idempotent REJECTIONS) + the `rb-server` binary + `migrations/0006_control_api.sql`; the new `crates/reasonbraid-cli` lands the `rb` binary (the eight verbs, repo-local state dir); core gains `thread_close` + `actor_handle_for_subject`; `docs/decisions/2026-09-06_control-api-cli.md`, mdBook cli chapter. Frontier is `.6.2`.
 - `2026-09-07`: `PHASE-0.6.2` WP6 node wiring + two-host demo — invite/challenge dispatch work items (with best-effort reservations; denials recorded and enqueued reservation-less) in the command transaction; `apply_node_result_in_tx` folds node `work_result` events into the thread claim-first (idempotency key = inbox command id) with in-tx settlement; in-tx channel/budget variants; `crates/reasonbraid-node` gains the `rb-node` worker (`worker.rs`: poll → journal → execute only absent/`prepared` attempts — never a silent retry) + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs` (6 live-PG tests); `scripts/demo_two_host.sh` (the acceptance-test demo with real SIGKILL kill points + evidence bundle) wired into `run_pg_tests.sh`/`make demo`/CI; `docs/decisions/2026-09-07_node-channel-wiring.md`, mdBook two-host-demo chapter. **WP6 complete.** Frontier is `.7`.
 - `2026-09-07`: `PHASE-0.7` WP7 deliberation/routing benchmark — `crates/reasonbraid-adapter` gains `src/bench/` (versioned corpus + deterministic graders + scripted agent + four-workflow runner + spread-bearing report) + the `rb-bench` binary + `bench/v1/{corpus,prompts}.json` + `tests/bench_harness.rs` (the corpus carries its own scoring oracle; computed == expected proven over 8×4); the REAL Codex run (36 bounded calls, `RB_LIVE_CODEX=1`) caught two harness defects the scripted oracle cannot see (critique/revision template conflation; honesty-trap echoed numbers) — fixed with regression tests; the corrected run's NULL result (structure did not beat single at 2–4× cost) narrows the routing claim for WP8; `docs/decisions/2026-09-07_deliberation-benchmark.md`, `docs/evidence/2026-09-07_benchmark-codex-run.md` + INDEX rows, mdBook benchmark chapter. **WP7 complete.** Frontier is `.8`.
+- `2026-09-07`: `PHASE-0.8.1` WP8 Phase 0 decision and subtraction package — evidence manifest (G0 map + fixtures + failures + commands), ADR-set audit map, the §19.8 SubtractionRecord (non-empty throughout), ADR-002 (Phase 1 GO recommendation, `proposed` — signature line pending the director), risk register refreshed (R-AMB mitigated, R-VALUE narrowed, R-VARIANCE + R-OVERHEAD added), INDEX rows; no code change; the 2×-estimate review is not triggered (≈9.5 vs 8–14 engineer-weeks, recorded). **WP8 complete; the PHASE-0 tree is exhausted — the formal exit awaits the director's signature on ADR-002.** Frontier is `PHASE-0-MAINT-1` (director's word).

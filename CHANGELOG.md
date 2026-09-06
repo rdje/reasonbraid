@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-07 — WP8 Phase 0 decision and subtraction package: the gate is assembled (`PHASE-0.8.1`)
+
+- Published the **evidence manifest** (`docs/evidence/2026-09-07_phase0-evidence-manifest.md`): the G0 map (identity / authority / thread / delivery / budget — each with its suites and reproducible commands), the fixtures and measurements, and every Phase 0 failure with its disposition (all fixed with regression coverage).
+- Published the **ADR set** (`docs/decisions/2026-09-07_phase0-adr-set.md`): the audit map from each KICKOFF-required ADR topic (persistence/outbox, node journal, transport, adapter boundary, provider ambiguity, initial authorization, Phase 1 scope) to its accepted decision record.
+- Published the **SubtractionRecord** (`docs/decisions/2026-09-07_phase0-subtraction-record.md`, §19.8 shape): removed/deferred features with revisit triggers (authenticated channel, NATS/transport spikes, policy engine, Git/object-store experiments, MCP/A2A, second adapter, shared wire crate, directory), narrowed product claims (no structure-beats-single claim — the WP7 null; no multi-harness claim; no exactly-once claim), rejected abstractions, avoided dependencies, bounded manual fallbacks, eliminated entities, and the effort accounting (≈9.5 engineer-weeks vs the 8–14 range — the 2×-estimate review is NOT triggered; recorded).
+- Proposed **ADR-002** (`docs/adr/002-phase1-scope.md`): Phase 1 GO on the §20.3 LAN vertical slice with single-agent-default routing (from the WP7 null result), the second real adapter, and dev-profile trust replaced before any non-loopback exposure — **awaiting the accountable owner's (director's) signature**; `v0.5.0` remains forbidden.
+- Refreshed the risk register: R-AMB mitigated (`.3.1`/`.4.1` proof), R-VALUE narrowed by the null result, and two NEW rows from the real run (R-VARIANCE: provider run-to-run variance on identical prompts; R-OVERHEAD: ~16k ambient input tokens per real call distorting H6 accounting).
+- `make check` (all offline suites), `make gate` 13/13, `make deny`, `make secret-scan`, `make book` green. **The Phase 0 tree is exhausted; the gate awaits the director's signature on ADR-002.**
+
 ## 2026-09-07 — WP7 deliberation/routing benchmark: versioned corpus, four workflows, deterministic grading (`PHASE-0.7`)
 
 - Landed the benchmark harness in `crates/reasonbraid-adapter` (`src/bench/` + the `rb-bench` binary + `bench/v1/` corpus/prompts): a versioned eight-case corpus (factual / code-review / ambiguous-policy / insufficient-evidence) run through four workflows — single agent, blind-independent answers + a DETERMINISTIC adjudicator, critique/revise, moderator/synthesis with a REQUIRED structured `UNRESOLVED` register — with per-call cost accounting and per-case confidence.

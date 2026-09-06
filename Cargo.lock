@@ -1138,9 +1138,11 @@ dependencies = [
 name = "reasonbraid-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "uuid",
 ]
 
@@ -1166,6 +1168,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "reasonbraid-core",
  "reasonbraid-node",
  "reqwest",
  "serde",

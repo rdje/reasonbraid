@@ -12,6 +12,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# The domain authority types the .5.1 engine evaluates and persists (boundary ceiling,
+# grants, decisions, the policy digest). The first direct core dependency of the server.
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
 # The node channel's HTTP surface (ROADMAP.md §9.3): JSON over HTTP/1 for Phase 0 — the
 # authenticated streaming profile is a later phase (WP5 identity, ADR-006's formal record).
 axum = "0.8"

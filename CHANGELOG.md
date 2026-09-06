@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP5 authority engine: boundary ceiling, scoped grants, audited decisions (`PHASE-0.5.1`)
+
+- Landed the authority model in `reasonbraid-core/src/authority.rs`: `EnrollmentAuthorityBoundary` (the §4.4 root/parent-granted ceiling), scoped `AuthorityGrant`s (typed actions `thread_create/invite/contribute/inspect` + explicit `tenant_admin`, tenant-wide or thread-set selectors), and the deterministic **subset checker** — a grant's actions, risk ceiling, spend limits, delegation, and validity window must each fit inside its boundary.
+- Landed the authority engine in `reasonbraid-server/src/authority.rs` (+ `migrations/0004_authority.sql`): `create_grant` **refuses** overreaching grants (nothing stored); `authorize` evaluates membership (nothing without a grant — **tenant membership alone grants nothing**), scope, expiry, and the subset rule (re-checked at every evaluation), and writes an `authorization_records` row for **allowances AND denials** — actor, delegated subject, grant + boundary references, decision + reason, and the SHA-256 policy digest + version.
+- `apply_authorized_command` commits the audit record and the `.2.1` state/event/idempotency/outbox writes in **one transaction** (the `.2.1` body was extracted to `apply_command_in_tx`; the public `apply_command` is unchanged) — an accepted command implies its audit record; a denied command commits its denial record and applies NOTHING.
+- Proven live (PostgreSQL 16.15): `tests/authority.rs` → `9 passed` — membership denial audited with no domain effect, admin never implied, accepted records re-derive their digests from the same inputs, overreaching grants refused, scope/expiry/boundary-less denials, stable digests. Core: `31 passed`.
+- The first live run failed 6/9 because the subset checker was MORE precise than the fixtures (a grant built microseconds after its boundary outlived it — the temporal rule really binds); fixtures now use wide boundary windows. A second fix: `TargetSelector::Threads` became struct-like (serde cannot tag a newtype variant wrapping a sequence).
+- Recorded `docs/decisions/2026-09-06_authority-boundary.md` (`answers:` present). The mdBook gains the authority chapter. **Frontier is `PHASE-0.5.2`.**
+
 ## 2026-09-06 — WP4 first real harness: the Codex-family CLI behind `codex exec --json` (`PHASE-0.4.2`)
 
 - Landed `CodexCliAdapter` (`crates/reasonbraid-adapter/src/codex.rs`): the first REAL adapter supervises `codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only <prompt>` as a child process — the narrowest supported machine interface (§11.6), qualified against codex-cli 0.153.4 (Apache-2.0, verified from the primary source).

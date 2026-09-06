@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP5 authority: the subset checker was more precise than the fixtures, and that is the point
+
+- **The temporal subset rule caught the fixtures before they caught it.** The first live run failed 6/9: every grant "outlived its boundary" because each fixture helper read its own `Utc::now()` — a grant built microseconds after its boundary exceeded the window by those microseconds. A wall-clock-skew bug class that a weaker checker would have shipped silently; the fixtures now use wide boundary windows, and the failure itself is the evidence the rule binds.
+- **Serde's tagged enums cannot wrap a sequence in a newtype variant** — `TargetSelector::Threads(Vec<ThreadId>)` cannot serialize (`cannot serialize tagged newtype variant containing a sequence`). Struct-like variants (`Threads { threads }`) fix it. A rule to internalize: any tagged enum variant holding a Vec must be struct-like.
+- **`should_implement_trait` earned its keep again** — four authority `from_str` helpers became real `FromStr` impls with a shared `UnknownAuthorityName` error (the same lint that shaped `ProviderAttemptState` in `.3.1`); and `policy_digest` went from 8 params to 6 by passing the boundary struct (clippy's `too_many_arguments`).
+- **The sqlx executor-shape split is real:** `&PgPool` and `&mut Transaction` satisfy `Executor` differently, so a shared loader abstraction fights the type system. The pragmatic shape: pool-based loaders for the public paths, INLINED lookups in the transactional path, and `apply_command_in_tx` as a generic `E: DerefMut + for<'c> &'c mut E::Target: Executor<'c>` (the `.2.1` body extracted with its public signature untouched — its 5 tests stayed green through the refactor).
+- **Denials are audited events.** The acceptance reads "every command records … decision" — a refused command commits its denial record (reason + digest) and applies NOTHING; the audit trail is complete for what did NOT happen, not just what did.
+- Promoted to `docs/decisions/2026-09-06_authority-boundary.md` (`answers:` present). **Frontier `.5.2`.**
+
 ## _(2026-09-06)_ — WP4 first real harness: the boundary that REVEALS its handle in the stream, and the lookup that honestly does not exist
 
 - **The acceptance's honest leg was designed to be exercised by a REAL adapter — and Codex exercised it.** `codex exec` has no first-class status query for a past attempt (`exec resume` CONTINUES a thread and bills again; it is not a lookup), so `query_status` is `Unsupported`, a lost response lands `outcome_unknown` with no retry language, and the streamed thread id stays attached as the proof handle an operator would adjudicate with. No capability was fabricated to make the demo prettier.

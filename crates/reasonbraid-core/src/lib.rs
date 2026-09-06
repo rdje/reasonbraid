@@ -34,11 +34,18 @@
 //! codes, and [`DomainError`] is the typed, machine-actionable error. See [`error`] and
 //! `docs/decisions/2026-09-06_reason-codes.md`.
 
+mod authority;
 mod envelope;
 mod error;
 mod id;
 mod state;
 
+pub use authority::{
+    boundary_active_at, grant_active_at, grant_exceeds_boundary, policy_digest, AuthorityGrant,
+    AuthorizationDecisionRecord, BoundaryStatus, BoundaryViolation, Decision,
+    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass,
+    TargetSelector, UnknownAuthorityName,
+};
 pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};
 pub use error::{DomainError, KnownReasonCode, ReasonCode, Retryability};
 pub use id::{

@@ -5,3 +5,4 @@
 - [The node journal](node-journal.md)
 - [The node channel](node-channel.md)
 - [The adapter boundary](adapter-boundary.md)
+- [Authority](authority.md)

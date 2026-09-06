@@ -18,10 +18,12 @@ jobs:
       - name: Test
         run: cargo test --all
 
-  # PostgreSQL-backed integration tests (WP2/WP3): the atomic state/event/idempotency/outbox
-  # transaction (.2.1), the leased outbox worker with fencing + kill points (.2.2), and the
-  # node channel with cursor resume + reconciliation handshake (.3.2) can only be proven
-  # against a live Postgres. Mirrors the local `scripts/run_pg_tests.sh` ephemeral server.
+  # PostgreSQL-backed integration tests (WP2/WP3/WP5): the atomic
+  # state/event/idempotency/outbox transaction (.2.1), the leased outbox worker with
+  # fencing + kill points (.2.2), the node channel with cursor resume + reconciliation
+  # handshake (.3.2), and the authority engine with the enrollment-boundary ceiling +
+  # audit records (.5.1) can only be proven against a live Postgres. Mirrors the local
+  # `scripts/run_pg_tests.sh` ephemeral server.
   pg-tests:
     runs-on: ubuntu-latest
     services:
@@ -42,5 +44,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel)
-        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel -- --nocapture
+      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority)
+        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority -- --nocapture

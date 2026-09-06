@@ -10,7 +10,14 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# Authority validity windows (PHASE-0.5.1): boundary/grant valid_from/expires_at and
+# decision timestamps. Same minimal feature set as the other crates.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = { version = "1", features = ["derive"] }
+# SHA-256 for the authorization policy digest (PHASE-0.5.1): the audit record names
+# the exact policy inputs + decision it was evaluated against. Permissive-licensed
+# (MIT/Apache-2.0, RustCrypto).
+sha2 = "0.10"
 uuid = { version = "1", features = ["v7"] }

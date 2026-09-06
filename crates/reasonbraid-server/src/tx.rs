@@ -95,7 +95,23 @@ impl From<sqlx::Error> for ApplyError {
 /// unique index until the first commits, then takes the replay/conflict branch.
 pub async fn apply_command(pool: &PgPool, cmd: &Command) -> Result<CommandOutcome, ApplyError> {
     let mut tx = pool.begin().await?;
+    let outcome = apply_command_in_tx(&mut *tx, cmd).await?;
+    tx.commit().await?;
+    Ok(outcome)
+}
 
+/// The transactional body of [`apply_command`], shared with the authorized path
+/// (`PHASE-0.5.1`): the authorization decision record and the four durability writes
+/// commit in ONE transaction. Generic over the executor so a caller can pass either a
+/// transaction (this crate) or the executor of one; the caller owns `BEGIN`/`COMMIT`.
+pub(crate) async fn apply_command_in_tx<'e, E>(
+    mut tx: E,
+    cmd: &Command,
+) -> Result<CommandOutcome, ApplyError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     // 1. Claim the idempotency slot. The PK is what makes a redelivery idempotent: exactly
     //    one transaction can own the key.
     let claim = sqlx::query(
@@ -128,8 +144,8 @@ pub async fn apply_command(pool: &PgPool, cmd: &Command) -> Result<CommandOutcom
             });
         }
 
-        // Idempotent replay: return the ORIGINAL result; nothing new is written.
-        tx.commit().await?;
+        // Idempotent replay: return the ORIGINAL result; nothing new is written (the
+        // caller commits).
         return Ok(CommandOutcome {
             replayed: true,
             result: stored_result,
@@ -197,8 +213,6 @@ pub async fn apply_command(pool: &PgPool, cmd: &Command) -> Result<CommandOutcom
     .bind(&cmd.idempotency_key)
     .execute(&mut *tx)
     .await?;
-
-    tx.commit().await?;
 
     Ok(CommandOutcome {
         replayed: false,

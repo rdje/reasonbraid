@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — `.1.6` decomposed at the census seams: budget read → static shell → evidence leg
+
+- Gap census first (the pickup action the direction record prescribed): the existing read surfaces — `GET /v1/threads` (list), `GET /v1/threads/{id}` (projection + derived view), `GET /v1/threads/{id}/events` (the audit timeline), `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` (admin) — already exist and the page mirrors them with the dev-profile `x-reasonbraid-principal` header + `tenant_id` query (same-origin, so the page inherits the existing gates unchanged).
+- **Census finding: budgets have no read surface anywhere** — the ledger rows exist (`migrations/0005_budget.sql`: ceilings + reservations with status/usage/reason) but no GET endpoint and no CLI verb. The finding became `.1.6.1`.
+- Decomposition: `.1.6.1` the budget read surface (read-only query over the existing ledger, inspect-gated) → `.1.6.2` the static shell (`web/{index.html,app.js,style.css}` embedded at compile time, served at `/` by `rb-server`, read-only, XSS-safe) → `.1.6.3` the demo/evidence leg. Tree-only commit; `make gate` 13/13.
+
 ## 2026-09-06 — `.1.6` UI direction decided: a vanilla static page served by `rb-server` (`PHASE-1.6`)
 
 - The director adopted the recommendation (2026-09-06): the `.1.6` Web UI is a **vanilla static page served by `rb-server`** — plain HTML + JS, no frontend build pipeline, no framework. It mirrors the existing read surfaces (threads, nodes, inbox, budgets, audit timeline) and the CLI stays the primary, fully-covering surface. Decision recorded: `docs/decisions/2026-09-06_ui-direction.md` (`answers:`); the leaf's Note carries the direction for the decomposition. Tree-only commit; `make gate` 13/13.

@@ -16,18 +16,19 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.6` (Web UI/CLI, backlog 18; direction
-  DECIDED by the director `2026-09-06` — a vanilla static page served by
-  `rb-server`, no build pipeline; `docs/decisions/2026-09-06_ui-direction.md`).
-  Decompose with a gap census on pickup. `.1.5` COMPLETE (backlogs 9–17 done
-  across `.1`–`.1.5`); both Phase-1 defect leaves closed (`MAINT-1` §13,
+- **Active tree:** `PHASE-1` → frontier `.1.6.1` (the budget read surface).
+  `.1.6` DECOMPOSED `2026-09-06` after the gap census (direction: a vanilla
+  static page served by `rb-server`, no build pipeline —
+  `docs/decisions/2026-09-06_ui-direction.md`): `.1.6.1` budget read (the
+  census-found gap — budgets had NO read surface anywhere), `.1.6.2` the
+  embedded static shell (`web/{index.html,app.js,style.css}`, `/`), `.1.6.3`
+  the demo/evidence leg. `.1.5` COMPLETE (backlogs 9–17 done across
+  `.1`–`.1.5`); both Phase-1 defect leaves closed (`MAINT-1` §13,
   `MAINT-2` drain race); `.1.4` live-qualified (backlogs 19–21).
-- **Next action:** decompose `PHASE-1.6` at the static-shell seam (the page +
-  the read endpoints it consumes), then execute the children.
+- **Next action:** execute `PHASE-1.6.1` — `GET /v1/threads/{id}/budget` +
+  `rb inspect budget` — then `.1.6.2`/`.1.6.3`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.4` decomposition commit (pending
-  defect leaf `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load —
-  repro pending).
+- **In-flight uncommitted work:** none (MAINT-2 closed with the fix; 0 pending defect leaves).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude` (2.1.263,

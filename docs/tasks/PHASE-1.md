@@ -360,8 +360,72 @@ conversation without binding-governance claims.
     recommendation): the UI is a **vanilla static page served by `rb-server`** —
     no frontend build pipeline, no framework; it mirrors the existing read
     surfaces and the CLI stays the primary surface. Recorded in
-    `docs/decisions/2026-09-06_ui-direction.md`. Decompose (gap census first:
-    which inspection surfaces exist, which the page renders) on pickup.
+    `docs/decisions/2026-09-06_ui-direction.md`.
+  Gap census (`2026-09-06`, on pickup):
+    - EXISTING read surfaces the page mirrors — `grep -n "route("
+      crates/reasonbraid-server/src/api.rs` → `GET /v1/threads` (list: id/subject/state),
+      `GET /v1/threads/{id}` (projection + derived view: participants, invitations,
+      current_round, budget dimensions, outcome), `GET /v1/threads/{id}/events` (the
+      audit timeline), `GET /v1/threads/{id}/audit` (authorization records);
+      `crates/reasonbraid-server/src/node_channel.rs` → `GET /v1/nodes/presence`; plus
+      `GET /v1/nodes/inbox` (tenant_admin) in api.rs. Auth is the dev-profile
+      `x-reasonbraid-principal` header (`api.rs` line 59) + `tenant_id` query — a
+      same-origin page can send both, so the page inherits the existing gates unchanged.
+    - GAP FOUND: budgets have NO read surface anywhere — `grep -rn "budget"
+      crates/reasonbraid-cli/src/main.rs` → only the create flags (no inspect verb);
+      the api.rs router has no budget GET. The ledger rows exist
+      (`migrations/0005_budget.sql` → `budget_ceilings` + `budget_reservations` with
+      `status`/`usage`/`reason`) — the read surface is a read-only query over existing
+      rows, nothing new is invented. The `.1.6` goal names budgets, so the census
+      finding becomes a child (the "new operator surface" branch of the direction record).
+  Children: `.1.6.1`–`.1.6.3` (decomposed `2026-09-06` at the census seams: the
+    budget read surface → the static shell → the evidence leg).
+
+  - ID: `PHASE-1.6.1`
+    Status: `proposed`
+    Goal: the budget read surface (the census-found gap) — `GET
+      /v1/threads/{thread_id}/budget?tenant_id=` returns the ceiling (dimensions,
+      policy_version, created_at) + every reservation row (status, held vs usage,
+      denials with their reasons, expiry/settle times) from the ledger tables, gated
+      by the same thread-inspect path as `get_thread` (a role without `thread_inspect`
+      is a typed 403); the CLI gains `rb inspect budget --thread` mirroring the
+      thread-inspect verb. Read-only — no new write path, no new table.
+    Backlog: 18 (the "budgets" item)
+    Acceptance: the endpoint renders spend + uncertainty (held, settled, denials) for
+      a budget-denied dispatch and a settled overrun; the inspect gate holds (role 403
+      with the audit row); a command_api test drives create→reserve→settle→GET and a
+      denial leg; the e2e drives the CLI verb through the real binary; the book's cli
+      chapter documents the verb; decision record.
+
+  - ID: `PHASE-1.6.2`
+    Status: `proposed`
+    Goal: the static shell — `crates/reasonbraid-server/web/{index.html,app.js,style.css}`
+      EMBEDDED at compile time (`include_str!` — one binary, no runtime paths, no
+      build pipeline, §12) and served by `rb-server` at `/`, `/app.js`, `/style.css`
+      (a `ui_router` merged into the listener — `rb-server.rs` line 38's merge gains
+      a third arm). The page renders ONLY the existing read surfaces (threads list,
+      thread detail + participants/invitations/rounds, the event timeline, the audit
+      records, the `.1.6.1` budget view, node presence, the admin inbox) with the
+      dev-profile header + tenant typed by the user; READ-ONLY (no write action), and
+      XSS-safe (every datum rendered via `textContent` — never innerHTML with data;
+      untrusted thread content stays inert). The CLI remains the primary surface.
+    Backlog: 18
+    Acceptance: an offline test proves the three routes serve with the right content
+      types and the shell marker (no DB needed); the page references only the
+      documented GET paths (a mechanical grep over `app.js`); the book gains the
+      `web-ui` chapter + SUMMARY entry; decision record (the embed choice + URL
+      scheme).
+
+  - ID: `PHASE-1.6.3`
+    Status: `proposed`
+    Goal: the evidence leg — the two-host demo gains a UI beat (the shell is served,
+      `app.js` references the exact endpoint paths the page consumes, and one live
+      same-origin fetch with the dev header returns the demo's thread — the data the
+      page would render); the lockstep docs land; `.1.6` completes.
+    Backlog: 18
+    Acceptance: the demo passes with the new beat (`rc=0`); the book's two-host-demo
+      chapter notes the beat; the tree's verification/commit logs + frontier move on
+      (`.1.7`); MEMORY/LIVE_STATUS/CHANGELOG in the same commit.
 
 - ID: `PHASE-1.7`
   Status: `proposed`
@@ -377,7 +441,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.6` | `proposed` | `.1.5` is COMPLETE (typed bodies + rounds + the honest close — backlog 17); `PHASE-1-MAINT-2` (the captured codex stderr-drain race) executes first, then the `.1.6` Web UI/CLI lane (backlog 18) decomposes |
+| 1 | `PHASE-1.6.1` | `proposed` | `.1.6` decomposed at the census seams (gap census first: the existing read surfaces — threads list/detail, events, audit, presence, inbox — exist; budgets have NO read surface, so the census finding became `.1.6.1`); the children execute in order: the budget read surface → the static shell → the evidence leg |
 
 ## Changelog
 
@@ -403,6 +467,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.5.2` done — rounds: SERVER-assigned (a new thread is round 1; contributions land in the current round and their events carry it; `thread.advance_round` is the only mover — the client never names a round) under a new `thread_advance_round` grant (the registry canary extended first; humans carry it, roles deny-by-default — typed 403); the demo advances THREAD_A and asserts the projection round + the contribution's round; the demo's first run caught a missing `--thread` in the new beat — fixed, rerun green; decision record `docs/decisions/2026-09-06_rounds.md`; frontier → `.1.5.3`.
 - `2026-09-06`: `.1.5.3` done — the honest close: the core machine gains the `Inconclusive` terminal (`Closing → FinalizeInconclusive`; the exhaustive table + terminal-rejection tests extended), `thread.close` gains `outcome` (decided default | inconclusive) + the `unresolved` register (rides the event; a decided close carrying unresolved items is a typed 400), the CLI gains `--outcome`/`--unresolved`, and the demo's budget-denied thread B closes INCONCLUSIVELY with the register asserted; the e2e's first run caught a missing `--json` in the new leg — fixed, rerun green; decision record `docs/decisions/2026-09-06_honest-inconclusive-close.md`; **`.1.5` is COMPLETE** (backlog 17). The offline verification ALSO captured the `PHASE-1-MAINT-2` repro (the codex stderr-drain race, empty tail) — recorded in the defect leaf; frontier → `.1.6` (MAINT-2 executes first).
 - `2026-09-06`: `PHASE-1-MAINT-2` done — the stderr-drain race REPRODUCED and FIXED: during the `.1.5.3` verification `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY tail (`got: codex exited with exit status: 2; stderr tail: `) — the spawned drain task raced the EOF path's buffer snapshot (load only widens the window); `drain_stderr` now returns its JoinHandle and the EOF path awaits it (bounded 5 s) BEFORE the snapshot, in `codex.rs` AND its `claude.rs` mirror; 10× adapter-suite loops + the full offline workspace green; decision record `docs/decisions/2026-09-06_stderr-drain-race.md`. Frontier unchanged: `.1.6`.
+- `2026-09-06`: `.1.6` decomposed (gap census first: the existing read surfaces — `GET /v1/threads` list, `GET /v1/threads/{id}` detail, `GET /v1/threads/{id}/events` timeline, `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` — exist and the page mirrors them with the dev-profile header + tenant query; the census FOUND budgets have no read surface anywhere — the ledger rows exist but no GET and no CLI verb) into `.1.6.1` (the budget read surface — the census-found gap), `.1.6.2` (the static shell: `web/{index.html,app.js,style.css}` embedded at compile time, served at `/`, read-only, XSS-safe), and `.1.6.3` (the demo/evidence leg); frontier → `.1.6.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

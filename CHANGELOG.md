@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Server-assigned rounds: the advance verb and its grant (`PHASE-1.5.2`)
+
+- Rounds landed as **server-assigned facts**: a new thread is round 1 (the additive `current_round` projection field, `#[serde(default)]`), every contribution lands in the current round and its event carries the number, and `thread.advance_round` (event `thread.round_advanced`) is the only mover — the client never names a round, so round skew cannot be submitted by construction.
+- Advancement is a new **`thread_advance_round` grant** (the wire-name canary extended first — it failed until the registry row landed): humans carry it via the 9-action dev admin set; roles are deny-by-default (typed 403 with the audit row) — they shape content, humans shape the process. A closed thread refuses advancement (`invalid_transition`).
+- CLI: `rb thread advance-round`; the two-host demo's THREAD_A now advances after the agent contribution and asserts the projection round (2) and the contribution's round (1) — 16 PASS checks total. The demo's first run caught a positional-vs-`--thread` slip in the new beat, fixed. All twelve live suites (command_api 11) + e2e + demo `rc=0`; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_rounds.md` (`answers:`).
+
 ## 2026-09-06 — The structured contribution body: typed kinds + evidence references (`PHASE-1.5.1`)
 
 - Backlog 17's first contract landed: `thread.contribute` gains `kind` — a typed deny-unknown `ContributionKind` enum over the §8.5 initial subset (`position` **stated default** | `claim` | `assumption` | `evidence_reference` | `question` | `summary`) — and `evidence_refs`, a list of `{uri, digest?, note?}` REFERENCES (deny-unknown at the ref itself; absent fields are omitted on the wire). Out-of-registry kinds and foreign ref fields are typed 400 `invalid_command` refusals.

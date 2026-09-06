@@ -264,6 +264,18 @@ enum ThreadCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Advance the thread to its next round (`.1.5.2`): the round is SERVER-assigned;
+    /// humans carry the `thread_advance_round` grant, roles stay deny-by-default.
+    AdvanceRound {
+        #[arg(long)]
+        thread: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Decline this role's PENDING invitation (`.1.3.1`).
     Decline {
         #[arg(long)]
@@ -598,6 +610,27 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     thread_id: thread,
                     tenant,
                     operation: "thread.join",
+                    body: json!({}),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::AdvanceRound {
+            thread,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.advance_round",
                     body: json!({}),
                     json_out: json,
                 },

@@ -31,6 +31,7 @@ $ rb thread invite --thread thr_… --agent reviewer --as alice
 $ rb thread accept --thread thr_… --as reviewer
 $ rb thread contribute --thread thr_… --text "Ship it: the experiments are green." \
     --kind claim --evidence-uri https://example.org/evidence --as reviewer
+$ rb thread advance-round --thread thr_… --as alice
 $ rb thread challenge --thread thr_… --target evt_… --text "Which experiments?" --as alice
 $ rb thread revise --thread thr_… --target evt_… --text "The SQLite kill-point sweep…" --as reviewer
 $ rb thread close --thread thr_… --reason "decision reached" --as alice
@@ -59,6 +60,14 @@ The contribute verb takes the structured body (`.1.5.1`):
 - `--evidence-uri` (repeatable) — a reference the contribution cites, rendered in
   the inspection view. References only: citing a URI is not fetching it —
   acquisition arrives with a later phase (§3.7).
+
+`thread.advance-round` moves the thread to its next round (`.1.5.2`):
+
+- Rounds are **server-assigned**: a new thread is round 1, every contribution
+  lands in the current round and carries it in the events view, and advancement
+  is this explicit, auditable verb (event `thread.round_advanced`).
+- Humans carry the `thread_advance_round` grant via the dev admin set; roles are
+  deny-by-default (they shape content, humans shape the process).
 
 `thread.cancel` is the **abandonment terminal** (`open|closing → cancelled`,
 reason recorded) — distinct from a decided close; both are inspectable, and a

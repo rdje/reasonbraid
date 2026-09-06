@@ -1237,3 +1237,187 @@ async fn contribute_carries_a_typed_kind_and_evidence_refs() {
     assert_eq!(status, 400, "bad evidence ref: {bad_ref}");
     assert_eq!(bad_ref["code"], json!("invalid_command"));
 }
+
+/// Rounds (`PHASE-1.5.2`): SERVER-assigned — a new thread is round 1,
+/// contributions land in the current round, `thread.advance_round` moves it
+/// (event + projection), a role without the grant is refused, and a closed
+/// thread refuses advancement.
+#[tokio::test]
+async fn rounds_are_server_assigned_and_advancement_is_gated() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (_, reviewer) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "reviewer", "tenant_id": tenant }),
+    )
+    .await;
+    let reviewer_id = reviewer["principal_id"].as_str().unwrap().to_string();
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-rounds-create",
+            json!({ "tenant_id": tenant, "subject": "rounds", "objective": "typed rounds" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/threads/{thread_id}/commands");
+
+    let (status, invited) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.invite",
+            "k-rounds-invite",
+            json!({ "tenant_id": tenant, "agent_role": reviewer_id }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite: {invited}");
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &path,
+        &reviewer_id,
+        &envelope(
+            "thread.accept_invitation",
+            "k-rounds-accept",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "accept: {accepted}");
+
+    // A new thread is round 1; the contribution lands in round 1.
+    let (status, contributed) = command(
+        &client,
+        &base,
+        &path,
+        &reviewer_id,
+        &envelope(
+            "thread.contribute",
+            "k-rounds-contribute-1",
+            json!({ "tenant_id": tenant, "content": "first round" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "contribute round 1: {contributed}");
+
+    // The role has no thread_advance_round grant (deny-by-default).
+    let (status, denied) = command(
+        &client,
+        &base,
+        &path,
+        &reviewer_id,
+        &envelope(
+            "thread.advance_round",
+            "k-rounds-role-advance",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 403, "role advance: {denied}");
+    assert_eq!(denied["code"], json!("unauthorized"));
+
+    // The human advances: round 2, the event names it, the projection records it.
+    let (status, advanced) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.advance_round",
+            "k-rounds-advance",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "advance: {advanced}");
+    assert_eq!(advanced["event_type"], json!("thread.round_advanced"));
+
+    let (_, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(inspected["state"]["current_round"], json!(2));
+
+    // The next contribution lands in round 2; the events view shows both rounds.
+    let (status, contributed2) = command(
+        &client,
+        &base,
+        &path,
+        &reviewer_id,
+        &envelope(
+            "thread.contribute",
+            "k-rounds-contribute-2",
+            json!({ "tenant_id": tenant, "content": "second round" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "contribute round 2: {contributed2}");
+
+    let (status, events) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "inspect events: {events}");
+    let rounds: Vec<u64> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .map(|e| e["body"]["round"].as_u64().unwrap())
+        .collect();
+    assert_eq!(rounds, vec![1, 2], "contributions carry the round they landed in");
+
+    // A closed thread refuses advancement (the state machine boundary).
+    let (status, closed) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.close",
+            "k-rounds-close",
+            json!({ "tenant_id": tenant, "reason": "done" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "close: {closed}");
+    let (status, late) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.advance_round",
+            "k-rounds-late-advance",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 409, "advance after close: {late}");
+    assert_eq!(late["code"], json!("invalid_transition"));
+}

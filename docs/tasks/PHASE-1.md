@@ -318,6 +318,10 @@ conversation without binding-governance claims.
     Acceptance: round assignment + boundary enforcement are typed and tested; the
       inspection view shows the round of every contribution; existing suites + the demo
       stay green.
+    Done (`2026-09-06`): server-assigned rounds landed (`current_round` projection fact,
+      the advance verb + `thread_advance_round` grant); the acceptance checklist below
+      records the evidence (the demo's first run caught a missing `--thread` in the new
+      beat — fixed, rerun green).
 
   - ID: `PHASE-1.5.3`
     Status: `proposed`
@@ -350,7 +354,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams; `.1.5.1` done (typed contribution kinds + evidence references) → next executable leaf `.1.5.2` (rounds) |
+| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams; `.1.5.1` done (typed contribution kinds + evidence references), `.1.5.2` done (server-assigned rounds) → next executable leaf `.1.5.3` (the honest `Inconclusive` close) |
 
 ## Changelog
 
@@ -373,6 +377,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.4.2` done — the live qualification leg: `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored` dispatched ONE bounded real run through the real supervisor + journal and passed on its FIRST run (`test result: ok. 1 passed` — completed, exact usage + money cost, session id attached as the provider handle, honest unsupported lookup); the dependency-ledger Claude row now carries the verified 2.1.263 interface (checked_at, tested_versions, conformance), the book gains the live-test command, and the decision record `docs/decisions/2026-09-06_claude-cli-adapter.md` records the whole leaf; **`.1.4` is COMPLETE** (backlogs 19–21: the deterministic fake + Codex + Claude) — frontier → `.1.5`.
 - `2026-09-06`: `.1.5` decomposed (gap census first: the contribution `kind` is a free string, no evidence references, no round fields, and the core machine has NO `Inconclusive` terminal — Open/Closing/Closed/Cancelled only; votes/abstentions + workflow phases defer to Phase 5, evidence acquisition to Phase 4) into `.1.5.1` (the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` — references only), `.1.5.2` (rounds: a round number on contributions, enforced at the boundary, visible in inspection), and `.1.5.3` (the honest close: `outcome: decided|inconclusive` + the unresolved register + the core `Inconclusive` terminal); frontier → `.1.5.1`.
 - `2026-09-06`: `.1.5.1` done — the structured contribution body: `ContributionKind` (position default | claim | assumption | evidence_reference | question | summary; deny-unknown) + `EvidenceRef {uri, digest?, note?}` ride the contribute event; the CLI gains `--kind` (kebab→snake normalized) + repeatable `--evidence-uri`; the suite's first run caught the null-vs-omitted wire shape (absent ref fields now OMITTED, not `null`) — fixed, rerun green; decision record `docs/decisions/2026-09-06_structured-contributions.md`; frontier → `.1.5.2`.
+- `2026-09-06`: `.1.5.2` done — rounds: SERVER-assigned (a new thread is round 1; contributions land in the current round and their events carry it; `thread.advance_round` is the only mover — the client never names a round) under a new `thread_advance_round` grant (the registry canary extended first; humans carry it, roles deny-by-default — typed 403); the demo advances THREAD_A and asserts the projection round + the contribution's round; the demo's first run caught a missing `--thread` in the new beat — fixed, rerun green; decision record `docs/decisions/2026-09-06_rounds.md`; frontier → `.1.5.3`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -951,6 +956,56 @@ the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
   cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1.5.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/authority.rs`
+(the `ThreadAdvanceRound` grant + canary), `crates/reasonbraid-server/src/threads.rs`
+(the verb/event/body/projection field/arms), `crates/reasonbraid-server/src/api.rs`
+(the admin set + dispatch arm), `crates/reasonbraid-cli/src/main.rs` (the verb),
+the test files, and `scripts/demo_two_host.sh` (all `\.rs$`/`\.sh$`).
+
+- [x] **REPRODUCE / ISSUE** — backlog 17's rounds contract is open: no round
+  concept exists (`grep -rn "current_round\|advance_round" crates/
+  --include='*.rs'` → no matches before this leaf), and the demo's blind round
+  has no label.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.6.2`'s flat contribution stream predates
+  the rounds concept; the fix point is the command boundary: the projection
+  gains the additive `current_round` (server-assigned), the contribute arm
+  stamps the event, and a NEW verb is the only mover — the client never names a
+  round, so the "current or current+1?" validation ladder never exists. The
+  grant registry is extended FIRST (the canary failed until the row was added —
+  `cargo test -p reasonbraid-core` → the wire-names test).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no rounds.
+  After: a new thread is round 1 (`default_round`); contributions carry the
+  round they landed in; `thread.advance_round` moves it (event
+  `thread.round_advanced`, the projection records it) under the new
+  `thread_advance_round` grant (humans via the 9-action admin set; roles
+  deny-by-default). Live proof: `bash scripts/run_pg_tests.sh` → `test result:
+  ok. 11 passed; 0 failed` (`command_api`, +1: round-1 default → role 403 →
+  human advance + projection round 2 → round-2 contribution → closed-thread 409)
+  + the demo's two new beats (round 2 projection fact, the contribution's round
+  1) → `ALL acceptance checks passed` (16 PASS, `rc=0`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green
+  (incl. the extended grant-registry canary); `bash scripts/run_pg_tests.sh` →
+  all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 11 +
+  3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` +
+  the two-host demo `ALL acceptance checks passed` (16 PASS, `rc=0`);
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` →
+  13/13 at commit; `make book` builds.
+- [x] **FIX** — authority.rs (`ThreadAdvanceRound` in the enum + as_str +
+  from_wire_name + the canary row); threads.rs (`OP_ADVANCE_ROUND`/
+  `EVENT_ROUND_ADVANCED`/`AdvanceRoundBody`, the additive `current_round` +
+  `default_round()`, the contribute event's `round`, the advance arm);
+  api.rs (ADMIN_ACTIONS 9 + the dispatch arm); main.rs (`advance-round`);
+  command_api.rs (the new test); the e2e advance leg; the demo's advance beat.
+  The demo's first run caught a real script slip — the new beat called
+  `advance-round "$THREAD_A"` positionally where the verb takes `--thread`
+  (`Usage: rb thread advance-round [OPTIONS] --thread <THREAD>`, rc=2) — fixed,
+  rerun green.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_rounds.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -967,6 +1022,7 @@ the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
 | `2026-09-06` | `PHASE-1.4.1` | `cargo test -p reasonbraid-adapter --test claude_adapter` → `test result: ok. 10 passed; 0 failed`; `cargo test --all` → every offline suite green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the Claude CLI adapter core landed (`claude.rs` — the `.4.2` mirror over the live-verified 2.1.263 `-p --output-format stream-json --restricted --tools '' --verbose` interface; money cost from `total_cost_usd`); the suite's first run caught a test-authoring slip (multi-chunk assertion), fixed |
 | `2026-09-06` | `PHASE-1.4.2` | `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored --nocapture` → `test result: ok. 1 passed; 0 failed` (`LIVE CLAUDE OK: attempt patt_01a0784e-… completed via session 12361df0-…`) — completed + exact usage + MONEY cost + session id attached + unsupported lookup, on the REAL harness; `cargo test --all` → all offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the live qualification leg landed (env-gated `RB_LIVE_CLAUDE=1`, first-run pass); ledger row + book chapter + decision record updated; **`.1.4` complete** — two genuinely distinct harness adapters (backlogs 19–21) |
 | `2026-09-06` | `PHASE-1.5.1` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 10 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the structured contribution body landed (typed §8.5 kinds + evidence refs); the suite's FIRST run caught the null-vs-omitted wire shape (`FAILED. 8 passed; 2 failed` → `skip_serializing_if` fix), rerun green |
+| `2026-09-06` | `PHASE-1.5.2` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 11 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (16 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | server-assigned rounds landed (advance verb + `thread_advance_round` grant, humans-only); the demo's first run caught a positional-vs-`--thread` slip in the new beat, fixed, rerun green |
 
 ## Commit Log
 
@@ -984,3 +1040,4 @@ the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
 | `PHASE-1.4.1` | `REASONBRAID-PHASE1-0015` | the Claude CLI adapter core: `claude.rs` (`.4.2` mirror over the verified 2.1.263 stream-json interface) + the 10-test offline stub suite + book section |
 | `PHASE-1.4.2` | `REASONBRAID-PHASE1-0016` | the live qualification leg: env-gated `claude_live` (first-run pass on the real harness) + dependency-ledger row + book command + decision record; `.1.4` complete |
 | `PHASE-1.5.1` | `REASONBRAID-PHASE1-0018` | the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` (omitted-absent wire shape) + CLI flags + the 4-leg command_api test + e2e leg |
+| `PHASE-1.5.2` | `REASONBRAID-PHASE1-0019` | server-assigned rounds: the advance verb + `thread_advance_round` grant + projection fact + the command_api/e2e/demo legs |

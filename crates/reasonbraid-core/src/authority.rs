@@ -56,6 +56,11 @@ pub enum GrantAction {
     /// real capability; this grant is the "may participate in invitation flows"
     /// gate every invited role's default carries, `.1.3.1`).
     ThreadInvitationRespond,
+    /// Advance a thread to its next round (`.1.5.2`): rounds are SERVER-assigned —
+    /// contributions land in the current round, and advancement is this explicit,
+    /// auditable act. Humans carry it via the dev admin set; roles stay
+    /// deny-by-default (they shape content, humans shape the process).
+    ThreadAdvanceRound,
     /// Administrative authority — NEVER implied by membership or other actions.
     TenantAdmin,
 }
@@ -70,6 +75,7 @@ impl GrantAction {
             GrantAction::ThreadClose => "thread_close",
             GrantAction::ThreadCancel => "thread_cancel",
             GrantAction::ThreadInvitationRespond => "thread_invitation_respond",
+            GrantAction::ThreadAdvanceRound => "thread_advance_round",
             GrantAction::TenantAdmin => "tenant_admin",
         }
     }
@@ -84,6 +90,7 @@ impl GrantAction {
             "thread_close" => Some(GrantAction::ThreadClose),
             "thread_cancel" => Some(GrantAction::ThreadCancel),
             "thread_invitation_respond" => Some(GrantAction::ThreadInvitationRespond),
+            "thread_advance_round" => Some(GrantAction::ThreadAdvanceRound),
             "tenant_admin" => Some(GrantAction::TenantAdmin),
             _ => None,
         }
@@ -793,6 +800,7 @@ mod tests {
                 "thread_invitation_respond",
                 GrantAction::ThreadInvitationRespond,
             ),
+            ("thread_advance_round", GrantAction::ThreadAdvanceRound),
             ("tenant_admin", GrantAction::TenantAdmin),
         ] {
             assert_eq!(s.parse::<GrantAction>(), Ok(expected));

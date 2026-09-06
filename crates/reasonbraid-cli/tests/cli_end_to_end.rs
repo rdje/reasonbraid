@@ -261,6 +261,15 @@ async fn the_real_cli_drives_the_whole_flow() {
         serde_json::json!([{ "uri": "https://example.org/kill-risk" }])
     );
 
+    // `.1.5.2`: the human advances the round — the REAL binary drives the verb.
+    let (ok, stdout, stderr) = rb
+        .run(&[
+            "thread", "advance-round", "--thread", &thread_id, "--as", "alice",
+        ])
+        .await;
+    assert!(ok, "advance failed: {stderr}");
+    assert!(stdout.contains("thread.round_advanced"), "{stdout}");
+
     let challenged = rb
         .json(&[
             "thread",

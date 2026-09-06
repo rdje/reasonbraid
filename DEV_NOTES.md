@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.5.2: server-assigned facts cannot be forged
+
+- **Assign at the boundary, never validate what the client named.** The round is server-assigned — contributions land in the CURRENT round and `thread.advance_round` is the only mover — so the "current or current+1?" validation ladder never exists. A client-supplied round would have created the mismatch class for no gain.
+- **A process-shaping act deserves its own grant name.** `thread_advance_round` joined the registry with the canary extended FIRST (it failed until the canary row was added — the `.1.1.3` lesson as a pre-built habit); roles stay deny-by-default: they shape content, humans shape the process, and the 403 leg of the suite proves it.
+- **Rounds are a projection fact, not a thread state.** No core state-machine change: `open` threads advance freely, and the round rides the contribution event exactly like `.1.5.1`'s kind — the event-layer growth pattern, re-applied.
+- Promoted to `docs/decisions/2026-09-06_rounds.md` (`answers:` present). **Frontier `PHASE-1.5.3` (the honest close).**
+
 ## _(2026-09-06)_ — PHASE-1.5.1: type the body, not the plumbing
 
 - **A typed default is a documented variant, not an empty profile.** `kind` defaults to `position` (a contribution without a kind IS a position) — the same shape as `.1.1.3`'s `single_agent`; the tests assert the default so the wire contract is enforced, not just stated.

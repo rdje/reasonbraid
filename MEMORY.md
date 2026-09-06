@@ -16,14 +16,14 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.5.2` — `.1.5.1` done: the structured
-  contribution body (typed §8.5 `ContributionKind` enum, `position` default, +
-  `evidence_refs` — references only) rides the contribute event; CLI `--kind`/
-  `--evidence-uri`. `.1.5.2` (rounds) → `.1.5.3` (honest `Inconclusive` close).
-  `.1.4` COMPLETE (Claude adapter live-qualified, backlogs 19–21); `.1`/`.1.2`/`.1.3`
-  COMPLETE (backlogs 9–16); `PHASE-1-MAINT-1` done (§13 same-volume PG data).
-- **Next action:** execute `PHASE-1.5.2` — rounds on contributions (boundary rule +
-  projection + inspection).
+- **Active tree:** `PHASE-1` → frontier `.1.5.3` — `.1.5.1` done (typed §8.5
+  contribution kinds + evidence references) and `.1.5.2` done (SERVER-assigned
+  rounds: `thread.advance_round` under the humans-only `thread_advance_round`
+  grant). Next: `.1.5.3` — the honest close (`outcome: decided|inconclusive` +
+  the unresolved register + the core `Inconclusive` terminal). `.1.4` COMPLETE
+  (Claude adapter live-qualified, backlogs 19–21); `.1`/`.1.2`/`.1.3` COMPLETE
+  (backlogs 9–16); `PHASE-1-MAINT-1` done (§13 same-volume PG data).
+- **Next action:** execute `PHASE-1.5.3` — the honest close.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.4` decomposition commit (pending
   defect leaf `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load —

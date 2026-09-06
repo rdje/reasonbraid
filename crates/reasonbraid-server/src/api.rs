@@ -347,8 +347,8 @@ pub struct EnrollResponse {
 
 /// The dev admin action set a bootstrap human receives. It includes `tenant_admin`
 /// EXPLICITLY — never implied (`.5.1`); `thread_cancel` joins in `.1.1.3`,
-/// `thread_invitation_respond` in `.1.3.1`.
-const ADMIN_ACTIONS: [GrantAction; 8] = [
+/// `thread_invitation_respond` in `.1.3.1`, `thread_advance_round` in `.1.5.2`.
+const ADMIN_ACTIONS: [GrantAction; 9] = [
     GrantAction::ThreadCreate,
     GrantAction::ThreadInvite,
     GrantAction::ThreadContribute,
@@ -356,6 +356,7 @@ const ADMIN_ACTIONS: [GrantAction; 8] = [
     GrantAction::ThreadClose,
     GrantAction::ThreadCancel,
     GrantAction::ThreadInvitationRespond,
+    GrantAction::ThreadAdvanceRound,
     GrantAction::TenantAdmin,
 ];
 
@@ -1472,6 +1473,17 @@ async fn thread_command(
                 tenant,
                 GrantAction::ThreadContribute,
                 request_hash(threads::OP_CONTRIBUTE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_ADVANCE_ROUND => {
+            let body: threads::AdvanceRoundBody =
+                serde_json::from_value(envelope.body.clone())
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadAdvanceRound,
+                request_hash(threads::OP_ADVANCE_ROUND, &principal, &envelope.body),
             )
         }
         threads::OP_CHALLENGE => {

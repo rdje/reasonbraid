@@ -56,6 +56,7 @@ pub const OP_ACCEPT_INVITATION: &str = "thread.accept_invitation";
 pub const OP_DECLINE_INVITATION: &str = "thread.decline_invitation";
 pub const OP_REMOVE_PARTICIPANT: &str = "thread.remove_participant";
 pub const OP_JOIN: &str = "thread.join";
+pub const OP_ADVANCE_ROUND: &str = "thread.advance_round";
 
 /// The event types committed for the operations above.
 pub const EVENT_CREATED: &str = "thread.created";
@@ -69,6 +70,7 @@ pub const EVENT_INVITATION_ACCEPTED: &str = "thread.invitation_accepted";
 pub const EVENT_INVITATION_DECLINED: &str = "thread.invitation_declined";
 pub const EVENT_PARTICIPANT_REMOVED: &str = "thread.participant_removed";
 pub const EVENT_JOINED: &str = "thread.participant_joined";
+pub const EVENT_ROUND_ADVANCED: &str = "thread.round_advanced";
 
 /// The thread-work kinds an inbox payload carries (`PHASE-0.6.2`): an invitation
 /// dispatches a `contribute` work item to the invited role's node; a challenge of a
@@ -224,6 +226,14 @@ pub struct JoinBody {
     pub tenant_id: TenantId,
 }
 
+/// `thread.advance_round` body (`.1.5.2`): the scope only — the new round is
+/// SERVER-assigned (current + 1); the client never names one.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvanceRoundBody {
+    pub tenant_id: TenantId,
+}
+
 /// `thread.remove_participant` body (`.1.3.1`): a tenant_admin revokes one
 /// participant (invited or accepted) — `revoked` in the projection, the event
 /// names the removed principal.
@@ -363,8 +373,19 @@ pub struct ThreadProjection {
     /// Role wire id → the recorded offer facts (`.1.3.1`; additive).
     #[serde(default)]
     pub invitations: BTreeMap<String, InvitationMeta>,
+    /// The thread's current round (`.1.5.2`; additive — a projection written
+    /// before it defaults to round 1). Server-assigned: contributions land in
+    /// the CURRENT round; `thread.advance_round` is the only mover.
+    #[serde(default = "default_round")]
+    pub current_round: u64,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
+}
+
+/// Round 1 is the stated default (`.1.5.2`): a projection without the field is a
+/// thread that never advanced.
+fn default_round() -> u64 {
+    1
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────────
@@ -497,6 +518,7 @@ pub fn prepare_create(
     let ceiling_id = format!("ceil_{thread_id}");
     let projection = ThreadProjection {
         invitations: BTreeMap::new(),
+        current_round: default_round(),
         schema: 1,
         thread_id: *thread_id,
         subject: body.subject.clone(),
@@ -905,6 +927,25 @@ where
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
         }
+        OP_ADVANCE_ROUND => {
+            let body: AdvanceRoundBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            let _ = body;
+            require_open(&projection, "advance_round")?;
+            ensure_participant(&projection, principal)?;
+            projection.current_round += 1;
+            (
+                EVENT_ROUND_ADVANCED,
+                json!({
+                    "operation": OP_ADVANCE_ROUND,
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "actor_principal_id": principal,
+                    "round": projection.current_round,
+                }),
+                serde_json::to_value(&projection).expect("projection serializes"),
+            )
+        }
         OP_CONTRIBUTE => {
             let body: ContributeBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
@@ -922,6 +963,7 @@ where
                     "content": body.content,
                     "kind": body.kind,
                     "evidence_refs": body.evidence_refs,
+                    "round": projection.current_round,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )

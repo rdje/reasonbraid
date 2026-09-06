@@ -57,6 +57,7 @@
 - [`2026-09-06_readme-policy-readoption.md`](docs/decisions/2026-09-06_readme-policy-readoption.md)
 - [`2026-09-06_real-adapter-codex.md`](docs/decisions/2026-09-06_real-adapter-codex.md)
 - [`2026-09-06_reason-codes.md`](docs/decisions/2026-09-06_reason-codes.md)
+- [`2026-09-06_rounds.md`](docs/decisions/2026-09-06_rounds.md)
 - [`2026-09-06_same-volume-pg-ephemeral.md`](docs/decisions/2026-09-06_same-volume-pg-ephemeral.md)
 - [`2026-09-06_state-transitions.md`](docs/decisions/2026-09-06_state-transitions.md)
 - [`2026-09-06_structured-contributions.md`](docs/decisions/2026-09-06_structured-contributions.md)

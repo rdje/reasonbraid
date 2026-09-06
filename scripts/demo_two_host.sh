@@ -313,6 +313,18 @@ log "node A's contribution landed (event $CONTRIBUTION_ID)"
 check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'AGENT-A: the claim holds only for'"
 
+# The `.1.5.2` rounds surface: the human advances the round — the thread's round
+# fact moves (server-assigned), and the contribution above carries round 1.
+ADVANCE_OUT="$(cli thread advance-round --thread "$THREAD_A" --as organizer --tenant "$TENANT" --json)"
+echo "$ADVANCE_OUT" | grep -q thread.round_advanced \
+    || { fail "advance-round emitted thread.round_advanced"; exit 1; }
+ROUND_NOW="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json \
+    | jq -r '.thread.state.current_round')"
+check "the thread advanced to round 2 (projection fact)" bash -c "[ '$ROUND_NOW' -eq 2 ]"
+CONTRIB_ROUND="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json \
+    | jq -r '[.events.events[] | select(.event_type == "thread.contribution_submitted")][0].body.round')"
+check "the contribution carries its round (round 1)" bash -c "[ '$CONTRIB_ROUND' -eq 1 ]"
+
 # The `.1.2.2` presence surface: the enrolled + handshaked node is observably
 # ONLINE through the channel API (a derived fact of its live lease).
 curl -s "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" > "$EVIDENCE/presence-a-online.json"

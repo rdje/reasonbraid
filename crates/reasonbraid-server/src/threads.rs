@@ -55,6 +55,7 @@ pub const OP_CANCEL: &str = "thread.cancel";
 pub const OP_ACCEPT_INVITATION: &str = "thread.accept_invitation";
 pub const OP_DECLINE_INVITATION: &str = "thread.decline_invitation";
 pub const OP_REMOVE_PARTICIPANT: &str = "thread.remove_participant";
+pub const OP_JOIN: &str = "thread.join";
 
 /// The event types committed for the operations above.
 pub const EVENT_CREATED: &str = "thread.created";
@@ -67,6 +68,7 @@ pub const EVENT_CANCELLED: &str = "thread.cancelled";
 pub const EVENT_INVITATION_ACCEPTED: &str = "thread.invitation_accepted";
 pub const EVENT_INVITATION_DECLINED: &str = "thread.invitation_declined";
 pub const EVENT_PARTICIPANT_REMOVED: &str = "thread.participant_removed";
+pub const EVENT_JOINED: &str = "thread.participant_joined";
 
 /// The thread-work kinds an inbox payload carries (`PHASE-0.6.2`): an invitation
 /// dispatches a `contribute` work item to the invited role's node; a challenge of a
@@ -210,6 +212,15 @@ pub struct AcceptInvitationBody {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeclineInvitationBody {
+    pub tenant_id: TenantId,
+}
+
+/// `thread.join` body (`.1.3.2`): the actor is the joining role — a thread whose
+/// `allow_join_requests` is on admits it as an ACCEPTED participant through the
+/// self-request path (no invitation; the event records `via: "join_request"`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JoinBody {
     pub tenant_id: TenantId,
 }
 
@@ -659,6 +670,12 @@ where
             let body: InviteBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
             require_open(&projection, "invite")?;
+            if !projection.participant_rules.allow_explicit_invites {
+                return Err(ThreadError::InvalidCommand(
+                    "the thread does not allow explicit invitations (allow_explicit_invites is off)"
+                        .to_string(),
+                ));
+            }
             let role: AgentRoleId = body.agent_role.parse().map_err(|_| {
                 ThreadError::InvalidCommand(format!(
                     "agent_role `{}` is not a valid role identifier",
@@ -808,6 +825,45 @@ where
                     )));
                 }
             }
+        }
+        OP_JOIN => {
+            let body: JoinBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            let _ = body;
+            require_open(&projection, "join")?;
+            // `.1.3.2`: the self-request path requires the thread's join door open.
+            if !projection.participant_rules.allow_join_requests {
+                return Err(ThreadError::InvalidCommand(
+                    "the thread does not allow join requests (allow_join_requests is off)"
+                        .to_string(),
+                ));
+            }
+            // An OPEN membership refuses (already joined/invited); a terminal
+            // record (declined/expired/revoked) may join — the fresh membership
+            // overwrites it.
+            match projection.participants.get(principal) {
+                Some(ParticipationState::Invited) | Some(ParticipationState::Accepted) => {
+                    return Err(ThreadError::AlreadyParticipant {
+                        principal: principal.to_string(),
+                    });
+                }
+                _ => {}
+            }
+            projection
+                .participants
+                .insert(principal.to_string(), ParticipationState::Accepted);
+            (
+                EVENT_JOINED,
+                json!({
+                    "operation": OP_JOIN,
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "actor_principal_id": principal,
+                    "agent_role": principal,
+                    "via": "join_request",
+                }),
+                serde_json::to_value(&projection).expect("projection serializes"),
+            )
         }
         OP_CONTRIBUTE => {
             let body: ContributeBody = serde_json::from_value(body.clone())

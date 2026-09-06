@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Simple subscriptions: `thread.join`, enforced participant doors (`PHASE-1.3.2`)
+
+- `thread.join` lands (event `thread.participant_joined`, `via: join_request`): a thread whose `allow_join_requests` is on admits the role directly as `accepted` — the self-request path, no invitation, no reservation machinery (a subscription is an ordinary `thread_contribute` act). A closed door and a double join are typed refusals.
+- The `.1.1.3` participant rules became load-bearing: `allow_explicit_invites=false` now REFUSES the invite verb at the boundary (the join door still works), and `allow_join_requests` gates the join verb. The listing surface is the existing inspection view (full participant states + invitation meta).
+- The race test taught a domain fact first: concurrent accept+remove BOTH succeed — they are COMPATIBLE transitions (accept-then-revoke is a legitimate sequence; the snapshot is `revoked` either way). The conflict pair is accept vs decline; the suite now races that and asserts exactly one winner. New fourth `invitations` test; `rb thread join`; full live-PG regression (twelve suites) + CLI e2e + two-host demo green (`rc=0`); clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_join-subscriptions.md` (`answers:`). **The `.1.3` coordinator leaf is complete** (backlogs 15/16).
+
 ## 2026-09-06 — The explicit-participants contract: pending invitations, accept/decline/remove, dispatch-on-accept (`PHASE-1.3.1`)
 
 - Backlog 16 + 15's membership semantics landed: `thread.invite` records a **pending offer** (typed optional `expires_in_seconds`; `invited_at`/`expires_at` ride the event AND the new additive `invitations` projection map) and **enqueues nothing** — the `.6.2` invite-time dispatch is gone.

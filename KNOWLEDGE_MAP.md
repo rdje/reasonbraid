@@ -46,6 +46,7 @@
 - [`2026-09-06_g0-contract-id-scheme.md`](docs/decisions/2026-09-06_g0-contract-id-scheme.md)
 - [`2026-09-06_id-representation.md`](docs/decisions/2026-09-06_id-representation.md)
 - [`2026-09-06_identity-store.md`](docs/decisions/2026-09-06_identity-store.md)
+- [`2026-09-06_join-subscriptions.md`](docs/decisions/2026-09-06_join-subscriptions.md)
 - [`2026-09-06_node-channel-auth.md`](docs/decisions/2026-09-06_node-channel-auth.md)
 - [`2026-09-06_node-channel.md`](docs/decisions/2026-09-06_node-channel.md)
 - [`2026-09-06_node-enrollment.md`](docs/decisions/2026-09-06_node-enrollment.md)

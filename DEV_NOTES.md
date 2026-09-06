@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.3.2: compatible transitions are not a serialization bug
+
+- **The race test taught a DOMAIN fact before it proved the lock.** My first shape raced accept vs remove and BOTH returned 200 — the suite's own assertion caught it. They are COMPATIBLE transitions: the serialized order accept-then-revoke is legitimate, the snapshot is `revoked` either way, and a revoked role's late result folds to a stored rejection. The conflict pair is accept vs decline (both consume the same pending offer) — rerun green. A race test must first establish which transitions the domain declares conflicting; asserting exactly-one-winner on a compatible pair asserts a fiction.
+- **A typed rule becomes doctrine the day a boundary enforces it.** `allow_join_requests`/`allow_explicit_invites` sat recorded for several leaves; the refusals landed here. Until the enforcement test exists, a rule field is a suggestion — the `.1.1.3` honest-limits should have said so louder.
+- **The self-request path needs no reservation machinery.** An invitation reserves a slot; a join is admitted or refused in one command. Adding join-tokens for symmetry would have been scope creep.
+- Promoted to `docs/decisions/2026-09-06_join-subscriptions.md` (`answers:` present). **`.1.3` complete; frontier `PHASE-1.4` (second real adapter).**
+
 ## _(2026-09-06)_ — PHASE-1.3.1: a capability and a grant answer different questions
 
 - **The invitation (offer/reserve) is the capability; the grant is the gate.** Accept/decline authorize against the PENDING invitation naming the actor AND the new `thread_invitation_respond` grant the role default carries. Grant-only would hand the acceptance right to non-invitees; invitation-only would bypass the audited authorization flow. Two checks, two layers, one command.

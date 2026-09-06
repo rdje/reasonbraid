@@ -153,7 +153,7 @@ conversation without binding-governance claims.
       channel/worker suites stay green.
 
 - ID: `PHASE-1.3`
-  Status: `in_progress`
+  Status: `done`
   Goal: invitation/subscription semantics — explicit participants, invitations
     accept/decline/timeout, simple subscriptions (the create/read/list/cancel API
     shapes are owned by `.1.1.3`)
@@ -168,12 +168,10 @@ conversation without binding-governance claims.
     moves: the invitation lifecycle in the state machine, the dispatch-on-accept
     rewiring (the demo + wiring suites move to the explicit contract), and the
     join/subscription surface.
-  Children: `.1.3.1`–`.1.3.2` (decomposed `2026-09-06` so each child is one
-    signoff-sized slice; amended `2026-09-06`: the lifecycle and the
-    dispatch-on-accept move are ONE contract — stopping the invite-time dispatch
-    without adding the accept-time dispatch would leave an incoherent interim
-    (work arriving to a role that cannot act), so the original `.1.3.2` merged
-    into `.1.3.1`)
+  Children: `.1.3.1`–`.1.3.2` (decomposed `2026-09-06`; amended `2026-09-06`:
+    the lifecycle and the dispatch-on-accept move are ONE contract — the
+    original `.1.3.2` merged into `.1.3.1`) — both `done`: explicit participants
+    + simple subscriptions.
 
   - ID: `PHASE-1.3.1`
     Status: `done`
@@ -207,7 +205,7 @@ conversation without binding-governance claims.
       passes.
 
   - ID: `PHASE-1.3.2`
-    Status: `pending`
+    Status: `done`
     Goal: simple subscriptions — `thread.join` (a role joins a thread whose
       `allow_join_requests` is on; the `thread_contribute` grant still gates
       acting; `joined` records the self-request path, event
@@ -252,7 +250,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.3.2` | `pending` | `.1.3.1` is done — the explicit-participants contract (pending invitations, accept/decline/remove, derived expiry, dispatch-on-accept) landed; join/subscriptions completes the leaf |
+| 1 | `PHASE-1.4` | `proposed` | `.1.3` is complete (explicit participants + simple subscriptions, backlogs 15/16) — the second genuinely distinct harness adapter (Claude-family) is the next `.1.x` lane; decompose or execute on pickup |
 
 ## Changelog
 
@@ -266,6 +264,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.2.1` done — one-time enrollment tokens + `node_keys` + audited refusals (denial-row pattern); the suite's first run caught a real defect (a re-issue 500 on the wire — fixed to a typed 409 with a regression assertion) and a test-side status expectation (node-channel `unauthorized` = HTTP 401); decision record `docs/decisions/2026-09-06_node-enrollment.md`; frontier → `.1.2.2`.
 - `2026-09-06`: `.1.2.2` done — the authenticated channel (CHANNEL_VERSION 2): HMAC key-proof handshake (refused before any ledger read), lease + fencing token (events/ack/poll/heartbeat ride it; every handshake rotates it), 60 s lease with DERIVED presence (`node_presence` view — expiry flips `offline`, only a fresh handshake restores), `poll` became a POST (the token never rides a query string), and the channel identity space widened to the dev role wire ids (the `.1.2.1` surfaces accepted only `nod_…`; the dev wiring collapses node == role). All 13 channel tests moved to the authenticated contract + 4 new ones; the demo now enrolls its nodes and asserts presence before/after the server restart; decision record `docs/decisions/2026-09-06_node-channel-auth.md`; frontier → `.1.2.3`.
 - `2026-09-06`: `.1.2.3` done — durable inbox hardening (migration 0010): quarantine is a row fact WITH its reason and the replay/poll paths ALWAYS skip it (never re-delivered); retention cleanup is an explicit measured operator action (`POST /v1/nodes/inbox/prune`: delivered rows older than the window, before/deleted/after in one transaction); the operator surface is the tenant_admin-audited control API (`POST /v1/nodes/quarantine`, `GET /v1/nodes/inbox`, `POST /v1/nodes/inbox/prune`) + `rb node quarantine|inbox|prune`; new `tests/node_inbox.rs` (3 live-PG tests); decision record `docs/decisions/2026-09-06_node-inbox-retention.md`; **the `.1.2` coordinator leaf is complete** — frontier → `.1.3`.
+- `2026-09-06`: `.1.3.2` done — simple subscriptions: `thread.join` (the self-request path: a thread whose `allow_join_requests` is on admits the role as `accepted` with event `thread.participant_joined` carrying `via: join_request`; a closed door and a double join are typed refusals), `allow_explicit_invites=false` is ENFORCED at the invite boundary (typed refusal; the join door still works), the listing surface shows every participant state + invitation meta; `rb thread join`; the fourth `invitations` test; decision record `docs/decisions/2026-09-06_join-subscriptions.md`; **the `.1.3` coordinator leaf is complete** — frontier → `.1.4`.
 - `2026-09-06`: `.1.3.1` done — the explicit-participants contract: invite records a PENDING offer (typed `expires_in_seconds`, the additive `invitations` map), the invite enqueues NOTHING, the ACCEPT transaction dispatches the work with its reservation; `thread.accept_invitation`/`thread.decline_invitation` (the invitation IS the capability, gated by the new `thread_invitation_respond` grant — the role default gains it) and `thread.remove_participant` (tenant_admin → core `revoked`); expiry is DERIVED at read/accept (the lease-presence pattern — no sweeper, no expiry event); invited roles may not act (the auto-accept is gone, typed `invalid_transition`); re-invitation allowed over terminal states; the wiring suites + CLI e2e + two-host demo moved to the explicit contract (`rb thread accept` as the role); new `tests/invitations.rs` (3 live-PG tests incl. the concurrent accept/remove race — exactly one winner); decision record `docs/decisions/2026-09-06_explicit-participants.md`; frontier → `.1.3.2`.
 - `2026-09-06`: `.1.3` decomposed (gap census first: the `.6.2` invite dispatches work in the invite transaction with NO acceptance step — `ensure_participant` auto-accepts an invited role on first contribution; no accept/decline/expire/remove verbs or invitation records; `allow_join_requests` typed but inert; `allow_explicit_invites=false` recorded but not enforced) into `.1.3.1` (the explicit-participants contract: invitation lifecycle — invite records a pending invitation, accept/decline/remove, derived expiry, the invitation IS the acceptance capability — AND the dispatch move: work enqueues with the ACCEPT event; wiring suites + the two-host demo move to the explicit contract) and `.1.3.2` (simple subscriptions — `thread.join` under `allow_join_requests`, invite enforcement, subscription listing + CLI verbs); frontier → `.1.3.1`. Amended same-day: the lifecycle and the dispatch move are ONE contract (separating them leaves an incoherent interim — work arriving to a role that cannot act), so the original `.1.3.2` merged into `.1.3.1`.
 
@@ -610,6 +609,46 @@ suite updates, `crates/reasonbraid-server/tests/invitations.rs` (new), and
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapters — same commit.
 
+## Acceptance Checklist (PHASE-1.3.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/threads.rs`
+(the join arm + invite-door enforcement), `crates/reasonbraid-server/src/api.rs`
+(the join command arm), `crates/reasonbraid-cli/src/main.rs` (`rb thread join`),
+and the fourth test in `crates/reasonbraid-server/tests/invitations.rs`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 14's simple-subscription sliver + 16's
+  join door are open: `allow_join_requests` is typed but inert and
+  `allow_explicit_invites=false` is recorded but not enforced
+  (`grep -n "allow_join_requests" crates/reasonbraid-server/src/threads.rs` →
+  only the struct field before this leaf).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.1.1.3` typed the rules without a verb
+  to enforce them against (the request flow did not exist). The fix point is
+  the command boundary: the join arm checks the door, the invite arm checks
+  its door — a recorded rule becomes doctrine the day a boundary refuses on
+  it.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: join refused
+  as an unknown operation; both doors inert. After: `thread.join` admits the
+  role on an open-door thread (event `thread.participant_joined`, `via:
+  join_request`; the joiner acts immediately; a double join and a closed door
+  are typed 400s) and `allow_explicit_invites=false` refuses the invite verb
+  while the join door still works. Live proof: `bash scripts/run_pg_tests.sh`
+  → `test result: ok. 4 passed; 0 failed` (`invitations`, incl. the new
+  join/enforcement test and the accept-vs-decline race).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test
+  result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI
+  e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks
+  passed` (14 PASS checks, `rc=0`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — threads.rs (OP_JOIN/EVENT_JOINED/JoinBody, the join arm, the
+  invite-door refusal); api.rs (the join arm on `thread_contribute`); the CLI
+  verb; the fourth `invitations` test; the race test REWRITTEN (the first
+  shape raced accept vs remove and the suite itself proved both 200 — they are
+  compatible transitions; the conflict pair is accept vs decline).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_join-subscriptions.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
+  chapter — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -619,6 +658,7 @@ suite updates, `crates/reasonbraid-server/tests/invitations.rs` (new), and
 | `2026-09-06` | `PHASE-1.1.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | thread command API complete — cancel terminal + typed create profiles with stated defaults; the e2e's first run caught the kebab-vs-snake profile spelling, fixed by CLI normalization |
 | `2026-09-06` | `PHASE-1.2.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | node enrollment landed (one-time tokens + keys + audited refusals); the suite caught a real re-issue-500 defect (fixed to typed 409 + regression assertion) and the 401-vs-403 expectation |
 | `2026-09-06` | `PHASE-1.2.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | authenticated channel landed (key-proof handshake, lease/fencing, derived presence); the suite's own first runs caught the missing-field-422 vs wrong-proof-401 wire distinction and the tenant-purge FK gap — both fixed, rerun green |
+| `2026-09-06` | `PHASE-1.3.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | simple subscriptions landed (`thread.join` + enforced doors); the race test's first shape (accept vs remove) was disproven by the suite itself — both 200 because they are COMPATIBLE transitions; rewritten to the true conflict pair (accept vs decline), rerun green |
 | `2026-09-06` | `PHASE-1.3.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | the explicit-participants contract landed (pending invitations, accept/decline/remove, derived expiry, dispatch-on-accept); the first full run's only failure was the expected audit-timeline delta (the accept's audit record) — updated, rerun green |
 | `2026-09-06` | `PHASE-1.2.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all eleven live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | inbox hardening landed (quarantine + measured prune + inspection); the suite's own first runs caught the missing seed tenant and a `(i64,)`-vs-scalar sqlx annotation — both fixed, rerun green |
 
@@ -633,3 +673,4 @@ suite updates, `crates/reasonbraid-server/tests/invitations.rs` (new), and
 | `PHASE-1.2.2` | `REASONBRAID-PHASE1-0007` | authenticated channel v2: key-proof handshake + lease/fencing + derived presence + identity-space relaxation + demo/demo-book updates |
 | `PHASE-1.2.3` | `REASONBRAID-PHASE1-0008` | inbox hardening: quarantine (reason-riding row the replay/poll skip) + measured explicit prune + inspection + CLI verbs; `.1.2` complete |
 | `PHASE-1.3.1` | `REASONBRAID-PHASE1-0011` | explicit participants: pending invitations + accept/decline/remove + derived expiry + dispatch-on-accept + race tests; `.1.3` decomposition amended in `REASONBRAID-PHASE1-0010` |
+| `PHASE-1.3.2` | `REASONBRAID-PHASE1-0012` | simple subscriptions: `thread.join` + enforced participant doors + the accept/decline race; `.1.3` complete |

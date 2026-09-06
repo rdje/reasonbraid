@@ -61,6 +61,10 @@ and the accept is the transaction that dispatches the role's work item.
 `rb thread remove-participant --participant rol_…` is the tenant-admin
 revocation; `--expires-in-seconds` on the invite offers a typed expiry
 (derived — an expired offer reads `expired` and refuses accept/decline).
+`rb thread join` is the self-request path (`.1.3.2`): a thread created with
+`--allow-join-requests` admits the role directly — no invitation — while
+`allow_explicit_invites=false` refuses the invite verb (recorded rules are
+enforced at the command boundary).
 
 The CLI keeps a local state dir (`./.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,

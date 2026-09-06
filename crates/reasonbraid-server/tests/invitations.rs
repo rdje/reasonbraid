@@ -539,12 +539,17 @@ async fn decline_expiry_and_reinvitation() {
     assert_eq!(status, 409, "decline after expiry: {expired_decline}");
 }
 
-/// THE backlog-16 race test: concurrent accept and remove (distinct idempotency
-/// keys) — exactly ONE transition wins; the other is a typed refusal; the
-/// timeline holds exactly one of the two events. The aggregate head lock is the
-/// serialization point.
+/// THE backlog-16 race test: concurrent accept and decline (distinct
+/// idempotency keys) both consume the SAME pending invitation — exactly ONE
+/// wins; the other is a typed refusal; the timeline holds exactly one
+/// transition event. (Accept vs REMOVE is deliberately NOT the race: the
+/// suite's first shape proved both succeed — the serialized order
+/// accept-then-revoke is a legitimate sequence, and the final snapshot is
+/// `revoked` either way. The aggregate head lock serializes; the DOMAIN decides
+/// which transitions conflict.) The aggregate head lock is the serialization
+/// point.
 #[tokio::test]
-async fn concurrent_accept_and_remove_have_exactly_one_winner() {
+async fn concurrent_accept_and_decline_have_exactly_one_winner() {
     let _g = guard().await;
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
@@ -567,43 +572,41 @@ async fn concurrent_accept_and_remove_have_exactly_one_winner() {
     .await;
     assert_eq!(status, 200);
 
-    // Fire accept (as the role) and remove (as the admin) concurrently.
+    // Fire accept and decline (both as the invited role) concurrently.
     let accept_fut = async {
         let (status, body) = accept(&client, &base, &thread, &role, &tenant, "k-race-accept").await;
         (status, body)
     };
-    let remove_fut = async {
+    let decline_fut = async {
         let (status, body) = command(
             &client,
             &base,
             &format!("/v1/threads/{thread}/commands"),
-            &human,
+            &role,
             &envelope(
-                "thread.remove_participant",
-                "k-race-remove",
-                json!({ "tenant_id": tenant, "participant": role }),
+                "thread.decline_invitation",
+                "k-race-decline",
+                json!({ "tenant_id": tenant }),
             ),
         )
         .await;
         (status, body)
     };
-    let ((accept_status, accept_body), (remove_status, remove_body)) =
-        tokio::join!(accept_fut, remove_fut);
+    let ((accept_status, accept_body), (decline_status, decline_body)) =
+        tokio::join!(accept_fut, decline_fut);
 
     // Exactly one winner.
     let accept_ok = accept_status == 200;
-    let remove_ok = remove_status == 200;
+    let decline_ok = decline_status == 200;
     assert_ne!(
-        accept_ok, remove_ok,
+        accept_ok, decline_ok,
         "exactly one transition wins (accept={accept_status}: {accept_body}; \
-         remove={remove_status}: {remove_body})"
+         decline={decline_status}: {decline_body})"
     );
 
     // The timeline holds exactly one of the two transition events.
     let response = client
-        .get(format!(
-            "{base}/v1/threads/{thread}/events?tenant_id={tenant}"
-        ))
+        .get(format!("{base}/v1/threads/{thread}/events?tenant_id={tenant}"))
         .header(PRINCIPAL_HEADER, &human)
         .send()
         .await
@@ -614,7 +617,9 @@ async fn concurrent_accept_and_remove_have_exactly_one_winner() {
         .unwrap()
         .iter()
         .map(|e| e["event_type"].as_str().unwrap())
-        .filter(|t| *t == "thread.invitation_accepted" || *t == "thread.participant_removed")
+        .filter(|t| {
+            *t == "thread.invitation_accepted" || *t == "thread.invitation_declined"
+        })
         .collect();
     assert_eq!(
         transitions.len(),
@@ -624,7 +629,7 @@ async fn concurrent_accept_and_remove_have_exactly_one_winner() {
 
     // The final snapshot matches the winner.
     let state = thread_state(&client, &base, &thread, &tenant, &human).await;
-    let expected = if accept_ok { "accepted" } else { "revoked" };
+    let expected = if accept_ok { "accepted" } else { "declined" };
     assert_eq!(
         state["state"]["participants"][&role],
         json!(expected),
@@ -634,4 +639,165 @@ async fn concurrent_accept_and_remove_have_exactly_one_winner() {
     // The acceptance capability is spent either way: a late accept refuses.
     let (status, late) = accept(&client, &base, &thread, &role, &tenant, "k-race-late").await;
     assert_eq!(status, 400, "the spent invitation refuses: {late}");
+}
+
+/// THE `.1.3.2` subscriptions contract: `thread.join` admits a role only when
+/// the thread's join door is open; `allow_explicit_invites=false` refuses the
+/// invite verb; the joined role acts immediately (no invitation needed); the
+/// self-request path is recorded in the event.
+#[tokio::test]
+async fn join_requests_and_invite_enforcement() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread) = bootstrap(&client, &base, "joiner").await;
+
+    // The default thread's join door is CLOSED (`.1.1.3` stated default).
+    let (status, refused) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &role,
+        &envelope(
+            "thread.join",
+            "k-join-closed",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "join on a closed-join thread: {refused}");
+    assert!(refused["message"]
+        .as_str()
+        .unwrap()
+        .contains("does not allow join requests"));
+
+    // A thread with the join door open admits the role through the self-request
+    // path — no invitation.
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &human,
+        &envelope(
+            "thread.create",
+            "key-create-join",
+            json!({
+                "tenant_id": tenant,
+                "subject": "open door",
+                "objective": "prove the join path",
+                "participant_rules": { "allow_join_requests": true },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "open-join thread creates: {created}");
+    let open_thread = created["thread_id"].as_str().unwrap().to_string();
+
+    let (status, joined) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{open_thread}/commands"),
+        &role,
+        &envelope(
+            "thread.join",
+            "k-join-open",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "join: {joined}");
+    assert_eq!(joined["event_type"], json!("thread.participant_joined"));
+    let state = thread_state(&client, &base, &open_thread, &tenant, &human).await;
+    assert_eq!(state["state"]["participants"][&role], json!("accepted"));
+
+    // The joined role acts immediately.
+    let (status, contributed) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{open_thread}/commands"),
+        &role,
+        &envelope(
+            "thread.contribute",
+            "k-join-contribute",
+            json!({ "tenant_id": tenant, "content": "joined voices speak" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the joined role contributes: {contributed}");
+
+    // A second join is refused (an open membership exists).
+    let (status, again) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{open_thread}/commands"),
+        &role,
+        &envelope(
+            "thread.join",
+            "k-join-again",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "double join: {again}");
+
+    // `allow_explicit_invites=false` is ENFORCED: the invite verb refuses.
+    let (status, closed_invites) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &human,
+        &envelope(
+            "thread.create",
+            "key-create-no-invites",
+            json!({
+                "tenant_id": tenant,
+                "subject": "join only",
+                "objective": "no explicit invites",
+                "participant_rules": {
+                    "allow_explicit_invites": false,
+                    "allow_join_requests": true,
+                },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "join-only thread creates: {closed_invites}");
+    let join_only = closed_invites["thread_id"].as_str().unwrap().to_string();
+
+    let (status, denied_invite) = invite(
+        &client,
+        &base,
+        &InviteSpec {
+            thread: &join_only,
+            human: &human,
+            tenant: &tenant,
+            role: &role,
+            key: "k-invite-closed",
+            ttl: None,
+        },
+    )
+    .await;
+    assert_eq!(status, 400, "invite on a join-only thread: {denied_invite}");
+    assert!(denied_invite["message"]
+        .as_str()
+        .unwrap()
+        .contains("does not allow explicit invitations"));
+
+    // The same thread still admits joins.
+    let (status, joined2) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{join_only}/commands"),
+        &role,
+        &envelope(
+            "thread.join",
+            "k-join-join-only",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the join-only thread admits joins: {joined2}");
+    let _ = &pool;
 }

@@ -244,6 +244,19 @@ enum ThreadCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Join a thread whose join requests are open (`.1.3.2`): the actor is the
+    /// joining role — no invitation needed (the self-request path).
+    Join {
+        #[arg(long)]
+        thread: String,
+        /// The acting principal (the joining role).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Decline this role's PENDING invitation (`.1.3.1`).
     Decline {
         #[arg(long)]
@@ -544,6 +557,27 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     thread_id: thread,
                     tenant,
                     operation: "thread.accept_invitation",
+                    body: json!({}),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::Join {
+            thread,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.join",
                     body: json!({}),
                     json_out: json,
                 },

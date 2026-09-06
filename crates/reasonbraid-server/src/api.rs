@@ -1535,6 +1535,16 @@ async fn thread_command(
                 request_hash(threads::OP_DECLINE_INVITATION, &principal, &envelope.body),
             )
         }
+        threads::OP_JOIN => {
+            let body: threads::JoinBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadContribute,
+                request_hash(threads::OP_JOIN, &principal, &envelope.body),
+            )
+        }
         threads::OP_REMOVE_PARTICIPANT => {
             let body: threads::RemoveParticipantBody =
                 serde_json::from_value(envelope.body.clone())

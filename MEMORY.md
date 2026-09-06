@@ -23,11 +23,11 @@
   invitation IS the acceptance capability under the `thread_invitation_respond`
   grant, accept/decline/remove, derived expiry, dispatch-on-accept, invited
   roles may not act) → `.1.3.2` (join/subscriptions); the dev node-id space is
-  `nod_…` OR the `rol_…` role wire id the dev wiring serves).
-- **Next action:** implement `PHASE-1.3.2` — simple subscriptions: `thread.join`
-  under `allow_join_requests` (event `thread.participant_joined`),
-  `allow_explicit_invites=false` enforcement, the subscription listing on the
-  inspection surface, and the `rb thread join` verb.
+  `nod_…` OR the `rol_…` role wire id the dev wiring serves). `.1.3` is COMPLETE
+  (explicit participants + simple subscriptions, backlogs 15/16).
+- **Next action:** `PHASE-1.4` — the second genuinely distinct harness adapter
+  (Claude-family; `proposed` — decompose or execute on pickup; director-owned
+  open item: access to a real Claude-family harness).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).

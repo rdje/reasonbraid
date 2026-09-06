@@ -32,10 +32,13 @@ The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
   atomic-transaction tests, the outbox-worker fencing/kill-point tests, and the node
   channel reconnect/reconciliation tests), and tear everything down (no background
   service left running). **Requires** `postgresql@16` (`brew install postgresql@16`).
-- The WP3 node journal tests need no service at all: SQLite is a file, so the journal
-  kill-point sweep, the `rb-journal` CLI tests, and the journal unit tests run inside
-  plain `cargo test --all` (`make check`) and the `rust` workflow above. The PG-backed
-  suites alone require `DATABASE_URL` / `run_pg_tests.sh`.
+- The WP3 node journal tests and the WP4 adapter suites need no service at all:
+  SQLite is a file and the fake/stub adapters are in-process, so the journal
+  kill-point sweep, the `rb-journal` CLI tests, and the adapter/ supervisor tests run
+  inside plain `cargo test --all` (`make check`) and the `rust` workflow above. The
+  PG-backed suites require `DATABASE_URL` / `run_pg_tests.sh`; the REAL Codex
+  qualification test stays `#[ignore]`-gated and is run deliberately with
+  `RB_LIVE_CODEX=1` (it dispatches to the live harness and spends tokens).
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not

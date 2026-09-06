@@ -12,15 +12,14 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.4.2` (`pending`); WP1 + WP2 + **WP3
-  complete** (`.3.1` WAL node journal + `rb-journal` CLI, `.3.2` outbound node channel
-  with cursor resume + reconciliation); `.4.1` done — the WP4 adapter boundary
-  (`reasonbraid-adapter` contract + deterministic fake + sanitized fixture corpus) and
-  the node supervisor (`execute_attempt`).
-- **Next action:** WP4 first real harness (Codex-family or Claude-family) qualified
-  behind the `.4.1` contract and corpus (`.4.2`).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.5.1` (`pending`); WP1 + WP2 + WP3 +
+  **WP4 complete** — `.4.1` adapter contract + deterministic fake + sanitized corpus +
+  supervisor, `.4.2` the first REAL harness (Codex-family CLI, `codex exec --json`,
+  qualified live 2026-09-06; second adapter recommendation: Phase 1, director-owned).
+- **Next action:** WP5 development `EnrollmentAuthorityBoundary` + scoped commands +
+  authorization audit record (`.5.1`).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.4.1`.
+- **In-flight uncommitted work:** none after `PHASE-0.4.2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — the full `make check`/`gate`/`deny`/`secret-scan`/`book` stack runs locally.
 - **Blockers:** none.

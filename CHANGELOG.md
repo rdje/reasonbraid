@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP4 first real harness: the Codex-family CLI behind `codex exec --json` (`PHASE-0.4.2`)
+
+- Landed `CodexCliAdapter` (`crates/reasonbraid-adapter/src/codex.rs`): the first REAL adapter supervises `codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only <prompt>` as a child process — the narrowest supported machine interface (§11.6), qualified against codex-cli 0.153.4 (Apache-2.0, verified from the primary source).
+- **Qualified LIVE**: one bounded real dispatch (`"Reply with exactly: ok"`) through the real supervisor + journal — `test result: ok. 1 passed`. The JSONL stream maps to the contract: `thread.started` → `ProviderRequestId` (the thread id attached to the attempt as its proof handle — the contract gained this event because Codex reveals the handle AFTER dispatch), `item.completed` → output chunks, `turn.completed` → `Completed` with an exact token receipt, non-zero exit → `failed_known` with the stderr tail.
+- The acceptance's honest legs hold on the REAL harness: **status lookup is genuinely `Unsupported`** (no first-class query for a past attempt), so a lost response lands `outcome_unknown` with NO retry language; cancellation is `BestEffort` (kill the child); receipts report tokens, never cost → normalized cost stays unknown, never zero.
+- Offline supervision suites (stub binary, no spend): `codex_adapter` 9 passed + `supervisor_codex_stub` 2 passed — spawn refusal, JSONL parsing, chunk order, exit verdicts, lost response, kill, receipt shapes, the full supervisor flow.
+- The dependency ledger's Codex row was revalidated (its own trigger fired at this spike): `checked_at 2026-09-06`, `tested_versions ["0.153.4"]`, license, transports, auth modes, semantic losses, and conformance results all filled from the probes.
+- Evidence report `docs/evidence/2026-09-06_codex-adapter-qualification.md` (`reported`) answers the WP4 acceptance's evidence-report leg: the second adapter (Claude-family) is recommended for **Phase 1** — director-owned open question, recorded in the decision record. **WP4 complete; frontier is `PHASE-0.5.1`.**
+
 ## 2026-09-06 — WP4 fake harness adapter + execution supervisor (`PHASE-0.4.1`)
 
 - Landed `crates/reasonbraid-adapter` — the harness adapter boundary (`KICKOFF.md` §3). The `Adapter` contract (`ROADMAP.md` §11.2) declares capabilities (streaming, cancellation strength, provider idempotency, status lookup, tool support, policy-injection mode), makes **dispatch acknowledgement distinct from completion** (`Accepted(ack, handle)` → streamed chunks → terminal event), carries **no credential field**, and treats an unsupported status lookup as an honest fact — never a retry recommendation.

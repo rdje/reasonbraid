@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP4 first real harness: the boundary that REVEALS its handle in the stream, and the lookup that honestly does not exist
+
+- **The acceptance's honest leg was designed to be exercised by a REAL adapter — and Codex exercised it.** `codex exec` has no first-class status query for a past attempt (`exec resume` CONTINUES a thread and bills again; it is not a lookup), so `query_status` is `Unsupported`, a lost response lands `outcome_unknown` with no retry language, and the streamed thread id stays attached as the proof handle an operator would adjudicate with. No capability was fabricated to make the demo prettier.
+- **Providers reveal request handles at different times.** The contract's `DispatchAck` carried the handle "when known"; Codex reveals its thread id in the stream's FIRST event, after dispatch. The contract gained `AttemptEvent::ProviderRequestId`, and the supervisor attaches streamed handles exactly like ack-carried ones. The ack ≠ completion acceptance now has its sharpest proof: the ack carries NOTHING, the handle arrives later, and the result later still.
+- **The stub boundary caught a mis-wiring exactly as it should.** The first stub branched on `$1` — which is `exec`, not the prompt — so every scenario misbehaved and the suite failed loudly. The lesson is the same as the PG-queue lesson: test doubles must re-derive their inputs the way the REAL boundary receives them (here: the prompt is the LAST argv of `codex exec …`).
+- **Live dispatch is one gated command away, never accidental:** `RB_LIVE_CODEX=1 cargo test … -- --ignored`. Default CI never spends a token; the ledger's revalidation trigger (CLI release) and the release gate both re-run it deliberately.
+- **The vendor boundary stayed vendor-free:** no Codex DTO entered core; the only core-touching change across `.4.1`+`.4.2` is the one proof-gated machine edge from `.4.1`. Credentials: none — the adapter has no credential field; Codex uses its ambient login.
+- Promoted to `docs/decisions/2026-09-06_real-adapter-codex.md` (`answers:` present) + `docs/evidence/2026-09-06_codex-adapter-qualification.md`. **WP4 complete; frontier `.5.1`.**
+
 ## _(2026-09-06)_ — WP4 adapter boundary: the conformance corpus caught the boundary-vs-refusal conflict, and two probes caught the rest
 
 - **The corpus earned its keep on the FIRST replay.** `fail_before_dispatch` failed the moment it met the supervisor: the `.3.1` rule journals `dispatched` BEFORE `invoke` (conservative, crash-safe), but the machine had no edge to record the adapter's certified "no dispatch ever began". The fix is a proof-gated correction edge — `(dispatched, fail_before_dispatch) → failed_before_dispatch` — the exact inverse of the §11.3 lookup-proof edges, and the `.3.1` record's philosophy holds: only PROOFS move the machine, never guesses.

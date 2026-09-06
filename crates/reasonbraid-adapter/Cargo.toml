@@ -18,9 +18,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# The fake adapter's per-operation state and its cancellation Notify. The contract
-# itself is runtime-free.
-tokio = { version = "1", features = ["sync"] }
+# The fake adapter's per-operation state + cancellation Notify, and the Codex
+# adapter's child-process supervision (io-util for line reading, process for the
+# child, rt for the stderr-drain task). The contract itself is runtime-free.
+tokio = { version = "1", features = ["sync", "io-util", "process", "rt"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

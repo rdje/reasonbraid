@@ -5,4 +5,4 @@ for an ADR. Numbers published here follow `docs/CLAIM_VERIFICATION.md`.
 
 | Report | Leaf | Status |
 | --- | --- | --- |
-| _none yet_ | — | — |
+| [2026-09-06_codex-adapter-qualification.md](2026-09-06_codex-adapter-qualification.md) | `PHASE-0.4.2` | `reported` |

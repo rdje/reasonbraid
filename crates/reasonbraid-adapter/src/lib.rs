@@ -21,10 +21,12 @@
 //! See `docs/decisions/2026-09-06_fake-adapter.md` for the design record and
 //! `docs/book/src/adapter-boundary.md` for the boundary documentation.
 
+mod codex;
 mod contract;
 mod fake;
 pub mod fixtures;
 
+pub use codex::CodexCliAdapter;
 pub use contract::{
     Adapter, AdapterCapabilities, AttemptEvent, AttemptHandle, AttemptResult, AttemptStream,
     CancellationOutcome, CancellationStrength, DispatchAck, InvokeOutcome, NormalizedUsage,

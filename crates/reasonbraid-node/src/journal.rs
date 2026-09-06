@@ -804,6 +804,34 @@ impl Journal {
             .await
     }
 
+    /// One attempt row by id, in any status (the supervisor's tests and operators use
+    /// it to see the attached provider handle on a TERMINAL attempt).
+    pub async fn attempt_summary(&self, attempt_id: &str) -> Result<AttemptSummary, JournalError> {
+        let (attempt_id, operation_id, status, provider_request_id, evidence, updated_at) =
+            sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, String)>(
+                "SELECT attempt_id, operation_id, status, provider_request_id, evidence, updated_at \
+                 FROM attempts WHERE attempt_id = ?",
+            )
+            .bind(attempt_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => JournalError::NotFound {
+                    what: "attempt",
+                    id: attempt_id.to_string(),
+                },
+                other => JournalError::Sql(other),
+            })?;
+        Ok(AttemptSummary {
+            attempt_id,
+            operation_id,
+            status,
+            provider_request_id,
+            evidence,
+            updated_at,
+        })
+    }
+
     /// The before/after boundary ledger of one attempt, in order.
     pub async fn attempt_history(
         &self,

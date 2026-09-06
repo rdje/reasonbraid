@@ -92,10 +92,14 @@ pub struct DispatchAck {
 
 /// Events an accepted attempt produces. Chunks are opaque untrusted content (a chunk may
 /// be malformed for the CONSUMER's schema — the adapter must not parse domain meaning);
-/// the terminal events carry the definitive result.
+/// the terminal events carry the definitive result. [`ProviderRequestId`] surfaces the
+/// provider's request handle when it only becomes known AFTER dispatch (e.g. Codex's
+/// `thread.started` event) — the supervisor attaches it to the attempt as the proof
+/// handle, exactly like an ack-carried id.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AttemptEvent {
+    ProviderRequestId { request_id: String },
     OutputChunk { chunk: String },
     Completed { usage: Option<Value> },
     FailedKnown { reason: String },
@@ -104,6 +108,7 @@ pub enum AttemptEvent {
 impl AttemptEvent {
     pub fn kind(&self) -> &'static str {
         match self {
+            AttemptEvent::ProviderRequestId { .. } => "provider_request_id",
             AttemptEvent::OutputChunk { .. } => "output_chunk",
             AttemptEvent::Completed { .. } => "completed",
             AttemptEvent::FailedKnown { .. } => "failed_known",

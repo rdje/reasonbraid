@@ -208,8 +208,8 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP4 — Adapter boundary (`KICKOFF` issues 8–9; backlog 19–21)
 
 - ID: `PHASE-0.4`
-  Status: `pending`
-  Goal: narrow adapter contract, fake adapter, first real harness (`.4.1` fake done; `.4.2` real harness pending)
+  Status: `done`
+  Goal: narrow adapter contract, fake adapter, first real harness
   Depends on: `PHASE-0.1` and enough of `PHASE-0.3` to journal attempts
   Children: `PHASE-0.4.1`, `PHASE-0.4.2`
 
@@ -221,11 +221,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0018`
 
 - ID: `PHASE-0.4.2`
-  Status: `pending`
+  Status: `done`
   Goal: qualify the first real harness (Codex-family or Claude-family) behind the same contract
   Acceptance: dispatch ack ≠ completion; unsupported status lookup → `outcome_unknown` not a retry recommendation; evidence report says whether the second real adapter belongs in late Phase 0 or Phase 1
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0019`
 
 ### WP5 — Identity, authority, budget (`KICKOFF` issues 10–11; backlog 11, 24)
 
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.4.2` | `pending` | WP4 first real harness (Codex-family or Claude-family) qualified behind the `.4.1` contract and corpus — the fake adapter is the conformance oracle the real adapter must match semantically |
+| 1 | `PHASE-0.5.1` | `pending` | WP5 development `EnrollmentAuthorityBoundary`, scoped commands, authorization audit record — WP4 is complete (contract + fake + real Codex adapter); WP5's dependency (`PHASE-0.1`, `PHASE-0.2`) is fully satisfied |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -711,6 +711,60 @@ are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
   `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to `PHASE-0.4.2`; README
   unchanged (no new standard command).
 
+## Acceptance Checklist (PHASE-0.4.2)
+
+The `crates/reasonbraid-adapter` Codex adapter (`.rs` + `Cargo.toml`), the contract's
+`ProviderRequestId` event (`.rs`), the `crates/reasonbraid-node` supervisor handling +
+`attempt_summary` API (`.rs`), the two new test suites, and `Cargo.lock` are the CODE
+change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
+`TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — KICKOFF WP4 requires "implement one real adapter —
+  Codex-family or Claude-family — using the narrowest supported CLI/SDK boundary
+  available on the selected development host", with "dispatch acknowledgement distinct
+  from completion" and "unsupported status lookup produces `outcome_unknown`, not a
+  retry recommendation". Before this leaf, `git ls-files 'crates/reasonbraid-adapter/*'`
+  → contract + fake + fixtures only — no real adapter existed, and the contract could
+  not express a provider handle that arrives AFTER dispatch (Codex reveals its thread
+  id in the stream, not the ack): `AttemptEvent` had no `ProviderRequestId` variant.
+- [x] **ADDRESSED (verified)** — landed `src/codex.rs` (`CodexCliAdapter` supervising
+  `codex exec --json`; streamed thread id → `ProviderRequestId`; non-zero exit →
+  `failed_known` with the stderr tail; `query_status` → `Unsupported`; `BestEffort`
+  cancel; token receipts → exact usage with cost `None`). The LIVE qualification passed:
+  `RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored
+  --nocapture` → `test result: ok. 1 passed` (a real dispatch through the real
+  supervisor + journal; thread id attached; exact usage; honest unsupported lookup).
+  Offline: `cargo test -p reasonbraid-adapter --test codex_adapter` →
+  `test result: ok. 9 passed` (stub binary: spawn refusal, JSONL parsing, chunk order,
+  exit-status verdicts, lost response, kill → BestEffort, receipt shapes) and
+  `cargo test -p reasonbraid-node --test supervisor_codex_stub` →
+  `test result: ok. 2 passed` (completion attaches the streamed handle; lost response →
+  `outcome_unknown` with an error carrying no "retry").
+- [x] **NO REGRESSION** — `make check` → fmt clean + clippy no warnings + `cargo test
+  --all` → `24 passed; 0 failed; 1 ignored` (core) + `3 passed` + `12 passed` +
+  `9 passed` (adapter) + `17 passed` + `8 passed` + `6 passed` + `10 passed` +
+  `2 passed` + `1 ignored` (node) + `13 passed` + `5 passed` + `7 passed` (server,
+  skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` →
+  `advisories ok, bans ok, licenses ok, sources ok`; `make secret-scan` →
+  `no leaks found`; `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-adapter/src/codex.rs` (+ lib.rs export + tokio
+  `io-util`/`process`/`rt` features); `crates/reasonbraid-adapter/src/contract.rs` gains
+  `AttemptEvent::ProviderRequestId`; `crates/reasonbraid-node/src/supervisor.rs` attaches
+  streamed handles; `crates/reasonbraid-node/src/journal.rs` gains `attempt_summary`;
+  new `tests/codex_adapter.rs`, `tests/supervisor_codex_stub.rs`, `tests/codex_live.rs`
+  (env-gated live); `Cargo.lock` updated.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_real-adapter-codex.md`
+  (`answers:` present, measured behavior + rejected designs + the director-owned open
+  question) + INDEX row; evidence report
+  `docs/evidence/2026-09-06_codex-adapter-qualification.md` (`reported`) +
+  `docs/evidence/INDEX.md` row (the WP4 acceptance's evidence-report leg);
+  `docs/dependencies/external-ledger.yaml` Codex row revalidated (its trigger fired:
+  `checked_at 2026-09-06`, `tested_versions [0.153.4]`, `license Apache-2.0` verified
+  from the primary source); the mdBook adapter chapter gains the real-adapter section;
+  `docs/ci.md` notes the gated live test; `CHANGELOG.md` / `DEV_NOTES.md` /
+  `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to
+  `PHASE-0.5.1`; README unchanged.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -732,6 +786,7 @@ are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 | `2026-09-06` | `PHASE-0.2.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed; 0 failed` (`outbox_worker`) + `5 passed` (`atomic_transaction`) on live PostgreSQL 16.15 — exclusive claim, reclaim-after-expiry with new token, stale worker refused after newer fencing value, expired lease refused, kill points 3/4/5 to one effect; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (chrono added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_outbox-worker-fencing.md` + INDEX row | WP2 leased outbox worker proven: claim → deliver → complete with per-claim fencing tokens; **WP2 complete** |
 | `2026-09-06` | `PHASE-0.3.1` | `cargo test -p reasonbraid-node` → `test result: ok. 13 passed` (journal) + `test result: ok. 6 passed` (CLI) + `test result: ok. 10 passed` (kill points KP-1…KP-9 + end-to-end); `cargo test -p reasonbraid-core` → `test result: ok. 24 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 13 + 6 + 10 node + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (clap + libsqlite3-sys; path dep pinned); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-journal.md` + INDEX row | WP3 node journal proven: WAL + synchronous=FULL recorded, boundary record precedes dispatch, honest `outcome_unknown` recovery with prove/reconcile exits, read-only `rb-journal` CLI |
 | `2026-09-06` | `PHASE-0.3.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 13 passed` (`node_channel`) + `5 passed` (`atomic_transaction`) + `7 passed` (`outbox_worker`) against live PostgreSQL 16.15 over real 127.0.0.1 sockets — fresh handshake plays the whole inbox, tail-only reconnect, duplicate delivery keeps the same operation ids, schedulability gate (emit refused before reconcile; failed reconcile stays unschedulable), both reconciliation directive cases, original-id re-emission + known-event skip, server restart resume, cursor-ahead refusal, poll tail, version-mismatch/forged-field rejection, double emission → one receipt; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 17 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (axum + reqwest); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-channel.md` + INDEX row | WP3 outbound node channel proven: cursor resume + reconciliation handshake + schedulability gate; **WP3 complete** |
+| `2026-09-06` | `PHASE-0.4.2` | `RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored --nocapture` → `test result: ok. 1 passed` (one bounded REAL Codex dispatch through the real supervisor + journal: completed, streamed thread id attached, exact usage, honest `Unsupported` lookup); `cargo test -p reasonbraid-adapter --test codex_adapter` → `test result: ok. 9 passed` (offline stub boundary); `cargo test -p reasonbraid-node --test supervisor_codex_stub` → `test result: ok. 2 passed`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 + 9 adapter + 17 + 8 + 6 + 10 + 2 + 1 ignored node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_real-adapter-codex.md` + evidence report + INDEX rows | WP4 first real harness qualified (Codex-family CLI, `exec --json`); ledger revalidated; **WP4 complete** |
 | `2026-09-06` | `PHASE-0.4.1` | `cargo test -p reasonbraid-adapter` → `test result: ok. 12 passed` (fake) + `test result: ok. 3 passed` (corpus integrity incl. mechanical credential scan); `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake` — corpus drives every outcome to its journal terminal; lost response without lookup → `outcome_unknown` with no retry language; proven lookup → `completed`; ack ≠ completion at the journal boundary); `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 adapter + 17 + 8 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` + `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_fake-adapter.md` + INDEX row | WP4 fake harness adapter proven: scripted oracle + sanitized corpus + supervisor ambiguity path; three real bugs found by the corpus/probes (boundary-vs-refusal edge, Notify race, terminal-event loop) |
 
 ## Commit Log
@@ -754,6 +809,7 @@ are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 | `PHASE-0.2.2` | `REASONBRAID-PHASE0-0014` | `crates/reasonbraid-server` leased outbox worker (`outbox.rs`) + `migrations/0002_outbox_worker.sql` + kill-point/fencing tests + harness updates + outbox-worker-fencing decision record |
 | `PHASE-0.3.1` | `REASONBRAID-PHASE0-0015` | `crates/reasonbraid-node` SQLite journal (WAL + synchronous=FULL, boundary-before-boundary) + read-only `rb-journal` CLI + kill-point tests; core gains `failed_known` + §11.3 provider-lookup edges; node-journal decision record; mdBook chapter |
 | `PHASE-0.3.2` | `REASONBRAID-PHASE0-0016` | `crates/reasonbraid-server` node channel (durable inbox, replay, directives, axum routes) + `migrations/0003` + node-side client/facade (Offline/Reconciling/Schedulable) + journal channel state + 13 cross-crate channel tests + node-channel decision record; mdBook chapter |
+| `PHASE-0.4.2` | `REASONBRAID-PHASE0-0019` | `crates/reasonbraid-adapter` Codex CLI adapter (`exec --json` subprocess) + contract `ProviderRequestId` + supervisor/journal handling + offline stub suite + env-gated live test + real-adapter-codex decision record + qualification evidence report + ledger revalidation; mdBook real-adapter section |
 | `PHASE-0.4.1` | `REASONBRAID-PHASE0-0018` | `crates/reasonbraid-adapter` (contract + scripted fake + sanitized 10-fixture corpus) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge + fake-adapter decision record; mdBook chapter |
 
 ## Changelog
@@ -775,4 +831,5 @@ are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 - `2026-09-06`: `PHASE-0.2.2` WP2 leased outbox worker — `outbox.rs` claim/deliver/complete (each phase its own commit, per-claim fencing tokens, caller-supplied clock), `migrations/0002_outbox_worker.sql` (lease+fencing columns, `outbox_delivery` dedupe sink), 7 kill-point/fencing tests, `docs/decisions/2026-09-06_outbox-worker-fencing.md`. **WP2 complete.** Frontier is `.3.1`.
 - `2026-09-06`: `PHASE-0.3.1` WP3 node journal — `crates/reasonbraid-node` (WAL + `synchronous=FULL` recorded in `journal_meta`, `record_dispatch` commits before the adapter runs, `recover` → `outcome_unknown`, `prove_result`/`reconcile` exits, command/operation dedupe, boundary ledger, ack cursor), read-only `rb-journal` CLI (inspect/pending/ambiguous), KP-1…KP-9 kill-point sweep, core machine extended (`failed_known` + §11.3 provider-lookup edges), `docs/decisions/2026-09-06_node-journal.md`, mdBook node-journal chapter. Frontier is `.3.2`.
 - `2026-09-06`: `PHASE-0.3.2` WP3 outbound node channel — server-side durable inbox (`migrations/0003_node_inbox.sql`, replay from the node's reported cursor, handshake directives, deduplicated event receipts, axum routes) + node-side client and `Offline → Reconciling → Schedulable` facade, journal channel state, 13 cross-crate channel tests over real localhost sockets + live PostgreSQL, `docs/decisions/2026-09-06_node-channel.md`, mdBook node-channel chapter. **WP3 complete.** Frontier is `.4.1`.
+- `2026-09-06`: `PHASE-0.4.2` WP4 first real harness — `CodexCliAdapter` supervising `codex exec --json` (qualified live on codex-cli 0.153.4: one bounded real dispatch through the real supervisor + journal), streamed thread id attached as the provider handle, honest `Unsupported` status lookup, offline stub suite, `docs/decisions/2026-09-06_real-adapter-codex.md`, qualification evidence report (second adapter recommended for Phase 1 — director-owned), Codex ledger row revalidated. **WP4 complete.** Frontier is `.5.1`.
 - `2026-09-06`: `PHASE-0.4.1` WP4 fake harness adapter — `crates/reasonbraid-adapter` (capability-declaring contract: ack ≠ completion, no credential field, unsupported lookup is never retry advice; deterministic scripted `FakeAdapter`; ten-fixture sanitized corpus with mechanical credential scan) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge, `docs/decisions/2026-09-06_fake-adapter.md`, mdBook adapter-boundary chapter. Frontier is `.4.2`.

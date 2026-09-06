@@ -256,6 +256,7 @@ async fn malformed_output_passes_through_verbatim() {
         match event {
             AttemptEvent::OutputChunk { chunk } => chunks.push(chunk),
             AttemptEvent::Completed { .. } => {}
+            AttemptEvent::ProviderRequestId { .. } => {}
             AttemptEvent::FailedKnown { reason } => panic!("unexpected failure: {reason}"),
         }
     }

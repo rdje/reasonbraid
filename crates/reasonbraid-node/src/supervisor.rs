@@ -138,6 +138,14 @@ pub async fn execute_attempt(
             let mut terminal = None;
             while let Some(event) = handle.next().await {
                 match event {
+                    AttemptEvent::ProviderRequestId { request_id } => {
+                        // Some providers only reveal their request handle AFTER
+                        // dispatch (Codex's thread.started): attach it the same way
+                        // an ack-carried id is attached.
+                        journal
+                            .attach_provider_request_id(&attempt_id, &request_id)
+                            .await?;
+                    }
                     AttemptEvent::OutputChunk { chunk } => chunks.push(chunk),
                     AttemptEvent::Completed { usage } => {
                         // A terminal event ENDS the attempt: never keep pulling the

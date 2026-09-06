@@ -68,10 +68,44 @@ A stream that ends without a result is a lost response: `outcome_unknown` in
 the journal, moved only by a proven lookup (`completed`/`failed_known`) or an
 authorized adjudication (`reconciled`).
 
+## The first real adapter: the Codex-family CLI
+
+`CodexCliAdapter` (`crates/reasonbraid-adapter/src/codex.rs`) supervises
+`codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only <prompt>`
+as a child process — the narrowest supported machine interface (qualified
+against codex-cli 0.153.4). The JSONL stream maps onto the contract:
+
+| Codex event | Contract event |
+| --- | --- |
+| `thread.started` | `ProviderRequestId` (the thread id — attached to the attempt as the proof handle) |
+| `item.completed` | `OutputChunk` (the streamed reply, verbatim) |
+| `turn.completed` | `Completed { usage }` (exact token receipt) |
+| non-zero exit | `FailedKnown` (definitive, with the stderr tail) |
+
+The real harness exercises the contract's honest legs: **status lookup is
+genuinely unsupported** (no first-class query for a past attempt), so a lost
+response lands `outcome_unknown` — with the thread id attached as the handle
+an operator would adjudicate with. Cancellation is `BestEffort` (kill the
+child). The run payload travels as the **user prompt only**, and the adapter
+holds no credentials (ambient Codex login).
+
+The live qualification test is deliberately not run by default — it dispatches
+to the real harness and spends a few tokens:
+
+```text
+RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored
+```
+
+Offline, the same supervision mechanics run against a stub binary in plain
+`cargo test` (no provider spend). Whether the second real adapter (the
+Claude-family CLI) lands in late Phase 0 or Phase 1 is an open, director-owned
+question — the evidence report recommends Phase 1.
+
 ## Honest limits (Phase 0)
 
-- The fake is a dev-only oracle; the first REAL harness qualifies against the
-  same corpus in `.4.2` (vendor types stay inside its own module).
+- The fake is the deterministic oracle; the Codex adapter is the first real one,
+  qualified on one host and one CLI version (the dependency ledger revalidation
+  trigger covers releases).
 - A confirmed cancellation still leaves the result unknowable, so it lands on
   `outcome_unknown` — `cancelled_known` remains out of Phase 0.
 - Deadline and budget enforcement are the caller's (WP5 types the reservations).

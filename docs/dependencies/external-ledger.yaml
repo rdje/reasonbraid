@@ -100,27 +100,43 @@ entries:
     kind: "cli + harness"
     owner: "OpenAI"
     source_url: "https://github.com/openai/codex"
-    checked_at: "2026-09-04"
-    tested_versions: []        # verify the installed version at the adapter spike
-    protocol_versions: []
-    license: "unverified"
-    supported_features: []     # fill at spike (MCP participation, sessions, approvals, cancellation)
-    transports: []             # fill at spike
-    auth_modes: []             # fill at spike
-    known_semantic_losses: []
-    conformance_results: []
-    security_notes: []
+    checked_at: "2026-09-06"   # revalidated at the PHASE-0.4.2 adapter spike (its trigger)
+    tested_versions:
+      - "0.153.4"              # installed on the dev host; the adapter is qualified against it
+    protocol_versions: []      # the JSONL event stream is versioned by CLI release, not separately
+    license: "Apache-2.0"      # verified from the primary source (openai/codex LICENSE, 2026-09-06)
+    supported_features:
+      - "exec --json (JSONL event stream: thread.started / item.completed / turn.completed)"
+      - "per-thread thread_id (provider handle, surfaced in the stream, not the ack)"
+      - "exact token usage receipts (input/cached/cache-write/output/reasoning tokens)"
+      - "ephemeral runs (--ephemeral), --skip-git-repo-check, sandbox modes, --output-schema"
+      - "thread resume (codex exec resume) — continuation, NOT a status lookup"
+    transports:
+      - "CLI subprocess; prompt as argv, JSONL on stdout, plaintext stderr"
+    auth_modes:
+      - "ambient user login (~/.codex); the adapter holds NO credentials"
+    known_semantic_losses:
+      - "no first-class status query for a past attempt (query_status -> Unsupported)"
+      - "no provider idempotency-key option on exec"
+      - "receipts report tokens, never cost (normalized cost stays unknown)"
+      - "cancellation is kill-the-child: BestEffort, no provider proof of stopping"
+    conformance_results:
+      - "live qualification: RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live (1 passed, 2026-09-06)"
+      - "offline supervision suite: cargo test -p reasonbraid-adapter --test codex_adapter (9 passed)"
+    security_notes:
+      - "run payload travels as the USER prompt only (never system config/policy, §16.6)"
+      - "the child runs with --sandbox read-only and --ephemeral; no session persistence"
     upgrade_policy: >-
-      verify the installed version and supported invocation mode rather than infer
-      capabilities from the roadmap.
+      revalidate the installed version and invocation mode on every CLI release;
+      re-run the live qualification test before any release gate claims this adapter.
     revalidation_trigger: >-
-      Codex CLI release or documented invocation-mode change; before the first real
-      Codex-family adapter (PHASE-0.4.2) and at each release gate that claims it.
+      Codex CLI release or documented invocation-mode change; at each release gate that
+      claims the Codex-family adapter.
     baseline: >-
       2026-09-04: the openai/codex repository is the primary implementation/integration
-      reference for Codex-family CLI behavior (ROADMAP.md §28.1). The adapter must verify
-      the installed version and supported invocation mode rather than infer capabilities
-      from the roadmap.
+      reference for Codex-family CLI behavior (ROADMAP.md §28.1). Revalidated 2026-09-06
+      at the first real adapter (PHASE-0.4.2): codex-cli 0.153.4, exec --json JSONL
+      interface, Apache-2.0 — see docs/evidence/2026-09-06_codex-adapter-qualification.md.
 
   - name: "Claude Agent SDK (formerly Claude Code SDK)"
     kind: "sdk + sidecar/cli"

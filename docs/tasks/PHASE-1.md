@@ -140,11 +140,75 @@ conversation without binding-governance claims.
       channel/worker suites stay green.
 
 - ID: `PHASE-1.3`
-  Status: `proposed`
+  Status: `in_progress`
   Goal: invitation/subscription semantics — explicit participants, invitations
     accept/decline/timeout, simple subscriptions (the create/read/list/cancel API
     shapes are owned by `.1.1.3`)
   Backlog: 15, 16
+  Note: gap census (`2026-09-06`) — the `.6.2` wiring dispatches work IN the
+    invite transaction (no acceptance step: `ensure_participant` auto-accepts an
+    invited role on its first contribution), there is no accept/decline/expire/
+    remove command or invitation record, `allow_join_requests` is typed but inert
+    (no join verb, no subscription listing), and `allow_explicit_invites=false`
+    is recorded but not enforced. Backlog 16's "offer/reserve/accept/decline/
+    expire/remove with snapshot semantics and race tests" therefore needs THREE
+    moves: the invitation lifecycle in the state machine, the dispatch-on-accept
+    rewiring (the demo + wiring suites move to the explicit contract), and the
+    join/subscription surface.
+  Children: `.1.3.1`–`.1.3.3` (decomposed `2026-09-06` so each child is one
+    signoff-sized slice)
+
+  - ID: `PHASE-1.3.1`
+    Status: `pending`
+    Goal: the invitation lifecycle in the thread state machine — `thread.invite`
+      records a PENDING invitation (typed optional expiry on the invite body),
+      `thread.accept_invitation` (invited role → `accepted`, event
+      `thread.invitation_accepted`), `thread.decline_invitation` (`declined`,
+      event), `thread.remove_participant` (`removed`; tenant_admin), and lazy
+      expiry (an invitation past `expires_at` folds to `expired` when the thread
+      is next applied/read — derived, never swept). The invitation IS the
+      acceptance capability (offer/reserve — the accept/decline commands
+      authorize against the pending invitation, not a new grant action); an
+      invited role may NOT act until accepted (explicit participants first: the
+      auto-accept on first contribution goes away).
+    Backlog: 16
+    Acceptance: every transition is an event with actor + precondition; the
+      projection carries per-participant state + timestamps (additive
+      `#[serde(default)]` growth); accept after decline/expiry/removal is a typed
+      refusal; race tests prove exactly one winner under concurrent
+      accept/decline/remove (the aggregate head lock serializes).
+
+  - ID: `PHASE-1.3.2`
+    Status: `pending`
+    Goal: dispatch-on-accept rewiring — the invite transaction records the
+      invitation only; the ACCEPT transaction enqueues the contribute work item
+      (with the reservation, `work_{accept_event_id}`) in the same transaction
+      as the accept event (an accepted invitation exists iff its work does). The
+      challenge-dispatch path is unchanged (a challenged author is already
+      accepted). Update the wiring suites + the two-host demo to the explicit
+      contract (invite → pending; `rb thread accept` as the role → work arrives;
+      the demo's acceptance points move accordingly).
+    Backlog: 16, 15
+    Acceptance: no work item exists before acceptance (a pending invitation
+      enqueues nothing); the accept dispatches exactly once (idempotency +
+      dedupe); every existing channel/worker suite moves to the explicit
+      contract and stays green; the two-host demo still passes.
+
+  - ID: `PHASE-1.3.3`
+    Status: `pending`
+    Goal: simple subscriptions — `thread.join` (a role joins a thread whose
+      `allow_join_requests` is on; the `thread_contribute` grant still gates
+      acting; `joined` records the self-request path, event
+      `thread.participant_joined`), enforcement of `allow_explicit_invites=false`
+      (invite refused on such threads), and a subscription listing on the
+      inspection surface (participants with states + timestamps; pending/expired
+      invitations). Filtered delivery by eligibility stays with Phase 3's
+      directory. CLI: `rb thread accept/decline/join/remove-participant` across
+      the children.
+    Backlog: 14 (the simple-subscription sliver), 16
+    Acceptance: a join on a closed-join thread is a typed refusal; a joined role
+      appears in the participant list with its path; the listing exposes
+      invitation states; the book + CLI chapters document the surface.
 
 - ID: `PHASE-1.4`
   Status: `proposed`
@@ -176,7 +240,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.3` | `proposed` | `.1.2` is complete (enrollment + authenticated channel + inbox hardening, backlogs 11–14) — invitation/subscription semantics (backlog 15's remainder + 16) is the next `.1.x` lane; decompose or execute on pickup |
+| 1 | `PHASE-1.3.1` | `pending` | `.1.3` is decomposed (gap census: the `.6.2` invite dispatches work with NO acceptance step, no accept/decline/expire/remove verbs, `allow_join_requests` inert) into `.1.3.1` (invitation lifecycle in the state machine) → `.1.3.2` (dispatch-on-accept rewiring + demo) → `.1.3.3` (join/subscriptions + listing) |
 
 ## Changelog
 
@@ -190,6 +254,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.2.1` done — one-time enrollment tokens + `node_keys` + audited refusals (denial-row pattern); the suite's first run caught a real defect (a re-issue 500 on the wire — fixed to a typed 409 with a regression assertion) and a test-side status expectation (node-channel `unauthorized` = HTTP 401); decision record `docs/decisions/2026-09-06_node-enrollment.md`; frontier → `.1.2.2`.
 - `2026-09-06`: `.1.2.2` done — the authenticated channel (CHANNEL_VERSION 2): HMAC key-proof handshake (refused before any ledger read), lease + fencing token (events/ack/poll/heartbeat ride it; every handshake rotates it), 60 s lease with DERIVED presence (`node_presence` view — expiry flips `offline`, only a fresh handshake restores), `poll` became a POST (the token never rides a query string), and the channel identity space widened to the dev role wire ids (the `.1.2.1` surfaces accepted only `nod_…`; the dev wiring collapses node == role). All 13 channel tests moved to the authenticated contract + 4 new ones; the demo now enrolls its nodes and asserts presence before/after the server restart; decision record `docs/decisions/2026-09-06_node-channel-auth.md`; frontier → `.1.2.3`.
 - `2026-09-06`: `.1.2.3` done — durable inbox hardening (migration 0010): quarantine is a row fact WITH its reason and the replay/poll paths ALWAYS skip it (never re-delivered); retention cleanup is an explicit measured operator action (`POST /v1/nodes/inbox/prune`: delivered rows older than the window, before/deleted/after in one transaction); the operator surface is the tenant_admin-audited control API (`POST /v1/nodes/quarantine`, `GET /v1/nodes/inbox`, `POST /v1/nodes/inbox/prune`) + `rb node quarantine|inbox|prune`; new `tests/node_inbox.rs` (3 live-PG tests); decision record `docs/decisions/2026-09-06_node-inbox-retention.md`; **the `.1.2` coordinator leaf is complete** — frontier → `.1.3`.
+- `2026-09-06`: `.1.3` decomposed (gap census first: the `.6.2` invite dispatches work in the invite transaction with NO acceptance step — `ensure_participant` auto-accepts an invited role on first contribution; no accept/decline/expire/remove verbs or invitation records; `allow_join_requests` typed but inert; `allow_explicit_invites=false` recorded but not enforced) into `.1.3.1` (invitation lifecycle in the state machine — invite records a pending invitation, accept/decline/remove, lazy expiry, the invitation IS the acceptance capability), `.1.3.2` (dispatch-on-accept rewiring — work enqueues with the ACCEPT event; wiring suites + the two-host demo move to the explicit contract), `.1.3.3` (simple subscriptions — `thread.join` under `allow_join_requests`, invite enforcement, subscription listing + CLI verbs); frontier → `.1.3.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

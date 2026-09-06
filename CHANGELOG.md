@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — PHASE-1.3 decomposed: invitation lifecycle, dispatch-on-accept, subscriptions (`PHASE-1.3`)
+
+- The invitation/subscription leaf is decomposed into three signoff-sized children (tree-first; no code change), on a measured gap census: the `.6.2` wiring dispatches work IN the invite transaction with no acceptance step (`ensure_participant` auto-accepts an invited role on its first contribution), there are no accept/decline/expire/remove verbs or invitation records, `allow_join_requests` is typed but inert, and `allow_explicit_invites=false` is recorded but not enforced.
+- `.1.3.1` invitation lifecycle in the thread state machine (backlog 16: invite records a PENDING invitation with a typed optional expiry; accept/decline/remove verbs; lazy derived expiry; the invitation IS the acceptance capability — offer/reserve, no new grant action; invited roles may not act until accepted), `.1.3.2` dispatch-on-accept rewiring (the work item + reservation enqueue with the ACCEPT event; the wiring suites + two-host demo move to the explicit contract), `.1.3.3` simple subscriptions (`thread.join` under `allow_join_requests`, `allow_explicit_invites=false` enforcement, the subscription listing + CLI verbs). `make gate` → 13/13 green at commit.
+
 ## 2026-09-06 — Durable inbox hardening: quarantine, measured retention, inspection (`PHASE-1.2.3`)
 
 - Backlog 14's remainder landed: **quarantine is a database fact on the row** — migration 0010 adds `quarantined_at` + `quarantine_reason` to `node_inbox`, and the replay/poll queries filter `quarantined_at IS NULL`, so a quarantined command is **never re-delivered**, whatever cursor the node reports. The reason rides the row: the skip is explainable, never silent. Quarantine controls *delivery*, not result application (a result from a command delivered before the quarantine still applies).

@@ -199,7 +199,8 @@ async fn the_real_cli_drives_the_whole_flow() {
     let thread_id = created["thread_id"].as_str().unwrap().to_string();
     assert_eq!(created["thread_state"], serde_json::json!("open"));
 
-    // 3. Invite → contribute → challenge → revise → close (human-readable output).
+    // 3. Invite (PENDING) → the reviewer ACCEPTS (`.1.3.1` explicit participants)
+    //    → contribute → challenge → revise → close (human-readable output).
     let (ok, stdout, stderr) = rb
         .run(&[
             "thread", "invite", "--thread", &thread_id, "--agent", "reviewer", "--as", "alice",
@@ -207,6 +208,14 @@ async fn the_real_cli_drives_the_whole_flow() {
         .await;
     assert!(ok, "invite failed: {stderr}");
     assert!(stdout.contains("thread.participant_invited"), "{stdout}");
+
+    let (ok, stdout, stderr) = rb
+        .run(&[
+            "thread", "accept", "--thread", &thread_id, "--as", "reviewer",
+        ])
+        .await;
+    assert!(ok, "accept failed: {stderr}");
+    assert!(stdout.contains("thread.invitation_accepted"), "{stdout}");
 
     let contributed = rb
         .json(&[
@@ -290,6 +299,7 @@ async fn the_real_cli_drives_the_whole_flow() {
     assert!(stdout.contains("reason: decision reached"), "{stdout}");
     assert!(stdout.contains("thread.created"), "{stdout}");
     assert!(stdout.contains("thread.participant_invited"), "{stdout}");
+    assert!(stdout.contains("thread.invitation_accepted"), "{stdout}");
     assert!(stdout.contains("thread.contribution_submitted"), "{stdout}");
     assert!(stdout.contains("thread.challenge_posted"), "{stdout}");
     assert!(stdout.contains("thread.revision_submitted"), "{stdout}");

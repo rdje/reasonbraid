@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.3.1: a capability and a grant answer different questions
+
+- **The invitation (offer/reserve) is the capability; the grant is the gate.** Accept/decline authorize against the PENDING invitation naming the actor AND the new `thread_invitation_respond` grant the role default carries. Grant-only would hand the acceptance right to non-invitees; invitation-only would bypass the audited authorization flow. Two checks, two layers, one command.
+- **Don't split a contract across leaves when the interim is incoherent.** The lifecycle (invited roles may not act) and the dispatch move (work rides accept) only hold together — my own decomposition separated them, and the contradiction surfaced while scoping: work would still arrive to a role that cannot accept it, the suites red between commits. Amended same-day into ONE leaf. Decompositions are hypotheses; a contradiction is an amendment, not a workaround.
+- **Derived expiry needs no event.** An expiry event would have to ride SOME command's transaction — but the command that observes expiry (accept) is refused, and refused commands commit nothing. Deriving at read + enforcing at the boundary gives observability AND enforcement without a sweeper: the same shape as channel-lease presence, now the repo's third instance (leases, presence, invitations).
+- **Race tests assert the SNAPSHOT, not a winner.** Concurrent accept/remove has no predetermined winner (the aggregate head lock serializes — whichever lands first). The test asserts exactly one 200, exactly one transition event, the snapshot matches the winner, and the spent invitation refuses a late accept either way.
+- **Adding an audited verb shifts every audit-timeline assertion.** The first full run failed in exactly one place — command_api's expected audit list gained the accept's `thread_invitation_respond` record. That is the audit trail doing its job; the fix is the expectation, not the code.
+- Promoted to `docs/decisions/2026-09-06_explicit-participants.md` (`answers:` present). **Frontier `PHASE-1.3.2` (simple subscriptions).**
+
 ## _(2026-09-06)_ — PHASE-1.2.3: quarantine is a row fact, and a measured prune beats a background sweep
 
 - **A quarantine that lives in the handler would be a promise; a quarantine on the row is an invariant.** Two nullable columns + a `quarantined_at IS NULL` filter in BOTH delivery paths (handshake replay and live poll) make "never re-delivered" true for every path that exists — a future third path inherits the filter by construction, not by remembering to check a flag.

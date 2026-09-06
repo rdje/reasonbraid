@@ -221,7 +221,8 @@ async fn full_flow_inspects_state_through_the_api_only() {
     let thread_id = created["thread_id"].as_str().unwrap().to_string();
     assert_eq!(created["thread_state"], json!("open"));
 
-    // 3. Invite the reviewer; contribute (auto-accept); challenge; revise; close.
+    // 3. Invite the reviewer (PENDING); the reviewer ACCEPTS (explicit
+    //    participants, `.1.3.1`); contribute; challenge; revise; close.
     let (status, invited) = command(
         &client,
         &base,
@@ -235,6 +236,21 @@ async fn full_flow_inspects_state_through_the_api_only() {
     )
     .await;
     assert_eq!(status, 200, "invite: {invited}");
+
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &reviewer_id,
+        &envelope(
+            "thread.accept_invitation",
+            "k-accept",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "accept: {accepted}");
+    assert_eq!(accepted["event_type"], json!("thread.invitation_accepted"));
 
     let (status, contributed) = command(
         &client,
@@ -327,7 +343,12 @@ async fn full_flow_inspects_state_through_the_api_only() {
     assert_eq!(
         state["state"]["participants"][&reviewer_id],
         json!("accepted"),
-        "the contribution auto-accepted the invitation"
+        "the explicit accept made the role a participant"
+    );
+    assert_eq!(
+        state["state"]["invitations"][&reviewer_id]["expires_at"],
+        json!(null),
+        "the invitation record carries the offer facts (no expiry)"
     );
 
     let (status, events) = get(
@@ -349,6 +370,7 @@ async fn full_flow_inspects_state_through_the_api_only() {
         vec![
             "thread.created",
             "thread.participant_invited",
+            "thread.invitation_accepted",
             "thread.contribution_submitted",
             "thread.challenge_posted",
             "thread.revision_submitted",
@@ -356,7 +378,7 @@ async fn full_flow_inspects_state_through_the_api_only() {
         ],
         "the ordered audit timeline"
     );
-    assert_eq!(events["next_cursor"], json!(6));
+    assert_eq!(events["next_cursor"], json!(7));
 
     let (status, audit) = get(
         &client,
@@ -376,6 +398,7 @@ async fn full_flow_inspects_state_through_the_api_only() {
         actions,
         vec![
             "thread_invite",
+            "thread_invitation_respond",
             "thread_contribute",
             "thread_contribute",
             "thread_contribute",

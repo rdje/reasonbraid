@@ -41,6 +41,7 @@
 - [`2026-09-06_budget-reservation.md`](docs/decisions/2026-09-06_budget-reservation.md)
 - [`2026-09-06_control-api-cli.md`](docs/decisions/2026-09-06_control-api-cli.md)
 - [`2026-09-06_envelope-representation.md`](docs/decisions/2026-09-06_envelope-representation.md)
+- [`2026-09-06_explicit-participants.md`](docs/decisions/2026-09-06_explicit-participants.md)
 - [`2026-09-06_fake-adapter.md`](docs/decisions/2026-09-06_fake-adapter.md)
 - [`2026-09-06_g0-contract-id-scheme.md`](docs/decisions/2026-09-06_g0-contract-id-scheme.md)
 - [`2026-09-06_id-representation.md`](docs/decisions/2026-09-06_id-representation.md)

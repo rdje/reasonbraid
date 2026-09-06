@@ -18,17 +18,16 @@
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
 - **Active tree:** `PHASE-1` → frontier `.1.3.1` (the `.1` coordinator leaf is **done**;
   `.1.2` is **complete**: enrollment · authenticated channel + lease/presence ·
-  inbox hardening — backlogs 11–14 closed; `.1.3` is **decomposed** into `.1.3.1`
-  (the explicit-participants contract: invitation lifecycle + dispatch-on-accept,
-  one contract) → `.1.3.2` (join/subscriptions); the dev node-id space is `nod_…`
-  OR the `rol_…` role wire id the dev wiring serves).
-- **Next action:** implement `PHASE-1.3.1` — the explicit-participants contract:
-  `thread.invite` records a PENDING invitation (typed optional expiry) and
-  enqueues NO work; `thread.accept_invitation` (invited role, new
-  `thread_invitation_respond` grant) transitions to `accepted` AND dispatches the
-  work item with its reservation; `thread.decline_invitation`,
-  `thread.remove_participant` (tenant_admin; core `revoked` state); expiry
-  derived from `expires_at`; invited roles may not act until accepted.
+  inbox hardening — backlogs 11–14 closed; `.1.3` decomposed into `.1.3.1`
+  (the explicit-participants contract — **done**: pending invitations, the
+  invitation IS the acceptance capability under the `thread_invitation_respond`
+  grant, accept/decline/remove, derived expiry, dispatch-on-accept, invited
+  roles may not act) → `.1.3.2` (join/subscriptions); the dev node-id space is
+  `nod_…` OR the `rol_…` role wire id the dev wiring serves).
+- **Next action:** implement `PHASE-1.3.2` — simple subscriptions: `thread.join`
+  under `allow_join_requests` (event `thread.participant_joined`),
+  `allow_explicit_invites=false` enforcement, the subscription listing on the
+  inspection surface, and the `rb thread join` verb.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).

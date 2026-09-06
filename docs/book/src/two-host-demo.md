@@ -28,8 +28,10 @@ its evidence.
 1. A human enrolls and creates a thread; two agent roles enroll.
 2. One-time enrollment tokens are issued for both nodes and the nodes **enroll
    with their dev secrets** (`.1.2.1`).
-3. `thread.invite` dispatches a **work item with a reservation** into the
-   invited role's inbox — in the same transaction as the invite event.
+3. `thread.invite` records a **pending invitation** (`.1.3.1` explicit
+   participants) — no work yet; the role's **accept** (`rb thread accept`) is
+   the transaction that dispatches the **work item with a reservation** into
+   its inbox.
 4. The node polls, executes the (deterministic fake) adapter, and emits a
    `work_result`; the server folds it into the thread as a contribution through
    the same claim → authorize → validate → apply flow a CLI command rides.

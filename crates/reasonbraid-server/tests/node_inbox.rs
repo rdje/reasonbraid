@@ -178,7 +178,8 @@ async fn enqueue(state: &NodeChannelState, node_id: &str, command_id: &str) -> i
 /// The authenticated handshake (raw wire; the proof is computed with the node
 /// crate's public canonicalization). Returns the response body.
 async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value {
-    let proof = reasonbraid_node::compute_key_proof(CHANNEL_VERSION, node_id, 0, &[], &[], DEV_SECRET);
+    let proof =
+        reasonbraid_node::compute_key_proof(CHANNEL_VERSION, node_id, 0, &[], &[], DEV_SECRET);
     let response = client
         .post(format!("{base}/v1/nodes/handshake"))
         .json(&json!({
@@ -502,13 +503,12 @@ async fn prune_deletes_only_delivered_rows_older_than_the_window() {
 
     // Only the two old DELIVERED rows are gone; the fresh delivery and the two
     // undelivered rows survive.
-    let survivors: Vec<String> = sqlx::query_scalar(
-        "SELECT command_id FROM node_inbox WHERE node_id = $1 ORDER BY cursor",
-    )
-    .bind(node_id)
-    .fetch_all(&pool)
-    .await
-    .expect("survivors");
+    let survivors: Vec<String> =
+        sqlx::query_scalar("SELECT command_id FROM node_inbox WHERE node_id = $1 ORDER BY cursor")
+            .bind(node_id)
+            .fetch_all(&pool)
+            .await
+            .expect("survivors");
     assert_eq!(survivors, vec!["cmd_prune_3", "cmd_prune_4", "cmd_prune_5"]);
 
     // A second prune (nothing new is old enough) measures a no-op.

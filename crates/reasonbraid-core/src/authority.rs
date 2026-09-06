@@ -52,6 +52,10 @@ pub enum GrantAction {
     ThreadClose,
     /// Cancel a thread — the `open|closing → cancelled` terminal, with a reason.
     ThreadCancel,
+    /// Respond to a PENDING invitation (accept or decline — the invitation is the
+    /// real capability; this grant is the "may participate in invitation flows"
+    /// gate every invited role's default carries, `.1.3.1`).
+    ThreadInvitationRespond,
     /// Administrative authority — NEVER implied by membership or other actions.
     TenantAdmin,
 }
@@ -65,6 +69,7 @@ impl GrantAction {
             GrantAction::ThreadInspect => "thread_inspect",
             GrantAction::ThreadClose => "thread_close",
             GrantAction::ThreadCancel => "thread_cancel",
+            GrantAction::ThreadInvitationRespond => "thread_invitation_respond",
             GrantAction::TenantAdmin => "tenant_admin",
         }
     }
@@ -78,6 +83,7 @@ impl GrantAction {
             "thread_inspect" => Some(GrantAction::ThreadInspect),
             "thread_close" => Some(GrantAction::ThreadClose),
             "thread_cancel" => Some(GrantAction::ThreadCancel),
+            "thread_invitation_respond" => Some(GrantAction::ThreadInvitationRespond),
             "tenant_admin" => Some(GrantAction::TenantAdmin),
             _ => None,
         }
@@ -783,6 +789,10 @@ mod tests {
             ("thread_inspect", GrantAction::ThreadInspect),
             ("thread_close", GrantAction::ThreadClose),
             ("thread_cancel", GrantAction::ThreadCancel),
+            (
+                "thread_invitation_respond",
+                GrantAction::ThreadInvitationRespond,
+            ),
             ("tenant_admin", GrantAction::TenantAdmin),
         ] {
             assert_eq!(s.parse::<GrantAction>(), Ok(expected));

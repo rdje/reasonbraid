@@ -266,6 +266,33 @@ async fn submit_event(
     (status, response.json().await.expect("event json"))
 }
 
+/// The explicit accept (`.1.3.1`): the invited ROLE accepts through the control
+/// API — the transaction that dispatches the work item (an accepted invitation
+/// exists iff its work does).
+async fn accept_invitation(
+    client: &reqwest::Client,
+    base: &str,
+    role: &str,
+    thread: &str,
+    tenant: &str,
+    key: &str,
+) {
+    let (status, accepted) = command(
+        client,
+        base,
+        &format!("/v1/threads/{thread}/commands"),
+        role,
+        &envelope(
+            "thread.accept_invitation",
+            key,
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the invited role accepts: {accepted}");
+    assert_eq!(accepted["event_type"], json!("thread.invitation_accepted"));
+}
+
 /// The events of one thread, in order (the API inspection surface).
 async fn thread_events(
     client: &reqwest::Client,
@@ -376,6 +403,24 @@ async fn invite_dispatches_work_with_a_reservation() {
     .await;
     assert_eq!(status, 200, "invite succeeds");
 
+    // THE `.1.3.1` contract: the invite recorded a PENDING invitation and
+    // enqueued NOTHING — the work item exists only after the explicit accept.
+    let (pre_handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    assert_eq!(
+        pre_handshake["replay"].as_array().unwrap().len(),
+        0,
+        "a pending invitation enqueues no work"
+    );
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-invite",
+    )
+    .await;
+
     // The node reads its inbox through the PUBLIC channel surface.
     let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let replay = handshake["replay"].as_array().expect("replay array");
@@ -441,6 +486,15 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     )
     .await;
     assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-result",
+    )
+    .await;
 
     let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let work = handshake["replay"][0].clone();
@@ -587,6 +641,15 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     )
     .await;
     assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-challenge",
+    )
+    .await;
 
     let (first_view, first_token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let command_id = first_view["replay"][0]["command_id"]
@@ -755,6 +818,15 @@ async fn budget_denial_enqueues_work_without_a_reservation() {
         status, 200,
         "the invite itself succeeds (dispatch is denied, not the invite)"
     );
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-tight",
+    )
+    .await;
 
     let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let work = &handshake["replay"][0];
@@ -803,6 +875,15 @@ async fn result_after_close_is_stored_as_a_rejection() {
     )
     .await;
     assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-close",
+    )
+    .await;
     let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let command_id = handshake["replay"][0]["command_id"]
         .as_str()

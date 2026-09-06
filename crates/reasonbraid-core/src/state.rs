@@ -113,6 +113,8 @@ pub enum ParticipationState {
     Declined,
     Expired,
     Left,
+    /// Removed by an authorized operator (`.1.3.1`'s `thread.remove_participant`).
+    Revoked,
 }
 
 impl ParticipationState {
@@ -123,6 +125,7 @@ impl ParticipationState {
             ParticipationState::Declined => "declined",
             ParticipationState::Expired => "expired",
             ParticipationState::Left => "left",
+            ParticipationState::Revoked => "revoked",
         }
     }
 
@@ -138,6 +141,8 @@ impl ParticipationState {
             (Invited, Decline) => Declined,
             (Invited, Expire) => Expired,
             (Accepted, Leave) => Left,
+            (Invited, Revoke) => Revoked,
+            (Accepted, Revoke) => Revoked,
             _ => {
                 return Err(TransitionError {
                     aggregate: "Participation",
@@ -157,6 +162,8 @@ pub enum ParticipationTransition {
     Decline,
     Expire,
     Leave,
+    /// An authorized operator removes the participant (`.1.3.1`).
+    Revoke,
 }
 
 impl ParticipationTransition {
@@ -166,6 +173,7 @@ impl ParticipationTransition {
             ParticipationTransition::Decline => "decline",
             ParticipationTransition::Expire => "expire",
             ParticipationTransition::Leave => "leave",
+            ParticipationTransition::Revoke => "revoke",
         }
     }
 }

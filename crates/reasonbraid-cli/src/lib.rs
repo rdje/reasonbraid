@@ -788,7 +788,6 @@ pub async fn run_issue_node_token(
     ))
 }
 
-
 /// Quarantine one inbox command (`.1.2.3`): the replay/poll paths skip it from
 /// then on — the reason is stored WITH the row, so the skip is explainable.
 pub async fn run_quarantine_command(
@@ -854,9 +853,9 @@ pub async fn run_inspect_node_inbox(
             "delivered"
         };
         match row["quarantine_reason"].as_str() {
-            Some(reason) => out.push_str(&format!(
-                "  #{cursor} {command} — QUARANTINED ({reason})\n"
-            )),
+            Some(reason) => {
+                out.push_str(&format!("  #{cursor} {command} — QUARANTINED ({reason})\n"))
+            }
             None => out.push_str(&format!("  #{cursor} {command} — {acked}\n")),
         }
     }

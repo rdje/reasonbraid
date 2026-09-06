@@ -28,6 +28,7 @@ $ rb thread create --subject "should we ship?" --objective "decide with evidence
 created thread thr_… (state: open)
 
 $ rb thread invite --thread thr_… --agent reviewer --as alice
+$ rb thread accept --thread thr_… --as reviewer
 $ rb thread contribute --thread thr_… --text "Ship it: the experiments are green." --as reviewer
 $ rb thread challenge --thread thr_… --target evt_… --text "Which experiments?" --as alice
 $ rb thread revise --thread thr_… --target evt_… --text "The SQLite kill-point sweep…" --as reviewer
@@ -52,6 +53,14 @@ $ rb thread create --subject "…" --objective "…" --as alice \
 `thread.cancel` is the **abandonment terminal** (`open|closing → cancelled`,
 reason recorded) — distinct from a decided close; both are inspectable, and a
 cancelled thread refuses further content verbs with `invalid_transition`.
+
+Explicit participants (`.1.3.1`): an invite is a **pending offer** — the
+invited role **accepts** (`rb thread accept --as reviewer`) before it may act,
+and the accept is the transaction that dispatches the role's work item.
+`rb thread decline` refuses the offer (a declined role may be re-invited);
+`rb thread remove-participant --participant rol_…` is the tenant-admin
+revocation; `--expires-in-seconds` on the invite offers a typed expiry
+(derived — an expired offer reads `expired` and refuses accept/decline).
 
 The CLI keeps a local state dir (`./.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,

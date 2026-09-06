@@ -11,8 +11,9 @@
 #   1b. issue one-time enrollment tokens and ENROLL the two nodes (`.1.2.1`);
 #       the `.1.2.2` authenticated handshake (HMAC key-proof), the lease/fencing
 #       token, and the heartbeats ride the enrolled dev secrets from here on;
-#   2. invite agent A — the invitation's work item lands in A's inbox WITH a
-#      reservation (one transaction on the server);
+#   2. invite agent A — a PENDING invitation (no work yet); A ACCEPTS
+#      (`.1.3.1` explicit participants) — the accept transaction lands the work
+#      item in A's inbox WITH a reservation;
 #   3. A contributes through the node channel; the result folds into the thread;
 #      A's presence is observable ONLINE through the channel API;
 #   4. duplicate transport: the SAME event is re-POSTed verbatim (with A's live
@@ -283,8 +284,10 @@ THREAD_A="$(cli thread create --subject "is the claim justified?" \
 [ -n "$THREAD_A" ] || { fail "thread A created"; exit 1; }
 log "thread A: $THREAD_A"
 
-log "inviting agent-a — the invitation dispatches work WITH a reservation"
+log "inviting agent-a — a PENDING invitation (`.1.3.1`: no work yet)"
 cli thread invite --thread "$THREAD_A" --agent agent-a --as organizer >/dev/null
+log "agent-a ACCEPTS — the accept dispatches the work WITH a reservation"
+cli thread accept --thread "$THREAD_A" --as agent-a >/dev/null
 
 # ── 3. node A contributes ───────────────────────────────────────────────────────
 
@@ -420,6 +423,7 @@ THREAD_B="$(cli thread create --subject "tight budget" \
 [ -n "$THREAD_B" ] || { fail "thread B created"; exit 1; }
 
 cli thread invite --thread "$THREAD_B" --agent agent-b --as organizer >/dev/null
+cli thread accept --thread "$THREAD_B" --as agent-b >/dev/null
 
 NODE_B_DIR="$(node_dir b)"
 log "starting node B (fake adapter) — enrolling first"

@@ -128,6 +128,13 @@ impl ControlApiError {
         }
     }
 
+    /// [`Self::internal`] with the detail logged server-side (the wire keeps the
+    /// safe generic message).
+    pub fn internal_with_log(message: String) -> Self {
+        eprintln!("control api: {message}");
+        Self::internal()
+    }
+
     /// The HTTP status a stored error code maps back to (idempotent replay of a
     /// stored rejection reproduces the ORIGINAL status).
     fn status_for_code(code: &str) -> StatusCode {
@@ -207,6 +214,22 @@ impl From<threads::ThreadError> for ControlApiError {
             threads::ThreadError::AlreadyParticipant { principal } => {
                 ControlApiError::invalid_command(format!(
                     "principal `{principal}` already participates in this thread"
+                ))
+            }
+            threads::ThreadError::InvitationPending { principal } => {
+                ControlApiError::invalid_transition(format!(
+                    "principal `{principal}` is invited but has not accepted yet — \
+                     thread.accept_invitation first"
+                ))
+            }
+            threads::ThreadError::NoPendingInvitation { principal } => {
+                ControlApiError::invalid_command(format!(
+                    "principal `{principal}` has no pending invitation in this thread"
+                ))
+            }
+            threads::ThreadError::InvitationExpired { principal } => {
+                ControlApiError::invalid_transition(format!(
+                    "principal `{principal}`'s invitation has expired"
                 ))
             }
             threads::ThreadError::CorruptState(detail) => {
@@ -323,14 +346,16 @@ pub struct EnrollResponse {
 }
 
 /// The dev admin action set a bootstrap human receives. It includes `tenant_admin`
-/// EXPLICITLY — never implied (`.5.1`); `thread_cancel` joins in `.1.1.3`.
-const ADMIN_ACTIONS: [GrantAction; 7] = [
+/// EXPLICITLY — never implied (`.5.1`); `thread_cancel` joins in `.1.1.3`,
+/// `thread_invitation_respond` in `.1.3.1`.
+const ADMIN_ACTIONS: [GrantAction; 8] = [
     GrantAction::ThreadCreate,
     GrantAction::ThreadInvite,
     GrantAction::ThreadContribute,
     GrantAction::ThreadInspect,
     GrantAction::ThreadClose,
     GrantAction::ThreadCancel,
+    GrantAction::ThreadInvitationRespond,
     GrantAction::TenantAdmin,
 ];
 
@@ -478,7 +503,12 @@ async fn enroll(
         ADMIN_ACTIONS.to_vec()
     } else {
         match &req.actions {
-            None => vec![GrantAction::ThreadContribute],
+            None => vec![
+                GrantAction::ThreadContribute,
+                // `.1.3.1`: the invitation-response right every role's default
+                // carries — the invitation itself stays the real capability.
+                GrantAction::ThreadInvitationRespond,
+            ],
             Some(names) => names
                 .iter()
                 .map(|n| {
@@ -868,11 +898,10 @@ async fn prune_node_inbox(
     // operator's receipt for exactly what was removed.
     let mut tx = state.pool.begin().await?;
     let cutoff = Utc::now() - chrono::Duration::seconds(req.min_age_seconds);
-    let before: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
-            .bind(&req.node_id)
-            .fetch_one(&mut *tx)
-            .await?;
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&req.node_id)
+        .fetch_one(&mut *tx)
+        .await?;
     let deleted = sqlx::query(
         "DELETE FROM node_inbox \
          WHERE node_id = $1 AND acknowledged_at IS NOT NULL AND acknowledged_at <= $2",
@@ -882,11 +911,10 @@ async fn prune_node_inbox(
     .execute(&mut *tx)
     .await?
     .rows_affected() as i64;
-    let after: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
-            .bind(&req.node_id)
-            .fetch_one(&mut *tx)
-            .await?;
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&req.node_id)
+        .fetch_one(&mut *tx)
+        .await?;
     tx.commit().await?;
 
     Ok(Json(PruneInboxResponse {
@@ -1041,22 +1069,31 @@ async fn run_thread_command(
     } = &target
     {
         match *operation {
-            threads::OP_INVITE => {
-                let invite: threads::InviteBody = serde_json::from_value((*body).clone())
-                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-                dispatch_work_in_tx(
-                    &mut *tx,
-                    &DispatchSpec {
-                        tenant_id,
-                        thread_id: &thread_id,
-                        trigger_event_id: &event_id,
-                        kind: threads::WORK_CONTRIBUTE,
-                        agent_role: &invite.agent_role,
-                        target_event_id: None,
-                        projection: &projection,
-                    },
-                )
-                .await?;
+            // `.1.3.1`: the invite records the invitation ONLY — the work item
+            // rides the ACCEPT transaction (an accepted invitation exists iff
+            // its work does). A pending invitation enqueues nothing.
+            threads::OP_ACCEPT_INVITATION => {
+                match &principal {
+                    GrantSubject::Role(role) => {
+                        dispatch_work_in_tx(
+                            &mut *tx,
+                            &DispatchSpec {
+                                tenant_id,
+                                thread_id: &thread_id,
+                                trigger_event_id: &event_id,
+                                kind: threads::WORK_CONTRIBUTE,
+                                agent_role: &role.to_string(),
+                                target_event_id: None,
+                                projection: &projection,
+                            },
+                        )
+                        .await?;
+                    }
+                    // A human cannot be invited (invites target agent roles), so
+                    // this arm is unreachable by construction — but dispatch
+                    // nothing rather than ever guessing a target.
+                    GrantSubject::Human(_) => {}
+                }
             }
             threads::OP_CHALLENGE => {
                 let challenge: threads::ChallengeBody = serde_json::from_value((*body).clone())
@@ -1477,6 +1514,38 @@ async fn thread_command(
                 request_hash(threads::OP_CANCEL, &principal, &envelope.body),
             )
         }
+        threads::OP_ACCEPT_INVITATION => {
+            let body: threads::AcceptInvitationBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadInvitationRespond,
+                request_hash(threads::OP_ACCEPT_INVITATION, &principal, &envelope.body),
+            )
+        }
+        threads::OP_DECLINE_INVITATION => {
+            let body: threads::DeclineInvitationBody =
+                serde_json::from_value(envelope.body.clone())
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadInvitationRespond,
+                request_hash(threads::OP_DECLINE_INVITATION, &principal, &envelope.body),
+            )
+        }
+        threads::OP_REMOVE_PARTICIPANT => {
+            let body: threads::RemoveParticipantBody =
+                serde_json::from_value(envelope.body.clone())
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::TenantAdmin,
+                request_hash(threads::OP_REMOVE_PARTICIPANT, &principal, &envelope.body),
+            )
+        }
         other => {
             return Err(ControlApiError::invalid_command(format!(
                 "unknown thread operation `{other}`"
@@ -1582,11 +1651,25 @@ async fn get_thread(
             .fetch_optional(&pool)
             .await?;
             match row {
-                Some((_, state_json)) => Ok(json!({
-                    "thread_id": thread_id.to_string(),
-                    "tenant_id": tenant_id.to_string(),
-                    "state": state_json,
-                })),
+                Some((_, state_json)) => {
+                    // The inspection view (`.1.3.1`): expiry is derived at read —
+                    // `invited` entries past their `expires_at` read as `expired`,
+                    // exactly like the channel's lease presence. The stored
+                    // projection is untouched.
+                    let stored: threads::ThreadProjection = serde_json::from_value(state_json)
+                        .map_err(|e| {
+                            ControlApiError::internal_with_log(format!(
+                                "corrupt stored thread state: {e}"
+                            ))
+                        })?;
+                    let viewed = threads::derived_view(stored);
+                    Ok(json!({
+                        "thread_id": thread_id.to_string(),
+                        "tenant_id": tenant_id.to_string(),
+                        "state": serde_json::to_value(&viewed)
+                            .expect("the projection serializes"),
+                    }))
+                }
                 None => Err(ControlApiError::scope_hidden()),
             }
         },

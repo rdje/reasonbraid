@@ -33,9 +33,10 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use reasonbraid_core::{
-    AgentRoleId, BudgetDimensions, EventId, ParticipationState, ParticipationTransition, TenantId,
-    ThreadId, ThreadState, ThreadTransition, TransitionError,
+    AgentRoleId, BudgetDimensions, EventId, ParticipationState, TenantId, ThreadId, ThreadState,
+    ThreadTransition, TransitionError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -51,6 +52,9 @@ pub const OP_CHALLENGE: &str = "thread.challenge";
 pub const OP_REVISE: &str = "thread.revise";
 pub const OP_CLOSE: &str = "thread.close";
 pub const OP_CANCEL: &str = "thread.cancel";
+pub const OP_ACCEPT_INVITATION: &str = "thread.accept_invitation";
+pub const OP_DECLINE_INVITATION: &str = "thread.decline_invitation";
+pub const OP_REMOVE_PARTICIPANT: &str = "thread.remove_participant";
 
 /// The event types committed for the operations above.
 pub const EVENT_CREATED: &str = "thread.created";
@@ -60,6 +64,9 @@ pub const EVENT_CHALLENGED: &str = "thread.challenge_posted";
 pub const EVENT_REVISED: &str = "thread.revision_submitted";
 pub const EVENT_CLOSED: &str = "thread.closed";
 pub const EVENT_CANCELLED: &str = "thread.cancelled";
+pub const EVENT_INVITATION_ACCEPTED: &str = "thread.invitation_accepted";
+pub const EVENT_INVITATION_DECLINED: &str = "thread.invitation_declined";
+pub const EVENT_PARTICIPANT_REMOVED: &str = "thread.participant_removed";
 
 /// The thread-work kinds an inbox payload carries (`PHASE-0.6.2`): an invitation
 /// dispatches a `contribute` work item to the invited role's node; a challenge of a
@@ -177,11 +184,43 @@ pub struct BudgetSpec {
 }
 
 /// `thread.invite` body: the target tenant + thread scope and the invited agent role.
+/// `expires_in_seconds` is the typed optional invitation TTL (`.1.3.1`); `None` =
+/// the invitation never expires — expiry is DERIVED from the recorded `expires_at`
+/// at read/accept time, never swept.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InviteBody {
     pub tenant_id: TenantId,
     pub agent_role: String,
+    #[serde(default)]
+    pub expires_in_seconds: Option<i64>,
+}
+
+/// `thread.accept_invitation` body (`.1.3.1`): the actor IS the invited role —
+/// the invitation (a pending record naming this actor) is the acceptance
+/// capability; the scope field rides like every other command body.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptInvitationBody {
+    pub tenant_id: TenantId,
+}
+
+/// `thread.decline_invitation` body (`.1.3.1`): same shape as the accept — the
+/// invited role refuses the pending offer.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeclineInvitationBody {
+    pub tenant_id: TenantId,
+}
+
+/// `thread.remove_participant` body (`.1.3.1`): a tenant_admin revokes one
+/// participant (invited or accepted) — `revoked` in the projection, the event
+/// names the removed principal.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveParticipantBody {
+    pub tenant_id: TenantId,
+    pub participant: String,
 }
 
 /// `thread.contribute` body: the scope and the contribution content.
@@ -230,10 +269,21 @@ pub struct CancelBody {
 
 // ── Projection ────────────────────────────────────────────────────────────────────
 
+/// The recorded offer facts for one invitation (`.1.3.1`): when it was offered and
+/// when it expires. The participants map carries the lifecycle STATE (the core
+/// machine); this map carries the TIME facts — and expiry is DERIVED from
+/// `expires_at` (an `invited` entry whose `expires_at` passed reads as `expired`,
+/// exactly like the channel's lease presence: no sweeper, no stored flag).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InvitationMeta {
+    pub invited_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 /// The minimal thread projection stored in `aggregate_state.state`. It keeps only
 /// what validation and inspection need; content lives in the event log. The
-/// `PHASE-1.1.3` fields are additive and `#[serde(default)]`-ed, so a projection
-/// written before them still parses.
+/// `PHASE-1.1.3` and `.1.3.1` fields are additive and `#[serde(default)]`-ed, so a
+/// projection written before them still parses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThreadProjection {
@@ -259,6 +309,9 @@ pub struct ThreadProjection {
     pub participant_rules: ParticipantRules,
     #[serde(default)]
     pub cancel_reason: Option<String>,
+    /// Role wire id → the recorded offer facts (`.1.3.1`; additive).
+    #[serde(default)]
+    pub invitations: BTreeMap<String, InvitationMeta>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -279,8 +332,16 @@ pub enum ThreadError {
     ThreadNotFound,
     /// The actor has a grant but is not a participant of this thread.
     NotAParticipant { principal: String },
-    /// The invite names a role that already has a participation record.
+    /// The invite names a role that already has an OPEN membership (invited or
+    /// accepted); a terminal record (declined/expired/left/revoked) may be re-invited.
     AlreadyParticipant { principal: String },
+    /// The actor is invited but has not accepted yet — explicit participants first
+    /// (`.1.3.1`): `thread.accept_invitation` before acting.
+    InvitationPending { principal: String },
+    /// The actor has no pending invitation to accept or decline.
+    NoPendingInvitation { principal: String },
+    /// The pending invitation's `expires_at` has passed (derived, `.1.3.1`).
+    InvitationExpired { principal: String },
     /// The stored projection does not parse (the database was modified outside the
     /// supported surface — the "no database surgery" acceptance's failure mode).
     CorruptState(String),
@@ -301,8 +362,23 @@ impl std::fmt::Display for ThreadError {
             ThreadError::AlreadyParticipant { principal } => {
                 write!(
                     f,
-                    "principal `{principal}` already participates in this thread"
+                    "principal `{principal}` already has an open membership in this thread"
                 )
+            }
+            ThreadError::InvitationPending { principal } => {
+                write!(
+                    f,
+                    "principal `{principal}` is invited but has not accepted yet —                      thread.accept_invitation first"
+                )
+            }
+            ThreadError::NoPendingInvitation { principal } => {
+                write!(
+                    f,
+                    "principal `{principal}` has no pending invitation in this thread"
+                )
+            }
+            ThreadError::InvitationExpired { principal } => {
+                write!(f, "principal `{principal}`'s invitation has expired")
             }
             ThreadError::CorruptState(detail) => {
                 write!(f, "the stored thread state is corrupt: {detail}")
@@ -369,6 +445,7 @@ pub fn prepare_create(
     let budget = ceiling_for(body.budget.as_ref());
     let ceiling_id = format!("ceil_{thread_id}");
     let projection = ThreadProjection {
+        invitations: BTreeMap::new(),
         schema: 1,
         thread_id: *thread_id,
         subject: body.subject.clone(),
@@ -423,31 +500,48 @@ fn require_open(projection: &ThreadProjection, verb: &'static str) -> Result<(),
     Ok(())
 }
 
-/// The actor may act when it is an `invited` or `accepted` participant (an `invited`
-/// role becomes `accepted` on its first contribution).
-fn ensure_participant(
-    projection: &mut ThreadProjection,
-    principal: &str,
-    accept_invited: bool,
-) -> Result<(), ThreadError> {
-    match projection.participants.get_mut(principal) {
+/// The actor may act only as an ACCEPTED participant (`.1.3.1`: explicit
+/// participants first — the auto-accept on first contribution is gone). An
+/// invited-but-unaccepted role gets the typed `invitation_pending` refusal that
+/// names the accept verb.
+fn ensure_participant(projection: &ThreadProjection, principal: &str) -> Result<(), ThreadError> {
+    match projection.participants.get(principal) {
         None => Err(ThreadError::NotAParticipant {
             principal: principal.to_string(),
         }),
-        Some(state) => match *state {
-            ParticipationState::Invited if accept_invited => {
-                // Dev rule: the first contribution is the accept.
-                *state = ParticipationState::Invited
-                    .apply(ParticipationTransition::Accept)
-                    .expect("invited accepts deterministically");
-                Ok(())
-            }
-            ParticipationState::Invited | ParticipationState::Accepted => Ok(()),
-            _ => Err(ThreadError::NotAParticipant {
-                principal: principal.to_string(),
-            }),
-        },
+        Some(ParticipationState::Accepted) => Ok(()),
+        Some(ParticipationState::Invited) => Err(ThreadError::InvitationPending {
+            principal: principal.to_string(),
+        }),
+        Some(_) => Err(ThreadError::NotAParticipant {
+            principal: principal.to_string(),
+        }),
     }
+}
+
+/// The derived expiry predicate (`.1.3.1`): a pending invitation whose recorded
+/// `expires_at` has passed IS expired — a time fact, like the channel's lease
+/// presence. No sweeper, no stored `expired` flag.
+fn invitation_is_expired(meta: &InvitationMeta, now: DateTime<Utc>) -> bool {
+    meta.expires_at.is_some_and(|at| at <= now)
+}
+
+/// The inspection view of a projection: `invited` entries whose invitation has
+/// expired read as `expired` (derived at read time; the stored projection is
+/// untouched — the next accept/decline enforces the same predicate).
+pub fn derived_view(mut projection: ThreadProjection) -> ThreadProjection {
+    let now = Utc::now();
+    for (role, state) in projection.participants.iter_mut() {
+        if *state == ParticipationState::Invited
+            && projection
+                .invitations
+                .get(role)
+                .is_some_and(|m| invitation_is_expired(m, now))
+        {
+            *state = ParticipationState::Expired;
+        }
+    }
+    projection
 }
 
 /// The event type of one event in this thread, if it exists (the challenge/revise
@@ -571,17 +665,31 @@ where
                     body.agent_role
                 ))
             })?;
-            if projection
-                .participants
-                .contains_key(body.agent_role.as_str())
-            {
-                return Err(ThreadError::AlreadyParticipant {
-                    principal: body.agent_role.clone(),
-                });
+            // An OPEN membership (invited or accepted) refuses a second offer; a
+            // terminal record (declined/expired/left/revoked) may be re-invited —
+            // the new offer overwrites the meta (`.1.3.1`).
+            match projection.participants.get(body.agent_role.as_str()) {
+                Some(ParticipationState::Invited) | Some(ParticipationState::Accepted) => {
+                    return Err(ThreadError::AlreadyParticipant {
+                        principal: body.agent_role.clone(),
+                    });
+                }
+                _ => {}
             }
+            let now = Utc::now();
+            let expires_at = body
+                .expires_in_seconds
+                .map(|secs| now + ChronoDuration::seconds(secs));
             projection
                 .participants
                 .insert(body.agent_role.clone(), ParticipationState::Invited);
+            projection.invitations.insert(
+                body.agent_role.clone(),
+                InvitationMeta {
+                    invited_at: now,
+                    expires_at,
+                },
+            );
             (
                 EVENT_INVITED,
                 json!({
@@ -590,15 +698,122 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "agent_role": role.to_string(),
+                    "invited_at": now.to_rfc3339(),
+                    "expires_at": expires_at.map(|at| at.to_rfc3339()),
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
+        }
+        OP_ACCEPT_INVITATION => {
+            let body: AcceptInvitationBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            let _ = body;
+            require_open(&projection, "accept_invitation")?;
+            if !projection.participants.contains_key(principal) {
+                return Err(ThreadError::NoPendingInvitation {
+                    principal: principal.to_string(),
+                });
+            }
+            if projection.participants[principal] != ParticipationState::Invited {
+                return Err(ThreadError::NoPendingInvitation {
+                    principal: principal.to_string(),
+                });
+            }
+            // Expiry is DERIVED: a pending offer past its `expires_at` refuses
+            // here (and reads as `expired` in the inspection view).
+            if let Some(meta) = projection.invitations.get(principal) {
+                if invitation_is_expired(meta, Utc::now()) {
+                    return Err(ThreadError::InvitationExpired {
+                        principal: principal.to_string(),
+                    });
+                }
+            }
+            projection
+                .participants
+                .insert(principal.to_string(), ParticipationState::Accepted);
+            (
+                EVENT_INVITATION_ACCEPTED,
+                json!({
+                    "operation": OP_ACCEPT_INVITATION,
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "actor_principal_id": principal,
+                    "agent_role": principal,
+                }),
+                serde_json::to_value(&projection).expect("projection serializes"),
+            )
+        }
+        OP_DECLINE_INVITATION => {
+            let body: DeclineInvitationBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            let _ = body;
+            require_open(&projection, "decline_invitation")?;
+            if !projection.participants.contains_key(principal) {
+                return Err(ThreadError::NoPendingInvitation {
+                    principal: principal.to_string(),
+                });
+            }
+            if projection.participants[principal] != ParticipationState::Invited {
+                return Err(ThreadError::NoPendingInvitation {
+                    principal: principal.to_string(),
+                });
+            }
+            if let Some(meta) = projection.invitations.get(principal) {
+                if invitation_is_expired(meta, Utc::now()) {
+                    return Err(ThreadError::InvitationExpired {
+                        principal: principal.to_string(),
+                    });
+                }
+            }
+            projection
+                .participants
+                .insert(principal.to_string(), ParticipationState::Declined);
+            (
+                EVENT_INVITATION_DECLINED,
+                json!({
+                    "operation": OP_DECLINE_INVITATION,
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "actor_principal_id": principal,
+                    "agent_role": principal,
+                }),
+                serde_json::to_value(&projection).expect("projection serializes"),
+            )
+        }
+        OP_REMOVE_PARTICIPANT => {
+            let body: RemoveParticipantBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            require_open(&projection, "remove_participant")?;
+            match projection.participants.get(body.participant.as_str()) {
+                Some(ParticipationState::Invited) | Some(ParticipationState::Accepted) => {
+                    projection
+                        .participants
+                        .insert(body.participant.clone(), ParticipationState::Revoked);
+                    (
+                        EVENT_PARTICIPANT_REMOVED,
+                        json!({
+                            "operation": OP_REMOVE_PARTICIPANT,
+                            "thread_id": thread_id.to_string(),
+                            "tenant_id": tenant_id.to_string(),
+                            "actor_principal_id": principal,
+                            "removed_principal": body.participant,
+                        }),
+                        serde_json::to_value(&projection).expect("projection serializes"),
+                    )
+                }
+                _ => {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "principal `{}` is not an invited or accepted participant",
+                        body.participant
+                    )));
+                }
+            }
         }
         OP_CONTRIBUTE => {
             let body: ContributeBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
             require_open(&projection, "contribute")?;
-            ensure_participant(&mut projection, principal, true)?;
+            ensure_participant(&projection, principal)?;
             projection.contributions += 1;
             (
                 EVENT_CONTRIBUTED,
@@ -617,7 +832,7 @@ where
             let body: ChallengeBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
             require_open(&projection, "challenge")?;
-            ensure_participant(&mut projection, principal, false)?;
+            ensure_participant(&projection, principal)?;
             match event_type_in_thread(&mut *tx, tenant_id, thread_id, &body.target_event_id)
                 .await
                 .map_err(|e| ThreadError::CorruptState(e.to_string()))?
@@ -655,7 +870,7 @@ where
             let body: ReviseBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
             require_open(&projection, "revise")?;
-            ensure_participant(&mut projection, principal, false)?;
+            ensure_participant(&projection, principal)?;
             match event_type_in_thread(&mut *tx, tenant_id, thread_id, &body.target_event_id)
                 .await
                 .map_err(|e| ThreadError::CorruptState(e.to_string()))?

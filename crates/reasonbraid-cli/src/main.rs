@@ -230,6 +230,47 @@ enum ThreadCommand {
         #[arg(long)]
         json: bool,
     },
+
+    /// Accept this role's PENDING invitation (`.1.3.1`): the actor is the
+    /// invited role — accepting is the transaction that dispatches the work.
+    Accept {
+        #[arg(long)]
+        thread: String,
+        /// The acting principal (the invited role).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Decline this role's PENDING invitation (`.1.3.1`).
+    Decline {
+        #[arg(long)]
+        thread: String,
+        /// The acting principal (the invited role).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove one participant (tenant_admin; `.1.3.1`) — the role is `revoked`.
+    RemoveParticipant {
+        #[arg(long)]
+        thread: String,
+        /// The participant to remove (a rol_…/hpr_… wire id).
+        #[arg(long)]
+        participant: String,
+        /// The acting principal (a tenant admin).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Cancel a thread — the abandonment terminal, with a reason (distinct from close).
     Cancel {
         #[arg(long)]
@@ -483,6 +524,70 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.cancel",
                     body: json!({ "reason": reason }),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::Accept {
+            thread,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.accept_invitation",
+                    body: json!({}),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::Decline {
+            thread,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.decline_invitation",
+                    body: json!({}),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::RemoveParticipant {
+            thread,
+            participant,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.remove_participant",
+                    body: json!({ "participant": participant }),
                     json_out: json,
                 },
             )

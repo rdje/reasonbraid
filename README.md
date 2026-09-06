@@ -22,6 +22,7 @@ git config core.hooksPath .githooks
 make check    # fmt, clippy -D warnings, tests
 make gate     # doctrine enforcer
 make book     # mdBook (requires mdbook)
+make dev      # one-command dev environment (ephemeral PG + rb-server)
 ```
 
 ## Where to read more

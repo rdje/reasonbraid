@@ -1,7 +1,7 @@
 # Makefile — standard commands. `make gate` = the doctrine enforcer; `make check` = Rust.
 SHELL := /usr/bin/env bash
 
-.PHONY: help gate check fmt clippy test deny secret-scan book demo hooks bootstrap update-scaffold
+.PHONY: help gate check fmt clippy test deny secret-scan book demo dev hooks bootstrap update-scaffold
 
 help:
 	@echo "make gate            - run the doctrine enforcer (scripts/check_doctrines.sh)"
@@ -13,6 +13,7 @@ help:
 	@echo "make secret-scan     - gitleaks detect (secret scan; requires gitleaks)"
 	@echo "make book            - build the mdBook (requires mdbook)"
 	@echo "make demo            - the two-host crash/reconnect demo (ephemeral PG + evidence bundle)"
+	@echo "make dev             - one-command dev environment: ephemeral PG + rb-server (Ctrl-C cleans up)"
 	@echo "make hooks           - install the git hooks (core.hooksPath=.githooks)"
 	@echo "make bootstrap       - first-time project bootstrap"
 	@echo "make update-scaffold - pull the latest ReasonBraid spine (set URL=<reasonbraid-repo>)"
@@ -49,6 +50,12 @@ book:
 # CLI e2e first; the evidence lands under target/demo/<run-id>/.
 demo:
 	RB_DEMO=1 bash scripts/run_pg_tests.sh
+
+# The one-command development environment (PHASE-1.7.1): ephemeral on-volume
+# PostgreSQL + rb-server in the foreground; Ctrl-C tears everything down.
+# `bash scripts/dev.sh --check` is the self-verification beat.
+dev:
+	scripts/dev.sh
 
 hooks:
 	git config core.hooksPath .githooks

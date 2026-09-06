@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `make dev`: the one-command development environment (`PHASE-1.7.1`)
+
+- `scripts/dev.sh` + the `make dev` target: one command boots an ephemeral on-volume PostgreSQL (§13 shape — `target/dev-ephemeral.*`, gitignored, removed on exit), starts `rb-server` in the foreground (migrations run on startup), and prints the console URL + the CLI hint. Ctrl-C stops everything with a residue census. An interactive dev loop — not the test harness.
+- `bash scripts/dev.sh --check` is the permanent self-verification beat: the console serves at `/`, a real `rb` enroll + `inspect threads --as devcheck` round-trips through the control API, and the residue census reports 0. Its first three runs caught three authoring slips (the inspect verb shape, the dev-profile `--as` requirement, census-before-teardown ordering) — all fixed, beat green (`dev-check: OK`, rc=0).
+- The book's introduction gains the Run-it section; the README quick start gains the `make dev` line (48 lines / 1,851 bytes — within the README caps). Full live guard green: all twelve server suites + CLI e2e + the two-host demo rc=0; `make gate` 13/13; `make book` builds. Frontier → `.1.7.2`.
+
 ## 2026-09-06 — `.1.7` decomposed at the census seams: dev loop + packaged LAN (`PHASE-1.7`)
 
 - Gap census first: **no one-command dev environment** (`make dev`/dev script — none; the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`), **no packaging** (no `deploy/` dir, no release build target, no install path — the demo builds DEBUG only), and **LAN surfaces partial + unexercised** — `rb-server --host/--port` binds any address, the node's `--server` points cross-host, migrations + UI embed at compile time (one self-contained binary), and the demo already carries a real ssh two-host mode — but nothing runs release binaries and no server-side runbook exists.

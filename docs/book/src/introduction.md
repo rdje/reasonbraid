@@ -25,3 +25,20 @@ code: when a slice changes user-visible behavior this book already covers, the
 same commit updates the chapter (`COMMIT.md`).
 
 Build locally with `make book` (requires `mdbook`).
+
+## Run it
+
+```bash
+make dev      # one-command dev environment: ephemeral on-volume PostgreSQL +
+              # rb-server; the console serves at http://127.0.0.1:4310/
+make demo     # the full two-host crash/reconnect demonstration (ephemeral
+              # PostgreSQL, all suites, the evidence bundle)
+make book     # build this book
+```
+
+`make dev` boots an ephemeral PostgreSQL cluster under `target/` (same-volume,
+gitignored, removed on exit — §13), applies the migrations, and starts
+`rb-server` in the foreground; Ctrl-C stops the server and deletes the
+cluster. The CLI is `target/debug/rb` (`--server http://127.0.0.1:4310`, or
+export `REASONBRAID_SERVER`). `bash scripts/dev.sh --check` is the
+self-verification beat for the dev loop itself.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-1.7.1: a dev loop is the test harness's boot machinery with a different lifecycle
+
+- **Reuse the boot, change the lifecycle.** The ephemeral-PG machinery (initdb → on-volume `$ROOT/target/*.XXXXXX` → `pg_ctl` → createdb → trap cleanup, the `PHASE-1-MAINT-1` §13 shape) was authored for one-shot verification; the dev loop needs the same boot with a foreground server and interactive teardown. `scripts/dev.sh` copies the shape verbatim instead of inventing a second PG boot path.
+- **A self-verification beat earns its keep before the first green run.** `dev.sh --check`'s first three runs caught: the list verb is `inspect threads` (not `threads`), the dev-profile CLI requires `--as <principal>` (the suppressed-stderr blind spot — the manual probe with stderr visible is the fix), and a residue census must observe the CLEANED state (teardown before the census, not after the EXIT trap).
+- **A census over the filesystem is only true after the teardown it audits** — the trap's cleanup runs at exit, so the check tears down explicitly and the trap's re-run is a no-op.
+- Promoted: declined (the §13 ephemeral-PG shape and the CLI dev-profile `--as` contract are already recorded facts; no cross-cutting decision). **Frontier `PHASE-1.7.2` (release packaging + LAN runbook).**
+
 ## _(2026-09-06)_ — PHASE-1.6.2: the shell's own tests enforce the page's honesty
 
 - **A static page's safety properties are greppable — so grep them, in a test.** The offline contract test asserts what the page MUST be: it references only the documented GET surfaces, it names no write verb, and it never assembles HTML from data. The first run caught MY OWN app.js naming the forbidden API in a comment — reworded, so the assertion is honest (the page does not even name it).

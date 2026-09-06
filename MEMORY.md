@@ -16,9 +16,11 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.7.1` (the one-command dev
-  environment — `.1.7` DECOMPOSED at the census seams: `.1.7.1` `scripts/dev.sh`
-  + `make dev` → `.1.7.2` release packaging + the `deploy/` LAN runbook).
+- **Active tree:** `PHASE-1` → frontier `.1.7.2` (release packaging + the
+  `deploy/` LAN runbook). **`.1.7.1` done** — `make dev` is the one-command
+  dev environment (`scripts/dev.sh`: ephemeral on-volume PG + foreground
+  server + `--check` self-verification beat). `.1.7` decomposed:
+  `.1.7.1` dev loop → `.1.7.2` packaged LAN story.
   **`.1.6` COMPLETE** (backlog 18) —
   `.1.6.1` budget read surface (`docs/decisions/2026-09-06_budget-read-surface.md`),
   `.1.6.2` the embedded static shell at `/` (read-only, text-safe;
@@ -28,10 +30,10 @@
   `1.98.0` (`PHASE-1-MAINT-3`). `.1.5` COMPLETE (backlogs 9–17 done); all
   three Phase-1 defect leaves closed (`MAINT-1` §13, `MAINT-2` drain race,
   `MAINT-3` toolchain pin); `.1.4` live-qualified.
-- **Next action:** execute `.1.7.1` (the one-command dev environment:
-  `scripts/dev.sh` + `make dev` — ephemeral on-volume PG, foreground server,
-  residue census), then `.1.7.2` (release packaging + the LAN runbook) —
-  after that `.1.8` (the G1–G2 exit + Demonstration A).
+- **Next action:** execute `.1.7.2` (release packaging + the LAN runbook:
+  `make release`, `deploy/`, the book's `deployment` chapter, the
+  release-built demo proof) — after that `.1.8` (the G1–G2 exit +
+  Demonstration A).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).
@@ -42,5 +44,7 @@
   Claude Code) for env-gated real runs.
 - **Blockers:** none. Director-owned open items: license choice (`Cargo.toml` says
   `MIT OR Apache-2.0`, no `LICENSE` file); ADR-001 name clearance (repo stays private).
-- **Dating anomaly (flagged):** host/git clock = 2026-09-06; some records from the previous
-  session are dated 2026-09-07 inside 2026-09-06 commits. New records use the machine date.
+- **Dating anomaly (flagged):** the machine clock crossed midnight mid-session
+  (`2026-09-06` → `2026-09-07`); new records use the machine date. The earlier
+  anomaly stands historically: some previous-session records are dated
+  2026-09-07 inside 2026-09-06 commits.

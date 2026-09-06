@@ -497,7 +497,7 @@ conversation without binding-governance claims.
     package seam; each contract is independent — no incoherent interim).
 
   - ID: `PHASE-1.7.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the one-command development environment — `scripts/dev.sh` + `make
       dev`: boots an ephemeral on-volume PostgreSQL (the run_pg_tests.sh
       pattern: `$ROOT/target/`, gitignored, per-run unique, trap-cleaned —
@@ -510,6 +510,10 @@ conversation without binding-governance claims.
     Acceptance: one command reaches a serving system (probe `/` + a real CLI
       call through the control API); teardown leaves no residue (census); the
       full guard set stays green.
+    Done (`2026-09-07`): the dev loop + the `--check` beat landed; the
+      acceptance checklist below records the evidence (the beat's first three
+      runs caught the verb shape, the `--as` requirement, and the
+      census-before-teardown ordering).
 
   - ID: `PHASE-1.7.2`
     Status: `proposed`
@@ -539,8 +543,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.7.1` | `proposed` | **`.1.7` is DECOMPOSED** (census: no dev env, no packaging, LAN surfaces partial + unexercised) — the one-command dev loop executes first (it is the day-to-day run path the packaged story documents) |
-| 2 | `PHASE-1.7.2` | `proposed` | release packaging + the `deploy/` runbook + the release-built demo proof — then `.1.8` |
+| 1 | `PHASE-1.7.2` | `proposed` | **`.1.7.1` done** — `make dev` is the one-command dev loop (the `--check` beat proves boot → serve → call → clean teardown); the packaged LAN story executes next |
 
 ## Changelog
 
@@ -572,6 +575,8 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.6.2` done — the static shell: `crates/reasonbraid-server/web/{index.html,app.js,style.css}` embedded at compile time (`include_str!`) and served by a state-free `ui_router` at `/`, `/app.js`, `/style.css` (merged into the listener — one binary, no runtime paths, no build pipeline); the page is a READ-ONLY, text-safe client of the existing GET surfaces (dev-profile header + tenant, same-origin — every gate/denial/audit row applies exactly as to the CLI); the offline contract test enforces the page's honesty mechanically (only the documented GET paths, no write verb, no HTML assembly from data — its first run caught the page's OWN comment naming the forbidden API, reworded); the book gains the `web-ui` chapter; decision record `docs/decisions/2026-09-06_ui-embedding.md`; frontier → `.1.6.3`.
 - `2026-09-06`: `.1.6.3` done — the evidence leg: the demo's section-10 beat asserts the shell is served at `/` by the SAME binary that owns the API, that `app.js` references only the documented read surfaces and no write verb (curl as the browser stand-in — no browser needed), and that the page's live same-origin fetch with the dev header returns the demo's thread + its budget ledger (6 new checks, all PASS — the first run also caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); the bundle's summary and the book's two-host-demo chapter carry the beat; **`.1.6` is COMPLETE** (backlog 18) — frontier → `.1.7`.
 - `2026-09-06`: `.1.7` decomposed (gap census first: no `make dev`/dev script — the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`; no `deploy/`, no release build target, no install path — the demo builds DEBUG only; the LAN surfaces exist — `rb-server --host/--port`, the node's cross-host `--server`, compile-time-embedded migrations + UI — and the demo already carries a real ssh two-host mode — but nothing runs the release binaries and no server-side runbook exists) into `.1.7.1` (the one-command dev loop: `scripts/dev.sh` + `make dev`, ephemeral on-volume PG, foreground server, residue census) and `.1.7.2` (release packaging: `make release` + the `deploy/` runbook + the book's `deployment` chapter + the release-built demo proof); frontier → `.1.7.1`.
+- `2026-09-06`: `.1.7.1` executing — `scripts/dev.sh` + the `make dev` target landed (the boot reuses the test harness's §13 ephemeral-PG shape; the difference from `run_pg_tests.sh` is the lifecycle — foreground server + interactive teardown — not the boot); the `--check` self-verification beat caught three authoring slips before its first green run (the inspect verb is `inspect threads`, the dev-profile CLI requires `--as <principal>`, and the residue census must observe the CLEANED state); the book's introduction gains the Run-it section, the README quick start gains the `make dev` line.
+- `2026-09-07`: `.1.7.1` done — `make dev` is the one-command development environment: `scripts/dev.sh` boots an ephemeral on-volume PostgreSQL (§13 shape), `rb-server` in the foreground (migrations on startup), console URL + CLI hint, Ctrl-C teardown with a residue census; `dev.sh --check` is the permanent self-verification beat (console at `/` + a real CLI enroll/inspect round-trip + residue 0 — `dev-check: OK`, rc=0); the full live guard green (12 suites + e2e + demo rc=0, `target/dev1_guard.log`); the book's Run-it section + the README quick start carry the path; frontier → `.1.7.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1479,6 +1484,54 @@ The CODE change owned by this leaf: `scripts/demo_two_host.sh` (matches `\.sh$` 
   discipline — `promotion: declined (the .1.6.2 decision record already owns the
   no-browser contract-check lesson; this leaf adds no cross-cutting fact)`).
 
+## Acceptance Checklist (PHASE-1.7.1)
+
+The CODE change owned by this leaf: `scripts/dev.sh` (new — matches `\.sh$` in
+`.doctrine/code_paths.txt`) and `Makefile` (the `dev` target + help/PHONY lines —
+matches `(^|/)Makefile$`).
+
+- [x] **REPRODUCE / ISSUE** — the `.1.7` census: no dev entry point exists —
+  `git show HEAD:Makefile | grep -n "dev:"` → no matches before this leaf; the
+  only run paths are `make demo` (verification, not a dev loop) and a manual
+  ladder, while the ephemeral-PG boot machinery sits test-only inside
+  `scripts/run_pg_tests.sh` (its §13 shape: `git log -S 'pg-ephemeral'
+  --oneline -- scripts/run_pg_tests.sh` → `REASONBRAID-PHASE1-0013`,
+  `PHASE-1-MAINT-1`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the PG boot was authored for one-shot
+  trap-scoped verification, not an interactive loop; the dev loop needs the
+  SAME boot with a different lifecycle (a foreground server the operator
+  stops, then the teardown). The fix point is a new script reusing the §13
+  shape verbatim (initdb → on-volume `$ROOT/target/dev-ephemeral.*` →
+  `pg_ctl` → createdb; trap cleanup) plus a Makefile target — no second PG
+  boot path, no new machinery.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no `make dev`
+  rule (the grep above). After: `bash scripts/dev.sh --check` →
+  `dev-check: OK` rc=0 — the console serves at `/` (the `.1.6.2` shell
+  marker), a REAL `rb enroll` + `rb inspect threads --as devcheck` round-trip
+  through the control API, and the residue census reports 0
+  `dev-ephemeral.*` dirs after teardown. The beat's first three runs caught
+  three authoring slips before green: the list verb is `inspect threads` (not
+  `threads`), the dev-profile CLI requires `--as <principal>` (stderr shown by
+  a manual probe — `error: --as <name-or-id> is required`), and the residue
+  census must observe the CLEANED state (explicit teardown before the census,
+  not after the EXIT trap).
+- [x] **NO REGRESSION** — `bash -n scripts/dev.sh` → clean; `bash
+  scripts/run_pg_tests.sh` → all twelve live server suites green (`test
+  result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) +
+  CLI e2e `test result: ok. 2 passed` + the two-host demo
+  `ALL acceptance checks passed` (`rc=0`; log `target/dev1_guard.log`);
+  `make gate` → 13/13 at commit; `make book` builds (the new Run-it section).
+  No Rust changed — the live guard + gate + book are the selected set (§16).
+- [x] **FIX** — `scripts/dev.sh` (the interactive loop: ephemeral on-volume
+  PG, foreground `rb-server` with migrations on startup, console URL + CLI
+  hint, Ctrl-C teardown with residue census; the `--check` self-verification
+  beat); `Makefile` (`dev` target + help line); `docs/book/src/introduction.md`
+  (the Run-it section); `README.md` (quick start gains the `make dev` line —
+  48 lines / ~1.8 KB, within the 60/2400 caps).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (`promotion: declined (the §13 ephemeral-PG shape and the CLI dev-profile --as contract are already recorded facts — this leaf adds no cross-cutting decision)`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the
+  book's introduction, README — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1502,6 +1555,7 @@ The CODE change owned by this leaf: `scripts/demo_two_host.sh` (matches `\.sh$` 
 | `2026-09-06` | `PHASE-1.6.1` | `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — under the pinned 1.98.0; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the budget read surface landed (`GET /v1/threads/{id}/budget` — read-only ledger pass-through, inspect-gated; `rb inspect budget`); the suite's first run proved the surface right and the TEST wrong (engine-detail reason), the e2e's first run caught the positional slip; the leaf's verification uncovered the toolchain drift → `PHASE-1-MAINT-3` closed first |
 | `2026-09-06` | `PHASE-1.6.2` | `cargo test -p reasonbraid-server --lib` → `test result: ok. 7 passed` (the unit suite grew 5→7: the page-contract test + the live-listener serving test); `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — the demo runs the REAL merged binary (the third router arm changes nothing); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the embedded static shell landed (`web/…` → `include_str!` → state-free `ui_router` at `/`); the contract test's first run caught the page's own comment naming the forbidden HTML-assembly API — reworded, rerun green; the `web-ui` book chapter documents the surface |
 | `2026-09-06` | `PHASE-1.6.3` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (24 PASS — 18 + the 6 console checks, `rc=0` both runs; the first run caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); `make gate` → 13/13; `make book` builds | the demo's section-10 console beat landed (shell served at `/`, `app.js` = the documented surfaces only, no write verb, the live same-origin fetches return the demo's thread + budget); **`.1.6` complete** (backlog 18) — frontier → `.1.7` |
+| `2026-09-07` | `PHASE-1.7.1` | `bash -n scripts/dev.sh` → clean; `bash scripts/dev.sh --check` → `dev-check: OK` rc=0 (console at `/`, real `rb enroll` + `inspect threads --as devcheck`, residue census 0 — the beat's first three runs caught the verb shape, the `--as` requirement, and the census-before-teardown ordering); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (`rc=0`, `target/dev1_guard.log`); `make gate` → 13/13; `make book` builds | `make dev` is the one-command development environment (ephemeral on-volume PG, foreground server, residue census); the book's Run-it section + the README quick start carry the path — frontier → `.1.7.2` |
 
 ## Commit Log
 
@@ -1526,3 +1580,5 @@ The CODE change owned by this leaf: `scripts/demo_two_host.sh` (matches `\.sh$` 
 | `PHASE-1.6.1` | `REASONBRAID-PHASE1-0025` | the budget read surface: `GET /v1/threads/{id}/budget` (read-only ledger pass-through, inspect-gated) + `rb inspect budget` + command_api/e2e legs + decision record |
 | `PHASE-1.6.2` | `REASONBRAID-PHASE1-0026` | the embedded static shell: `web/{index.html,app.js,style.css}` → `ui_router` at `/` (read-only, text-safe, contract-tested) + the `web-ui` book chapter + decision record |
 | `PHASE-1.6.3` | `REASONBRAID-PHASE1-0027` | the demo's console beat (section 10: 6 checks + bundle evidence + the book's step 11); **`.1.6` complete** — backlog 18 done |
+| `PHASE-1.7` | `REASONBRAID-PHASE1-0028` | decomposition at the census seams: `.1.7.1` the one-command dev loop → `.1.7.2` release packaging + the LAN runbook; tree + lockstep docs only |
+| `PHASE-1.7.1` | `REASONBRAID-PHASE1-0029` | `scripts/dev.sh` + the `make dev` target (ephemeral on-volume PG, foreground server, `--check` beat) + the book's Run-it section + the README quick-start line |

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP1 typed errors + reason-code registry: complete §9.8, unknown codes preserved
+
+- `ROADMAP.md` §9.8 lists reason codes but not how to treat an unknown one. The two naive shapes both fail: a closed enum *rejects* the future (deserialization error), a bare `String` *loses* the typing of the known set. The fix is a two-layer `ReasonCode` — `Known(KnownReasonCode)` + `Unknown(String)` with `#[serde(untagged)]` — which gets both properties at once.
+- `KnownReasonCode` is the *complete* 20-code §9.8 registry (not a demo subset): a "stable registry" re-carved every leaf isn't stable, and client/server must be able to name any §9.8 code consistently. Forward-compat is `Unknown`'s job, not a reason to trim the list.
+- `DomainError` carries code + tri-state `Retryability` (`no`/`yes`/`requires_authorization`) + safe `message` + optional `correlation_id` + filtered `details`; secrets/policy internals/cross-tenant existence stay off the type.
+- `From<TransitionError> for DomainError` maps `.1.3`'s deterministic rejection to `invalid_transition`, proving the registry classifies real errors rather than sitting unused.
+- Acceptance tests: every known code round-trips to its snake_case name; `future_semantic_reason` deserializes to `Unknown` and re-serializes verbatim; a near-miss (`invalid_transition_typo`) is preserved, not misclassified.
+- Promoted to `docs/decisions/2026-09-06_reason-codes.md` (`answers:` present). **WP1 complete.**
+
 ## _(2026-09-06)_ — WP1 state machines: minimal lifecycles, deterministic fallible `apply`
 
 - `ROADMAP.md` §8.4 lists lifecycle *states* but not *edges*; §8.6 requires "a deterministic aggregate may accept and translate to an event." The gap is closed with three minimal state enums whose only operation is `apply(transition) -> Result<state, TransitionError>` — total, deterministic, fallible, no panics, no history rewinds.

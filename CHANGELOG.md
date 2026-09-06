@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP1 typed errors + reason-code registry (`PHASE-0.1.4`)
+
+- Added `src/error.rs` to `reasonbraid-core`: `KnownReasonCode` (the complete §9.8 registry, 20 codes, snake_case), `ReasonCode` (wraps known codes and preserves unknown codes verbatim via `Unknown(String)`), `Retryability` (tri-state), and `DomainError` (code + retryability + safe message + optional correlation/details).
+- Unknown codes round-trip: a code this build does not recognize deserializes to `ReasonCode::Unknown(raw)` and re-serializes to the same string — the WP1 "unknown codes remain preservable" acceptance.
+- `From<TransitionError> for DomainError` classifies state-machine rejections as `invalid_transition`, wiring the reason-code registry to `.1.3`'s deterministic `apply`.
+- Recorded `docs/decisions/2026-09-06_reason-codes.md` (`answers:` present). **WP1 (minimal contracts) is complete.**
+
 ## 2026-09-06 — WP1 minimal state machines (`PHASE-0.1.3`)
 
 - Added three minimal orthogonal lifecycles to `reasonbraid-core` (`src/state.rs`): `ThreadState` (`open`/`closing`/`closed`/`cancelled`), `ParticipationState` (`invited`/`accepted`/`declined`/`expired`/`left`), and `ProviderAttemptState` (`prepared`/`dispatched`/`completed`/`failed_before_dispatch`/`outcome_unknown`/`reconciled`). Each exposes a single fallible `apply(transition) -> Result<state, TransitionError>`; invalid moves are rejected deterministically, never panic, and never rewind history.

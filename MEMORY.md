@@ -12,9 +12,9 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.1.4` (`pending`)
-- **Next action:** WP1 typed errors + stable reason-code registry (`ROADMAP.md` §9.8 codes the demo needs; unknown codes remain preservable).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.2.1` (`pending`); WP1 done.
+- **Next action:** WP2 prove PostgreSQL state/event/idempotency/outbox atomic transaction (successful response ⇔ committed durable state; same key+hash returns original result; different hash is conflict; one domain effect on redelivery).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.1.3`.
+- **In-flight uncommitted work:** none after `PHASE-0.1.4`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Blockers:** none.

@@ -27,12 +27,20 @@
 //! [`ThreadState`], [`ParticipationState`], and [`ProviderAttemptState`] are minimal
 //! orthogonal lifecycles whose only operation is a fallible, deterministic `apply`.
 //! See [`state`] and `docs/decisions/2026-09-06_state-transitions.md`.
+//!
+//! # Errors and reason codes
+//!
+//! [`KnownReasonCode`] is the stable §9.8 registry, [`ReasonCode`] preserves unknown
+//! codes, and [`DomainError`] is the typed, machine-actionable error. See [`error`] and
+//! `docs/decisions/2026-09-06_reason-codes.md`.
 
 mod envelope;
+mod error;
 mod id;
 mod state;
 
 pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};
+pub use error::{DomainError, KnownReasonCode, ReasonCode, Retryability};
 pub use id::{
     ActorPrincipal, ActorPrincipalId, AgentIncarnation, AgentIncarnationId, AgentRole, AgentRoleId,
     AuthorizationRecord, AuthorizationRecordId, Correlation, CorrelationId, Event, EventId, Host,

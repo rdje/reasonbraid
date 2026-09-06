@@ -152,11 +152,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0011`
 
 - ID: `PHASE-0.1.4`
-  Status: `pending`
+  Status: `done`
   Goal: typed errors and stable reason-code registry
   Acceptance: codes from `ROADMAP.md` §9.8 that the demo needs; unknown codes remain preservable
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0012`
 
 ### WP2 — PostgreSQL transaction and outbox (`KICKOFF` issues 4–5; backlog 9–10)
 
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.1.4` | `pending` | WP1 typed errors + stable reason-code registry |
+| 1 | `PHASE-0.2.1` | `pending` | WP2 prove PostgreSQL state/event/idempotency/outbox atomic transaction |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -433,6 +433,34 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
   machines"; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README and mdBook
   unchanged (no user-facing surface change).
 
+## Acceptance Checklist (PHASE-0.1.4)
+
+The `crates/reasonbraid-core` crate (`.rs` files under `crates/`) is the CODE change owned
+by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §9.8 lists reason codes but does not say
+  how a build treats a code it has never seen: a closed enum rejects it (deserialization
+  error) and a bare `String` drops the typing of the known set. `git ls-files
+  'crates/reasonbraid-core/src/*'` (before) → `envelope.rs` / `id.rs` / `lib.rs` /
+  `state.rs` only; no `error.rs`, no reason-code type existed.
+- [x] **ADDRESSED (verified)** — landed `src/error.rs` with `KnownReasonCode` (the complete
+  20-code §9.8 registry, snake_case), `ReasonCode` (`Known` + `Unknown(String)` so an
+  unknown code is preserved verbatim), `Retryability` (tri-state), and `DomainError` (code +
+  retryability + message + optional correlation/details); `From<TransitionError>` maps to
+  `invalid_transition`. `cargo test -p reasonbraid-core` →
+  `test result: ok. 23 passed; 0 failed; 1 ignored` (known-code round-trip, unknown-code
+  preservation, discrimination, retryability serde, error round-trip, transition mapping).
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` (clean),
+  `cargo clippy --all-targets --all-features -- -D warnings` (no warnings),
+  `cargo test --all` → `test result: ok. 23 passed; 0 failed; 1 ignored`; `make gate` →
+  `=== all doctrines green ===` (13/13).
+- [x] **FIX** — new `crates/reasonbraid-core/src/error.rs` (registry + typed error + tests);
+  `lib.rs` adds `mod error` + re-exports.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_reason-codes.md`
+  (`answers:` present) + INDEX row; `knowledge-map/subsystems.md` updated to "typed errors";
+  `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README and mdBook unchanged
+  (no user-facing surface change).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -449,6 +477,7 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 | `2026-09-06` | `PHASE-0.1.1` | `cargo test -p reasonbraid-core` → `test result: ok. 6 passed; 0 failed`; `make check` → fmt clean + `cargo clippy --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` 6 passed; `make gate` → `=== all doctrines green ===` (13/13); eight ID newtypes pairwise `TypeId`-distinct; decision record `2026-09-06_id-representation.md` + INDEX row | strong IDs landed; first real crate |
 | `2026-09-06` | `PHASE-0.1.2` | `cargo test -p reasonbraid-core` → `test result: ok. 10 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 10 passed; `make gate` → `=== all doctrines green ===` (13/13); golden fixtures round-trip, forged-authority fixture rejected, schema goldens in sync; decision record `2026-09-06_envelope-representation.md` + INDEX row | command/event envelopes landed; client forgery rejected |
 | `2026-09-06` | `PHASE-0.1.3` | `cargo test -p reasonbraid-core` → `test result: ok. 17 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 17 passed; `make gate` → `=== all doctrines green ===` (13/13); three state machines reject invalid transitions deterministically; decision record `2026-09-06_state-transitions.md` + INDEX row | minimal state machines landed; `ProviderAttemptId` (`patt`) added |
+| `2026-09-06` | `PHASE-0.1.4` | `cargo test -p reasonbraid-core` → `test result: ok. 23 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 passed; `make gate` → `=== all doctrines green ===` (13/13); §9.8 registry round-trips, unknown code preserved verbatim; decision record `2026-09-06_reason-codes.md` + INDEX row | typed errors + reason-code registry landed (WP1 complete) |
 
 ## Commit Log
 
@@ -465,6 +494,7 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 | `PHASE-0.1.1` | `REASONBRAID-PHASE0-0009` | `crates/reasonbraid-core` strong ID newtypes + id-representation decision record |
 | `PHASE-0.1.2` | `REASONBRAID-PHASE0-0010` | `crates/reasonbraid-core` envelopes + fixtures/schemas + envelope-representation decision record |
 | `PHASE-0.1.3` | `REASONBRAID-PHASE0-0011` | `crates/reasonbraid-core` state machines + `ProviderAttemptId` + state-transitions decision record |
+| `PHASE-0.1.4` | `REASONBRAID-PHASE0-0012` | `crates/reasonbraid-core` reason-code registry + typed errors + reason-codes decision record |
 
 ## Changelog
 
@@ -480,3 +510,4 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 - `2026-09-06`: `PHASE-0.1.1` strong IDs — `crates/reasonbraid-core` (branded newtypes over UUIDv7, eight families) + `docs/decisions/2026-09-06_id-representation.md`. Placeholder `crates/app` removed. Frontier is `.1.2`.
 - `2026-09-06`: `PHASE-0.1.2` command/event envelopes — `CommandEnvelope`/`ClientContext`/`CommittedEvent` with `deny_unknown_fields`, five new ID families, JSON Schema goldens + wire fixtures + `docs/decisions/2026-09-06_envelope-representation.md`. Frontier is `.1.3`.
 - `2026-09-06`: `PHASE-0.1.3` minimal state machines — thread/participation/provider-attempt lifecycles with deterministic fallible `apply`, `ProviderAttemptId` (`patt`), `docs/decisions/2026-09-06_state-transitions.md`. Frontier is `.1.4`.
+- `2026-09-06`: `PHASE-0.1.4` typed errors + reason-code registry — complete §9.8 registry with unknown-code preservation, `Retryability`, `DomainError`, `docs/decisions/2026-09-06_reason-codes.md`. WP1 complete; frontier is `.2.1`.

@@ -15,3 +15,4 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 | [2026-09-06_id-representation.md](2026-09-06_id-representation.md) | decision | IDs are branded newtypes over UUIDv7 with per-kind wire prefixes (`ten`/`hpr`/`hst`/`nod`/`rol`/`inc`/`run`/`thr`) |
 | [2026-09-06_envelope-representation.md](2026-09-06_envelope-representation.md) | decision | command/event envelopes: client expresses intent, server assigns actor/tenant/sequence/authority/timestamps; `deny_unknown_fields` rejects forgery |
 | [2026-09-06_state-transitions.md](2026-09-06_state-transitions.md) | decision | thread/participation/provider-attempt lifecycles are minimal state machines with deterministic fallible `apply`; `patt` prefix for `ProviderAttemptId` |
+| [2026-09-06_reason-codes.md](2026-09-06_reason-codes.md) | decision | typed errors + the complete §9.8 reason-code registry; unknown codes preserved verbatim via `ReasonCode::Unknown` |

@@ -16,15 +16,15 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.6` (Web UI/CLI, backlog 18; `proposed`);
-  **`PHASE-1-MAINT-2` executes first** — the codex stderr-drain race is REPRODUCED
-  (`.1.5.3` verification, `nonzero_exit_produces_failed_known_with_the_stderr_tail`,
-  EMPTY tail) and root-caused; fix both `codex.rs` and its `claude.rs` mirror.
-  `.1.5` is COMPLETE (typed bodies + rounds + the honest `Inconclusive` close —
-  backlog 17); `.1.4` COMPLETE (Claude adapter live-qualified, backlogs 19–21);
-  `.1`/`.1.2`/`.1.3` COMPLETE (backlogs 9–16); `PHASE-1-MAINT-1` done (§13).
-- **Next action:** execute `PHASE-1-MAINT-2` — await the stderr drain at EOF
-  (both adapters), verify with repeated runs, then commit.
+- **Active tree:** `PHASE-1` → frontier `.1.6` (Web UI/CLI, backlog 18; `proposed` —
+  decompose or execute on pickup). `.1.5` COMPLETE (typed bodies + rounds + the
+  honest `Inconclusive` close — backlog 17); **`PHASE-1-MAINT-2` done** — the
+  stderr-drain race REPRODUCED and fixed (the EOF path awaits the drain,
+  bounded, in `codex.rs` AND `claude.rs`); `.1.4` COMPLETE (Claude adapter
+  live-qualified, backlogs 19–21); `.1`/`.1.2`/`.1.3` COMPLETE (backlogs 9–16);
+  `PHASE-1-MAINT-1` done (§13).
+- **Next action:** decompose `PHASE-1.6` (Web UI/CLI for threads, nodes, inbox,
+  budgets, audit timeline — backlog 18) with a gap census.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.4` decomposition commit (pending
   defect leaf `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load —

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The stderr-drain race: reproduced and fixed in both adapters (`PHASE-1-MAINT-2`)
+
+- The tracked one-off `codex_adapter` failure (from the `.1.3.1` verification, then nameless) **reproduced with the failing test captured** during the `.1.5.3` verification: `nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an **EMPTY stderr tail** — the spawned stderr-drain task had not consumed the pipe's tail when the EOF path snapshotted the buffer after `child.wait()`. A real race: load only widens the scheduling window.
+- Fix: `drain_stderr` returns its JoinHandle and the EOF path **awaits it (bounded at 5 s)** before the snapshot — in `codex.rs` AND its `claude.rs` mirror (mirrors inherit defects). The `FailedKnown` reason now carries the provider's stderr tail deterministically.
+- Verified: 10× loop over both adapter suites (10/10 green) + the full offline workspace (39 suites) + clippy clean + `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_stderr-drain-race.md` (`answers:`). **Both Phase-1 defect leaves are now closed** (`MAINT-1` §13 locality, `MAINT-2` the drain race) — 0 tracked defects remaining.
+
 ## 2026-09-06 — The honest close: `Inconclusive` is a core terminal (`PHASE-1.5.3`; `.1.5` complete)
 
 - The core thread machine gains the **`Inconclusive` terminal** (`Closing → FinalizeInconclusive`; the exhaustive state-table + terminal-rejection tests extended — the canary pattern): a thread whose deliberation did not converge now ends honestly, distinct from a decided `closed` and the `cancelled` abandonment.

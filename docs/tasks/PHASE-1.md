@@ -86,7 +86,7 @@ conversation without binding-governance claims.
     on-volume probe and a residue census.
 
 - ID: `PHASE-1-MAINT-2`
-  Status: `pending`
+  Status: `done`
   Goal: reproduce and fix (or explain) a ONE-OFF `codex_adapter` suite failure —
     during a `make check` under full-workspace load, `test result: FAILED. 8
     passed; 1 failed` (the failing test's name was not captured); three immediate
@@ -104,7 +104,10 @@ conversation without binding-governance claims.
     `codex.rs`'s EOF path — the stderr-drain task may not have consumed the
     pipe's tail when `next_event` snapshots the buffer after `child.wait()`; load
     only widens the scheduling window. The same pattern exists in `claude.rs`
-    (the `.4.2` mirror — fix both). Executes next.
+    (the `.4.2` mirror — fix both).
+  Done (`2026-09-06`): the drain now returns its JoinHandle and the EOF path
+    awaits it (bounded 5 s) BEFORE the snapshot, in both adapters; the
+    acceptance checklist below records the evidence.
 
 - ID: `PHASE-1.2`
   Status: `done`
@@ -393,6 +396,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.5.1` done — the structured contribution body: `ContributionKind` (position default | claim | assumption | evidence_reference | question | summary; deny-unknown) + `EvidenceRef {uri, digest?, note?}` ride the contribute event; the CLI gains `--kind` (kebab→snake normalized) + repeatable `--evidence-uri`; the suite's first run caught the null-vs-omitted wire shape (absent ref fields now OMITTED, not `null`) — fixed, rerun green; decision record `docs/decisions/2026-09-06_structured-contributions.md`; frontier → `.1.5.2`.
 - `2026-09-06`: `.1.5.2` done — rounds: SERVER-assigned (a new thread is round 1; contributions land in the current round and their events carry it; `thread.advance_round` is the only mover — the client never names a round) under a new `thread_advance_round` grant (the registry canary extended first; humans carry it, roles deny-by-default — typed 403); the demo advances THREAD_A and asserts the projection round + the contribution's round; the demo's first run caught a missing `--thread` in the new beat — fixed, rerun green; decision record `docs/decisions/2026-09-06_rounds.md`; frontier → `.1.5.3`.
 - `2026-09-06`: `.1.5.3` done — the honest close: the core machine gains the `Inconclusive` terminal (`Closing → FinalizeInconclusive`; the exhaustive table + terminal-rejection tests extended), `thread.close` gains `outcome` (decided default | inconclusive) + the `unresolved` register (rides the event; a decided close carrying unresolved items is a typed 400), the CLI gains `--outcome`/`--unresolved`, and the demo's budget-denied thread B closes INCONCLUSIVELY with the register asserted; the e2e's first run caught a missing `--json` in the new leg — fixed, rerun green; decision record `docs/decisions/2026-09-06_honest-inconclusive-close.md`; **`.1.5` is COMPLETE** (backlog 17). The offline verification ALSO captured the `PHASE-1-MAINT-2` repro (the codex stderr-drain race, empty tail) — recorded in the defect leaf; frontier → `.1.6` (MAINT-2 executes first).
+- `2026-09-06`: `PHASE-1-MAINT-2` done — the stderr-drain race REPRODUCED and FIXED: during the `.1.5.3` verification `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY tail (`got: codex exited with exit status: 2; stderr tail: `) — the spawned drain task raced the EOF path's buffer snapshot (load only widens the window); `drain_stderr` now returns its JoinHandle and the EOF path awaits it (bounded 5 s) BEFORE the snapshot, in `codex.rs` AND its `claude.rs` mirror; 10× adapter-suite loops + the full offline workspace green; decision record `docs/decisions/2026-09-06_stderr-drain-race.md`. Frontier unchanged: `.1.6`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1070,6 +1074,47 @@ arm), `crates/reasonbraid-cli/src/main.rs` (the two flags), the test files, and
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
   cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1-MAINT-2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-adapter/src/codex.rs` +
+`src/claude.rs` (the `drain_stderr` signature + the EOF-path await) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the defect leaf's tracked failure reproduced with
+  the failing test CAPTURED during the `.1.5.3` offline verification:
+  `target/honest_all.log` → `test result: FAILED. 8 passed; 1 failed` —
+  `nonzero_exit_produces_failed_known_with_the_stderr_tail` panicked with
+  `got: codex exited with exit status: 2; stderr tail: ` — the tail was EMPTY
+  where `simulated provider error` belongs.
+- [x] **ROOT CAUSE (WHY + WHERE)** — a real race, not the suspected
+  port/filesystem collision: `drain_stderr` is a SPAWNED task, and the EOF path
+  (`CodexHandle::next_event`) read the shared buffer right after `child.wait()`
+  — the drainer may not have consumed the pipe's tail yet. Load only widens the
+  scheduling window. `grep -n "drain_stderr" crates/reasonbraid-adapter/src/*.rs`
+  → the identical pattern in `claude.rs` (the `.1.4` mirror) — both must be
+  fixed.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the buffer read
+  raced the drain (empty tails under scheduling pressure). After: `drain_stderr`
+  returns `(Arc<Mutex<String>>, JoinHandle<()>)` and the EOF path awaits the
+  handle — bounded at 5 s (a stderr-inheriting grandchild can keep the pipe
+  open) — BEFORE the snapshot, in BOTH adapters. Proof: 10× loop over both
+  suites → `loop 1..10 rc=0` each (`target/maint2_loop_*.log`); the
+  `nonzero_exit…` assertion (the tail carries the provider's error) is now
+  deterministic.
+- [x] **NO REGRESSION** — `cargo test --all` → all 39 offline suites green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` →
+  13/13 at commit. The CLI adapters are not exercised by the live-PG suites
+  (the demo runs the fake adapter), so the offline workspace + the 10× loop are
+  the selected guard set (§16).
+- [x] **FIX** — `codex.rs` + `claude.rs`: the `drain_stderr` signature (returns
+  the JoinHandle), the handle structs' `stderr_drain` field, the invoke-site
+  tuple destructure, and the EOF path's bounded `(&mut self.stderr_drain).await`
+  before the snapshot.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_stderr-drain-race.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP —
+  same commit. Frontier unchanged (`.1.6`), so `docs/TASK_TREE.md` and the book
+  need no update.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1088,6 +1133,7 @@ arm), `crates/reasonbraid-cli/src/main.rs` (the two flags), the test files, and
 | `2026-09-06` | `PHASE-1.5.1` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 10 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the structured contribution body landed (typed §8.5 kinds + evidence refs); the suite's FIRST run caught the null-vs-omitted wire shape (`FAILED. 8 passed; 2 failed` → `skip_serializing_if` fix), rerun green |
 | `2026-09-06` | `PHASE-1.5.2` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 11 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (16 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | server-assigned rounds landed (advance verb + `thread_advance_round` grant, humans-only); the demo's first run caught a positional-vs-`--thread` slip in the new beat, fixed, rerun green |
 | `2026-09-06` | `PHASE-1.5.3` | `cargo test --all` → every offline suite green ×3 (the first run captured the `PHASE-1-MAINT-2` repro — the codex stderr-drain race — recorded in the defect leaf); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 12 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the honest close landed (core `Inconclusive` terminal + the close body's `outcome`/`unresolved` + the demo's thread-B beat); the e2e's first run caught a missing `--json` in the new leg, fixed, rerun green; **`.1.5` complete** (backlog 17) |
+| `2026-09-06` | `PHASE-1-MAINT-2` | 10× loop over `codex_adapter` + `claude_adapter` → `loop 1..10 rc=0` each; `cargo test --all` → all 39 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the stderr-drain race REPRODUCED (`.1.5.3` verification, `nonzero_exit_produces_failed_known_with_the_stderr_tail`, EMPTY tail) and FIXED: the drain returns its JoinHandle and the EOF path awaits it (bounded 5 s) before the snapshot, in `codex.rs` AND `claude.rs` |
 
 ## Commit Log
 
@@ -1107,3 +1153,4 @@ arm), `crates/reasonbraid-cli/src/main.rs` (the two flags), the test files, and
 | `PHASE-1.5.1` | `REASONBRAID-PHASE1-0018` | the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` (omitted-absent wire shape) + CLI flags + the 4-leg command_api test + e2e leg |
 | `PHASE-1.5.2` | `REASONBRAID-PHASE1-0019` | server-assigned rounds: the advance verb + `thread_advance_round` grant + projection fact + the command_api/e2e/demo legs |
 | `PHASE-1.5.3` | `REASONBRAID-PHASE1-0020` | the honest close: core `Inconclusive` terminal + `outcome`/`unresolved` + the dishonest-decided refusal + CLI flags + demo/e2e legs; `.1.5` complete |
+| `PHASE-1-MAINT-2` | `REASONBRAID-PHASE1-0021` | the reproduced stderr-drain race: the drain returns its JoinHandle and the EOF path awaits it (bounded) in both adapters; 10× loop + full offline green |

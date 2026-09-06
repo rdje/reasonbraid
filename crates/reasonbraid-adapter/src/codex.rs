@@ -143,6 +143,8 @@ impl Adapter for CodexCliAdapter {
             .await
             .insert(operation_id.to_string(), Arc::clone(&child));
 
+        let (stderr_buffer, stderr_drain) = drain_stderr(stderr);
+
         InvokeOutcome::Accepted(
             DispatchAck {
                 // Codex reveals its thread id in the stream's first event, not in the
@@ -152,7 +154,8 @@ impl Adapter for CodexCliAdapter {
             crate::contract::AttemptHandle::new(Box::new(CodexHandle {
                 lines: BufReader::new(stdout),
                 child,
-                stderr: drain_stderr(stderr),
+                stderr: stderr_buffer,
+                stderr_drain,
                 finished: false,
             })),
         )
@@ -202,11 +205,17 @@ impl Adapter for CodexCliAdapter {
 }
 
 /// Drain the child's stderr into a bounded buffer so a chatty child can never
-/// deadlock on a full pipe; the tail feeds `FailedKnown` reasons.
-fn drain_stderr(stderr: tokio::process::ChildStderr) -> Arc<Mutex<String>> {
+/// deadlock on a full pipe; the tail feeds `FailedKnown` reasons. The returned
+/// handle MUST be awaited before the buffer is snapshotted — the drain task may
+/// not have consumed the pipe's tail yet when stdout hits EOF (`PHASE-1-MAINT-2`:
+/// the race that left a `FailedKnown` reason's stderr tail EMPTY, reproduced
+/// live).
+fn drain_stderr(
+    stderr: tokio::process::ChildStderr,
+) -> (Arc<Mutex<String>>, tokio::task::JoinHandle<()>) {
     let buffer = Arc::new(Mutex::new(String::new()));
     let out = Arc::clone(&buffer);
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let mut buf = out.lock().await;
@@ -216,7 +225,7 @@ fn drain_stderr(stderr: tokio::process::ChildStderr) -> Arc<Mutex<String>> {
             }
         }
     });
-    buffer
+    (buffer, handle)
 }
 
 /// The stream over one Codex child: JSONL events mapped to the contract, then the
@@ -225,6 +234,7 @@ struct CodexHandle {
     lines: BufReader<ChildStdout>,
     child: Arc<Mutex<Child>>,
     stderr: Arc<Mutex<String>>,
+    stderr_drain: tokio::task::JoinHandle<()>,
     finished: bool,
 }
 
@@ -244,6 +254,15 @@ impl CodexHandle {
             match self.lines.read_line(&mut line).await {
                 Ok(0) => {
                     // EOF: the child is done — the exit status is the terminal verdict.
+                    // AWAIT the stderr drain first (bounded): the task may not have
+                    // consumed the pipe's tail yet, and racing it leaves the reason
+                    // EMPTY (the PHASE-1-MAINT-2 defect). The bound guards against a
+                    // grandchild that inherited stderr keeping the pipe open.
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        &mut self.stderr_drain,
+                    )
+                    .await;
                     let stderr_tail = {
                         let buf = self.stderr.lock().await;
                         if buf.len() > 1024 {

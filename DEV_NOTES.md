@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1-MAINT-2: a flake that reproduces once is a bug with evidence
+
+- **The missing thing was the test's NAME, not its output.** The `.1.3.1` report lost it; the `.1.5.3` verification captured `nonzero_exit_produces_failed_known_with_the_stderr_tail` with an EMPTY tail — instantly a real race: the spawned stderr drainer had not consumed the pipe's tail when the EOF path snapshotted the buffer after `child.wait()`. Load widens the scheduling window; it never creates it.
+- **Spawned consumers need a join point.** `drain_stderr` now returns its JoinHandle and the EOF path awaits it (bounded 5 s against a stderr-inheriting grandchild) before the snapshot. Fixed in `codex.rs` AND the `claude.rs` mirror — mirrors inherit defects.
+- **The 10× loop is the confidence instrument** for a race fix: both adapter suites ×10 green + the full offline workspace, before the commit.
+- Promoted to `docs/decisions/2026-09-06_stderr-drain-race.md` (`answers:` present). **Frontier `PHASE-1.6` (Web UI/CLI).**
+
 ## _(2026-09-06)_ — PHASE-1.5.3: a terminal outcome must be a machine fact
 
 - **"Honest inconclusive" as prose would be unassertable.** The core machine gains `Inconclusive` (the `Closing → FinalizeInconclusive` edge, the exhaustive table + terminal-rejection tests extended — the canary pattern); the state IS the answer to "did this thread decide?", assertable by the demo and the audit alike.

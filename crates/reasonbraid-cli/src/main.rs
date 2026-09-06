@@ -230,6 +230,13 @@ enum ThreadCommand {
         thread: String,
         #[arg(long)]
         reason: String,
+        /// Close outcome: `decided` (default) | `inconclusive` (the honest terminal —
+        /// name the unresolved items with `--unresolved`).
+        #[arg(long)]
+        outcome: Option<String>,
+        /// An item that prevented a decision (repeatable; refused on a decided close).
+        #[arg(long)]
+        unresolved: Vec<String>,
         #[arg(long)]
         as_: Option<String>,
         #[arg(long)]
@@ -533,11 +540,17 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Thread(ThreadCommand::Close {
             thread,
             reason,
+            outcome,
+            unresolved,
             as_,
             tenant,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
+            let mut body = json!({ "reason": reason, "unresolved": unresolved });
+            if let Some(outcome) = outcome {
+                body["outcome"] = json!(outcome.replace('-', "_"));
+            }
             run_thread_verb(
                 cfg,
                 &state,
@@ -546,7 +559,7 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     thread_id: thread,
                     tenant,
                     operation: "thread.close",
-                    body: json!({ "reason": reason }),
+                    body,
                     json_out: json,
                 },
             )

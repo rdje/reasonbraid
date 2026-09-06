@@ -1421,3 +1421,138 @@ async fn rounds_are_server_assigned_and_advancement_is_gated() {
     assert_eq!(status, 409, "advance after close: {late}");
     assert_eq!(late["code"], json!("invalid_transition"));
 }
+
+/// The honest close (`PHASE-1.5.3`): `outcome: inconclusive` lands the thread on
+/// the core `Inconclusive` terminal with the unresolved register riding the
+/// event; a decided close carrying unresolved items is a typed refusal; the
+/// inconclusive terminal refuses further content verbs.
+#[tokio::test]
+async fn the_honest_inconclusive_close_carries_its_register() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-honest-create",
+            json!({ "tenant_id": tenant, "subject": "honest", "objective": "no decision" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/threads/{thread_id}/commands");
+
+    let (status, closed) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.close",
+            "k-honest-close",
+            json!({
+                "tenant_id": tenant,
+                "reason": "the evidence did not converge",
+                "outcome": "inconclusive",
+                "unresolved": ["the budget gate blocked the revision", "the challenge stands"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "inconclusive close: {closed}");
+    assert_eq!(closed["event_type"], json!("thread.closed"));
+    assert_eq!(closed["thread_state"], json!("inconclusive"));
+
+    // The register rides the event; the inspection view shows the terminal.
+    let (status, events) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "inspect events: {events}");
+    let close_event = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.closed"))
+        .expect("the close event exists");
+    assert_eq!(close_event["body"]["outcome"], json!("inconclusive"));
+    assert_eq!(
+        close_event["body"]["unresolved"],
+        json!(["the budget gate blocked the revision", "the challenge stands"])
+    );
+
+    let (_, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(inspected["state"]["state"], json!("inconclusive"));
+
+    // The inconclusive terminal refuses further content verbs.
+    let (status, late) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-honest-late",
+            json!({ "tenant_id": tenant, "content": "too late" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 409, "contribute after inconclusive: {late}");
+    assert_eq!(late["code"], json!("invalid_transition"));
+
+    // A DECIDED close that carries unresolved items is dishonest — typed refusal.
+    let (status, created2) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-honest-create-2",
+            json!({ "tenant_id": tenant, "subject": "decided", "objective": "decision" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create 2: {created2}");
+    let thread2 = created2["thread_id"].as_str().unwrap().to_string();
+    let (status, dishonest) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread2}/commands"),
+        &alice_id,
+        &envelope(
+            "thread.close",
+            "k-honest-dishonest",
+            json!({
+                "tenant_id": tenant,
+                "reason": "decided, supposedly",
+                "outcome": "decided",
+                "unresolved": ["something still open"],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "decided with unresolved: {dishonest}");
+    assert_eq!(dishonest["code"], json!("invalid_command"));
+}

@@ -464,6 +464,17 @@ check "the denial is journaled BEFORE any provider contact (failed_before_dispat
 check "no revision entered thread B" bash -c \
     "! cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -q revision_submitted"
 
+# The `.1.5.3` honest outcome: thread B is genuinely inconclusive — the budget
+# gate blocked the revision and the challenge stands. Close it INCONCLUSIVELY
+# with the unresolved item named; the register rides the close event.
+cli thread close --thread "$THREAD_B" --reason "budget exhausted before the revision" \
+    --outcome inconclusive --unresolved "the challenge against the contribution stands" \
+    --as organizer >/dev/null
+check "thread B closes INCONCLUSIVELY (the honest terminal)" bash -c \
+    "cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -Eq '\"state\": *\"inconclusive\"'"
+check "the unresolved register rides the close event" bash -c \
+    "cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -q 'the challenge against the contribution stands'"
+
 # ── 9. closure preserves contributions and unresolved objections ───────────────
 
 log "closing thread A"
@@ -496,6 +507,7 @@ node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
     echo "| no silent retry of indeterminate calls | journal-a-ambiguous.json: dispatched → outcome_unknown, one attempt, no revision |"
     echo "| budget denial prevents a new dispatch | journal-b-inspect.txt: failed_before_dispatch=1, no revision in thread-b.json |"
     echo "| closure preserves contributions + objections | thread-a.json: closed, contribution + open_challenges=1 |"
+    echo "| honest inconclusive outcome | thread-b.json: state inconclusive, the unresolved item rides the close event |"
     echo "| reproducible evidence bundle | this directory — rerun with the commands in timeline.txt |"
 } > "$EVIDENCE/summary.md"
 

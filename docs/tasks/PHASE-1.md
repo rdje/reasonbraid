@@ -97,6 +97,14 @@ conversation without binding-governance claims.
     acceptance checklist is written when the leaf executes (fix = capture the
     failing test with `--nocapture` under repeated parallel runs, root-cause,
     then either fix or record the measured explanation).
+  REPRO CAPTURED (`2026-09-06`, during the `.1.5.3` verification — no explicit load):
+    `nonzero_exit_produces_failed_known_with_the_stderr_tail` →
+    `got: codex exited with exit status: 2; stderr tail: ` — the tail was EMPTY
+    (expected `simulated provider error`). Root cause: a REAL race in
+    `codex.rs`'s EOF path — the stderr-drain task may not have consumed the
+    pipe's tail when `next_event` snapshots the buffer after `child.wait()`; load
+    only widens the scheduling window. The same pattern exists in `claude.rs`
+    (the `.4.2` mirror — fix both). Executes next.
 
 - ID: `PHASE-1.2`
   Status: `done`
@@ -288,7 +296,9 @@ conversation without binding-governance claims.
     engine (`.1.5` needs rounds, not phases); evidence acquisition stays Phase 4 (`.1.5`
     attaches REFERENCES only — §3.7).
   Children: `.1.5.1`–`.1.5.3` (decomposed `2026-09-06` at the body-vs-rounds-vs-close seams;
-    each contract is independent — no incoherent interim possible)
+    each contract is independent — no incoherent interim possible) — all three `done`:
+    typed bodies, server-assigned rounds, the honest close. **`.1.5` is COMPLETE**
+    (backlog 17).
 
   - ID: `PHASE-1.5.1`
     Status: `active`
@@ -334,6 +344,10 @@ conversation without binding-governance claims.
     Acceptance: a close with `outcome: inconclusive` lands the thread on the `Inconclusive`
       terminal with the register preserved and inspectable; a decided close behaves exactly
       as before; the state-machine tests cover the new edge; existing suites stay green.
+    Done (`2026-09-06`): the honest close landed (core `Inconclusive` + the close body's
+      `outcome`/`unresolved` + the CLI flags + the demo's thread-B beat); the acceptance
+      checklist below records the evidence (the e2e's first run caught a missing `--json`
+      in the new leg — fixed, rerun green).
 
 - ID: `PHASE-1.6`
   Status: `proposed`
@@ -354,7 +368,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams; `.1.5.1` done (typed contribution kinds + evidence references), `.1.5.2` done (server-assigned rounds) → next executable leaf `.1.5.3` (the honest `Inconclusive` close) |
+| 1 | `PHASE-1.6` | `proposed` | `.1.5` is COMPLETE (typed bodies + rounds + the honest close — backlog 17); `PHASE-1-MAINT-2` (the captured codex stderr-drain race) executes first, then the `.1.6` Web UI/CLI lane (backlog 18) decomposes |
 
 ## Changelog
 
@@ -378,6 +392,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.5` decomposed (gap census first: the contribution `kind` is a free string, no evidence references, no round fields, and the core machine has NO `Inconclusive` terminal — Open/Closing/Closed/Cancelled only; votes/abstentions + workflow phases defer to Phase 5, evidence acquisition to Phase 4) into `.1.5.1` (the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` — references only), `.1.5.2` (rounds: a round number on contributions, enforced at the boundary, visible in inspection), and `.1.5.3` (the honest close: `outcome: decided|inconclusive` + the unresolved register + the core `Inconclusive` terminal); frontier → `.1.5.1`.
 - `2026-09-06`: `.1.5.1` done — the structured contribution body: `ContributionKind` (position default | claim | assumption | evidence_reference | question | summary; deny-unknown) + `EvidenceRef {uri, digest?, note?}` ride the contribute event; the CLI gains `--kind` (kebab→snake normalized) + repeatable `--evidence-uri`; the suite's first run caught the null-vs-omitted wire shape (absent ref fields now OMITTED, not `null`) — fixed, rerun green; decision record `docs/decisions/2026-09-06_structured-contributions.md`; frontier → `.1.5.2`.
 - `2026-09-06`: `.1.5.2` done — rounds: SERVER-assigned (a new thread is round 1; contributions land in the current round and their events carry it; `thread.advance_round` is the only mover — the client never names a round) under a new `thread_advance_round` grant (the registry canary extended first; humans carry it, roles deny-by-default — typed 403); the demo advances THREAD_A and asserts the projection round + the contribution's round; the demo's first run caught a missing `--thread` in the new beat — fixed, rerun green; decision record `docs/decisions/2026-09-06_rounds.md`; frontier → `.1.5.3`.
+- `2026-09-06`: `.1.5.3` done — the honest close: the core machine gains the `Inconclusive` terminal (`Closing → FinalizeInconclusive`; the exhaustive table + terminal-rejection tests extended), `thread.close` gains `outcome` (decided default | inconclusive) + the `unresolved` register (rides the event; a decided close carrying unresolved items is a typed 400), the CLI gains `--outcome`/`--unresolved`, and the demo's budget-denied thread B closes INCONCLUSIVELY with the register asserted; the e2e's first run caught a missing `--json` in the new leg — fixed, rerun green; decision record `docs/decisions/2026-09-06_honest-inconclusive-close.md`; **`.1.5` is COMPLETE** (backlog 17). The offline verification ALSO captured the `PHASE-1-MAINT-2` repro (the codex stderr-drain race, empty tail) — recorded in the defect leaf; frontier → `.1.6` (MAINT-2 executes first).
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1006,6 +1021,55 @@ the test files, and `scripts/demo_two_host.sh` (all `\.rs$`/`\.sh$`).
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
   cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1.5.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/state.rs` (the
+`Inconclusive` state + `FinalizeInconclusive` edge + the extended table tests),
+`crates/reasonbraid-server/src/threads.rs` (`CloseOutcome` + the close body +
+arm), `crates/reasonbraid-cli/src/main.rs` (the two flags), the test files, and
+`scripts/demo_two_host.sh`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 17's honest-outcome contract is open: the
+  core machine's terminals are Closed/Cancelled only
+  (`grep -n "ThreadState::" crates/reasonbraid-core/src/state.rs` → no
+  `Inconclusive` before this leaf), so a thread whose deliberation did not
+  converge has no honest way to end — ROADMAP §26.1 requires Demonstration A to
+  "conclude `inconclusive` with minority/unresolved items".
+- [x] **ROOT CAUSE (WHY + WHERE)** — the machine predates the honest-outcome
+  requirement; prose cannot satisfy it ("the system can conclude `inconclusive`"
+  must be a STATE the demo asserts and the audit answers from). The fix point is
+  the core machine (a new terminal + edge, the exhaustive table extended — the
+  canary pattern) + the close boundary (the body names the outcome and the
+  register; the event carries them — event-layer growth, no projection change).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: close → Closed
+  only. After: `outcome: inconclusive` lands `Inconclusive` (the event carries
+  `outcome` + `unresolved`; the projection state renders it); a `decided` close
+  carrying `unresolved` items is a typed 400; the terminal refuses content
+  verbs. Live proof: `bash scripts/run_pg_tests.sh` → `test result: ok. 12
+  passed; 0 failed` (`command_api`, +1: inconclusive terminal + register via the
+  events view + late-contribution 409 + dishonest-decided 400) + the demo's two
+  new beats (thread B `inconclusive` + the register rides the event) → `ALL
+  acceptance checks passed` (18 PASS, `rc=0`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green ×3 (the
+  first run ALSO captured the `PHASE-1-MAINT-2` repro — the codex stderr-drain
+  race — recorded in that defect leaf; the reruns are green);
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 12 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`)
+  + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance
+  checks passed` (18 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — state.rs (`Inconclusive` + `FinalizeInconclusive` + the 5-state/
+  4-event exhaustive table + the terminal-rejection set); threads.rs
+  (`CloseOutcome` + `outcome`/`unresolved` on the body, the dishonest-decided
+  refusal, the outcome-picked terminal, the event body's `outcome` +
+  `unresolved`); main.rs (`--outcome` kebab-normalized + repeatable
+  `--unresolved`); command_api.rs (the new test); the e2e's honest leg (its
+  first run caught a missing `--json` on the create call — fixed); the demo's
+  thread-B inconclusive beat + the evidence-bundle row.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_honest-inconclusive-close.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1023,6 +1087,7 @@ the test files, and `scripts/demo_two_host.sh` (all `\.rs$`/`\.sh$`).
 | `2026-09-06` | `PHASE-1.4.2` | `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored --nocapture` → `test result: ok. 1 passed; 0 failed` (`LIVE CLAUDE OK: attempt patt_01a0784e-… completed via session 12361df0-…`) — completed + exact usage + MONEY cost + session id attached + unsupported lookup, on the REAL harness; `cargo test --all` → all offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the live qualification leg landed (env-gated `RB_LIVE_CLAUDE=1`, first-run pass); ledger row + book chapter + decision record updated; **`.1.4` complete** — two genuinely distinct harness adapters (backlogs 19–21) |
 | `2026-09-06` | `PHASE-1.5.1` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 10 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the structured contribution body landed (typed §8.5 kinds + evidence refs); the suite's FIRST run caught the null-vs-omitted wire shape (`FAILED. 8 passed; 2 failed` → `skip_serializing_if` fix), rerun green |
 | `2026-09-06` | `PHASE-1.5.2` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 11 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (16 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | server-assigned rounds landed (advance verb + `thread_advance_round` grant, humans-only); the demo's first run caught a positional-vs-`--thread` slip in the new beat, fixed, rerun green |
+| `2026-09-06` | `PHASE-1.5.3` | `cargo test --all` → every offline suite green ×3 (the first run captured the `PHASE-1-MAINT-2` repro — the codex stderr-drain race — recorded in the defect leaf); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 12 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the honest close landed (core `Inconclusive` terminal + the close body's `outcome`/`unresolved` + the demo's thread-B beat); the e2e's first run caught a missing `--json` in the new leg, fixed, rerun green; **`.1.5` complete** (backlog 17) |
 
 ## Commit Log
 
@@ -1041,3 +1106,4 @@ the test files, and `scripts/demo_two_host.sh` (all `\.rs$`/`\.sh$`).
 | `PHASE-1.4.2` | `REASONBRAID-PHASE1-0016` | the live qualification leg: env-gated `claude_live` (first-run pass on the real harness) + dependency-ledger row + book command + decision record; `.1.4` complete |
 | `PHASE-1.5.1` | `REASONBRAID-PHASE1-0018` | the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` (omitted-absent wire shape) + CLI flags + the 4-leg command_api test + e2e leg |
 | `PHASE-1.5.2` | `REASONBRAID-PHASE1-0019` | server-assigned rounds: the advance verb + `thread_advance_round` grant + projection fact + the command_api/e2e/demo legs |
+| `PHASE-1.5.3` | `REASONBRAID-PHASE1-0020` | the honest close: core `Inconclusive` terminal + `outcome`/`unresolved` + the dishonest-decided refusal + CLI flags + demo/e2e legs; `.1.5` complete |

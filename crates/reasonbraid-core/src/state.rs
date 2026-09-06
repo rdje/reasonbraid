@@ -38,14 +38,21 @@ impl std::error::Error for TransitionError {}
 // ── Thread ────────────────────────────────────────────────────────────────────
 
 /// Minimal thread lifecycle (`KICKOFF.md` §3 WP1): `open → closing → closed`,
-/// with `cancelled` reachable from `open` or `closing`. `closed` and `cancelled` are
-/// terminal. The full §8.4 set (`draft`/`paused`/`expired`) is deferred.
+/// with `cancelled` reachable from `open` or `closing` and `inconclusive` the
+/// `.1.5.3` honest terminal (`closing → inconclusive`: the thread ended without a
+/// decision — the unresolved register records why). `closed`, `cancelled`, and
+/// `inconclusive` are terminal. The full §8.4 set (`draft`/`paused`/`expired`) is
+/// deferred.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ThreadState {
     Open,
     Closing,
     Closed,
+    /// The honest terminal (`.1.5.3`): closed WITHOUT a decision, with the
+    /// unresolved register recording what prevented one. Distinct from `closed` —
+    /// a decided thread and an inconclusive thread answer different questions.
+    Inconclusive,
     Cancelled,
 }
 
@@ -56,6 +63,7 @@ impl ThreadState {
             ThreadState::Open => "open",
             ThreadState::Closing => "closing",
             ThreadState::Closed => "closed",
+            ThreadState::Inconclusive => "inconclusive",
             ThreadState::Cancelled => "cancelled",
         }
     }
@@ -67,6 +75,7 @@ impl ThreadState {
         let next = match (self, event) {
             (Open, BeginClose) => Closing,
             (Closing, FinalizeClose) => Closed,
+            (Closing, FinalizeInconclusive) => Inconclusive,
             (Open, Cancel) | (Closing, Cancel) => Cancelled,
             _ => {
                 return Err(TransitionError {
@@ -86,6 +95,8 @@ impl ThreadState {
 pub enum ThreadTransition {
     BeginClose,
     FinalizeClose,
+    /// Close WITHOUT a decision (`.1.5.3`): `closing → inconclusive`.
+    FinalizeInconclusive,
     Cancel,
 }
 
@@ -94,6 +105,7 @@ impl ThreadTransition {
         match self {
             ThreadTransition::BeginClose => "begin_close",
             ThreadTransition::FinalizeClose => "finalize_close",
+            ThreadTransition::FinalizeInconclusive => "finalize_inconclusive",
             ThreadTransition::Cancel => "cancel",
         }
     }
@@ -326,15 +338,17 @@ mod tests {
     // AND that every unlisted (state, event) pair in the full product is rejected — so
     // coverage is exhaustive and rejection is deterministic, not a side effect.
 
-    const THREAD_STATES: [ThreadState; 4] = [
+    const THREAD_STATES: [ThreadState; 5] = [
         ThreadState::Open,
         ThreadState::Closing,
         ThreadState::Closed,
+        ThreadState::Inconclusive,
         ThreadState::Cancelled,
     ];
-    const THREAD_EVENTS: [ThreadTransition; 3] = [
+    const THREAD_EVENTS: [ThreadTransition; 4] = [
         ThreadTransition::BeginClose,
         ThreadTransition::FinalizeClose,
+        ThreadTransition::FinalizeInconclusive,
         ThreadTransition::Cancel,
     ];
     const THREAD_VALID: &[(ThreadState, ThreadTransition, ThreadState)] = &[
@@ -347,6 +361,11 @@ mod tests {
             ThreadState::Closing,
             ThreadTransition::FinalizeClose,
             ThreadState::Closed,
+        ),
+        (
+            ThreadState::Closing,
+            ThreadTransition::FinalizeInconclusive,
+            ThreadState::Inconclusive,
         ),
         (
             ThreadState::Open,
@@ -521,8 +540,13 @@ mod tests {
     fn terminal_states_reject_every_event() {
         use ThreadState::*;
         use ThreadTransition::*;
-        for s in [Closed, Cancelled] {
-            for e in [BeginClose, FinalizeClose, Cancel] {
+        for s in [Closed, Inconclusive, Cancelled] {
+            for e in [
+                BeginClose,
+                FinalizeClose,
+                FinalizeInconclusive,
+                Cancel,
+            ] {
                 assert!(s.apply(e).is_err(), "terminal {s:?} must reject {e:?}");
             }
         }

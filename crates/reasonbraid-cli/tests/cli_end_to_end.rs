@@ -348,6 +348,62 @@ async fn the_real_cli_drives_the_whole_flow() {
     );
     assert!(stdout.contains("accepted"), "{stdout}");
 
+    // `.1.5.3`: the honest close — a second thread ends INCONCLUSIVELY with its
+    // unresolved register, driven by the REAL binary.
+    let honest = rb
+        .json(&[
+            "thread",
+            "create",
+            "--subject",
+            "honest",
+            "--objective",
+            "no decision",
+            "--as",
+            "alice",
+            "--json",
+        ])
+        .await;
+    let honest_id = honest["thread_id"].as_str().unwrap().to_string();
+    let (ok, stdout, stderr) = rb
+        .run(&[
+            "thread",
+            "close",
+            "--thread",
+            &honest_id,
+            "--reason",
+            "did not converge",
+            "--outcome",
+            "inconclusive",
+            "--unresolved",
+            "the objection stands",
+            "--as",
+            "alice",
+        ])
+        .await;
+    assert!(ok, "inconclusive close failed: {stderr}");
+    assert!(stdout.contains("thread.closed"), "{stdout}");
+    let inspected = rb
+        .json(&["inspect", "thread", &honest_id, "--as", "alice", "--json"])
+        .await;
+    assert_eq!(
+        inspected["thread"]["state"]["state"],
+        serde_json::json!("inconclusive")
+    );
+    let close_event = inspected["events"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == serde_json::json!("thread.closed"))
+        .expect("the close event exists");
+    assert_eq!(
+        close_event["body"]["outcome"],
+        serde_json::json!("inconclusive")
+    );
+    assert_eq!(
+        close_event["body"]["unresolved"],
+        serde_json::json!(["the objection stands"])
+    );
+
     let (ok, stdout, stderr) = rb.run(&["inspect", "threads", "--as", "alice"]).await;
     assert!(ok, "inspect threads failed: {stderr}");
     assert!(stdout.contains(&thread_id), "{stdout}");

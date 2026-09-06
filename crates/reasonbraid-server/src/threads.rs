@@ -311,12 +311,31 @@ pub struct ReviseBody {
     pub content: String,
 }
 
-/// `thread.close` body: the scope and the stop reason (preserved for the audit view).
+/// The close outcome (`.1.5.3`): `decided` is the stated default (a close without
+/// an outcome IS a decision); `inconclusive` lands the thread on the honest
+/// `Inconclusive` terminal and REQUIRES the `unresolved` register to be meaningful
+/// (a decided close that carries unresolved items is a typed refusal — listing
+/// what prevented a decision while claiming one would be dishonest).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseOutcome {
+    #[default]
+    Decided,
+    Inconclusive,
+}
+
+/// `thread.close` body: the scope, the stop reason (preserved for the audit view),
+/// the outcome (default `decided`), and the unresolved register (the items that
+/// prevented a decision when the outcome is `inconclusive`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloseBody {
     pub tenant_id: TenantId,
     pub reason: String,
+    #[serde(default)]
+    pub outcome: CloseOutcome,
+    #[serde(default)]
+    pub unresolved: Vec<String>,
 }
 
 /// `thread.cancel` body: the scope and the abandonment reason (`PHASE-1.1.3`) —
@@ -1048,20 +1067,45 @@ where
         OP_CLOSE => {
             let body: CloseBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
-            // Fold open → closing → closed (both core edges validated; one terminal
+            // `.1.5.3`: a decided close must not carry an unresolved register —
+            // listing the items that prevented a decision while claiming one
+            // would be dishonest.
+            if body.outcome == CloseOutcome::Decided && !body.unresolved.is_empty() {
+                return Err(ThreadError::InvalidCommand(
+                    "a decided close cannot carry unresolved items — name outcome `inconclusive`"
+                        .to_string(),
+                ));
+            }
+            // Fold open → closing → terminal (both core edges validated; one terminal
             // event records the result). A thread already `closing` only finalizes.
-            let closed = match projection.state {
+            // The terminal is the OUTCOME: `decided` → closed, `inconclusive` → the
+            // honest `Inconclusive` state (the core machine's new edge, `.1.5.3`).
+            let terminal = match projection.state {
                 ThreadState::Open => {
                     ThreadState::Open
                         .apply(ThreadTransition::BeginClose)
                         .map_err(ThreadError::InvalidTransition)?;
-                    ThreadState::Closing
-                        .apply(ThreadTransition::FinalizeClose)
-                        .expect("finalize_close from closing is deterministic")
+                    if body.outcome == CloseOutcome::Inconclusive {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeInconclusive)
+                            .expect("finalize_inconclusive from closing is deterministic")
+                    } else {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeClose)
+                            .expect("finalize_close from closing is deterministic")
+                    }
                 }
-                ThreadState::Closing => ThreadState::Closing
-                    .apply(ThreadTransition::FinalizeClose)
-                    .expect("finalize_close from closing is deterministic"),
+                ThreadState::Closing => {
+                    if body.outcome == CloseOutcome::Inconclusive {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeInconclusive)
+                            .expect("finalize_inconclusive from closing is deterministic")
+                    } else {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeClose)
+                            .expect("finalize_close from closing is deterministic")
+                    }
+                }
                 other => {
                     return Err(ThreadError::InvalidTransition(TransitionError {
                         aggregate: "Thread",
@@ -1070,7 +1114,7 @@ where
                     }))
                 }
             };
-            projection.state = closed;
+            projection.state = terminal;
             projection.close_reason = Some(body.reason.clone());
             (
                 EVENT_CLOSED,
@@ -1080,6 +1124,8 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "reason": body.reason,
+                    "outcome": body.outcome,
+                    "unresolved": body.unresolved,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )

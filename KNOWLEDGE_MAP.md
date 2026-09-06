@@ -45,6 +45,7 @@
 - [`2026-09-06_explicit-participants.md`](docs/decisions/2026-09-06_explicit-participants.md)
 - [`2026-09-06_fake-adapter.md`](docs/decisions/2026-09-06_fake-adapter.md)
 - [`2026-09-06_g0-contract-id-scheme.md`](docs/decisions/2026-09-06_g0-contract-id-scheme.md)
+- [`2026-09-06_honest-inconclusive-close.md`](docs/decisions/2026-09-06_honest-inconclusive-close.md)
 - [`2026-09-06_id-representation.md`](docs/decisions/2026-09-06_id-representation.md)
 - [`2026-09-06_identity-store.md`](docs/decisions/2026-09-06_identity-store.md)
 - [`2026-09-06_join-subscriptions.md`](docs/decisions/2026-09-06_join-subscriptions.md)

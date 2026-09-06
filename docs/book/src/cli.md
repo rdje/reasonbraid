@@ -69,6 +69,16 @@ The contribute verb takes the structured body (`.1.5.1`):
 - Humans carry the `thread_advance_round` grant via the dev admin set; roles are
   deny-by-default (they shape content, humans shape the process).
 
+`thread.close` takes the honest outcome (`.1.5.3`):
+
+- `--outcome` — `decided` (default) | `inconclusive`: the honest terminal for a
+  thread that ends WITHOUT a decision — state `inconclusive`, distinct from
+  `closed` and from the `cancelled` abandonment terminal.
+- `--unresolved` (repeatable) — the items that prevented the decision; they ride
+  the close event and render in the events view. A decided close carrying
+  unresolved items is refused: naming what is still open while claiming a
+  decision would be dishonest.
+
 `thread.cancel` is the **abandonment terminal** (`open|closing → cancelled`,
 reason recorded) — distinct from a decided close; both are inspectable, and a
 cancelled thread refuses further content verbs with `invalid_transition`.

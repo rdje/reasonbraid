@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The honest close: `Inconclusive` is a core terminal (`PHASE-1.5.3`; `.1.5` complete)
+
+- The core thread machine gains the **`Inconclusive` terminal** (`Closing → FinalizeInconclusive`; the exhaustive state-table + terminal-rejection tests extended — the canary pattern): a thread whose deliberation did not converge now ends honestly, distinct from a decided `closed` and the `cancelled` abandonment.
+- `thread.close` gains `outcome` (`decided` **stated default** | `inconclusive`) and the `unresolved` register (the items that prevented the decision — they ride the close EVENT; event-layer growth, no projection change). A `decided` close carrying unresolved items is a typed 400 refusal — naming what is still open while claiming a decision would be dishonest; the terminal refuses further content verbs.
+- CLI: `rb thread close --outcome inconclusive --unresolved …` (kebab-normalized, repeatable). The two-host demo's budget-denied thread B now closes INCONCLUSIVELY with the register asserted (18 PASS checks). New `command_api` test + the e2e's honest leg (its first run caught a missing `--json`, fixed). All twelve live suites (command_api 12) + e2e + demo `rc=0`; offline suites green ×3; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_honest-inconclusive-close.md` (`answers:`). **`.1.5` complete — backlog 17 done.**
+- **`PHASE-1-MAINT-2` reproduced** during this leaf's offline verification: `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY stderr tail — the stderr-drain task raced the EOF-path snapshot (a real race in the `.4.2` code and its `claude.rs` mirror). Repro + root cause recorded in the defect leaf; the fix executes next.
+
 ## 2026-09-06 — Server-assigned rounds: the advance verb and its grant (`PHASE-1.5.2`)
 
 - Rounds landed as **server-assigned facts**: a new thread is round 1 (the additive `current_round` projection field, `#[serde(default)]`), every contribution lands in the current round and its event carries the number, and `thread.advance_round` (event `thread.round_advanced`) is the only mover — the client never names a round, so round skew cannot be submitted by construction.

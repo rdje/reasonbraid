@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.5.3: a terminal outcome must be a machine fact
+
+- **"Honest inconclusive" as prose would be unassertable.** The core machine gains `Inconclusive` (the `Closing → FinalizeInconclusive` edge, the exhaustive table + terminal-rejection tests extended — the canary pattern); the state IS the answer to "did this thread decide?", assertable by the demo and the audit alike.
+- **The register is event content; the state is the outcome.** `unresolved` rides the close EVENT — no projection change (the `.1.5.1` event-layer pattern, now three leaves old). The close body's `outcome` picks the terminal.
+- **Contradictory close bodies are refusals, not warnings.** `decided` + non-empty `unresolved` → typed 400: the dishonest case the feature exists to prevent. Every stored terminal is truthful by construction.
+- **The flake finally reproduced itself — and it was real.** During this leaf's offline verification, `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY stderr tail: the stderr-drain task hadn't consumed the pipe's tail when the EOF path snapshotted the buffer — a real race in the `.4.2` code (and its `claude.rs` mirror), load only widens the window. Repro + root cause recorded in `PHASE-1-MAINT-2`; the fix executes next.
+- Promoted to `docs/decisions/2026-09-06_honest-inconclusive-close.md` (`answers:` present). **`.1.5` complete; next: `PHASE-1-MAINT-2` (the captured drain race).**
+
 ## _(2026-09-06)_ — PHASE-1.5.2: server-assigned facts cannot be forged
 
 - **Assign at the boundary, never validate what the client named.** The round is server-assigned — contributions land in the CURRENT round and `thread.advance_round` is the only mover — so the "current or current+1?" validation ladder never exists. A client-supplied round would have created the mismatch class for no gain.

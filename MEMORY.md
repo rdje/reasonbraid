@@ -29,8 +29,9 @@
   (Claude-family; `proposed` — decompose or execute on pickup; director-owned
   open item: access to a real Claude-family harness).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
-  `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
+- **In-flight uncommitted work:** none after the `PHASE-1-MAINT-1` commit (`run_pg_tests.sh`
+  ephemeral PG data now lives under `$ROOT/target/` — §13; pending defect leaf
+  `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load — repro pending).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.

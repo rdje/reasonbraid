@@ -4,13 +4,17 @@
 # .6.1 command API, .6.2 node wiring, 1.1.1 aggregate library, 1.1.2 identity store,
 # 1.2.1 node enrollment + the real-binary CLI end-to-end suite)
 # against an EPHEMERAL server:
-# initdb into a temp dir, start on a throwaway port, drop everything on exit. No
-# background service is left running (see docs/ci.md and the handoff doctrine).
+# initdb into a temp dir under the repo root (target/pg-ephemeral.XXXXXX, gitignored —
+# §13 same-volume data locality: never /tmp or any off-volume location), start on a
+# throwaway port, drop everything on exit. No background service is left running
+# (see docs/ci.md and the handoff doctrine).
 #
 # Usage:   bash scripts/run_pg_tests.sh
 # Env:     PG_BIN  (default: $(brew --prefix postgresql@16)/bin)
 #          PG_PORT (default: 55432)
 set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PG_PREFIX="${PG_PREFIX:-$(brew --prefix postgresql@16 2>/dev/null || true)}"
 PG_BIN="${PG_BIN:-$PG_PREFIX/bin}"
@@ -23,7 +27,11 @@ for tool in initdb pg_ctl createdb; do
     fi
 done
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/reasonbraid-pg.XXXXXX")"
+# §13 same-volume locality: the ephemeral cluster lives on the repo's volume
+# (target/ is gitignored), so project-owned data never lands on /tmp or another
+# filesystem. mktemp keeps the per-run uniqueness the cleanup trap relies on.
+mkdir -p "$ROOT/target"
+TMP="$(mktemp -d "$ROOT/target/pg-ephemeral.XXXXXX")"
 SOCK="$TMP/sock"; mkdir -p "$SOCK"
 
 cleanup() {

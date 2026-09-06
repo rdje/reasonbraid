@@ -72,14 +72,18 @@ conversation without binding-governance claims.
       the single-agent default is stated, not an empty profile.
 
 - ID: `PHASE-1-MAINT-1`
-  Status: `pending`
+  Status: `done`
   Goal: §13 same-volume locality for the ephemeral PostgreSQL cluster —
     `scripts/run_pg_tests.sh` currently defaults its data dir to
     `${TMPDIR:-/tmp}/reasonbraid-pg.XXXXXX` (off the repo's volume); re-derive
     it from the repo root (`$ROOT/target/pg-ephemeral`, gitignored).
   Defect (tracked `2026-09-06`, pre-existing from `.2.1`): the script predates
-    the §13 adoption; the acceptance checklist is written when the leaf executes
-    (fix = the one-line data-dir change + comment; verification = a full rerun).
+    the §13 adoption.
+  Done (`2026-09-06`): the cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX`
+    (runtime-derived from the script's location, gitignored, per-run unique,
+    trap-cleaned — never `/tmp`); the acceptance checklist below is written with
+    this leaf's execution and verified by two full reruns (both `rc=0`) with an
+    on-volume probe and a residue census.
 
 - ID: `PHASE-1-MAINT-2`
   Status: `pending`
@@ -267,6 +271,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.3.2` done — simple subscriptions: `thread.join` (the self-request path: a thread whose `allow_join_requests` is on admits the role as `accepted` with event `thread.participant_joined` carrying `via: join_request`; a closed door and a double join are typed refusals), `allow_explicit_invites=false` is ENFORCED at the invite boundary (typed refusal; the join door still works), the listing surface shows every participant state + invitation meta; `rb thread join`; the fourth `invitations` test; decision record `docs/decisions/2026-09-06_join-subscriptions.md`; **the `.1.3` coordinator leaf is complete** — frontier → `.1.4`.
 - `2026-09-06`: `.1.3.1` done — the explicit-participants contract: invite records a PENDING offer (typed `expires_in_seconds`, the additive `invitations` map), the invite enqueues NOTHING, the ACCEPT transaction dispatches the work with its reservation; `thread.accept_invitation`/`thread.decline_invitation` (the invitation IS the capability, gated by the new `thread_invitation_respond` grant — the role default gains it) and `thread.remove_participant` (tenant_admin → core `revoked`); expiry is DERIVED at read/accept (the lease-presence pattern — no sweeper, no expiry event); invited roles may not act (the auto-accept is gone, typed `invalid_transition`); re-invitation allowed over terminal states; the wiring suites + CLI e2e + two-host demo moved to the explicit contract (`rb thread accept` as the role); new `tests/invitations.rs` (3 live-PG tests incl. the concurrent accept/remove race — exactly one winner); decision record `docs/decisions/2026-09-06_explicit-participants.md`; frontier → `.1.3.2`.
 - `2026-09-06`: `.1.3` decomposed (gap census first: the `.6.2` invite dispatches work in the invite transaction with NO acceptance step — `ensure_participant` auto-accepts an invited role on first contribution; no accept/decline/expire/remove verbs or invitation records; `allow_join_requests` typed but inert; `allow_explicit_invites=false` recorded but not enforced) into `.1.3.1` (the explicit-participants contract: invitation lifecycle — invite records a pending invitation, accept/decline/remove, derived expiry, the invitation IS the acceptance capability — AND the dispatch move: work enqueues with the ACCEPT event; wiring suites + the two-host demo move to the explicit contract) and `.1.3.2` (simple subscriptions — `thread.join` under `allow_join_requests`, invite enforcement, subscription listing + CLI verbs); frontier → `.1.3.1`. Amended same-day: the lifecycle and the dispatch move are ONE contract (separating them leaves an incoherent interim — work arriving to a role that cannot act), so the original `.1.3.2` merged into `.1.3.1`.
+- `2026-09-06`: `PHASE-1-MAINT-1` done — §13 same-volume locality for the ephemeral PG cluster: `scripts/run_pg_tests.sh` now derives `ROOT` at runtime and places the data dir at `$ROOT/target/pg-ephemeral.XXXXXX` (gitignored, per-run unique, trap-cleaned — never `/tmp`); verified by two full reruns (twelve live suites + CLI e2e + demo, both `rc=0`) with a polled on-volume probe and a residue census; decision record `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md`. Frontier unchanged: `.1.4`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -649,6 +654,55 @@ and the fourth test in `crates/reasonbraid-server/tests/invitations.rs`.
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapter — same commit.
 
+## Acceptance Checklist (PHASE-1-MAINT-1)
+
+The CODE change owned by this leaf: `scripts/run_pg_tests.sh` (matches `\.sh$` in
+`.doctrine/code_paths.txt`). Defect leaf opened during `.1.1.1`; the checklist is
+written now that the leaf executes.
+
+- [x] **REPRODUCE / ISSUE** — §13 was adopted after the script was written, and
+  the ephemeral cluster kept defaulting off-volume:
+  `git log -S 'reasonbraid-pg' --oneline -- scripts/run_pg_tests.sh` →
+  `6e82e2c REASONBRAID-PHASE0-0013 (leaf PHASE-0.2.1)` — the data dir arrived
+  with the `.2.1` script and was never re-touched; the last touch before this
+  leaf is a `.1.3.1` suite-list edit (`d7b7673`).
+  `grep -n 'TMPDIR' scripts/run_pg_tests.sh` (before this leaf) → line 26
+  `TMP="$(mktemp -d "${TMPDIR:-/tmp}/reasonbraid-pg.XXXXXX")"`.
+- [x] **ROOT CAUSE (WHY + WHERE)** — a policy adoption is forward-looking: no
+  reader re-derived the script's project-owned temp data from the repo root
+  after §13 landed, and nothing mechanical checked it (the defect leaf itself
+  is that re-check). The fix point is the single data-dir line — derive `ROOT`
+  from the script's own location and place the cluster under `$ROOT/target/`
+  (already gitignored: `grep -n 'target' .gitignore` → `/target`), keeping the
+  `mktemp` per-run uniqueness the `trap cleanup EXIT` (`rm -rf "$TMP"`) relies
+  on. `git log -S 'mktemp -d' --oneline -- scripts/run_pg_tests.sh` →
+  `6e82e2c` — the mechanics date from `.2.1` and stay untouched.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: data dir under
+  `${TMPDIR:-/tmp}` (off the repo's volume: repo on `/Volumes/SSD/...`, `/tmp`
+  on the system volume). After: `bash scripts/run_pg_tests.sh` creates
+  `$ROOT/target/pg-ephemeral.XXXXXX` — the second run's 2 s poll observed it
+  mid-run: `PROBE-OK at poll 2 (~4s): target/pg-ephemeral.BPJbkS` (the first
+  run's one-shot 25 s probe missed it — timing noise, recorded honestly; the
+  polled rerun is the proof) + `CENSUS-OK: no /tmp reasonbraid-pg usage during
+  run` + `rc=0`; a standalone timing check shows initdb itself completes in
+  ~0.4 s, so nothing hides behind it.
+- [x] **NO REGRESSION** — the script itself is the guard set: TWO full runs,
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`
+  in `target/mait1_run.log`/`mait1_run2.log`) + CLI e2e `test result: ok. 2
+  passed` + the two-host demo `ALL acceptance checks passed` (both `rc=0`);
+  post-run census → `RESIDUE-OK: ephemeral dir cleaned on exit`;
+  `bash -n scripts/run_pg_tests.sh` → clean; `make gate` → 13/13 at commit.
+  No Rust changed, so the script's own full rerun is the selected guard set
+  (§16).
+- [x] **FIX** — `scripts/run_pg_tests.sh`: `ROOT="$(cd "$(dirname
+  "${BASH_SOURCE[0]}")/.." && pwd)"`, `mkdir -p "$ROOT/target"`,
+  `TMP="$(mktemp -d "$ROOT/target/pg-ephemeral.XXXXXX")"`; the header comment
+  now states the §13 locality (never `/tmp`, never off-volume).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below — same commit. Frontier unchanged
+  (`.1.4`), so `docs/TASK_TREE.md` and the book need no update.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -661,6 +715,7 @@ and the fourth test in `crates/reasonbraid-server/tests/invitations.rs`.
 | `2026-09-06` | `PHASE-1.3.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | simple subscriptions landed (`thread.join` + enforced doors); the race test's first shape (accept vs remove) was disproven by the suite itself — both 200 because they are COMPATIBLE transitions; rewritten to the true conflict pair (accept vs decline), rerun green |
 | `2026-09-06` | `PHASE-1.3.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | the explicit-participants contract landed (pending invitations, accept/decline/remove, derived expiry, dispatch-on-accept); the first full run's only failure was the expected audit-timeline delta (the accept's audit record) — updated, rerun green |
 | `2026-09-06` | `PHASE-1.2.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all eleven live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | inbox hardening landed (quarantine + measured prune + inspection); the suite's own first runs caught the missing seed tenant and a `(i64,)`-vs-scalar sqlx annotation — both fixed, rerun green |
+| `2026-09-06` | `PHASE-1-MAINT-1` | `bash -n` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (both `rc=0`); polled probe → cluster on the repo volume (`PROBE-OK at poll 2 (~4s): target/pg-ephemeral.BPJbkS`), no `/tmp` usage, cleaned on exit; `make gate` → 13/13 | §13 same-volume locality: the ephemeral PG cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX` (runtime-derived, gitignored, per-run unique, trap-cleaned — never `/tmp`); defect leaf from `.1.1.1` closed |
 
 ## Commit Log
 
@@ -674,3 +729,4 @@ and the fourth test in `crates/reasonbraid-server/tests/invitations.rs`.
 | `PHASE-1.2.3` | `REASONBRAID-PHASE1-0008` | inbox hardening: quarantine (reason-riding row the replay/poll skip) + measured explicit prune + inspection + CLI verbs; `.1.2` complete |
 | `PHASE-1.3.1` | `REASONBRAID-PHASE1-0011` | explicit participants: pending invitations + accept/decline/remove + derived expiry + dispatch-on-accept + race tests; `.1.3` decomposition amended in `REASONBRAID-PHASE1-0010` |
 | `PHASE-1.3.2` | `REASONBRAID-PHASE1-0012` | simple subscriptions: `thread.join` + enforced participant doors + the accept/decline race; `.1.3` complete |
+| `PHASE-1-MAINT-1` | `REASONBRAID-PHASE1-0013` | §13 same-volume locality: ephemeral PG data at `$ROOT/target/pg-ephemeral.XXXXXX`, never `/tmp`; two full reruns green + on-volume probe + residue census |

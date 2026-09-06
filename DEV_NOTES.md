@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1-MAINT-1: same-volume locality is re-derived per tool, not inherited
+
+- **A policy adoption does not reach backwards into pre-existing tools.** `run_pg_tests.sh` kept defaulting its ephemeral PG cluster to `${TMPDIR:-/tmp}` after §13 landed — the script predated the adoption and no reader re-derived its temp data from the repo root. The fix is the runtime `ROOT` derivation plus the one-line data-dir change; the defect leaf made the re-check itself the work item.
+- **The repo root is the runtime authority, not the caller's CWD.** `ROOT` comes from the script's own location, so the suite behaves identically from any directory — persisted paths are repo-root-relative (§12) and absolute only at runtime (§13).
+- **Move the data, keep the mechanics.** `mktemp`'s per-run uniqueness and the cleanup trap are untouched — only the parent moved (`$ROOT/target/`, gitignored). Evidence: a 2 s poll observed the cluster at `target/pg-ephemeral.BPJbkS` during the run (~4 s in; a one-shot 25 s probe of the first run missed it — timing noise, so the second run polled), and the post-run residue census left nothing on either volume.
+- Promoted to `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md` (`answers:` present). **Frontier `PHASE-1.4` (second real adapter — director decision pending); MAINT-1 closed.**
+
 ## _(2026-09-06)_ — PHASE-1.3.2: compatible transitions are not a serialization bug
 
 - **The race test taught a DOMAIN fact before it proved the lock.** My first shape raced accept vs remove and BOTH returned 200 — the suite's own assertion caught it. They are COMPATIBLE transitions: the serialized order accept-then-revoke is legitimate, the snapshot is `revoked` either way, and a revoked role's late result folds to a stored rejection. The conflict pair is accept vs decline (both consume the same pending offer) — rerun green. A race test must first establish which transitions the domain declares conflicting; asserting exactly-one-winner on a compatible pair asserts a fiction.

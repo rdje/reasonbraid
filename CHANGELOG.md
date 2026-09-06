@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — §13 same-volume locality for the ephemeral PG test cluster (`PHASE-1-MAINT-1`)
+
+- The defect leaf opened during `.1.1.1` is closed: `scripts/run_pg_tests.sh` no longer defaults its ephemeral PostgreSQL data dir to `${TMPDIR:-/tmp}/reasonbraid-pg.XXXXXX`. The cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX` — derived at runtime from the script's own location, same volume as the repo, gitignored via `/target`, still unique per run, still cleaned by the exit trap (only the parent directory moved; the `mktemp`/cleanup mechanics are untouched).
+- Verification is the script's own full rerun from the new location, twice: all **twelve** live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (both `rc=0`); a 2 s poll observed the cluster on the repo volume mid-run and the residue census left nothing under `/tmp` or `target/` after. `make gate` → 13/13 at commit. Decision recorded: `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md` (`answers:`).
+
 ## 2026-09-06 — Simple subscriptions: `thread.join`, enforced participant doors (`PHASE-1.3.2`)
 
 - `thread.join` lands (event `thread.participant_joined`, `via: join_request`): a thread whose `allow_join_requests` is on admits the role directly as `accepted` — the self-request path, no invitation, no reservation machinery (a subscription is an ordinary `thread_contribute` act). A closed door and a double join are typed refusals.

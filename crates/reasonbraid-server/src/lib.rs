@@ -1,7 +1,8 @@
 //! reasonbraid-server — the control-plane crate (`KICKOFF.md` §3).
 //!
 //! WP2 (`.2.1`) lands the atomic command transaction here; `.2.2` lands the leased outbox
-//! worker with fencing and kill-point tests on top of it.
+//! worker with fencing and kill-point tests on top of it; `.3.2` lands the node channel's
+//! server side.
 //!
 //! - [`tx::apply_command`] writes current `aggregate_state`, the ordered `event_log`, the
 //!   `idempotency` result, and an `outbox` item in one PostgreSQL transaction — a successful
@@ -12,15 +13,25 @@
 //!   items with a per-claim fencing token and expiry, [`outbox::deliver`] writes the deduped
 //!   delivery effect, and [`outbox::complete`] acknowledges — a stale worker whose lease was
 //!   superseded by a newer fencing value can never commit.
+//! - [`node_channel`] is the server half of the WP3 node channel: the durable per-node inbox
+//!   with a monotonic cursor, replay from the cursor the node reports, deduplicated node-event
+//!   receipts, and the reconciliation handshake ([`node_channel::node_router`] + the
+//!   `migrations/0003_node_inbox.sql` schema).
 //!
 //! The schema lives at the repository-root `migrations/` (as `KICKOFF.md` §3 sketches);
 //! it is applied by the integration tests via [`sqlx::migrate!`] and by
-//! `scripts/run_pg_tests.sh` / CI. The HTTP/SSE command surface and the node channel are
-//! later leaves (`.2.2` completes WP2; WP3/WP6 follow).
+//! `scripts/run_pg_tests.sh` / CI. The HTTP/SSE command surface and the general-purpose
+//! API are later leaves (`.3.2` completes WP3; WP5/WP6 follow).
 
+mod node_channel;
 mod outbox;
 mod tx;
 
+pub use node_channel::{
+    node_router, AckRequest, AckResponse, AmbiguousAttempt, ApiError, Directive, EventReceipt,
+    EventSubmission, HandshakeRequest, HandshakeResponse, KnownEvent, NodeChannelState, PollParams,
+    PollResponse, ReplayCommand, CHANNEL_VERSION,
+};
 pub use outbox::{
     claim_ready, complete, deliver, ClaimedOutboxItem, CompleteOutcome, DeliverOutcome,
 };

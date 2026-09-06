@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/run_pg_tests.sh — run the PostgreSQL-backed integration tests (.2.1 atomic
-# transaction, .2.2 outbox worker) against an EPHEMERAL server: initdb into a temp dir,
-# start on a throwaway port, drop everything on exit. No background service is left running
-# (see docs/ci.md and the handoff doctrine).
+# transaction, .2.2 outbox worker, .3.2 node channel) against an EPHEMERAL server:
+# initdb into a temp dir, start on a throwaway port, drop everything on exit. No
+# background service is left running (see docs/ci.md and the handoff doctrine).
 #
 # Usage:   bash scripts/run_pg_tests.sh
 # Env:     PG_BIN  (default: $(brew --prefix postgresql@16)/bin)
@@ -35,4 +35,4 @@ trap cleanup EXIT
 
 export DATABASE_URL="postgres://postgres@127.0.0.1:$PORT/reasonbraid_test?sslmode=disable"
 echo "== running reasonbraid-server PostgreSQL integration tests against 127.0.0.1:$PORT/reasonbraid_test =="
-cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker -- --nocapture
+cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel -- --nocapture

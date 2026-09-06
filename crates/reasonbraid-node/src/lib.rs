@@ -15,16 +15,32 @@
 //!   operators inspect journal health, pending work, and ambiguous attempts without
 //!   opening SQLite by hand.
 //!
-//! The outbound node channel with cursor resume and the reconciliation handshake
-//! (`.3.2`) and the execution supervisor build on this journal.
+//! `PHASE-0.3.2` lands the WP3 outbound channel and the reconciliation gate:
 //!
-//! See `docs/decisions/2026-09-06_node-journal.md` for the design record and
+//! - [`channel::NodeChannel`] — the outbound connection to the control plane
+//!   (HTTP/1 JSON over the loopback dev profile): the cursor-reporting handshake,
+//!   original-id event submission, cursor acknowledgement, and the live poll.
+//! - [`node::Node`] — the lifecycle facade: [`node::Node::reconcile`] runs the
+//!   reconnect protocol end to end (replay, directives, pending-event re-emission) and
+//!   becomes [`node::NodeState::Schedulable`] only when it completes — the WP3
+//!   "not schedulable until reconciliation completes" acceptance.
+//!
+//! The execution supervisor and the adapter boundary are WP4's leaves.
+//!
+//! See `docs/decisions/2026-09-06_node-journal.md` for the journal design record and
 //! `docs/book/src/node-journal.md` for the operator-facing documentation.
 
+mod channel;
 mod journal;
+mod node;
 
+pub use channel::{
+    AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt, HandshakeRequest,
+    HandshakeResponse, KnownEvent, NodeChannel, PollResponse, ReplayCommand, CHANNEL_VERSION,
+};
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,
     JournalError, JournalHealth, OperationRecorded, ProvenStatus, RecoveryReport, TransitionRow,
     DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
 };
+pub use node::{Node, NodeError, NodeState};

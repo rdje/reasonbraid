@@ -1,7 +1,7 @@
 # reasonbraid-node — the Rust node crate (KICKOFF.md §3): outbound connection, SQLite
 # journal, execution supervisor. PHASE-0.3.1 lands the WAL journal + the read-only
-# inspection CLI (`rb-journal`); the outbound channel with cursor resume (.3.2) and the
-# execution supervisor follow.
+# inspection CLI (`rb-journal`); .3.2 lands the outbound channel (client side) and the
+# reconciliation gate; the execution supervisor follows in WP4.
 [package]
 name = "reasonbraid-node"
 version = "0.1.0"
@@ -24,6 +24,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # (a node-local operator tool, not an interactive surface).
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+# The outbound channel's HTTP client (PHASE-0.3.2): plain HTTP/1 JSON for the loopback
+# dev profile — no TLS features yet (WP5 identity brings the authenticated profile).
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # sqlite: the embedded node journal (§11.4). Same driver stack as the server's Postgres
@@ -37,10 +40,10 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
     "json",
 ] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 # Local operation identifiers (`op_<uuidv7>`): node-local identity for now — promoted
 # to a `reasonbraid-core` Id family the moment an operation crosses the wire.
 uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }

@@ -63,7 +63,7 @@ journal_mode: wal (recorded profile)
 synchronous: FULL (recorded profile)
 foreign_keys: 1
 busy_timeout_ms: 5000
-schema user_version: 1
+schema user_version: 2
 quick_check: ok
 commands: 3 · operations: 3
 attempts: prepared=1 dispatched=0 completed=1 failed_before_dispatch=0 failed_known=0 outcome_unknown=1 reconciled=0

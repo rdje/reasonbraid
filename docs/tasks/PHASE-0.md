@@ -185,8 +185,8 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP3 — Node SQLite journal and reconnect (`KICKOFF` issues 6–7; backlog 12–13)
 
 - ID: `PHASE-0.3`
-  Status: `pending`
-  Goal: outbound node, WAL journal, cursor resume, reconciliation (`.3.1` journal done; `.3.2` channel pending)
+  Status: `done`
+  Goal: outbound node, WAL journal, cursor resume, reconciliation
   Depends on: `PHASE-0.1`; may proceed beside `PHASE-0.2`
   Children: `PHASE-0.3.1`, `PHASE-0.3.2`
   Roadmap: ADR 006, ADR 012
@@ -199,11 +199,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0015`
 
 - ID: `PHASE-0.3.2`
-  Status: `pending`
+  Status: `done`
   Goal: outbound node channel with cursor resume and reconciliation handshake
   Acceptance: reconnect exchanges last acknowledged server cursor and pending local operation IDs; duplicate command never creates a second local operation; node not schedulable until reconciliation completes
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0016`
 
 ### WP4 — Adapter boundary (`KICKOFF` issues 8–9; backlog 19–21)
 
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.3.2` | `pending` | WP3 outbound node channel — cursor resume + reconciliation handshake builds directly on the `.3.1` journal (command/operation dedupe, ack cursor, boundary ledger are in place); completing it finishes WP3 |
+| 1 | `PHASE-0.4.1` | `pending` | WP4 deterministic fake harness adapter + ambiguity fixtures — WP3 is complete (journal + channel); WP4's dependency ("enough of WP3 to journal attempts") is fully satisfied, and the fake adapter is the conformance oracle `.4.2` (first real harness) needs |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -597,6 +597,64 @@ change owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.tom
   `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to `PHASE-0.3.2`; README
   unchanged (no new standard command — the CLI is documented in the book).
 
+## Acceptance Checklist (PHASE-0.3.2)
+
+The `crates/reasonbraid-server` channel module (`.rs` + `Cargo.toml`), the
+repository-root `migrations/0003_node_inbox.sql`, the `crates/reasonbraid-node` channel
+client + node facade + journal additions (`.rs` + `Cargo.toml` + `migrations/`), the
+`scripts/run_pg_tests.sh` + `.github/workflows/rust.yml` edits, and `Cargo.lock` are the
+CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
+`TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §17.4/§9.3 + KICKOFF WP3 require an
+  outbound node channel where "reconnect exchanges the last acknowledged server cursor
+  and pending local operation IDs", "a duplicated command never creates a second local
+  operation", and "the node does not become schedulable until reconciliation completes".
+  Before this leaf, `git ls-files 'crates/*'` → core + server (`tx.rs`/`outbox.rs` only —
+  no HTTP surface, no per-node delivery ledger) + node (journal only — no channel, no
+  schedulability gate): a node could not receive a single command from the control plane,
+  and nothing stopped a crashed node from silently double-processing redeliveries.
+- [x] **ADDRESSED (verified)** — landed the server-side channel
+  (`src/node_channel.rs` + `migrations/0003_node_inbox.sql`: durable per-node inbox with
+  a monotonic cursor, replay from the node's reported cursor, deduplicated node-event
+  receipts, handshake directives, axum routes) and the node side (`src/channel.rs` client,
+  `src/node.rs` `Offline → Reconciling → Schedulable` facade, journal `channel_state`
+  cursor + `known_events` acknowledgement). `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 13 passed` (`node_channel`) against live PostgreSQL 16.15 + real
+  `127.0.0.1` sockets: fresh handshake plays the whole inbox; reconnect replays ONLY the
+  tail after the reported cursor; **duplicate delivery leaves the same operation ids**;
+  **the node refuses new work until reconciliation completes** (a failed reconcile keeps
+  it unschedulable); both directive cases (no receipt → stays `outcome_unknown`; receipt
+  → `reconciled`); pending events re-emitted with original ids, known events NOT
+  re-sent; server restart resumes from the durable inbox; cursor-ahead refusal; poll
+  tail; version mismatch (400) + forged field (422) rejected; double emission → one
+  receipt.
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` clean + `cargo clippy
+  --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` →
+  `24 passed; 0 failed; 1 ignored` (core) + `17 passed` + `6 passed` + `10 passed` (node)
+  + `13 passed` + `5 passed` + `7 passed` (server, skip offline); `bash scripts/run_pg_tests.sh`
+  → `test result: ok. 5 passed` (atomic) + `test result: ok. 7 passed` (outbox worker) +
+  `test result: ok. 13 passed` (node channel) on live PostgreSQL 16.15; `make gate` →
+  `=== all doctrines green ===` (13/13); `make deny` → `advisories ok, bans ok, licenses ok,
+  sources ok` (axum + reqwest trees — no new allowances needed); `make secret-scan` →
+  `no leaks found`; `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-server/src/node_channel.rs` (+ lib.rs exports +
+  axum/serde deps + `reqwest` dev-dep); `migrations/0003_node_inbox.sql`;
+  `crates/reasonbraid-node/src/channel.rs` + `src/node.rs` (+ lib.rs exports + reqwest
+  dep); node journal migration `0002_node_channel.sql` + `last_acked_cursor` /
+  `set_last_acked_cursor` / `pending_operations` / `operation_ids` /
+  `acknowledge_known_event` APIs (+ `EventSummary.payload`); new
+  `crates/reasonbraid-server/tests/node_channel.rs` (13 tests);
+  `scripts/run_pg_tests.sh` + the CI `pg-tests` job now run all three suites; `Cargo.lock`
+  updated.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_node-channel.md`
+  (`answers:` present, measured behavior + rejected designs) + INDEX row;
+  `knowledge-map/subsystems.md` rows updated (server gains the channel; node gains the
+  channel + facade); the mdBook gains `docs/book/src/node-channel.md` + its SUMMARY entry;
+  `docs/ci.md` notes the channel suite in the `pg-tests` job; `CHANGELOG.md` /
+  `DEV_NOTES.md` / `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier
+  moved to `PHASE-0.4.1`; README unchanged (no new standard command).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -617,6 +675,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.tom
 | `2026-09-06` | `PHASE-0.2.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 5 passed; 0 failed; 0 ignored` (live PostgreSQL 16.15); `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; decision record `2026-09-06_atomic-transaction.md` + INDEX row | WP2 atomic transaction proven: 4 tables one transaction, claim-first idempotency, replay vs conflict |
 | `2026-09-06` | `PHASE-0.2.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed; 0 failed` (`outbox_worker`) + `5 passed` (`atomic_transaction`) on live PostgreSQL 16.15 — exclusive claim, reclaim-after-expiry with new token, stale worker refused after newer fencing value, expired lease refused, kill points 3/4/5 to one effect; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (chrono added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_outbox-worker-fencing.md` + INDEX row | WP2 leased outbox worker proven: claim → deliver → complete with per-claim fencing tokens; **WP2 complete** |
 | `2026-09-06` | `PHASE-0.3.1` | `cargo test -p reasonbraid-node` → `test result: ok. 13 passed` (journal) + `test result: ok. 6 passed` (CLI) + `test result: ok. 10 passed` (kill points KP-1…KP-9 + end-to-end); `cargo test -p reasonbraid-core` → `test result: ok. 24 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 13 + 6 + 10 node + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (clap + libsqlite3-sys; path dep pinned); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-journal.md` + INDEX row | WP3 node journal proven: WAL + synchronous=FULL recorded, boundary record precedes dispatch, honest `outcome_unknown` recovery with prove/reconcile exits, read-only `rb-journal` CLI |
+| `2026-09-06` | `PHASE-0.3.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 13 passed` (`node_channel`) + `5 passed` (`atomic_transaction`) + `7 passed` (`outbox_worker`) against live PostgreSQL 16.15 over real 127.0.0.1 sockets — fresh handshake plays the whole inbox, tail-only reconnect, duplicate delivery keeps the same operation ids, schedulability gate (emit refused before reconcile; failed reconcile stays unschedulable), both reconciliation directive cases, original-id re-emission + known-event skip, server restart resume, cursor-ahead refusal, poll tail, version-mismatch/forged-field rejection, double emission → one receipt; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 17 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (axum + reqwest); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-channel.md` + INDEX row | WP3 outbound node channel proven: cursor resume + reconciliation handshake + schedulability gate; **WP3 complete** |
 
 ## Commit Log
 
@@ -637,6 +696,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.tom
 | `PHASE-0.2.1` | `REASONBRAID-PHASE0-0013` | `crates/reasonbraid-server` atomic transaction + migrations + `run_pg_tests.sh` + pg-tests CI + atomic-transaction decision record |
 | `PHASE-0.2.2` | `REASONBRAID-PHASE0-0014` | `crates/reasonbraid-server` leased outbox worker (`outbox.rs`) + `migrations/0002_outbox_worker.sql` + kill-point/fencing tests + harness updates + outbox-worker-fencing decision record |
 | `PHASE-0.3.1` | `REASONBRAID-PHASE0-0015` | `crates/reasonbraid-node` SQLite journal (WAL + synchronous=FULL, boundary-before-boundary) + read-only `rb-journal` CLI + kill-point tests; core gains `failed_known` + §11.3 provider-lookup edges; node-journal decision record; mdBook chapter |
+| `PHASE-0.3.2` | `REASONBRAID-PHASE0-0016` | `crates/reasonbraid-server` node channel (durable inbox, replay, directives, axum routes) + `migrations/0003` + node-side client/facade (Offline/Reconciling/Schedulable) + journal channel state + 13 cross-crate channel tests + node-channel decision record; mdBook chapter |
 
 ## Changelog
 
@@ -656,3 +716,4 @@ change owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.tom
 - `2026-09-06`: `PHASE-0.2.1` WP2 atomic transaction — `crates/reasonbraid-server` (`apply_command` writes idempotency/event/state/outbox in one transaction), `migrations/0001_atomic_transaction.sql`, `scripts/run_pg_tests.sh` + `pg-tests` CI, `deny.toml` corrected for cargo-deny 0.20, `docs/decisions/2026-09-06_atomic-transaction.md`. Frontier is `.2.2`.
 - `2026-09-06`: `PHASE-0.2.2` WP2 leased outbox worker — `outbox.rs` claim/deliver/complete (each phase its own commit, per-claim fencing tokens, caller-supplied clock), `migrations/0002_outbox_worker.sql` (lease+fencing columns, `outbox_delivery` dedupe sink), 7 kill-point/fencing tests, `docs/decisions/2026-09-06_outbox-worker-fencing.md`. **WP2 complete.** Frontier is `.3.1`.
 - `2026-09-06`: `PHASE-0.3.1` WP3 node journal — `crates/reasonbraid-node` (WAL + `synchronous=FULL` recorded in `journal_meta`, `record_dispatch` commits before the adapter runs, `recover` → `outcome_unknown`, `prove_result`/`reconcile` exits, command/operation dedupe, boundary ledger, ack cursor), read-only `rb-journal` CLI (inspect/pending/ambiguous), KP-1…KP-9 kill-point sweep, core machine extended (`failed_known` + §11.3 provider-lookup edges), `docs/decisions/2026-09-06_node-journal.md`, mdBook node-journal chapter. Frontier is `.3.2`.
+- `2026-09-06`: `PHASE-0.3.2` WP3 outbound node channel — server-side durable inbox (`migrations/0003_node_inbox.sql`, replay from the node's reported cursor, handshake directives, deduplicated event receipts, axum routes) + node-side client and `Offline → Reconciling → Schedulable` facade, journal channel state, 13 cross-crate channel tests over real localhost sockets + live PostgreSQL, `docs/decisions/2026-09-06_node-channel.md`, mdBook node-channel chapter. **WP3 complete.** Frontier is `.4.1`.

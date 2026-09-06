@@ -81,6 +81,8 @@ pub enum JournalError {
     /// A row changed between read and guarded write (should be unreachable under the
     /// single-writer pool, but never silently overwritten).
     ConcurrentChange { what: &'static str, id: String },
+    /// A persisted `channel_state` value is not what its key expects (corrupt state).
+    CorruptState { key: &'static str, value: String },
 }
 
 impl fmt::Display for JournalError {
@@ -104,6 +106,12 @@ impl fmt::Display for JournalError {
                 write!(
                     f,
                     "{what} `{id}` changed while the transition was being applied"
+                )
+            }
+            JournalError::CorruptState { key, value } => {
+                write!(
+                    f,
+                    "channel state key `{key}` holds an unreadable value `{value}`"
                 )
             }
         }
@@ -181,12 +189,15 @@ pub struct TransitionRow {
     pub at: String,
 }
 
-/// One outgoing event awaiting acknowledgement.
+/// One outgoing event (with its body, so a pending event can be re-emitted after a
+/// crash with its ORIGINAL id — `ROADMAP.md` §17.4 step 5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EventSummary {
     pub event_id: String,
     pub operation_id: String,
     pub emitted_at: String,
+    /// The event body (JSON text), carried verbatim for re-emission.
+    pub payload: String,
 }
 
 /// The classification produced by [`Journal::recover`].
@@ -789,22 +800,106 @@ impl Journal {
             .collect())
     }
 
-    /// Outgoing events the server has not acknowledged yet.
+    /// Outgoing events the server has not acknowledged yet, with their bodies — the
+    /// reconnect path re-emits these with their ORIGINAL ids (`ROADMAP.md` §17.4 step 5).
     pub async fn pending_events(&self) -> Result<Vec<EventSummary>, JournalError> {
-        let rows = sqlx::query_as::<_, (String, String, String)>(
-            "SELECT event_id, operation_id, emitted_at FROM outgoing_events \
+        let rows = sqlx::query_as::<_, (String, String, String, String)>(
+            "SELECT event_id, operation_id, emitted_at, payload FROM outgoing_events \
              WHERE acked_at IS NULL ORDER BY emitted_at",
         )
         .fetch_all(&self.pool)
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(event_id, operation_id, emitted_at)| EventSummary {
-                event_id,
-                operation_id,
-                emitted_at,
-            })
+            .map(
+                |(event_id, operation_id, emitted_at, payload)| EventSummary {
+                    event_id,
+                    operation_id,
+                    emitted_at,
+                    payload,
+                },
+            )
             .collect())
+    }
+
+    /// The node's acknowledgement cursor: the highest server command cursor the node has
+    /// durably recorded (0 on a fresh journal). Reported in the reconnect handshake;
+    /// the server replays everything after it and this journal deduplicates.
+    pub async fn last_acked_cursor(&self) -> Result<i64, JournalError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM channel_state WHERE key = 'last_acked_cursor'")
+                .fetch_optional(&self.pool)
+                .await?;
+        match value {
+            None => Ok(0),
+            Some(v) => v.parse::<i64>().map_err(|_| JournalError::CorruptState {
+                key: "last_acked_cursor",
+                value: v,
+            }),
+        }
+    }
+
+    /// Record the node's acknowledgement cursor (idempotent overwrite).
+    pub async fn set_last_acked_cursor(&self, cursor: i64) -> Result<(), JournalError> {
+        sqlx::query(
+            "INSERT INTO channel_state (key, value) VALUES ('last_acked_cursor', ?) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(cursor.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// The local operations that have not reached a terminal state (no attempt yet, or
+    /// every attempt still in flight/ambiguous) — the "pending local operation IDs" the
+    /// reconnect handshake reports (`§17.4` step 2).
+    pub async fn pending_operations(&self) -> Result<Vec<String>, JournalError> {
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT operation_id FROM operations \
+             WHERE operation_id NOT IN ( \
+                 SELECT operation_id FROM attempts \
+                 WHERE status IN ('completed', 'failed_known', 'failed_before_dispatch', 'reconciled') \
+             ) \
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// All local operation ids, oldest first (an inspection/assertion surface).
+    pub async fn operation_ids(&self) -> Result<Vec<String>, JournalError> {
+        let rows = sqlx::query_scalar::<_, String>(
+            "SELECT operation_id FROM operations ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Mark a locally-emitted event acknowledged because the SERVER reports holding it
+    /// (the `known_events` handshake path: the server accepted the event, the ack was
+    /// lost). Only a pending event with the matching ids is marked; anything else is a
+    /// no-op — never an overwrite.
+    pub async fn acknowledge_known_event(
+        &self,
+        operation_id: &str,
+        event_id: &str,
+        ack_cursor: i64,
+        at: DateTime<Utc>,
+    ) -> Result<bool, JournalError> {
+        let res = sqlx::query(
+            "UPDATE outgoing_events SET acked_at = ?, ack_cursor = ? \
+             WHERE operation_id = ? AND event_id = ? AND acked_at IS NULL",
+        )
+        .bind(at.to_rfc3339())
+        .bind(ack_cursor.to_string())
+        .bind(operation_id)
+        .bind(event_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected() == 1)
     }
 
     async fn attempts_where(
@@ -988,7 +1083,7 @@ mod tests {
         assert_eq!(health.journal_mode, "wal");
         assert_eq!(health.synchronous, "FULL");
         assert_eq!(health.foreign_keys, 1);
-        assert_eq!(health.user_version, 1, "migration set the schema version");
+        assert_eq!(health.user_version, 2, "migrations set the schema version");
         assert_eq!(health.quick_check, "ok");
         assert!(health.busy_timeout_ms > 0);
     }
@@ -1399,5 +1494,120 @@ mod tests {
         let journal = Journal::open(dir.join("real.db")).await.unwrap();
         let reader = Journal::open_readonly(journal.path()).await.unwrap();
         assert_eq!(reader.health().await.unwrap().synchronous, "FULL");
+    }
+
+    /// The node's acknowledgement cursor: 0 on a fresh journal, a round trip once set,
+    /// and an overwrite stays idempotent (the handshake reports the LATEST value).
+    #[tokio::test]
+    async fn acknowledgement_cursor_round_trips() {
+        let journal = Journal::open(test_path("cursor")).await.unwrap();
+        assert_eq!(journal.last_acked_cursor().await.unwrap(), 0);
+        journal.set_last_acked_cursor(7).await.unwrap();
+        assert_eq!(journal.last_acked_cursor().await.unwrap(), 7);
+        journal.set_last_acked_cursor(9).await.unwrap();
+        assert_eq!(journal.last_acked_cursor().await.unwrap(), 9);
+    }
+
+    /// Pending operations are exactly those without a terminal attempt — the "pending
+    /// local operation IDs" the reconnect handshake reports.
+    #[tokio::test]
+    async fn pending_operations_are_those_without_a_terminal_attempt() {
+        let journal = Journal::open(test_path("pending-ops")).await.unwrap();
+        // op1: no attempt at all → pending.
+        let (_attempt_id, op1) = {
+            let (attempt_id, op) = seed_attempt(&journal, "p1").await;
+            // leave it prepared (non-terminal)
+            (attempt_id, op)
+        };
+        // op2: attempt completed → NOT pending.
+        let (_a2, _op2) = {
+            let (attempt_id, op) = seed_attempt(&journal, "p2").await;
+            journal
+                .record_dispatch(&attempt_id, None, now())
+                .await
+                .unwrap();
+            journal
+                .record_completed(&attempt_id, None, now())
+                .await
+                .unwrap();
+            (attempt_id, op)
+        };
+        // op3: ambiguous → still pending (no terminal state).
+        let (_a3, _op3) = {
+            let (attempt_id, op) = seed_attempt(&journal, "p3").await;
+            journal
+                .record_dispatch(&attempt_id, None, now())
+                .await
+                .unwrap();
+            journal
+                .record_outcome_unknown(&attempt_id, None, now())
+                .await
+                .unwrap();
+            (attempt_id, op)
+        };
+
+        let pending = journal.pending_operations().await.unwrap();
+        assert_eq!(pending.len(), 2, "got {pending:?}");
+        assert!(pending.contains(&op1));
+        let ids = journal.operation_ids().await.unwrap();
+        assert_eq!(ids.len(), 3);
+    }
+
+    /// The `known_events` handshake path: a pending event whose acknowledgement was
+    /// lost is marked acknowledged ONLY when both ids match — never an overwrite.
+    #[tokio::test]
+    async fn known_event_acknowledgement_matches_both_ids() {
+        let journal = Journal::open(test_path("known-event")).await.unwrap();
+        let (_attempt_id, op) = seed_attempt(&journal, "ke").await;
+        let payload = json_for_test();
+        journal
+            .record_outgoing_event("evt_ke", &op, &payload, now())
+            .await
+            .unwrap();
+
+        // A known event with a WRONG event id is a no-op (never overwrites).
+        let wrong = journal
+            .acknowledge_known_event(&op, "evt_other", 5, now())
+            .await
+            .unwrap();
+        assert!(!wrong);
+        assert_eq!(journal.pending_events().await.unwrap().len(), 1);
+
+        // The matching pair marks it acknowledged with the cursor.
+        let ok = journal
+            .acknowledge_known_event(&op, "evt_ke", 5, now())
+            .await
+            .unwrap();
+        assert!(ok);
+        assert!(journal.pending_events().await.unwrap().is_empty());
+
+        // Re-applying is a no-op, not an error.
+        let again = journal
+            .acknowledge_known_event(&op, "evt_ke", 5, now())
+            .await
+            .unwrap();
+        assert!(!again);
+    }
+
+    /// Pending events carry their bodies, so the reconnect path can re-emit them with
+    /// their original ids and payloads.
+    #[tokio::test]
+    async fn pending_events_carry_their_payloads() {
+        let journal = Journal::open(test_path("event-payload")).await.unwrap();
+        let (_attempt_id, op) = seed_attempt(&journal, "ep").await;
+        let payload = json_for_test();
+        journal
+            .record_outgoing_event("evt_ep", &op, &payload, now())
+            .await
+            .unwrap();
+        let pending = journal.pending_events().await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].event_id, "evt_ep");
+        let back: Value = serde_json::from_str(&pending[0].payload).unwrap();
+        assert_eq!(back, payload);
+    }
+
+    fn json_for_test() -> Value {
+        serde_json::json!({ "event_type": "contribution.ready", "note": "re-emit me" })
     }
 }

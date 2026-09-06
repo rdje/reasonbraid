@@ -123,7 +123,7 @@ async fn inspect_reports_profile_and_counts() {
         "{stdout}"
     );
     assert!(stdout.contains("quick_check: ok"), "{stdout}");
-    assert!(stdout.contains("schema user_version: 1"), "{stdout}");
+    assert!(stdout.contains("schema user_version: 2"), "{stdout}");
     assert!(
         stdout.contains("attempts: prepared=0 dispatched=1"),
         "{stdout}"

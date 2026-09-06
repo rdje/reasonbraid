@@ -1,7 +1,7 @@
 # reasonbraid-server — the control-plane crate (KICKOFF.md §3): HTTP/SSE, command handlers,
 # PostgreSQL transactions. WP2 (.2.1) lands the atomic state/event/idempotency/outbox
-# transaction; .2.2 lands the leased outbox worker with fencing; the HTTP/SSE surface and
-# the node channel are later leaves.
+# transaction; .2.2 lands the leased outbox worker with fencing; .3.2 lands the node
+# channel's server side (the durable per-node inbox, replay, and reconciliation handshake).
 [package]
 name = "reasonbraid-server"
 version = "0.1.0"
@@ -12,9 +12,13 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# The node channel's HTTP surface (ROADMAP.md §9.3): JSON over HTTP/1 for Phase 0 — the
+# authenticated streaming profile is a later phase (WP5 identity, ADR-006's formal record).
+axum = "0.8"
 # Minimal chrono for the outbox worker's caller-supplied lease clock (`chrono::DateTime<Utc>`
 # binds to TIMESTAMPTZ via sqlx's `chrono` feature). default-features=false keeps it small.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # tls-none: local/CI Postgres is reached over a plaintext socket (sslmode=disable), so no
 # TLS backend is pulled in — which also keeps the dependency tree (and its license surface)
@@ -30,4 +34,9 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+# The node channel integration tests drive BOTH sides over real localhost sockets: the
+# axum server here and the node client from reasonbraid-node (reqwest: the wire-forging
+# tests need a raw HTTP client; plain http, no TLS features).
+reasonbraid-node = { path = "../reasonbraid-node", version = "0.1.0" }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }

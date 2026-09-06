@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP2 atomic transaction (`PHASE-0.2.1`)
+
+- Landed `crates/reasonbraid-server` — the first control-plane crate (`KICKOFF.md` §3). `apply_command` writes the four durability tables (`idempotency`, `event_log`, `aggregate_state`, `outbox`) in **one** `BEGIN … COMMIT`, proving the WP2 acceptance against a live PostgreSQL 16.15.
+- Claim-first idempotency (`INSERT … ON CONFLICT DO NOTHING` on the `(tenant_id, idempotency_key)` primary key): a redelivery with the same key+hash replays the *original* stored result; a different hash is `IdempotencyConflict`. Transport redelivery produces exactly one domain effect.
+- Schema lives in repository-root `migrations/0001_atomic_transaction.sql` (outbox carries a FK to `event_log`, so an outbox item implies its event is durable); applied via `sqlx::migrate!`.
+- Proof harness: `scripts/run_pg_tests.sh` (ephemeral `initdb`/`pg_ctl` server, no background service) + a `pg-tests` GitHub Actions job. Tests skip offline (`DATABASE_URL` unset) so `make check` stays green.
+- `deny.toml` corrected for cargo-deny 0.20: `[advisories].unmaintained` is a scope (not a lint level), `BSD-3-Clause` added for `subtle`, and `getrandom`/`hashbrown`/`syn` `skip` entries for the reviewed sqlx-tree duplicates. `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → no leaks; `make book` builds.
+- Recorded `docs/decisions/2026-09-06_atomic-transaction.md` (`answers:` present).
+
 ## 2026-09-06 — WP1 typed errors + reason-code registry (`PHASE-0.1.4`)
 
 - Added `src/error.rs` to `reasonbraid-core`: `KnownReasonCode` (the complete §9.8 registry, 20 codes, snake_case), `ReasonCode` (wraps known codes and preserves unknown codes verbatim via `Unknown(String)`), `Retryability` (tri-state), and `DomainError` (code + retryability + safe message + optional correlation/details).

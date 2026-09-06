@@ -12,9 +12,10 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.2.1` (`pending`); WP1 done.
-- **Next action:** WP2 prove PostgreSQL state/event/idempotency/outbox atomic transaction (successful response ⇔ committed durable state; same key+hash returns original result; different hash is conflict; one domain effect on redelivery).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.2.2` (`pending`); WP1 done, WP2 atomic transaction done.
+- **Next action:** WP2 leased outbox worker with fencing + kill-point tests (`.2.2`).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.1.4`.
+- **In-flight uncommitted work:** none after `PHASE-0.2.1`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
+- **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — the full `make check`/`gate`/`deny`/`secret-scan`/`book` stack runs locally.
 - **Blockers:** none.

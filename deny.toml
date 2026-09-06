@@ -26,16 +26,24 @@ targets = [
 all-features = true
 
 [advisories]
-# RustSec advisories for direct and transitive dependencies.
-unmaintained = "deny"   # an unmaintained crate is a standing risk in a security-sensitive project
-unsound = "all"         # consider every advisory in the `unsound` class
+# RustSec advisories for direct and transitive dependencies. (cargo-deny 0.20: `unmaintained`
+# and `unsound` are scope selectors — which crates get checked — not lint levels.)
+unmaintained = "all"    # check workspace + transitive crates for the `unmaintained` class
+unsound = "all"         # check every crate for the `unsound` class
 ignore = []
 
 [bans]
 multiple-versions = "deny"  # two versions of one crate hide a split decision — force a choice
 wildcards = "deny"          # wildcard version reqs are a reproducibility/supply-chain hazard
 deny = []
-skip = []
+# Reviewed duplicates from the sqlx/tokio tree (2026-09-06): each is two majors of a
+# low-level or proc-macro crate that coexist without crossing an abstraction/security
+# boundary. Re-review if a THIRD version appears or one of them gains a security advisory.
+skip = [
+    { name = "getrandom" }, # 0.2 (via rand 0.8) vs 0.4 (via uuid v7)
+    { name = "hashbrown" }, # 0.15 vs 0.17 (indexmap/ahash majors)
+    { name = "syn" },       # 2.x vs 3.x (proc-macro derive majors)
+]
 skip-tree = []
 
 [bans.std-replacements]
@@ -54,6 +62,7 @@ allow = [
     "MIT",
     "ISC",
     "Unicode-3.0",
+    "BSD-3-Clause",   # `subtle` (constant-time crypto primitive, via sqlx SCRAM auth)
     "Zlib",
 ]
 exceptions = []

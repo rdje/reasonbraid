@@ -7,6 +7,8 @@ git_message_brief.txt
 
 # Generated artifacts are regenerated locally, never tracked (see COMMIT.md)
 /generated
+# mdBook HTML output (`make book` → docs/book/book/); the source is docs/book/src/
+docs/book/book/
 
 # Logs & OS cruft
 *.log

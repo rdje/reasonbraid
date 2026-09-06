@@ -11,6 +11,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
 | `rust` | format, clippy (deny warnings), test | `make check` |
+| `rust` (job `pg-tests`) | the WP2 atomic-transaction tests against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
@@ -26,10 +27,15 @@ The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
 - `make secret-scan` — `gitleaks detect --source . --redact`. **Requires** `gitleaks`
   (`brew install gitleaks`). Scans working tree and history for secrets; `--redact` keeps
   any finding out of the log.
+- `bash scripts/run_pg_tests.sh` — the WP2 PostgreSQL proof: `initdb` into a temp dir,
+  start an ephemeral server on a throwaway port, run the atomic-transaction tests, and tear
+  everything down (no background service left running). **Requires** `postgresql@16`
+  (`brew install postgresql@16`).
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not
-installed them locally.
+installed them locally. The `pg-tests` job runs the same integration tests the local script
+does, against a `postgres:16` service container.
 
 ## Not a release claim
 

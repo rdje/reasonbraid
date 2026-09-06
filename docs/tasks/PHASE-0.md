@@ -168,12 +168,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Roadmap: ADR 004
 
 - ID: `PHASE-0.2.1`
-  Status: `pending`
+  Status: `done`
   Goal: prove PostgreSQL state/event/idempotency/outbox atomic transaction
   Acceptance: successful response ⇔ committed durable state; same key+hash returns original result; different hash is conflict; transport redelivery produces one domain effect
   Kill points: before commit; after commit before response
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0013`
 
 - ID: `PHASE-0.2.2`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.2.1` | `pending` | WP2 prove PostgreSQL state/event/idempotency/outbox atomic transaction |
+| 1 | `PHASE-0.2.2` | `pending` | WP2 leased outbox worker with fencing + kill-point tests |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -461,6 +461,44 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
   `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README and mdBook unchanged
   (no user-facing surface change).
 
+## Acceptance Checklist (PHASE-0.2.1)
+
+The `crates/reasonbraid-server` crate (`.rs` + `Cargo.toml` + `tests/*.rs`), the
+repository-root `migrations/0001_atomic_transaction.sql`, `scripts/run_pg_tests.sh`, and the
+`deny.toml` + `.github/workflows/rust.yml` edits are the CODE change owned by this leaf (per
+`.doctrine/code_paths.txt`: `crates/`, `scripts/`, `.rs`, `.sh`; `Cargo.toml`/`Cargo.lock`
+are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §8.6 / KICKOFF WP2 require "one transaction
+  writes current state, ordered event, idempotency result, and outbox item," but no server
+  crate or PostgreSQL driver existed to run it — `git ls-files 'crates/*'` (before) →
+  `crates/reasonbraid-core` only, no `reasonbraid-server`, no `migrations/`, no Postgres.
+  Four autocommit `INSERT`s would tear, and "check-then-insert" idempotency races under
+  redelivery.
+- [x] **ADDRESSED (verified)** — landed `crates/reasonbraid-server` (`apply_command` writes
+  idempotency + event_log + aggregate_state + outbox in one transaction, claim-first
+  idempotency via `ON CONFLICT DO NOTHING`), `migrations/0001_atomic_transaction.sql`
+  (outbox FK → event_log), `scripts/run_pg_tests.sh` (ephemeral Postgres), and a `pg-tests`
+  CI job. `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured` against live PostgreSQL 16.15
+  (successful-response⇔durable, same-key+hash replay, different-hash conflict, redelivery→one
+  effect, before-commit rollback).
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` clean,
+  `cargo clippy --all-targets --all-features -- -D warnings` no warnings,
+  `cargo test --all` → `test result: ok. 23 passed; 0 failed; 1 ignored` (core) + server
+  `5 passed` (skip offline); `make gate` → `=== all doctrines green ===` (13/13);
+  `make deny` → `advisories ok, bans ok, licenses ok, sources ok`; `make secret-scan` →
+  `no leaks found`; `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-server` (src/lib.rs + src/tx.rs + tests/atomic_transaction.rs
+  + Cargo.toml); `migrations/0001_atomic_transaction.sql`; `scripts/run_pg_tests.sh`;
+  `.github/workflows/rust.yml` gains a `pg-tests` job; `deny.toml` corrected for cargo-deny
+  0.20 (`unmaintained` scope, `BSD-3-Clause`, `skip` for getrandom/hashbrown/syn).
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_atomic-transaction.md`
+  (`answers:` present) + INDEX row; `knowledge-map/subsystems.md` gains the
+  `reasonbraid-server` row; `docs/ci.md` documents `run_pg_tests.sh` + the `pg-tests` job;
+  `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README and mdBook unchanged
+  (no user-facing surface change).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -478,6 +516,7 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 | `2026-09-06` | `PHASE-0.1.2` | `cargo test -p reasonbraid-core` → `test result: ok. 10 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 10 passed; `make gate` → `=== all doctrines green ===` (13/13); golden fixtures round-trip, forged-authority fixture rejected, schema goldens in sync; decision record `2026-09-06_envelope-representation.md` + INDEX row | command/event envelopes landed; client forgery rejected |
 | `2026-09-06` | `PHASE-0.1.3` | `cargo test -p reasonbraid-core` → `test result: ok. 17 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 17 passed; `make gate` → `=== all doctrines green ===` (13/13); three state machines reject invalid transitions deterministically; decision record `2026-09-06_state-transitions.md` + INDEX row | minimal state machines landed; `ProviderAttemptId` (`patt`) added |
 | `2026-09-06` | `PHASE-0.1.4` | `cargo test -p reasonbraid-core` → `test result: ok. 23 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 passed; `make gate` → `=== all doctrines green ===` (13/13); §9.8 registry round-trips, unknown code preserved verbatim; decision record `2026-09-06_reason-codes.md` + INDEX row | typed errors + reason-code registry landed (WP1 complete) |
+| `2026-09-06` | `PHASE-0.2.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 5 passed; 0 failed; 0 ignored` (live PostgreSQL 16.15); `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; decision record `2026-09-06_atomic-transaction.md` + INDEX row | WP2 atomic transaction proven: 4 tables one transaction, claim-first idempotency, replay vs conflict |
 
 ## Commit Log
 
@@ -495,6 +534,7 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 | `PHASE-0.1.2` | `REASONBRAID-PHASE0-0010` | `crates/reasonbraid-core` envelopes + fixtures/schemas + envelope-representation decision record |
 | `PHASE-0.1.3` | `REASONBRAID-PHASE0-0011` | `crates/reasonbraid-core` state machines + `ProviderAttemptId` + state-transitions decision record |
 | `PHASE-0.1.4` | `REASONBRAID-PHASE0-0012` | `crates/reasonbraid-core` reason-code registry + typed errors + reason-codes decision record |
+| `PHASE-0.2.1` | `REASONBRAID-PHASE0-0013` | `crates/reasonbraid-server` atomic transaction + migrations + `run_pg_tests.sh` + pg-tests CI + atomic-transaction decision record |
 
 ## Changelog
 
@@ -511,3 +551,4 @@ by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE`
 - `2026-09-06`: `PHASE-0.1.2` command/event envelopes — `CommandEnvelope`/`ClientContext`/`CommittedEvent` with `deny_unknown_fields`, five new ID families, JSON Schema goldens + wire fixtures + `docs/decisions/2026-09-06_envelope-representation.md`. Frontier is `.1.3`.
 - `2026-09-06`: `PHASE-0.1.3` minimal state machines — thread/participation/provider-attempt lifecycles with deterministic fallible `apply`, `ProviderAttemptId` (`patt`), `docs/decisions/2026-09-06_state-transitions.md`. Frontier is `.1.4`.
 - `2026-09-06`: `PHASE-0.1.4` typed errors + reason-code registry — complete §9.8 registry with unknown-code preservation, `Retryability`, `DomainError`, `docs/decisions/2026-09-06_reason-codes.md`. WP1 complete; frontier is `.2.1`.
+- `2026-09-06`: `PHASE-0.2.1` WP2 atomic transaction — `crates/reasonbraid-server` (`apply_command` writes idempotency/event/state/outbox in one transaction), `migrations/0001_atomic_transaction.sql`, `scripts/run_pg_tests.sh` + `pg-tests` CI, `deny.toml` corrected for cargo-deny 0.20, `docs/decisions/2026-09-06_atomic-transaction.md`. Frontier is `.2.2`.

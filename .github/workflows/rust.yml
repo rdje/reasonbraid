@@ -17,3 +17,29 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --all
+
+  # PostgreSQL-backed integration tests (WP2 .2.1): the atomic state/event/idempotency/
+  # outbox transaction can only be proven against a live Postgres. Mirrors the local
+  # `scripts/run_pg_tests.sh` ephemeral server.
+  pg-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: reasonbraid_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/reasonbraid_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test (PostgreSQL atomic transaction)
+        run: cargo test -p reasonbraid-server --test atomic_transaction -- --nocapture

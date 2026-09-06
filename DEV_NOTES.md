@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP2 atomic transaction: claim-first idempotency, four tables in one commit
+
+- `ROADMAP.md` §8.6 / KICKOFF WP2 require "one transaction writes current state, ordered event, idempotency result, and outbox item," but nothing enforced it — four autocommit `INSERT`s could tear, and a "check-then-insert" idempotency check races under redelivery. The fix is structural: `apply_command` claims the `(tenant_id, idempotency_key)` primary key **first** (`INSERT … ON CONFLICT DO NOTHING`), so the unique index is the concurrency control — a redelivered message either replays (same hash → original stored result) or conflicts (different hash).
+- The four writes (idempotency claim, `event_log`, `aggregate_state`, `outbox`) run on one transaction; a failure at any step drops it and rolls back the claim too. The outbox FK → `event_log` makes "outbox row implies durable event" a schema fact, not an assertion.
+- **The proof needs a live Postgres** — the tests skip when `DATABASE_URL` is unset (so `make check` stays green offline) and run for real only in `scripts/run_pg_tests.sh` (ephemeral `initdb`/`pg_ctl`, no background service) and the `pg-tests` CI job. "successful response ⇔ committed durable state" is asserted by reading all four tables back from a *separate* connection after commit.
+- **Honest limit:** `next_version = MAX+1` under `FOR UPDATE` serializes writers to an *existing* aggregate, but a fresh aggregate's first insert isn't gap-locked — two concurrent first-writes to the same new aggregate aren't fully serialized. Phase-1 concern, out of WP2's single-writer scope.
+- **`deny.toml` was wrong for the tool it names.** It was authored against an old cargo-deny schema (when deps were zero) and only TOML-parsed, never run through cargo-deny — so the first real `make deny` failed. Corrected for cargo-deny 0.20: `[advisories].unmaintained` is a *scope* (`all`/`workspace`/`transitive`/`none`), not a lint level (`deny`); added `BSD-3-Clause` for `subtle` (constant-time crypto, via sqlx SCRAM); `skip` for the reviewed `getrandom`/`hashbrown`/`syn` sqlx-tree duplicates. Lesson: a config for a tool that isn't installed is a *draft*, not a gate.
+- Promoted to `docs/decisions/2026-09-06_atomic-transaction.md` (`answers:` present).
+
 ## _(2026-09-06)_ — WP1 typed errors + reason-code registry: complete §9.8, unknown codes preserved
 
 - `ROADMAP.md` §9.8 lists reason codes but not how to treat an unknown one. The two naive shapes both fail: a closed enum *rejects* the future (deserialization error), a bare `String` *loses* the typing of the known set. The fix is a two-layer `ReasonCode` — `Known(KnownReasonCode)` + `Unknown(String)` with `#[serde(untagged)]` — which gets both properties at once.

@@ -1,0 +1,20 @@
+{
+  "protocol_version": "reasonbraid/0.4",
+  "event_id": "evt_018f2e6c-1b2e-7000-8000-000000000003",
+  "event_type": "thread.created",
+  "tenant_id": "ten_018f2e6c-1b2e-7000-8000-000000000001",
+  "aggregate_id": "thr_018f2e6c-1b2e-7000-8000-000000000002",
+  "aggregate_version": 1,
+  "thread_sequence": 1,
+  "actor_principal_id": "agt_018f2e6c-1b2e-7000-8000-000000000006",
+  "occurred_at": "2026-09-06T02:30:00Z",
+  "committed_at": "2026-09-06T02:30:01Z",
+  "correlation_id": "corr_018f2e6c-1b2e-7000-8000-000000000005",
+  "causation_id": "req_018f2e6c-1b2e-7000-8000-000000000004",
+  "authorization_record_id": "authz_018f2e6c-1b2e-7000-8000-000000000007",
+  "schema_version": 1,
+  "body": {
+    "title": "Resolve the budget-signoff ambiguity",
+    "visibility": "tenant"
+  }
+}

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP1 envelopes: intent in, authority out, forgery rejected
+
+- `ROADMAP.md` §9.1 sketches the command/event split but nothing enforced it — serde ignores unknown fields by default, so a struct that merely *omits* authoritative fields would still accept them from a client. The fix is mechanical: `#[serde(deny_unknown_fields)]` on `CommandEnvelope`, `ClientContext`, and `CommittedEvent` makes the same deserialization that accepts a valid command reject a forged one.
+- `CommandEnvelope` = intent only (operation, `request_id`, idempotency key, optional expected aggregate version, opaque `body`, correlation/causation context); `CommittedEvent` = server-assigned authority (event id, tenant, aggregate, sequence, actor principal, timestamps, authorization record, schema version). Optional fields are nullable (`null` on the wire, `#[serde(default)]` on read) to match §9.1's explicit nulls.
+- Golden fixtures (`fixtures/`) cover every wire payload the demo uses: `command-thread-create.json`, `event-thread-created.json`, and a `command-with-authoritative-fields.json` that must fail. `schemars` (derive + a manual `Id<K>` impl) generates JSON Schema goldens (`schema/`) guarded by a drift test; regenerate with `cargo test -p reasonbraid-core -- --ignored write_schema_goldens`.
+- Timestamps stay `String` (RFC 3339) until ADR-010 pins the time type; `ActorPrincipalId` (`agt`) is opaque — which principal kind it names is a WP5 concern.
+- Promoted to `docs/decisions/2026-09-06_envelope-representation.md` (`answers:` present).
+
 ## _(2026-09-06)_ — WP1 strong IDs: branded newtypes over UUIDv7, prefix-checked on the wire
 
 - Landed `crates/reasonbraid-core` (first real crate; the scaffold's placeholder `crates/app` binary is removed). `KICKOFF.md` §3 names this crate "IDs, envelopes, minimal thread and attempt states".

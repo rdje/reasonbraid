@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP1 command/event envelopes (`PHASE-0.1.2`)
+
+- Added `CommandEnvelope` (client intent), `ClientContext`, and `CommittedEvent` (server authority) to `reasonbraid-core`, with `PROTOCOL_VERSION = "reasonbraid/0.4"`. Both envelopes use `#[serde(deny_unknown_fields)]`, so a client-supplied authoritative field (actor/tenant/sequence/timestamps/authority) is rejected at deserialization, not ignored or trusted.
+- Added five envelope-scoped ID families: `EventId` (`evt`), `RequestId` (`req`), `CorrelationId` (`corr`), `ActorPrincipalId` (`agt`), `AuthorizationRecordId` (`authz`).
+- Added `schemars` (derive) as a dependency and a manual `JsonSchema` impl for `Id<K>`; generated JSON Schema goldens (`schema/`) with a drift test, plus golden wire fixtures (`fixtures/`) for `thread.create`/`thread.created` and a forged-command fixture.
+- Recorded `docs/decisions/2026-09-06_envelope-representation.md` (`answers:` present): client expresses intent, server assigns authority.
+
 ## 2026-09-06 — WP1 strong identifiers (`PHASE-0.1.1`)
 
 - Landed `crates/reasonbraid-core` — the first real crate (the scaffold's placeholder `crates/app` binary is removed). This is the `KICKOFF.md` §3 `reasonbraid-core`: IDs now, envelopes/thread/attempt states later.

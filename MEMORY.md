@@ -12,9 +12,9 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.1.2` (`pending`)
-- **Next action:** WP1 command/event envelopes + JSON Schema/golden fixtures (client-supplied actor/tenant/sequence rejected).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.1.3` (`pending`)
+- **Next action:** WP1 minimal thread (`open`/`closing`/`closed`/`cancelled`), participation (`invited`/`accepted`/`declined`/`expired`/`left`), provider-attempt (`prepared`/`dispatched`/`completed`/`failed_before_dispatch`/`outcome_unknown`/`reconciled`) state transitions — invalid transitions rejected deterministically.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.1.1`.
+- **In-flight uncommitted work:** none after `PHASE-0.1.2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Blockers:** none.

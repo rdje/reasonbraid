@@ -1,0 +1,12 @@
+{
+  "protocol_version": "reasonbraid/0.4",
+  "operation": "thread.create",
+  "request_id": "req_018f2e6c-1b2e-7000-8000-000000000004",
+  "idempotency_key": "client-key-0002",
+  "expected_aggregate_version": null,
+  "body": {},
+  "client_context": {},
+  "tenant_id": "ten_018f2e6c-1b2e-7000-8000-000000000001",
+  "actor_principal_id": "agt_018f2e6c-1b2e-7000-8000-000000000006",
+  "thread_sequence": 1
+}

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CommittedEvent",
+  "description": "A committed event the server publishes after accepting a command (`ROADMAP.md` §9.1).\n\nEvery field is server-assigned; none is taken from a client's submission.",
+  "type": "object",
+  "properties": {
+    "actor_principal_id": {
+      "$ref": "#/$defs/ActorPrincipalId"
+    },
+    "aggregate_id": {
+      "description": "The aggregate this event mutates; Phase 0's only aggregate is a thread.",
+      "$ref": "#/$defs/ThreadId"
+    },
+    "aggregate_version": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "authorization_record_id": {
+      "$ref": "#/$defs/AuthorizationRecordId"
+    },
+    "body": true,
+    "causation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RequestId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "committed_at": {
+      "type": "string"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "event_id": {
+      "$ref": "#/$defs/EventId"
+    },
+    "event_type": {
+      "description": "Event name, e.g. `\"thread.created\"`. The full event catalogue is backlog 6.",
+      "type": "string"
+    },
+    "occurred_at": {
+      "description": "RFC 3339 wall-clock time; ADR-010 pins the exact time type.",
+      "type": "string"
+    },
+    "protocol_version": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "tenant_id": {
+      "$ref": "#/$defs/TenantId"
+    },
+    "thread_sequence": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "event_id",
+    "event_type",
+    "tenant_id",
+    "aggregate_id",
+    "aggregate_version",
+    "thread_sequence",
+    "actor_principal_id",
+    "occurred_at",
+    "committed_at",
+    "authorization_record_id",
+    "schema_version",
+    "body"
+  ],
+  "$defs": {
+    "ActorPrincipalId": {
+      "description": "ActorPrincipal identifier; wire form `agt_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^agt_"
+    },
+    "AuthorizationRecordId": {
+      "description": "AuthorizationRecord identifier; wire form `authz_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^authz_"
+    },
+    "CorrelationId": {
+      "description": "Correlation identifier; wire form `corr_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^corr_"
+    },
+    "EventId": {
+      "description": "Event identifier; wire form `evt_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^evt_"
+    },
+    "RequestId": {
+      "description": "Request identifier; wire form `req_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^req_"
+    },
+    "TenantId": {
+      "description": "Tenant identifier; wire form `ten_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^ten_"
+    },
+    "ThreadId": {
+      "description": "Thread identifier; wire form `thr_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^thr_"
+    }
+  }
+}

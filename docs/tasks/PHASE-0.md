@@ -136,12 +136,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0009`
 
 - ID: `PHASE-0.1.2`
-  Status: `pending`
+  Status: `done`
   Goal: command submission envelope and committed event envelope; JSON Schema/golden fixtures
   Acceptance: fixtures for every wire payload the demo uses; client-supplied actor/tenant/sequence rejected
   Roadmap: §9.1–9.2, backlog 6
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0010`
 
 - ID: `PHASE-0.1.3`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.1.2` | `pending` | WP1 command/event envelopes + JSON Schema/golden fixtures (client-supplied actor/tenant/sequence rejected) |
+| 1 | `PHASE-0.1.3` | `pending` | WP1 minimal thread/participation/provider-attempt state transitions |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -373,6 +373,38 @@ this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` do
   `reasonbraid-core` row; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated;
   README and mdBook unchanged (no user-facing surface change).
 
+## Acceptance Checklist (PHASE-0.1.2)
+
+The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml` + `fixtures/*.json` +
+`schema/*.json`, all under `crates/`) is the CODE change owned by this leaf (per
+`.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §9.1 sketches the command/event
+  envelope split and the "client-supplied actor/timestamp/authority/sequence/tenant
+  ignored or rejected" rule, but nothing enforced it: serde ignores unknown JSON fields
+  by default, so a `CommandEnvelope` that merely *omitted* authoritative fields would
+  still accept them from a client. `git ls-files 'crates/reasonbraid-core/*'` (before) →
+  only `Cargo.toml` + `src/lib.rs` + `src/id.rs`; no envelope module, no fixtures, no
+  schema goldens existed.
+- [x] **ADDRESSED (verified)** — landed `src/envelope.rs` with `CommandEnvelope` /
+  `ClientContext` / `CommittedEvent` + `PROTOCOL_VERSION = "reasonbraid/0.4"`, all
+  `#[serde(deny_unknown_fields)]`; five new ID families (`evt`/`req`/`corr`/`agt`/`authz`)
+  in `id.rs`; golden fixtures + `schemars`-derived golden schemas. `cargo test -p
+  reasonbraid-core` → `test result: ok. 10 passed; 0 failed; 1 ignored` (round-trip
+  canonical ×2, authoritative-field rejection, schema-drift, plus the six ID tests).
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` (clean),
+  `cargo clippy --all-targets --all-features -- -D warnings` (no warnings),
+  `cargo test --all` → `test result: ok. 10 passed; 0 failed; 1 ignored`; `make gate` →
+  `=== all doctrines green ===` (13/13).
+- [x] **FIX** — new `crates/reasonbraid-core/src/envelope.rs` (+ tests), `fixtures/`
+  (3 wire payloads incl. a forged-authority fixture), `schema/` (2 golden schemas);
+  `src/id.rs` gains 5 families + a manual `JsonSchema` impl; `src/lib.rs` re-exports the
+  envelopes and new IDs; `Cargo.toml` adds `schemars` (derive) + promotes `serde_json`.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_envelope-representation.md`
+  (`answers:` present) + INDEX row; `knowledge-map/subsystems.md` updated to "identifiers
+  and envelopes landed"; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README
+  and mdBook unchanged (no user-facing surface change).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -387,6 +419,7 @@ this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` do
 | `2026-09-06` | `PHASE-0.0.7` | `make -n deny`→`cargo deny check`; `make -n secret-scan`→`gitleaks detect --source . --redact`; `make gate` 13/13; `make check` 1 test ok; `deny.toml`+`supply-chain.yml`+`docs/ci.md` present | supply-chain skeleton; no release claim |
 | `2026-09-06` | `PHASE-0.0.8` | `test -f spec/{README,glossary,requirements,lifecycle,threat-model}.md spec/governance/charter.md`; five G0 ID prefixes (ID/AUTH/THREAD/DELIV/BUDGET) assigned in `spec/requirements.md`; threat-model lists 11 trust boundaries; charter names Richard DJE as bootstrap human root; decision record `2026-09-06_g0-contract-id-scheme.md` + INDEX row | G0 contract drafts, all "draft — not normative" |
 | `2026-09-06` | `PHASE-0.1.1` | `cargo test -p reasonbraid-core` → `test result: ok. 6 passed; 0 failed`; `make check` → fmt clean + `cargo clippy --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` 6 passed; `make gate` → `=== all doctrines green ===` (13/13); eight ID newtypes pairwise `TypeId`-distinct; decision record `2026-09-06_id-representation.md` + INDEX row | strong IDs landed; first real crate |
+| `2026-09-06` | `PHASE-0.1.2` | `cargo test -p reasonbraid-core` → `test result: ok. 10 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 10 passed; `make gate` → `=== all doctrines green ===` (13/13); golden fixtures round-trip, forged-authority fixture rejected, schema goldens in sync; decision record `2026-09-06_envelope-representation.md` + INDEX row | command/event envelopes landed; client forgery rejected |
 
 ## Commit Log
 
@@ -401,6 +434,7 @@ this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` do
 | `PHASE-0.0.7` | `REASONBRAID-PHASE0-0007` | deny.toml + supply-chain workflow + Makefile deny/secret-scan |
 | `PHASE-0.0.8` | `REASONBRAID-PHASE0-0008` | G0 contract drafts under `spec/` + ID-scheme decision record |
 | `PHASE-0.1.1` | `REASONBRAID-PHASE0-0009` | `crates/reasonbraid-core` strong ID newtypes + id-representation decision record |
+| `PHASE-0.1.2` | `REASONBRAID-PHASE0-0010` | `crates/reasonbraid-core` envelopes + fixtures/schemas + envelope-representation decision record |
 
 ## Changelog
 
@@ -414,3 +448,4 @@ this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` do
 - `2026-09-06`: `PHASE-0.0.7` supply-chain skeleton (deny.toml, supply-chain CI, `make deny`/`make secret-scan`). Frontier is `.0.8`.
 - `2026-09-06`: `PHASE-0.0.8` G0 contract drafts under `spec/` (glossary, requirements, lifecycle, threat-model, governance/charter) + `docs/decisions/2026-09-06_g0-contract-id-scheme.md`. Frontier is `.1.1`.
 - `2026-09-06`: `PHASE-0.1.1` strong IDs — `crates/reasonbraid-core` (branded newtypes over UUIDv7, eight families) + `docs/decisions/2026-09-06_id-representation.md`. Placeholder `crates/app` removed. Frontier is `.1.2`.
+- `2026-09-06`: `PHASE-0.1.2` command/event envelopes — `CommandEnvelope`/`ClientContext`/`CommittedEvent` with `deny_unknown_fields`, five new ID families, JSON Schema goldens + wire fixtures + `docs/decisions/2026-09-06_envelope-representation.md`. Frontier is `.1.3`.

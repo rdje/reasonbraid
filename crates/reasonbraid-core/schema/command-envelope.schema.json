@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CommandEnvelope",
+  "description": "A command submission from a client (`ROADMAP.md` §9.1).\n\nThe client supplies only intent: an operation, an idempotency key, an optional\nexpected aggregate version for optimistic concurrency, an opaque `body`, and a\ncorrelation context. Authoritative fields — actor, tenant, sequence, timestamps,\nauthority — are absent from this type and are rejected by `deny_unknown_fields` if a\nclient tries to send them.",
+  "type": "object",
+  "properties": {
+    "body": {
+      "description": "Operation-specific payload, interpreted by the owning aggregate (§8.6)."
+    },
+    "client_context": {
+      "$ref": "#/$defs/ClientContext"
+    },
+    "expected_aggregate_version": {
+      "description": "Optimistic-concurrency hint: the aggregate version the client believes is current.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "default": null,
+      "minimum": 0
+    },
+    "idempotency_key": {
+      "description": "Client-generated idempotency key; opaque, no prefix (`ROADMAP.md` §9.2).",
+      "type": "string"
+    },
+    "operation": {
+      "description": "Operation name, e.g. `\"thread.create\"`. The full operation catalogue is backlog 6.",
+      "type": "string"
+    },
+    "protocol_version": {
+      "type": "string"
+    },
+    "request_id": {
+      "$ref": "#/$defs/RequestId"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "operation",
+    "request_id",
+    "idempotency_key",
+    "body",
+    "client_context"
+  ],
+  "$defs": {
+    "ClientContext": {
+      "description": "Correlation context a client may attach to a command (`ROADMAP.md` §9.1).",
+      "type": "object",
+      "properties": {
+        "causation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CorrelationId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "CorrelationId": {
+      "description": "Correlation identifier; wire form `corr_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^corr_"
+    },
+    "RequestId": {
+      "description": "Request identifier; wire form `req_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^req_"
+    }
+  }
+}

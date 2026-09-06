@@ -5,10 +5,12 @@
 //! into a type: [`Id<K>`] is a branded newtype over [`uuid::Uuid`] (v7, sortable per
 //! §17.2), and each identifier family is a distinct marker `K`.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
@@ -156,6 +158,23 @@ impl fmt::Display for IdParseError {
 
 impl std::error::Error for IdParseError {}
 
+impl<K: IdKind> JsonSchema for Id<K> {
+    fn schema_name() -> Cow<'static, str> {
+        format!("{}Id", K::LABEL).into()
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "string",
+            "description": format!(
+                "{} identifier; wire form `{}_{{uuid}}` (UUIDv7).",
+                K::LABEL, K::PREFIX
+            ),
+            "pattern": format!("^{}_", K::PREFIX)
+        })
+    }
+}
+
 // ── The eight identifier families (ROADMAP.md §8.1) ─────────────────────────
 
 /// Declares one identifier family: its zero-sized marker, its [`IdKind`] impl, and its
@@ -210,14 +229,38 @@ id_family! {
     marker Thread, alias ThreadId, prefix "thr", label "Thread"
 }
 
+// ── Envelope-scoped identifiers (ROADMAP.md §9.1) — added in PHASE-0.1.2 ────
+
+id_family! {
+    /// A committed event's identity (`ROADMAP.md` §9.1, §8.3).
+    marker Event, alias EventId, prefix "evt", label "Event"
+}
+id_family! {
+    /// A client request identity; also the `causation_id` target of an event (`ROADMAP.md` §9.1).
+    marker Request, alias RequestId, prefix "req", label "Request"
+}
+id_family! {
+    /// A correlation scope spanning several commands/events (`ROADMAP.md` §9.1).
+    marker Correlation, alias CorrelationId, prefix "corr", label "Correlation"
+}
+id_family! {
+    /// The authenticated actor principal the server resolved for a command (`ROADMAP.md` §9.1).
+    /// Opaque here: which principal kind (`hpr`/`rol`) an `agt` names is a WP5 identity concern.
+    marker ActorPrincipal, alias ActorPrincipalId, prefix "agt", label "ActorPrincipal"
+}
+id_family! {
+    /// A server-assigned authorization audit record reference (`ROADMAP.md` §9.1).
+    marker AuthorizationRecord, alias AuthorizationRecordId, prefix "authz", label "AuthorizationRecord"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// The core guarantee: distinct things stay distinct in types. If any two
     /// identifiers collapsed into one type (e.g. all plain `String` aliases), the whole
-    /// point of the newtype rule would be lost — so assert all eight are distinct
-    /// concrete types, not aliases of one another.
+    /// point of the newtype rule would be lost — so assert all identifier kinds are
+    /// distinct concrete types, not aliases of one another.
     #[test]
     fn id_kinds_are_distinct_types() {
         let kinds = [
@@ -229,6 +272,11 @@ mod tests {
             std::any::TypeId::of::<AgentIncarnationId>(),
             std::any::TypeId::of::<RunId>(),
             std::any::TypeId::of::<ThreadId>(),
+            std::any::TypeId::of::<EventId>(),
+            std::any::TypeId::of::<RequestId>(),
+            std::any::TypeId::of::<CorrelationId>(),
+            std::any::TypeId::of::<ActorPrincipalId>(),
+            std::any::TypeId::of::<AuthorizationRecordId>(),
         ];
         for i in 0..kinds.len() {
             for j in (i + 1)..kinds.len() {
@@ -263,6 +311,11 @@ mod tests {
             (AgentIncarnationId::new().to_string(), "inc"),
             (RunId::new().to_string(), "run"),
             (ThreadId::new().to_string(), "thr"),
+            (EventId::new().to_string(), "evt"),
+            (RequestId::new().to_string(), "req"),
+            (CorrelationId::new().to_string(), "corr"),
+            (ActorPrincipalId::new().to_string(), "agt"),
+            (AuthorizationRecordId::new().to_string(), "authz"),
         ];
         let mut seen = std::collections::HashSet::new();
         for (value, prefix) in cases {

@@ -6,7 +6,7 @@
 
 ## Key subsystems
 
-- `crates/reasonbraid-core/` — the domain-model crate (`KICKOFF.md` §3): strong identifiers now (WP1), command/event envelopes and minimal thread/provider-attempt state to come. Entry point `src/lib.rs`. Owner: repo-local workflow.
+- `crates/reasonbraid-core/` — the domain-model crate (`KICKOFF.md` §3): strong identifiers and command/event envelopes landed (WP1); minimal thread/provider-attempt state to come. Entry point `src/lib.rs`; envelopes in `src/envelope.rs` with golden fixtures/schemas under `fixtures/` and `schema/`. Owner: repo-local workflow.
 
 ## Active task-trees
 
@@ -31,5 +31,6 @@
 - [`2026-09-05_kickoff-companion-to-roadmap.md`](docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md)
 - [`2026-09-05_roadmap-v0.4.1-frozen.md`](docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md)
 - [`2026-09-06_accountable-owners.md`](docs/decisions/2026-09-06_accountable-owners.md)
+- [`2026-09-06_envelope-representation.md`](docs/decisions/2026-09-06_envelope-representation.md)
 - [`2026-09-06_g0-contract-id-scheme.md`](docs/decisions/2026-09-06_g0-contract-id-scheme.md)
 - [`2026-09-06_id-representation.md`](docs/decisions/2026-09-06_id-representation.md)

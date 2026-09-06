@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — Phase 0 exit gate closed: the owner signs the go record, the agent records it
+
+- **The signature closes a gate that only the owner can close.** ADR-002 moved `proposed` → `accepted` on the accountable owner's explicit session decision ("Sign ADR-002 (GO) now"), and the ADR's signature line records WHO signed and WHEN — the agent drafts and records; the signature itself is the owner's act. KICKOFF §7's last item ("a named owner signs a go, rework, pivot, or stop record") is now satisfied, so Phase 0 formally exits and the PHASE-1 tree opens at `.1`.
+- **Tree states carry the handoff, not chat.** PHASE-0's frontier became `MAINT-1` (executing next), PHASE-1 flipped `proposed` → `active` with `.1` unblocked, and LIVE_STATUS gained a Phase 1 row — a fresh session reads the same next-action from the durable layers with zero conversation context.
+- **A dating anomaly surfaced and was recorded, not rewritten.** The host clock and git commit timestamps say 2026-09-06; the previous session's records carry 2026-09-07 dates (filenames and changelog entries inside 2026-09-06 commits). Today's records use the machine-consistent 2026-09-06; the anomaly is flagged to the director rather than renamed (history is immutable; re-dating committed records is churn with no corrective value).
+- `promotion: declined (the acceptance is recorded IN the ADR itself — docs/adr/002-phase1-scope.md status + signature; no separate cross-cutting fact beyond it)`. **Frontier `PHASE-0-MAINT-1` (executing).**
+
 ## _(2026-09-07)_ — WP8 gate package: the subtraction record is the architecture ratchet's counterweight
 
 - **The SubtractionRecord forced honest accounting of what Phase 0 did NOT do.** §19.8's shape turns "we didn't get to X" into a decision with a revisit trigger. The deferrals that matter most: the authenticated streaming channel + workload identity (revisit: any non-loopback exposure), the second real adapter (revisit: Phase 1), and the shared wire crate (revisit: a second consumer — the per-side `deny_unknown_fields` duplication is deliberate until then).

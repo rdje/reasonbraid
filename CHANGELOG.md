@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Phase 0 exit gate closed: ADR-002 signed by the accountable owner, PHASE-1 opened (`PHASE-0.8.2`)
+
+- The accountable owner signed ADR-002 (**GO**, `accepted`) via an explicit session decision — **Phase 0 formally exits** (KICKOFF §7: "a named owner signs a go, rework, pivot, or stop record"). `docs/adr/002-phase1-scope.md` (status + signature line) and the ADR INDEX updated; the PHASE-1 tree opened (`active`, frontier `.1` unblocked); PHASE-0 Blockers resolved; LIVE_STATUS: Phase 0 → Done, Phase 1 → Not Started.
+- Docs-only commit (no code paths touched); `make gate` → 13/13 green at commit.
+- Dating note: this entry is dated by the host/git clock (2026-09-06); the two entries above were dated 2026-09-07 by their session — flagged to the director; no committed history was rewritten.
+
 ## 2026-09-07 — WP8 Phase 0 decision and subtraction package: the gate is assembled (`PHASE-0.8.1`)
 
 - Published the **evidence manifest** (`docs/evidence/2026-09-07_phase0-evidence-manifest.md`): the G0 map (identity / authority / thread / delivery / budget — each with its suites and reproducible commands), the fixtures and measurements, and every Phase 0 failure with its disposition (all fixed with regression coverage).

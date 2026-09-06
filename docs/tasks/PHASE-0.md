@@ -297,21 +297,28 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Status: `done`
   Goal: evidence manifest, ADR set, subtraction record, Phase 1 go/rework/pivot/stop
   Depends on: completed experiments
-  Children: `PHASE-0.8.1`
+  Children: `PHASE-0.8.1`, `PHASE-0.8.2`
 
 - ID: `PHASE-0.8.1`
   Status: `done`
   Goal: publish Phase 0 evidence manifest, ADR set, `SubtractionRecord`, and Phase 1 decision
   Acceptance: G0 evidence for identity/authority/thread/delivery/budget; named owner signs go/rework/pivot/stop; 2×-estimate review if total exceeds 28 engineer-weeks; v0.5.0 still forbidden
-  Verification: recorded below (the ADR-002 signature is the ONE out-of-band item — see Blockers)
+  Verification: recorded below (the ADR-002 signature is recorded by `.8.2`)
   Commit: `REASONBRAID-PHASE0-0025`
+
+- ID: `PHASE-0.8.2`
+  Status: `done`
+  Goal: close the Phase 0 exit gate — record the accountable owner's signature on ADR-002 (GO) and open the PHASE-1 tree
+  Acceptance: KICKOFF §7 "a named owner signs a go, rework, pivot, or stop record" satisfied; ADR-002 `accepted` with the owner's signature; PHASE-1 unblocked at `.1`; the Phase 0 tree's remaining leaf is `PHASE-0-MAINT-1`
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0026`
 
 ### Maintenance — spine/policy upkeep
 
 - ID: `PHASE-0-MAINT-1`
   Status: `pending`
   Goal: review and adopt the revised `README_POLICY.md` (upstream fsmgen copy has been updated; the repo-local copy is the older revision)
-  Blocked on: director decision on adoption timing
+  Blocked on: director decision on adoption timing (word given 2026-09-06 — next)
   Scope: deliberate local review of the upstream diff (fenced adoption note; "Authority and provenance"; "Routing pressure closure" with per-destination-class pressure controls; derived line/byte caps instead of example values; unconditional check rule; 9-step adoption checklist), then — if adopted — tighten `scripts/check_readme_stability.sh` from template defaults to derived caps and wire a routed-destination inventory; record the decision in `docs/decisions/`.
   Verification: pending
   Commit: pending
@@ -320,7 +327,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision found at session start (2026-09-07); owned, queued after the Phase 0 leaves, blocked on the director's word |
+| 1 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision review — the director's word was given 2026-09-06; executing next |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -334,11 +341,13 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - Which real harness is first (Codex-family vs Claude-family) — decided in `PHASE-0.4.2` after the fake adapter.
 - **Project license is unresolved — director-deferred (2026-09-06).** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the bedrock default) but no `LICENSE` file exists; the director will resolve the choice later. Coupled to ADR-001 (no release until the name clears). Does not block the frontier; must be settled before any release or `cargo publish`.
-- **`README_POLICY.md` upstream has been revised (found 2026-09-07 at session start, §14 check).** The fsmgen source now adds: a fenced local-adoption note; an "Authority and provenance" section; "Routing pressure closure" (inventory every routed destination through a controlled terminal, per-class pressure controls, the 1.5 MB status-file cautionary tale); derived line/byte caps instead of example values; the unconditional-check rule (no changed-path short-circuit); and a 9-step adoption checklist. The repo-local copy is the older revision, and `scripts/check_readme_stability.sh` still uses template defaults (300 lines / 16384 bytes) with no routing-closure inventory. `README.md` is 47 lines, so nothing is at hazard today. Owned by leaf `PHASE-0-MAINT-1`; executing it needs the director's word on timing.
+- **`README_POLICY.md` upstream has been revised (found 2026-09-07 at session start, §14 check).** The fsmgen source now adds: a fenced local-adoption note; an "Authority and provenance" section; "Routing pressure closure" (inventory every routed destination through a controlled terminal, per-class pressure controls, the 1.5 MB status-file cautionary tale); derived line/byte caps instead of example values; the unconditional-check rule (no changed-path short-circuit); and a 9-step adoption checklist. The repo-local copy is the older revision, and `scripts/check_readme_stability.sh` still uses template defaults (300 lines / 16384 bytes) with no routing-closure inventory. `README.md` is 47 lines, so nothing is at hazard today. Owned by leaf `PHASE-0-MAINT-1`; the director's word on timing was given 2026-09-06 — executing next.
 
 ## Blockers
 
-- **ADR-002 signature (director-owned, the Phase 0 exit gate's one remaining item).** The WP8 package is published (evidence manifest, ADR set, SubtractionRecord, refreshed risk register); ADR-002 carries the GO recommendation with a pending signature line. Phase 0's formal exit (KICKOFF §7: "a named owner signs a go, rework, pivot, or stop record") closes when the director signs it.
+- **Resolved (`.8.2`):** ADR-002 is signed by the accountable owner (2026-09-06) — the
+  Phase 0 exit gate (KICKOFF §7) is closed. Nothing blocks the frontier; `PHASE-0-MAINT-1`
+  executes next, after which the tree completes.
 
 ## Acceptance Checklist (PHASE-0.0.7)
 
@@ -1060,6 +1069,34 @@ cited, not re-run into new tooling).
   signature on ADR-002 — is recorded in Blockers (an agent drafts the package;
   the accountable owner closes the gate).
 
+## Acceptance Checklist (PHASE-0.8.2)
+
+Documents + indexes only — no `.rs`/`.sh`/`Makefile` code change in this leaf
+(per `.doctrine/code_paths.txt`; the leaf records the owner's decision, it
+changes no executable surface).
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — KICKOFF §7 closes Phase 0 only when "a named
+  owner signs a go, rework, pivot, or stop record"; `docs/adr/002-phase1-scope.md`
+  (`.8.1`) carried the GO recommendation with the signature line `pending` — the
+  exit gate's one remaining item, and an agent drafts but never self-signs the
+  go record (Blockers).
+- [x] **ADDRESSED (verified)** — the accountable owner chose "Sign ADR-002 (GO)
+  now" in an explicit session decision (recorded in the ADR acceptance line):
+  `docs/adr/002-phase1-scope.md` → Status `accepted`, signature line `signed
+  2026-09-06 (explicit session decision of the accountable owner …)`;
+  `docs/adr/INDEX.md` row → `accepted`; `docs/tasks/PHASE-1.md` → Status `active`,
+  frontier `.1` unblocked; `docs/TASK_TREE.md` PHASE-1 row updated.
+- [x] **NO REGRESSION** — no code changed; `make gate` → `=== all doctrines green
+  ===` (13/13) re-run at commit; `make check` unaffected (docs-only).
+- [x] **FIX** — the ADR status + signature, the ADR INDEX row, the PHASE-0 tree
+  (`.8.2` leaf done, frontier → MAINT-1, Blockers resolved), the PHASE-1 tree
+  (opened at `.1`), `docs/TASK_TREE.md`, `LIVE_STATUS.md`, CHANGELOG, DEV_NOTES,
+  MEMORY.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this tree's log
+  below, `docs/TASK_TREE.md` frontier — same commit. DEV_NOTES lesson:
+  `promotion: declined (the acceptance is recorded IN the ADR itself —
+  docs/adr/002-phase1-scope.md; no separate cross-cutting fact beyond it)`.
+
 ## Verification Log
 
 
@@ -1092,6 +1129,8 @@ cited, not re-run into new tooling).
 | `2026-09-07` | `PHASE-0.7` | `cargo test -p reasonbraid-adapter` → `test result: ok. 7 passed` (grader) + `test result: ok. 5 passed` (`bench_harness`: the scripted agent reproduces the corpus oracle EXACTLY — computed == expected scores over 8 cases × 4 workflows, call accounting 1/2/3/3, structure validity, unresolved-register fidelity, the honesty trap, no-independence-score report hygiene + spread-bearing aggregates + factual-only Brier, and the critique/revision prompt-split guard) + `9 + 12` existing suites; `rb-bench --agent scripted` → full report with corpus/prompt digests; REAL run `RB_LIVE_CODEX=1 … --max-calls 36` → 16/16 rows structure-valid with scores, confidences, citations, and provider-reported tokens (`docs/evidence/2026-09-07_benchmark-codex-run.md`); the FIRST real run caught two harness defects the scripted oracle cannot see (revision leg re-rendering the CRITIQUE template — no confidence lines + one broken answer; the honesty trap flagging the question's own echoed year) — both fixed with regression tests; `make check` → fmt clean + clippy no warnings + all offline suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (regex, sha2, clap added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-07_deliberation-benchmark.md` + INDEX; evidence report + INDEX; mdBook benchmark chapter + SUMMARY | WP7 benchmark proven: deterministic graders (never an LLM judge), corpus-carried oracle, per-case confidence + spread, no independence score, env-gated call-budgeted real mode; real result on the sample is the accepted NULL (structure did not beat single at 2–4× cost) — the routing claim narrows honestly for WP8 |
 | `2026-09-07` | `PHASE-0.8.1` | `test -f` over the four gate documents + INDEX rows; `make check` → all offline suites green (no code changed in this leaf); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; SubtractionRecord lists verified non-empty (grep) — removed 1 / deferred 9 / narrowed 4 / rejected 4 / avoided 7 / fallbacks 4 / eliminated 5; risk register `wc -l` grew by the two new rows; ADR-002 `proposed` with the signature line | WP8 gate package published: G0 evidence manifest + ADR set + SubtractionRecord + GO recommendation; **the Phase 0 tree is exhausted** — the formal exit awaits the director's signature on ADR-002 |
 
+| `2026-09-06` | `PHASE-0.8.2` | docs-only; ADR-002 `Status: accepted` + owner signature line recorded (`grep -n "signed 2026-09-06" docs/adr/002-phase1-scope.md`); ADR INDEX row `accepted`; `docs/tasks/PHASE-1.md` `Status: active` with `.1` unblocked; `make gate` → `=== all doctrines green ===` (13/13); `make check`/`make book` unaffected (no code paths) | Phase 0 exit gate closed — ADR-002 signed by the accountable owner; PHASE-1 opened at `.1`; frontier is `PHASE-0-MAINT-1` |
+
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
@@ -1120,6 +1159,7 @@ cited, not re-run into new tooling).
 | `PHASE-0.6.2` | `REASONBRAID-PHASE0-0023` | node wiring: invite/challenge dispatch work items + best-effort reservations in the command transaction; `apply_node_result_in_tx` folds node results in claim-first keyed on the inbox command id; in-tx channel/budget variants; the `rb-node` worker + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs`; `scripts/demo_two_host.sh` (the acceptance-test demo + evidence bundle) + `make demo` + CI/harness wiring; node-channel-wiring decision record; mdBook two-host-demo chapter |
 | `PHASE-0.7` | `REASONBRAID-PHASE0-0024` | the WP7 benchmark: `src/bench/` (corpus/grader/scripted/workflows/report) + the `rb-bench` binary + `bench/v1/` corpus/prompts + `tests/bench_harness.rs` (corpus-carried oracle self-test); two real-run-caught fixes with regression tests (critique/revision prompt split; honesty-trap echoed numbers); deliberation-benchmark decision record; evidence report + INDEX; mdBook benchmark chapter |
 | `PHASE-0.8.1` | `REASONBRAID-PHASE0-0025` | the WP8 gate package: evidence manifest + ADR set + SubtractionRecord + ADR-002 (GO, proposed) + risk-register refresh (two new rows) + INDEX rows; no code change |
+| `PHASE-0.8.2` | `REASONBRAID-PHASE0-0026` | Phase 0 exit gate closed: ADR-002 signed by the accountable owner (explicit session decision), ADR INDEX → accepted, PHASE-1 tree opened at `.1`, Blockers resolved, live docs lockstep; docs-only |
 
 ## Changelog
 
@@ -1148,3 +1188,4 @@ cited, not re-run into new tooling).
 - `2026-09-07`: `PHASE-0.6.2` WP6 node wiring + two-host demo — invite/challenge dispatch work items (with best-effort reservations; denials recorded and enqueued reservation-less) in the command transaction; `apply_node_result_in_tx` folds node `work_result` events into the thread claim-first (idempotency key = inbox command id) with in-tx settlement; in-tx channel/budget variants; `crates/reasonbraid-node` gains the `rb-node` worker (`worker.rs`: poll → journal → execute only absent/`prepared` attempts — never a silent retry) + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs` (6 live-PG tests); `scripts/demo_two_host.sh` (the acceptance-test demo with real SIGKILL kill points + evidence bundle) wired into `run_pg_tests.sh`/`make demo`/CI; `docs/decisions/2026-09-07_node-channel-wiring.md`, mdBook two-host-demo chapter. **WP6 complete.** Frontier is `.7`.
 - `2026-09-07`: `PHASE-0.7` WP7 deliberation/routing benchmark — `crates/reasonbraid-adapter` gains `src/bench/` (versioned corpus + deterministic graders + scripted agent + four-workflow runner + spread-bearing report) + the `rb-bench` binary + `bench/v1/{corpus,prompts}.json` + `tests/bench_harness.rs` (the corpus carries its own scoring oracle; computed == expected proven over 8×4); the REAL Codex run (36 bounded calls, `RB_LIVE_CODEX=1`) caught two harness defects the scripted oracle cannot see (critique/revision template conflation; honesty-trap echoed numbers) — fixed with regression tests; the corrected run's NULL result (structure did not beat single at 2–4× cost) narrows the routing claim for WP8; `docs/decisions/2026-09-07_deliberation-benchmark.md`, `docs/evidence/2026-09-07_benchmark-codex-run.md` + INDEX rows, mdBook benchmark chapter. **WP7 complete.** Frontier is `.8`.
 - `2026-09-07`: `PHASE-0.8.1` WP8 Phase 0 decision and subtraction package — evidence manifest (G0 map + fixtures + failures + commands), ADR-set audit map, the §19.8 SubtractionRecord (non-empty throughout), ADR-002 (Phase 1 GO recommendation, `proposed` — signature line pending the director), risk register refreshed (R-AMB mitigated, R-VALUE narrowed, R-VARIANCE + R-OVERHEAD added), INDEX rows; no code change; the 2×-estimate review is not triggered (≈9.5 vs 8–14 engineer-weeks, recorded). **WP8 complete; the PHASE-0 tree is exhausted — the formal exit awaits the director's signature on ADR-002.** Frontier is `PHASE-0-MAINT-1` (director's word).
+- `2026-09-06`: `PHASE-0.8.2` Phase 0 exit gate closed — the accountable owner signed ADR-002 (GO, `accepted`, explicit session decision recorded in the ADR + ADR INDEX), `docs/tasks/PHASE-1.md` opened (`active`, frontier `.1` unblocked), Blockers resolved; docs-only commit. **Phase 0 formally exits (KICKOFF §7).** Frontier is `PHASE-0-MAINT-1` (executing next).

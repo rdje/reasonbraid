@@ -1,8 +1,9 @@
 # ADR-002 — Phase 1 scope: GO on the LAN vertical slice, single-agent-default routing
 
-- **Status:** `proposed` (awaiting the accountable owner's signature)
-- **Date:** `2026-09-07`
-- **Leaf:** `PHASE-0.8.1`
+- **Status:** `accepted` (signed by the accountable owner)
+- **Date:** `2026-09-07` (proposed)
+- **Accepted:** `2026-09-06` (accountable owner's explicit session decision — "Sign ADR-002 (GO) now")
+- **Leaf:** `PHASE-0.8.1` (proposal) · `PHASE-0.8.2` (acceptance)
 - **Requirements:** `ROADMAP.md` §20.3, §13.8, §2.3 (H1/H6); KICKOFF WP8; Phase 0 exit gate G0
 
 ## Context
@@ -78,4 +79,7 @@ every class AND the LAN slice cannot demonstrate honest inconclusive outcomes,
 or (c) the name/license clearance fails — in which case the scope record
 narrows to internal-only operation.
 
-Signatures: Richard DJE (engineering + product) — **pending**.
+Signatures: Richard DJE (engineering + product) — **signed 2026-09-06**
+(explicit session decision of the accountable owner, recorded by the agent in
+leaf `PHASE-0.8.2`; the agent drafts and records — the signature itself is the
+owner's act).

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-1`
-- Status: `proposed`
+- Status: `active`
 - Roadmap lane: Phase 1 (`ROADMAP.md` §20.3)
 - Created: `2026-09-05`
 - Estimate: 14–22 engineer-weeks
@@ -25,7 +25,7 @@ conversation without binding-governance claims.
 ## Task Tree
 
 - ID: `PHASE-1.1`
-  Status: `proposed`
+  Status: `pending`
   Goal: coordinator modular monolith, PostgreSQL migrations, aggregate/event/outbox patterns
   Backlog: 9, 10, 15
   ADR: 002, 004
@@ -70,8 +70,9 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | `PHASE-1.1` | `proposed` | blocked on `PHASE-0.8.1` go decision |
+| 1 | `PHASE-1.1` | `pending` | unblocked by the Phase 0 go — ADR-002 signed (`PHASE-0.8.2`); next executable leaf once the PHASE-0 tree closes its `MAINT-1` tail |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.3, §26.1, backlog 9–22.
+- `2026-09-06`: Opened by the Phase 0 go — ADR-002 `accepted` (signed by the accountable owner, `PHASE-0.8.2`); `.1` unblocked.

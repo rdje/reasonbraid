@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — PHASE-1.1 decomposed: three signoff-sized coordinator slices (`PHASE-1.1`)
+
+- The coordinator leaf is decomposed into children (tree-first; no code change): `.1.1.1` the aggregate/event/outbox library (extract the `tx.rs` claim → authorize → validate → apply machinery into a typed reusable module with revision-checked transitions + in-tx test helpers; backlog 9, ADR-004), `.1.1.2` migration 0007 identity store (`tenants`/`hosts`/`nodes`/`agent_roles`/`incarnations`/`runs`/`human_principals`; backlog 10), `.1.1.3` thread command API completion (`thread.cancel`, typed classification/workflow-profile/participant-rules with the ADR-002 single-agent default; backlog 15's API-shape portion — the invitation accept/decline/timeout semantics stay with `.1.3`).
+- Lockstep drift fixed in the same commit: the book's roadmap chapter names Phase 1 as current (Phase 0 closed, ADR-002 signed), and `PROGRAM.md`'s Phase-1 row + frontier line moved off the stale `proposed`/"next work is PHASE-0" wording. `make gate` → 13/13 green at commit.
+
 ## 2026-09-06 — ReasonBraid-only naming: the 90-token sweep (`PHASE-0-MAINT-2`)
 
 - Director directive: no more scaffold-name references — only ReasonBraid. Census (case-insensitive `git grep` over the scaffold-name token) → **90 occurrences in 28 tracked files** (the README landing page, `DOCTRINE_VERSION`, `cargo-generate.toml`, provenance notes in `COMMIT.md` + six doctrine checkers + two artifact probes, `scripts/bootstrap.sh` + `scripts/update_scaffold.sh`, historical CHANGELOG entries, tree and live docs).

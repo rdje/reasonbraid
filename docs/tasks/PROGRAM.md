@@ -35,7 +35,7 @@ post-LAN track has a named owner. This tree does not implement product code.
 | Phase | Tree | Status | Estimate (eng-wk) | Depends on | Exit |
 | --- | --- | --- | --- | --- | --- |
 | 0 | `PHASE-0` | `active` | 8–14 | `RB-SEED` done | G0 for identity/authority/thread/delivery/budget |
-| 1 | `PHASE-1` | `proposed` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
+| 1 | `PHASE-1` | `active` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
 | 2 | `PHASE-2` | `proposed` | 12–20 | Phase 1 | authority non-escalation; restore; no silent unknown-retry |
 | 3 | `PHASE-3` | `proposed` | 12–19 | stable identity, inbox, grants | recruit without enumerating the network |
 | 4 | `PHASE-4` | `proposed` | 16–27 | authz, budgets, object store, observability | G4 |
@@ -148,7 +148,7 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `PHASE-0` after `RB-SEED` completes |
+| — | (none in this file) | — | next executable work is `PHASE-1.1.1` (the `PHASE-0` tree is complete; ADR-002 signed) |
 
 ## Decisions
 
@@ -179,3 +179,4 @@ No ADR is approved merely because the roadmap names a candidate technology.
 ## Changelog
 
 - `2026-09-05`: Created as the v0.4.1 programme map.
+- `2026-09-06`: Phase 1 row → `active`; frontier pointer refreshed (stale `proposed`/PHASE-0 wording retired after the `.1` decomposition).

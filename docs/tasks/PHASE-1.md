@@ -25,10 +25,51 @@ conversation without binding-governance claims.
 ## Task Tree
 
 - ID: `PHASE-1.1`
-  Status: `pending`
+  Status: `in_progress`
   Goal: coordinator modular monolith, PostgreSQL migrations, aggregate/event/outbox patterns
   Backlog: 9, 10, 15
   ADR: 002, 004
+  Children: `.1.1.1`–`.1.1.3` (decomposed `2026-09-06` so each child is one signoff-sized slice)
+
+  - ID: `PHASE-1.1.1`
+    Status: `pending`
+    Goal: the aggregate/event/outbox library — extract the WP2 claim → authorize →
+      validate → apply machinery (`reasonbraid-server/src/tx.rs`) into a typed,
+      reusable aggregate module: revision-checked state transitions (the locked
+      head), ordered event append, idempotency claim/replay/conflict, outbox
+      enqueue in ONE transaction, plus in-tx test helpers. Every Phase 0 caller
+      switches to it with zero behavior change.
+    Backlog: 9
+    ADR: 004
+    Acceptance: all existing offline suites + the live-PG suites stay green; the
+      library owns the claim-first and revision semantics (the transaction body is
+      the single write path); a new helper proves fresh-apply vs replay against a
+      test aggregate.
+
+  - ID: `PHASE-1.1.2`
+    Status: `pending`
+    Goal: migration 0007 — first-class identity store: `tenants`, `hosts`, `nodes`,
+      `agent_roles`, `incarnations`, `runs`, `human_principals` (the `.6.1`
+      `enrollments` table is the dev stand-in). Enroll writes the enrollment row
+      AND the identity row in one transaction; the existing surfaces keep working
+      unchanged.
+    Backlog: 10
+    Acceptance: the new tables exist with UUIDv7 ids and the §17.2 conventions
+      (tenant on every material record); enroll/re-enroll tests green; no existing
+      suite regresses.
+
+  - ID: `PHASE-1.1.3`
+    Status: `pending`
+    Goal: thread command API completion — `thread.cancel` (the `open → cancelled`
+      edge), typed classification + workflow profile + participant rules on
+      `thread.create` (default: single-agent routing, per ADR-002), and the
+      existing create/read/list/idempotency re-verified against the `.1.1.1`
+      library. Backlog 15's API-shape portion; the invitation accept/decline/
+      timeout semantics stay with `.1.3`.
+    Backlog: 15
+    Acceptance: `thread.cancel` lands on the core machine and is inspected through
+      the API only; create carries the three new fields with deny-unknown typing;
+      the single-agent default is stated, not an empty profile.
 
 - ID: `PHASE-1.2`
   Status: `proposed`
@@ -37,7 +78,9 @@ conversation without binding-governance claims.
 
 - ID: `PHASE-1.3`
   Status: `proposed`
-  Goal: thread create/read/list/cancel; explicit participants; invitations accept/decline/timeout; simple subscriptions
+  Goal: invitation/subscription semantics — explicit participants, invitations
+    accept/decline/timeout, simple subscriptions (the create/read/list/cancel API
+    shapes are owned by `.1.1.3`)
   Backlog: 15, 16
 
 - ID: `PHASE-1.4`
@@ -70,9 +113,10 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.1` | `pending` | unblocked by the Phase 0 go — ADR-002 signed (`PHASE-0.8.2`); next executable leaf once the PHASE-0 tree closes its `MAINT-1` tail |
+| 1 | `PHASE-1.1.1` | `pending` | the aggregate/event/outbox library is the substrate `.1.1.2` (identity store) and `.1.1.3` (thread API) build on; `.1` decomposed `2026-09-06` into three signoff-sized children |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.3, §26.1, backlog 9–22.
 - `2026-09-06`: Opened by the Phase 0 go — ADR-002 `accepted` (signed by the accountable owner, `PHASE-0.8.2`); `.1` unblocked.
+- `2026-09-06`: `.1` decomposed into `.1.1.1` (aggregate/event/outbox library — backlog 9, ADR-004), `.1.1.2` (migration 0007 identity store — backlog 10), `.1.1.3` (thread command API completion — backlog 15's API-shape portion; the invitation semantics stay with `.1.3`); `.1.3`'s goal reworded to remove the double-claim of backlog 15; frontier → `.1.1.1`.

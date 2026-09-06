@@ -35,13 +35,14 @@ governance), not a mandatory single-file sequence.
 | 8 | Federation and interoperability | G8 |
 | 9 | Stable product release | G9 |
 
-## Phase 0 (now)
+## Phase 1 (current)
 
-Phase 0 does not implement the product. It must answer six kill-risk questions
-with code, measurements, failures, and decisions that constrain Phase 1. The
-work packages are WP0–WP8 in `KICKOFF.md`. Execution is tracked in `docs/tasks/PHASE-0.md`.
-The programme map is `docs/tasks/PROGRAM.md`.
+Phase 0 is complete: ADR-002 is signed (GO, by the accountable owner,
+2026-09-06), so the project now executes the trustworthy LAN vertical slice
+(`ROADMAP.md` §20.3). Execution is tracked in `docs/tasks/PHASE-1.md`; the
+Phase 0 experiment record lives in `docs/tasks/PHASE-0.md` (`done`); the
+programme map is `docs/tasks/PROGRAM.md`.
 
-The first credible product milestone after Phase 0 is Demonstration A: a
-trustworthy LAN conversation between two nodes, with crash/reconnect, duplicate
-delivery, and an honest `outcome_unknown` provider attempt.
+The first credible product milestone is Demonstration A: a trustworthy LAN
+conversation between two nodes, with crash/reconnect, duplicate delivery, and
+an honest `outcome_unknown` provider attempt.

@@ -16,12 +16,14 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1` (coordinator modular monolith + PG
-  migrations + aggregate/event/outbox patterns) — next executable work.
-- **Next action:** start `PHASE-1.1` — decompose the leaf per `ROADMAP.md` §20.3 and
-  `KICKOFF.md` §4 backlog items 9/10/15.
+- **Active tree:** `PHASE-1` → frontier `.1.1.1` (the `.1` coordinator leaf is `in_progress`,
+  decomposed `2026-09-06` into `.1.1.1` aggregate/event/outbox library · `.1.1.2` migration-0007
+  identity store · `.1.1.3` thread-command-API completion) — next executable work.
+- **Next action:** implement `PHASE-1.1.1` — extract the WP2 claim/apply machinery in
+  `crates/reasonbraid-server/src/tx.rs` into a typed aggregate library (backlog 9, ADR-004)
+  with every existing suite staying green.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0-MAINT-2`.
+- **In-flight uncommitted work:** none after the `.1` decomposition commit.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.

@@ -128,12 +128,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Children: `PHASE-0.1.1` … `PHASE-0.1.4`
 
 - ID: `PHASE-0.1.1`
-  Status: `pending`
+  Status: `done`
   Goal: strong IDs — tenant, human, host, node, agent role, incarnation, run, thread
-  Acceptance: newtypes; role/incarnation/run/attempt cannot be confused in types or wire
+  Acceptance: newtypes; role/incarnation/run/thread cannot be confused in types or wire; provider-attempt confusability deferred to `PHASE-0.1.3` (attempt state machine + `ProviderAttemptId`)
   Roadmap: §8.1, backlog 3, ADR 010
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0009`
 
 - ID: `PHASE-0.1.2`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.1.1` | `pending` | WP1 minimal contracts: strong IDs first (role/incarnation/run/attempt not confusable) |
+| 1 | `PHASE-0.1.2` | `pending` | WP1 command/event envelopes + JSON Schema/golden fixtures (client-supplied actor/tenant/sequence rejected) |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -344,6 +344,35 @@ the `TASK-ACCEPTANCE` doctrine.
 - [x] **LOCKSTEP** — `docs/ci.md` documents the commands and the no-release-claim boundary; the Makefile
   help text and `deny.toml` header point at it.
 
+## Acceptance Checklist (PHASE-0.1.1)
+
+The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml`) is the CODE change owned by
+this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §8.3 mandates "newtypes for every ID;
+  never interchange plain UUID strings inside domain code" and §17.2 prefers a sortable
+  UUIDv7, but the scaffold shipped only a placeholder binary with no domain types, so
+  tenant/role/incarnation/run/thread could all collapse to bare UUID strings.
+  `git ls-files 'crates/*'` (before) → `crates/app/Cargo.toml` / `crates/app/src/main.rs`
+  — no `reasonbraid-core`, no ID type existed.
+- [x] **ADDRESSED (verified)** — landed `crates/reasonbraid-core` with `Id<K>` branded
+  newtypes over `uuid::Uuid` (v7) and eight families (Tenant, HumanPrincipal, Host, Node,
+  AgentRole, AgentIncarnation, Run, Thread), each a distinct type AND a distinct
+  prefix-checked wire form. `cargo test -p reasonbraid-core` →
+  `test result: ok. 6 passed; 0 failed; 0 ignored` (distinct-type, v7, prefix, serde
+  round-trip, wrong-prefix-rejected, parse tests all pass).
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` (clean),
+  `cargo clippy --all-targets --all-features -- -D warnings` (no warnings),
+  `cargo test --all` → `test result: ok. 6 passed; 0 failed`; `make gate` →
+  `=== all doctrines green ===` (13/13).
+- [x] **FIX** — new lib crate `crates/reasonbraid-core` (src/lib.rs + src/id.rs + Cargo.toml)
+  with `serde` (derive) + `uuid` (v7) deps; placeholder `crates/app` binary removed (its
+  package name `reasonbraid` is superseded by `reasonbraid-core` per `KICKOFF.md` §3).
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_id-representation.md`
+  (`answers:` present) + INDEX row; `knowledge-map/subsystems.md` gains the
+  `reasonbraid-core` row; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated;
+  README and mdBook unchanged (no user-facing surface change).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -357,6 +386,7 @@ the `TASK-ACCEPTANCE` doctrine.
 | `2026-09-06` | `PHASE-0.0.6` | `test -f docs/decisions/2026-09-06_accountable-owners.md`; names Richard DJE for both roles; INDEX row added; risks.md owner-roles note resolved | owners named |
 | `2026-09-06` | `PHASE-0.0.7` | `make -n deny`→`cargo deny check`; `make -n secret-scan`→`gitleaks detect --source . --redact`; `make gate` 13/13; `make check` 1 test ok; `deny.toml`+`supply-chain.yml`+`docs/ci.md` present | supply-chain skeleton; no release claim |
 | `2026-09-06` | `PHASE-0.0.8` | `test -f spec/{README,glossary,requirements,lifecycle,threat-model}.md spec/governance/charter.md`; five G0 ID prefixes (ID/AUTH/THREAD/DELIV/BUDGET) assigned in `spec/requirements.md`; threat-model lists 11 trust boundaries; charter names Richard DJE as bootstrap human root; decision record `2026-09-06_g0-contract-id-scheme.md` + INDEX row | G0 contract drafts, all "draft — not normative" |
+| `2026-09-06` | `PHASE-0.1.1` | `cargo test -p reasonbraid-core` → `test result: ok. 6 passed; 0 failed`; `make check` → fmt clean + `cargo clippy --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` 6 passed; `make gate` → `=== all doctrines green ===` (13/13); eight ID newtypes pairwise `TypeId`-distinct; decision record `2026-09-06_id-representation.md` + INDEX row | strong IDs landed; first real crate |
 
 ## Commit Log
 
@@ -370,6 +400,7 @@ the `TASK-ACCEPTANCE` doctrine.
 | `PHASE-0.0.6` | `REASONBRAID-PHASE0-0006` | accountable-owners decision record |
 | `PHASE-0.0.7` | `REASONBRAID-PHASE0-0007` | deny.toml + supply-chain workflow + Makefile deny/secret-scan |
 | `PHASE-0.0.8` | `REASONBRAID-PHASE0-0008` | G0 contract drafts under `spec/` + ID-scheme decision record |
+| `PHASE-0.1.1` | `REASONBRAID-PHASE0-0009` | `crates/reasonbraid-core` strong ID newtypes + id-representation decision record |
 
 ## Changelog
 
@@ -382,3 +413,4 @@ the `TASK-ACCEPTANCE` doctrine.
 - `2026-09-06`: `PHASE-0.0.6` accountable owners named (Richard DJE, both roles). Frontier is `.0.7`.
 - `2026-09-06`: `PHASE-0.0.7` supply-chain skeleton (deny.toml, supply-chain CI, `make deny`/`make secret-scan`). Frontier is `.0.8`.
 - `2026-09-06`: `PHASE-0.0.8` G0 contract drafts under `spec/` (glossary, requirements, lifecycle, threat-model, governance/charter) + `docs/decisions/2026-09-06_g0-contract-id-scheme.md`. Frontier is `.1.1`.
+- `2026-09-06`: `PHASE-0.1.1` strong IDs — `crates/reasonbraid-core` (branded newtypes over UUIDv7, eight families) + `docs/decisions/2026-09-06_id-representation.md`. Placeholder `crates/app` removed. Frontier is `.1.2`.

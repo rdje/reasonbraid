@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP1 strong IDs: branded newtypes over UUIDv7, prefix-checked on the wire
+
+- Landed `crates/reasonbraid-core` (first real crate; the scaffold's placeholder `crates/app` binary is removed). `KICKOFF.md` §3 names this crate "IDs, envelopes, minimal thread and attempt states".
+- ID representation: a generic `Id<K>` newtype over `uuid::Uuid` (v7) branded by a zero-sized marker `K`; eight families (tenant, human principal, host, node, agent role, agent incarnation, run, thread), each a distinct three-letter wire prefix validated on deserialization.
+- The non-interchangeability guarantee is tested two ways: `TypeId::of::<X>()` pairwise-distinct (compile-time newtypes, not aliases) and serde round-trip with wrong-prefix rejection (wire-level non-confusability).
+- Dependencies `serde` + `uuid` (dev `serde_json`) are all permissive-licensed; licenses checked against `deny.toml`'s allow list by hand (cargo-deny itself runs in CI, not installed locally).
+- Promoted to `docs/decisions/2026-09-06_id-representation.md` (`answers:` present).
+
 ## _(2026-09-06)_ — G0 contract drafts: ID-scheme gap closed, drafts live in `spec/`
 
 - `ROADMAP.md` §19.1 names six illustrative requirement-ID prefixes (ID / AUTH / DELIV / RES / POL / SEC) but §20.2 gates G0 on five boundaries — identity, authority, **thread**, delivery, **budget**. Thread and budget had no prefix, so the "stable IDs" acceptance could not be met without a choice.

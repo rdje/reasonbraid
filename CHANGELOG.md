@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP1 strong identifiers (`PHASE-0.1.1`)
+
+- Landed `crates/reasonbraid-core` — the first real crate (the scaffold's placeholder `crates/app` binary is removed). This is the `KICKOFF.md` §3 `reasonbraid-core`: IDs now, envelopes/thread/attempt states later.
+- Implemented strong IDs as branded newtypes over UUIDv7: `TenantId`, `HumanPrincipalId`, `HostId`, `NodeId`, `AgentRoleId`, `AgentIncarnationId`, `RunId`, `ThreadId`. Distinct types *and* distinct wire prefixes (validated on deserialize), so role/incarnation/run/thread cannot be confused in code or on the wire.
+- First crates.io dependencies: `serde` (derive) + `uuid` (v7); dev-dep `serde_json`. All permissive-licensed; `cargo deny` re-runs in CI on push (supply-chain workflow).
+- Recorded `docs/decisions/2026-09-06_id-representation.md` (`answers:` present): the prefix table and the explicit-construction rule.
+
 ## 2026-09-06 — G0 contract drafts (`PHASE-0.0.8`)
 
 - Added the five G0 contract drafts under `spec/`, all headed "draft — not normative": `README.md` (orientation + traceability map), `glossary.md` (frozen term distinctions), `requirements.md` (stable `ID-*`/`AUTH-*`/`THREAD-*`/`DELIV-*`/`BUDGET-*` requirement catalogue), `lifecycle.md` (orthogonal lifecycle tables), `threat-model.md` (11 trust boundaries + assets/adversaries/abuse/mitigations), and `governance/charter.md` (bootstrap human root = Richard DJE).

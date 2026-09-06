@@ -236,6 +236,13 @@ impl ProviderAttemptState {
         let next = match (self, event) {
             (Prepared, Dispatch) => Dispatched,
             (Prepared, FailBeforeDispatch) => FailedBeforeDispatch,
+            // PHASE-0.4.1: the journal records the dispatch boundary conservatively
+            // BEFORE invoking the adapter (§17.4), so `dispatched` means "the dispatch
+            // intent is durable; the provider MAY have been contacted". When the
+            // adapter then CERTIFIES that no dispatch ever began (its deterministic
+            // pre-dispatch refusal), the correction back to `failed_before_dispatch`
+            // is a proven fact, not a guess — the inverse of the proof edges below.
+            (Dispatched, FailBeforeDispatch) => FailedBeforeDispatch,
             (Dispatched, Complete) => Completed,
             (Dispatched, FailKnown) => FailedKnown,
             (Dispatched, MarkOutcomeUnknown) => OutcomeUnknown,
@@ -421,6 +428,11 @@ mod tests {
             ProviderAttemptState::Dispatched,
             ProviderAttemptTransition::Complete,
             ProviderAttemptState::Completed,
+        ),
+        (
+            ProviderAttemptState::Dispatched,
+            ProviderAttemptTransition::FailBeforeDispatch,
+            ProviderAttemptState::FailedBeforeDispatch,
         ),
         (
             ProviderAttemptState::Dispatched,

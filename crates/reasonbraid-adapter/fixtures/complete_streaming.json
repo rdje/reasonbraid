@@ -1,0 +1,12 @@
+{
+  "name": "complete_streaming",
+  "outcome": "completed",
+  "capabilities": { "streaming": true, "cancellation": "best_effort", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "emit_chunk", "chunk": "first fragment" },
+    { "step": "emit_chunk", "chunk": "second fragment" },
+    { "step": "complete" }
+  ],
+  "expected_terminal": "completed"
+}

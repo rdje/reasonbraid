@@ -1,0 +1,10 @@
+{
+  "name": "fail_before_dispatch",
+  "outcome": "failed_before_dispatch",
+  "capabilities": { "streaming": false, "cancellation": "none", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "fail_before_dispatch", "reason": "adapter refused: required tool not allowed by local policy" }
+  ],
+  "expected_terminal": "failed_before_dispatch"
+}

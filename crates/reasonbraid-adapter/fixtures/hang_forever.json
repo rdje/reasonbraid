@@ -1,0 +1,9 @@
+{
+  "name": "hang_forever",
+  "outcome": "hang",
+  "capabilities": { "streaming": true, "cancellation": "confirmed", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "hang_forever" }
+  ]
+}

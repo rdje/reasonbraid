@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP4 adapter boundary: the conformance corpus caught the boundary-vs-refusal conflict, and two probes caught the rest
+
+- **The corpus earned its keep on the FIRST replay.** `fail_before_dispatch` failed the moment it met the supervisor: the `.3.1` rule journals `dispatched` BEFORE `invoke` (conservative, crash-safe), but the machine had no edge to record the adapter's certified "no dispatch ever began". The fix is a proof-gated correction edge — `(dispatched, fail_before_dispatch) → failed_before_dispatch` — the exact inverse of the §11.3 lookup-proof edges, and the `.3.1` record's philosophy holds: only PROOFS move the machine, never guesses.
+- **Two more real bugs, probed not guessed** (the ack test hung twice, with different causes): (1) `Notify::notify_waiters` loses a wake if the waiter has not registered yet — a scheduling race invisible without stress; `notify_one` stores a permit and is the correct primitive for one-shot signals (used in the fake's hang-cancel AND the test double). (2) The supervisor looped past terminal events — a stream yielding `Completed` repeatedly spun forever; the loop now breaks on the FIRST terminal event. A stream is not a source of multiple results.
+- **The indeterminate outcome is an error, not a success.** `execute_attempt` returns `Err(OutcomeUnknown)` with the attempt journaled `outcome_unknown` — and its Display deliberately contains no "retry" (a test asserts the absence). Retrying ambiguity needs duplicate-risk authorization (§14.6); the boundary never volunteers advice.
+- **The ack ≠ completion acceptance is proven AT the journal boundary**, not by assertion: a signaling test adapter pauses between the dispatch ack and the result, and the test observes the attempt durably `dispatched` in the journal in that window.
+- **Credentials are enforced mechanically, not by convention:** the corpus's credential-shape scan (api_key/secret/password/credential/bearer) is a red test — a fixture with a credential fails CI. The contract has no credential field at all.
+- Rejected and recorded: `async-trait` (native `async fn` in traits + documented `#[allow(async_fn_in_trait)]`), sleeps for the hang (Notify instead), parsing provider output in the adapter (chunks are opaque), a `cancelled_known` state (a confirmed cancel still leaves the result unknowable — honest `outcome_unknown`), and any blanket retry helper.
+- Promoted to `docs/decisions/2026-09-06_fake-adapter.md` (`answers:` present). **Frontier `.4.2`.**
+
 ## _(2026-09-06)_ — WP3 node channel: the node reports what it durably holds; the server replays the tail; reconciliation gates schedulability
 
 - §17.4 steps 1–7 became a protocol: the node reports its resume facts (last acked cursor, pending operation ids, ambiguous attempts), the server replays `cursor > reported` plus two directive kinds (`adjudicated` when it holds a receipt for the operation's event, `needs_adjudication` otherwise), and the node applies everything before becoming schedulable. The load-bearing rules that make it sound:

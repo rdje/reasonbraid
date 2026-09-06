@@ -1,0 +1,10 @@
+{
+  "name": "lose_response_with_lookup",
+  "outcome": "lost_response_with_lookup",
+  "capabilities": { "streaming": true, "cancellation": "none", "provider_idempotency": true, "status_lookup": true, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "completed", "usage": { "input_tokens": 90, "output_tokens": 25, "exact": true } },
+  "script": [
+    { "step": "lose_response" }
+  ],
+  "expected_terminal": "completed"
+}

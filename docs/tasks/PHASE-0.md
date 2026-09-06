@@ -209,16 +209,16 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - ID: `PHASE-0.4`
   Status: `pending`
-  Goal: narrow adapter contract, fake adapter, first real harness
+  Goal: narrow adapter contract, fake adapter, first real harness (`.4.1` fake done; `.4.2` real harness pending)
   Depends on: `PHASE-0.1` and enough of `PHASE-0.3` to journal attempts
   Children: `PHASE-0.4.1`, `PHASE-0.4.2`
 
 - ID: `PHASE-0.4.1`
-  Status: `pending`
+  Status: `done`
   Goal: deterministic fake harness adapter and ambiguity fixtures
   Acceptance: can stream, fail, hang, report usage, ignore cancellation, lose a response after dispatch; vendor DTOs never enter core; credentials never enter events/fixtures
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0018`
 
 - ID: `PHASE-0.4.2`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.4.1` | `pending` | WP4 deterministic fake harness adapter + ambiguity fixtures — WP3 is complete (journal + channel); WP4's dependency ("enough of WP3 to journal attempts") is fully satisfied, and the fake adapter is the conformance oracle `.4.2` (first real harness) needs |
+| 1 | `PHASE-0.4.2` | `pending` | WP4 first real harness (Codex-family or Claude-family) qualified behind the `.4.1` contract and corpus — the fake adapter is the conformance oracle the real adapter must match semantically |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -655,6 +655,62 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
   `DEV_NOTES.md` / `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier
   moved to `PHASE-0.4.1`; README unchanged (no new standard command).
 
+## Acceptance Checklist (PHASE-0.4.1)
+
+The `crates/reasonbraid-adapter` crate (`.rs` + `Cargo.toml` + `fixtures/`), the
+`crates/reasonbraid-node` supervisor + journal API (`.rs` + `Cargo.toml`), the
+`crates/reasonbraid-core` machine edge (`.rs`), and `Cargo.lock` are the CODE change
+owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.toml`/`Cargo.lock`
+are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — KICKOFF WP4 requires a fake adapter that "can
+  stream, fail, hang, report usage, ignore cancellation, and simulate a lost response
+  after dispatch", with "dispatch acknowledgement distinct from completion" and
+  "unsupported status lookup produces `outcome_unknown`, not a retry recommendation".
+  Before this leaf, `git ls-files 'crates/*'` → core/server/node only — no adapter
+  crate, no contract, no supervisor existed (nothing could invoke an adapter behind the
+  journal boundary), and the core machine could not express "conservative dispatch
+  record, then the adapter CERTIFIES no dispatch ever began": the `.3.1` boundary rule
+  records `dispatched` before `invoke`, but the `fail_before_dispatch` edge existed only
+  from `prepared`.
+- [x] **ADDRESSED (verified)** — landed `crates/reasonbraid-adapter` (the
+  capability-declaring `Adapter` contract with ack ≠ completion, no credential field;
+  the deterministic scripted `FakeAdapter` — no sleeps, hang = cancellation Notify;
+  the ten-fixture sanitized corpus) and `crates/reasonbraid-node/src/supervisor.rs`
+  (`execute_attempt` journals every boundary and lands the attempt on its honest
+  terminal). `cargo test -p reasonbraid-adapter` →
+  `test result: ok. 12 passed` (fake behaviors: refusal-without-handle, determinism,
+  hang-until-confirmed-cancel, ignored/best-effort cancels, lost response, both lookup
+  modes, usage confidence, malformed verbatim) + `test result: ok. 3 passed` (corpus
+  integrity: every step/outcome covered, mechanical credential scan, well-formedness);
+  `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake`:
+  the corpus drives each outcome to its expected journal terminal; lost response
+  without lookup → `outcome_unknown` whose error text contains no "retry"; proven
+  lookup → `completed` with the provider handle attached; hang → confirmed cancel;
+  ack ≠ completion proven at the journal boundary via a signaling adapter).
+- [x] **NO REGRESSION** — `make check` → fmt clean + `cargo clippy --all-targets
+  --all-features -- -D warnings` no warnings + `cargo test --all` → `24 passed; 0
+  failed; 1 ignored` (core) + `3 passed` + `12 passed` (adapter) + `17 passed` +
+  `8 passed` + `6 passed` + `10 passed` (node) + `13 passed` + `5 passed` + `7 passed`
+  (server, skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` +
+  `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===`
+  (13/13); `make deny` → `advisories ok, bans ok, licenses ok, sources ok`;
+  `make secret-scan` → `no leaks found`; `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-adapter` (src/lib.rs + src/contract.rs +
+  src/fake.rs + src/fixtures.rs + 10 `fixtures/*.json` + tests/fake_adapter.rs +
+  Cargo.toml); `crates/reasonbraid-node/src/supervisor.rs` +
+  `Journal::attach_provider_request_id`; `crates/reasonbraid-core/src/state.rs` gains
+  the proof-gated `(dispatched, fail_before_dispatch) → failed_before_dispatch` edge;
+  `Cargo.lock` updated.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_fake-adapter.md`
+  (`answers:` present, measured behavior + rejected designs, records the three bugs the
+  corpus/probes caught) + INDEX row; `knowledge-map/subsystems.md` gains the
+  `reasonbraid-adapter` row and the node row mentions the supervisor; the mdBook gains
+  `docs/book/src/adapter-boundary.md` + its SUMMARY entry; `docs/ci.md` notes the
+  adapter tests run in plain CI; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` /
+  `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to `PHASE-0.4.2`; README
+  unchanged (no new standard command).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -676,6 +732,7 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `2026-09-06` | `PHASE-0.2.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed; 0 failed` (`outbox_worker`) + `5 passed` (`atomic_transaction`) on live PostgreSQL 16.15 — exclusive claim, reclaim-after-expiry with new token, stale worker refused after newer fencing value, expired lease refused, kill points 3/4/5 to one effect; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (chrono added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_outbox-worker-fencing.md` + INDEX row | WP2 leased outbox worker proven: claim → deliver → complete with per-claim fencing tokens; **WP2 complete** |
 | `2026-09-06` | `PHASE-0.3.1` | `cargo test -p reasonbraid-node` → `test result: ok. 13 passed` (journal) + `test result: ok. 6 passed` (CLI) + `test result: ok. 10 passed` (kill points KP-1…KP-9 + end-to-end); `cargo test -p reasonbraid-core` → `test result: ok. 24 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 13 + 6 + 10 node + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (clap + libsqlite3-sys; path dep pinned); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-journal.md` + INDEX row | WP3 node journal proven: WAL + synchronous=FULL recorded, boundary record precedes dispatch, honest `outcome_unknown` recovery with prove/reconcile exits, read-only `rb-journal` CLI |
 | `2026-09-06` | `PHASE-0.3.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 13 passed` (`node_channel`) + `5 passed` (`atomic_transaction`) + `7 passed` (`outbox_worker`) against live PostgreSQL 16.15 over real 127.0.0.1 sockets — fresh handshake plays the whole inbox, tail-only reconnect, duplicate delivery keeps the same operation ids, schedulability gate (emit refused before reconcile; failed reconcile stays unschedulable), both reconciliation directive cases, original-id re-emission + known-event skip, server restart resume, cursor-ahead refusal, poll tail, version-mismatch/forged-field rejection, double emission → one receipt; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 17 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (axum + reqwest); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-channel.md` + INDEX row | WP3 outbound node channel proven: cursor resume + reconciliation handshake + schedulability gate; **WP3 complete** |
+| `2026-09-06` | `PHASE-0.4.1` | `cargo test -p reasonbraid-adapter` → `test result: ok. 12 passed` (fake) + `test result: ok. 3 passed` (corpus integrity incl. mechanical credential scan); `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake` — corpus drives every outcome to its journal terminal; lost response without lookup → `outcome_unknown` with no retry language; proven lookup → `completed`; ack ≠ completion at the journal boundary); `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 adapter + 17 + 8 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` + `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_fake-adapter.md` + INDEX row | WP4 fake harness adapter proven: scripted oracle + sanitized corpus + supervisor ambiguity path; three real bugs found by the corpus/probes (boundary-vs-refusal edge, Notify race, terminal-event loop) |
 
 ## Commit Log
 
@@ -697,6 +754,7 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `PHASE-0.2.2` | `REASONBRAID-PHASE0-0014` | `crates/reasonbraid-server` leased outbox worker (`outbox.rs`) + `migrations/0002_outbox_worker.sql` + kill-point/fencing tests + harness updates + outbox-worker-fencing decision record |
 | `PHASE-0.3.1` | `REASONBRAID-PHASE0-0015` | `crates/reasonbraid-node` SQLite journal (WAL + synchronous=FULL, boundary-before-boundary) + read-only `rb-journal` CLI + kill-point tests; core gains `failed_known` + §11.3 provider-lookup edges; node-journal decision record; mdBook chapter |
 | `PHASE-0.3.2` | `REASONBRAID-PHASE0-0016` | `crates/reasonbraid-server` node channel (durable inbox, replay, directives, axum routes) + `migrations/0003` + node-side client/facade (Offline/Reconciling/Schedulable) + journal channel state + 13 cross-crate channel tests + node-channel decision record; mdBook chapter |
+| `PHASE-0.4.1` | `REASONBRAID-PHASE0-0018` | `crates/reasonbraid-adapter` (contract + scripted fake + sanitized 10-fixture corpus) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge + fake-adapter decision record; mdBook chapter |
 
 ## Changelog
 
@@ -717,3 +775,4 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 - `2026-09-06`: `PHASE-0.2.2` WP2 leased outbox worker — `outbox.rs` claim/deliver/complete (each phase its own commit, per-claim fencing tokens, caller-supplied clock), `migrations/0002_outbox_worker.sql` (lease+fencing columns, `outbox_delivery` dedupe sink), 7 kill-point/fencing tests, `docs/decisions/2026-09-06_outbox-worker-fencing.md`. **WP2 complete.** Frontier is `.3.1`.
 - `2026-09-06`: `PHASE-0.3.1` WP3 node journal — `crates/reasonbraid-node` (WAL + `synchronous=FULL` recorded in `journal_meta`, `record_dispatch` commits before the adapter runs, `recover` → `outcome_unknown`, `prove_result`/`reconcile` exits, command/operation dedupe, boundary ledger, ack cursor), read-only `rb-journal` CLI (inspect/pending/ambiguous), KP-1…KP-9 kill-point sweep, core machine extended (`failed_known` + §11.3 provider-lookup edges), `docs/decisions/2026-09-06_node-journal.md`, mdBook node-journal chapter. Frontier is `.3.2`.
 - `2026-09-06`: `PHASE-0.3.2` WP3 outbound node channel — server-side durable inbox (`migrations/0003_node_inbox.sql`, replay from the node's reported cursor, handshake directives, deduplicated event receipts, axum routes) + node-side client and `Offline → Reconciling → Schedulable` facade, journal channel state, 13 cross-crate channel tests over real localhost sockets + live PostgreSQL, `docs/decisions/2026-09-06_node-channel.md`, mdBook node-channel chapter. **WP3 complete.** Frontier is `.4.1`.
+- `2026-09-06`: `PHASE-0.4.1` WP4 fake harness adapter — `crates/reasonbraid-adapter` (capability-declaring contract: ack ≠ completion, no credential field, unsupported lookup is never retry advice; deterministic scripted `FakeAdapter`; ten-fixture sanitized corpus with mechanical credential scan) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge, `docs/decisions/2026-09-06_fake-adapter.md`, mdBook adapter-boundary chapter. Frontier is `.4.2`.

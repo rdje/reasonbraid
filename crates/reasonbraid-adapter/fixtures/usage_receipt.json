@@ -1,0 +1,10 @@
+{
+  "name": "usage_receipt",
+  "outcome": "usage",
+  "capabilities": { "streaming": false, "cancellation": "none", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "complete", "usage": { "input_tokens": 100, "output_tokens": 10, "estimated_cost": { "currency": "usd", "amount": 0.002 } } }
+  ],
+  "expected_terminal": "completed"
+}

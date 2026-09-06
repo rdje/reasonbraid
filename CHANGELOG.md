@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP4 fake harness adapter + execution supervisor (`PHASE-0.4.1`)
+
+- Landed `crates/reasonbraid-adapter` — the harness adapter boundary (`KICKOFF.md` §3). The `Adapter` contract (`ROADMAP.md` §11.2) declares capabilities (streaming, cancellation strength, provider idempotency, status lookup, tool support, policy-injection mode), makes **dispatch acknowledgement distinct from completion** (`Accepted(ack, handle)` → streamed chunks → terminal event), carries **no credential field**, and treats an unsupported status lookup as an honest fact — never a retry recommendation.
+- The deterministic `FakeAdapter` (`§11.6` conformance oracle): per-operation scripts (`emit_chunk`, `malformed_output`, `complete`, `fail_known`, `fail_before_dispatch`, `hang_forever`, `ignore_cancellation`, `lose_response`) with **no sleeps** — the hang is a cancellation `Notify`, so the same script yields the same event sequence every time.
+- The sanitized outcome corpus (`fixtures/`, 10 files): mechanically credential-scanned, coverage-checked (every step and outcome class must appear), and replayed end to end.
+- The node's **execution supervisor** (`src/supervisor.rs`): `execute_attempt` journals `prepared` → the dispatch boundary → `invoke` → the honest terminal (`failed_before_dispatch | completed | failed_known | outcome_unknown`). A lost response without a lookup lands `outcome_unknown` with an error carrying **no retry language**; a proven lookup lands the result with the provider handle attached.
+- One core machine extension: the proof-gated `(dispatched, fail_before_dispatch) → failed_before_dispatch` edge — the conservative pre-invoke boundary record is corrected when the adapter CERTIFIES no dispatch began (the inverse of the §11.3 proof edges).
+- The conformance corpus did its job on first replay: it caught a real design conflict (boundary-vs-refusal), then probes caught two more real bugs — a `notify_waiters` scheduling race (fixed with `notify_one`, which stores a permit) and the supervisor pulling the stream past a terminal event (now it breaks). All recorded in the decision record's falsified leg.
+- Proven: adapter `12 passed` + corpus `3 passed`; node supervisor `8 passed`; `make check`/`make gate` 13-13/`make deny`/`make secret-scan`/`make book` green; live-PG suite re-proven (5 + 7 + 13). No new dependency allowances needed.
+- Recorded `docs/decisions/2026-09-06_fake-adapter.md` (`answers:` present). The mdBook gains the adapter-boundary chapter. **Frontier is `PHASE-0.4.2`.**
+
 ## 2026-09-06 — WP3 outbound node channel with cursor resume + reconciliation handshake (`PHASE-0.3.2`)
 
 - Landed the WP3 channel on both sides. **Server** (`crates/reasonbraid-server/src/node_channel.rs` + `migrations/0003_node_inbox.sql`): a durable per-node inbox (`node_inbox` — monotonic per-node cursor, acknowledgement state) and deduplicated node-event receipts (`node_events`, keyed on the node-assigned event id); axum routes `POST /v1/nodes/handshake`, `POST /v1/nodes/events`, `POST /v1/nodes/ack`, `GET /v1/nodes/poll` — versioned and `deny_unknown_fields`-strict.

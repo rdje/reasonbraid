@@ -33,6 +33,7 @@
 mod channel;
 mod journal;
 mod node;
+mod supervisor;
 
 pub use channel::{
     AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt, HandshakeRequest,
@@ -44,3 +45,4 @@ pub use journal::{
     DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
 };
 pub use node::{Node, NodeError, NodeState};
+pub use supervisor::{execute_attempt, ExecutionReport, SupervisorError};

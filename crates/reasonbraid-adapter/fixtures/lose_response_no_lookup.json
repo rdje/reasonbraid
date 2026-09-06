@@ -1,0 +1,10 @@
+{
+  "name": "lose_response_no_lookup",
+  "outcome": "lost_response_no_lookup",
+  "capabilities": { "streaming": true, "cancellation": "none", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "lose_response" }
+  ],
+  "expected_terminal": "outcome_unknown"
+}

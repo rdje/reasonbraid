@@ -1,0 +1,12 @@
+{
+  "name": "malformed_output",
+  "outcome": "malformed_output",
+  "capabilities": { "streaming": true, "cancellation": "none", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "emit_chunk", "chunk": "valid prefix" },
+    { "step": "malformed_output", "chunk": "\u001f\u0000 garbage {{{ not-json" },
+    { "step": "complete" }
+  ],
+  "expected_terminal": "completed"
+}

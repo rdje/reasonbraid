@@ -10,7 +10,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
-| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI (file-based, no service), and the server suites (skip offline) | `make check` |
+| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI, the WP4 fake-adapter behaviors + corpus integrity + supervisor flow (all file-based/in-process, no service), and the server suites (skip offline) | `make check` |
 | `rust` (job `pg-tests`) | the PostgreSQL integration tests — atomic transaction (`.2.1`), leased outbox worker with fencing + kill points (`.2.2`), and the node channel with cursor resume + reconciliation handshake (`.3.2`) — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |

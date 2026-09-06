@@ -1,0 +1,10 @@
+{
+  "name": "fail_known",
+  "outcome": "failed_known",
+  "capabilities": { "streaming": false, "cancellation": "none", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "fail_known", "reason": "provider rejected: daily quota exhausted" }
+  ],
+  "expected_terminal": "failed_known"
+}

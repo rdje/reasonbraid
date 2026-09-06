@@ -24,6 +24,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # (a node-local operator tool, not an interactive surface).
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+# The adapter contract the execution supervisor drives (PHASE-0.4.1); the fake adapter
+# in the same crate is the conformance oracle the supervisor tests replay.
+reasonbraid-adapter = { path = "../reasonbraid-adapter", version = "0.1.0" }
 # The outbound channel's HTTP client (PHASE-0.3.2): plain HTTP/1 JSON for the loopback
 # dev profile — no TLS features yet (WP5 identity brings the authenticated profile).
 reqwest = { version = "0.12", default-features = false, features = ["json"] }

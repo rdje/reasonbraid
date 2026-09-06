@@ -1,0 +1,11 @@
+{
+  "name": "ignore_cancellation",
+  "outcome": "ignore_cancellation",
+  "capabilities": { "streaming": true, "cancellation": "best_effort", "provider_idempotency": false, "status_lookup": false, "tool_support": false, "policy_injection": "none" },
+  "status_lookup": { "kind": "unsupported" },
+  "script": [
+    { "step": "ignore_cancellation" },
+    { "step": "complete" }
+  ],
+  "expected_terminal": "completed"
+}

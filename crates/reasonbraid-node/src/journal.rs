@@ -241,8 +241,9 @@ pub struct JournalCounts {
 
 /// A node-local journal handle. The pool is capped at ONE connection: the journal is a
 /// single-writer local store, and serializing writers makes the state-machine guards
-/// (`WHERE status = ?`) authoritative rather than a race-detection net.
-#[derive(Debug)]
+/// (`WHERE status = ?`) authoritative rather than a race-detection net. `Clone` shares
+/// the same pool (tests poll from one handle while a task drives another).
+#[derive(Debug, Clone)]
 pub struct Journal {
     pool: SqlitePool,
     path: PathBuf,
@@ -625,6 +626,32 @@ impl Journal {
             at,
         )
         .await?;
+        Ok(())
+    }
+
+    /// Record the provider's request id for an attempt — the proof handle a later
+    /// status lookup needs (`§11.3`). It arrives with the dispatch acknowledgement,
+    /// which follows the boundary record, so it is attached afterwards; the FIRST id
+    /// recorded wins (provider request ids are stable for one attempt).
+    pub async fn attach_provider_request_id(
+        &self,
+        attempt_id: &str,
+        provider_request_id: &str,
+    ) -> Result<(), JournalError> {
+        let res = sqlx::query(
+            "UPDATE attempts SET provider_request_id = COALESCE(provider_request_id, ?) \
+             WHERE attempt_id = ?",
+        )
+        .bind(provider_request_id)
+        .bind(attempt_id)
+        .execute(&self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(JournalError::NotFound {
+                what: "attempt",
+                id: attempt_id.to_string(),
+            });
+        }
         Ok(())
     }
 

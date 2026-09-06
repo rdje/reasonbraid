@@ -18,10 +18,19 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The WP7 benchmark hashes its versioned corpus/prompt files so a report can prove
+# which inputs produced it (re-derive, never trust a copy).
+sha2 = "0.10"
+# The WP7 graders parse REQUIRED confidence/citation shapes from untrusted answer
+# text with fixed patterns — no backtracking hazards, deterministic scoring.
+regex = "1"
+# The rb-bench binary's argument surface (the WP7 runner).
+clap = { version = "4", features = ["derive"] }
 # The fake adapter's per-operation state + cancellation Notify, and the Codex
 # adapter's child-process supervision (io-util for line reading, process for the
-# child, rt for the stderr-drain task). The contract itself is runtime-free.
-tokio = { version = "1", features = ["sync", "io-util", "process", "rt"] }
+# child, rt for the stderr-drain task). The contract itself is runtime-free;
+# macros + rt-multi-thread serve the rb-bench binary's async main.
+tokio = { version = "1", features = ["sync", "io-util", "process", "rt", "macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

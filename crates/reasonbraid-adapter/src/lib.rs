@@ -18,6 +18,12 @@
 //!
 //! `.4.2` qualifies the first REAL harness behind this same contract.
 //!
+//! `PHASE-0.7` lands [`bench`] — the WP7 deliberation/routing benchmark: a versioned
+//! eight-case corpus run through four workflows (single / blind-independent /
+//! critique-revise / moderator-synthesis) with deterministic graders, per-case
+//! confidence, cost accounting, and a spread-bearing report; the scripted agent
+//! proves the harness, the `RB_LIVE_CODEX=1` real mode produces the numbers.
+//!
 //! See `docs/decisions/2026-09-06_fake-adapter.md` for the design record and
 //! `docs/book/src/adapter-boundary.md` for the boundary documentation.
 
@@ -25,6 +31,8 @@ mod codex;
 mod contract;
 mod fake;
 pub mod fixtures;
+
+pub mod bench;
 
 pub use codex::CodexCliAdapter;
 pub use contract::{

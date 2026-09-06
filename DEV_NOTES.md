@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — WP7 benchmark: the first real run falsified the harness before any claim could ride on it
+
+- **The scripted oracle CANNOT see prompt-wiring bugs — the real run can.** The critique/revise workflow rendered the SAME template for the critique and the revision leg, so every revision call was instructed to critique: all four real `critique_revise` rows came back with NO confidence line (`structure_valid: false`) and fact-001's "revision" broke a correct answer (1.0 → 0.0). The scripted agent answers by ROLE and never reads the prompt, so the corpus self-test stayed green through the whole defect. Lesson: prompt wiring needs a prompt-level check — the corpus now carries `the_critique_and_revision_prompts_are_distinct` (distinct templates, role-naming instructions), and the workflow renders `critique`/`revision` separately.
+- **A trap that flags the question's own echo is a false positive machine.** The honesty trap (any digit in the answer) flagged a refusal that merely quoted "2026" back from the statement. Now it flags only numbers NOT present in the statement — still deterministic, no longer self-defeating.
+- **Real cost accounting surprised us in a good way to have measured**: each `codex exec` call carried ~16k input tokens of ambient overhead (the user's Codex config), independent of the benchmark's ~100-character prompts — the H6 accounting would have been fantasy without recording ACTUAL usage. The harness records provider-reported tokens, so the overhead is visible instead of assumed away.
+- **The benchmark's own verdict on itself was negative-or-null on this sample** (single agent matched or beat the structured workflows on the four differential cases at 1× the calls) — that is the WP7 acceptance's point: it narrows the routing claim for the WP8 memo rather than decorating it. See `docs/evidence/2026-09-07_benchmark-codex-run.md`.
+- Promoted to `docs/decisions/2026-09-07_deliberation-benchmark.md` (`answers:` present). **Frontier `.8`.**
+
 ## _(2026-09-07)_ — WP6 node wiring: three bugs the demo and the suite caught before they shipped
 
 - **The live suite caught a domain-semantics inversion in the first dispatch draft.** The revise work item originally carried the CHALLENGED CONTRIBUTION's event id as its target; the domain's `thread.revise` targets a CHALLENGE. The test failed with the server's own `invalid_command: revision target … is a contribution, not a challenge` — the contribution id is only the author-lookup key, the challenge's own event id is the revise target. Fixed; the assertion now checks the revise work item targets the challenge event.

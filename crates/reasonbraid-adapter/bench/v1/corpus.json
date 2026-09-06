@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "fact-001",
+      "class": "factual",
+      "statement": "A calendar leap year has how many days? Answer with a single number followed by the word 'days'.",
+      "ground_truth": { "kind": "factual", "accepted": ["366 days"] },
+      "sources": [],
+      "scripted": {
+        "agent_a": { "text": "366 days", "confidence": 0.95 },
+        "agent_b": { "text": "365 days", "confidence": 0.9 },
+        "critique": { "text": "The answer is correct: a leap year has 366 days, not 365.", "confidence": 0.9 },
+        "revision": { "text": "366 days", "confidence": 0.95 },
+        "synthesis": { "text": "366 days", "confidence": 0.9, "unresolved": [] },
+        "expected": { "single": 1.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "fact-002",
+      "class": "factual",
+      "statement": "What is the capital city of Australia? Answer with the city name only.",
+      "ground_truth": { "kind": "factual", "accepted": ["canberra"] },
+      "sources": [],
+      "scripted": {
+        "agent_a": { "text": "Sydney", "confidence": 0.8 },
+        "agent_b": { "text": "Canberra", "confidence": 0.9 },
+        "critique": { "text": "Sydney is wrong — the capital of Australia is Canberra.", "confidence": 0.9 },
+        "revision": { "text": "Canberra", "confidence": 0.95 },
+        "synthesis": { "text": "Canberra", "confidence": 0.9, "unresolved": [] },
+        "expected": { "single": 0.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "code-001",
+      "class": "code_review",
+      "statement": "Review this Rust function for bugs: `fn increment(x: u8) -> u8 { x + 1 }`. Cite sources from the list.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "overflow", "label": "flags the overflow/wraparound", "needles": ["overflow", "wraps", "wrap"] },
+          { "id": "fix", "label": "names a checked/saturating/wrapping fix", "needles": ["checked_add", "saturating_add", "wrapping_add", "checked"] },
+          { "id": "test", "label": "notes the debug panic or a test for the edge", "needles": ["test", "debug", "panic"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "Rust std: u8::checked_add", "excerpt": "checked_add returns None on overflow instead of wrapping or panicking." },
+        { "id": "src-2", "title": "TRPL: integer types", "excerpt": "Integer overflow panics in debug builds and wraps in release builds." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "Yes: `x + 1` overflows for x=255 (wraps in release, panics in debug). Use `u8::checked_add` and test the edge. See CITE[1] and CITE[2].", "confidence": 0.9 },
+        "agent_b": { "text": "The function looks fine; it just adds one.", "confidence": 0.7 },
+        "critique": { "text": "The review is right about overflow at 255 and the checked_add fix; also cite the TRPL chapter on debug panics.", "confidence": 0.85 },
+        "revision": { "text": "Yes: `x + 1` overflows at x=255 — wraps in release, panics in debug. Use checked_add and add a unit test for 255. CITE[1] CITE[2]", "confidence": 0.92 },
+        "synthesis": { "text": "The function overflows for x=255; use checked_add and test the edge. CITE[1]", "confidence": 0.9, "unresolved": [] },
+        "expected": { "single": 1.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "code-002",
+      "class": "code_review",
+      "statement": "Review this Rust function for bugs: `fn average(a: i32, b: i32) -> i32 { (a + b) / 2 }`. Cite sources from the list.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "overflow", "label": "flags the a+b overflow", "needles": ["overflow"] },
+          { "id": "widening", "label": "suggests widening or checked arithmetic", "needles": ["i64", "widen", "checked_add", "saturating"] },
+          { "id": "test", "label": "mentions tests/edge/boundary cases", "needles": ["test", "edge", "boundary"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "Rust std: i32 overflow behaviour", "excerpt": "In debug builds, overflowing arithmetic panics; release builds wrap." },
+        { "id": "src-2", "title": "A guide to defensive integer arithmetic", "excerpt": "Prefer widening or checked operations when inputs can reach the type's bounds." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "Yes: a + b can overflow for large inputs. Add tests for extreme values.", "confidence": 0.85 },
+        "agent_b": { "text": "The average is correct; division handles everything.", "confidence": 0.6 },
+        "critique": { "text": "The review misses the fix: widen to i64 or use i32::checked_add before dividing, and test the boundary values.", "confidence": 0.85 },
+        "revision": { "text": "Yes: a + b can overflow — widen to i64 or use i32::checked_add, and test the boundary values. CITE[2]", "confidence": 0.9 },
+        "synthesis": { "text": "The sum can overflow; widen to i64 or use checked_add, and test the boundaries. CITE[1]", "confidence": 0.88, "unresolved": [] },
+        "expected": { "single": 0.6666666666666666, "blind": 0.6666666666666666, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "policy-001",
+      "class": "ambiguous_policy",
+      "statement": "Should an engineering org ban all AI-generated code that has not been human-reviewed? Cite sources from the list.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "oversight", "label": "engages human review/oversight", "needles": ["review", "oversight", "approval", "human"] },
+          { "id": "velocity", "label": "considers productivity/velocity", "needles": ["velocity", "productivity", "speed", "throughput"] },
+          { "id": "conditional", "label": "makes the answer conditional (tiers/risk/context)", "needles": ["depends", "context", "tier", "risk", "conditional"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "2025 State of AI code review (excerpt)", "excerpt": "Teams report that blanket manual review gates cut delivery velocity on low-risk changes." },
+        { "id": "src-2", "title": "Org policy template: risk tiers", "excerpt": "High-risk changes require approval; low-risk changes may use lighter gates." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "A blanket ban ignores context: low-risk generated code could move faster with human review on a risk-tiered basis; higher-risk changes need approval. Productivity suffers if everything is gated equally. CITE[1] CITE[2]", "confidence": 0.6 },
+        "agent_b": { "text": "Yes, ban it all: generated code is unsafe.", "confidence": 0.95 },
+        "critique": { "text": "The answer lacks the productivity dimension and a tiering mechanism — the decision depends on risk context, not a blanket rule.", "confidence": 0.7 },
+        "revision": { "text": "Propose risk tiers: auto-approve low-risk changes with mandatory human review for high-risk ones, and track velocity impact — the right rule depends on context. CITE[1] CITE[2]", "confidence": 0.65 },
+        "synthesis": { "text": "Banning everything is blunt: the decision depends on risk context. Require human review for high-risk changes, allow a fast path for low-risk ones, and measure the velocity impact. CITE[1]", "confidence": 0.55, "unresolved": ["no agreed risk-tier thresholds"] },
+        "expected": { "single": 1.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "policy-002",
+      "class": "ambiguous_policy",
+      "statement": "Should the project auto-merge dependency updates whenever CI passes? Cite sources from the list.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "supply", "label": "engages supply-chain risk", "needles": ["supply", "attack", "malicious", "compromise"] },
+          { "id": "guard", "label": "keeps a human/verification guard", "needles": ["review", "approval", "human", "sign", "verify"] },
+          { "id": "conditional", "label": "makes the answer conditional (tiers/risk/context)", "needles": ["depends", "tier", "risk", "critical", "context"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "Supply-chain attack report 2025 (excerpt)", "excerpt": "Most compromised packages passed automated CI; the attack was in the code, not the build." },
+        { "id": "src-2", "title": "CI trust levels guide", "excerpt": "Reserve auto-merge for low-risk, signature-verified updates." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "Yes, auto-merge everything that passes CI — CI passing means it works.", "confidence": 0.8 },
+        "agent_b": { "text": "No blanket rule: dependencies are a supply-chain risk. Auto-merge only low-risk updates with verified signatures; keep human review for critical ones — the decision depends on the risk tier. CITE[1] CITE[2]", "confidence": 0.7 },
+        "critique": { "text": "The answer ignores supply-chain risk: compromised packages pass CI. The rule must depend on the risk tier, not on CI alone.", "confidence": 0.75 },
+        "revision": { "text": "Auto-merge only low-risk updates with verified signatures and CI; require human review for critical dependencies — supply-chain attacks make a blanket rule dangerous. CITE[1] CITE[2]", "confidence": 0.72 },
+        "synthesis": { "text": "Use a tiered rule: auto-merge verified low-risk updates, human review for critical ones — CI alone does not catch supply-chain attacks. CITE[1] CITE[2]", "confidence": 0.65, "unresolved": ["no tier thresholds defined"] },
+        "expected": { "single": 0.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "insuff-001",
+      "class": "insufficient_evidence",
+      "statement": "Did project X's 2026 release reduce its CVE count? Answer ONLY from the provided sources; if they cannot justify an answer, say so explicitly.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "refusal", "label": "refuses honestly instead of guessing", "needles": ["insufficient", "no evidence", "cannot", "unable", "not stated", "does not say"] },
+          { "id": "engage", "label": "engages the CVE/security question", "needles": ["cve", "security", "advisories"] },
+          { "id": "need", "label": "names what would answer it", "needles": ["verify", "check", "advisory", "data", "source"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "X v2.0 release notes (excerpt)", "excerpt": "This release adds the new dashboard and faster sync. No CVE counts are published here." },
+        { "id": "src-2", "title": "X security page (excerpt)", "excerpt": "Security advisories are published separately from release notes." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "Insufficient evidence: the provided sources do not state CVE counts. The release notes mention features only, and the security page points to separate advisories — verify against the advisory feed. CITE[1] CITE[2]", "confidence": 0.2 },
+        "agent_b": { "text": "Yes: the CVE count dropped 40% in 2026.", "confidence": 0.9 },
+        "critique": { "text": "The refusal is correct; add that the advisory feed is the authoritative source to check.", "confidence": 0.8 },
+        "revision": { "text": "Insufficient evidence: the sources do not state CVE counts. Verify against the vendor advisory feed before answering. CITE[1] CITE[2]", "confidence": 0.25 },
+        "synthesis": { "text": "The sources cannot answer the question — no CVE counts appear in them. Check the advisory feed.", "confidence": 0.3, "unresolved": ["vendor CVE data unavailable in the sources"] },
+        "expected": { "single": 1.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    },
+    {
+      "id": "insuff-002",
+      "class": "insufficient_evidence",
+      "statement": "According to the provided sources, which model has the highest benchmark score today? If the sources cannot justify an answer, say so explicitly.",
+      "ground_truth": {
+        "kind": "rubric",
+        "checks": [
+          { "id": "refusal", "label": "refuses honestly instead of guessing", "needles": ["insufficient", "cannot", "unable", "dated", "no evidence"] },
+          { "id": "engage", "label": "engages the benchmark question", "needles": ["benchmark", "model", "score"] },
+          { "id": "need", "label": "names what would answer it", "needles": ["check", "current", "source", "verify"] }
+        ]
+      },
+      "sources": [
+        { "id": "src-1", "title": "Benchmark table, dated 2024 (excerpt)", "excerpt": "Scores as of March 2024. This table is not maintained and makes no claim about today." }
+      ],
+      "scripted": {
+        "agent_a": { "text": "The sources cannot answer this: the table is dated 2024 and says nothing about today. Insufficient evidence — check a current benchmark source. CITE[1]", "confidence": 0.15 },
+        "agent_b": { "text": "Model Y has the highest score per the table (CITE[1]).", "confidence": 0.85 },
+        "critique": { "text": "The refusal is right: the table is dated and cannot support a 'today' claim — say to check a current source.", "confidence": 0.8 },
+        "revision": { "text": "The sources cannot support a 'today' claim: the table is dated 2024. Insufficient evidence — check a current benchmark source. CITE[1]", "confidence": 0.2 },
+        "synthesis": { "text": "The dated table cannot answer which model leads today. Insufficient evidence — verify against a current source.", "confidence": 0.25, "unresolved": ["no current benchmark data in the sources"] },
+        "expected": { "single": 1.0, "blind": 1.0, "critique_revise": 1.0, "moderator": 1.0 }
+      }
+    }
+  ]
+}

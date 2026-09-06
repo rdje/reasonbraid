@@ -283,13 +283,13 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP7 — Small deliberation/routing benchmark (`KICKOFF` issue 14)
 
 - ID: `PHASE-0.7`
-  Status: `pending`
+  Status: `done`
   Goal: small versioned corpus vs single-agent, blind independent, critique/revise, moderator/synthesis
   Depends on: fake adapter and at least one real adapter; may use offline harness if vertical slice unfinished
   Acceptance: results include cases and uncertainty, not only an average; no independence score; null/negative result is acceptable and narrows the claim
   Roadmap: §13.7, ADR 017, hypothesis H1/H6
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0024`
 
 ### WP8 — Phase 0 decision and subtraction package (`KICKOFF` issue 15)
 
@@ -320,7 +320,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.7` | `pending` | WP7 small deliberation/routing benchmark (versioned corpus vs single-agent / blind-independent / critique-revise / moderator-synthesis; cases + uncertainty, no independence score) — the integration point (WP6) is now proven |
+| 1 | `PHASE-0.8` | `pending` | WP8 Phase 0 decision and subtraction package (evidence manifest, ADR set, subtraction record, Phase 1 go/rework/pivot/stop) — the benchmark (`.7`) and the vertical slice (`.6.2`) are its evidence inputs |
 | 2 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision found at session start (2026-09-07); owned, queued after the Phase 0 leaves, blocked on the director's word |
 
 `RB-SEED` is `done`. This tree is executable.
@@ -991,6 +991,44 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
   DEV_NOTES, MEMORY, LIVE_STATUS, `docs/ci.md`, `knowledge-map/subsystems.md` updated;
   this tree's log below.
 
+## Acceptance Checklist (PHASE-0.7)
+
+The `crates/reasonbraid-adapter` code changes (`.rs` + `Cargo.toml`) are the CODE
+change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
+`TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — KICKOFF WP7 (`issue 14`) and `ROADMAP.md`
+  §13.7/H1/H6 require the small versioned benchmark before the Phase 1 routing
+  decision: no harness existed to compare single-agent vs blind-independent vs
+  critique/revise vs moderator/synthesis with per-case scores, confidence, and
+  cost. The WP8 memo (`PHASE-0.8`) cannot be written without it.
+- [x] **ADDRESSED (verified)** — `cargo test -p reasonbraid-adapter` →
+  `7 passed` (grader) + `5 passed` (`bench_harness` — the scripted run
+  reproduces the corpus oracle EXACTLY over 8 cases × 4 workflows: computed ==
+  expected scores, call accounting, structure validity, unresolved-register
+  fidelity, the honesty trap, no-independence-score report hygiene, factual-only
+  Brier, and the critique/revision prompt-split guard) + `9` + `12` (existing
+  suites); `rb-bench --agent scripted` → full report; **real run**:
+  `RB_LIVE_CODEX=1 rb-bench --agent codex --case fact-001,code-002,policy-002,
+  insuff-001 --max-calls 36` → 16/16 rows structure-valid, all scores + token
+  costs + per-case confidence recorded in
+  `docs/evidence/2026-09-07_benchmark-codex-run.md` (result: structure did NOT
+  beat single on the sample — the accepted null that narrows the claim).
+- [x] **NO REGRESSION** — `make check` → all offline suites green (incl. the new
+  bench tests); `make gate` → `=== all doctrines green ===` (13/13); `make deny`
+  → advisories/bans/licenses/sources ok (regex/sha2/clap added to the adapter);
+  `make secret-scan` → no leaks; `make book` → HTML written. Existing adapter
+  suites (fake 12, codex stub 9, corpus integrity) unchanged and green.
+- [x] **FIX** — `src/bench/` (corpus + grader + scripted agent + workflows +
+  report), `src/bin/rb-bench.rs`, `bench/v1/{corpus,prompts}.json`,
+  `tests/bench_harness.rs`; two REAL-RUN-CAUGHT defects fixed with regression
+  tests (the critique/revision template conflation; the honesty trap's
+  echoed-number false positive).
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-07_deliberation-benchmark.md`
+  + INDEX row; evidence report `docs/evidence/2026-09-07_benchmark-codex-run.md`
+  + INDEX row; mdBook `benchmark.md` + SUMMARY; CHANGELOG, DEV_NOTES, MEMORY,
+  LIVE_STATUS, `knowledge-map/subsystems.md` updated; this tree's log below.
+
 ## Verification Log
 
 
@@ -1020,6 +1058,7 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `2026-09-06` | `PHASE-0.4.1` | `cargo test -p reasonbraid-adapter` → `test result: ok. 12 passed` (fake) + `test result: ok. 3 passed` (corpus integrity incl. mechanical credential scan); `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake` — corpus drives every outcome to its journal terminal; lost response without lookup → `outcome_unknown` with no retry language; proven lookup → `completed`; ack ≠ completion at the journal boundary); `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 adapter + 17 + 8 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` + `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_fake-adapter.md` + INDEX row | WP4 fake harness adapter proven: scripted oracle + sanitized corpus + supervisor ambiguity path; three real bugs found by the corpus/probes (boundary-vs-refusal edge, Notify race, terminal-event loop) |
 | `2026-09-06` | `PHASE-0.6.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed` (`command_api`) + `test result: ok. 2 passed` (`cli_end_to_end`, the REAL `rb` binary) against live PostgreSQL 16.15 — full flow (bootstrap → create → invite → auto-accepted contribution → challenge → revise → close) inspected through the API only (ordered 6-event timeline + 8 digest-carrying audit records); denials recorded and effect-free; replay returns the original result / conflicts typed; invalid transitions deterministic; forged fields + bad headers rejected; challenge targets checked; `make check` → fmt clean + clippy no warnings + all 28 suites green offline; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-06_control-api-cli.md` + INDEX row; mdBook cli chapter + SUMMARY entry | WP6 control-API + CLI landed: every thread command runs claim → authorize → validate (locked projection) → apply (+ ceiling) in ONE transaction, rejections are idempotent results, and inspection never touches the database |
 | `2026-09-07` | `PHASE-0.6.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 6 passed` (`node_work`) + `5 + 9 + 5 + 7 + 13 + 7` (all server suites) + `2 passed` (`cli_end_to_end`) against live PostgreSQL 16.15 — invite dispatches work WITH a reservation (public handshake view), one contribution despite duplicates at BOTH layers (receipt dedupe + claim replay), challenge → revise → revision answers the challenge, budget-denied work enqueued without a reservation + a denial row, post-close results stored as idempotent rejections, ordinary channel events stay receipts; then `bash scripts/demo_two_host.sh` → ALL acceptance checks PASS (real SIGKILL kill points: server restart, node killed after the durable dispatch boundary → `outcome_unknown` bounded + never retried, duplicate delivery re-POSTed verbatim, budget exhaustion refused at both boundaries, closure preserving contribution + unresolved challenge) with the evidence bundle; `make check` → fmt clean + clippy no warnings + all 29 suites green offline; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-07_node-channel-wiring.md` + INDEX row; mdBook two-host-demo chapter + SUMMARY entry; `make demo` + CI pg-tests job wired | WP6 node wiring + two-host demo proven: dispatch rides the command transaction, node results fold in claim-first keyed on the inbox command id, no silent retry, and the demo script IS the acceptance test; **WP6 complete** |
+| `2026-09-07` | `PHASE-0.7` | `cargo test -p reasonbraid-adapter` → `test result: ok. 7 passed` (grader) + `test result: ok. 5 passed` (`bench_harness`: the scripted agent reproduces the corpus oracle EXACTLY — computed == expected scores over 8 cases × 4 workflows, call accounting 1/2/3/3, structure validity, unresolved-register fidelity, the honesty trap, no-independence-score report hygiene + spread-bearing aggregates + factual-only Brier, and the critique/revision prompt-split guard) + `9 + 12` existing suites; `rb-bench --agent scripted` → full report with corpus/prompt digests; REAL run `RB_LIVE_CODEX=1 … --max-calls 36` → 16/16 rows structure-valid with scores, confidences, citations, and provider-reported tokens (`docs/evidence/2026-09-07_benchmark-codex-run.md`); the FIRST real run caught two harness defects the scripted oracle cannot see (revision leg re-rendering the CRITIQUE template — no confidence lines + one broken answer; the honesty trap flagging the question's own echoed year) — both fixed with regression tests; `make check` → fmt clean + clippy no warnings + all offline suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (regex, sha2, clap added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-07_deliberation-benchmark.md` + INDEX; evidence report + INDEX; mdBook benchmark chapter + SUMMARY | WP7 benchmark proven: deterministic graders (never an LLM judge), corpus-carried oracle, per-case confidence + spread, no independence score, env-gated call-budgeted real mode; real result on the sample is the accepted NULL (structure did not beat single at 2–4× cost) — the routing claim narrows honestly for WP8 |
 
 ## Commit Log
 
@@ -1047,6 +1086,7 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `PHASE-0.4.1` | `REASONBRAID-PHASE0-0018` | `crates/reasonbraid-adapter` (contract + scripted fake + sanitized 10-fixture corpus) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge + fake-adapter decision record; mdBook chapter |
 | `PHASE-0.6.1` | `REASONBRAID-PHASE0-0022` | `crates/reasonbraid-server` thread domain + control API + `rb-server` binary + `migrations/0006` (enrollments) + `crates/reasonbraid-cli` (the eight verbs; repo-local state dir) + command-API + real-binary e2e suites + control-api-cli decision record; mdBook cli chapter; core gains `thread_close` + the deterministic actor handle |
 | `PHASE-0.6.2` | `REASONBRAID-PHASE0-0023` | node wiring: invite/challenge dispatch work items + best-effort reservations in the command transaction; `apply_node_result_in_tx` folds node results in claim-first keyed on the inbox command id; in-tx channel/budget variants; the `rb-node` worker + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs`; `scripts/demo_two_host.sh` (the acceptance-test demo + evidence bundle) + `make demo` + CI/harness wiring; node-channel-wiring decision record; mdBook two-host-demo chapter |
+| `PHASE-0.7` | `REASONBRAID-PHASE0-0024` | the WP7 benchmark: `src/bench/` (corpus/grader/scripted/workflows/report) + the `rb-bench` binary + `bench/v1/` corpus/prompts + `tests/bench_harness.rs` (corpus-carried oracle self-test); two real-run-caught fixes with regression tests (critique/revision prompt split; honesty-trap echoed numbers); deliberation-benchmark decision record; evidence report + INDEX; mdBook benchmark chapter |
 
 ## Changelog
 
@@ -1073,3 +1113,4 @@ CODE change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 - `2026-09-06`: `PHASE-0.4.1` WP4 fake harness adapter — `crates/reasonbraid-adapter` (capability-declaring contract: ack ≠ completion, no credential field, unsupported lookup is never retry advice; deterministic scripted `FakeAdapter`; ten-fixture sanitized corpus with mechanical credential scan) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge, `docs/decisions/2026-09-06_fake-adapter.md`, mdBook adapter-boundary chapter. Frontier is `.4.2`.
 - `2026-09-06`: `PHASE-0.6.1` WP6 control API + CLI — `crates/reasonbraid-server` gains the thread domain (`threads.rs`: the six operations, the projection, core-machine validation, dev rules) + the control API (`api.rs`: enroll bootstrap, `/v1/threads` command/query/audit surface, trusted dev principal header + deterministic UUIDv5 actor handle, SHA-256 request hash, ONE transaction per command — claim → authorize → validate against the locked projection → apply (+ ceiling), with idempotent REJECTIONS) + the `rb-server` binary + `migrations/0006_control_api.sql`; the new `crates/reasonbraid-cli` lands the `rb` binary (the eight verbs, repo-local state dir); core gains `thread_close` + `actor_handle_for_subject`; `docs/decisions/2026-09-06_control-api-cli.md`, mdBook cli chapter. Frontier is `.6.2`.
 - `2026-09-07`: `PHASE-0.6.2` WP6 node wiring + two-host demo — invite/challenge dispatch work items (with best-effort reservations; denials recorded and enqueued reservation-less) in the command transaction; `apply_node_result_in_tx` folds node `work_result` events into the thread claim-first (idempotency key = inbox command id) with in-tx settlement; in-tx channel/budget variants; `crates/reasonbraid-node` gains the `rb-node` worker (`worker.rs`: poll → journal → execute only absent/`prepared` attempts — never a silent retry) + `journal::work_items`/`emitted_events` + `rb-journal events`; `tests/node_work.rs` (6 live-PG tests); `scripts/demo_two_host.sh` (the acceptance-test demo with real SIGKILL kill points + evidence bundle) wired into `run_pg_tests.sh`/`make demo`/CI; `docs/decisions/2026-09-07_node-channel-wiring.md`, mdBook two-host-demo chapter. **WP6 complete.** Frontier is `.7`.
+- `2026-09-07`: `PHASE-0.7` WP7 deliberation/routing benchmark — `crates/reasonbraid-adapter` gains `src/bench/` (versioned corpus + deterministic graders + scripted agent + four-workflow runner + spread-bearing report) + the `rb-bench` binary + `bench/v1/{corpus,prompts}.json` + `tests/bench_harness.rs` (the corpus carries its own scoring oracle; computed == expected proven over 8×4); the REAL Codex run (36 bounded calls, `RB_LIVE_CODEX=1`) caught two harness defects the scripted oracle cannot see (critique/revision template conflation; honesty-trap echoed numbers) — fixed with regression tests; the corrected run's NULL result (structure did not beat single at 2–4× cost) narrows the routing claim for WP8; `docs/decisions/2026-09-07_deliberation-benchmark.md`, `docs/evidence/2026-09-07_benchmark-codex-run.md` + INDEX rows, mdBook benchmark chapter. **WP7 complete.** Frontier is `.8`.

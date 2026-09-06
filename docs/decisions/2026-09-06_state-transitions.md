@@ -2,7 +2,7 @@
 
 - **Type:** `decision`
 - **Date:** `2026-09-06`
-- **Status:** `active`
+- **Status:** `superseded in part by 2026-09-06_node-journal.md` (the `failed_known` exclusion below was narrowed in `PHASE-0.3.1`; everything else stands)
 - **Owner / source:** engineering decision during leaf `PHASE-0.1.3` (WP1 minimal state machines)
 answers: how do the thread, participation, and provider-attempt lifecycles move, so every invalid transition is rejected deterministically and no state is reachable except through a documented edge?
 
@@ -41,9 +41,14 @@ the demo honest with the smallest edge set:
 - A participation invitation is consumed by one decision: `accepted → declined`/`expired`
   is invalid once the invite is accepted. Re-invitation is a *new* participation revision
   (a back-edge via explicit new record, per §8.4), not a state rewind.
-- A *proven* post-dispatch failure (`failed_known` / `cancelled_known` in §8.4) is out of
-  Phase 0 scope. The honest minimal answer to an indeterminate attempt is
+- A *proven* post-dispatch failure (`failed_known` / `cancelled_known` in §8.4) was out of
+  Phase 0 scope **as of this record (`PHASE-0.1.3`)**. `PHASE-0.3.1` later landed
+  `failed_known` with **proof-gated edges only** — a definitive runtime rejection, or the
+  §11.3 provider-lookup recovery edges `outcome_unknown → completed | failed_known` — so a
+  PROVEN failure is never confused with a guess. `cancelled_known` remains out of Phase 0.
+  The honest minimal answer to an indeterminate attempt is still
   `outcome_unknown → reconciled` (kill-risk Q4), never a guessed failure or a blind retry.
+  See [[2026-09-06_node-journal]] for the superseding decision.
 - `apply` returning `Result` (not panicking, not silently clamping) makes "invalid
   transitions rejected deterministically" (the WP1 acceptance) a compile-level, testable
   property rather than a convention.
@@ -58,7 +63,9 @@ the demo honest with the smallest edge set:
   rewrites (§8.4).
 - Keep state enums `snake_case` on the wire; keep transition enums non-wire until backlog 6
   defines the operation/event catalogue.
-- When WP4 lands, `failed_known`/`cancelled_known` extend `ProviderAttemptState`, not a
-  new aggregate; until then `outcome_unknown → reconciled` is the only indeterminate exit.
+- `failed_known` landed in `PHASE-0.3.1` as an extension of `ProviderAttemptState` (not a
+  new aggregate), proof-gated per [[2026-09-06_node-journal]]; `cancelled_known` remains
+  deferred until it can be recorded honestly. The exhaustive `*_VALID`-table rule above is
+  how that extension was added.
 - See [[2026-09-06_id-representation]] (identifier newtypes) and
   [[2026-09-06_envelope-representation]] (how commands/events cross the wire).

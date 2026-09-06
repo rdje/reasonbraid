@@ -16,21 +16,21 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.6.2` (the embedded static shell).
+- **Active tree:** `PHASE-1` → frontier `.1.6.3` (the demo/evidence leg).
   `.1.6` DECOMPOSED `2026-09-06` after the gap census (direction: a vanilla
   static page served by `rb-server`, no build pipeline —
   `docs/decisions/2026-09-06_ui-direction.md`): `.1.6.1` budget read surface
-  DONE (read-only ledger pass-through, inspect-gated;
-  `docs/decisions/2026-09-06_budget-read-surface.md`), `.1.6.2` the embedded
-  static shell (`web/{index.html,app.js,style.css}`, `/`), `.1.6.3` the
-  demo/evidence leg. Toolchain PINNED to `1.98.0` (`PHASE-1-MAINT-3`;
-  `docs/decisions/2026-09-06_pinned-toolchain.md`). `.1.5` COMPLETE
-  (backlogs 9–17 done); all three Phase-1 defect leaves closed (`MAINT-1`
-  §13, `MAINT-2` drain race, `MAINT-3` toolchain pin); `.1.4` live-qualified.
-- **Next action:** execute `PHASE-1.6.2` — the static page
-  (`crates/reasonbraid-server/web/` embedded at compile time, served at `/`,
-  read-only, XSS-safe) + the offline serving test + the book chapter — then
-  `.1.6.3`.
+  DONE (`docs/decisions/2026-09-06_budget-read-surface.md`), `.1.6.2` the
+  embedded static shell DONE (`web/{index.html,app.js,style.css}` at `/`;
+  read-only, text-safe, contract-tested;
+  `docs/decisions/2026-09-06_ui-embedding.md`), `.1.6.3` next. Toolchain
+  PINNED to `1.98.0` (`PHASE-1-MAINT-3`). `.1.5` COMPLETE (backlogs 9–17
+  done); all three Phase-1 defect leaves closed (`MAINT-1` §13, `MAINT-2`
+  drain race, `MAINT-3` toolchain pin); `.1.4` live-qualified.
+- **Next action:** execute `PHASE-1.6.3` — the demo's UI beat (shell served +
+  `app.js` endpoint-contract grep + one live same-origin fetch with the dev
+  header) + the book's two-host-demo note — then `.1.6` completes and the
+  frontier moves to `.1.7`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

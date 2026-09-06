@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The embedded static shell: a read-only console in one binary (`PHASE-1.6.2`)
+
+- `rb-server` now serves the inspection console at `/` (`/app.js`, `/style.css`): a vanilla HTML/JS page — no framework, no frontend build pipeline — **embedded at compile time** (`include_str!`), so the deployment stays a single binary with no runtime paths (§12). A state-free `ui_router` merged into the existing listener adds zero API routes.
+- The page is a **client, not a surface**: same-origin GETs with the dev-profile `x-reasonbraid-principal` header + `tenant_id` query, so every gate, denial, and audit row applies exactly as to the CLI. It renders the threads list/detail, the event timeline, the audit records, the `.1.6.1` budget view, node presence, and the admin inbox. READ-ONLY (no write verb) and text-safe (HTML never assembled from data).
+- The offline tests enforce the page's honesty mechanically: it references ONLY the documented GET surfaces, names no write verb, and never assembles HTML from data — the contract test's first run caught the page's own comment naming the forbidden API (reworded); the serving test proves the typed content types over a real listener. Server unit suite 5→7; `make book` gains the `web-ui` chapter. Decision recorded: `docs/decisions/2026-09-06_ui-embedding.md` (`answers:`).
+
 ## 2026-09-06 — The budget read surface: spend is visible without database surgery (`PHASE-1.6.1`)
 
 - The `.1.6` census finding became a surface: `GET /v1/threads/{thread_id}/budget` returns the ceiling (dimensions, policy version, created time) plus every reservation row — held vs settled usage, denials with the budget engine's reasons, expiry/settle times. A READ-ONLY pass-through of the ledger rows the engine enforces against: nothing computed, nothing invented, so the §26.1 "spend and uncertainty are visible" fact follows the same rows.

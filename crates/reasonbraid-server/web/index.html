@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReasonBraid — inspection console</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>ReasonBraid <span class="muted">— inspection console</span></h1>
+    <p class="muted">
+      A read-only window over the control API. The CLI stays the primary
+      surface: every view here is one of the existing inspection GETs, gated
+      exactly as the CLI is — no new authority, no write path.
+    </p>
+  </header>
+
+  <section id="auth" class="card">
+    <h2>Identity</h2>
+    <form id="auth-form">
+      <label>
+        Principal id
+        <input id="principal" type="text" placeholder="hpr_… or rol_…" required>
+      </label>
+      <label>
+        Tenant id
+        <input id="tenant" type="text" placeholder="ten_…" required>
+      </label>
+      <button type="submit">Load</button>
+      <span id="auth-status" class="muted"></span>
+    </form>
+    <p class="muted small">
+      The dev profile trusts the <code>x-reasonbraid-principal</code> header —
+      the same identity the CLI presents. The values stay in this browser
+      (localStorage) and are never sent anywhere but the server this page came
+      from.
+    </p>
+  </section>
+
+  <section id="views" class="card" hidden>
+    <h2>Views</h2>
+    <div class="views-row">
+      <button data-view="threads">Threads</button>
+      <button data-view="presence">Node presence</button>
+      <button data-view="inbox">Node inbox (admin)</button>
+    </div>
+    <div id="sub-views" hidden>
+      <button data-view="thread">Thread</button>
+      <button data-view="events">Timeline</button>
+      <button data-view="audit">Audit</button>
+      <button data-view="budget">Budget</button>
+      <span id="current-thread" class="muted"></span>
+    </div>
+  </section>
+
+  <main id="output" aria-live="polite"></main>
+
+  <footer>
+    <p class="muted small">
+      Read-only inspection console — threads, nodes, inbox, budgets, and the
+      audit timeline. All rendering is text-safe; nothing fetched here can run.
+    </p>
+  </footer>
+</body>
+</html>

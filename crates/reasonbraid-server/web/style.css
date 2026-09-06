@@ -1,0 +1,172 @@
+/* ReasonBraid inspection console — minimal, dependency-free styling. */
+
+:root {
+  color-scheme: light dark;
+  --fg: #1c2430;
+  --muted: #5a6675;
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --line: #dde3ea;
+  --accent: #2456a6;
+  --error-bg: #fdecea;
+  --error-fg: #8f1f14;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #dfe6ee;
+    --muted: #9aa7b5;
+    --bg: #10151b;
+    --card: #171e26;
+    --line: #2a3542;
+    --accent: #7ea6e8;
+    --error-bg: #3a1f1c;
+    --error-fg: #f2a49c;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 64rem;
+  padding: 1rem 1.25rem 2.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.85em;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+}
+
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9em;
+}
+
+input {
+  font: inherit;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  min-width: 18rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  text-align: left;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+}
+
+.views-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+  background: var(--card);
+  font-size: 0.9em;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+pre.json {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  overflow-x: auto;
+  font-size: 0.82em;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.kv-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.35rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.kv .k {
+  color: var(--muted);
+  margin-right: 0.5rem;
+}
+
+.error {
+  border-color: var(--error-fg);
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+
+footer {
+  margin-top: 2.5rem;
+}

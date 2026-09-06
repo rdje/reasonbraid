@@ -33,6 +33,9 @@ mod node_channel;
 mod outbox;
 mod threads;
 mod tx;
+/// The `.1.6.2` static inspection console (embedded at compile time; no API
+/// routes, no write path — the page reads the existing GET surfaces).
+pub mod ui;
 
 pub use api::{
     api_router, ApiState, ControlApiError, EnrollRequest, EnrollResponse, PRINCIPAL_HEADER,
@@ -55,3 +58,4 @@ pub use outbox::{
     claim_ready, complete, deliver, ClaimedOutboxItem, CompleteOutcome, DeliverOutcome,
 };
 pub use tx::{apply_command, ApplyError, Command, CommandOutcome};
+pub use ui::ui_router;

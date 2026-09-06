@@ -8,5 +8,6 @@
 - [Authority](authority.md)
 - [Budgets](budget.md)
 - [The CLI](cli.md)
+- [The web console](web-ui.md)
 - [The two-host demonstration](two-host-demo.md)
 - [The deliberation benchmark](benchmark.md)

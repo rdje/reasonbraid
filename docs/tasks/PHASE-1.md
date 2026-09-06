@@ -404,7 +404,7 @@ conversation without binding-governance claims.
       → `PHASE-1-MAINT-3` (closed first: the pin + normalization).
 
   - ID: `PHASE-1.6.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the static shell — `crates/reasonbraid-server/web/{index.html,app.js,style.css}`
       EMBEDDED at compile time (`include_str!` — one binary, no runtime paths, no
       build pipeline, §12) and served by `rb-server` at `/`, `/app.js`, `/style.css`
@@ -421,6 +421,10 @@ conversation without binding-governance claims.
       documented GET paths (a mechanical grep over `app.js`); the book gains the
       `web-ui` chapter + SUMMARY entry; decision record (the embed choice + URL
       scheme).
+    Done (`2026-09-06`): the shell landed (embedded, state-free `ui_router`, read-only,
+      text-safe); the contract test's first run caught the page's OWN comment naming
+      the forbidden HTML-assembly API — reworded, rerun green; the acceptance
+      checklist below records the evidence.
 
   - ID: `PHASE-1.6.3`
     Status: `proposed`
@@ -470,7 +474,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.6.2` | `proposed` | `.1.6.1` done — the budget read surface landed (read-only ledger pass-through, inspect-gated; the leaf's verification also uncovered the toolchain drift, closed as `PHASE-1-MAINT-3` with the 1.98.0 pin); the static shell executes next |
+| 1 | `PHASE-1.6.3` | `proposed` | `.1.6.2` done — the embedded static shell serves at `/` (read-only, text-safe, contract-tested); the demo/evidence leg executes next, then `.1.6` completes |
 
 ## Changelog
 
@@ -499,6 +503,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.6` decomposed (gap census first: the existing read surfaces — `GET /v1/threads` list, `GET /v1/threads/{id}` detail, `GET /v1/threads/{id}/events` timeline, `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` — exist and the page mirrors them with the dev-profile header + tenant query; the census FOUND budgets have no read surface anywhere — the ledger rows exist but no GET and no CLI verb) into `.1.6.1` (the budget read surface — the census-found gap), `.1.6.2` (the static shell: `web/{index.html,app.js,style.css}` embedded at compile time, served at `/`, read-only, XSS-safe), and `.1.6.3` (the demo/evidence leg); frontier → `.1.6.1`.
 - `2026-09-06`: `PHASE-1-MAINT-3` done — the toolchain pin: the `.1.6.1` verification found `cargo fmt --all -- --check` failing on hunks in files the leaf never touched (identical under BOTH installed rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`); the channel was `stable` everywhere and the stable channel moved since the tree's last fmt run (recent leaves verified clippy, not fmt); `rust-toolchain.toml` + CI now pin `1.98.0` and the tree was normalized once under it (`fmt rc=0`, clippy clean, 39 offline suites green); decision record `docs/decisions/2026-09-06_pinned-toolchain.md`. Frontier unchanged: `.1.6.1` (executes next — its live-PG run is green under the pin).
 - `2026-09-06`: `.1.6.1` done — the budget read surface: `GET /v1/threads/{id}/budget` is a read-only pass-through of the ledger (ceiling + every reservation row — held vs settled usage, denials with the engine's reasons; absent optional facts omitted, stored JSONB verbatim), gated by the existing `thread_inspect` path (role 403 + audit row); `rb inspect budget` mirrors it; the command_api suite's new test drives create→accept-dispatch (hold)→deny→GET→settle→GET→role-403 and its first run proved the surface right and the TEST wrong (the row reason is the engine's raw `detail`, not the dispatch site's prefix); the e2e's first run caught the positional-vs-`--thread` slip; decision record `docs/decisions/2026-09-06_budget-read-surface.md`; frontier → `.1.6.2`.
+- `2026-09-06`: `.1.6.2` done — the static shell: `crates/reasonbraid-server/web/{index.html,app.js,style.css}` embedded at compile time (`include_str!`) and served by a state-free `ui_router` at `/`, `/app.js`, `/style.css` (merged into the listener — one binary, no runtime paths, no build pipeline); the page is a READ-ONLY, text-safe client of the existing GET surfaces (dev-profile header + tenant, same-origin — every gate/denial/audit row applies exactly as to the CLI); the offline contract test enforces the page's honesty mechanically (only the documented GET paths, no write verb, no HTML assembly from data — its first run caught the page's OWN comment naming the forbidden API, reworded); the book gains the `web-ui` chapter; decision record `docs/decisions/2026-09-06_ui-embedding.md`; frontier → `.1.6.3`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1312,6 +1317,56 @@ test), `crates/reasonbraid-cli/tests/cli_end_to_end.rs` (the new legs) — all
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
   cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1.6.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/ui.rs` (new —
+the embedded router + its tests), `crates/reasonbraid-server/src/lib.rs` (module +
+re-export), `crates/reasonbraid-server/src/bin/rb-server.rs` (the merge) — all
+`\.rs$` in `.doctrine/code_paths.txt`; `crates/reasonbraid-server/web/{index.html,app.js,style.css}`
+are the page assets (non-code per the seam, embedded at compile time).
+
+- [x] **REPRODUCE / ISSUE** — `.1.6.2` is the `ui-direction` decision's static-shell
+  branch: the direction record (committed `550a523`) fixed "a vanilla static page
+  served by `rb-server`, no build pipeline" but nothing serves any page —
+  `grep -rn "include_str\|Html" crates/reasonbraid-server/src --include='*.rs'` → no
+  matches before this leaf; `GET /` on the `.6.1` listener → 404.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the `.6.1` listener merged only the API + node
+  routers (`rb-server.rs`: `api_router(pool.clone()).merge(node_router(pool))`); the
+  UI lane is new work, not a missing feature of an existing module. The fix point is
+  a third, state-free router — embedded assets (`include_str!`) so the deployment
+  stays one binary with no runtime paths (§12, the roadmap's "operational simplicity
+  first") — merged into the existing listener
+  (`docs/decisions/2026-09-06_ui-embedding.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: `/` → 404, no assets,
+  no console. After: `cargo test -p reasonbraid-server --lib` → `test result: ok. 7
+  passed; 0 failed` (the unit suite grew 5→7: the contract test — the page references
+  ONLY the documented GET surfaces (`/v1/threads?`, `/v1/threads/`, `/events?`,
+  `/audit?`, `/budget?`, `/v1/nodes/presence?node_id=`, `/v1/nodes/inbox?node=`), names
+  no write verb, and never assembles HTML from data — plus the live-listener serving
+  test: `/` serves `text/html` with the shell marker, `/app.js` serves
+  `text/javascript` carrying the `x-reasonbraid-principal` header usage, `/style.css`
+  serves `text/css`). The contract test's FIRST run caught a real slip — the page's
+  own comment named the forbidden HTML-assembly API (reworded; the assertion is now
+  honest: the page does not even name it) — rerun green.
+- [x] **NO REGRESSION** — `cargo test --all` → all offline suites green (39 + the
+  two new unit tests); `bash scripts/run_pg_tests.sh` → all twelve live server suites
+  green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`)
+  + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks
+  passed` (18 PASS, `rc=0`) — the demo runs the REAL merged binary, proving the
+  third router arm changes nothing; `cargo clippy --all --all-targets -- -D warnings`
+  → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13 at commit;
+  `make book` builds (the new chapter).
+- [x] **FIX** — `web/index.html` (the shell: identity form + view buttons),
+  `web/app.js` (the same-origin client: fetch with the dev-profile header + tenant
+  query, `el()`/`textContent` rendering only, the seven views), `web/style.css`;
+  `src/ui.rs` (the embedded `ui_router` + the two tests); `src/lib.rs`
+  (`pub mod ui` + `pub use ui_router`); `src/bin/rb-server.rs` (the merge);
+  `docs/book/src/web-ui.md` + `SUMMARY.md`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_ui-embedding.md`
+  gained `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book (`web-ui` chapter + SUMMARY),
+  `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1333,6 +1388,7 @@ test), `crates/reasonbraid-cli/tests/cli_end_to_end.rs` (the new legs) — all
 | `2026-09-06` | `PHASE-1-MAINT-2` | 10× loop over `codex_adapter` + `claude_adapter` → `loop 1..10 rc=0` each; `cargo test --all` → all 39 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the stderr-drain race REPRODUCED (`.1.5.3` verification, `nonzero_exit_produces_failed_known_with_the_stderr_tail`, EMPTY tail) and FIXED: the drain returns its JoinHandle and the EOF path awaits it (bounded 5 s) before the snapshot, in `codex.rs` AND `claude.rs` |
 | `2026-09-06` | `PHASE-1-MAINT-3` | `cargo fmt --all -- --check` → `rc=0` under the pin (was `rc=1` under BOTH rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`, same hunks); `cargo clippy --all --all-targets -- -D warnings` → clean (rc=0); `cargo test --all` → 39 offline suites green (rc=0); `make gate` → 13/13 | the toolchain pin: `rust-toolchain.toml` + CI name `1.98.0` explicitly; the tree normalized once under it; the defect (HEAD not fmt-clean under current stable) is closed — drift can no longer arrive silently |
 | `2026-09-06` | `PHASE-1.6.1` | `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — under the pinned 1.98.0; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the budget read surface landed (`GET /v1/threads/{id}/budget` — read-only ledger pass-through, inspect-gated; `rb inspect budget`); the suite's first run proved the surface right and the TEST wrong (engine-detail reason), the e2e's first run caught the positional slip; the leaf's verification uncovered the toolchain drift → `PHASE-1-MAINT-3` closed first |
+| `2026-09-06` | `PHASE-1.6.2` | `cargo test -p reasonbraid-server --lib` → `test result: ok. 7 passed` (the unit suite grew 5→7: the page-contract test + the live-listener serving test); `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — the demo runs the REAL merged binary (the third router arm changes nothing); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the embedded static shell landed (`web/…` → `include_str!` → state-free `ui_router` at `/`); the contract test's first run caught the page's own comment naming the forbidden HTML-assembly API — reworded, rerun green; the `web-ui` book chapter documents the surface |
 
 ## Commit Log
 
@@ -1355,3 +1411,4 @@ test), `crates/reasonbraid-cli/tests/cli_end_to_end.rs` (the new legs) — all
 | `PHASE-1-MAINT-2` | `REASONBRAID-PHASE1-0021` | the reproduced stderr-drain race: the drain returns its JoinHandle and the EOF path awaits it (bounded) in both adapters; 10× loop + full offline green |
 | `PHASE-1-MAINT-3` | `REASONBRAID-PHASE1-0024` | the toolchain pin: `rust-toolchain.toml` + CI pin `1.98.0`, the four drifted files normalized once under it — reproducible fmt/clippy, defect leaf closed |
 | `PHASE-1.6.1` | `REASONBRAID-PHASE1-0025` | the budget read surface: `GET /v1/threads/{id}/budget` (read-only ledger pass-through, inspect-gated) + `rb inspect budget` + command_api/e2e legs + decision record |
+| `PHASE-1.6.2` | `REASONBRAID-PHASE1-0026` | the embedded static shell: `web/{index.html,app.js,style.css}` → `ui_router` at `/` (read-only, text-safe, contract-tested) + the `web-ui` book chapter + decision record |

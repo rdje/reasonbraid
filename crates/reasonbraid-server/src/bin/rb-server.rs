@@ -7,7 +7,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use reasonbraid_server::{api_router, node_router};
+use reasonbraid_server::{api_router, node_router, ui_router};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,7 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = sqlx::PgPool::connect(&args.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
-    let app = api_router(pool.clone()).merge(node_router(pool));
+    let app = api_router(pool.clone())
+        .merge(node_router(pool))
+        .merge(ui_router());
     let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("rb-server listening on http://{addr} (Phase 0 dev profile)");

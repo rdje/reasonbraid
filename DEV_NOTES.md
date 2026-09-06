@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.6.2: the shell's own tests enforce the page's honesty
+
+- **A static page's safety properties are greppable — so grep them, in a test.** The offline contract test asserts what the page MUST be: it references only the documented GET surfaces, it names no write verb, and it never assembles HTML from data. The first run caught MY OWN app.js naming the forbidden API in a comment — reworded, so the assertion is honest (the page does not even name it).
+- **Embedding is the "no build pipeline" that also keeps one binary.** `include_str!` + a state-free `ui_router` at `/`: no runtime paths (§12), no filesystem reads, no artifact class. A runtime `--web-dir` would reintroduce paths and drift.
+- **The page is a client, not a surface.** Same-origin GETs with the dev-profile header + tenant query — every gate, denial, and audit row applies exactly as it does to the CLI; the `ui_router` adds zero API routes.
+- Promoted to `docs/decisions/2026-09-06_ui-embedding.md` (`answers:` present). **Frontier `PHASE-1.6.3` (the demo/evidence leg).**
+
 ## _(2026-09-06)_ — PHASE-1.6.1: a read surface exposes ledger rows, it does not recompute them
 
 - **The census question is "which inspection surfaces exist", and budgets answered: none.** The ledger tables were fully formed (`0005_budget.sql`), the engine enforced against them, and no GET/CLI verb touched them — the `.1.6` goal named a surface that did not exist. The `.1.6.1` child IS that census finding.

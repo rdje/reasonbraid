@@ -453,7 +453,10 @@ impl NodeChannelState {
     }
 
     /// The inbox rows after `after_cursor`, in cursor order — the replay for a node
-    /// that reports holding up to `after_cursor`.
+    /// that reports holding up to `after_cursor`. Quarantined rows are ALWAYS
+    /// filtered (`.1.2.3`): a quarantined command is never re-delivered, whatever
+    /// cursor the node reports (a node that never saw it simply has a hole in its
+    /// ledger — cursor acknowledgement still marks it terminal).
     pub async fn replay(
         &self,
         node_id: &str,
@@ -461,7 +464,8 @@ impl NodeChannelState {
     ) -> Result<Vec<ReplayCommand>, sqlx::Error> {
         let rows = sqlx::query_as::<_, (i64, String, String, String, Value)>(
             "SELECT cursor, command_id, tenant_id, thread_id, payload FROM node_inbox \
-             WHERE node_id = $1 AND cursor > $2 ORDER BY cursor",
+             WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
+             ORDER BY cursor",
         )
         .bind(node_id)
         .bind(after_cursor)

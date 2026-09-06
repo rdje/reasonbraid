@@ -115,6 +115,27 @@ node id or the `rol_…` agent-role wire id the dev profile serves (one node, on
 role). Issuance is a `tenant_admin`-authorized, audited decision; a re-issue
 while an unused token is outstanding is a typed 409.
 
+The inbox hardening verbs (`.1.2.3`) complete the node-admin surface — all
+`tenant_admin`-authorized and audited:
+
+```text
+$ rb node quarantine --node rol_… --command work_evt_… --reason "poison payload" --as alice
+quarantined command work_evt_… in node rol_…'s inbox (…)
+
+$ rb node inbox --node rol_… --as alice
+node rol_…'s inbox (3 rows):
+  #1 work_evt_… — delivered
+  #2 work_evt_… — QUARANTINED (poison payload)
+  #3 work_evt_… — undelivered
+
+$ rb node prune --node rol_… --min-age-seconds 604800 --as alice
+pruned 2 delivered row(s) from node rol_…'s inbox (before 5, after 3, cutoff …)
+```
+
+A quarantined command is never re-delivered (the reason rides the row);
+pruning deletes only DELIVERED rows older than the window and reports a
+measured before/after — an explicit operator action, never a background sweep.
+
 ## Honest limits (Phase 1)
 
 - **Development credentials**: the CLI presents a trusted principal header, and

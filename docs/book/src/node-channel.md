@@ -116,7 +116,27 @@ classified, replay journaled, directives applied, pending results re-emitted
 `Offline` — retrying the whole protocol is always safe because every step is
 idempotent.
 
-## Honest limits (Phase 1, after `.1.2.2`)
+## Inbox hardening (`.1.2.3`)
+
+Two operator actions harden the per-node inbox (both on the control API,
+`tenant_admin`-authorized and audited — `rb node …` verbs in the CLI chapter):
+
+- **Quarantine** (`rb node quarantine --node … --command … --reason …`): the
+  row is marked quarantined WITH its reason, and the replay/poll paths skip it
+  from then on — a quarantined command is **never re-delivered**, whatever
+  cursor the node reports. The reason is stored with the row, so the skip is
+  explainable. A node that received the command before the quarantine may
+  still return a result: quarantine controls *delivery*, not result
+  application.
+- **Retention** (`rb node prune --node … --min-age-seconds …`): deletes
+  DELIVERED rows older than the window — an explicit, measured operator action
+  (the response reports `before`/`deleted`/`after`), never a background sweep.
+- **Inspection** (`rb node inbox --node …`): every row's delivery +
+  quarantine facts, in cursor order.
+
+Filtered delivery by eligibility stays with Phase 3's directory.
+
+## Honest limits (Phase 1, after `.1.2.3`)
 
 - The credential is the dev shared secret + HMAC key-proof (server as trust
   store). X.509/mTLS workload identity and certificate issuance are deferred
@@ -129,5 +149,7 @@ idempotent.
   visible, not a bug.
 - Live delivery is a poll of the tail; the streaming profile is the formal
   ADR-006 decision.
-- No inbox retention/quarantine yet: delivered rows accumulate and there is no
-  quarantine status — that is `.1.2.3` (backlog 14).
+- A quarantined row leaves a permanent hole in the node's cursor ledger (the
+  node never holds it) — acknowledgements still converge because the ack path
+  covers it. Quarantined rows are pruned like any other delivered row once the
+  retention window passes.

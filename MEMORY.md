@@ -16,15 +16,16 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.2.3` (the `.1` coordinator leaf is **done**;
-  `.1.2` is decomposed — enrollment · authenticated channel + leases · inbox hardening —
-  `.1.2.1` dev-profile node enrollment **done**, `.1.2.2` the authenticated channel +
-  lease/presence **done**: CHANNEL_VERSION 2, HMAC key-proof handshake, fencing-token
-  leases with derived presence, the channel identity space is `nod_…` OR the `rol_…`
-  role wire id the dev wiring serves).
-- **Next action:** implement `PHASE-1.2.3` — durable inbox hardening (backlog 14's
-  remainder): a retention window for delivered rows and a quarantine status (with
-  reason) the replay path skips, plus an inspection surface for both.
+- **Active tree:** `PHASE-1` → frontier `.1.3` (the `.1` coordinator leaf is **done**;
+  `.1.2` is **complete**: `.1.2.1` dev-profile node enrollment, `.1.2.2` the
+  authenticated channel + lease/presence (CHANNEL_VERSION 2, HMAC key-proof
+  handshake, fencing-token leases, derived presence), `.1.2.3` inbox hardening
+  (quarantine with reason the replay/poll always skip; explicit measured prune;
+  inspection) — backlogs 11–14 closed; the dev node-id space is `nod_…` OR the
+  `rol_…` role wire id the dev wiring serves).
+- **Next action:** `PHASE-1.3` — invitation/subscription semantics (backlog 15's
+  remainder + 16): explicit participants, invitation accept/decline/timeout,
+  simple subscriptions. Decompose or execute on pickup.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).

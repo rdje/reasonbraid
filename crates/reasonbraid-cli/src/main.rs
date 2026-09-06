@@ -6,9 +6,10 @@
 
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
-    resolve_agent, resolve_principal, run_enroll, run_inspect_thread, run_inspect_threads,
-    run_issue_node_token, run_thread_create, run_thread_verb, BudgetArgs, Config,
-    CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
+    resolve_agent, resolve_principal, run_enroll, run_inspect_node_inbox, run_inspect_thread,
+    run_inspect_threads, run_issue_node_token, run_prune_node_inbox, run_quarantine_command,
+    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
+    StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -66,6 +67,55 @@ enum NodeCommand {
         /// Token lifetime in seconds (default 3600).
         #[arg(long)]
         ttl_seconds: Option<i64>,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Quarantine one inbox command — it is never re-delivered (`.1.2.3`).
+    Quarantine {
+        /// The node whose inbox holds the command.
+        #[arg(long)]
+        node: String,
+        /// The inbox command id to quarantine.
+        #[arg(long)]
+        command: String,
+        /// WHY it is quarantined (required — a quarantine without a reason is a silent skip).
+        #[arg(long)]
+        reason: String,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect one node's inbox: delivery + quarantine facts per row (`.1.2.3`).
+    Inbox {
+        /// The node whose inbox to list.
+        #[arg(long)]
+        node: String,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prune DELIVERED inbox rows older than a retention window — an explicit,
+    /// measured operator action with a before/after report (`.1.2.3`).
+    Prune {
+        /// The node whose delivered history to prune.
+        #[arg(long)]
+        node: String,
+        /// The retention window in seconds (rows acknowledged at least this long ago).
+        #[arg(long, default_value_t = 604800)]
+        min_age_seconds: i64,
         /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
         #[arg(long)]
         as_: Option<String>,
@@ -475,6 +525,51 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 json,
             )
             .await
+        }
+        Command::Node(NodeCommand::Quarantine {
+            node,
+            command,
+            reason,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_quarantine_command(cfg, &principal, &tenant, &node, &command, &reason, json).await
+        }
+        Command::Node(NodeCommand::Inbox {
+            node,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_inspect_node_inbox(cfg, &principal, &tenant, &node, json).await
+        }
+        Command::Node(NodeCommand::Prune {
+            node,
+            min_age_seconds,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_prune_node_inbox(cfg, &principal, &tenant, &node, min_age_seconds, json).await
         }
     }
 }

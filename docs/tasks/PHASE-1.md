@@ -82,7 +82,7 @@ conversation without binding-governance claims.
     (fix = the one-line data-dir change + comment; verification = a full rerun).
 
 - ID: `PHASE-1.2`
-  Status: `in_progress`
+  Status: `done`
   Goal: Rust node with SQLite journal, enrollment, lease/presence, reconnect, durable inbox
   Backlog: 11–14
   Note: backlog 12 (the journal's durability profile, fencing, crash fixtures,
@@ -90,7 +90,9 @@ conversation without binding-governance claims.
     (`journal_kill_points.rs`, 11 tests) carries it; the Phase-1 delta is the
     lease/presence state `.1.2.2` adds to the journal.
   Children: `.1.2.1`–`.1.2.3` (decomposed `2026-09-06`; gap census: node
-    enrollment absent, no node-channel leases, no inbox retention/quarantine)
+    enrollment absent, no node-channel leases, no inbox retention/quarantine) —
+    all three `done`: enrollment, authenticated channel + lease/presence,
+    inbox retention + quarantine.
 
   - ID: `PHASE-1.2.1`
     Status: `done`
@@ -127,7 +129,7 @@ conversation without binding-governance claims.
       still passes.
 
   - ID: `PHASE-1.2.3`
-    Status: `pending`
+    Status: `done`
     Goal: durable inbox hardening (backlog 14's remainder) — a retention window
       for delivered rows and a quarantine status (with reason) that the replay
       path skips, plus an inspection surface for both. Filtered delivery by
@@ -174,7 +176,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.2.3` | `pending` | `.1.2.2` is done — the authenticated channel (key-proof handshake, lease/fencing, observable presence) rides the `.1.2.1` keys; inbox retention + quarantine closes backlog 14 |
+| 1 | `PHASE-1.3` | `proposed` | `.1.2` is complete (enrollment + authenticated channel + inbox hardening, backlogs 11–14) — invitation/subscription semantics (backlog 15's remainder + 16) is the next `.1.x` lane; decompose or execute on pickup |
 
 ## Changelog
 
@@ -187,6 +189,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.2` decomposed (gap census first: enrollment absent, no node leases, no inbox retention/quarantine; backlog 12's journal is Phase-0-proven) into `.1.2.1` (dev-profile enrollment — cert issuance deferred to ADR-007), `.1.2.2` (authenticated channel + lease/presence), `.1.2.3` (inbox retention + quarantine); frontier → `.1.2.1`.
 - `2026-09-06`: `.1.2.1` done — one-time enrollment tokens + `node_keys` + audited refusals (denial-row pattern); the suite's first run caught a real defect (a re-issue 500 on the wire — fixed to a typed 409 with a regression assertion) and a test-side status expectation (node-channel `unauthorized` = HTTP 401); decision record `docs/decisions/2026-09-06_node-enrollment.md`; frontier → `.1.2.2`.
 - `2026-09-06`: `.1.2.2` done — the authenticated channel (CHANNEL_VERSION 2): HMAC key-proof handshake (refused before any ledger read), lease + fencing token (events/ack/poll/heartbeat ride it; every handshake rotates it), 60 s lease with DERIVED presence (`node_presence` view — expiry flips `offline`, only a fresh handshake restores), `poll` became a POST (the token never rides a query string), and the channel identity space widened to the dev role wire ids (the `.1.2.1` surfaces accepted only `nod_…`; the dev wiring collapses node == role). All 13 channel tests moved to the authenticated contract + 4 new ones; the demo now enrolls its nodes and asserts presence before/after the server restart; decision record `docs/decisions/2026-09-06_node-channel-auth.md`; frontier → `.1.2.3`.
+- `2026-09-06`: `.1.2.3` done — durable inbox hardening (migration 0010): quarantine is a row fact WITH its reason and the replay/poll paths ALWAYS skip it (never re-delivered); retention cleanup is an explicit measured operator action (`POST /v1/nodes/inbox/prune`: delivered rows older than the window, before/deleted/after in one transaction); the operator surface is the tenant_admin-audited control API (`POST /v1/nodes/quarantine`, `GET /v1/nodes/inbox`, `POST /v1/nodes/inbox/prune`) + `rb node quarantine|inbox|prune`; new `tests/node_inbox.rs` (3 live-PG tests); decision record `docs/decisions/2026-09-06_node-inbox-retention.md`; **the `.1.2` coordinator leaf is complete** — frontier → `.1.3`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -426,6 +429,52 @@ secret), the channel/wiring test updates, the purge-list edits, and
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapters — same commit.
 
+## Acceptance Checklist (PHASE-1.2.3)
+
+The CODE change owned by this leaf: `migrations/0010_node_inbox_retention.sql`
+(schema, non-code per the seam), `crates/reasonbraid-server/src/node_channel.rs`
+(the replay filter), `crates/reasonbraid-server/src/api.rs` (the quarantine/
+inspect/prune endpoints), `crates/reasonbraid-cli/src/{lib,main}.rs` (the three
+verbs), `crates/reasonbraid-server/tests/node_inbox.rs` (new), and
+`scripts/run_pg_tests.sh`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 14's remainder is open: the inbox has no
+  quarantine status and no retention cleanup (`grep -n "quarantine\|prune"
+  crates/reasonbraid-server/src crates/reasonbraid-cli/src --include='*.rs'` →
+  no matches before this leaf), and the book's honest-limits said so.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the inbox was Phase-0-proven for DELIVERY
+  only: delivered rows accumulate and nothing can stop a re-delivery. The fix
+  point is the row itself (quarantine as nullable columns the replay/poll
+  queries filter) + the operator surface (the tenant_admin-audited control API,
+  the same gate as token issuance — the authorization record IS the audit, so
+  no new audit table) + an explicit measured prune (before/delete/after in one
+  transaction — no background sweeper).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no quarantine,
+  no prune, replay served every row. After: `quarantined_at`/`quarantine_reason`
+  on `node_inbox`; replay + poll filter `quarantined_at IS NULL`; quarantine is
+  one-per-row (409 on re-quarantine) with a required reason; prune deletes only
+  DELIVERED rows older than the window with `before`/`deleted`/`after` in the
+  response. Live proof: `bash scripts/run_pg_tests.sh` → `test result: ok. 3
+  passed; 0 failed` (`node_inbox`: quarantine skipped by replay AND poll + the
+  reason rides the row + inspection; typed refusals incl. the role 403 and the
+  re-quarantine 409; prune measured before/after with only old delivered rows
+  gone).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all eleven live server suites green (`test
+  result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e
+  `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks
+  passed` (14 PASS checks, `rc=0`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — migration 0010 (two nullable columns); the replay filter;
+  `POST /v1/nodes/quarantine` + `GET /v1/nodes/inbox` + `POST
+  /v1/nodes/inbox/prune` (tenant_admin-audited via the shared
+  `authorize_tenant_admin` helper); `rb node quarantine|inbox|prune`;
+  `tests/node_inbox.rs` (3 live-PG tests); the book's node-channel + cli
+  chapters.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_node-inbox-retention.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
+  chapters — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -435,6 +484,7 @@ secret), the channel/wiring test updates, the purge-list edits, and
 | `2026-09-06` | `PHASE-1.1.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | thread command API complete — cancel terminal + typed create profiles with stated defaults; the e2e's first run caught the kebab-vs-snake profile spelling, fixed by CLI normalization |
 | `2026-09-06` | `PHASE-1.2.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | node enrollment landed (one-time tokens + keys + audited refusals); the suite caught a real re-issue-500 defect (fixed to typed 409 + regression assertion) and the 401-vs-403 expectation |
 | `2026-09-06` | `PHASE-1.2.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | authenticated channel landed (key-proof handshake, lease/fencing, derived presence); the suite's own first runs caught the missing-field-422 vs wrong-proof-401 wire distinction and the tenant-purge FK gap — both fixed, rerun green |
+| `2026-09-06` | `PHASE-1.2.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all eleven live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | inbox hardening landed (quarantine + measured prune + inspection); the suite's own first runs caught the missing seed tenant and a `(i64,)`-vs-scalar sqlx annotation — both fixed, rerun green |
 
 ## Commit Log
 
@@ -445,3 +495,4 @@ secret), the channel/wiring test updates, the purge-list edits, and
 | `PHASE-1.1.3` | `REASONBRAID-PHASE1-0004` | `thread.cancel` + typed create profiles + CLI verb/flags + decision record; `.1` complete |
 | `PHASE-1.2.1` | `REASONBRAID-PHASE1-0006` | enrollment tokens + node keys + audited refusals + decision record |
 | `PHASE-1.2.2` | `REASONBRAID-PHASE1-0007` | authenticated channel v2: key-proof handshake + lease/fencing + derived presence + identity-space relaxation + demo/demo-book updates |
+| `PHASE-1.2.3` | `REASONBRAID-PHASE1-0008` | inbox hardening: quarantine (reason-riding row the replay/poll skip) + measured explicit prune + inspection + CLI verbs; `.1.2` complete |

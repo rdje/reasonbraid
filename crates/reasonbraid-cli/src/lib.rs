@@ -335,6 +335,52 @@ impl ApiClient {
         self.parse(response).await
     }
 
+    /// Quarantine one inbox command with a reason (`.1.2.3`).
+    pub async fn quarantine_command(
+        &self,
+        principal: &str,
+        body: Value,
+    ) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/nodes/quarantine", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
+    /// Inspect one node's inbox: delivery + quarantine facts per row (`.1.2.3`).
+    pub async fn inspect_node_inbox(
+        &self,
+        principal: &str,
+        tenant: &str,
+        node_id: &str,
+    ) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .get(format!("{}/v1/nodes/inbox", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .query(&[("tenant_id", tenant), ("node_id", node_id)])
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
+    /// Prune DELIVERED inbox rows older than a retention window (`.1.2.3`) —
+    /// an explicit, measured operator action.
+    pub async fn prune_node_inbox(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/nodes/inbox/prune", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
     pub async fn thread_command(
         &self,
         thread_id: &str,
@@ -739,6 +785,116 @@ pub async fn run_issue_node_token(
         response["expires_at"].as_str().unwrap_or("?"),
         response["token_id"].as_str().unwrap_or("?"),
         host_claim,
+    ))
+}
+
+
+/// Quarantine one inbox command (`.1.2.3`): the replay/poll paths skip it from
+/// then on — the reason is stored WITH the row, so the skip is explainable.
+pub async fn run_quarantine_command(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    command_id: &str,
+    reason: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .quarantine_command(
+            &principal.id,
+            json!({
+                "tenant_id": tenant,
+                "node_id": node_id,
+                "command_id": command_id,
+                "reason": reason,
+            }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "quarantined command {} in node {}'s inbox ({})",
+        response["command_id"].as_str().unwrap_or("?"),
+        response["node_id"].as_str().unwrap_or("?"),
+        response["quarantined_at"].as_str().unwrap_or("?"),
+    ))
+}
+
+/// Inspect one node's inbox (`.1.2.3`): delivery + quarantine facts per row.
+pub async fn run_inspect_node_inbox(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .inspect_node_inbox(&principal.id, tenant, node_id)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let rows = response["rows"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "node {}'s inbox ({} row{}):\n",
+        node_id,
+        rows.len(),
+        if rows.len() == 1 { "" } else { "s" },
+    );
+    for row in rows {
+        let cursor = row["cursor"].as_i64().unwrap_or(0);
+        let command = row["command_id"].as_str().unwrap_or("?");
+        let acked = if row["acknowledged_at"].is_null() {
+            "undelivered"
+        } else {
+            "delivered"
+        };
+        match row["quarantine_reason"].as_str() {
+            Some(reason) => out.push_str(&format!(
+                "  #{cursor} {command} — QUARANTINED ({reason})\n"
+            )),
+            None => out.push_str(&format!("  #{cursor} {command} — {acked}\n")),
+        }
+    }
+    Ok(out)
+}
+
+/// Prune DELIVERED inbox rows older than `min_age_seconds` (`.1.2.3`): an
+/// explicit, measured operator action — the response carries the deleted count
+/// and the before/after census.
+pub async fn run_prune_node_inbox(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    min_age_seconds: i64,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .prune_node_inbox(
+            &principal.id,
+            json!({
+                "tenant_id": tenant,
+                "node_id": node_id,
+                "min_age_seconds": min_age_seconds,
+            }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "pruned {} delivered row(s) from node {}'s inbox (before {}, after {}, cutoff {})",
+        response["deleted"].as_i64().unwrap_or(0),
+        node_id,
+        response["before"].as_i64().unwrap_or(0),
+        response["after"].as_i64().unwrap_or(0),
+        response["cutoff_at"].as_str().unwrap_or("?"),
     ))
 }
 

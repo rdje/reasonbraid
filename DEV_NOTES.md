@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.2.3: quarantine is a row fact, and a measured prune beats a background sweep
+
+- **A quarantine that lives in the handler would be a promise; a quarantine on the row is an invariant.** Two nullable columns + a `quarantined_at IS NULL` filter in BOTH delivery paths (handshake replay and live poll) make "never re-delivered" true for every path that exists — a future third path inherits the filter by construction, not by remembering to check a flag.
+- **Delivery-control is not result-suppression.** A node that received a command BEFORE its quarantine may still return a result; the domain applies it. Splitting those semantics keeps quarantine scoped to what it can honestly promise (the inbox), and keeps `load_command` unfiltered on purpose — documented, not accidental.
+- **A measured before/after IS the dry-run.** The prune's count/delete/recount ride one transaction, so the response is the operator's receipt; a separate dry-run toggle would only duplicate the measurement. No background sweeper — retention is a decision with an operator in the loop.
+- **Audited operator actions ride the AUTHORITY engine, not a new audit table.** Quarantine and prune reuse `authorize()` (tenant_admin): allowed AND denied leave an authorization record. The `.1.2.1` enrollment needed its own table only because the node-side enroll carries no principal header — when there IS a principal, the engine is the audit.
+- **The `.1.2.2` closure lesson re-applied immediately:** the new suite's request-builder closures took a borrowed `&str` and broke on the unnameable-lifetime error before the first run; owned params fixed it. Recorded twice, applied once, now a habit.
+- **Two test-side sqlx slips, both caught by the live run, not the compiler:** the seed-tenant row was missing (FK 23503 — the same shape `node_channel.rs` already solved with an `ON CONFLICT DO NOTHING` seed insert), and a `query_scalar` count was annotated `(i64,)` (a RECORD decode error — `query_scalar` wants the bare scalar type). Both are per-suite boilerplate mistakes, not server defects; the server code was correct on the first run.
+- Promoted to `docs/decisions/2026-09-06_node-inbox-retention.md` (`answers:` present). **`.1.2` complete; frontier `PHASE-1.3` (invitation/subscription semantics).**
+
 ## _(2026-09-06)_ — PHASE-1.2.2: the fence rotates at the handshake; presence is derived, never stored
 
 - **A missing field and a wrong credential are different refusals.** `serde`'s strict wire boundary (required fields + `deny_unknown_fields`) rejects a MISSING `key_proof`/`fencing_token` as 422 before the handler runs; a WRONG value reaches the verifier and gets 401. My first test drafts expected 401 for both — the wire contract is under-specified unless both statuses are asserted.

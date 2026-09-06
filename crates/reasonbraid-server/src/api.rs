@@ -272,6 +272,9 @@ pub fn api_router(pool: PgPool) -> Router {
     Router::new()
         .route("/v1/enrollments", post(enroll))
         .route("/v1/nodes/enroll-tokens", post(issue_node_enroll_token))
+        .route("/v1/nodes/quarantine", post(quarantine_command))
+        .route("/v1/nodes/inbox", get(inspect_node_inbox))
+        .route("/v1/nodes/inbox/prune", post(prune_node_inbox))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -653,6 +656,244 @@ async fn issue_node_enroll_token(
         token_id,
         nonce,
         expires_at: expires_at.to_rfc3339(),
+    }))
+}
+
+// ── Node inbox hardening (admin side, PHASE-1.2.3) ──────────────────────────────
+
+/// The `tenant_admin` gate the inbox operator actions share with token issuance:
+/// the decision is audited by [`authorize`] (allowed or denied — the `.5.1`
+/// stance), so quarantine and prune leave an authorization record behind them.
+async fn authorize_tenant_admin(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+) -> Result<(), ControlApiError> {
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::TenantAdmin,
+        target: ResourceTarget::Tenant { tenant_id },
+    };
+    match authorize(pool, &authz, Utc::now()).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => Err(ControlApiError::unauthorized(
+            format!("authorization denied ({record_id}): {reason}"),
+        )),
+        AuthorizationOutcome::Allowed { .. } => Ok(()),
+    }
+}
+
+/// The `POST /v1/nodes/quarantine` body: an operator quarantines one inbox
+/// command WITH a reason — the replay/poll paths skip it from then on (a
+/// quarantined command is never re-delivered, `.1.2.3`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuarantineRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub command_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QuarantineResponse {
+    pub node_id: String,
+    pub command_id: String,
+    pub quarantined_at: String,
+}
+
+async fn quarantine_command(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<QuarantineRequest>,
+) -> Result<Json<QuarantineResponse>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    if req.reason.trim().is_empty() {
+        return Err(ControlApiError::invalid_command(
+            "the quarantine reason is required (a quarantine without a reason is a silent skip)",
+        ));
+    }
+
+    // The row is the serialization point: quarantine only a command that exists
+    // in THIS node's inbox, and only once (a re-quarantine is a typed refusal,
+    // like the token re-issue).
+    let existing: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
+        "SELECT quarantined_at FROM node_inbox WHERE node_id = $1 AND command_id = $2",
+    )
+    .bind(&req.node_id)
+    .bind(&req.command_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(existing) = existing else {
+        return Err(ControlApiError::invalid_command(format!(
+            "no command `{}` in node `{}`'s inbox",
+            req.command_id, req.node_id
+        )));
+    };
+    if let Some(at) = existing {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the command is already quarantined ({at})"
+        )));
+    }
+
+    let quarantined: Option<DateTime<Utc>> = sqlx::query_scalar(
+        "UPDATE node_inbox SET quarantined_at = $3, quarantine_reason = $4 \
+         WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NULL \
+         RETURNING quarantined_at",
+    )
+    .bind(&req.node_id)
+    .bind(&req.command_id)
+    .bind(Utc::now())
+    .bind(req.reason.trim())
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(at) = quarantined else {
+        // A concurrent quarantine won the race.
+        return Err(ControlApiError::invalid_transition(
+            "the command is already quarantined",
+        ));
+    };
+
+    Ok(Json(QuarantineResponse {
+        node_id: req.node_id,
+        command_id: req.command_id,
+        quarantined_at: at.to_rfc3339(),
+    }))
+}
+
+/// One inbox row as the inspection surface reports it (`.1.2.3`): the delivery
+/// and quarantine facts, WITH the payload (an operator judging a quarantine
+/// needs to see what was quarantined).
+#[derive(Debug, Clone, Serialize)]
+pub struct InboxRow {
+    pub cursor: i64,
+    pub command_id: String,
+    pub thread_id: String,
+    pub payload: Value,
+    pub acknowledged_at: Option<DateTime<Utc>>,
+    pub quarantined_at: Option<DateTime<Utc>>,
+    pub quarantine_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InboxInspection {
+    pub node_id: String,
+    pub rows: Vec<InboxRow>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InboxInspectionParams {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+}
+
+/// The `GET /v1/nodes/inbox` inspection surface: every row's delivery +
+/// quarantine facts, in cursor order. `tenant_admin` authority.
+async fn inspect_node_inbox(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(params): Query<InboxInspectionParams>,
+) -> Result<Json<InboxInspection>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, params.tenant_id).await?;
+    #[derive(sqlx::FromRow)]
+    struct InboxRowRow {
+        cursor: i64,
+        command_id: String,
+        thread_id: String,
+        payload: Value,
+        acknowledged_at: Option<DateTime<Utc>>,
+        quarantined_at: Option<DateTime<Utc>>,
+        quarantine_reason: Option<String>,
+    }
+    let rows: Vec<InboxRowRow> = sqlx::query_as(
+        "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason \
+         FROM node_inbox WHERE node_id = $1 ORDER BY cursor",
+    )
+    .bind(&params.node_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(InboxInspection {
+        node_id: params.node_id,
+        rows: rows
+            .into_iter()
+            .map(|r| InboxRow {
+                cursor: r.cursor,
+                command_id: r.command_id,
+                thread_id: r.thread_id,
+                payload: r.payload,
+                acknowledged_at: r.acknowledged_at,
+                quarantined_at: r.quarantined_at,
+                quarantine_reason: r.quarantine_reason,
+            })
+            .collect(),
+    }))
+}
+
+/// The `POST /v1/nodes/inbox/prune` body: the retention window — DELIVERED rows
+/// (acknowledged by the node) at least this old are deleted. Cleanup is an
+/// explicit, measured operator action; nothing sweeps on its own.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PruneInboxRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub min_age_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PruneInboxResponse {
+    pub deleted: i64,
+    pub before: i64,
+    pub after: i64,
+    pub cutoff_at: String,
+}
+
+async fn prune_node_inbox(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<PruneInboxRequest>,
+) -> Result<Json<PruneInboxResponse>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    if req.min_age_seconds < 0 {
+        return Err(ControlApiError::invalid_command(
+            "min_age_seconds must be >= 0",
+        ));
+    }
+    // The measured before/after rides ONE transaction: the count, the delete,
+    // and the recount see a consistent ledger, and the response is the
+    // operator's receipt for exactly what was removed.
+    let mut tx = state.pool.begin().await?;
+    let cutoff = Utc::now() - chrono::Duration::seconds(req.min_age_seconds);
+    let before: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+            .bind(&req.node_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let deleted = sqlx::query(
+        "DELETE FROM node_inbox \
+         WHERE node_id = $1 AND acknowledged_at IS NOT NULL AND acknowledged_at <= $2",
+    )
+    .bind(&req.node_id)
+    .bind(cutoff)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected() as i64;
+    let after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+            .bind(&req.node_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+
+    Ok(Json(PruneInboxResponse {
+        deleted,
+        before,
+        after,
+        cutoff_at: cutoff.to_rfc3339(),
     }))
 }
 

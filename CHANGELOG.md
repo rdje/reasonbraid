@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Durable inbox hardening: quarantine, measured retention, inspection (`PHASE-1.2.3`)
+
+- Backlog 14's remainder landed: **quarantine is a database fact on the row** — migration 0010 adds `quarantined_at` + `quarantine_reason` to `node_inbox`, and the replay/poll queries filter `quarantined_at IS NULL`, so a quarantined command is **never re-delivered**, whatever cursor the node reports. The reason rides the row: the skip is explainable, never silent. Quarantine controls *delivery*, not result application (a result from a command delivered before the quarantine still applies).
+- **Retention is an explicit, measured operator action**: `POST /v1/nodes/inbox/prune` deletes only DELIVERED rows older than the `min_age_seconds` window, with before/delete/after computed in ONE transaction — the response is the operator's receipt. No background sweeper.
+- The operator surface is the **`tenant_admin`-audited control API** (the same gate as token issuance — the authorization record is the audit, no new audit table): `POST /v1/nodes/quarantine` (typed refusals: unknown command 400, re-quarantine 409, empty reason 400, non-admin 403), `GET /v1/nodes/inbox` (delivery + quarantine facts per row, with the payload), `POST /v1/nodes/inbox/prune` (negative window 400, non-admin 403).
+- CLI: `rb node quarantine|inbox|prune`. New `tests/node_inbox.rs` (3 live-PG tests: quarantine skipped by replay AND poll + reason rides the row + inspection; typed refusals; measured prune with only old delivered rows gone). Full live-PG regression — **eleven** server suites green + CLI e2e + two-host demo `ALL acceptance checks passed` (`rc=0`); offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_node-inbox-retention.md` (`answers:`). **The `.1.2` coordinator leaf is complete** (backlogs 11–14).
+
 ## 2026-09-06 — The authenticated node channel: key-proof handshake, leases, observable presence (`PHASE-1.2.2`)
 
 - Backlog 13's remainder landed: the channel is now authenticated end to end, `CHANNEL_VERSION` **2**. The handshake carries an **HMAC-SHA256 key-proof** over the canonical channel fields (the mirrored `ProofCoverage` shape IS the canonicalization), keyed with the `.1.2.1` dev secret — verified in constant time and refused `401 unauthorized` BEFORE any ledger fact is read; a missing field is a malformed request (422), a wrong proof and an unenrolled node fail identically (no existence leak).

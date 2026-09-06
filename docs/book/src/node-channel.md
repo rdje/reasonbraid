@@ -73,10 +73,13 @@ classified, replay journaled, directives applied, pending results re-emitted
 `Offline` — retrying the whole protocol is always safe because every step is
 idempotent.
 
-## Honest limits (Phase 0)
+## Honest limits (Phase 1, `.1.2.1`)
 
-- Unauthenticated loopback transport (WP5 identity).
-- No node-command leases yet (WP5 reservations); duplicate safety rests on the
+- The channel is still **unauthenticated** at the handshake: `.1.2.1` lands the
+  enrollment bootstrap (one-time tokens bound to tenant + node id + host claim,
+  `rb node issue-token` / `rb-node --enroll-token …`, the node's dev key in the
+  identity store), and `.1.2.2` wires the key-proof handshake + leases onto it.
+- No node-command leases yet (`.1.2.2`); duplicate safety rests on the
   journal's dedupe keys.
 - Live delivery is a poll of the tail; the streaming profile is the formal
   ADR-006 decision (WP8).

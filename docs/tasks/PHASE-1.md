@@ -93,7 +93,7 @@ conversation without binding-governance claims.
     enrollment absent, no node-channel leases, no inbox retention/quarantine)
 
   - ID: `PHASE-1.2.1`
-    Status: `pending`
+    Status: `done`
     Goal: dev-profile node enrollment (backlog 11) — one-time enrollment tokens
       (tenant + host claim + node id + expiry + nonce), the node registers into
       the 0007 `nodes` table with a dev signing key, the server stores the key
@@ -169,7 +169,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.2.1` | `pending` | the `.1` coordinator leaf is complete; `.1.2` is decomposed — node enrollment first (`.1.2.2`'s authenticated handshake rides the key it registers) |
+| 1 | `PHASE-1.2.2` | `pending` | `.1.2.1` is done (tokens + `node_keys` + audited refusals) — the authenticated handshake rides the registered key, and heartbeats/leases make presence observable |
 
 ## Changelog
 
@@ -180,6 +180,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.1.2` done — migration 0007 identity store + enroll wiring (one transaction, FKs fail closed); decision record `docs/decisions/2026-09-06_identity-store.md`; frontier → `.1.1.3`.
 - `2026-09-06`: `.1.1.3` done — thread command API completion (cancel terminal + typed create profiles, stated single-agent default); decision record `docs/decisions/2026-09-06_thread-api-completion.md`; **the `.1` coordinator leaf is complete** — frontier → `.1.2`.
 - `2026-09-06`: `.1.2` decomposed (gap census first: enrollment absent, no node leases, no inbox retention/quarantine; backlog 12's journal is Phase-0-proven) into `.1.2.1` (dev-profile enrollment — cert issuance deferred to ADR-007), `.1.2.2` (authenticated channel + lease/presence), `.1.2.3` (inbox retention + quarantine); frontier → `.1.2.1`.
+- `2026-09-06`: `.1.2.1` done — one-time enrollment tokens + `node_keys` + audited refusals (denial-row pattern); the suite's first run caught a real defect (a re-issue 500 on the wire — fixed to a typed 409 with a regression assertion) and a test-side status expectation (node-channel `unauthorized` = HTTP 401); decision record `docs/decisions/2026-09-06_node-enrollment.md`; frontier → `.1.2.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -317,6 +318,50 @@ and the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapters — same commit.
 
+## Acceptance Checklist (PHASE-1.2.1)
+
+The CODE change owned by this leaf: `migrations/0008_node_enrollment.sql` (schema,
+non-code per the seam), `crates/reasonbraid-server/src/api.rs` (the issue-token
+endpoint), `crates/reasonbraid-server/src/node_channel.rs` (the enroll endpoint),
+`crates/reasonbraid-cli/src/{lib,main}.rs` (the `rb node issue-token` verb),
+`crates/reasonbraid-node/src/channel.rs` + `src/bin/rb-node.rs` (the node-side
+enroll client + flags), the purge-list edits, `crates/reasonbraid-server/tests/node_enrollment.rs`
+(new), and `scripts/run_pg_tests.sh`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11 is open: no node enrollment exists (the
+  gap census: `grep -rn "node.*enroll" crates/reasonbraid-server/src --include='*.rs'`
+  → no matches outside the human/role machinery); the dev rule "a node id IS the
+  role wire id" is the only node identity.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.6.2` deferred real node identity ("until the
+  Phase 1 directory exists") and the 0007 `nodes`/`hosts` tables were schema-only;
+  the fix point is the channel surface + the identity tables — the token row
+  (`FOR UPDATE` + `used_at`) is the serialization point, and refusals ride the
+  budget engine's denial-row pattern (`docs/decisions/2026-09-06_node-enrollment.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no endpoint, no
+  tables. After: `bash scripts/run_pg_tests.sh` → `test result: ok. 3 passed; 0
+  failed` (`node_enrollment`: one-time + identity rows; four audited refusal
+  classes; tenant-admin-only issuance). The suite's FIRST run caught a real
+  wire defect — re-issuing for a node with an unused token returned HTTP 500
+  (`duplicate key value violates unique constraint`) — fixed to a typed 409
+  `invalid_command` with a regression assertion; and a test-side expectation
+  (node-channel `unauthorized` = HTTP 401, not 403) — both corrected, rerun green.
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result:
+  ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 3 + 6 + 7 `passed`) + CLI e2e `test result:
+  ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (12 PASS
+  checks, `rc=0`); `cargo clippy --all-targets --all-features -- -D warnings` →
+  clean; `make gate` → `=== all doctrines green ===` (13/13) at commit; `make
+  book` builds.
+- [x] **FIX** — migration 0008 (tokens/keys/audit + the hosts get-or-create index);
+  `POST /v1/nodes/enroll-tokens` (tenant_admin-audited issuance, typed re-issue
+  refusal) and `POST /v1/nodes/enroll` (one transaction: validate → host → node →
+  key → consume → audit; refusals commit their audit row); `rb node issue-token`;
+  `rb-node --enroll-token/--enroll-nonce/--host-claim/--node-secret`; purge-list
+  updates; the book's node-channel chapter now names the `.1.2.1` state.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_node-enrollment.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
+  chapter — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -324,6 +369,7 @@ and the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
 | `2026-09-06` | `PHASE-1.1.1` | `cargo clippy --all-targets --all-features -- -D warnings` → clean; `cargo test --all` → every offline suite green (server unit suite `test result: ok. 5 passed` incl. the new `agg::tests`); `bash scripts/run_pg_tests.sh` → all eight live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | aggregate/event/outbox library landed; ADR-004 accepted |
 | `2026-09-06` | `PHASE-1.1.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | identity store landed (migration 0007 + enroll wiring); the new suite caught a test-authored bootstrap/replay confusion on its first run — fixed, `test result: ok. 3 passed` |
 | `2026-09-06` | `PHASE-1.1.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | thread command API complete — cancel terminal + typed create profiles with stated defaults; the e2e's first run caught the kebab-vs-snake profile spelling, fixed by CLI normalization |
+| `2026-09-06` | `PHASE-1.2.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | node enrollment landed (one-time tokens + keys + audited refusals); the suite caught a real re-issue-500 defect (fixed to typed 409 + regression assertion) and the 401-vs-403 expectation |
 
 ## Commit Log
 
@@ -332,3 +378,4 @@ and the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
 | `PHASE-1.1.1` | `REASONBRAID-PHASE1-0002` | `agg` library + `tx` shim + `tests/aggregate_library.rs` + ADR-004; zero call-site churn |
 | `PHASE-1.1.2` | `REASONBRAID-PHASE1-0003` | migration 0007 + enroll identity wiring + `tests/identity_store.rs` + decision record |
 | `PHASE-1.1.3` | `REASONBRAID-PHASE1-0004` | `thread.cancel` + typed create profiles + CLI verb/flags + decision record; `.1` complete |
+| `PHASE-1.2.1` | `REASONBRAID-PHASE1-0006` | enrollment tokens + node keys + audited refusals + decision record |

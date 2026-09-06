@@ -46,6 +46,7 @@
 - [`2026-09-06_id-representation.md`](docs/decisions/2026-09-06_id-representation.md)
 - [`2026-09-06_identity-store.md`](docs/decisions/2026-09-06_identity-store.md)
 - [`2026-09-06_node-channel.md`](docs/decisions/2026-09-06_node-channel.md)
+- [`2026-09-06_node-enrollment.md`](docs/decisions/2026-09-06_node-enrollment.md)
 - [`2026-09-06_node-journal.md`](docs/decisions/2026-09-06_node-journal.md)
 - [`2026-09-06_outbox-worker-fencing.md`](docs/decisions/2026-09-06_outbox-worker-fencing.md)
 - [`2026-09-06_readme-policy-readoption.md`](docs/decisions/2026-09-06_readme-policy-readoption.md)

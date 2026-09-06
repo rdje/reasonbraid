@@ -41,6 +41,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres};
 
 /// The node channel's wire protocol version. Both sides must agree; a mismatch is a
@@ -467,7 +468,9 @@ where
 // ── HTTP surface ───────────────────────────────────────────────────────────────
 
 /// The node channel router: `/v1/nodes/handshake` (reconnect exchange), `/v1/nodes/events`
-/// (node results), `/v1/nodes/ack` (cursor acknowledgement), `/v1/nodes/poll` (live tail).
+/// (node results), `/v1/nodes/ack` (cursor acknowledgement), `/v1/nodes/poll` (live tail),
+/// `/v1/nodes/enroll` (the `.1.2.1` one-time-token enrollment — the token IS the
+/// credential, so this surface carries no principal header).
 pub fn node_router(pool: PgPool) -> Router {
     let state = Arc::new(NodeChannelState::new(pool));
     Router::new()
@@ -475,6 +478,7 @@ pub fn node_router(pool: PgPool) -> Router {
         .route("/v1/nodes/events", post(events))
         .route("/v1/nodes/ack", post(ack))
         .route("/v1/nodes/poll", get(poll))
+        .route("/v1/nodes/enroll", post(enroll))
         .with_state(state)
 }
 
@@ -610,5 +614,215 @@ async fn poll(
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
         commands,
+    }))
+}
+
+// ── Node enrollment (PHASE-1.2.1; backlog 11) ───────────────────────────────────
+
+/// The `POST /v1/nodes/enroll` body: the one-time token (issued by an authorized
+/// human at `/v1/nodes/enroll-tokens`), the node's id, the host claim the token was
+/// bound to, the token nonce, and the node's dev signing secret (the server IS the
+/// dev trust store — the `.6.1` stance; the HMAC key-proof rides `.1.2.2`'s handshake).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeEnrollRequest {
+    pub token_id: String,
+    pub node_id: String,
+    pub host_claim: String,
+    pub nonce: String,
+    pub key_secret: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeEnrollResponse {
+    pub node_id: String,
+    pub host_id: String,
+}
+
+/// A token refusal (unknown / used / expired / bound elsewhere / nonce mismatch) —
+/// `unauthorized` on the wire; the refusal is ALWAYS audited (a committed row).
+fn enrollment_refused(reason: impl Into<String>) -> ApiError {
+    ApiError {
+        status: StatusCode::UNAUTHORIZED,
+        code: "unauthorized",
+        message: format!("the enrollment token was refused: {}", reason.into()),
+    }
+}
+
+/// Write a refusal audit row (the denial-row pattern from the budget engine) and
+/// return its record id; the caller commits and turns it into the typed refusal.
+async fn insert_refusal_audit(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    token_tenant: Option<&str>,
+    node_id: &str,
+    token_id: &str,
+    reason: &str,
+) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar(
+        "INSERT INTO node_enroll_audit (record_id, tenant_id, node_id, token_id, decision, reason) \
+         VALUES ('naux_' || gen_random_uuid()::text, COALESCE($1, ''), $2, $3, 'refused', $4) \
+         RETURNING record_id",
+    )
+    .bind(token_tenant)
+    .bind(node_id)
+    .bind(token_id)
+    .bind(reason)
+    .fetch_one(&mut **tx)
+    .await
+}
+
+/// One stored enrollment token row (the 0008 table).
+#[derive(sqlx::FromRow)]
+struct EnrollmentTokenRow {
+    tenant_id: String,
+    node_id: String,
+    host_claim: String,
+    nonce: String,
+    expires_at: DateTime<Utc>,
+    used_at: Option<DateTime<Utc>>,
+}
+
+/// Consume a one-time enrollment token: validate it, get-or-create the host, land
+/// the node + its dev key in the 0007/0008 identity tables, and mark the token
+/// used — ONE transaction. A refused attempt commits only its audit row.
+async fn enroll(
+    State(state): State<Arc<NodeChannelState>>,
+    Json(req): Json<NodeEnrollRequest>,
+) -> Result<Json<NodeEnrollResponse>, ApiError> {
+    if req.node_id.parse::<reasonbraid_core::NodeId>().is_err() {
+        return Err(ApiError::bad_request(format!(
+            "node_id `{}` is not a valid node identifier",
+            req.node_id
+        )));
+    }
+    let fingerprint = Sha256::digest(req.key_secret.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+
+    let mut tx = state.pool.begin().await?;
+    let now = Utc::now();
+
+    // The token row is the serialization point: one token, one use, ever.
+    let token: Option<EnrollmentTokenRow> = sqlx::query_as(
+        "SELECT tenant_id, node_id, host_claim, nonce, expires_at, used_at \
+         FROM node_enrollment_tokens WHERE token_id = $1 FOR UPDATE",
+    )
+    .bind(&req.token_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let token_tenant: Option<String> = token.as_ref().map(|t| t.tenant_id.clone());
+
+    // The token validation is one pure decision; the refusal audit row commits
+    // with the error (the denial-row pattern — a refusal is an audited event).
+    let refusal: Option<&'static str> = match &token {
+        None => Some("the token is unknown"),
+        Some(t) => {
+            if t.used_at.is_some() {
+                Some("the token was already used")
+            } else if t.expires_at <= now {
+                Some("the token has expired")
+            } else if t.node_id != req.node_id {
+                Some("the token is bound to a different node id")
+            } else if t.host_claim != req.host_claim {
+                Some("the token is bound to a different host claim")
+            } else if t.nonce != req.nonce {
+                Some("the nonce does not match the issued token")
+            } else {
+                None
+            }
+        }
+    };
+    if let Some(reason) = refusal {
+        let record = insert_refusal_audit(
+            &mut tx,
+            token_tenant.as_deref(),
+            &req.node_id,
+            &req.token_id,
+            reason,
+        )
+        .await?;
+        tx.commit().await?;
+        return Err(enrollment_refused(format!("{reason} (audit {record})")));
+    }
+    // Safe: `refusal` is `None` only when the token row exists and passed.
+    let token = token.expect("refusal none implies the token exists");
+    let tenant_id = token.tenant_id;
+
+    // Get-or-create the host row (the 0008 partial unique index keys it).
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) \
+         VALUES ('hst_' || gen_random_uuid()::text, $1, $2) \
+         ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING",
+    )
+    .bind(&tenant_id)
+    .bind(&req.host_claim)
+    .execute(&mut *tx)
+    .await?;
+    let host_id: String =
+        sqlx::query_scalar("SELECT host_id FROM hosts WHERE tenant_id = $1 AND name = $2")
+            .bind(&tenant_id)
+            .bind(&req.host_claim)
+            .fetch_one(&mut *tx)
+            .await?;
+
+    // The node + its dev key + the token consumption + the audit row: all or none.
+    let node_insert =
+        sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
+            .bind(&req.node_id)
+            .bind(&host_id)
+            .bind(&tenant_id)
+            .execute(&mut *tx)
+            .await;
+    match node_insert {
+        Ok(_) => {}
+        Err(e)
+            if e.as_database_error()
+                .is_some_and(|d| d.is_unique_violation()) =>
+        {
+            let record = insert_refusal_audit(
+                &mut tx,
+                token_tenant.as_deref(),
+                &req.node_id,
+                &req.token_id,
+                "the node is already enrolled",
+            )
+            .await?;
+            tx.commit().await?;
+            return Err(enrollment_refused(format!(
+                "the node is already enrolled (audit {record})"
+            )));
+        }
+        Err(e) => return Err(e.into()),
+    }
+
+    sqlx::query("INSERT INTO node_keys (node_id, key_fingerprint, key_secret) VALUES ($1, $2, $3)")
+        .bind(&req.node_id)
+        .bind(&fingerprint)
+        .bind(&req.key_secret)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("UPDATE node_enrollment_tokens SET used_at = $2 WHERE token_id = $1")
+        .bind(&req.token_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO node_enroll_audit (record_id, tenant_id, node_id, token_id, decision, reason) \
+         VALUES ('naux_' || gen_random_uuid()::text, $1, $2, $3, 'enrolled', NULL)",
+    )
+    .bind(&tenant_id)
+    .bind(&req.node_id)
+    .bind(&req.token_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(NodeEnrollResponse {
+        node_id: req.node_id,
+        host_id,
     }))
 }

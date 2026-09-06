@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Dev-profile node enrollment: one-time tokens, one auditable transaction (`PHASE-1.2.1`)
+
+- Backlog 11 landed: `migrations/0008_node_enrollment.sql` (one-time tokens bound to tenant + node id + host claim + nonce + expiry; `node_keys` holding the dev signing secret + its SHA-256 fingerprint; the `node_enroll_audit` refusal log) plus the hosts get-or-create index on the 0007 table.
+- The flow: an authorized human issues a token (`POST /v1/nodes/enroll-tokens`, `tenant_admin` authority — the authorization engine audits the issuance); the node consumes it (`POST /v1/nodes/enroll`, the token IS the credential) with its dev secret — host + node + key + token-consumption + audit land in ONE transaction. Certificate issuance stays deferred to Phase 2 (ADR-007); the server-as-trust-store dev stance is the documented `.6.1` pattern.
+- **One-time is a database fact:** `FOR UPDATE` on the token row + `used_at` makes replay impossible; every refusal (unknown/used/expired/mismatched/nonce) is a committed audit row before the typed error returns — the budget engine's denial-row pattern.
+- Operator surface: `rb node issue-token` + `rb-node --enroll-token … --enroll-nonce … --host-claim … --node-secret …` (the node enrolls before any channel traffic). New `tests/node_enrollment.rs` (3 live-PG tests: one-time + identity rows; four audited refusal classes; tenant-admin-only issuance). Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_node-enrollment.md` (`answers:`).
+
 ## 2026-09-06 — PHASE-1.2 decomposed: enrollment, authenticated channel + leases, inbox hardening (`PHASE-1.2`)
 
 - The node leaf is decomposed into three signoff-sized children (tree-first, no code change), on a measured gap census: node enrollment is absent, the node channel has no leases/presence (only the outbox worker leases), the per-node inbox has no retention/quarantine, and backlog 12's journal is already Phase-0-proven (the WP3 kill-point sweep carries it).

@@ -277,4 +277,30 @@ impl NodeChannel {
             .await?;
         self.parse(response).await
     }
+
+    /// Consume a one-time enrollment token (`PHASE-1.2.1`): register this node +
+    /// its dev signing secret with the control plane. The token IS the credential —
+    /// this call carries no principal header. Returns the enrollment response JSON.
+    pub async fn enroll(
+        &self,
+        token_id: &str,
+        node_id: &str,
+        host_claim: &str,
+        nonce: &str,
+        key_secret: &str,
+    ) -> Result<serde_json::Value, ChannelError> {
+        let response = self
+            .client
+            .post(format!("{}/v1/nodes/enroll", self.base_url))
+            .json(&serde_json::json!({
+                "token_id": token_id,
+                "node_id": node_id,
+                "host_claim": host_claim,
+                "nonce": nonce,
+                "key_secret": key_secret,
+            }))
+            .send()
+            .await?;
+        self.parse(response).await
+    }
 }

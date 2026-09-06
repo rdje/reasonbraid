@@ -7,8 +7,8 @@
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_enroll, run_inspect_thread, run_inspect_threads,
-    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
-    StateFile, ThreadVerbArgs,
+    run_issue_node_token, run_thread_create, run_thread_verb, BudgetArgs, Config,
+    CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -48,6 +48,32 @@ enum Command {
     /// Inspect state through the API (no database surgery).
     #[command(subcommand)]
     Inspect(InspectCommand),
+    /// Node administration (`.1.2.1`).
+    #[command(subcommand)]
+    Node(NodeCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum NodeCommand {
+    /// Issue a one-time node enrollment token (tenant_admin authority).
+    IssueToken {
+        /// The node the token is bound to (a raw nod_… id).
+        #[arg(long)]
+        node: String,
+        /// The host claim the token is bound to (e.g. the host name).
+        #[arg(long)]
+        host_claim: String,
+        /// Token lifetime in seconds (default 3600).
+        #[arg(long)]
+        ttl_seconds: Option<i64>,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -424,6 +450,31 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Inspect(InspectCommand::Threads { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_threads(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Node(NodeCommand::IssueToken {
+            node,
+            host_claim,
+            ttl_seconds,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_issue_node_token(
+                cfg,
+                &principal,
+                &tenant,
+                &node,
+                &host_claim,
+                ttl_seconds,
+                json,
+            )
+            .await
         }
     }
 }

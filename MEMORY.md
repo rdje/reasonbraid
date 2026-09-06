@@ -16,17 +16,17 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.2.1` (the `.1` coordinator leaf is **done**:
-  `.1.1.1` aggregate/event/outbox library · `.1.1.2` identity store · `.1.1.3` thread
-  command API completion; `.1.2` is decomposed — enrollment · authenticated channel +
-  leases · inbox hardening — and `.1.2.1` dev-profile node enrollment is next).
-- **Next action:** implement `PHASE-1.2.1` — one-time enrollment tokens + node
-  registration into the 0007 `nodes` table with a dev signing key + audit (backlog 11;
-  certificate issuance deferred to ADR-007).
+- **Active tree:** `PHASE-1` → frontier `.1.2.2` (the `.1` coordinator leaf is **done**;
+  `.1.2` is decomposed — enrollment · authenticated channel + leases · inbox hardening —
+  and `.1.2.1` dev-profile node enrollment is **done**: one-time tokens + `node_keys` +
+  audited refusals; next is the key-proof handshake + lease/presence).
+- **Next action:** implement `PHASE-1.2.2` — the handshake carries an HMAC key-proof
+  over the channel fields, heartbeats renew a server-side lease, expiry leaves the node
+  `Offline` with visible presence (backlog 13; the existing channel suites move to the
+  authenticated contract).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.2` decomposition commit (pending
-  defect leaf `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to
-  `/tmp` — §13).
+- **In-flight uncommitted work:** none after the `.1.2.1` commit (pending defect leaf
+  `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.

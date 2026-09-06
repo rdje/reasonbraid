@@ -194,10 +194,10 @@ pub enum CliError {
 }
 
 impl CliError {
-    fn state(detail: String) -> Self {
+    pub fn state(detail: String) -> Self {
         CliError::State(detail)
     }
-    fn usage(detail: String) -> Self {
+    pub fn usage(detail: String) -> Self {
         CliError::Usage(detail)
     }
 }
@@ -321,6 +321,18 @@ impl ApiClient {
     pub async fn create_thread(&self, principal: &str, body: Value) -> Result<Value, CliError> {
         let env = Self::envelope("thread.create", body);
         self.post_command("/v1/threads", principal, &env).await
+    }
+
+    /// Issue a one-time node enrollment token (`.1.2.1`; `tenant_admin` authority).
+    pub async fn issue_node_token(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/nodes/enroll-tokens", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
     }
 
     pub async fn thread_command(
@@ -693,6 +705,41 @@ pub fn resolve_agent(state: &StateFile, name_or_id: &str) -> Result<String, CliE
             "agent role `{name_or_id}` is not enrolled in this CLI's state dir"
         ))),
     }
+}
+
+/// Issue a one-time node enrollment token (`.1.2.1`): the operator prints the
+/// token + nonce, the node consumes them at `rb-node --enroll-token …`.
+pub async fn run_issue_node_token(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    host_claim: &str,
+    ttl_seconds: Option<i64>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let mut body = json!({
+        "tenant_id": tenant,
+        "node_id": node_id,
+        "host_claim": host_claim,
+    });
+    if let Some(ttl) = ttl_seconds {
+        body["ttl_seconds"] = json!(ttl);
+    }
+    let response = client.issue_node_token(&principal.id, body).await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "issued node enrollment token {} (nonce {}, expires {})\n\
+         the node consumes it with: rb-node --enroll-token {} --enroll-nonce <nonce> --host-claim {} --node-secret <secret>",
+        response["token_id"].as_str().unwrap_or("?"),
+        response["nonce"].as_str().unwrap_or("?"),
+        response["expires_at"].as_str().unwrap_or("?"),
+        response["token_id"].as_str().unwrap_or("?"),
+        host_claim,
+    ))
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ use reasonbraid_adapter::{
     StatusLookupSpec,
 };
 use reasonbraid_core::BudgetDimensions;
-use reasonbraid_node::{LocalBudget, Node, Worker, WorkerError};
+use reasonbraid_node::{LocalBudget, Node, NodeChannel, Worker, WorkerError};
 
 #[derive(Debug, Parser)]
 #[command(name = "rb-node", version, about = "ReasonBraid node worker (Phase 0)")]
@@ -55,6 +55,24 @@ struct Args {
     /// Poll interval in milliseconds between channel tails.
     #[arg(long, default_value_t = 500)]
     poll_ms: u64,
+
+    /// A one-time enrollment token issued by the control plane
+    /// (`rb node issue-token`); when present, the node enrolls BEFORE reconciling.
+    #[arg(long)]
+    enroll_token: Option<String>,
+
+    /// The token's nonce (printed by `rb node issue-token`).
+    #[arg(long)]
+    enroll_nonce: Option<String>,
+
+    /// The host claim the token was bound to (default: `dev-host`).
+    #[arg(long, default_value = "dev-host")]
+    host_claim: String,
+
+    /// The node's dev signing secret (any non-empty string; the server stores it —
+    /// the dev trust-store stance). Required with --enroll-token.
+    #[arg(long)]
+    node_secret: Option<String>,
 }
 
 #[tokio::main]
@@ -79,6 +97,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         policy_injection: PolicyInjectionMode::None,
     };
     let adapter = FakeAdapter::new(script, lookup, capabilities);
+
+    // Enrollment (`.1.2.1`): when a token is provided, consume it BEFORE any
+    // channel traffic. The token is the credential; the secret becomes the node's
+    // dev signing key (its HMAC proof rides the `.1.2.2` handshake).
+    if let Some(token) = &args.enroll_token {
+        let (nonce, secret) = match (&args.enroll_nonce, &args.node_secret) {
+            (Some(n), Some(s)) => (n, s),
+            _ => {
+                eprintln!("rb-node: --enroll-token requires --enroll-nonce and --node-secret");
+                std::process::exit(1);
+            }
+        };
+        let channel = NodeChannel::new(&args.server, args.node_id.clone());
+        channel
+            .enroll(token, &args.node_id, &args.host_claim, nonce, secret)
+            .await
+            .map_err(|e| format!("rb-node: enrollment failed: {e}"))?;
+        eprintln!(
+            "rb-node: {} enrolled on host claim `{}`",
+            args.node_id, args.host_claim
+        );
+    }
 
     let node = Node::open(&args.journal, &args.server, args.node_id.clone()).await?;
     node.reconcile().await?;

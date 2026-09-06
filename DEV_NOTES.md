@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.2.1: one-time tokens are a row property, and refusals are rows too
+
+- **"One-time" lives in the token row, not the handler.** Enrollment serializes on `FOR UPDATE` + a nullable `used_at`: a second use is impossible at the database level, and the handler only maps the row state to a typed, audited refusal. Binding the token to node id + host claim + nonce means a stolen token cannot enroll a different identity.
+- **A refusal that must be durable rides the denial-row pattern** (budget-engine precedent): the audit row commits in the caller's transaction BEFORE the error returns — refusals are data, not just responses. The new suite asserts four refusal classes each left exactly one audited row and zero identity rows.
+- **sqlx's `Transaction::commit(self)` consumes the transaction** — a helper cannot commit the `&mut Transaction` it was passed (E0507 + the `self` signature). The working shape: validate → write the audit row on the borrowed transaction → commit once in the caller → return the typed error. My first two drafts fought this (a committing helper, then a borrowing closure) — the third is the budget engine's own shape.
+- Promoted to `docs/decisions/2026-09-06_node-enrollment.md` (`answers:` present). **Frontier `PHASE-1.2.2` (authenticated channel + lease/presence).**
+
 ## _(2026-09-06)_ — PHASE-1.1.3: the typed default is part of the contract
 
 - **An enum-shaped wire field stays honest when its default is a documented variant, not an empty profile.** The create profile landed as serde enums with `#[default]` variants: unnamed means exactly `general` / `single_agent` / explicit-invites-only — and the tests assert those defaults, so the ADR-002 single-agent decision is enforced on the wire, not just stated in prose.

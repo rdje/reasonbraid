@@ -38,7 +38,7 @@ use chrono::{DateTime, Utc};
 use reasonbraid_core::{
     actor_handle_for_subject, AgentRoleId, BoundaryStatus, BudgetDimensions, BudgetError,
     CommandEnvelope, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject,
-    HumanPrincipalId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
+    HumanPrincipalId, NodeId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
     PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
@@ -271,6 +271,7 @@ pub fn api_router(pool: PgPool) -> Router {
     let state = Arc::new(ApiState::new(pool));
     Router::new()
         .route("/v1/enrollments", post(enroll))
+        .route("/v1/nodes/enroll-tokens", post(issue_node_enroll_token))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -554,6 +555,102 @@ async fn enroll(
         boundary_id: boundary.as_ref().map(|b| b.boundary_id.clone()),
         grant_id: Some(grant.grant_id),
         replayed: false,
+    }))
+}
+
+// ── Node enrollment (admin side, PHASE-1.2.1) ───────────────────────────────────
+
+/// The `POST /v1/nodes/enroll-tokens` body: an authorized human issues a ONE-TIME
+/// enrollment token bound to tenant + expected node id + host claim + expiry + nonce
+/// (`ROADMAP.md` §16.2). The node consumes it at `POST /v1/nodes/enroll`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IssueNodeTokenRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub host_claim: String,
+    /// Default 3600 s (the dev profile; a consumed token has no second use anyway).
+    #[serde(default)]
+    pub ttl_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IssueNodeTokenResponse {
+    pub token_id: String,
+    pub nonce: String,
+    pub expires_at: String,
+}
+
+/// Issue a one-time node enrollment token. `tenant_admin` authority only — the
+/// decision is audited by [`authorize`], and the token row is the issuance record.
+async fn issue_node_enroll_token(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<IssueNodeTokenRequest>,
+) -> Result<Json<IssueNodeTokenResponse>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let node_id: NodeId = req.node_id.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!(
+            "node_id `{}` is not a valid node identifier",
+            req.node_id
+        ))
+    })?;
+
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::TenantAdmin,
+        target: ResourceTarget::Tenant {
+            tenant_id: req.tenant_id,
+        },
+    };
+    match authorize(&state.pool, &authz, Utc::now()).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            return Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )))
+        }
+        AuthorizationOutcome::Allowed { .. } => {}
+    }
+
+    let now = Utc::now();
+    let ttl = chrono::Duration::seconds(req.ttl_seconds.unwrap_or(3600));
+    // The token id and nonce are server-generated, opaque, and unguessable
+    // (`gen_random_uuid()`; no client-chosen fields). One UNUSED token per node
+    // (the 0008 unique index): a re-issue while one is outstanding is a TYPED
+    // refusal, never a database error on the wire.
+    let issued: Result<(String, String, chrono::DateTime<Utc>), sqlx::Error> = sqlx::query_as(
+        "INSERT INTO node_enrollment_tokens \
+         (token_id, tenant_id, node_id, host_claim, nonce, expires_at) \
+         VALUES ('ntk_' || gen_random_uuid()::text, $1, $2, $3, gen_random_uuid()::text, $4) \
+         RETURNING token_id, nonce, expires_at",
+    )
+    .bind(req.tenant_id.to_string())
+    .bind(node_id.to_string())
+    .bind(&req.host_claim)
+    .bind(now + ttl)
+    .fetch_one(&state.pool)
+    .await;
+    let (token_id, nonce, expires_at) = match issued {
+        Ok(row) => row,
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            return Err(ControlApiError {
+                status: StatusCode::CONFLICT,
+                code: "invalid_command",
+                message: format!(
+                    "an unused enrollment token for node `{node_id}` already exists — \
+                     consume or expire it before issuing another"
+                ),
+            })
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    Ok(Json(IssueNodeTokenResponse {
+        token_id,
+        nonce,
+        expires_at: expires_at.to_rfc3339(),
     }))
 }
 

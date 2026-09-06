@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.5.1: type the body, not the plumbing
+
+- **A typed default is a documented variant, not an empty profile.** `kind` defaults to `position` (a contribution without a kind IS a position) — the same shape as `.1.1.3`'s `single_agent`; the tests assert the default so the wire contract is enforced, not just stated.
+- **Content lives in the event log; the projection keeps counts.** Typing the contribution body needed NO projection change: the event body is the record, so the additive growth happens at the event layer, and pre-`.1.5.1` stored projections parse by construction.
+- **References are a Phase-1 fact, acquisition is a Phase-4 act.** `evidence_refs` stores what the contributor CLAIMS to cite (URI + optional digest, deny-unknown at the ref itself — a foreign field like `password` is refused); nothing in `.1.5.1` fetches or validates — §3.7's honest split.
+- **The kebab lesson re-applied from the start.** The CLI normalizes `--kind evidence-reference` to the wire's `evidence_reference` (`replace('-', "_")`) and the e2e drives the kebab spelling through the REAL binary — the `.1.1.3` first-run failure is now a pre-built habit, not a re-learned one.
+- Promoted to `docs/decisions/2026-09-06_structured-contributions.md` (`answers:` present). **Frontier `PHASE-1.5.2` (rounds).**
+
 ## _(2026-09-06)_ — PHASE-1.4: probe the wire before coding the wire
 
 - **Three bounded live dispatches replaced a guessed event shape.** Before writing `claude.rs` I ran `claude -p --output-format stream-json` with and without `--verbose`, plus one deliberate refusal: the no-verbose probe failed with the CLI's own error ("stream-json requires --verbose") — the REQUIRED flag was discovered by the tool itself, not by reading prose. Probe evidence on-volume in `target/claude-probes/` (the /tmp originals deleted, census-verified — §13).

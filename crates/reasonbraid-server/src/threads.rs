@@ -235,11 +235,51 @@ pub struct RemoveParticipantBody {
 }
 
 /// `thread.contribute` body: the scope and the contribution content.
+/// The structured contribution kinds (`ROADMAP.md` §8.5's initial message kinds a
+/// CONTRIBUTION can carry, `PHASE-1.5.1`): `position` is the stated default — a
+/// contribution without a `kind` IS a position. `evidence_reference` marks a
+/// contribution whose whole point is a reference; ANY kind may carry
+/// `evidence_refs` alongside it. Out-of-registry values are typed refusals
+/// (deny-unknown at the body boundary), never silently stored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContributionKind {
+    #[default]
+    Position,
+    Claim,
+    Assumption,
+    EvidenceReference,
+    Question,
+    Summary,
+}
+
+/// One evidence reference attached to a contribution (`PHASE-1.5.1`): a URI, an
+/// optional expected digest, and an optional human note. REFERENCES only —
+/// accepting a reference is not a promise the core can resolve it, and
+/// acquisition stays Phase 4 (`ROADMAP.md` §3.7).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceRef {
+    pub uri: String,
+    /// Absent fields are OMITTED on the wire (never serialized as `null`) — the
+    /// event body carries only what the contributor stated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// `thread.contribute` body: the scope, the contribution content, the structured
+/// kind (default `position`), and the evidence references it cites.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContributeBody {
     pub tenant_id: TenantId,
     pub content: String,
+    #[serde(default)]
+    pub kind: ContributionKind,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
 }
 
 /// `thread.challenge` body: the scope, the challenged contribution event, and the
@@ -880,6 +920,8 @@ where
                     "actor_principal_id": principal,
                     "author": principal,
                     "content": body.content,
+                    "kind": body.kind,
+                    "evidence_refs": body.evidence_refs,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )

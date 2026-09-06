@@ -29,7 +29,8 @@ created thread thr_… (state: open)
 
 $ rb thread invite --thread thr_… --agent reviewer --as alice
 $ rb thread accept --thread thr_… --as reviewer
-$ rb thread contribute --thread thr_… --text "Ship it: the experiments are green." --as reviewer
+$ rb thread contribute --thread thr_… --text "Ship it: the experiments are green." \
+    --kind claim --evidence-uri https://example.org/evidence --as reviewer
 $ rb thread challenge --thread thr_… --target evt_… --text "Which experiments?" --as alice
 $ rb thread revise --thread thr_… --target evt_… --text "The SQLite kill-point sweep…" --as reviewer
 $ rb thread close --thread thr_… --reason "decision reached" --as alice
@@ -49,6 +50,15 @@ $ rb thread create --subject "…" --objective "…" --as alice \
 - `--workflow-profile` — `single-agent` (**the stated default**, ADR-002's
   routing decision) | `blind-independent` | `critique-revise` | `moderator`.
 - `--allow-join-requests` — off by default: explicit participants first (§20.3).
+
+The contribute verb takes the structured body (`.1.5.1`):
+
+- `--kind` — `position` (default) | `claim` | `assumption` | `evidence-reference`
+  | `question` | `summary` (the kebab spelling normalizes to the wire's
+  snake_case, e.g. `evidence-reference` → `evidence_reference`).
+- `--evidence-uri` (repeatable) — a reference the contribution cites, rendered in
+  the inspection view. References only: citing a URI is not fetching it —
+  acquisition arrives with a later phase (§3.7).
 
 `thread.cancel` is the **abandonment terminal** (`open|closing → cancelled`,
 reason recorded) — distinct from a decided close; both are inspectable, and a

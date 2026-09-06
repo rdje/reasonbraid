@@ -225,6 +225,10 @@ async fn the_real_cli_drives_the_whole_flow() {
             &thread_id,
             "--text",
             "Ship it: the kill-risk experiments are green.",
+            "--kind",
+            "evidence-reference",
+            "--evidence-uri",
+            "https://example.org/kill-risk",
             "--as",
             "reviewer",
             "--json",
@@ -235,6 +239,27 @@ async fn the_real_cli_drives_the_whole_flow() {
         serde_json::json!("thread.contribution_submitted")
     );
     let contribution_event = contributed["event_id"].as_str().unwrap().to_string();
+
+    // `.1.5.1`: the CLI's kind + evidence flags land on the wire and render in the
+    // inspection view — the kebab `--kind evidence-reference` normalizes to the
+    // wire's snake_case (`evidence_reference`), the `.1.1.3` profile precedent.
+    let inspected = rb
+        .json(&["inspect", "thread", &thread_id, "--as", "alice", "--json"])
+        .await;
+    let contribution = inspected["events"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == serde_json::json!("thread.contribution_submitted"))
+        .expect("the contribution event exists");
+    assert_eq!(
+        contribution["body"]["kind"],
+        serde_json::json!("evidence_reference")
+    );
+    assert_eq!(
+        contribution["body"]["evidence_refs"],
+        serde_json::json!([{ "uri": "https://example.org/kill-risk" }])
+    );
 
     let challenged = rb
         .json(&[

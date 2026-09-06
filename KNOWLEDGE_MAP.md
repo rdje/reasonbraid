@@ -59,6 +59,7 @@
 - [`2026-09-06_reason-codes.md`](docs/decisions/2026-09-06_reason-codes.md)
 - [`2026-09-06_same-volume-pg-ephemeral.md`](docs/decisions/2026-09-06_same-volume-pg-ephemeral.md)
 - [`2026-09-06_state-transitions.md`](docs/decisions/2026-09-06_state-transitions.md)
+- [`2026-09-06_structured-contributions.md`](docs/decisions/2026-09-06_structured-contributions.md)
 - [`2026-09-06_thread-api-completion.md`](docs/decisions/2026-09-06_thread-api-completion.md)
 - [`2026-09-07_deliberation-benchmark.md`](docs/decisions/2026-09-07_deliberation-benchmark.md)
 - [`2026-09-07_node-channel-wiring.md`](docs/decisions/2026-09-07_node-channel-wiring.md)

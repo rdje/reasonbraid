@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The structured contribution body: typed kinds + evidence references (`PHASE-1.5.1`)
+
+- Backlog 17's first contract landed: `thread.contribute` gains `kind` — a typed deny-unknown `ContributionKind` enum over the §8.5 initial subset (`position` **stated default** | `claim` | `assumption` | `evidence_reference` | `question` | `summary`) — and `evidence_refs`, a list of `{uri, digest?, note?}` REFERENCES (deny-unknown at the ref itself; absent fields are omitted on the wire). Out-of-registry kinds and foreign ref fields are typed 400 `invalid_command` refusals.
+- Content lives in the event log, so the change is event-layer growth: the projection is untouched and pre-`.1.5.1` stored projections parse by construction. The events/inspection view renders kind + refs — nothing silently dropped.
+- CLI: `rb thread contribute --kind …` (kebab→snake normalized, the `.1.1.3` lesson pre-applied) + repeatable `--evidence-uri`. New 4-leg `command_api` test + the e2e drives the kebab spelling through the real binary. The suite's first run caught a real wire-shape defect (absent ref fields serialized as `null` instead of omitted) — fixed with `skip_serializing_if`, rerun green: all twelve live suites + e2e + demo `rc=0`; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_structured-contributions.md` (`answers:`).
+
 ## 2026-09-06 — PHASE-1.5 decomposed: typed contribution bodies, rounds, honest close (`PHASE-1.5`)
 
 - Tree-first decomposition on a measured gap census: the contribution body's `kind` is a FREE STRING (no typed enum), there are no evidence references, no round fields anywhere, and the core thread machine has NO `Inconclusive` terminal (Open/Closing/Closed/Cancelled only) — so backlog 17 needs three independent contracts.

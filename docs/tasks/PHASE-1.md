@@ -303,6 +303,9 @@ conversation without binding-governance claims.
     Acceptance: an out-of-registry kind is a typed refusal; a contribution with evidence
       refs renders them in the inspection view; pre-`.1.5.1` stored projections still parse;
       all existing thread/wiring/CLI suites stay green.
+    Done (`2026-09-06`): `ContributionKind` + `EvidenceRef` landed; the acceptance
+      checklist below records the evidence (the suite's first run caught the
+      null-vs-omitted wire shape — fixed, rerun green).
 
   - ID: `PHASE-1.5.2`
     Status: `proposed`
@@ -347,7 +350,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams: `.1.5.1` (typed contribution kinds + evidence references) → `.1.5.2` (rounds) → `.1.5.3` (honest inconclusive close); next executable leaf `.1.5.1` |
+| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams; `.1.5.1` done (typed contribution kinds + evidence references) → next executable leaf `.1.5.2` (rounds) |
 
 ## Changelog
 
@@ -369,6 +372,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.4.1` done — the Claude CLI adapter core: `claude.rs` supervises `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` (the interface pinned by 3 live probes BEFORE code: `system/init` session id, assistant text blocks, `result` usage + `total_cost_usd` money, `--verbose` required); the offline suite is 10 tests over a stub binary (real subprocess boundary; thinking blocks skipped, `is_error` results, lost responses, cancel, missing binary); all offline + all twelve live suites + demo green, clippy clean; the book's adapter chapter gains the Claude section; frontier → `.1.4.2`.
 - `2026-09-06`: `.1.4.2` done — the live qualification leg: `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored` dispatched ONE bounded real run through the real supervisor + journal and passed on its FIRST run (`test result: ok. 1 passed` — completed, exact usage + money cost, session id attached as the provider handle, honest unsupported lookup); the dependency-ledger Claude row now carries the verified 2.1.263 interface (checked_at, tested_versions, conformance), the book gains the live-test command, and the decision record `docs/decisions/2026-09-06_claude-cli-adapter.md` records the whole leaf; **`.1.4` is COMPLETE** (backlogs 19–21: the deterministic fake + Codex + Claude) — frontier → `.1.5`.
 - `2026-09-06`: `.1.5` decomposed (gap census first: the contribution `kind` is a free string, no evidence references, no round fields, and the core machine has NO `Inconclusive` terminal — Open/Closing/Closed/Cancelled only; votes/abstentions + workflow phases defer to Phase 5, evidence acquisition to Phase 4) into `.1.5.1` (the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` — references only), `.1.5.2` (rounds: a round number on contributions, enforced at the boundary, visible in inspection), and `.1.5.3` (the honest close: `outcome: decided|inconclusive` + the unresolved register + the core `Inconclusive` terminal); frontier → `.1.5.1`.
+- `2026-09-06`: `.1.5.1` done — the structured contribution body: `ContributionKind` (position default | claim | assumption | evidence_reference | question | summary; deny-unknown) + `EvidenceRef {uri, digest?, note?}` ride the contribute event; the CLI gains `--kind` (kebab→snake normalized) + repeatable `--evidence-uri`; the suite's first run caught the null-vs-omitted wire shape (absent ref fields now OMITTED, not `null`) — fixed, rerun green; decision record `docs/decisions/2026-09-06_structured-contributions.md`; frontier → `.1.5.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -898,6 +902,55 @@ decision record are the non-code deliverables.
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1.5.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/threads.rs`
+(`ContributionKind` + `EvidenceRef` + the body fields + the event body),
+`crates/reasonbraid-cli/src/main.rs` (the two flags + kebab normalization), and
+the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
+
+- [x] **REPRODUCE / ISSUE** — backlog 17's typed-contribution portion is open: the
+  contribute body is `{tenant_id, content}` with NO typing
+  (`grep -n "struct ContributeBody" crates/reasonbraid-server/src/threads.rs` →
+  2 fields before this leaf) and the §8.5 message kinds exist only as roadmap
+  prose (`grep -rn "ContributionKind" crates/ --include='*.rs'` → no matches).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.6.2` needed an end-to-end demo beat, not
+  typed deliberation content; the free-string body was the shortcut. The fix
+  point is the body boundary itself — the enum is the registry, the
+  `deny_unknown_fields` body is the enforcer — plus the EVENT body (content
+  lives in the event log; the projection keeps only counts, so typed growth is
+  event-layer growth and stored projections parse by construction).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no kind, no
+  evidence, `content`-only. After: `ContributionKind` (position **stated
+  default** | claim | assumption | evidence_reference | question | summary) +
+  `EvidenceRef {uri, digest?, note?}` (deny-unknown at the ref; absent fields
+  OMITTED on the wire) ride the event; the CLI normalizes `--kind
+  evidence-reference` → `evidence_reference`. Live proof: `bash
+  scripts/run_pg_tests.sh` → `test result: ok. 10 passed; 0 failed`
+  (`command_api`: default `position` + named kind + refs rendered via the
+  events view; out-of-registry kind AND a foreign ref field both 400
+  `invalid_command`) and the e2e's contribute leg drives the kebab spelling
+  through the REAL binary (`test result: ok. 2 passed`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 10 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`)
+  + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance
+  checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — threads.rs (the enum + ref struct + body fields + the event
+  body's `kind`/`evidence_refs`); main.rs (`--kind` default position, repeatable
+  `--evidence-uri`, `replace('-', "_")` normalization); command_api.rs (the
+  happy-path contribute carries kind + refs asserted through the events view; a
+  new 4-leg test: default/named/out-of-registry/foreign-ref-field); cli
+  e2e (kebab kind + evidence URI through the real binary, asserted via
+  `inspect --json`). The suite's FIRST run caught a real wire-shape defect —
+  `EvidenceRef` serialized absent fields as `null` (`test result: FAILED. 8
+  passed; 2 failed`); `skip_serializing_if = "Option::is_none"` omits them,
+  rerun green.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_structured-contributions.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -913,6 +966,7 @@ decision record are the non-code deliverables.
 | `2026-09-06` | `PHASE-1-MAINT-1` | `bash -n` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (both `rc=0`); polled probe → cluster on the repo volume (`PROBE-OK at poll 2 (~4s): target/pg-ephemeral.BPJbkS`), no `/tmp` usage, cleaned on exit; `make gate` → 13/13 | §13 same-volume locality: the ephemeral PG cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX` (runtime-derived, gitignored, per-run unique, trap-cleaned — never `/tmp`); defect leaf from `.1.1.1` closed |
 | `2026-09-06` | `PHASE-1.4.1` | `cargo test -p reasonbraid-adapter --test claude_adapter` → `test result: ok. 10 passed; 0 failed`; `cargo test --all` → every offline suite green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the Claude CLI adapter core landed (`claude.rs` — the `.4.2` mirror over the live-verified 2.1.263 `-p --output-format stream-json --restricted --tools '' --verbose` interface; money cost from `total_cost_usd`); the suite's first run caught a test-authoring slip (multi-chunk assertion), fixed |
 | `2026-09-06` | `PHASE-1.4.2` | `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored --nocapture` → `test result: ok. 1 passed; 0 failed` (`LIVE CLAUDE OK: attempt patt_01a0784e-… completed via session 12361df0-…`) — completed + exact usage + MONEY cost + session id attached + unsupported lookup, on the REAL harness; `cargo test --all` → all offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the live qualification leg landed (env-gated `RB_LIVE_CLAUDE=1`, first-run pass); ledger row + book chapter + decision record updated; **`.1.4` complete** — two genuinely distinct harness adapters (backlogs 19–21) |
+| `2026-09-06` | `PHASE-1.5.1` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 10 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the structured contribution body landed (typed §8.5 kinds + evidence refs); the suite's FIRST run caught the null-vs-omitted wire shape (`FAILED. 8 passed; 2 failed` → `skip_serializing_if` fix), rerun green |
 
 ## Commit Log
 
@@ -929,3 +983,4 @@ decision record are the non-code deliverables.
 | `PHASE-1-MAINT-1` | `REASONBRAID-PHASE1-0013` | §13 same-volume locality: ephemeral PG data at `$ROOT/target/pg-ephemeral.XXXXXX`, never `/tmp`; two full reruns green + on-volume probe + residue census |
 | `PHASE-1.4.1` | `REASONBRAID-PHASE1-0015` | the Claude CLI adapter core: `claude.rs` (`.4.2` mirror over the verified 2.1.263 stream-json interface) + the 10-test offline stub suite + book section |
 | `PHASE-1.4.2` | `REASONBRAID-PHASE1-0016` | the live qualification leg: env-gated `claude_live` (first-run pass on the real harness) + dependency-ledger row + book command + decision record; `.1.4` complete |
+| `PHASE-1.5.1` | `REASONBRAID-PHASE1-0018` | the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` (omitted-absent wire shape) + CLI flags + the 4-leg command_api test + e2e leg |

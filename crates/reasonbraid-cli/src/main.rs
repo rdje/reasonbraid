@@ -180,6 +180,13 @@ enum ThreadCommand {
         thread: String,
         #[arg(long)]
         text: String,
+        /// Contribution kind: `position` (default) | `claim` | `assumption` |
+        /// `evidence-reference` | `question` | `summary`.
+        #[arg(long, default_value = "position")]
+        kind: String,
+        /// An evidence URI to attach (repeatable — references only, no acquisition).
+        #[arg(long)]
+        evidence_uri: Vec<String>,
         #[arg(long)]
         as_: Option<String>,
         #[arg(long)]
@@ -433,11 +440,20 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Thread(ThreadCommand::Contribute {
             thread,
             text,
+            kind,
+            evidence_uri,
             as_,
             tenant,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
+            // The human kebab spelling (`evidence-reference`) normalizes to the wire
+            // snake_case (`evidence_reference`) — the `.1.1.3` profile precedent.
+            let kind = kind.replace('-', "_");
+            let evidence_refs: Vec<serde_json::Value> = evidence_uri
+                .iter()
+                .map(|uri| json!({ "uri": uri }))
+                .collect();
             run_thread_verb(
                 cfg,
                 &state,
@@ -446,7 +462,11 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     thread_id: thread,
                     tenant,
                     operation: "thread.contribute",
-                    body: json!({ "content": text }),
+                    body: json!({
+                        "content": text,
+                        "kind": kind,
+                        "evidence_refs": evidence_refs,
+                    }),
                     json_out: json,
                 },
             )

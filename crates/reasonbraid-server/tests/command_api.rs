@@ -263,6 +263,11 @@ async fn full_flow_inspects_state_through_the_api_only() {
             json!({
                 "tenant_id": tenant,
                 "content": "Ship it: the kill-risk experiments are green.",
+                "kind": "claim",
+                "evidence_refs": [
+                    { "uri": "https://example.org/kill-risk-report", "digest": "sha256:abc123", "note": "the WP2 sweep" },
+                    { "uri": "https://example.org/journal-sweep" },
+                ],
             }),
         ),
     )
@@ -379,6 +384,23 @@ async fn full_flow_inspects_state_through_the_api_only() {
         "the ordered audit timeline"
     );
     assert_eq!(events["next_cursor"], json!(7));
+
+    // `.1.5.1`: the contribution event carries its structured kind and evidence
+    // references — the inspection surface renders them, nothing is silently dropped.
+    let contribution = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .expect("the contribution event exists");
+    assert_eq!(contribution["body"]["kind"], json!("claim"));
+    assert_eq!(
+        contribution["body"]["evidence_refs"],
+        json!([
+            { "uri": "https://example.org/kill-risk-report", "digest": "sha256:abc123", "note": "the WP2 sweep" },
+            { "uri": "https://example.org/journal-sweep" },
+        ])
+    );
 
     let (status, audit) = get(
         &client,
@@ -1083,4 +1105,135 @@ async fn create_carries_typed_classification_profile_and_rules() {
     .await;
     assert_eq!(status, 400, "bad enum: {bad_enum}");
     assert_eq!(bad_enum["code"], json!("invalid_command"));
+}
+
+/// The structured contribution body (`PHASE-1.5.1`): the kind defaults to
+/// `position`, named kinds and evidence references ride the event, and an
+/// out-of-registry kind or a foreign evidence-ref field is a typed refusal.
+#[tokio::test]
+async fn contribute_carries_a_typed_kind_and_evidence_refs() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-structured-create",
+            json!({
+                "tenant_id": tenant,
+                "subject": "structured",
+                "objective": "typed kinds",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/threads/{thread_id}/commands");
+
+    // The stated default: no kind named means `position`.
+    let (status, plain) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-structured-plain",
+            json!({ "tenant_id": tenant, "content": "no kind named" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "plain contribute: {plain}");
+
+    // A named kind and an evidence reference ride the event.
+    let (status, named) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-structured-named",
+            json!({
+                "tenant_id": tenant,
+                "content": "named",
+                "kind": "evidence_reference",
+                "evidence_refs": [{ "uri": "https://example.org/spec" }],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "named contribute: {named}");
+
+    let (status, events) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "inspect events: {events}");
+    let contributions: Vec<Value> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .cloned()
+        .collect();
+    assert_eq!(contributions.len(), 2);
+    assert_eq!(contributions[0]["body"]["kind"], json!("position"));
+    assert_eq!(contributions[0]["body"]["evidence_refs"], json!([]));
+    assert_eq!(contributions[1]["body"]["kind"], json!("evidence_reference"));
+    assert_eq!(
+        contributions[1]["body"]["evidence_refs"],
+        json!([{ "uri": "https://example.org/spec" }])
+    );
+
+    // An out-of-registry kind is refused, never silently stored.
+    let (status, bad_kind) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-structured-bad",
+            json!({ "tenant_id": tenant, "content": "bad", "kind": "essay" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "bad kind: {bad_kind}");
+    assert_eq!(bad_kind["code"], json!("invalid_command"));
+
+    // A foreign field on an evidence ref is refused too (deny-unknown at the ref).
+    let (status, bad_ref) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-structured-bad-ref",
+            json!({
+                "tenant_id": tenant,
+                "content": "bad ref",
+                "evidence_refs": [{ "uri": "https://example.org/x", "password": "nope" }],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "bad evidence ref: {bad_ref}");
+    assert_eq!(bad_ref["code"], json!("invalid_command"));
 }

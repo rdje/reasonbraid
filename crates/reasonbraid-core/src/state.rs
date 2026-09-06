@@ -541,12 +541,7 @@ mod tests {
         use ThreadState::*;
         use ThreadTransition::*;
         for s in [Closed, Inconclusive, Cancelled] {
-            for e in [
-                BeginClose,
-                FinalizeClose,
-                FinalizeInconclusive,
-                Cancel,
-            ] {
+            for e in [BeginClose, FinalizeClose, FinalizeInconclusive, Cancel] {
                 assert!(s.apply(e).is_err(), "terminal {s:?} must reject {e:?}");
             }
         }

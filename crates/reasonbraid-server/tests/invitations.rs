@@ -606,7 +606,9 @@ async fn concurrent_accept_and_decline_have_exactly_one_winner() {
 
     // The timeline holds exactly one of the two transition events.
     let response = client
-        .get(format!("{base}/v1/threads/{thread}/events?tenant_id={tenant}"))
+        .get(format!(
+            "{base}/v1/threads/{thread}/events?tenant_id={tenant}"
+        ))
         .header(PRINCIPAL_HEADER, &human)
         .send()
         .await
@@ -617,9 +619,7 @@ async fn concurrent_accept_and_decline_have_exactly_one_winner() {
         .unwrap()
         .iter()
         .map(|e| e["event_type"].as_str().unwrap())
-        .filter(|t| {
-            *t == "thread.invitation_accepted" || *t == "thread.invitation_declined"
-        })
+        .filter(|t| *t == "thread.invitation_accepted" || *t == "thread.invitation_declined")
         .collect();
     assert_eq!(
         transitions.len(),
@@ -700,11 +700,7 @@ async fn join_requests_and_invite_enforcement() {
         &base,
         &format!("/v1/threads/{open_thread}/commands"),
         &role,
-        &envelope(
-            "thread.join",
-            "k-join-open",
-            json!({ "tenant_id": tenant }),
-        ),
+        &envelope("thread.join", "k-join-open", json!({ "tenant_id": tenant })),
     )
     .await;
     assert_eq!(status, 200, "join: {joined}");

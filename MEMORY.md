@@ -28,7 +28,13 @@
 - **Next action:** execute `PHASE-1.6.1` — `GET /v1/threads/{id}/budget` +
   `rb inspect budget` — then `.1.6.2`/`.1.6.3`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none (MAINT-2 closed with the fix; 0 pending defect leaves).
+- **Defects:** 0 tracked leaves outstanding after `PHASE-1-MAINT-3` (the toolchain
+  pin: `rust-toolchain.toml` + CI now pin `1.98.0` — reproducible fmt/clippy;
+  the tree was normalized once under the pin). Earlier: `MAINT-1` §13 locality,
+  `MAINT-2` drain race — closed.
+- **In-flight uncommitted work:** the `.1.6.1` leaf mid-verification (the budget
+  read surface — green on live PG run 3; docs drafted); committed next after
+  `MAINT-3`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude` (2.1.263,

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1-MAINT-3: an unpinned `stable` toolchain is a slow-motion formatter drift
+
+- **`cargo fmt --check` failing on files the current leaf never touched is a toolchain defect, not a style slip.** The `.1.6.1` verification caught it: both installed rustfmt builds (`1.9.0-stable` 2026-04-14 from rustc 1.95.0 and 2026-08-18 from 1.98.0) flag the SAME pre-existing hunks — the tree's last full fmt run predates the stable-channel move, and recent leaves verified clippy but not fmt, so the drift sat undetected.
+- **Pin the channel; never trust `stable` for formatting.** `rust-toolchain.toml` now pins `1.98.0` (the newest installed) and the CI toolchain inputs name it explicitly — reproducible rustfmt/clippy instead of whatever `stable` resolves to locally vs in CI.
+- **The gate that would have caught this is `make check` (fmt first), not clippy** — clippy 1.98 was clean the whole time; only the fmt job saw the drift. A toolchain pin converts that from a surprise into a non-event.
+- Promoted to `docs/decisions/2026-09-06_pinned-toolchain.md` (`answers:` present). **Frontier `PHASE-1.6.1` (the budget read surface).**
+
 ## _(2026-09-06)_ — PHASE-1-MAINT-2: a flake that reproduces once is a bug with evidence
 
 - **The missing thing was the test's NAME, not its output.** The `.1.3.1` report lost it; the `.1.5.3` verification captured `nonzero_exit_produces_failed_known_with_the_stderr_tail` with an EMPTY tail — instantly a real race: the spawned stderr drainer had not consumed the pipe's tail when the EOF path snapshotted the buffer after `child.wait()`. Load widens the scheduling window; it never creates it.

@@ -427,6 +427,29 @@ conversation without binding-governance claims.
       chapter notes the beat; the tree's verification/commit logs + frontier move on
       (`.1.7`); MEMORY/LIVE_STATUS/CHANGELOG in the same commit.
 
+- ID: `PHASE-1-MAINT-3`
+  Status: `in_progress`
+  Goal: the toolchain is UNPINNED and the tree is not fmt-clean under the current
+    stable rustfmt — discovered during the `.1.6.1` verification: `cargo fmt --all
+    -- --check` flags pre-existing hunks in files the leaf never touched
+    (`claude.rs`, `claude_adapter.rs`, `state.rs`, `invitations.rs`), under BOTH
+    installed rustfmt builds (rustc 1.95.0's `1.9.0-stable (59807616e1 2026-04-14)`
+    AND 1.98.0's `1.9.0-stable (88d9e12ae1 2026-08-18)`). Root cause: the channel
+    is `stable` everywhere (`rust-toolchain.toml` + CI `dtolnay/rust-toolchain`),
+    the stable channel moved since the tree's last full fmt run, and recent leaves
+    verified clippy but not fmt (`git log` — the `.1.5.x`/MAINT-2 checklists cite
+    clippy only), so the drift sat undetected. Fix: pin `rust-toolchain.toml` to
+    `1.98.0` + align the CI toolchain inputs + `cargo fmt --all` under the pin —
+    reproducible formatting instead of whatever `stable` means this week.
+  Defect (tracked `2026-09-06`, discovered during the `.1.6.1` verification): the
+    acceptance checklist is written when the leaf executes.
+  Done (`2026-09-06`): the toolchain is pinned to `1.98.0` (local + CI) and the
+    tree is fmt-clean under it; the acceptance checklist below records the evidence.
+  Note: CI suite-list drift observed alongside (rust.yml's PG job omits the
+    post-`.2.1` suites — `aggregate_library`, `identity_store`, `node_enrollment`,
+    `node_inbox`, `invitations`). Out of scope here; the §16 full-CI-before-push
+    step reconciles it at the first push.
+
 - ID: `PHASE-1.7`
   Status: `proposed`
   Goal: local/LAN deployment packaging and one-command development environment
@@ -468,6 +491,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.5.3` done — the honest close: the core machine gains the `Inconclusive` terminal (`Closing → FinalizeInconclusive`; the exhaustive table + terminal-rejection tests extended), `thread.close` gains `outcome` (decided default | inconclusive) + the `unresolved` register (rides the event; a decided close carrying unresolved items is a typed 400), the CLI gains `--outcome`/`--unresolved`, and the demo's budget-denied thread B closes INCONCLUSIVELY with the register asserted; the e2e's first run caught a missing `--json` in the new leg — fixed, rerun green; decision record `docs/decisions/2026-09-06_honest-inconclusive-close.md`; **`.1.5` is COMPLETE** (backlog 17). The offline verification ALSO captured the `PHASE-1-MAINT-2` repro (the codex stderr-drain race, empty tail) — recorded in the defect leaf; frontier → `.1.6` (MAINT-2 executes first).
 - `2026-09-06`: `PHASE-1-MAINT-2` done — the stderr-drain race REPRODUCED and FIXED: during the `.1.5.3` verification `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY tail (`got: codex exited with exit status: 2; stderr tail: `) — the spawned drain task raced the EOF path's buffer snapshot (load only widens the window); `drain_stderr` now returns its JoinHandle and the EOF path awaits it (bounded 5 s) BEFORE the snapshot, in `codex.rs` AND its `claude.rs` mirror; 10× adapter-suite loops + the full offline workspace green; decision record `docs/decisions/2026-09-06_stderr-drain-race.md`. Frontier unchanged: `.1.6`.
 - `2026-09-06`: `.1.6` decomposed (gap census first: the existing read surfaces — `GET /v1/threads` list, `GET /v1/threads/{id}` detail, `GET /v1/threads/{id}/events` timeline, `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` — exist and the page mirrors them with the dev-profile header + tenant query; the census FOUND budgets have no read surface anywhere — the ledger rows exist but no GET and no CLI verb) into `.1.6.1` (the budget read surface — the census-found gap), `.1.6.2` (the static shell: `web/{index.html,app.js,style.css}` embedded at compile time, served at `/`, read-only, XSS-safe), and `.1.6.3` (the demo/evidence leg); frontier → `.1.6.1`.
+- `2026-09-06`: `PHASE-1-MAINT-3` done — the toolchain pin: the `.1.6.1` verification found `cargo fmt --all -- --check` failing on hunks in files the leaf never touched (identical under BOTH installed rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`); the channel was `stable` everywhere and the stable channel moved since the tree's last fmt run (recent leaves verified clippy, not fmt); `rust-toolchain.toml` + CI now pin `1.98.0` and the tree was normalized once under it (`fmt rc=0`, clippy clean, 39 offline suites green); decision record `docs/decisions/2026-09-06_pinned-toolchain.md`. Frontier unchanged: `.1.6.1` (executes next — its live-PG run is green under the pin).
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1186,6 +1210,49 @@ The CODE change owned by this leaf: `crates/reasonbraid-adapter/src/codex.rs` +
   same commit. Frontier unchanged (`.1.6`), so `docs/TASK_TREE.md` and the book
   need no update.
 
+## Acceptance Checklist (PHASE-1-MAINT-3)
+
+The CODE change owned by this leaf: the fmt normalization of
+`crates/reasonbraid-adapter/src/claude.rs`, `crates/reasonbraid-adapter/tests/claude_adapter.rs`,
+`crates/reasonbraid-core/src/state.rs`, `crates/reasonbraid-server/tests/invitations.rs`
+(all `\.rs$` in `.doctrine/code_paths.txt`); `rust-toolchain.toml` + `.github/workflows/rust.yml`
+(the pin mechanism) are the leaf's config surface. The leaf was opened during the
+`.1.6.1` verification, which is the repro the checklist cites.
+
+- [x] **REPRODUCE / ISSUE** — `cargo fmt --all -- --check` (pre-fix) → diff hunks in
+  files the `.1.6.1` leaf never touched: `claude.rs:214`/`358`, `claude_adapter.rs:191`,
+  `state.rs:541`, `invitations.rs:606`/`617`/`700`; the SAME hunks under BOTH installed
+  rustfmt builds — `cargo fmt --version` → `rustfmt 1.9.0-stable (59807616e1 2026-04-14)`
+  (rustc 1.95.0) and `cargo +1.98.0 fmt --version` → `rustfmt 1.9.0-stable (88d9e12ae1
+  2026-08-18)` → both `rc=1` with identical heads. HEAD was not fmt-clean under the
+  current stable channel.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the toolchain was UNPINNED: `git show HEAD:rust-toolchain.toml`
+  → `channel = "stable"` and CI `dtolnay/rust-toolchain@stable` (rust.yml lines 11/48)
+  resolve stable INDEPENDENTLY (local stable = 1.95.0; CI stable = latest = 1.98.0).
+  The stable channel moved since the tree's last full fmt run, and the recent leaves'
+  checklists verify clippy only (`git log` — the `.1.5.x`/MAINT-2 checklists cite
+  `cargo clippy … -D warnings` clean, no fmt step) — so the drift sat undetected: the
+  gate that sees it (`make check`'s fmt step, CI's Format job) simply was not run.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: `cargo fmt --all -- --check`
+  → `rc=1` under both rustfmt builds. After: `rust-toolchain.toml` pins `1.98.0` + CI
+  inputs name `toolchain: 1.98.0`; `cargo fmt --all` normalized the tree ONCE under the
+  pin; `cargo fmt --all -- --check` → `rc=0` (`target/…`: the command output is empty —
+  clean is silent).
+- [x] **NO REGRESSION** — under the pinned toolchain: `cargo clippy --all --all-targets
+  -- -D warnings` → clean (rc=0, `target/maint3_clippy.log`); `cargo test --all` → all
+  39 offline suites green (rc=0, `target/maint3_offline.log` — 39 `test result: ok.`
+  lines, 0 FAILED); `make gate` → 13/13 at commit. The live-PG suites re-run at the
+  next server-touching commit (`.1.6.1`, immediately after — its run is green under
+  the pin).
+- [x] **FIX** — `rust-toolchain.toml` (`channel = "1.98.0"`); rust.yml (two
+  `toolchain: 1.98.0` inputs); the four files' fmt normalization (rustfmt-1.98 shape:
+  joined closures/conditionals — semantics untouched, zero non-whitespace diff:
+  `git diff -w` over the four files is empty).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_pinned-toolchain.md`
+  gained `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit. Frontier unchanged
+  (`.1.6.1`), so `docs/TASK_TREE.md` and the book need no update.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1205,6 +1272,7 @@ The CODE change owned by this leaf: `crates/reasonbraid-adapter/src/codex.rs` +
 | `2026-09-06` | `PHASE-1.5.2` | `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 11 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (16 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | server-assigned rounds landed (advance verb + `thread_advance_round` grant, humans-only); the demo's first run caught a positional-vs-`--thread` slip in the new beat, fixed, rerun green |
 | `2026-09-06` | `PHASE-1.5.3` | `cargo test --all` → every offline suite green ×3 (the first run captured the `PHASE-1-MAINT-2` repro — the codex stderr-drain race — recorded in the defect leaf); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 12 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the honest close landed (core `Inconclusive` terminal + the close body's `outcome`/`unresolved` + the demo's thread-B beat); the e2e's first run caught a missing `--json` in the new leg, fixed, rerun green; **`.1.5` complete** (backlog 17) |
 | `2026-09-06` | `PHASE-1-MAINT-2` | 10× loop over `codex_adapter` + `claude_adapter` → `loop 1..10 rc=0` each; `cargo test --all` → all 39 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the stderr-drain race REPRODUCED (`.1.5.3` verification, `nonzero_exit_produces_failed_known_with_the_stderr_tail`, EMPTY tail) and FIXED: the drain returns its JoinHandle and the EOF path awaits it (bounded 5 s) before the snapshot, in `codex.rs` AND `claude.rs` |
+| `2026-09-06` | `PHASE-1-MAINT-3` | `cargo fmt --all -- --check` → `rc=0` under the pin (was `rc=1` under BOTH rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`, same hunks); `cargo clippy --all --all-targets -- -D warnings` → clean (rc=0); `cargo test --all` → 39 offline suites green (rc=0); `make gate` → 13/13 | the toolchain pin: `rust-toolchain.toml` + CI name `1.98.0` explicitly; the tree normalized once under it; the defect (HEAD not fmt-clean under current stable) is closed — drift can no longer arrive silently |
 
 ## Commit Log
 
@@ -1225,3 +1293,4 @@ The CODE change owned by this leaf: `crates/reasonbraid-adapter/src/codex.rs` +
 | `PHASE-1.5.2` | `REASONBRAID-PHASE1-0019` | server-assigned rounds: the advance verb + `thread_advance_round` grant + projection fact + the command_api/e2e/demo legs |
 | `PHASE-1.5.3` | `REASONBRAID-PHASE1-0020` | the honest close: core `Inconclusive` terminal + `outcome`/`unresolved` + the dishonest-decided refusal + CLI flags + demo/e2e legs; `.1.5` complete |
 | `PHASE-1-MAINT-2` | `REASONBRAID-PHASE1-0021` | the reproduced stderr-drain race: the drain returns its JoinHandle and the EOF path awaits it (bounded) in both adapters; 10× loop + full offline green |
+| `PHASE-1-MAINT-3` | `REASONBRAID-PHASE1-0024` | the toolchain pin: `rust-toolchain.toml` + CI pin `1.98.0`, the four drifted files normalized once under it — reproducible fmt/clippy, defect leaf closed |

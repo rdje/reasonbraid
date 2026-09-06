@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Toolchain pinned: `stable` is a moving pointer (`PHASE-1-MAINT-3`)
+
+- Discovered during the `.1.6.1` verification: `cargo fmt --all -- --check` flagged pre-existing hunks in files the leaf never touched (`claude.rs`, `claude_adapter.rs`, `state.rs`, `invitations.rs`) — under BOTH installed rustfmt builds (`1.9.0-stable` 2026-04-14 from rustc 1.95.0 and 2026-08-18 from 1.98.0), so HEAD was simply not fmt-clean under the current stable channel.
+- Root cause: the channel was `stable` everywhere (`rust-toolchain.toml` + CI `dtolnay/rust-toolchain`), the stable channel moved since the tree's last full fmt run, and recent leaves verified clippy but not fmt — the drift sat undetected.
+- Fix: `rust-toolchain.toml` pins `1.98.0` (the newest installed), the CI toolchain inputs name it explicitly, and the tree was normalized once with `cargo fmt --all` under the pin. Clippy 1.98 clean; fmt `rc=0`. Decision recorded: `docs/decisions/2026-09-06_pinned-toolchain.md` (`answers:`).
+- Observed alongside (out of scope, reconciled at the first push per §16): rust.yml's PG job omits the post-`.2.1` suites (`aggregate_library`, `identity_store`, `node_enrollment`, `node_inbox`, `invitations`).
+
 ## 2026-09-06 — `.1.6` decomposed at the census seams: budget read → static shell → evidence leg
 
 - Gap census first (the pickup action the direction record prescribed): the existing read surfaces — `GET /v1/threads` (list), `GET /v1/threads/{id}` (projection + derived view), `GET /v1/threads/{id}/events` (the audit timeline), `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` (admin) — already exist and the page mirrors them with the dev-profile `x-reasonbraid-principal` header + `tenant_id` query (same-origin, so the page inherits the existing gates unchanged).

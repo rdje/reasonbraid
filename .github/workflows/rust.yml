@@ -10,6 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.98.0
           components: rustfmt, clippy
       - name: Format
         run: cargo fmt --all -- --check
@@ -46,6 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
       - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority + budget + command API + node wiring)
         run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api --test node_work -- --nocapture
       - name: Test (real-binary CLI end-to-end)

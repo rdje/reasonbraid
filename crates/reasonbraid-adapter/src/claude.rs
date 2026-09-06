@@ -214,11 +214,7 @@ impl Adapter for ClaudeCliAdapter {
         // The receipt is the FULL `result` event: the token counts live under `usage`,
         // the money under `total_cost_usd` — neither alone is the receipt.
         let usage = raw_receipt.get("usage");
-        let number = |key: &str| {
-            usage
-                .and_then(|u| u.get(key))
-                .and_then(|v| v.as_i64())
-        };
+        let number = |key: &str| usage.and_then(|u| u.get(key)).and_then(|v| v.as_i64());
         let input_tokens = number("input_tokens");
         let output_tokens = number("output_tokens");
         // Anthropic's input_tokens already includes cache reads and output_tokens
@@ -358,12 +354,10 @@ impl ClaudeHandle {
                             {
                                 let mut first: Option<String> = None;
                                 for block in content {
-                                    if block.get("type").and_then(|t| t.as_str()) != Some("text")
-                                    {
+                                    if block.get("type").and_then(|t| t.as_str()) != Some("text") {
                                         continue;
                                     }
-                                    let Some(text) =
-                                        block.get("text").and_then(|t| t.as_str())
+                                    let Some(text) = block.get("text").and_then(|t| t.as_str())
                                     else {
                                         continue;
                                     };

@@ -191,7 +191,10 @@ async fn is_error_result_is_a_definitive_failure_with_the_provider_message() {
         }
     }
     let reason = terminal.expect("an is_error result must produce a terminal failure");
-    assert!(reason.contains("simulated provider refusal"), "got: {reason}");
+    assert!(
+        reason.contains("simulated provider refusal"),
+        "got: {reason}"
+    );
 }
 
 /// EOF with a clean exit but NO result event is a lost response: the stream ends

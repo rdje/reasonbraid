@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — `.1.7` decomposed at the census seams: dev loop + packaged LAN (`PHASE-1.7`)
+
+- Gap census first: **no one-command dev environment** (`make dev`/dev script — none; the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`), **no packaging** (no `deploy/` dir, no release build target, no install path — the demo builds DEBUG only), and **LAN surfaces partial + unexercised** — `rb-server --host/--port` binds any address, the node's `--server` points cross-host, migrations + UI embed at compile time (one self-contained binary), and the demo already carries a real ssh two-host mode — but nothing runs release binaries and no server-side runbook exists.
+- Decomposition: `.1.7.1` the one-command dev loop (`scripts/dev.sh` + `make dev`: ephemeral on-volume PG, foreground server, residue census) → `.1.7.2` the release packaging + LAN story (`make release`, `deploy/` runbook, the book's `deployment` chapter, the release-built demo proof). Tree-only commit; `make gate` 13/13.
+
 ## 2026-09-06 — The demo proves the console without a browser; `.1.6` is complete (`PHASE-1.6.3`)
 
 - The two-host demo gains **section 10**: the console's evidence beat. The same binary that serves the API serves the embedded page at `/`; curl is the browser stand-in, so the beat asserts the shell marker, that `app.js` references ONLY the seven documented read surfaces, names no write verb, and that the page's live same-origin fetch (dev-profile header + tenant) returns the demo's thread and its budget ledger. 6 new checks, all PASS on the first run (the run also caught a cosmetic script slip — backticks in a check label execute as command substitution — fixed, re-verified).

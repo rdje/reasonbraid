@@ -469,6 +469,65 @@ conversation without binding-governance claims.
 - ID: `PHASE-1.7`
   Status: `proposed`
   Goal: local/LAN deployment packaging and one-command development environment
+  Backlog: §20.3's last build bullet (deployment/packaging — the roadmap names
+    no backlog number for it)
+  Note: gap census (`2026-09-06`, on pickup):
+    - ONE-COMMAND DEV ENV — ABSENT: `grep -rn "make dev\|\bdev:" Makefile
+      scripts/*.sh` → no matches; the only run paths are `make demo` (the full
+      live-PG suites + demo — verification, not a dev loop) and a manual
+      ladder (running PostgreSQL + createdb + `cargo run`). The ephemeral-PG
+      machinery (initdb, the on-volume `$ROOT/target/pg-ephemeral.*` dir, trap
+      cleanup — `PHASE-1-MAINT-1`'s §13 shape) exists inside
+      `scripts/run_pg_tests.sh` but is test-only.
+    - PACKAGING — ABSENT: `ls deploy/` → no such directory (ROADMAP §7.1 names
+      it); `grep -rn "release" Makefile scripts/*.sh README.md` → no release
+      build target anywhere (the demo builds `cargo build --bins` DEBUG only);
+      no `make release`, no install path for the four binaries (`rb`,
+      `rb-server`, `rb-node`, `rb-journal`).
+    - LAN READINESS — PARTIAL and unexercised: the surfaces exist — `rb-server
+      --host/--port` binds any address (default loopback), `rb-node --server`
+      points cross-host, and the migrations + the UI embed at compile time
+      (one self-contained server binary) — and the demo ALREADY carries a real
+      ssh two-host mode (`--node-host`/`--remote-workdir`: scp-deploys
+      `rb-node` + `rb-journal`, journals live on the remote host; the book's
+      "Two real hosts" section documents it). But NOTHING runs the release
+      binaries and no server-side runbook exists for a real LAN host (PG
+      setup, bind, enrollment).
+  Children: `.1.7.1`–`.1.7.2` (decomposed `2026-09-06` at the dev-loop-vs-
+    package seam; each contract is independent — no incoherent interim).
+
+  - ID: `PHASE-1.7.1`
+    Status: `proposed`
+    Goal: the one-command development environment — `scripts/dev.sh` + `make
+      dev`: boots an ephemeral on-volume PostgreSQL (the run_pg_tests.sh
+      pattern: `$ROOT/target/`, gitignored, per-run unique, trap-cleaned —
+      §13), runs the migrations, starts `rb-server` (loopback, `--port`
+      overridable) in the foreground, prints the console URL + the CLI hint;
+      Ctrl-C tears everything down with a residue census. An interactive dev
+      loop — NOT the test harness. The book's introduction gains the run path;
+      the README quick start gains one line (within the README caps;
+      `.doctrine/readme_routes.txt` gains the route if the guard demands it).
+    Acceptance: one command reaches a serving system (probe `/` + a real CLI
+      call through the control API); teardown leaves no residue (census); the
+      full guard set stays green.
+
+  - ID: `PHASE-1.7.2`
+    Status: `proposed`
+    Goal: the release packaging + LAN deployment story — `make release`
+      (`cargo build --release --bins`), a `deploy/` directory with the LAN
+      runbook (the book gains a `deployment` chapter + SUMMARY entry: the four
+      binaries, build/install, per-host PostgreSQL, `rb-server --host
+      0.0.0.0`, the node's cross-host `--server` + enrollment, the
+      trusted-LAN honest limits — dev trust store, no TLS (ADR-006/007, Phase
+      2)), and the packaging claim VERIFIED by running the demo against the
+      RELEASE binaries (a `--release` switch on `demo_two_host.sh`; the run
+      recorded in the leaf — `make demo` stays debug). Subtraction record: no
+      config files (flags suffice), no launchd/systemd units, no TLS, no
+      container images, no PG install automation — deferred to Phase 2 ops
+      (§20.4) with the trigger named.
+    Acceptance: `make release` produces the four binaries; the runbook is
+      complete and honest; the release-built demo passes (`rc=0`); the guard
+      set stays green.
 
 - ID: `PHASE-1.8`
   Status: `proposed`
@@ -480,7 +539,8 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.7` | `proposed` | **`.1.6` is COMPLETE** (backlog 18: `.1.6.1` budget read + `.1.6.2` embedded shell + `.1.6.3` the demo beat); the deployment/packaging lane executes next |
+| 1 | `PHASE-1.7.1` | `proposed` | **`.1.7` is DECOMPOSED** (census: no dev env, no packaging, LAN surfaces partial + unexercised) — the one-command dev loop executes first (it is the day-to-day run path the packaged story documents) |
+| 2 | `PHASE-1.7.2` | `proposed` | release packaging + the `deploy/` runbook + the release-built demo proof — then `.1.8` |
 
 ## Changelog
 
@@ -511,6 +571,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.6.1` done — the budget read surface: `GET /v1/threads/{id}/budget` is a read-only pass-through of the ledger (ceiling + every reservation row — held vs settled usage, denials with the engine's reasons; absent optional facts omitted, stored JSONB verbatim), gated by the existing `thread_inspect` path (role 403 + audit row); `rb inspect budget` mirrors it; the command_api suite's new test drives create→accept-dispatch (hold)→deny→GET→settle→GET→role-403 and its first run proved the surface right and the TEST wrong (the row reason is the engine's raw `detail`, not the dispatch site's prefix); the e2e's first run caught the positional-vs-`--thread` slip; decision record `docs/decisions/2026-09-06_budget-read-surface.md`; frontier → `.1.6.2`.
 - `2026-09-06`: `.1.6.2` done — the static shell: `crates/reasonbraid-server/web/{index.html,app.js,style.css}` embedded at compile time (`include_str!`) and served by a state-free `ui_router` at `/`, `/app.js`, `/style.css` (merged into the listener — one binary, no runtime paths, no build pipeline); the page is a READ-ONLY, text-safe client of the existing GET surfaces (dev-profile header + tenant, same-origin — every gate/denial/audit row applies exactly as to the CLI); the offline contract test enforces the page's honesty mechanically (only the documented GET paths, no write verb, no HTML assembly from data — its first run caught the page's OWN comment naming the forbidden API, reworded); the book gains the `web-ui` chapter; decision record `docs/decisions/2026-09-06_ui-embedding.md`; frontier → `.1.6.3`.
 - `2026-09-06`: `.1.6.3` done — the evidence leg: the demo's section-10 beat asserts the shell is served at `/` by the SAME binary that owns the API, that `app.js` references only the documented read surfaces and no write verb (curl as the browser stand-in — no browser needed), and that the page's live same-origin fetch with the dev header returns the demo's thread + its budget ledger (6 new checks, all PASS — the first run also caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); the bundle's summary and the book's two-host-demo chapter carry the beat; **`.1.6` is COMPLETE** (backlog 18) — frontier → `.1.7`.
+- `2026-09-06`: `.1.7` decomposed (gap census first: no `make dev`/dev script — the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`; no `deploy/`, no release build target, no install path — the demo builds DEBUG only; the LAN surfaces exist — `rb-server --host/--port`, the node's cross-host `--server`, compile-time-embedded migrations + UI — and the demo already carries a real ssh two-host mode — but nothing runs the release binaries and no server-side runbook exists) into `.1.7.1` (the one-command dev loop: `scripts/dev.sh` + `make dev`, ephemeral on-volume PG, foreground server, residue census) and `.1.7.2` (release packaging: `make release` + the `deploy/` runbook + the book's `deployment` chapter + the release-built demo proof); frontier → `.1.7.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

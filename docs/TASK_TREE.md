@@ -52,7 +52,7 @@ on the same commit. One commit per completed leaf.
 | [`RB-SEED`](tasks/RB-SEED.md) | `done` | `.3` — CLAIM_VERIFICATION adopted | repo-local |
 | [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-1` | repo-local |
 | [`PHASE-0`](tasks/PHASE-0.md) | `done` | tree complete — WP1–WP8 + `MAINT-1`/`MAINT-2`; next executable work is `PHASE-1.1` | repo-local |
-| [`PHASE-1`](tasks/PHASE-1.md) | `active` | `.1.3.1` — invitation lifecycle in the thread state machine (`.1.3` decomposed: invite→pending, accept/decline/expire/remove, dispatch-on-accept, join/subscriptions) | repo-local |
+| [`PHASE-1`](tasks/PHASE-1.md) | `active` | `.1.3.1` — the explicit-participants contract (invitation lifecycle + dispatch-on-accept) | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `proposed` | `.1` — identity/recovery | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `proposed` | `.1` — resource registry | repo-local |

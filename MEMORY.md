@@ -19,14 +19,16 @@
 - **Active tree:** `PHASE-1` → frontier `.1.3.1` (the `.1` coordinator leaf is **done**;
   `.1.2` is **complete**: enrollment · authenticated channel + lease/presence ·
   inbox hardening — backlogs 11–14 closed; `.1.3` is **decomposed** into `.1.3.1`
-  invitation lifecycle → `.1.3.2` dispatch-on-accept → `.1.3.3` join/subscriptions;
-  the dev node-id space is `nod_…` OR the `rol_…` role wire id the dev wiring serves).
-- **Next action:** implement `PHASE-1.3.1` — the invitation lifecycle in the thread
-  state machine: `thread.invite` records a PENDING invitation (typed optional
-  expiry), `thread.accept_invitation`/`thread.decline_invitation`/
-  `thread.remove_participant`, lazy expiry (derived, never swept), the invitation
-  IS the acceptance capability (no new grant), and an invited role may not act
-  until accepted.
+  (the explicit-participants contract: invitation lifecycle + dispatch-on-accept,
+  one contract) → `.1.3.2` (join/subscriptions); the dev node-id space is `nod_…`
+  OR the `rol_…` role wire id the dev wiring serves).
+- **Next action:** implement `PHASE-1.3.1` — the explicit-participants contract:
+  `thread.invite` records a PENDING invitation (typed optional expiry) and
+  enqueues NO work; `thread.accept_invitation` (invited role, new
+  `thread_invitation_respond` grant) transitions to `accepted` AND dispatches the
+  work item with its reservation; `thread.decline_invitation`,
+  `thread.remove_participant` (tenant_admin; core `revoked` state); expiry
+  derived from `expires_at`; invited roles may not act until accepted.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).

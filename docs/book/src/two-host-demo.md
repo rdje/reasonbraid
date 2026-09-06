@@ -52,6 +52,11 @@ its evidence.
    budget gate refuses it `failed_before_dispatch` before any provider contact.
 10. The human closes thread A: closure preserves the contribution AND the
     unresolved challenge; the audit view reconstructs the whole story.
+11. **The inspection console** (`.1.6.3`): the same binary that serves the API
+    serves the embedded page at `/`; the beat asserts the shell, that `app.js`
+    references ONLY the documented read surfaces and no write verb, and that
+    the page's live same-origin fetch (the dev-profile header, the exact
+    endpoints) returns the demo's thread and its budget ledger.
 
 ## Two real hosts
 

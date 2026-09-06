@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The demo proves the console without a browser; `.1.6` is complete (`PHASE-1.6.3`)
+
+- The two-host demo gains **section 10**: the console's evidence beat. The same binary that serves the API serves the embedded page at `/`; curl is the browser stand-in, so the beat asserts the shell marker, that `app.js` references ONLY the seven documented read surfaces, names no write verb, and that the page's live same-origin fetch (dev-profile header + tenant) returns the demo's thread and its budget ledger. 6 new checks, all PASS on the first run (the run also caught a cosmetic script slip — backticks in a check label execute as command substitution — fixed, re-verified).
+- The evidence bundle now carries `console-index.html`, `console-app.js`, `console-thread-a.json`, `console-budget-a.json` + a summary row; the book's two-host-demo chapter gains scenario step 11. Demo 24 PASS, `rc=0`; the full guard set green; `make gate` 13/13.
+- **`.1.6` is COMPLETE** — backlog 18 done (`.1.6.1` budget read surface, `.1.6.2` embedded static shell, `.1.6.3` demo/evidence leg). Frontier → `.1.7` (local/LAN deployment packaging).
+
 ## 2026-09-06 — The embedded static shell: a read-only console in one binary (`PHASE-1.6.2`)
 
 - `rb-server` now serves the inspection console at `/` (`/app.js`, `/style.css`): a vanilla HTML/JS page — no framework, no frontend build pipeline — **embedded at compile time** (`include_str!`), so the deployment stays a single binary with no runtime paths (§12). A state-free `ui_router` merged into the existing listener adds zero API routes.

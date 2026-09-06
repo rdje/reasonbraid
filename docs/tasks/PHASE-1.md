@@ -361,6 +361,9 @@ conversation without binding-governance claims.
     no frontend build pipeline, no framework; it mirrors the existing read
     surfaces and the CLI stays the primary surface. Recorded in
     `docs/decisions/2026-09-06_ui-direction.md`.
+  **COMPLETE (`2026-09-06`)** — backlog 18 done across the children:
+    `.1.6.1` the budget read surface (the census-found gap), `.1.6.2` the
+    embedded static shell, `.1.6.3` the demo/evidence leg.
   Gap census (`2026-09-06`, on pickup):
     - EXISTING read surfaces the page mirrors — `grep -n "route("
       crates/reasonbraid-server/src/api.rs` → `GET /v1/threads` (list: id/subject/state),
@@ -427,7 +430,7 @@ conversation without binding-governance claims.
       checklist below records the evidence.
 
   - ID: `PHASE-1.6.3`
-    Status: `proposed`
+    Status: `in_progress`
     Goal: the evidence leg — the two-host demo gains a UI beat (the shell is served,
       `app.js` references the exact endpoint paths the page consumes, and one live
       same-origin fetch with the dev header returns the demo's thread — the data the
@@ -436,6 +439,9 @@ conversation without binding-governance claims.
     Acceptance: the demo passes with the new beat (`rc=0`); the book's two-host-demo
       chapter notes the beat; the tree's verification/commit logs + frontier move on
       (`.1.7`); MEMORY/LIVE_STATUS/CHANGELOG in the same commit.
+    Done (`2026-09-06`): the demo's section-10 beat landed (5 new checks, all PASS on
+      the first run) and the bundle's summary + the book note carry it; the acceptance
+      checklist below records the evidence — **`.1.6` is COMPLETE**.
 
 - ID: `PHASE-1-MAINT-3`
   Status: `in_progress`
@@ -474,7 +480,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.6.3` | `proposed` | `.1.6.2` done — the embedded static shell serves at `/` (read-only, text-safe, contract-tested); the demo/evidence leg executes next, then `.1.6` completes |
+| 1 | `PHASE-1.7` | `proposed` | **`.1.6` is COMPLETE** (backlog 18: `.1.6.1` budget read + `.1.6.2` embedded shell + `.1.6.3` the demo beat); the deployment/packaging lane executes next |
 
 ## Changelog
 
@@ -504,6 +510,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `PHASE-1-MAINT-3` done — the toolchain pin: the `.1.6.1` verification found `cargo fmt --all -- --check` failing on hunks in files the leaf never touched (identical under BOTH installed rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`); the channel was `stable` everywhere and the stable channel moved since the tree's last fmt run (recent leaves verified clippy, not fmt); `rust-toolchain.toml` + CI now pin `1.98.0` and the tree was normalized once under it (`fmt rc=0`, clippy clean, 39 offline suites green); decision record `docs/decisions/2026-09-06_pinned-toolchain.md`. Frontier unchanged: `.1.6.1` (executes next — its live-PG run is green under the pin).
 - `2026-09-06`: `.1.6.1` done — the budget read surface: `GET /v1/threads/{id}/budget` is a read-only pass-through of the ledger (ceiling + every reservation row — held vs settled usage, denials with the engine's reasons; absent optional facts omitted, stored JSONB verbatim), gated by the existing `thread_inspect` path (role 403 + audit row); `rb inspect budget` mirrors it; the command_api suite's new test drives create→accept-dispatch (hold)→deny→GET→settle→GET→role-403 and its first run proved the surface right and the TEST wrong (the row reason is the engine's raw `detail`, not the dispatch site's prefix); the e2e's first run caught the positional-vs-`--thread` slip; decision record `docs/decisions/2026-09-06_budget-read-surface.md`; frontier → `.1.6.2`.
 - `2026-09-06`: `.1.6.2` done — the static shell: `crates/reasonbraid-server/web/{index.html,app.js,style.css}` embedded at compile time (`include_str!`) and served by a state-free `ui_router` at `/`, `/app.js`, `/style.css` (merged into the listener — one binary, no runtime paths, no build pipeline); the page is a READ-ONLY, text-safe client of the existing GET surfaces (dev-profile header + tenant, same-origin — every gate/denial/audit row applies exactly as to the CLI); the offline contract test enforces the page's honesty mechanically (only the documented GET paths, no write verb, no HTML assembly from data — its first run caught the page's OWN comment naming the forbidden API, reworded); the book gains the `web-ui` chapter; decision record `docs/decisions/2026-09-06_ui-embedding.md`; frontier → `.1.6.3`.
+- `2026-09-06`: `.1.6.3` done — the evidence leg: the demo's section-10 beat asserts the shell is served at `/` by the SAME binary that owns the API, that `app.js` references only the documented read surfaces and no write verb (curl as the browser stand-in — no browser needed), and that the page's live same-origin fetch with the dev header returns the demo's thread + its budget ledger (6 new checks, all PASS — the first run also caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); the bundle's summary and the book's two-host-demo chapter carry the beat; **`.1.6` is COMPLETE** (backlog 18) — frontier → `.1.7`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1367,6 +1374,50 @@ are the page assets (non-code per the seam, embedded at compile time).
   `docs/TASK_TREE.md` frontier, the book (`web-ui` chapter + SUMMARY),
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
+## Acceptance Checklist (PHASE-1.6.3)
+
+The CODE change owned by this leaf: `scripts/demo_two_host.sh` (matches `\.sh$` in
+`.doctrine/code_paths.txt`). `docs/book/src/two-host-demo.md` is the doc deliverable.
+
+- [x] **REPRODUCE / ISSUE** — `.1.6`'s evidence leg is open: the demo (the §26.1
+  repeatability proof) has no UI beat and its bundle has no console evidence —
+  `grep -n "console\|app.js\|inspection" scripts/demo_two_host.sh` → no matches
+  before this leaf, so the shipped console (`.1.6.2`) is not exercised anywhere a
+  browser exists.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the demo predates the console (the `.1.6.2`
+  shell landed after the demo's section 9); an unexercised surface drifts from its
+  own contract. The fix point is the demo's end (a new section 10, after both
+  threads closed — the page renders closed threads too) + the bundle's summary
+  table. The beat uses curl as the browser stand-in: the page's rendering is JS,
+  so the assertions target the SHELL and the exact data the page fetches — the
+  endpoint strings in `app.js` are the shell↔API contract, greppable without a
+  browser (`docs/decisions/2026-09-06_ui-embedding.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no UI beat, 18 PASS
+  checks. After: section 10 adds 6 checks — `bash scripts/run_pg_tests.sh` → the
+  two-host demo `ALL acceptance checks passed` (24 PASS, `rc=0`,
+  `target/evidence163_run.log`): the shell served at `/` (the marker), the assets
+  same-origin, `app.js` references ONLY the seven documented read surfaces, no
+  write verb, and the live same-origin fetch with the dev header returns the
+  demo's THREAD_A + its budget ceiling; the bundle's `summary.md` + the evidence
+  files (`console-index.html`, `console-app.js`, `console-thread-a.json`,
+  `console-budget-a.json`) carry the beat.
+- [x] **NO REGRESSION** — `bash -n scripts/demo_two_host.sh` → clean;
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`)
+  + CLI e2e `test result: ok. 2 passed` + the demo `ALL acceptance checks passed`
+  (24 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13 at commit; `make book`
+  builds. (The script is the only code change — its own full run is the selected
+  guard set per §16, plus the unchanged workspace gates.)
+- [x] **FIX** — `scripts/demo_two_host.sh` (section 10: the five checks + the four
+  evidence files + the summary row); `docs/book/src/two-host-demo.md` (scenario
+  step 11).
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book chapter — same commit. DEV_NOTES: no new
+  durable lesson (the beat restates the `ui-embedding` record's contract-check
+  discipline — `promotion: declined (the .1.6.2 decision record already owns the
+  no-browser contract-check lesson; this leaf adds no cross-cutting fact)`).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1389,6 +1440,7 @@ are the page assets (non-code per the seam, embedded at compile time).
 | `2026-09-06` | `PHASE-1-MAINT-3` | `cargo fmt --all -- --check` → `rc=0` under the pin (was `rc=1` under BOTH rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`, same hunks); `cargo clippy --all --all-targets -- -D warnings` → clean (rc=0); `cargo test --all` → 39 offline suites green (rc=0); `make gate` → 13/13 | the toolchain pin: `rust-toolchain.toml` + CI name `1.98.0` explicitly; the tree normalized once under it; the defect (HEAD not fmt-clean under current stable) is closed — drift can no longer arrive silently |
 | `2026-09-06` | `PHASE-1.6.1` | `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — under the pinned 1.98.0; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the budget read surface landed (`GET /v1/threads/{id}/budget` — read-only ledger pass-through, inspect-gated; `rb inspect budget`); the suite's first run proved the surface right and the TEST wrong (engine-detail reason), the e2e's first run caught the positional slip; the leaf's verification uncovered the toolchain drift → `PHASE-1-MAINT-3` closed first |
 | `2026-09-06` | `PHASE-1.6.2` | `cargo test -p reasonbraid-server --lib` → `test result: ok. 7 passed` (the unit suite grew 5→7: the page-contract test + the live-listener serving test); `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — the demo runs the REAL merged binary (the third router arm changes nothing); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the embedded static shell landed (`web/…` → `include_str!` → state-free `ui_router` at `/`); the contract test's first run caught the page's own comment naming the forbidden HTML-assembly API — reworded, rerun green; the `web-ui` book chapter documents the surface |
+| `2026-09-06` | `PHASE-1.6.3` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (24 PASS — 18 + the 6 console checks, `rc=0` both runs; the first run caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); `make gate` → 13/13; `make book` builds | the demo's section-10 console beat landed (shell served at `/`, `app.js` = the documented surfaces only, no write verb, the live same-origin fetches return the demo's thread + budget); **`.1.6` complete** (backlog 18) — frontier → `.1.7` |
 
 ## Commit Log
 
@@ -1412,3 +1464,4 @@ are the page assets (non-code per the seam, embedded at compile time).
 | `PHASE-1-MAINT-3` | `REASONBRAID-PHASE1-0024` | the toolchain pin: `rust-toolchain.toml` + CI pin `1.98.0`, the four drifted files normalized once under it — reproducible fmt/clippy, defect leaf closed |
 | `PHASE-1.6.1` | `REASONBRAID-PHASE1-0025` | the budget read surface: `GET /v1/threads/{id}/budget` (read-only ledger pass-through, inspect-gated) + `rb inspect budget` + command_api/e2e legs + decision record |
 | `PHASE-1.6.2` | `REASONBRAID-PHASE1-0026` | the embedded static shell: `web/{index.html,app.js,style.css}` → `ui_router` at `/` (read-only, text-safe, contract-tested) + the `web-ui` book chapter + decision record |
+| `PHASE-1.6.3` | `REASONBRAID-PHASE1-0027` | the demo's console beat (section 10: 6 checks + bundle evidence + the book's step 11); **`.1.6` complete** — backlog 18 done |

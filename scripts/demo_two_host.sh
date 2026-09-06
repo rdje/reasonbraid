@@ -486,6 +486,34 @@ check "closure preserved the contribution" bash -c \
 check "closure preserved the unresolved challenge" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -Eq '\"open_challenges\": *1'"
 
+# ── 10. the `.1.6` inspection console (`.1.6.3`: the embedded static shell) ─────
+
+# The page is served BY the server the demo already runs — the same binary that
+# owns the API. curl is the browser stand-in: the page's rendering is JS, so the
+# beat asserts the SHELL and the exact data the page fetches (no browser needed).
+curl -s "$SERVER_BASE/" > "$EVIDENCE/console-index.html"
+check "the inspection console is served at / (the embedded shell)" bash -c \
+    "grep -q 'inspection console' '$EVIDENCE/console-index.html'"
+check "the shell loads its assets from the same origin" bash -c \
+    "grep -q '/app.js' '$EVIDENCE/console-index.html' && grep -q '/style.css' '$EVIDENCE/console-index.html'"
+
+curl -s "$SERVER_BASE/app.js" > "$EVIDENCE/console-app.js"
+check "the page consumes ONLY the documented read surfaces" bash -c \
+    "for p in '/v1/threads?' '/v1/threads/' '/events?' '/audit?' '/budget?' '/v1/nodes/presence?node_id=' '/v1/nodes/inbox?node='; do grep -qF \"\$p\" '$EVIDENCE/console-app.js' || exit 1; done"
+check "the page is read-only (no write verb)" bash -c \
+    "! grep -q 'POST' '$EVIDENCE/console-app.js'"
+
+# One live same-origin fetch with the dev header — the exact data the page
+# renders when the user opens THREAD_A (the header the identity form sends).
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A?tenant_id=$TENANT" > "$EVIDENCE/console-thread-a.json"
+check "the page's data source returns the demo's thread (the live fetch)" bash -c \
+    "grep -q 'is the claim justified?' '$EVIDENCE/console-thread-a.json'"
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/budget?tenant_id=$TENANT" > "$EVIDENCE/console-budget-a.json"
+check "the page's budget view returns the ledger facts (.1.6.1)" bash -c \
+    "grep -q '\"ceiling\"' '$EVIDENCE/console-budget-a.json'"
+
 # ── evidence bundle ─────────────────────────────────────────────────────────────
 
 cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json > "$EVIDENCE/thread-a.json"
@@ -508,6 +536,7 @@ node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
     echo "| budget denial prevents a new dispatch | journal-b-inspect.txt: failed_before_dispatch=1, no revision in thread-b.json |"
     echo "| closure preserves contributions + objections | thread-a.json: closed, contribution + open_challenges=1 |"
     echo "| honest inconclusive outcome | thread-b.json: state inconclusive, the unresolved item rides the close event |"
+    echo "| inspection console (.1.6.3) | console-index.html (the embedded shell served at /) + console-app.js (the documented surfaces only, no write verb) + console-thread-a.json / console-budget-a.json (the live same-origin fetches) |"
     echo "| reproducible evidence bundle | this directory — rerun with the commands in timeline.txt |"
 } > "$EVIDENCE/summary.md"
 

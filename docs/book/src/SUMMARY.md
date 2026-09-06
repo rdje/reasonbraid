@@ -6,3 +6,4 @@
 - [The node channel](node-channel.md)
 - [The adapter boundary](adapter-boundary.md)
 - [Authority](authority.md)
+- [Budgets](budget.md)

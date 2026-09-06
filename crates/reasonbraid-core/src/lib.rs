@@ -35,6 +35,7 @@
 //! `docs/decisions/2026-09-06_reason-codes.md`.
 
 mod authority;
+mod budget;
 mod envelope;
 mod error;
 mod id;
@@ -46,6 +47,7 @@ pub use authority::{
     EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass,
     TargetSelector, UnknownAuthorityName,
 };
+pub use budget::{BudgetDimensions, BudgetError, ReservationReference};
 pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};
 pub use error::{DomainError, KnownReasonCode, ReasonCode, Retryability};
 pub use id::{

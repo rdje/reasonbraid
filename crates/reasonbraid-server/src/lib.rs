@@ -24,6 +24,7 @@
 //! API are later leaves (`.3.2` completes WP3; WP5/WP6 follow).
 
 mod authority;
+mod budget;
 mod node_channel;
 mod outbox;
 mod tx;
@@ -31,6 +32,10 @@ mod tx;
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
     AuthorizationOutcome, AuthorizedApplyError, CommandAuthz, GrantRefused,
+};
+pub use budget::{
+    create_ceiling, create_reservation, release_reservation, settle_reservation, Reservation,
+    Settlement,
 };
 pub use node_channel::{
     node_router, AckRequest, AckResponse, AmbiguousAttempt, ApiError, Directive, EventReceipt,

@@ -32,10 +32,65 @@ use reasonbraid_adapter::{
     Adapter, AttemptEvent, AttemptResult, InvokeOutcome, NormalizedUsage, RunRequest,
     StatusLookupOutcome,
 };
-use reasonbraid_core::{ProviderAttemptId, ProviderAttemptState};
+use reasonbraid_core::{
+    BudgetDimensions, BudgetError, ProviderAttemptId, ProviderAttemptState, ReservationReference,
+};
 use serde_json::json;
+use tokio::sync::Mutex;
 
 use crate::journal::{Journal, JournalError, ProvenStatus};
+
+/// The node's LOCAL budget ledger (§14.3 step 4: "the node verifies a signed/
+/// authorized reservation AND local headroom before dispatch"). Development profile:
+/// in-memory per-node state — the server-side ceiling is the durable counterpart.
+pub struct LocalBudget {
+    ceiling: BudgetDimensions,
+    consumed: Mutex<BudgetDimensions>,
+}
+
+impl LocalBudget {
+    pub fn new(ceiling: BudgetDimensions) -> Self {
+        Self {
+            ceiling,
+            consumed: Mutex::new(BudgetDimensions::default()),
+        }
+    }
+
+    /// Reserve against local headroom; fails closed when the ceiling does not cover
+    /// (consumed + dims) — the second boundary of the WP5 acceptance.
+    pub async fn try_reserve(&self, dims: &BudgetDimensions) -> Result<(), BudgetError> {
+        let mut consumed = self.consumed.lock().await;
+        let next = consumed.add(dims);
+        if !self.ceiling.covers(&next) {
+            return Err(BudgetError::Unavailable {
+                detail: "local headroom does not cover the reservation".to_string(),
+            });
+        }
+        *consumed = next;
+        Ok(())
+    }
+
+    /// Settle a completed attempt: the hold is replaced by ACTUAL usage (which may
+    /// exceed it — the ledger records the fact; never clamped).
+    pub async fn settle(&self, reserved: &BudgetDimensions, usage: &BudgetDimensions) {
+        let mut consumed = self.consumed.lock().await;
+        let released = consumed.subtract(reserved).unwrap_or_default();
+        *consumed = released.add(usage);
+    }
+
+    /// Release a hold that was never consumed (pre-dispatch refusals).
+    pub async fn release(&self, reserved: &BudgetDimensions) {
+        let mut consumed = self.consumed.lock().await;
+        if let Ok(next) = consumed.subtract(reserved) {
+            *consumed = next;
+        }
+    }
+
+    /// The currently consumed dimensions (a test/inspection surface).
+    pub async fn consumed(&self) -> BudgetDimensions {
+        *self.consumed.lock().await
+    }
+}
 
 /// What one supervised attempt produced.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +103,8 @@ pub struct ExecutionReport {
     pub chunks: Vec<String>,
     /// The normalized usage, when the adapter reported a receipt.
     pub usage: Option<NormalizedUsage>,
+    /// The reservation this dispatch ran under (the WP6 correlation key).
+    pub reservation_id: String,
 }
 
 /// A typed supervision error.
@@ -101,9 +158,41 @@ pub async fn execute_attempt(
     adapter: &impl Adapter,
     operation_id: &str,
     request: &RunRequest,
+    reservation: &ReservationReference,
+    local: &LocalBudget,
 ) -> Result<ExecutionReport, SupervisorError> {
     let now = Utc::now();
     let attempt_id = ProviderAttemptId::new().to_string();
+
+    // 0. THE budget gate: no dispatch without an applicable reservation (§14.3 step 4,
+    // §14.6) — verified at BOTH boundaries: the reference itself, and the node's
+    // local headroom. A refusal is journaled as `failed_before_dispatch` (audited)
+    // and the adapter is never invoked.
+    let attempt_id_ref = &attempt_id;
+    let refused = |reason: String| async move {
+        journal
+            .record_failed_before_dispatch(attempt_id_ref, Some(&reason), now)
+            .await?;
+        Ok(ExecutionReport {
+            attempt_id: attempt_id_ref.clone(),
+            final_state: ProviderAttemptState::FailedBeforeDispatch,
+            chunks: Vec::new(),
+            usage: None,
+            reservation_id: reservation.reservation_id.clone(),
+        })
+    };
+    if let Err(e) = reservation.applicable() {
+        journal
+            .prepare_attempt(&attempt_id, operation_id, now)
+            .await?;
+        return refused(format!("no applicable reservation: {e}")).await;
+    }
+    if let Err(e) = local.try_reserve(&reservation.dimensions).await {
+        journal
+            .prepare_attempt(&attempt_id, operation_id, now)
+            .await?;
+        return refused(format!("local budget refused the dispatch: {e}")).await;
+    }
 
     // 1 + 2. The attempt exists, and the dispatch boundary record is DURABLE before
     // the adapter is ever invoked (§17.4; the .3.1 boundary rule).
@@ -118,11 +207,14 @@ pub async fn execute_attempt(
             journal
                 .record_failed_before_dispatch(&attempt_id, Some(&reason), now)
                 .await?;
+            // Nothing was consumed: return the hold to the local pool.
+            local.release(&reservation.dimensions).await;
             Ok(ExecutionReport {
                 attempt_id,
                 final_state: ProviderAttemptState::FailedBeforeDispatch,
                 chunks: Vec::new(),
                 usage: None,
+                reservation_id: reservation.reservation_id.clone(),
             })
         }
         InvokeOutcome::Accepted(ack, mut handle) => {
@@ -163,6 +255,17 @@ pub async fn execute_attempt(
             match terminal {
                 Some(Terminal::Completed(usage)) => {
                     let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
+                    // Settle ACTUAL usage against the hold (overruns land in the
+                    // local ledger as-is — recorded, never clamped).
+                    let actual = BudgetDimensions::attempt_usage(
+                        normalized
+                            .as_ref()
+                            .and_then(|u| u.input_tokens.map(|v| v as u64)),
+                        normalized
+                            .as_ref()
+                            .and_then(|u| u.output_tokens.map(|v| v as u64)),
+                    );
+                    local.settle(&reservation.dimensions, &actual).await;
                     journal
                         .record_completed(&attempt_id, usage.as_ref(), now)
                         .await?;
@@ -171,17 +274,21 @@ pub async fn execute_attempt(
                         final_state: ProviderAttemptState::Completed,
                         chunks,
                         usage: normalized,
+                        reservation_id: reservation.reservation_id.clone(),
                     })
                 }
                 Some(Terminal::FailedKnown(reason)) => {
                     journal
                         .record_failed_known(&attempt_id, Some(&json!({ "reason": reason })), now)
                         .await?;
+                    let actual = BudgetDimensions::attempt_usage(None, None);
+                    local.settle(&reservation.dimensions, &actual).await;
                     Ok(ExecutionReport {
                         attempt_id,
                         final_state: ProviderAttemptState::FailedKnown,
                         chunks,
                         usage: None,
+                        reservation_id: reservation.reservation_id.clone(),
                     })
                 }
                 None => {
@@ -207,11 +314,21 @@ pub async fn execute_attempt(
                                     now,
                                 )
                                 .await?;
+                            let actual = BudgetDimensions::attempt_usage(
+                                normalized
+                                    .as_ref()
+                                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
+                                normalized
+                                    .as_ref()
+                                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
+                            );
+                            local.settle(&reservation.dimensions, &actual).await;
                             Ok(ExecutionReport {
                                 attempt_id,
                                 final_state: ProviderAttemptState::Completed,
                                 chunks,
                                 usage: normalized,
+                                reservation_id: reservation.reservation_id.clone(),
                             })
                         }
                         StatusLookupOutcome::Supported(AttemptResult::FailedKnown { reason }) => {
@@ -224,17 +341,25 @@ pub async fn execute_attempt(
                                     now,
                                 )
                                 .await?;
+                            let actual = BudgetDimensions::attempt_usage(None, None);
+                            local.settle(&reservation.dimensions, &actual).await;
                             Ok(ExecutionReport {
                                 attempt_id,
                                 final_state: ProviderAttemptState::FailedKnown,
                                 chunks,
                                 usage: None,
+                                reservation_id: reservation.reservation_id.clone(),
                             })
                         }
-                        StatusLookupOutcome::Unsupported => Err(SupervisorError::OutcomeUnknown {
-                            attempt_id: attempt_id.clone(),
-                            detail: "status lookup unsupported by the adapter".to_string(),
-                        }),
+                        StatusLookupOutcome::Unsupported => {
+                            // The hold stays in place: an ambiguous attempt MAY have
+                            // consumed (§14.6 — release only amounts not potentially
+                            // consumed). Settlement/adjudication owns the release.
+                            Err(SupervisorError::OutcomeUnknown {
+                                attempt_id: attempt_id.clone(),
+                                detail: "status lookup unsupported by the adapter".to_string(),
+                            })
+                        }
                     }
                 }
             }

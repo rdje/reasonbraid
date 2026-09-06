@@ -12,15 +12,14 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.5.2` (`pending`); WP1 + WP2 + WP3 +
-  WP4 complete (`.4.1` adapter contract + fake + corpus + supervisor; `.4.2` first REAL
-  harness = Codex CLI, qualified live; Claude recommendation Phase 1, director-owned);
-  `.5.1` done — the authority engine (enrollment boundary ceiling, scoped grants,
-  audit record in the command transaction, SHA-256 policy digest).
-- **Next action:** WP5 budget reservation + denial path — no provider dispatch without
-  an applicable reservation (`.5.2`).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.6.1` (`pending`); WP1 + WP2 + WP3 +
+  WP4 + **WP5 complete** — `.5.1` authority engine (boundary ceiling, scoped grants,
+  audited decisions), `.5.2` budget engine (reserve-before-dispatch at BOTH
+  boundaries; overruns recorded; indeterminate attempts keep their hold).
+- **Next action:** WP6 CLI — enroll, create thread, invite, contribute, challenge,
+  revise, close, inspect (`.6.1`).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.5.1`.
+- **In-flight uncommitted work:** none after `PHASE-0.5.2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — the full `make check`/`gate`/`deny`/`secret-scan`/`book` stack runs locally.
 - **Blockers:** none.

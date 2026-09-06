@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP5 budget: one invariant, two ledgers, and a mandatory parameter that audits its own refusals
+
+- **The acceptance is one sentence enforced twice:** "no provider dispatch without an applicable reservation" — the SERVER refuses to issue what the ceiling cannot cover (with a denial ROW), and the NODE refuses to dispatch what it has not been issued (journaled `failed_before_dispatch`, adapter never invoked — proven with a counting adapter). Two ledgers, one invariant (§14.3 step 4 is a LOCAL check by design).
+- **Fail-closed coverage caught its own doc lie.** The first `covers` shipped with a doc comment claiming untracked dimensions "impose no constraint" while the code denied them; the tests exposed the contradiction and fail-closed was pinned. A ceiling that does not meter a dimension cannot vouch for it — period.
+- **Refusals are results, not errors.** A refused dispatch returns a `FailedBeforeDispatch` report with the reason journaled as evidence — the attempt trail is complete for what did NOT happen. This matches `.5.1`'s denial-row philosophy (the audit covers refusals).
+- **Indeterminate attempts keep their hold** (§14.6: release only amounts not potentially consumed). This cost the supervisor a deliberate asymmetry: pre-dispatch refusals release, completions settle actual usage, ambiguity holds — and the hold is the signal that adjudication is still owed.
+- **Patch surgery on tests is a smell.** Mass-editing call sites with regex + helper insertion produced THREE distinct mangling rounds (nested helpers, dropped parens, misattached `#[tokio::test]`). The lesson: when a signature change touches many call sites, edit the files directly and compile after each file — not regex-batch then fix-forward.
+- Promoted to `docs/decisions/2026-09-06_budget-reservation.md` (`answers:` present). **WP5 complete; frontier `.6.1`.**
+
 ## _(2026-09-06)_ — WP5 authority: the subset checker was more precise than the fixtures, and that is the point
 
 - **The temporal subset rule caught the fixtures before they caught it.** The first live run failed 6/9: every grant "outlived its boundary" because each fixture helper read its own `Utc::now()` — a grant built microseconds after its boundary exceeded the window by those microseconds. A wall-clock-skew bug class that a weaker checker would have shipped silently; the fixtures now use wide boundary windows, and the failure itself is the evidence the rule binds.

@@ -44,5 +44,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority)
-        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority -- --nocapture
+      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority + budget)
+        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget -- --nocapture

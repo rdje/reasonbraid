@@ -230,8 +230,8 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP5 — Identity, authority, budget (`KICKOFF` issues 10–11; backlog 11, 24)
 
 - ID: `PHASE-0.5`
-  Status: `pending`
-  Goal: development enrollment ceiling, scoped commands, reservation before dispatch (`.5.1` authority done; `.5.2` budget pending)
+  Status: `done`
+  Goal: development enrollment ceiling, scoped commands, reservation before dispatch
   Depends on: `PHASE-0.1`, `PHASE-0.2`
   Children: `PHASE-0.5.1`, `PHASE-0.5.2`
 
@@ -244,11 +244,11 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0020`
 
 - ID: `PHASE-0.5.2`
-  Status: `pending`
+  Status: `done`
   Goal: call/token/time reservation and budget denial path
   Acceptance: no provider dispatch without an applicable reservation; denial tests cross server and node
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0021`
 
 ### WP6 — Two-host vertical experiment (`KICKOFF` issues 12–13)
 
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.5.2` | `pending` | WP5 call/token/time reservation + budget denial path — the `.5.1` authority engine is in place (grant → decision → audit record, all in the command's transaction), and `.5.2`'s acceptance ("no provider dispatch without an applicable reservation") builds directly on it |
+| 1 | `PHASE-0.6.1` | `pending` | WP6 CLI — enroll, create thread, invite, contribute, challenge, revise, close, inspect ("no database surgery required to inspect state") — WP5 is complete (authority + budget), so the vertical slice's command surface can now be authorized AND budgeted end to end |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -819,6 +819,63 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
   `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to
   `PHASE-0.5.2`; README unchanged.
 
+## Acceptance Checklist (PHASE-0.5.2)
+
+The `crates/reasonbraid-core` budget module (`.rs`), the `crates/reasonbraid-server`
+budget engine (`.rs`), the repository-root `migrations/0005_budget.sql`, the
+`crates/reasonbraid-node` supervisor gate + `LocalBudget` (`.rs`), the new test suites,
+`scripts/run_pg_tests.sh` + `.github/workflows/rust.yml`, and `Cargo.lock` are the CODE
+change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
+`TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §14.3/§14.6 + KICKOFF WP5 require "no
+  provider dispatch begins without an applicable budget reservation" and "denial tests
+  cross both server and node boundaries". Before this leaf,
+  `git ls-files 'crates/*' | grep -i budget` → nothing: the `.4.1` supervisor
+  dispatched the adapter with NO reservation check on either side — a ceiling could
+  neither hold nor deny anything.
+- [x] **ADDRESSED (verified)** — landed the core `BudgetDimensions` model (fail-closed
+  `covers`, total fallible `add`/`subtract`, `ReservationReference.applicable()`), the
+  server engine (`create_reservation` atomic against held, denial rows,
+  `settle_reservation` with overrun reporting, `release_reservation`, expiry via the
+  caller's clock), and the node gate (`execute_attempt` requires a reservation +
+  `LocalBudget` headroom BEFORE the dispatch boundary; refusals journaled
+  `failed_before_dispatch`; settlement with actual usage; indeterminate attempts keep
+  their hold). `bash scripts/run_pg_tests.sh` → `test result: ok. 5 passed` (`budget`)
+  against live PostgreSQL 16.15 — within-ceiling holds / beyond-ceiling denied AND
+  recorded; settlement frees the unused remainder; release frees everything; expired
+  reservations stop holding; overruns reported, never clamped, double-settlement a
+  no-op. `cargo test -p reasonbraid-node --test supervisor_budget` →
+  `test result: ok. 4 passed` — a reservation covering no dispatch is refused BEFORE
+  the boundary record (a counting adapter proves it was never invoked); exhausted
+  local headroom refused with the reason journaled; completed attempts settle ACTUAL
+  usage (100 tokens, not the 5000 hold); an indeterminate attempt KEEPS its hold.
+  `cargo test -p reasonbraid-core` → `test result: ok. 35 passed`.
+- [x] **NO REGRESSION** — `make check` → fmt clean + `cargo clippy --all-targets
+  --all-features -- -D warnings` no warnings + `cargo test --all` → all 22 suites green
+  (core `35 passed`; adapter `3 + 12 + 9`; node `17 + 8 + 6 + 10 + 2 + 4 + 1 ignored`;
+  server `9 + 5 + 13 + 5 + 7` skip offline); `bash scripts/run_pg_tests.sh` →
+  `5 + 9 + 5 + 13 + 7 passed` on live PostgreSQL 16.15; `make gate` →
+  `=== all doctrines green ===` (13/13); `make deny` → `advisories ok, bans ok,
+  licenses ok, sources ok`; `make secret-scan` → `no leaks found`; `make book` →
+  HTML written.
+- [x] **FIX** — new `crates/reasonbraid-core/src/budget.rs` (+ lib.rs exports); new
+  `crates/reasonbraid-server/src/budget.rs` (+ lib.rs exports); new
+  `migrations/0005_budget.sql`; `crates/reasonbraid-node/src/supervisor.rs` gains the
+  reservation gate + `LocalBudget` + `ExecutionReport.reservation_id`; all supervisor
+  call sites updated (fake/codex-stub/live suites); new
+  `crates/reasonbraid-server/tests/budget.rs` (5) +
+  `crates/reasonbraid-node/tests/supervisor_budget.rs` (4);
+  `scripts/run_pg_tests.sh` + the CI `pg-tests` job run the fifth suite; `Cargo.lock`
+  updated.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_budget-reservation.md`
+  (`answers:` present, measured behavior + rejected designs) + INDEX row; the mdBook
+  gains `docs/book/src/budget.md` + its SUMMARY entry; `knowledge-map/subsystems.md`
+  rows updated (core budget model; server budget engine; node supervisor gate);
+  `docs/ci.md` notes the fifth PG suite; `CHANGELOG.md` / `DEV_NOTES.md` /
+  `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to
+  `PHASE-0.6.1`; README unchanged.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -840,6 +897,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `2026-09-06` | `PHASE-0.2.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed; 0 failed` (`outbox_worker`) + `5 passed` (`atomic_transaction`) on live PostgreSQL 16.15 — exclusive claim, reclaim-after-expiry with new token, stale worker refused after newer fencing value, expired lease refused, kill points 3/4/5 to one effect; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (chrono added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_outbox-worker-fencing.md` + INDEX row | WP2 leased outbox worker proven: claim → deliver → complete with per-claim fencing tokens; **WP2 complete** |
 | `2026-09-06` | `PHASE-0.3.1` | `cargo test -p reasonbraid-node` → `test result: ok. 13 passed` (journal) + `test result: ok. 6 passed` (CLI) + `test result: ok. 10 passed` (kill points KP-1…KP-9 + end-to-end); `cargo test -p reasonbraid-core` → `test result: ok. 24 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 13 + 6 + 10 node + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (clap + libsqlite3-sys; path dep pinned); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-journal.md` + INDEX row | WP3 node journal proven: WAL + synchronous=FULL recorded, boundary record precedes dispatch, honest `outcome_unknown` recovery with prove/reconcile exits, read-only `rb-journal` CLI |
 | `2026-09-06` | `PHASE-0.3.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 13 passed` (`node_channel`) + `5 passed` (`atomic_transaction`) + `7 passed` (`outbox_worker`) against live PostgreSQL 16.15 over real 127.0.0.1 sockets — fresh handshake plays the whole inbox, tail-only reconnect, duplicate delivery keeps the same operation ids, schedulability gate (emit refused before reconcile; failed reconcile stays unschedulable), both reconciliation directive cases, original-id re-emission + known-event skip, server restart resume, cursor-ahead refusal, poll tail, version-mismatch/forged-field rejection, double emission → one receipt; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 17 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (axum + reqwest); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-channel.md` + INDEX row | WP3 outbound node channel proven: cursor resume + reconciliation handshake + schedulability gate; **WP3 complete** |
+| `2026-09-06` | `PHASE-0.5.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 5 passed` (`budget`) + `5 + 9 + 13 + 7 passed` against live PostgreSQL 16.15 — hold/deny-and-record, settle-frees-remainder, release, expiry, overrun-reported-never-clamped; `cargo test -p reasonbraid-node --test supervisor_budget` → `test result: ok. 4 passed` (refusal before the boundary with a never-invoked adapter, local headroom denial, actual-usage settlement, indeterminate keeps its hold); `cargo test -p reasonbraid-core` → `test result: ok. 35 passed`; `make check` → fmt clean + clippy no warnings + all 22 suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_budget-reservation.md` + INDEX row | WP5 budget engine proven: reserve-before-dispatch at both boundaries; **WP5 complete** |
 | `2026-09-06` | `PHASE-0.5.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 9 passed` (`authority`) + `5 passed` + `7 passed` + `13 passed` against live PostgreSQL 16.15 — membership-without-grant denied and audited with no domain effect, admin never implied, accepted commands carry actor + delegated subject + grant/boundary + decision + a re-derivable 64-hex policy digest, overreaching grants refused at creation, scope/expiry/boundary-less denials, stable digests; `cargo test -p reasonbraid-core` → `test result: ok. 31 passed`; `make check` → fmt clean + clippy no warnings + all 20 suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (sha2); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_authority-boundary.md` + INDEX row | WP5 authority engine proven: boundary ceiling + scoped grants + audit records in the command transaction |
 | `2026-09-06` | `PHASE-0.4.2` | `RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored --nocapture` → `test result: ok. 1 passed` (one bounded REAL Codex dispatch through the real supervisor + journal: completed, streamed thread id attached, exact usage, honest `Unsupported` lookup); `cargo test -p reasonbraid-adapter --test codex_adapter` → `test result: ok. 9 passed` (offline stub boundary); `cargo test -p reasonbraid-node --test supervisor_codex_stub` → `test result: ok. 2 passed`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 + 9 adapter + 17 + 8 + 6 + 10 + 2 + 1 ignored node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_real-adapter-codex.md` + evidence report + INDEX rows | WP4 first real harness qualified (Codex-family CLI, `exec --json`); ledger revalidated; **WP4 complete** |
 | `2026-09-06` | `PHASE-0.4.1` | `cargo test -p reasonbraid-adapter` → `test result: ok. 12 passed` (fake) + `test result: ok. 3 passed` (corpus integrity incl. mechanical credential scan); `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake` — corpus drives every outcome to its journal terminal; lost response without lookup → `outcome_unknown` with no retry language; proven lookup → `completed`; ack ≠ completion at the journal boundary); `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 adapter + 17 + 8 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` + `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_fake-adapter.md` + INDEX row | WP4 fake harness adapter proven: scripted oracle + sanitized corpus + supervisor ambiguity path; three real bugs found by the corpus/probes (boundary-vs-refusal edge, Notify race, terminal-event loop) |
@@ -864,6 +922,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `PHASE-0.2.2` | `REASONBRAID-PHASE0-0014` | `crates/reasonbraid-server` leased outbox worker (`outbox.rs`) + `migrations/0002_outbox_worker.sql` + kill-point/fencing tests + harness updates + outbox-worker-fencing decision record |
 | `PHASE-0.3.1` | `REASONBRAID-PHASE0-0015` | `crates/reasonbraid-node` SQLite journal (WAL + synchronous=FULL, boundary-before-boundary) + read-only `rb-journal` CLI + kill-point tests; core gains `failed_known` + §11.3 provider-lookup edges; node-journal decision record; mdBook chapter |
 | `PHASE-0.3.2` | `REASONBRAID-PHASE0-0016` | `crates/reasonbraid-server` node channel (durable inbox, replay, directives, axum routes) + `migrations/0003` + node-side client/facade (Offline/Reconciling/Schedulable) + journal channel state + 13 cross-crate channel tests + node-channel decision record; mdBook chapter |
+| `PHASE-0.5.2` | `REASONBRAID-PHASE0-0021` | `crates/reasonbraid-core` budget model (fail-closed dimensions, reservation reference) + `crates/reasonbraid-server` budget engine (reserve/settle/release/deny, `migrations/0005`) + node supervisor reservation gate + `LocalBudget` + budget tests on both boundaries + budget-reservation decision record; mdBook budget chapter |
 | `PHASE-0.5.1` | `REASONBRAID-PHASE0-0020` | `crates/reasonbraid-core` authority model (boundary ceiling, grants, subset checker, policy digest, decision record) + `crates/reasonbraid-server` authority engine (create/refuse, authorize + audit row, `apply_authorized_command`) + `migrations/0004` + 9 live-PG tests + authority-boundary decision record; mdBook authority chapter |
 | `PHASE-0.4.2` | `REASONBRAID-PHASE0-0019` | `crates/reasonbraid-adapter` Codex CLI adapter (`exec --json` subprocess) + contract `ProviderRequestId` + supervisor/journal handling + offline stub suite + env-gated live test + real-adapter-codex decision record + qualification evidence report + ledger revalidation; mdBook real-adapter section |
 | `PHASE-0.4.1` | `REASONBRAID-PHASE0-0018` | `crates/reasonbraid-adapter` (contract + scripted fake + sanitized 10-fixture corpus) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge + fake-adapter decision record; mdBook chapter |
@@ -887,6 +946,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 - `2026-09-06`: `PHASE-0.2.2` WP2 leased outbox worker — `outbox.rs` claim/deliver/complete (each phase its own commit, per-claim fencing tokens, caller-supplied clock), `migrations/0002_outbox_worker.sql` (lease+fencing columns, `outbox_delivery` dedupe sink), 7 kill-point/fencing tests, `docs/decisions/2026-09-06_outbox-worker-fencing.md`. **WP2 complete.** Frontier is `.3.1`.
 - `2026-09-06`: `PHASE-0.3.1` WP3 node journal — `crates/reasonbraid-node` (WAL + `synchronous=FULL` recorded in `journal_meta`, `record_dispatch` commits before the adapter runs, `recover` → `outcome_unknown`, `prove_result`/`reconcile` exits, command/operation dedupe, boundary ledger, ack cursor), read-only `rb-journal` CLI (inspect/pending/ambiguous), KP-1…KP-9 kill-point sweep, core machine extended (`failed_known` + §11.3 provider-lookup edges), `docs/decisions/2026-09-06_node-journal.md`, mdBook node-journal chapter. Frontier is `.3.2`.
 - `2026-09-06`: `PHASE-0.3.2` WP3 outbound node channel — server-side durable inbox (`migrations/0003_node_inbox.sql`, replay from the node's reported cursor, handshake directives, deduplicated event receipts, axum routes) + node-side client and `Offline → Reconciling → Schedulable` facade, journal channel state, 13 cross-crate channel tests over real localhost sockets + live PostgreSQL, `docs/decisions/2026-09-06_node-channel.md`, mdBook node-channel chapter. **WP3 complete.** Frontier is `.4.1`.
+- `2026-09-06`: `PHASE-0.5.2` WP5 budget engine — core `BudgetDimensions` (fail-closed coverage, total fallible arithmetic), server reserve/settle/release/deny against the ceiling (`migrations/0005_budget.sql`, denial rows are the audit), and the node supervisor's dispatch gate (reservation + `LocalBudget` headroom before the boundary; refusals audited `failed_before_dispatch`; indeterminate attempts keep their hold), `docs/decisions/2026-09-06_budget-reservation.md`, mdBook budget chapter. **WP5 complete.** Frontier is `.6.1`.
 - `2026-09-06`: `PHASE-0.5.1` WP5 authority engine — core boundary/grant/decision model (deterministic subset checker enforced at creation AND evaluation; SHA-256 policy digest) + server `apply_authorized_command` (audit record + `.2.1` writes in one transaction; denials audited and effect-free), `migrations/0004_authority.sql`, 9 live-PG tests, `docs/decisions/2026-09-06_authority-boundary.md`, mdBook authority chapter. Frontier is `.5.2`.
 - `2026-09-06`: `PHASE-0.4.2` WP4 first real harness — `CodexCliAdapter` supervising `codex exec --json` (qualified live on codex-cli 0.153.4: one bounded real dispatch through the real supervisor + journal), streamed thread id attached as the provider handle, honest `Unsupported` status lookup, offline stub suite, `docs/decisions/2026-09-06_real-adapter-codex.md`, qualification evidence report (second adapter recommended for Phase 1 — director-owned), Codex ledger row revalidated. **WP4 complete.** Frontier is `.5.1`.
 - `2026-09-06`: `PHASE-0.4.1` WP4 fake harness adapter — `crates/reasonbraid-adapter` (capability-declaring contract: ack ≠ completion, no credential field, unsupported lookup is never retry advice; deterministic scripted `FakeAdapter`; ten-fixture sanitized corpus with mechanical credential scan) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge, `docs/decisions/2026-09-06_fake-adapter.md`, mdBook adapter-boundary chapter. Frontier is `.4.2`.

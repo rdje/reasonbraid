@@ -9,7 +9,8 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use reasonbraid_adapter::{Adapter, CodexCliAdapter, RunRequest, StatusLookupOutcome};
-use reasonbraid_node::{execute_attempt, CommandInput, Journal, SupervisorError};
+use reasonbraid_core::{BudgetDimensions, ReservationReference};
+use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget, SupervisorError};
 use serde_json::json;
 
 fn journal_path(name: &str) -> PathBuf {
@@ -60,6 +61,28 @@ esac
     path
 }
 
+fn reservation(tag: &str) -> ReservationReference {
+    ReservationReference {
+        reservation_id: format!("res_{tag}"),
+        dimensions: BudgetDimensions {
+            calls: Some(1),
+            input_tokens: Some(1_000_000),
+            output_tokens: Some(1_000_000),
+            wall_clock_seconds: Some(3600),
+        },
+        issued_at: Utc::now(),
+    }
+}
+
+fn generous_local() -> LocalBudget {
+    LocalBudget::new(BudgetDimensions {
+        calls: Some(1000),
+        input_tokens: Some(100_000_000),
+        output_tokens: Some(100_000_000),
+        wall_clock_seconds: Some(10_000_000),
+    })
+}
+
 fn request_with(prompt: &str) -> RunRequest {
     RunRequest {
         payload: json!({ "prompt": prompt }),
@@ -100,9 +123,16 @@ async fn completion_attaches_the_streamed_provider_handle_and_lands_completed() 
     let op = seed_operation(&journal, "complete").await;
     let adapter = CodexCliAdapter::with_binary(stub_binary("complete"));
 
-    let report = execute_attempt(&journal, &adapter, &op, &request_with("ok"))
-        .await
-        .expect("the stub completes");
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &request_with("ok"),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect("the stub completes");
     assert_eq!(report.final_state.as_str(), "completed");
     assert_eq!(report.chunks, vec!["done".to_string()]);
     let usage = report.usage.expect("usage reported");
@@ -127,9 +157,16 @@ async fn lost_response_with_unsupported_lookup_is_outcome_unknown_never_retry() 
     let op = seed_operation(&journal, "lost").await;
     let adapter = CodexCliAdapter::with_binary(stub_binary("lost"));
 
-    let err = execute_attempt(&journal, &adapter, &op, &request_with("lose it"))
-        .await
-        .expect_err("an indeterminate attempt must not report success");
+    let err = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &request_with("lose it"),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect_err("an indeterminate attempt must not report success");
     let SupervisorError::OutcomeUnknown { attempt_id, .. } = &err else {
         panic!("expected OutcomeUnknown, got {err}");
     };

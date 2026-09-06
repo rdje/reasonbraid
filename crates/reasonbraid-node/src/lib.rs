@@ -45,4 +45,4 @@ pub use journal::{
     DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
 };
 pub use node::{Node, NodeError, NodeState};
-pub use supervisor::{execute_attempt, ExecutionReport, SupervisorError};
+pub use supervisor::{execute_attempt, ExecutionReport, LocalBudget, SupervisorError};

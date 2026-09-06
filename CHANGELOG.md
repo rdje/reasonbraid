@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP5 budget engine: reserve before dispatch, at both boundaries (`PHASE-0.5.2`)
+
+- Landed the budget model in `reasonbraid-core/src/budget.rs`: multi-dimensional `BudgetDimensions` (calls, tokens in/out, wall-clock) with **fail-closed** coverage — a requested dimension the ceiling does not meter is refused, never silently allowed (§14.1/§14.6) — total fallible arithmetic (an over-release is a typed underflow, never saturating), and the `ReservationReference` a node verifies before dispatching.
+- Landed the server engine (`reasonbraid-server/src/budget.rs` + `migrations/0005_budget.sql`): `create_reservation` checks the ceiling against everything held (active unexpired reservations + settled usage) in one transaction — refusals are **denial rows** (the audit trail covers what was NOT reserved); `settle_reservation` records ACTUAL usage (lower frees the difference; higher is an **overrun reported in full**, never clamped); `release_reservation` returns the hold; expired reservations stop holding on the caller's clock.
+- The node supervisor gained the **dispatch gate**: `execute_attempt` now REQUIRES a `ReservationReference` and `LocalBudget` headroom, both checked BEFORE the dispatch boundary record — a refusal is journaled `failed_before_dispatch` (audited) and the adapter is never invoked. Completed attempts settle actual usage locally; **an indeterminate attempt KEEPS its hold** (§14.6: release only amounts not potentially consumed).
+- Proven live: `tests/budget.rs` → `5 passed` (hold/deny-and-record, settle-frees-remainder, release, expiry, overrun) + node `supervisor_budget` → `4 passed` (refusal before the boundary with a counting adapter proving zero invocations, local headroom denial, actual-usage settlement, held-through-ambiguity); core `35 passed`; all five live-PG suites green (5+9+5+13+7); `make check`/`gate` 13-13/`deny`/`secret-scan`/`book` green.
+- Recorded `docs/decisions/2026-09-06_budget-reservation.md` (`answers:` present). The mdBook gains the budgets chapter. **WP5 complete; frontier is `PHASE-0.6.1`.**
+
 ## 2026-09-06 — WP5 authority engine: boundary ceiling, scoped grants, audited decisions (`PHASE-0.5.1`)
 
 - Landed the authority model in `reasonbraid-core/src/authority.rs`: `EnrollmentAuthorityBoundary` (the §4.4 root/parent-granted ceiling), scoped `AuthorityGrant`s (typed actions `thread_create/invite/contribute/inspect` + explicit `tenant_admin`, tenant-wide or thread-set selectors), and the deterministic **subset checker** — a grant's actions, risk ceiling, spend limits, delegation, and validity window must each fit inside its boundary.

@@ -17,7 +17,8 @@ use reasonbraid_adapter::{
     CancellationStrength, DispatchAck, FakeAdapter, InvokeOutcome, NormalizedUsage,
     PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence,
 };
-use reasonbraid_node::{execute_attempt, CommandInput, Journal, SupervisorError};
+use reasonbraid_core::{BudgetDimensions, ReservationReference};
+use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget, SupervisorError};
 use serde_json::{json, Value};
 
 /// A unique journal path under the repo's build dir (same volume as the repo).
@@ -32,6 +33,28 @@ fn journal_path(name: &str) -> PathBuf {
     let dir = base.join("journal-tests").join(format!("{name}-{nanos}"));
     std::fs::create_dir_all(&dir).unwrap();
     dir.join("node.db")
+}
+
+fn reservation(tag: &str) -> ReservationReference {
+    ReservationReference {
+        reservation_id: format!("res_{tag}"),
+        dimensions: BudgetDimensions {
+            calls: Some(1),
+            input_tokens: Some(1_000_000),
+            output_tokens: Some(1_000_000),
+            wall_clock_seconds: Some(3600),
+        },
+        issued_at: Utc::now(),
+    }
+}
+
+fn generous_local() -> LocalBudget {
+    LocalBudget::new(BudgetDimensions {
+        calls: Some(1000),
+        input_tokens: Some(100_000_000),
+        output_tokens: Some(100_000_000),
+        wall_clock_seconds: Some(10_000_000),
+    })
 }
 
 fn run_request() -> RunRequest {
@@ -97,7 +120,16 @@ async fn fixture_corpus_drives_each_auto_outcome_to_its_expected_terminal() {
         let adapter = FakeAdapter::from_spec(spec.clone());
         let expected = spec.expected_terminal.as_deref().unwrap();
 
-        match execute_attempt(&journal, &adapter, &op, &run_request()).await {
+        match execute_attempt(
+            &journal,
+            &adapter,
+            &op,
+            &run_request(),
+            &reservation("bud"),
+            &generous_local(),
+        )
+        .await
+        {
             Ok(report) => {
                 assert_eq!(
                     report.final_state.as_str(),
@@ -143,9 +175,16 @@ async fn lost_response_without_lookup_is_outcome_unknown_and_never_recommends_re
     let op = seed_operation(&journal, "lost").await;
     let adapter = fixture_adapter("lose_response_no_lookup");
 
-    let err = execute_attempt(&journal, &adapter, &op, &run_request())
-        .await
-        .expect_err("an indeterminate attempt must not report success");
+    let err = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &run_request(),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect_err("an indeterminate attempt must not report success");
 
     let SupervisorError::OutcomeUnknown { attempt_id, .. } = &err else {
         panic!("expected OutcomeUnknown, got {err}");
@@ -168,9 +207,16 @@ async fn lost_response_with_lookup_is_proven_completed_with_the_proof_handle() {
     let op = seed_operation(&journal, "provable").await;
     let adapter = fixture_adapter("lose_response_with_lookup");
 
-    let report = execute_attempt(&journal, &adapter, &op, &run_request())
-        .await
-        .expect("a proven result must succeed");
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &run_request(),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect("a proven result must succeed");
     assert_eq!(report.final_state.as_str(), "completed");
     assert!(journal.ambiguous_attempts().await.unwrap().is_empty());
 
@@ -199,7 +245,15 @@ async fn hang_until_confirmed_cancel_leaves_outcome_unknown() {
     let task_adapter = Arc::clone(&adapter);
     let task_op = op.clone();
     let task = tokio::spawn(async move {
-        execute_attempt(&task_journal, &*task_adapter, &task_op, &run_request()).await
+        execute_attempt(
+            &task_journal,
+            &*task_adapter,
+            &task_op,
+            &run_request(),
+            &reservation("bud"),
+            &generous_local(),
+        )
+        .await
     });
 
     // Wait for the dispatch boundary to be durably recorded (the hang is entered).
@@ -239,9 +293,16 @@ async fn ignore_cancellation_still_completes() {
     let op = seed_operation(&journal, "ignore").await;
     let adapter = fixture_adapter("ignore_cancellation");
 
-    let report = execute_attempt(&journal, &adapter, &op, &run_request())
-        .await
-        .expect("the script completes despite an ignored cancellation");
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &run_request(),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect("the script completes despite an ignored cancellation");
     assert_eq!(report.final_state.as_str(), "completed");
 }
 
@@ -253,9 +314,16 @@ async fn streaming_chunks_pass_through_verbatim_including_malformed_ones() {
     let op = seed_operation(&journal, "malformed").await;
     let adapter = fixture_adapter("malformed_output");
 
-    let report = execute_attempt(&journal, &adapter, &op, &run_request())
-        .await
-        .expect("malformed output must not fail the drive");
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &run_request(),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect("malformed output must not fail the drive");
     assert_eq!(report.final_state.as_str(), "completed");
     assert_eq!(report.chunks.len(), 2);
     assert_eq!(report.chunks[0], "valid prefix");
@@ -270,9 +338,16 @@ async fn usage_receipts_are_normalized_with_honest_confidence() {
     let op = seed_operation(&journal, "usage").await;
     let adapter = fixture_adapter("usage_receipt");
 
-    let report = execute_attempt(&journal, &adapter, &op, &run_request())
-        .await
-        .expect("usage fixture completes");
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &op,
+        &run_request(),
+        &reservation("bud"),
+        &generous_local(),
+    )
+    .await
+    .expect("usage fixture completes");
     let usage = report.usage.expect("a receipt was reported");
     assert_eq!(usage.input_tokens, Some(100));
     assert_eq!(usage.output_tokens, Some(10));
@@ -295,7 +370,15 @@ async fn dispatch_acknowledgement_is_distinct_from_completion_in_the_journal() {
     let task_adapter = Arc::clone(&adapter);
     let task_op = op.clone();
     let task = tokio::spawn(async move {
-        execute_attempt(&task_journal, &*task_adapter, &task_op, &run_request()).await
+        execute_attempt(
+            &task_journal,
+            &*task_adapter,
+            &task_op,
+            &run_request(),
+            &reservation("bud"),
+            &generous_local(),
+        )
+        .await
     });
 
     // The adapter has dispatched (ack sent) but NOT completed yet.

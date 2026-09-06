@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — README_POLICY re-adopted: derived caps and routing-pressure closure (`PHASE-0-MAINT-1`)
+
+- `README_POLICY.md` re-adopted at the upstream 2026 revision (fenced ReasonBraid adoption note + neutral body: Authority and provenance, duplication probe, Routing pressure closure, derived caps, unconditional-check rule, 9-step checklist).
+- `scripts/check_readme_stability.sh` rewritten: **derived caps** (60 lines / 2,400 bytes from the reviewed 47-line / 1,772-byte landing page — template defaults retired), **routing-pressure closure** over `.doctrine/readme_routes.txt` (17 governed rows; prefix closure; transitive control-field leg), the CHANGELOG **96,000-byte rotation threshold** (the measured 48,495-byte baseline recorded as governed debt), and a `--self-test` arm. The closure leg's first run caught three genuinely unrouted destinations (`COMMIT.md`, `docs/adr/…`, the `<bedrock-url>` placeholder) — all given governed rows or reworded.
+- Guard falsification matrix: cap override → red; injected unrouted link → red (tree restored byte-identical); malformed registry row → red; self-test ground truth → ok.
+- Decision record `docs/decisions/2026-09-06_readme-policy-readoption.md` (+ `answers:`) and INDEX row; DOCTRINE_ENFORCEMENT mirror updated. `make gate` → 13/13 green at commit.
+
 ## 2026-09-06 — Phase 0 exit gate closed: ADR-002 signed by the accountable owner, PHASE-1 opened (`PHASE-0.8.2`)
 
 - The accountable owner signed ADR-002 (**GO**, `accepted`) via an explicit session decision — **Phase 0 formally exits** (KICKOFF §7: "a named owner signs a go, rework, pivot, or stop record"). `docs/adr/002-phase1-scope.md` (status + signature line) and the ADR INDEX updated; the PHASE-1 tree opened (`active`, frontier `.1` unblocked); PHASE-0 Blockers resolved; LIVE_STATUS: Phase 0 → Done, Phase 1 → Not Started.

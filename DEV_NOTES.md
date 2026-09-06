@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — README_POLICY re-adoption: the closure leg caught real destinations on its first run
+
+- **The routing-pressure-closure leg reproduced the upstream cautionary tale in miniature.** The moment the guard actually censused the tree it flagged three genuinely unrouted destinations — `COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, and the `<bedrock-url>` placeholder inside the scaffold span — plus a real measured legacy ceiling (`CHANGELOG.md` at 48,495 bytes against a provisional 10,240). A guard that had never been asked the question could never have caught them; the upstream policy's 1,547,057-byte neighboring sink starts exactly this way.
+- **Derived caps beat template defaults.** 300 lines / 16,384 bytes was meaningless for a 47-line landing page; 60 / 2,400 is the reviewed survivor plus explicit headroom, and raising it now requires a task-tree decision — the cap became a contract instead of folklore.
+- **BSD `cut` on a no-delimiter line prints the WHOLE line (GNU prints empty).** The control-field census initially swallowed the registry's comment lines and flagged `README.md` / `scripts/check_readme_stability.sh` as unrouted destinations. Fix: `grep -v '^#'` before the field cut. Portability lesson for every future bash guard.
+- Promoted to `docs/decisions/2026-09-06_readme-policy-readoption.md` (`answers:` present). **Frontier `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive).**
+
 ## _(2026-09-06)_ — Phase 0 exit gate closed: the owner signs the go record, the agent records it
 
 - **The signature closes a gate that only the owner can close.** ADR-002 moved `proposed` → `accepted` on the accountable owner's explicit session decision ("Sign ADR-002 (GO) now"), and the ADR's signature line records WHO signed and WHEN — the agent drafts and records; the signature itself is the owner's act. KICKOFF §7's last item ("a named owner signs a go, rework, pivot, or stop record") is now satisfied, so Phase 0 formally exits and the PHASE-1 tree opens at `.1`.

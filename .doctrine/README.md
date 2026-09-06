@@ -8,8 +8,9 @@ turns a portable standard into a fork of it — that is what these seams exist t
 |---|---|---|
 | `code_paths.txt` | `TASK-ACCEPTANCE` | one extended regular expression per line: what counts as a **code change** here. Absent ⇒ the built-in Rust-workspace default (`crates/`, `src/`, `scripts/`, `*.rs`, `*.sh`, `Makefile`). |
 | `evidence_tokens.txt` | `TASK-ACCEPTANCE` | one extended regular expression per line: **your** tools' output signatures, ADDED to the universal defaults. Absent ⇒ defaults only. |
+| `readme_routes.txt` | `README-STABILITY` | one row per routed destination: `path\|class\|pressure control\|owner` — every destination the README, the policy, or the guard's routing hint names must end at a governed terminal (a row's path governs that path and everything under it). Absent ⇒ the guard refuses. |
 
-Blank lines and `#` comments are ignored in both.
+Blank lines and `#` comments are ignored in all three.
 
 ## When to declare evidence tokens
 

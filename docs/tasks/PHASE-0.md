@@ -316,10 +316,18 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### Maintenance — spine/policy upkeep
 
 - ID: `PHASE-0-MAINT-1`
-  Status: `pending`
+  Status: `done`
   Goal: review and adopt the revised `README_POLICY.md` (upstream fsmgen copy has been updated; the repo-local copy is the older revision)
-  Blocked on: director decision on adoption timing (word given 2026-09-06 — next)
+  Blocked on: director decision on adoption timing (word given 2026-09-06 — executed)
   Scope: deliberate local review of the upstream diff (fenced adoption note; "Authority and provenance"; "Routing pressure closure" with per-destination-class pressure controls; derived line/byte caps instead of example values; unconditional check rule; 9-step adoption checklist), then — if adopted — tighten `scripts/check_readme_stability.sh` from template defaults to derived caps and wire a routed-destination inventory; record the decision in `docs/decisions/`.
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0027`
+
+- ID: `PHASE-0-MAINT-2`
+  Status: `pending`
+  Goal: remove every remaining "bedrock" reference — the repo self-identifies as ReasonBraid only (director directive 2026-09-06)
+  Blocked on: nothing — queued after `PHASE-0-MAINT-1`
+  Scope: sweep tracked files for `bedrock`/`BEDROCK` (README landing page + `<bedrock-url>` placeholder, LIVE_STATUS, bootstrap docs, scaffold scripts, provenance notes in `COMMIT.md` and the doctrine checkers); reword each to ReasonBraid-owned naming while preserving the facts (provenance dates/decisions stay, the token goes); keep every gate green.
   Verification: pending
   Commit: pending
 
@@ -327,7 +335,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0-MAINT-1` | `pending` | README_POLICY upstream revision review — the director's word was given 2026-09-06; executing next |
+| 1 | `PHASE-0-MAINT-2` | `pending` | remove every "bedrock" reference — ReasonBraid-only naming (director directive 2026-09-06); after it the tree completes |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -347,7 +355,8 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - **Resolved (`.8.2`):** ADR-002 is signed by the accountable owner (2026-09-06) — the
   Phase 0 exit gate (KICKOFF §7) is closed. Nothing blocks the frontier; `PHASE-0-MAINT-1`
-  executes next, after which the tree completes.
+  is done and `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive) executes
+  next, after which the tree completes.
 
 ## Acceptance Checklist (PHASE-0.0.7)
 
@@ -1097,6 +1106,51 @@ changes no executable surface).
   `promotion: declined (the acceptance is recorded IN the ADR itself —
   docs/adr/002-phase1-scope.md; no separate cross-cutting fact beyond it)`.
 
+## Acceptance Checklist (PHASE-0-MAINT-1)
+
+The CODE change owned by this leaf is `scripts/check_readme_stability.sh` (matches
+`\.sh$` in `.doctrine/code_paths.txt`); `README_POLICY.md`, `.doctrine/readme_routes.txt`,
+the decision record, and the index row are non-code. Enforced by the `TASK-ACCEPTANCE`
+doctrine.
+
+- [x] **REPRODUCE / ISSUE** — `diff -q README_POLICY.md /Volumes/SSD/Documents/github/fsmgen/README_POLICY.md`
+  → `Files … differ` (REVISED-UPSTREAM): the upstream adds a fenced local-adoption note,
+  "Authority and provenance", "Routing pressure closure", derived caps, the unconditional-check
+  rule, a duplication probe, and a 9-step checklist; the repo-local copy was the 71-line older
+  revision and the guard shipped template defaults (300/16,384) with no routing inventory.
+- [x] **ROOT CAUSE (WHY + WHERE)** — two gaps, pinpointed by reading the guard and the diff:
+  (1) `scripts/check_readme_stability.sh` lines 25–31 used `README_LINE_CAP:-300` /
+  `README_BYTE_CAP:-16384` TEMPLATE defaults — meaningless ceilings for a 47-line landing page
+  (the upstream policy: derive from the reviewed survivor, never copy example values);
+  (2) there was NO routing-pressure-closure leg — the destinations the README and the guard's
+  hint name (`grep -c 'unrouted' scripts/check_readme_stability.sh` → `0`) had no governed
+  terminal, the exact defect class the upstream's 1,547,057-byte cautionary tale documents.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: template caps, no closure leg,
+  no inventory file. After: `bash scripts/check_readme_stability.sh` → `OK — README.md is 47/60
+  lines, 1772/2400 bytes; 17 routes governed (48495 bytes, threshold 96000); closure ok.`
+  (exit 0); `bash scripts/check_readme_stability.sh --self-test` → `self-test ok (extraction +
+  closure + caps ground truth)` (exit 0); falsification arms each turned the guard RED:
+  `README_LINE_CAP=1 bash scripts/check_readme_stability.sh` → exit 1 (`47 lines (> cap 1)`);
+  injected `[x](NOPE.md)` → `unrouted destination: NOPE.md`, exit 1 (README restored
+  byte-identical to HEAD); malformed registry row → `malformed route row … 'BOGUS.md'`, exit 1
+  (registry restored). The closure leg's FIRST run caught three genuinely unrouted destinations
+  (`COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, the `<bedrock-url>` placeholder) and a
+  real measured legacy ceiling (`CHANGELOG.md` 48,495 bytes vs the provisional 10,240) — each
+  given a governed row or reworded; the provisional threshold was replaced by the reviewed
+  96,000-byte rotation threshold with the baseline recorded as debt.
+- [x] **NO REGRESSION** — `make gate` → `=== all doctrines green ===` (13/13) at commit
+  (README-STABILITY, MEMORY-ARCH, TASK-ACCEPTANCE, TABLE-ARITY, LESSON-PROMOTION, … all green);
+  the changelog-leakage and policy-reachability legs of the guard are unchanged and still pass;
+  `make check`/`make book` untouched by this leaf (no Rust, no book chapter covers the guard).
+- [x] **FIX** — `README_POLICY.md` re-adopted at the upstream 2026 revision with a fenced
+  ReasonBraid adoption note; `scripts/check_readme_stability.sh` rewritten (derived caps,
+  prefix-governed routing closure with a transitive control-field leg, CHANGELOG rotation
+  threshold, `--self-test`, refuse-rather-than-skip extended to the registry and CHANGELOG);
+  `.doctrine/readme_routes.txt` (17 governed rows); `docs/decisions/2026-09-06_readme-policy-readoption.md`
+  + INDEX row; the `DOCTRINE_ENFORCEMENT.md` registry mirror updated.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted: the decision record gained `answers:`),
+  MEMORY, LIVE_STATUS, this tree's log below, `docs/TASK_TREE.md` frontier — same commit.
+
 ## Verification Log
 
 
@@ -1131,6 +1185,8 @@ changes no executable surface).
 
 | `2026-09-06` | `PHASE-0.8.2` | docs-only; ADR-002 `Status: accepted` + owner signature line recorded (`grep -n "signed 2026-09-06" docs/adr/002-phase1-scope.md`); ADR INDEX row `accepted`; `docs/tasks/PHASE-1.md` `Status: active` with `.1` unblocked; `make gate` → `=== all doctrines green ===` (13/13); `make check`/`make book` unaffected (no code paths) | Phase 0 exit gate closed — ADR-002 signed by the accountable owner; PHASE-1 opened at `.1`; frontier is `PHASE-0-MAINT-1` |
 
+| `2026-09-06` | `PHASE-0-MAINT-1` | `bash scripts/check_readme_stability.sh` → `OK — README.md is 47/60 lines, 1772/2400 bytes; 17 routes governed (48495 bytes, threshold 96000); closure ok.`; `--self-test` → ok; falsification arms red (cap override exit 1; injected `NOPE.md` → unrouted exit 1; malformed row exit 1 — tree restored byte-identical each time); `make gate` → `=== all doctrines green ===` (13/13); first-run closure caught 3 real unrouted destinations + the CHANGELOG legacy ceiling | README_POLICY re-adopted at the 2026 revision (fenced adoption note + neutral body): derived caps 60/2,400, routing-pressure closure over 17 governed routes, CHANGELOG 96,000-byte rotation threshold, guard `--self-test`; decision record + INDEX row |
+
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
@@ -1160,6 +1216,7 @@ changes no executable surface).
 | `PHASE-0.7` | `REASONBRAID-PHASE0-0024` | the WP7 benchmark: `src/bench/` (corpus/grader/scripted/workflows/report) + the `rb-bench` binary + `bench/v1/` corpus/prompts + `tests/bench_harness.rs` (corpus-carried oracle self-test); two real-run-caught fixes with regression tests (critique/revision prompt split; honesty-trap echoed numbers); deliberation-benchmark decision record; evidence report + INDEX; mdBook benchmark chapter |
 | `PHASE-0.8.1` | `REASONBRAID-PHASE0-0025` | the WP8 gate package: evidence manifest + ADR set + SubtractionRecord + ADR-002 (GO, proposed) + risk-register refresh (two new rows) + INDEX rows; no code change |
 | `PHASE-0.8.2` | `REASONBRAID-PHASE0-0026` | Phase 0 exit gate closed: ADR-002 signed by the accountable owner (explicit session decision), ADR INDEX → accepted, PHASE-1 tree opened at `.1`, Blockers resolved, live docs lockstep; docs-only |
+| `PHASE-0-MAINT-1` | `REASONBRAID-PHASE0-0027` | README_POLICY re-adopted (2026 revision + fenced ReasonBraid adoption note); guard rewritten — derived 60/2,400 caps, routing-pressure closure over `.doctrine/readme_routes.txt`, CHANGELOG 96,000-byte rotation threshold, `--self-test`; decision record + INDEX; DOCTRINE_ENFORCEMENT mirror row |
 
 ## Changelog
 
@@ -1189,3 +1246,4 @@ changes no executable surface).
 - `2026-09-07`: `PHASE-0.7` WP7 deliberation/routing benchmark — `crates/reasonbraid-adapter` gains `src/bench/` (versioned corpus + deterministic graders + scripted agent + four-workflow runner + spread-bearing report) + the `rb-bench` binary + `bench/v1/{corpus,prompts}.json` + `tests/bench_harness.rs` (the corpus carries its own scoring oracle; computed == expected proven over 8×4); the REAL Codex run (36 bounded calls, `RB_LIVE_CODEX=1`) caught two harness defects the scripted oracle cannot see (critique/revision template conflation; honesty-trap echoed numbers) — fixed with regression tests; the corrected run's NULL result (structure did not beat single at 2–4× cost) narrows the routing claim for WP8; `docs/decisions/2026-09-07_deliberation-benchmark.md`, `docs/evidence/2026-09-07_benchmark-codex-run.md` + INDEX rows, mdBook benchmark chapter. **WP7 complete.** Frontier is `.8`.
 - `2026-09-07`: `PHASE-0.8.1` WP8 Phase 0 decision and subtraction package — evidence manifest (G0 map + fixtures + failures + commands), ADR-set audit map, the §19.8 SubtractionRecord (non-empty throughout), ADR-002 (Phase 1 GO recommendation, `proposed` — signature line pending the director), risk register refreshed (R-AMB mitigated, R-VALUE narrowed, R-VARIANCE + R-OVERHEAD added), INDEX rows; no code change; the 2×-estimate review is not triggered (≈9.5 vs 8–14 engineer-weeks, recorded). **WP8 complete; the PHASE-0 tree is exhausted — the formal exit awaits the director's signature on ADR-002.** Frontier is `PHASE-0-MAINT-1` (director's word).
 - `2026-09-06`: `PHASE-0.8.2` Phase 0 exit gate closed — the accountable owner signed ADR-002 (GO, `accepted`, explicit session decision recorded in the ADR + ADR INDEX), `docs/tasks/PHASE-1.md` opened (`active`, frontier `.1` unblocked), Blockers resolved; docs-only commit. **Phase 0 formally exits (KICKOFF §7).** Frontier is `PHASE-0-MAINT-1` (executing next).
+- `2026-09-06`: `PHASE-0-MAINT-1` README_POLICY re-adoption — the policy is re-adopted at the upstream 2026 revision (fenced ReasonBraid adoption note + the neutral body incl. Authority and provenance, Routing pressure closure, derived caps, the unconditional-check rule, and the 9-step checklist); `scripts/check_readme_stability.sh` rewritten: derived caps 60 lines/2,400 bytes from the reviewed 47/1,772-byte survivor, routing-pressure closure over `.doctrine/readme_routes.txt` (17 governed rows; the closure leg's first run caught `COMMIT.md`, `docs/adr/…`, and the `<bedrock-url>` placeholder as genuinely unrouted), CHANGELOG 96,000-byte rotation threshold (the 48,495-byte baseline recorded as governed debt), and a `--self-test` arm; falsification runs turned the guard red on demand and restored the tree byte-identical; decision record `docs/decisions/2026-09-06_readme-policy-readoption.md` + INDEX row; DOCTRINE_ENFORCEMENT mirror updated. Frontier is `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive).

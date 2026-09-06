@@ -51,7 +51,7 @@ on the same commit. One commit per completed leaf.
 | [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock | repo-local |
 | [`RB-SEED`](tasks/RB-SEED.md) | `done` | `.3` — CLAIM_VERIFICATION adopted | repo-local |
 | [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-0` | repo-local |
-| [`PHASE-0`](tasks/PHASE-0.md) | `active` | `MAINT-1` — README_POLICY upstream review (director's word given; executing) | repo-local |
+| [`PHASE-0`](tasks/PHASE-0.md) | `active` | `MAINT-2` — bedrock-reference cleanup (ReasonBraid-only naming, director directive) | repo-local |
 | [`PHASE-1`](tasks/PHASE-1.md) | `active` | `.1` — LAN monolith (unblocked by the ADR-002 signature) | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `proposed` | `.1` — identity/recovery | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |

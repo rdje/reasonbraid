@@ -46,6 +46,7 @@
 - [`2026-09-06_node-channel.md`](docs/decisions/2026-09-06_node-channel.md)
 - [`2026-09-06_node-journal.md`](docs/decisions/2026-09-06_node-journal.md)
 - [`2026-09-06_outbox-worker-fencing.md`](docs/decisions/2026-09-06_outbox-worker-fencing.md)
+- [`2026-09-06_readme-policy-readoption.md`](docs/decisions/2026-09-06_readme-policy-readoption.md)
 - [`2026-09-06_real-adapter-codex.md`](docs/decisions/2026-09-06_real-adapter-codex.md)
 - [`2026-09-06_reason-codes.md`](docs/decisions/2026-09-06_reason-codes.md)
 - [`2026-09-06_state-transitions.md`](docs/decisions/2026-09-06_state-transitions.md)

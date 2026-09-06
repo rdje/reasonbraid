@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP2 leased outbox worker: three commit points, per-claim fencing tokens, and a queue that owns its tests
+
+- `ROADMAP.md` §17.3 / KICKOFF WP2 require leased claims plus "fencing tokens prevent a stale worker from committing after a newer lease," but `.2.1` left the outbox write-only. The fix is a three-phase loop where **each phase is its own commit point** — `claim_ready` (atomic `UPDATE … FOR UPDATE SKIP LOCKED` issuing a fresh `gen_random_uuid()` token + expiry + attempt++), `deliver` (dedupe sink keyed on `event_id`), `complete` (`WHERE lease_token = current AND lease_until > now`; otherwise `LeaseLost`). KICKOFF's kill points 3–5 are precisely the seams between those commits.
+- **Fencing has two independent legs, both load-bearing:** a superseded claim fails the token check; an expired lease fails the liveness check *even with a matching token* (it must re-claim first). An attempt-CAS alone (the cheaper rejected design) cannot refuse the second case.
+- **The clock is caller-supplied** (`chrono` → `TIMESTAMPTZ` via sqlx's `chrono` feature): tests advance past a lease expiry by passing `now + 61s`, never by sleeping or faking the DB clock.
+- **The first live run failed 7/7 and the failure taught the real lesson** (TOOLBOX: probed, not guessed): the outbox is ONE shared queue, and my tests ran in parallel — each test's global oldest-first claim stole rows other tests (and the `atomic_transaction` binary) had seeded, and even single-threaded runs leaked leased-but-incomplete rows into later tests once their leases lapsed. The suite now serializes under a module-level async mutex, purges the queue under the guard, and cleans its own item at the end. A shared queue demands exclusive ownership from its tests; the worker API itself was correct throughout.
+- Rejected designs recorded in the decision record: dispatching inside the claim (collapses kill points), a worker-global epoch table (per-claim token suffices; epoch earns its keep only for Phase 2 all-items quarantine), DB-clock expiry, and a `next_eligible_at` backoff column (nothing fails delivery yet — Phase 2 retry policy will add it).
+- Promoted to `docs/decisions/2026-09-06_outbox-worker-fencing.md` (`answers:` present). **WP2 complete; frontier `.3.1`.**
+
 ## _(2026-09-06)_ — WP2 atomic transaction: claim-first idempotency, four tables in one commit
 
 - `ROADMAP.md` §8.6 / KICKOFF WP2 require "one transaction writes current state, ordered event, idempotency result, and outbox item," but nothing enforced it — four autocommit `INSERT`s could tear, and a "check-then-insert" idempotency check races under redelivery. The fix is structural: `apply_command` claims the `(tenant_id, idempotency_key)` primary key **first** (`INSERT … ON CONFLICT DO NOTHING`), so the unique index is the concurrency control — a redelivered message either replays (same hash → original stored result) or conflicts (different hash).

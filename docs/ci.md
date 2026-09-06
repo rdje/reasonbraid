@@ -11,7 +11,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
 | `rust` | format, clippy (deny warnings), test | `make check` |
-| `rust` (job `pg-tests`) | the WP2 atomic-transaction tests against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
+| `rust` (job `pg-tests`) | the WP2 PostgreSQL integration tests — atomic transaction (`.2.1`) and leased outbox worker with fencing + kill points (`.2.2`) — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
@@ -28,7 +28,8 @@ The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
   (`brew install gitleaks`). Scans working tree and history for secrets; `--redact` keeps
   any finding out of the log.
 - `bash scripts/run_pg_tests.sh` — the WP2 PostgreSQL proof: `initdb` into a temp dir,
-  start an ephemeral server on a throwaway port, run the atomic-transaction tests, and tear
+  start an ephemeral server on a throwaway port, run both integration suites (the
+  atomic-transaction tests and the outbox-worker fencing/kill-point tests), and tear
   everything down (no background service left running). **Requires** `postgresql@16`
   (`brew install postgresql@16`).
 

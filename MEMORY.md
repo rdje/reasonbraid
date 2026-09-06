@@ -12,10 +12,12 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.2.2` (`pending`); WP1 done, WP2 atomic transaction done.
-- **Next action:** WP2 leased outbox worker with fencing + kill-point tests (`.2.2`).
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.3.1` (`pending`); WP1 + WP2 (atomic
+  transaction `.2.1`, leased outbox worker with fencing `.2.2`) complete.
+- **Next action:** WP3 SQLite node journal — WAL mode + explicit durability, journal
+  inspection CLI (`.3.1`).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.2.1`.
+- **In-flight uncommitted work:** none after `PHASE-0.2.2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — the full `make check`/`gate`/`deny`/`secret-scan`/`book` stack runs locally.
 - **Blockers:** none.

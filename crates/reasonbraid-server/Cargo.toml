@@ -1,6 +1,7 @@
 # reasonbraid-server — the control-plane crate (KICKOFF.md §3): HTTP/SSE, command handlers,
 # PostgreSQL transactions. WP2 (.2.1) lands the atomic state/event/idempotency/outbox
-# transaction first; the HTTP/SSE surface and the leased worker are later leaves.
+# transaction; .2.2 lands the leased outbox worker with fencing; the HTTP/SSE surface and
+# the node channel are later leaves.
 [package]
 name = "reasonbraid-server"
 version = "0.1.0"
@@ -11,6 +12,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# Minimal chrono for the outbox worker's caller-supplied lease clock (`chrono::DateTime<Utc>`
+# binds to TIMESTAMPTZ via sqlx's `chrono` feature). default-features=false keeps it small.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde_json = "1"
 # tls-none: local/CI Postgres is reached over a plaintext socket (sslmode=disable), so no
 # TLS backend is pulled in — which also keeps the dependency tree (and its license surface)
@@ -22,7 +26,8 @@ sqlx = { version = "0.8", default-features = false, features = [
     "migrate",
     "macros", # for `sqlx::migrate!` (runtime-applied; we still use the runtime query API)
     "json",
+    "chrono", # TIMESTAMPTZ <-> chrono DateTime<Utc> for the worker lease clock
 ] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }

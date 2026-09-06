@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP2 leased outbox worker with fencing (`PHASE-0.2.2`)
+
+- Landed `crates/reasonbraid-server/src/outbox.rs`: the worker loop is three phases, each its own commit — `claim_ready` (one atomic `UPDATE … FOR UPDATE SKIP LOCKED` leasing ready items with a fresh `gen_random_uuid()` fencing token, expiry, and incremented `attempt`), `deliver` (deduplicated `outbox_delivery` sink keyed on `event_id`), and `complete` (acknowledges only with the CURRENT token AND a live lease — otherwise `LeaseLost`, nothing written). The lease clock is caller-supplied (`chrono` ↔ `TIMESTAMPTZ` via sqlx), so kill-point tests advance expiry deterministically with no sleeps.
+- Added `migrations/0002_outbox_worker.sql` (0001 stays immutable): `lease_owner`/`lease_token`/`lease_until`/`attempt` with an all-or-nothing CHECK + claim index, and the `outbox_delivery` sink whose FK chain (`→ outbox → event_log`) makes a delivery effect imply a durable event.
+- Proved the acceptance against live PostgreSQL 16.15: `scripts/run_pg_tests.sh` → `7 passed` (outbox worker) + `5 passed` (atomic transaction). Tests: exclusive claim under concurrent workers, re-claim after expiry issues a new token, **stale worker refused after a newer fencing value**, expired lease refused even with a matching token, and kill points 3/4/5 (after claim / after delivery / after ack) recovering to exactly one domain effect.
+- First live run failed 7/7 and the failure was root-caused with a probe (TOOLBOX): the tests share one queue, and parallel tests plus the `atomic_transaction` binary's leftover rows were claimed by each test's global oldest-first claim. The suite now serializes under a module-level async mutex and purges the queue under the guard.
+- Server `Cargo.toml` gains `chrono` + sqlx `chrono` feature (both permissive-licensed; `make deny` re-verified ok). `run_pg_tests.sh` and the CI `pg-tests` job run both integration binaries; `docs/ci.md` updated.
+- Recorded `docs/decisions/2026-09-06_outbox-worker-fencing.md` (`answers:` present; measured behavior + rejected designs). **WP2 complete; frontier is `PHASE-0.3.1`.**
+
 ## 2026-09-06 — WP2 atomic transaction (`PHASE-0.2.1`)
 
 - Landed `crates/reasonbraid-server` — the first control-plane crate (`KICKOFF.md` §3). `apply_command` writes the four durability tables (`idempotency`, `event_log`, `aggregate_state`, `outbox`) in **one** `BEGIN … COMMIT`, proving the WP2 acceptance against a live PostgreSQL 16.15.

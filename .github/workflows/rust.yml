@@ -18,9 +18,10 @@ jobs:
       - name: Test
         run: cargo test --all
 
-  # PostgreSQL-backed integration tests (WP2 .2.1): the atomic state/event/idempotency/
-  # outbox transaction can only be proven against a live Postgres. Mirrors the local
-  # `scripts/run_pg_tests.sh` ephemeral server.
+  # PostgreSQL-backed integration tests (WP2): the atomic state/event/idempotency/outbox
+  # transaction (.2.1) and the leased outbox worker with fencing + kill points (.2.2) can
+  # only be proven against a live Postgres. Mirrors the local `scripts/run_pg_tests.sh`
+  # ephemeral server.
   pg-tests:
     runs-on: ubuntu-latest
     services:
@@ -41,5 +42,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Test (PostgreSQL atomic transaction)
-        run: cargo test -p reasonbraid-server --test atomic_transaction -- --nocapture
+      - name: Test (PostgreSQL atomic transaction + outbox worker)
+        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker -- --nocapture

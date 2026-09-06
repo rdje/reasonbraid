@@ -34,6 +34,7 @@ mod channel;
 mod journal;
 mod node;
 mod supervisor;
+mod worker;
 
 pub use channel::{
     AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt, HandshakeRequest,
@@ -42,7 +43,8 @@ pub use channel::{
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,
     JournalError, JournalHealth, OperationRecorded, ProvenStatus, RecoveryReport, TransitionRow,
-    DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
+    WorkItem, DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
 };
 pub use node::{Node, NodeError, NodeState};
 pub use supervisor::{execute_attempt, ExecutionReport, LocalBudget, SupervisorError};
+pub use worker::{Worker, WorkerError};

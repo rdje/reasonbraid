@@ -36,9 +36,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use reasonbraid_core::{
-    actor_handle_for_subject, AgentRoleId, BoundaryStatus, CommandEnvelope,
-    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, HumanPrincipalId,
-    ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId, PROTOCOL_VERSION,
+    actor_handle_for_subject, AgentRoleId, BoundaryStatus, BudgetDimensions, BudgetError,
+    CommandEnvelope, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject,
+    HumanPrincipalId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
+    PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -49,6 +50,7 @@ use crate::authority::{
     self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantRefused,
 };
 use crate::budget;
+use crate::node_channel;
 use crate::threads::{self, CreateBody};
 use crate::tx::{self, ApplyError, ClaimOutcome, Command};
 
@@ -622,13 +624,22 @@ async fn run_thread_command(
     };
 
     // 4. The WP2 durability writes + the ceiling (create) in the SAME transaction.
+    //    The projection is re-parsed here (from the state `prepare` just built) so
+    //    the `.6.2` dispatch hook can read the subject/objective/ceiling without a
+    //    second query.
+    let event_id = prepared.event_id.to_string();
+    let projection: threads::ThreadProjection = serde_json::from_value(prepared.next_state.clone())
+        .map_err(|e| {
+            eprintln!("control api: freshly prepared projection does not parse: {e}");
+            ControlApiError::internal()
+        })?;
     let cmd = Command {
         tenant_id: tenant_id.to_string(),
         aggregate_type: threads::AGGREGATE_TYPE.to_string(),
         aggregate_id: thread_id.to_string(),
         idempotency_key: idempotency_key.to_string(),
         request_hash: request_hash.to_string(),
-        event_id: prepared.event_id.to_string(),
+        event_id: event_id.clone(),
         event_type: prepared.event_type.to_string(),
         body: prepared.event_body,
         next_state: prepared.next_state,
@@ -645,9 +656,303 @@ async fn run_thread_command(
         )
         .await?;
     }
+
+    // 5. Inbox dispatch (`.6.2`): an accepted invite/challenge hands work to the
+    //    target role's node in the SAME transaction — the reservation (or its
+    //    denial row) and the inbox row commit with the thread event, so an
+    //    invitation exists iff its work does.
+    if let CommandTarget::Existing {
+        operation, body, ..
+    } = &target
+    {
+        match *operation {
+            threads::OP_INVITE => {
+                let invite: threads::InviteBody = serde_json::from_value((*body).clone())
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                dispatch_work_in_tx(
+                    &mut *tx,
+                    &DispatchSpec {
+                        tenant_id,
+                        thread_id: &thread_id,
+                        trigger_event_id: &event_id,
+                        kind: threads::WORK_CONTRIBUTE,
+                        agent_role: &invite.agent_role,
+                        target_event_id: None,
+                        projection: &projection,
+                    },
+                )
+                .await?;
+            }
+            threads::OP_CHALLENGE => {
+                let challenge: threads::ChallengeBody = serde_json::from_value((*body).clone())
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                let author = threads::event_author_in_thread(
+                    &mut *tx,
+                    tenant_id,
+                    &thread_id,
+                    &challenge.target_event_id,
+                )
+                .await?;
+                // A role's contribution is revised by that role's node; a human
+                // author revises through the CLI (no node, no dispatch). The
+                // revise work targets THIS challenge's event (the domain's
+                // `thread.revise` targets a challenge, not the contribution).
+                if let Some(author) = author {
+                    if author.parse::<AgentRoleId>().is_ok() {
+                        dispatch_work_in_tx(
+                            &mut *tx,
+                            &DispatchSpec {
+                                tenant_id,
+                                thread_id: &thread_id,
+                                trigger_event_id: &event_id,
+                                kind: threads::WORK_REVISE,
+                                agent_role: &author,
+                                target_event_id: Some(event_id.as_str()),
+                                projection: &projection,
+                            },
+                        )
+                        .await?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     tx.commit().await?;
 
     Ok(json_response(StatusCode::OK, prepared.result))
+}
+
+/// The dispatch parameters for one work item (the `.6.2` hook's argument bundle).
+struct DispatchSpec<'a> {
+    tenant_id: &'a TenantId,
+    thread_id: &'a ThreadId,
+    trigger_event_id: &'a str,
+    kind: &'a str,
+    agent_role: &'a str,
+    target_event_id: Option<&'a str>,
+    projection: &'a threads::ThreadProjection,
+}
+
+/// The `.6.2` dispatch body: hand one work item to the target role's node in the
+/// caller's transaction. The reservation is best-effort — when the ceiling refuses,
+/// the work item is STILL enqueued, without a reservation and with the denial
+/// reason, so the node's budget gate journals `failed_before_dispatch` instead of
+/// contacting a provider: the denial is visible and bounded at both boundaries.
+///
+/// Dev rule (recorded in `docs/decisions/2026-09-07_node-channel-wiring.md`): a
+/// node id IS the agent role wire id it serves — one node, one role — until the
+/// Phase 1 directory exists. The work item's command id correlates it with the
+/// thread event that produced it (`work_{event_id}`).
+async fn dispatch_work_in_tx<'e, E>(
+    mut tx: E,
+    spec: &DispatchSpec<'_>,
+) -> Result<(), ControlApiError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let (reservation, denial) = match budget::create_reservation_in_tx(
+        &mut *tx,
+        &spec.projection.ceiling_id,
+        &spec.tenant_id.to_string(),
+        &spec.thread_id.to_string(),
+        &threads::WORK_RESERVATION,
+        chrono::Duration::minutes(10),
+        Utc::now(),
+    )
+    .await
+    {
+        Ok(r) => (Some(r.reference), None),
+        Err(BudgetError::Unavailable { detail }) => {
+            eprintln!(
+                "control api: budget denied a {} dispatch: {detail}",
+                spec.kind
+            );
+            (None, Some(format!("budget denied the dispatch: {detail}")))
+        }
+        // The dev reservation engine only produces `Unavailable`; any other typed
+        // refusal is treated the same way (deny the dispatch, keep the work item
+        // visible) rather than ever dispatching without a proof of allowance.
+        Err(other) => {
+            eprintln!(
+                "control api: budget refused a {} dispatch: {other}",
+                spec.kind
+            );
+            (None, Some(format!("budget refused the dispatch: {other}")))
+        }
+    };
+    let payload = threads::work_payload(
+        spec.kind,
+        spec.agent_role,
+        &spec.projection.subject,
+        &spec.projection.objective,
+        spec.target_event_id,
+        reservation.as_ref(),
+        denial.as_deref(),
+    );
+    node_channel::enqueue_in_tx(
+        &mut *tx,
+        spec.agent_role,
+        &format!("work_{}", spec.trigger_event_id),
+        &spec.tenant_id.to_string(),
+        &spec.thread_id.to_string(),
+        &payload,
+    )
+    .await?;
+    Ok(())
+}
+
+/// The `.6.2` node-result path (called from the node channel's `events` handler):
+/// fold a node-emitted `work_result` into its thread through the SAME
+/// claim → authorize → validate → apply flow a CLI command rides. The idempotency
+/// key is the work item's inbox command id, so a duplicated transport produces a
+/// replay — never a second domain effect. The caller owns the transaction; a
+/// rejection is stored as the command's idempotent result and returned as the
+/// error (the receipt still commits — the node DID emit this event).
+pub(crate) async fn apply_node_result_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    payload: &Value,
+) -> Result<(), ControlApiError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    // Ordinary channel events (WP3) are receipts only — nothing to fold.
+    if payload.get("kind").and_then(|v| v.as_str()) != Some("work_result") {
+        return Ok(());
+    }
+    let Some(command_id) = payload.get("command_id").and_then(|v| v.as_str()) else {
+        return Ok(());
+    };
+
+    // The inbox row binds the result to its tenant/thread scope and work kind.
+    let Some((tenant_raw, thread_raw, work)) =
+        node_channel::load_command_in_tx(&mut *tx, node_id, command_id).await?
+    else {
+        // Unknown to this node's ledger: the receipt stands, no domain effect.
+        return Ok(());
+    };
+    let tenant_id: TenantId = tenant_raw
+        .parse()
+        .map_err(|_| ControlApiError::internal())?;
+    let thread_id: ThreadId = thread_raw
+        .parse()
+        .map_err(|_| ControlApiError::internal())?;
+
+    let operation = match work.get("kind").and_then(|v| v.as_str()) {
+        Some(threads::WORK_CONTRIBUTE) => threads::OP_CONTRIBUTE,
+        Some(threads::WORK_REVISE) => threads::OP_REVISE,
+        _ => return Ok(()), // not thread work — receipt only
+    };
+
+    // Dev rule: the node id IS the agent role wire id it serves.
+    let Ok(role) = node_id.parse::<AgentRoleId>() else {
+        return Ok(());
+    };
+    let principal = GrantSubject::Role(role);
+
+    let content = payload
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let body = if operation == threads::OP_REVISE {
+        let target = work
+            .get("target_event_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        json!({
+            "tenant_id": tenant_id.to_string(),
+            "target_event_id": target,
+            "content": content,
+        })
+    } else {
+        json!({ "tenant_id": tenant_id.to_string(), "content": content })
+    };
+    let hash = request_hash(operation, &principal, &body);
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::ThreadContribute,
+        target: ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+    };
+
+    // Claim FIRST: a re-emitted result (original event id, same payload) replays
+    // the ORIGINAL stored outcome — the first receipt already applied the work
+    // and settled its reservation.
+    match tx::claim_idempotency_in_tx(&mut *tx, &tenant_id.to_string(), command_id, &hash).await? {
+        ClaimOutcome::Replay { .. } => return Ok(()),
+        ClaimOutcome::Fresh => {}
+    }
+
+    let now = Utc::now();
+    match authorize_in_tx(&mut *tx, &authz, now).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            let err = ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            ));
+            store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+            return Err(err);
+        }
+        AuthorizationOutcome::Allowed { .. } => {}
+    }
+
+    let prepared = match threads::prepare_thread_command(
+        &mut *tx,
+        &tenant_id,
+        &thread_id,
+        operation,
+        &principal.id_string(),
+        &body,
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            let err: ControlApiError = e.into();
+            store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+            return Err(err);
+        }
+    };
+
+    let cmd = Command {
+        tenant_id: tenant_id.to_string(),
+        aggregate_type: threads::AGGREGATE_TYPE.to_string(),
+        aggregate_id: thread_id.to_string(),
+        idempotency_key: command_id.to_string(),
+        request_hash: hash,
+        event_id: prepared.event_id.to_string(),
+        event_type: prepared.event_type.to_string(),
+        body: prepared.event_body,
+        next_state: prepared.next_state,
+        result: prepared.result.clone(),
+    };
+    tx::apply_fresh_in_tx(&mut *tx, &cmd).await?;
+
+    // Settle the reservation with the reported usage (idempotent — a replay or a
+    // duplicate event settles nothing twice).
+    if let Some(reservation_id) = payload.get("reservation_id").and_then(|v| v.as_str()) {
+        if !reservation_id.is_empty() {
+            let usage = BudgetDimensions::attempt_usage(
+                payload
+                    .get("usage")
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|v| v.as_u64()),
+                payload
+                    .get("usage")
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|v| v.as_u64()),
+            );
+            budget::settle_reservation_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Store a rejection as the command's semantic result (idempotent replay of the

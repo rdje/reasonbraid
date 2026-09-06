@@ -41,7 +41,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres};
 
 /// The node channel's wire protocol version. Both sides must agree; a mismatch is a
 /// `protocol_incompatible` error, never a silent downgrade.
@@ -275,20 +275,23 @@ impl NodeChannelState {
         thread_id: &str,
         payload: &Value,
     ) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar(
-            "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
-             VALUES ($1, \
-                     (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
-                     $2, $3, $4, $5) \
-             RETURNING cursor",
+        let mut conn = self.pool.acquire().await?;
+        enqueue_in_tx(
+            &mut *conn, node_id, command_id, tenant_id, thread_id, payload,
         )
-        .bind(node_id)
-        .bind(command_id)
-        .bind(tenant_id)
-        .bind(thread_id)
-        .bind(payload)
-        .fetch_one(&self.pool)
         .await
+    }
+
+    /// The inbox row for one command, if this node's ledger holds it — the `.6.2`
+    /// lookup that turns a node-emitted `work_result` back into its tenant/thread
+    /// scope and work kind.
+    pub async fn load_command(
+        &self,
+        node_id: &str,
+        command_id: &str,
+    ) -> Result<Option<(String, String, Value)>, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        load_command_in_tx(&mut *conn, node_id, command_id).await
     }
 
     /// The highest cursor in a node's inbox ledger (0 when the node has none).
@@ -359,20 +362,8 @@ impl NodeChannelState {
         payload: &Value,
         now: DateTime<Utc>,
     ) -> Result<bool, sqlx::Error> {
-        Ok(sqlx::query(
-            "INSERT INTO node_events (event_id, node_id, operation_id, payload, received_at) \
-             VALUES ($1, $2, $3, $4, $5) \
-             ON CONFLICT (event_id) DO NOTHING",
-        )
-        .bind(event_id)
-        .bind(node_id)
-        .bind(operation_id)
-        .bind(payload)
-        .bind(now)
-        .execute(&self.pool)
-        .await?
-        .rows_affected()
-            == 1)
+        let mut conn = self.pool.acquire().await?;
+        record_event_in_tx(&mut *conn, node_id, event_id, operation_id, payload, now).await
     }
 
     /// The event id the server holds for an operation, if any — the reconciliation
@@ -389,6 +380,88 @@ impl NodeChannelState {
         .fetch_optional(&self.pool)
         .await
     }
+}
+
+// ── Transactional bodies (`PHASE-0.6.2`) ────────────────────────────────────────
+
+/// The transactional body of [`NodeChannelState::enqueue`]: the `.6.1` command
+/// transaction enqueues an invite/challenge work item in the SAME transaction as
+/// the thread event that produced it — an invitation exists iff its inbox row does.
+pub(crate) async fn enqueue_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    command_id: &str,
+    tenant_id: &str,
+    thread_id: &str,
+    payload: &Value,
+) -> Result<i64, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+         VALUES ($1, \
+                 (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
+                 $2, $3, $4, $5) \
+         RETURNING cursor",
+    )
+    .bind(node_id)
+    .bind(command_id)
+    .bind(tenant_id)
+    .bind(thread_id)
+    .bind(payload)
+    .fetch_one(&mut *tx)
+    .await
+}
+
+/// The transactional body of [`NodeChannelState::record_event`].
+pub(crate) async fn record_event_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    event_id: &str,
+    operation_id: &str,
+    payload: &Value,
+    now: DateTime<Utc>,
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    Ok(sqlx::query(
+        "INSERT INTO node_events (event_id, node_id, operation_id, payload, received_at) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (event_id) DO NOTHING",
+    )
+    .bind(event_id)
+    .bind(node_id)
+    .bind(operation_id)
+    .bind(payload)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        == 1)
+}
+
+/// The transactional body of [`NodeChannelState::load_command`].
+pub(crate) async fn load_command_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    command_id: &str,
+) -> Result<Option<(String, String, Value)>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_as::<_, (String, String, Value)>(
+        "SELECT tenant_id, thread_id, payload FROM node_inbox \
+         WHERE node_id = $1 AND command_id = $2",
+    )
+    .bind(node_id)
+    .bind(command_id)
+    .fetch_optional(&mut *tx)
+    .await
 }
 
 // ── HTTP surface ───────────────────────────────────────────────────────────────
@@ -470,15 +543,33 @@ async fn events(
     Json(req): Json<EventSubmission>,
 ) -> Result<Json<EventReceipt>, ApiError> {
     check_version(req.channel_version)?;
-    let accepted = state
-        .record_event(
-            &req.node_id,
-            &req.event_id,
-            &req.operation_id,
-            &req.payload,
-            Utc::now(),
-        )
-        .await?;
+    // ONE transaction (`PHASE-0.6.2`): the receipt and — when the payload is a
+    // thread work result — the domain application (claim → authorize → validate →
+    // apply + reservation settlement) commit together. A duplicate event inserts
+    // no receipt and applies no domain effect (one effect, ever); a rejected
+    // application still commits the receipt (the node DID emit this event) with
+    // the rejection stored as the command's idempotent result.
+    let mut tx = state.pool.begin().await?;
+    let accepted = record_event_in_tx(
+        &mut *tx,
+        &req.node_id,
+        &req.event_id,
+        &req.operation_id,
+        &req.payload,
+        Utc::now(),
+    )
+    .await?;
+    if accepted {
+        if let Err(e) =
+            crate::api::apply_node_result_in_tx(&mut *tx, &req.node_id, &req.payload).await
+        {
+            eprintln!(
+                "node channel: thread result from {} was rejected: {e}",
+                req.node_id
+            );
+        }
+    }
+    tx.commit().await?;
     Ok(Json(EventReceipt {
         channel_version: CHANNEL_VERSION,
         accepted,

@@ -1,0 +1,425 @@
+#!/usr/bin/env bash
+# scripts/demo_two_host.sh — the WP6 two-host crash/reconnect demonstration
+# (`PHASE-0.6.2`; ROADMAP §26.1 Demonstration A, KICKOFF WP6).
+#
+# Orchestrates the control plane (rb-server + PostgreSQL) and one or two node
+# workers (rb-node + SQLite journals + the deterministic fake adapter) through the
+# whole acceptance scenario, with REAL kill points, and writes a reproducible
+# evidence bundle under target/demo/<run-id>/:
+#
+#   1. enroll a human and two agent roles; create a thread with a budget;
+#   2. invite agent A — the invitation's work item lands in A's inbox WITH a
+#      reservation (one transaction on the server);
+#   3. A contributes through the node channel; the result folds into the thread;
+#   4. duplicate transport: the SAME event is re-POSTed — one domain effect;
+#   5. the SERVER is killed and restarted — every accepted command survives;
+#   6. the human challenges A's contribution — revise work reaches A's inbox;
+#   7. A's revise attempt hangs after dispatch; the node is KILLED (SIGKILL);
+#      on restart the attempt recovers `outcome_unknown` — bounded and visible,
+#      NEVER silently retried; the challenge stays unresolved;
+#   8. a second thread with calls:1 exhausts its budget: the second dispatch is
+#      DENIED at the server (denial row) and refused by the node's budget gate
+#      (`failed_before_dispatch`, no provider contact);
+#   9. the human closes thread A — closure preserves the contribution AND the
+#      unresolved challenge; the audit view reconstructs the whole story.
+#
+# Exit status: 0 only when EVERY acceptance point above is verified by grep-able
+# evidence; nonzero otherwise. No human copies messages: the agent content comes
+# from the fake adapter's scripted chunks, never from the operator's keyboard.
+#
+# Two-host support: nodes run locally by default; pass `--node-host <host>` AND
+# `--remote-workdir <dir>` (a caller-authorized remote scratch dir on that host,
+# e.g. `~/rb-demo`) to drive the node processes over ssh instead — the binaries
+# are copied there and the journals live there (node-local state is device-local
+# by design, not project-owned data). env.txt records which mode ran.
+#
+# Usage:
+#   bash scripts/demo_two_host.sh --database-url postgres://...     # local nodes
+#   bash scripts/demo_two_host.sh --database-url ... --node-host h2 \
+#        --remote-workdir '~/rb-demo'                               # real two hosts
+# Env: RB_DEMO_KEEP=1 keeps the run dir on failure for inspection.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+DATABASE_URL="${DATABASE_URL:-}"
+SERVER_HOST="127.0.0.1"
+SERVER_PORT="4311"
+NODE_HOST=""            # empty = run nodes locally
+REMOTE_WORKDIR=""       # required when NODE_HOST is set
+RUN_ID="$(date +%Y%m%d-%H%M%S)"
+KEEP="${RB_DEMO_KEEP:-0}"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --database-url) DATABASE_URL="$2"; shift 2 ;;
+        --server-host) SERVER_HOST="$2"; shift 2 ;;
+        --server-port) SERVER_PORT="$2"; shift 2 ;;
+        --node-host) NODE_HOST="$2"; shift 2 ;;
+        --remote-workdir) REMOTE_WORKDIR="$2"; shift 2 ;;
+        --run-id) RUN_ID="$2"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+
+if [ -z "$DATABASE_URL" ]; then
+    echo "error: --database-url (or \$DATABASE_URL) is required" >&2
+    exit 2
+fi
+if [ -n "$NODE_HOST" ] && [ -z "$REMOTE_WORKDIR" ]; then
+    echo "error: --remote-workdir is required when --node-host is set" >&2
+    exit 2
+fi
+command -v jq >/dev/null || { echo "error: jq is required (duplicate-delivery reconstruction)" >&2; exit 2; }
+
+WORK="$ROOT/target/demo/$RUN_ID"        # repo-root-relative, same volume (§13)
+EVIDENCE="$WORK/evidence"
+mkdir -p "$WORK" "$EVIDENCE"
+
+BIN_SERVER="$ROOT/target/debug/rb-server"
+BIN_NODE="$ROOT/target/debug/rb-node"
+BIN_JOURNAL="$ROOT/target/debug/rb-journal"
+BIN_CLI="$ROOT/target/debug/rb"
+
+SERVER_BASE="http://$SERVER_HOST:$SERVER_PORT"
+SERVER_PID=""
+FAILURES=0
+
+# ── helpers ─────────────────────────────────────────────────────────────────────
+
+log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$EVIDENCE/timeline.txt"; }
+
+fail() {
+    log "FAIL: $*"
+    FAILURES=$((FAILURES + 1))
+}
+
+check() { # check <label> <probe...>
+    local label="$1"; shift
+    if "$@" >/dev/null 2>&1; then
+        log "PASS: $label"
+    else
+        fail "$label"
+    fi
+}
+
+wait_for() { # wait_for <label> <timeout-s> <probe...>
+    local label="$1" timeout="$2"; shift 2
+    local deadline=$((SECONDS + timeout))
+    while [ $SECONDS -lt $deadline ]; do
+        if "$@" >/dev/null 2>&1; then return 0; fi
+        sleep 0.3
+    done
+    # Never abort under `set -e`: the failure is already recorded; the summary
+    # exit status decides.
+    fail "$label (timed out after ${timeout}s)"
+    return 0
+}
+
+cli() { "$BIN_CLI" --server "$SERVER_BASE" "$@"; }
+
+# The bash -c probes run `cli`/`node_journal` as exported functions; their
+# captured variables must be exported with them.
+export BIN_CLI BIN_JOURNAL NODE_HOST SERVER_BASE WORK
+export -f cli
+
+# The node's work dir on ITS host (local: under the repo's target/; remote: the
+# caller-authorized scratch dir).
+node_dir() {
+    if [ -z "$NODE_HOST" ]; then echo "$WORK/nodes/$1"; else echo "$REMOTE_WORKDIR/$1"; fi
+}
+
+# node_exec <dir> <rb-node args...>  — starts a node, its pid written to <dir>/node.pid.
+# The journal path is passed by the caller as an ABSOLUTE local path; remote mode
+# remaps the local node dir prefix to the caller-authorized remote scratch dir.
+node_exec() {
+    local dir="$1"; shift
+    if [ -z "$NODE_HOST" ]; then
+        mkdir -p "$dir"
+        "$BIN_NODE" "$@" &
+        echo $! > "$dir/node.pid"
+    else
+        local remote_args=""
+        local a
+        for a in "$@"; do
+            remote_args="$remote_args $(printf '%s' "$a" | sed "s|$WORK/nodes/|$REMOTE_WORKDIR/|")"
+        done
+        ssh "$NODE_HOST" "mkdir -p '$dir' && cd '$dir' && nohup ./rb-node $remote_args > node.log 2>&1 & echo \$! > '$dir/node.pid'"
+    fi
+}
+
+node_kill() { # node_kill <dir>  — SIGKILL the node recorded in <dir>/node.pid.
+    local dir="$1"
+    if [ -z "$NODE_HOST" ]; then
+        [ -f "$dir/node.pid" ] && kill -9 "$(cat "$dir/node.pid")" >/dev/null 2>&1 || true
+    else
+        ssh "$NODE_HOST" "[ -f '$dir/node.pid' ] && kill -9 \$(cat '$dir/node.pid')" >/dev/null 2>&1 || true
+    fi
+}
+
+node_wait() { # node_wait <dir>  — reap the local job so bash prints no Killed banner.
+    local dir="$1"
+    [ -z "$NODE_HOST" ] && [ -f "$dir/node.pid" ] && wait "$(cat "$dir/node.pid")" 2>/dev/null || true
+}
+
+# node_journal <dir> <rb-journal args...>
+node_journal() {
+    local dir="$1"; shift
+    if [ -z "$NODE_HOST" ]; then
+        ( cd "$dir" && exec "$BIN_JOURNAL" "$@" )
+    else
+        ssh "$NODE_HOST" "cd '$dir' && exec ./rb-journal $*"
+    fi
+}
+export -f node_journal
+
+cleanup() {
+    node_kill "$(node_dir a)" || true
+    node_kill "$(node_dir b)" || true
+    if [ -n "$SERVER_PID" ]; then kill -9 "$SERVER_PID" >/dev/null 2>&1 || true; fi
+    wait >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# ── environment record ──────────────────────────────────────────────────────────
+
+{
+    echo "run_id: $RUN_ID"
+    echo "git_rev: $(git rev-parse HEAD)"
+    echo "server: $SERVER_BASE"
+    echo "node_host: ${NODE_HOST:-<local>}"
+    echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
+    echo "database_url: $DATABASE_URL"
+    echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "limitation: fake adapter (deterministic) — the REAL-harness leg is the"
+    echo "  RB_LIVE_CODEX=1 codex_live suite, out of scope for a no-token demo (WP6)"
+} > "$EVIDENCE/env.txt"
+
+# ── build ───────────────────────────────────────────────────────────────────────
+
+log "building the four binaries (cargo build --bins)"
+cargo build --bins -q
+
+if [ -n "$NODE_HOST" ]; then
+    log "deploying rb-node + rb-journal to $NODE_HOST:$REMOTE_WORKDIR"
+    ssh "$NODE_HOST" "mkdir -p '$REMOTE_WORKDIR'"
+    scp -q "$BIN_NODE" "$BIN_JOURNAL" "$NODE_HOST:$REMOTE_WORKDIR/"
+fi
+
+# ── 1. control plane ────────────────────────────────────────────────────────────
+
+log "starting rb-server on $SERVER_BASE"
+"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" --database-url "$DATABASE_URL" \
+    >"$WORK/server.log" 2>&1 &
+SERVER_PID=$!
+wait_for "server listens" 20 curl -s -o /dev/null "$SERVER_BASE/v1/threads"
+
+export REASONBRAID_CLI_STATE="$WORK/.cli"   # repo-local CLI state dir (§13)
+
+log "enrolling the human organizer (bootstraps the tenant)"
+ENROLL_HUMAN="$(cli enroll human organizer --json)"
+TENANT="$(printf '%s' "$ENROLL_HUMAN" | jq -r .tenant_id)"
+HUMAN="$(printf '%s' "$ENROLL_HUMAN" | jq -r .principal_id)"
+[ -n "$TENANT" ] && [ -n "$HUMAN" ] || { fail "enroll human returned ids"; exit 1; }
+
+log "enrolling agent roles agent-a and agent-b"
+ROLE_A="$(cli enroll role agent-a --tenant "$TENANT" --json | jq -r .principal_id)"
+ROLE_B="$(cli enroll role agent-b --tenant "$TENANT" --json | jq -r .principal_id)"
+[ -n "$ROLE_A" ] && [ -n "$ROLE_B" ] || { fail "enroll roles returned ids"; exit 1; }
+
+log "creating thread A (default budget)"
+THREAD_A="$(cli thread create --subject "is the claim justified?" \
+    --objective "produce an independent answer and survive a crash mid-revision" \
+    --as organizer --json | jq -r .thread_id)"
+[ -n "$THREAD_A" ] || { fail "thread A created"; exit 1; }
+log "thread A: $THREAD_A"
+
+log "inviting agent-a — the invitation dispatches work WITH a reservation"
+cli thread invite --thread "$THREAD_A" --agent agent-a --as organizer >/dev/null
+
+# ── 3. node A contributes ───────────────────────────────────────────────────────
+
+NODE_A_DIR="$(node_dir a)"
+log "starting node A (fake adapter: the scripted independent answer)"
+node_exec "$NODE_A_DIR" \
+    --journal "$NODE_A_DIR/node.db" \
+    --server "$SERVER_BASE" \
+    --node-id "$ROLE_A" \
+    --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: the claim holds only for"},{"step":"emit_chunk","chunk":" x<1; for x>=1 the bound fails."},{"step":"complete"}]' \
+    --poll-ms 200 \
+    >"$WORK/node-a.log" 2>&1
+
+wait_for "node A contributes" 60 bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q contribution_submitted"
+CONTRIBUTION_ID="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json \
+    | jq -r '.events.events[] | select(.event_type == "thread.contribution_submitted") | .event_id' | head -1)"
+[ -n "$CONTRIBUTION_ID" ] || { fail "contribution event id extracted"; exit 1; }
+log "node A's contribution landed (event $CONTRIBUTION_ID)"
+
+# no human copies messages: the content came from the adapter script, not the CLI.
+check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'AGENT-A: the claim holds only for'"
+
+# ── 4. duplicate transport → one domain effect ─────────────────────────────────
+
+EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
+DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" '
+    { channel_version: 1,
+      node_id: $n,
+      event_id: .events[0].event_id,
+      operation_id: .events[0].operation_id,
+      payload: (.events[0].payload | fromjson) }')"
+log "duplicating the delivery: re-POSTing $(printf '%s' "$DUP_BODY" | jq -r .event_id) verbatim"
+curl -s -X POST "$SERVER_BASE/v1/nodes/events" \
+    -H 'content-type: application/json' \
+    -d "$DUP_BODY" > "$EVIDENCE/duplicate-delivery.json"
+check "the duplicate transport is refused (accepted:false)" \
+    grep -q '"accepted":false' "$EVIDENCE/duplicate-delivery.json"
+CONTRIBUTIONS="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json \
+    | jq '[.events.events[] | select(.event_type == "thread.contribution_submitted")] | length')"
+check "exactly ONE contribution despite the duplicate" \
+    bash -c "[ '$CONTRIBUTIONS' -eq 1 ]"
+
+# ── 5. server restart loses nothing ─────────────────────────────────────────────
+
+log "killing the control plane (SIGKILL) and restarting it on the same store"
+kill -9 "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$SERVER_PID" >/dev/null 2>&1 || true
+"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" --database-url "$DATABASE_URL" \
+    >>"$WORK/server.log" 2>&1 &
+SERVER_PID=$!
+wait_for "server is back" 20 curl -s -o /dev/null "$SERVER_BASE/v1/threads"
+wait_for "server answers node polls after the restart" 30 bash -c \
+    "curl -s -o /dev/null '$SERVER_BASE/v1/nodes/poll?node_id=$ROLE_A&after_cursor=0'"
+check "every accepted command survived the restart" bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'thread.created' && cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'participant_invited'"
+
+# ── 6. challenge → revise work reaches the node ────────────────────────────────
+
+# Kill node A FIRST so the revise work waits in its inbox — the hang script must
+# own the revise attempt (the crash-after-dispatch leg).
+log "stopping node A so the revise work queues in its inbox"
+node_kill "$NODE_A_DIR"
+node_wait "$NODE_A_DIR"
+
+log "the human challenges A's contribution"
+cli thread challenge --thread "$THREAD_A" --target "$CONTRIBUTION_ID" \
+    --text "your bound check only covers x<1 — justify x>=1" --as organizer >/dev/null
+
+# ── 7. kill AFTER dispatch → honest ambiguity, never a silent retry ─────────────
+
+log "starting node A with a HANG script (the queued revise attempt will dispatch, then hang)"
+node_exec "$NODE_A_DIR" \
+    --journal "$NODE_A_DIR/node.db" \
+    --server "$SERVER_BASE" \
+    --node-id "$ROLE_A" \
+    --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: revising…"},{"step":"hang_forever"}]' \
+    --poll-ms 200 \
+    >"$WORK/node-a.log" 2>&1
+
+wait_for "the revise attempt is DISPATCHED (durable boundary record)" 30 bash -c \
+    "node_journal '$NODE_A_DIR' pending node.db --json | grep -q dispatched"
+log "killing node A AFTER dispatch (SIGKILL — the crash)"
+node_kill "$NODE_A_DIR"
+node_wait "$NODE_A_DIR"
+
+log "restarting node A on the same journal with the normal script"
+node_exec "$NODE_A_DIR" \
+    --journal "$NODE_A_DIR/node.db" \
+    --server "$SERVER_BASE" \
+    --node-id "$ROLE_A" \
+    --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: a normal answer"},{"step":"complete"}]' \
+    --poll-ms 200 \
+    >"$WORK/node-a.log" 2>&1
+
+wait_for "recovery classifies the attempt outcome_unknown" 30 bash -c \
+    "node_journal '$NODE_A_DIR' ambiguous node.db --json | grep -q outcome_unknown"
+node_journal "$NODE_A_DIR" ambiguous node.db --json > "$EVIDENCE/journal-a-ambiguous.json"
+check "the ambiguous attempt is visible with its boundary history" \
+    grep -q 'dispatched' "$EVIDENCE/journal-a-ambiguous.json"
+check "the revise attempt was NOT silently retried (exactly one ambiguous attempt)" \
+    grep -q 'outcome_unknown=1' <(node_journal "$NODE_A_DIR" inspect node.db)
+sleep 1
+check "no revision entered the thread (the ambiguous attempt produced no effect)" bash -c \
+    "! cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q revision_submitted"
+
+# ── 8. budget exhaustion on thread B ────────────────────────────────────────────
+
+log "creating thread B with calls:1 — exactly ONE provider call is budgeted"
+THREAD_B="$(cli thread create --subject "tight budget" \
+    --objective "one call, then the ceiling refuses" \
+    --budget-calls 1 --as organizer --json | jq -r .thread_id)"
+[ -n "$THREAD_B" ] || { fail "thread B created"; exit 1; }
+
+cli thread invite --thread "$THREAD_B" --agent agent-b --as organizer >/dev/null
+
+NODE_B_DIR="$(node_dir b)"
+log "starting node B (fake adapter)"
+node_exec "$NODE_B_DIR" \
+    --journal "$NODE_B_DIR/node.db" \
+    --server "$SERVER_BASE" \
+    --node-id "$ROLE_B" \
+    --fake-script '[{"step":"emit_chunk","chunk":"AGENT-B: the single budgeted answer"},{"step":"complete"}]' \
+    --poll-ms 200 \
+    >"$WORK/node-b.log" 2>&1
+
+wait_for "node B contributes within its budget" 60 bash -c \
+    "cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -q contribution_submitted"
+B_CONTRIBUTION_ID="$(cli inspect thread "$THREAD_B" --as organizer --tenant "$TENANT" --json \
+    | jq -r '.events.events[] | select(.event_type == "thread.contribution_submitted") | .event_id' | head -1)"
+
+log "challenging B's contribution — the revise dispatch must be DENIED (calls:1 exhausted)"
+cli thread challenge --thread "$THREAD_B" --target "$B_CONTRIBUTION_ID" \
+    --text "prove it" --as organizer >/dev/null
+
+wait_for "node B's budget gate refuses the unreserved dispatch" 30 bash -c \
+    "node_journal '$NODE_B_DIR' inspect node.db | grep -q 'failed_before_dispatch=1'"
+check "the denial is journaled BEFORE any provider contact (failed_before_dispatch)" \
+    grep -q 'failed_before_dispatch=1' <(node_journal "$NODE_B_DIR" inspect node.db)
+check "no revision entered thread B" bash -c \
+    "! cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -q revision_submitted"
+
+# ── 9. closure preserves contributions and unresolved objections ───────────────
+
+log "closing thread A"
+cli thread close --thread "$THREAD_A" --reason "demonstration complete" --as organizer >/dev/null
+check "thread A is closed" bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -Eq '\"state\": *\"closed\"'"
+check "closure preserved the contribution" bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q contribution_submitted"
+check "closure preserved the unresolved challenge" bash -c \
+    "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -Eq '\"open_challenges\": *1'"
+
+# ── evidence bundle ─────────────────────────────────────────────────────────────
+
+cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json > "$EVIDENCE/thread-a.json"
+cli inspect thread "$THREAD_B" --as organizer --tenant "$TENANT" --json > "$EVIDENCE/thread-b.json"
+node_journal "$NODE_A_DIR" inspect node.db > "$EVIDENCE/journal-a-inspect.txt"
+node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
+{
+    echo "# WP6 two-host demonstration — acceptance evidence ($RUN_ID)"
+    echo
+    echo "See timeline.txt for the step log and the assertions above for PASS/FAIL."
+    echo "env.txt records the hosts, revision, and the fake-adapter limitation."
+    echo
+    echo "| Acceptance (KICKOFF WP6 / ROADMAP §26.1) | Evidence |"
+    echo "| --- | --- |"
+    echo "| no human copies messages | thread-a.json: the contribution content is the adapter's scripted chunk |"
+    echo "| accepted commands survive restart | timeline: server SIGKILL + restart, thread-a.json intact |"
+    echo "| duplicate transport → one domain effect | duplicate-delivery.json (accepted:false); thread-a.json has one contribution |"
+    echo "| no silent retry of indeterminate calls | journal-a-ambiguous.json: dispatched → outcome_unknown, one attempt, no revision |"
+    echo "| budget denial prevents a new dispatch | journal-b-inspect.txt: failed_before_dispatch=1, no revision in thread-b.json |"
+    echo "| closure preserves contributions + objections | thread-a.json: closed, contribution + open_challenges=1 |"
+    echo "| reproducible evidence bundle | this directory — rerun with the commands in timeline.txt |"
+} > "$EVIDENCE/summary.md"
+
+if [ "$FAILURES" -gt 0 ]; then
+    log "$FAILURES acceptance check(s) FAILED — see timeline.txt"
+    if [ "$KEEP" = "1" ]; then log "kept the run dir for inspection: $WORK"; fi
+    exit 1
+fi
+
+log "ALL acceptance checks passed — evidence bundle in $EVIDENCE"
+echo "$WORK"
+exit 0

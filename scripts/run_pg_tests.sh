@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/run_pg_tests.sh — run the PostgreSQL-backed integration tests (.2.1 atomic
 # transaction, .2.2 outbox worker, .3.2 node channel, .5.1 authority, .5.2 budget,
-# .6.1 command API + the real-binary CLI end-to-end suite)
+# .6.1 command API, .6.2 node wiring + the real-binary CLI end-to-end suite)
 # against an EPHEMERAL server:
 # initdb into a temp dir, start on a throwaway port, drop everything on exit. No
 # background service is left running (see docs/ci.md and the handoff doctrine).
@@ -37,7 +37,14 @@ trap cleanup EXIT
 
 export DATABASE_URL="postgres://postgres@127.0.0.1:$PORT/reasonbraid_test?sslmode=disable"
 echo "== running reasonbraid-server PostgreSQL integration tests against 127.0.0.1:$PORT/reasonbraid_test =="
-cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api -- --nocapture
+cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api --test node_work -- --nocapture
 
 echo "== running the reasonbraid-cli end-to-end suite (real rb binary, in-process control API) =="
 cargo test -p reasonbraid-cli --test cli_end_to_end -- --nocapture
+
+# The WP6 two-host demonstration (.6.2): the full crash/reconnect scenario with
+# real kill points and a grep-verified acceptance bundle. RB_DEMO=0 skips it.
+if [ "${RB_DEMO:-1}" != "0" ]; then
+    echo "== running the two-host crash/reconnect demonstration (scripts/demo_two_host.sh) =="
+    bash scripts/demo_two_host.sh --database-url "$DATABASE_URL"
+fi

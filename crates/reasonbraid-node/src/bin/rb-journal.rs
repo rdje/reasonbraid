@@ -8,6 +8,8 @@
 //! - `pending`   — in-flight attempts (prepared/dispatched) and events awaiting ack.
 //! - `ambiguous` — `outcome_unknown` attempts awaiting proof or adjudication, with
 //!   their before/after boundary history.
+//! - `events`    — every event the node emitted (original ids + payloads), the
+//!   duplicate-transport evidence surface (`PHASE-0.6.2`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -49,6 +51,15 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Every event the node emitted (acknowledged or not), with its original ids —
+    /// the duplicate-transport evidence surface (`PHASE-0.6.2`).
+    Events {
+        /// Path to the node journal file.
+        path: PathBuf,
+        /// Emit machine-readable JSON instead of the human-readable listing.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -68,6 +79,7 @@ async fn run(cli: Cli) -> Result<(), JournalError> {
         Cmd::Inspect { path } => inspect(&path).await,
         Cmd::Pending { path, json } => pending(&path, json).await,
         Cmd::Ambiguous { path, json } => ambiguous(&path, json).await,
+        Cmd::Events { path, json } => events(&path, json).await,
     }
 }
 
@@ -136,6 +148,25 @@ async fn pending(path: &PathBuf, json: bool) -> Result<(), JournalError> {
         println!(
             "  {}  op {}  emitted_at={}",
             e.event_id, e.operation_id, e.emitted_at
+        );
+    }
+    Ok(())
+}
+
+async fn events(path: &PathBuf, json: bool) -> Result<(), JournalError> {
+    let journal = Journal::open_readonly(path).await?;
+    let emitted = journal.emitted_events().await?;
+
+    if json {
+        println!("{}", serde_json::json!({ "events": emitted }));
+        return Ok(());
+    }
+
+    println!("emitted events: {}", emitted.len());
+    for e in &emitted {
+        println!(
+            "  {}  op {}  emitted_at={}  payload={}",
+            e.event_id, e.operation_id, e.emitted_at, e.payload
         );
     }
     Ok(())

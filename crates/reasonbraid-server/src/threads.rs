@@ -59,6 +59,22 @@ pub const EVENT_CHALLENGED: &str = "thread.challenge_posted";
 pub const EVENT_REVISED: &str = "thread.revision_submitted";
 pub const EVENT_CLOSED: &str = "thread.closed";
 
+/// The thread-work kinds an inbox payload carries (`PHASE-0.6.2`): an invitation
+/// dispatches a `contribute` work item to the invited role's node; a challenge of a
+/// role's contribution dispatches a `revise` work item to that role's node. The
+/// node's journal treats exactly these kinds as thread work.
+pub const WORK_CONTRIBUTE: &str = "contribute";
+pub const WORK_REVISE: &str = "revise";
+
+/// The reservation dimensions one work item requests (a single provider call with
+/// a modest token and wall-clock allowance — covered by [`DEFAULT_BUDGET`]).
+pub const WORK_RESERVATION: BudgetDimensions = BudgetDimensions {
+    calls: Some(1),
+    input_tokens: Some(2_000),
+    output_tokens: Some(2_000),
+    wall_clock_seconds: Some(120),
+};
+
 /// The dev-profile default thread budget when a create body names none: every
 /// dimension metered (the fail-closed `BudgetDimensions::covers` refuses requests for
 /// dimensions a ceiling does not meter).
@@ -367,6 +383,59 @@ where
     .bind(thread_id.to_string())
     .fetch_optional(&mut *tx)
     .await
+}
+
+/// The `author` of one contribution/challenge event in this thread, if the event
+/// exists and carries one (`PHASE-0.6.2`: the challenge dispatch sends its revise
+/// work to the challenged contribution's author — a role's node — while a human
+/// author revises through the CLI, so no dispatch happens).
+pub(crate) async fn event_author_in_thread<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    thread_id: &ThreadId,
+    event_id: &str,
+) -> Result<Option<String>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    let body: Option<Value> = sqlx::query_scalar(
+        "SELECT body FROM event_log \
+         WHERE event_id = $1 AND tenant_id = $2 AND aggregate_id = $3",
+    )
+    .bind(event_id)
+    .bind(tenant_id.to_string())
+    .bind(thread_id.to_string())
+    .fetch_optional(&mut *tx)
+    .await?;
+    Ok(body.and_then(|b| b.get("author").and_then(|a| a.as_str()).map(str::to_string)))
+}
+
+/// Build the inbox payload for one thread work item (`PHASE-0.6.2`): the work
+/// kind, the role it is for, the thread context the node's request carries, the
+/// revise target when present, and the reservation (or the denial reason when the
+/// ceiling refused to reserve).
+pub fn work_payload(
+    kind: &str,
+    agent_role: &str,
+    subject: &str,
+    objective: &str,
+    target_event_id: Option<&str>,
+    reservation: Option<&reasonbraid_core::ReservationReference>,
+    reservation_reason: Option<&str>,
+) -> Value {
+    let mut payload = json!({
+        "kind": kind,
+        "agent_role": agent_role,
+        "subject": subject,
+        "objective": objective,
+        "reservation": reservation,
+        "reservation_reason": reservation_reason,
+    });
+    if let Some(target) = target_event_id {
+        payload["target_event_id"] = json!(target);
+    }
+    payload
 }
 
 /// Prepare a command against an EXISTING thread: read the locked projection, validate

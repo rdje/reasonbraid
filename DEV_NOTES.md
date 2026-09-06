@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — WP6 node wiring: three bugs the demo and the suite caught before they shipped
+
+- **The live suite caught a domain-semantics inversion in the first dispatch draft.** The revise work item originally carried the CHALLENGED CONTRIBUTION's event id as its target; the domain's `thread.revise` targets a CHALLENGE. The test failed with the server's own `invalid_command: revision target … is a contribution, not a challenge` — the contribution id is only the author-lookup key, the challenge's own event id is the revise target. Fixed; the assertion now checks the revise work item targets the challenge event.
+- **`$$` inside a `( … )` subshell is the SCRIPT's pid, not the subshell's.** The demo's first pidfile scheme recorded the script's own pid — `node_kill` SIGKILLed the demo itself, the cleanup trap died before killing the server, and a later run hit `AddrInUse` with five leaked processes. Now: local nodes capture `$!` of the directly backgrounded binary; remote nodes capture the remote `$!` via `nohup … & echo \$!`. Every kill is followed by a `wait` reap (also silences bash's `Killed: 9` job banners).
+- **`wait_for` under `set -e` is a footgun.** A probe timeout returning 1 aborted the script before the FAIL summary could print. Timeouts now record the FAIL and return 0 — the summary exit status decides.
+- **A test-harness purge race, same class as `command_api`'s correct pattern.** The first `node_work` run failed `active == 1` because `pool()` purged the shared tables BEFORE the suite mutex was acquired, so a parallel test in the same binary purged rows mid-test. Guard first, purge second — matching `command_api`, which already had it right.
+- **JSON shape assumptions bite in demo scripts.** `rb inspect thread --json` nests the events list one level deep (`.events.events[]`, the wrapper of three API views), and `--json` is PRETTY-printed — raw `"state":"closed"` greps fail; the checks now allow optional whitespace (`grep -Eq`). `jq` became the extraction tool of record (documented dependency of the demo).
+- **Two independent dedupe layers, both exercised.** The duplicate-transport leg proves the `node_events` receipt dedupe (`accepted:false`) AND the idempotency-claim replay (same work result under a NEW event id still yields exactly one contribution) — the demo re-POSTs the node's ORIGINAL submission reconstructed from `rb-journal events`.
+- Promoted to `docs/decisions/2026-09-07_node-channel-wiring.md` (`answers:` present). **Frontier `.7`.**
+
 ## _(2026-09-06)_ — WP6 control API: the subset checker caught the bootstrap bug, and rejections became idempotent results
 
 - **The `.5.1` temporal subset rule caught THIS leaf before it shipped.** The first live run of the enroll bootstrap failed: a role grant created microseconds after its boundary "outlived" it (`grant.expires_at > boundary.expires_at`), the same wall-clock-skew class the `.5.1` fixtures exposed. Fix: dev grants are COEXTENSIVE with their boundary's validity window (`valid_from`/`expires_at` copied from the boundary) — and the failure itself is the evidence the checker binds.

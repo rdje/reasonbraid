@@ -12,16 +12,18 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.6.2` (`pending`); WP1 + WP2 + WP3 +
-  WP4 + **WP5 complete**; `.6.1` control API + CLI done — the `rb` binary drives
-  enroll / create thread / invite / contribute / challenge / revise / close / inspect
-  over `/v1/threads` with a one-transaction claim→authorize→validate→apply flow;
-  inspection never touches the database.
-- **Next action:** WP6 two-host crash/reconnect demo (`.6.2`): wire the node channel
-  into the `.6.1` surface (inbox dispatch + node-result events) + the reproducible
-  demo script.
+- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0.7` (`pending`); WP1–WP5 + **WP6 complete**
+  (`.6.1` control API + CLI; `.6.2` node wiring + the two-host crash/reconnect demo —
+  invite/challenge dispatch work items with reservations in the command transaction,
+  node `work_result` events fold into the thread claim-first keyed on the inbox command
+  id, `rb-node` worker never silently retries ambiguous work, `scripts/demo_two_host.sh`
+  asserts every KICKOFF WP6 acceptance point with real kill points + an evidence bundle).
+- **Next action:** WP7 small deliberation/routing benchmark (`PHASE-0.7`): versioned
+  corpus vs single-agent / blind-independent / critique-revise / moderator-synthesis;
+  results include cases + uncertainty, no independence score. Then WP8, then the
+  queued maintenance leaf `PHASE-0-MAINT-1` (README_POLICY re-adoption — director's word).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0.6.1`.
+- **In-flight uncommitted work:** none after `PHASE-0.6.2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
-- **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — the full `make check`/`gate`/`deny`/`secret-scan`/`book` stack runs locally.
+- **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`, `mdbook` — plus `jq` for the demo script.
 - **Blockers:** none.

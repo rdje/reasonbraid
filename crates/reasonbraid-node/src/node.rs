@@ -21,6 +21,7 @@
 
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 
 use chrono::Utc;
 use serde_json::Value;
@@ -93,11 +94,12 @@ impl From<ChannelError> for NodeError {
 
 /// A ReasonBraid node: the journal owns its durable local facts, the channel owns its
 /// outbound connection, and the state machine owns when it may do work.
+#[derive(Clone)]
 pub struct Node {
     node_id: String,
     journal: Journal,
     channel: NodeChannel,
-    state: RwLock<NodeState>,
+    state: Arc<RwLock<NodeState>>,
 }
 
 impl Node {
@@ -112,7 +114,7 @@ impl Node {
             node_id: node_id.clone(),
             journal: Journal::open(journal_path).await?,
             channel: NodeChannel::new(base_url, node_id),
-            state: RwLock::new(NodeState::Offline),
+            state: Arc::new(RwLock::new(NodeState::Offline)),
         })
     }
 
@@ -123,6 +125,11 @@ impl Node {
     /// The node's journal (the durable local facts; also the operator's inspection target).
     pub fn journal(&self) -> &Journal {
         &self.journal
+    }
+
+    /// The node's outbound channel (the worker polls the delivery tail with it).
+    pub fn channel(&self) -> &NodeChannel {
+        &self.channel
     }
 
     /// The current lifecycle state.

@@ -95,7 +95,36 @@ pub async fn create_reservation(
     let mut tx = pool.begin().await.map_err(|e| BudgetError::Unavailable {
         detail: e.to_string(),
     })?;
+    let result = create_reservation_in_tx(
+        &mut *tx, ceiling_id, tenant_id, thread_id, requested, held_for, at,
+    )
+    .await;
+    // The denial row (when the ceiling refused) must COMMIT even though the call
+    // returns an error — denials are audit records too.
+    tx.commit().await.map_err(|e| BudgetError::Unavailable {
+        detail: e.to_string(),
+    })?;
+    result
+}
 
+/// The transactional body of [`create_reservation`] — shared with the `.6.2`
+/// invite/challenge dispatch so the reservation (or its denial row) commits in the
+/// SAME transaction as the thread event and the inbox enqueue. The caller owns
+/// `BEGIN`/`COMMIT`; on `Unavailable` a `denied` row has been written and the
+/// caller's transaction remains usable.
+pub(crate) async fn create_reservation_in_tx<'e, E>(
+    mut tx: E,
+    ceiling_id: &str,
+    tenant_id: &str,
+    thread_id: &str,
+    requested: &BudgetDimensions,
+    held_for: Duration,
+    at: DateTime<Utc>,
+) -> Result<Reservation, BudgetError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     let ceiling_row: Option<(String, String, serde_json::Value)> = sqlx::query_as(
         "SELECT ceiling_id, tenant_id, dimensions FROM budget_ceilings WHERE ceiling_id = $1",
     )
@@ -165,9 +194,6 @@ pub async fn create_reservation(
         .map_err(|e| BudgetError::Unavailable {
             detail: e.to_string(),
         })?;
-        tx.commit().await.map_err(|e| BudgetError::Unavailable {
-            detail: e.to_string(),
-        })?;
         return Err(BudgetError::Unavailable {
             detail: "the ceiling does not cover the requested dimensions".to_string(),
         });
@@ -189,9 +215,6 @@ pub async fn create_reservation(
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| BudgetError::Unavailable {
-        detail: e.to_string(),
-    })?;
-    tx.commit().await.map_err(|e| BudgetError::Unavailable {
         detail: e.to_string(),
     })?;
 
@@ -216,13 +239,32 @@ pub async fn settle_reservation(
     usage: &BudgetDimensions,
     at: DateTime<Utc>,
 ) -> Result<Option<Settlement>, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    settle_reservation_in_tx(&mut *conn, reservation_id, usage, at).await
+}
+
+/// The transactional body of [`settle_reservation`] — shared with the `.6.2`
+/// work-result path so a node's reported usage settles the reservation in the SAME
+/// transaction as the contribution it produced. Idempotent: a settled/released/
+/// denied row is terminal, so a duplicate event or an idempotency replay settles
+/// nothing twice.
+pub(crate) async fn settle_reservation_in_tx<'e, E>(
+    mut tx: E,
+    reservation_id: &str,
+    usage: &BudgetDimensions,
+    at: DateTime<Utc>,
+) -> Result<Option<Settlement>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     let row: Option<(String, serde_json::Value, String)> = sqlx::query_as(
         "SELECT ceiling_id, dimensions, status FROM budget_reservations WHERE reservation_id = $1",
     )
     .bind(reservation_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
-    let Some((ceiling_id, reserved_json, status)) = row else {
+    let Some((_, reserved_json, status)) = row else {
         return Ok(None);
     };
     if status != "active" {
@@ -252,10 +294,9 @@ pub async fn settle_reservation(
     .bind(reservation_id)
     .bind(serde_json::to_value(usage).expect("dims serialize"))
     .bind(at)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    let _ = ceiling_id;
     Ok(Some(Settlement {
         overrun,
         overrun_dimensions,

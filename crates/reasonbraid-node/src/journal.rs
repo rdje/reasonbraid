@@ -200,6 +200,24 @@ pub struct EventSummary {
     pub payload: String,
 }
 
+/// One inbox command that is thread work (`PHASE-0.6.2`): its payload carries a
+/// `kind` of `contribute` or `revise`. The worker's execution/skip decision reads
+/// [`WorkItem::latest_attempt_status`]: `None` or `prepared` is safe to execute
+/// (the dispatch boundary was never crossed); anything else is skipped —
+/// `outcome_unknown` needs proof or adjudication, the terminal states are done.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkItem {
+    pub command_id: String,
+    pub tenant_id: String,
+    pub thread_id: String,
+    /// The inbox payload (JSON text), carried verbatim.
+    pub payload: String,
+    /// The local operation this command created, once it has one.
+    pub operation_id: Option<String>,
+    /// The latest attempt status for that operation, if any attempt exists.
+    pub latest_attempt_status: Option<String>,
+}
+
 /// The classification produced by [`Journal::recover`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryReport {
@@ -877,6 +895,29 @@ impl Journal {
             .collect())
     }
 
+    /// ALL outgoing events, acknowledged or not, oldest first (`PHASE-0.6.2`) —
+    /// the evidence surface a node's emissions are inspected from, and the source
+    /// of the ORIGINAL ids a duplicate-transport demonstration re-sends.
+    pub async fn emitted_events(&self) -> Result<Vec<EventSummary>, JournalError> {
+        let rows = sqlx::query_as::<_, (String, String, String, String)>(
+            "SELECT event_id, operation_id, emitted_at, payload FROM outgoing_events \
+             ORDER BY emitted_at",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(event_id, operation_id, emitted_at, payload)| EventSummary {
+                    event_id,
+                    operation_id,
+                    emitted_at,
+                    payload,
+                },
+            )
+            .collect())
+    }
+
     /// The node's acknowledgement cursor: the highest server command cursor the node has
     /// durably recorded (0 on a fresh journal). Reported in the reconnect handshake;
     /// the server replays everything after it and this journal deduplicates.
@@ -931,6 +972,55 @@ impl Journal {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    /// The thread-work items this journal holds (`PHASE-0.6.2`): every command whose
+    /// payload declares a work kind, joined with its local operation and the latest
+    /// attempt status. Non-work commands (plain WP3 channel traffic) are excluded.
+    pub async fn work_items(&self) -> Result<Vec<WorkItem>, JournalError> {
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
+            "SELECT c.command_id, c.tenant_id, c.thread_id, c.payload, o.operation_id, \
+                    (SELECT a.status FROM attempts a \
+                     WHERE a.operation_id = o.operation_id \
+                     ORDER BY a.updated_at DESC LIMIT 1) \
+             FROM commands c LEFT JOIN operations o ON o.command_id = c.command_id \
+             ORDER BY c.received_at",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut items = Vec::new();
+        for (command_id, tenant_id, thread_id, payload, operation_id, latest_attempt_status) in rows
+        {
+            let value: Value =
+                serde_json::from_str(&payload).map_err(|e| JournalError::CorruptState {
+                    key: "command payload",
+                    value: e.to_string(),
+                })?;
+            match value.get("kind").and_then(|v| v.as_str()) {
+                Some("contribute") | Some("revise") => {}
+                _ => continue, // plain channel command — not thread work
+            }
+            items.push(WorkItem {
+                command_id,
+                tenant_id,
+                thread_id,
+                payload,
+                operation_id,
+                latest_attempt_status,
+            });
+        }
+        Ok(items)
     }
 
     /// Mark a locally-emitted event acknowledged because the SERVER reports holding it

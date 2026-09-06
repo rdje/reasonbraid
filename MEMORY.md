@@ -16,15 +16,17 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.2` (the `.1` coordinator leaf is **done**:
+- **Active tree:** `PHASE-1` → frontier `.1.2.1` (the `.1` coordinator leaf is **done**:
   `.1.1.1` aggregate/event/outbox library · `.1.1.2` identity store · `.1.1.3` thread
-  command API completion — cancel + typed create profiles; next is the Rust node leaf:
-  SQLite journal + enrollment + lease/presence + durable inbox).
-- **Next action:** start `PHASE-1.2` — decompose per `ROADMAP.md` §20.3 bullet 2 and
-  KICKOFF backlog 11–14 (the Phase 0 node/journal is the substrate).
+  command API completion; `.1.2` is decomposed — enrollment · authenticated channel +
+  leases · inbox hardening — and `.1.2.1` dev-profile node enrollment is next).
+- **Next action:** implement `PHASE-1.2.1` — one-time enrollment tokens + node
+  registration into the 0007 `nodes` table with a dev signing key + audit (backlog 11;
+  certificate issuance deferred to ADR-007).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.1.3` commit (pending defect leaf
-  `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
+- **In-flight uncommitted work:** none after the `.1.2` decomposition commit (pending
+  defect leaf `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to
+  `/tmp` — §13).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.

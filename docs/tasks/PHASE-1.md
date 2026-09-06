@@ -82,9 +82,55 @@ conversation without binding-governance claims.
     (fix = the one-line data-dir change + comment; verification = a full rerun).
 
 - ID: `PHASE-1.2`
-  Status: `proposed`
+  Status: `in_progress`
   Goal: Rust node with SQLite journal, enrollment, lease/presence, reconnect, durable inbox
   Backlog: 11–14
+  Note: backlog 12 (the journal's durability profile, fencing, crash fixtures,
+    inspection CLI) is PROVEN by Phase 0 — the WP3 kill-point sweep
+    (`journal_kill_points.rs`, 11 tests) carries it; the Phase-1 delta is the
+    lease/presence state `.1.2.2` adds to the journal.
+  Children: `.1.2.1`–`.1.2.3` (decomposed `2026-09-06`; gap census: node
+    enrollment absent, no node-channel leases, no inbox retention/quarantine)
+
+  - ID: `PHASE-1.2.1`
+    Status: `pending`
+    Goal: dev-profile node enrollment (backlog 11) — one-time enrollment tokens
+      (tenant + host claim + node id + expiry + nonce), the node registers into
+      the 0007 `nodes` table with a dev signing key, the server stores the key
+      fingerprint, and the enrollment is audited. Certificate issuance
+      (X.509/mTLS) is EXPLICITLY deferred to Phase 2 (ADR-007); the Phase 1
+      boundary is the token + signature.
+    Backlog: 11
+    Acceptance: a token enrolls exactly once (a replay is refused with the audit
+      row); the node's row + key land in `nodes`; expired/unknown tokens are
+      refused; the existing unauthenticated channel keeps working (the key-proof
+      handshake is `.1.2.2`'s contract change); enroll/re-enroll tests green and
+      no existing suite regresses.
+
+  - ID: `PHASE-1.2.2`
+    Status: `pending`
+    Goal: authenticated channel + lease/presence (backlog 13's remainder; the
+      journal's Phase-1 delta for backlog 12) — the handshake carries a key-proof
+      signature over the channel fields (`.1.2.1`'s key), heartbeats renew a
+      server-side lease, expiry leaves the node `Offline` with visible presence
+      state, and a fencing token guards lease renewal. Reconnect/cursor/version
+      negotiation are already proven (`PHASE-0.3.2`).
+    Backlog: 13
+    Acceptance: a handshake without a valid proof is refused; lease expiry and
+      renewal are observable through the API; every existing channel suite is
+      updated to the authenticated contract and stays green; the two-host demo
+      still passes.
+
+  - ID: `PHASE-1.2.3`
+    Status: `pending`
+    Goal: durable inbox hardening (backlog 14's remainder) — a retention window
+      for delivered rows and a quarantine status (with reason) that the replay
+      path skips, plus an inspection surface for both. Filtered delivery by
+      eligibility stays with Phase 3's directory.
+    Backlog: 14
+    Acceptance: a quarantined command is never re-delivered; retention cleanup
+      is an explicit operator action with a measured before/after; the existing
+      channel/worker suites stay green.
 
 - ID: `PHASE-1.3`
   Status: `proposed`
@@ -123,7 +169,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.2` | `pending` | the `.1` coordinator leaf is complete (`.1.1.1`–`.1.1.3` done) — the next §20.3 bullet is the Rust node: SQLite journal, enrollment, lease/presence, reconnect, durable inbox (backlog 11–14) |
+| 1 | `PHASE-1.2.1` | `pending` | the `.1` coordinator leaf is complete; `.1.2` is decomposed — node enrollment first (`.1.2.2`'s authenticated handshake rides the key it registers) |
 
 ## Changelog
 
@@ -133,6 +179,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.1.1` done — ADR-004 accepted; defect leaf `PHASE-1-MAINT-1` opened (§13 gap in `run_pg_tests.sh`); frontier → `.1.1.2`.
 - `2026-09-06`: `.1.1.2` done — migration 0007 identity store + enroll wiring (one transaction, FKs fail closed); decision record `docs/decisions/2026-09-06_identity-store.md`; frontier → `.1.1.3`.
 - `2026-09-06`: `.1.1.3` done — thread command API completion (cancel terminal + typed create profiles, stated single-agent default); decision record `docs/decisions/2026-09-06_thread-api-completion.md`; **the `.1` coordinator leaf is complete** — frontier → `.1.2`.
+- `2026-09-06`: `.1.2` decomposed (gap census first: enrollment absent, no node leases, no inbox retention/quarantine; backlog 12's journal is Phase-0-proven) into `.1.2.1` (dev-profile enrollment — cert issuance deferred to ADR-007), `.1.2.2` (authenticated channel + lease/presence), `.1.2.3` (inbox retention + quarantine); frontier → `.1.2.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

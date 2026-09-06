@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — PHASE-1.2 decomposed: enrollment, authenticated channel + leases, inbox hardening (`PHASE-1.2`)
+
+- The node leaf is decomposed into three signoff-sized children (tree-first, no code change), on a measured gap census: node enrollment is absent, the node channel has no leases/presence (only the outbox worker leases), the per-node inbox has no retention/quarantine, and backlog 12's journal is already Phase-0-proven (the WP3 kill-point sweep carries it).
+- `.1.2.1` dev-profile node enrollment (backlog 11: one-time tokens, registration into the 0007 `nodes` table, dev signing key, audit; certificate issuance deferred to ADR-007), `.1.2.2` authenticated channel + lease/presence (backlog 13's remainder: key-proof handshake, heartbeat leases, expiry → visible offline state), `.1.2.3` durable inbox retention + quarantine (backlog 14's remainder; filtered delivery stays with Phase 3's directory). `make gate` → 13/13 green at commit.
+
 ## 2026-09-06 — Thread command API completion: cancel + typed create profiles (`PHASE-1.1.3`)
 
 - `thread.cancel` lands as the abandonment terminal — the core `open|closing → cancelled` edge wired through the command API, with `cancel_reason` in the projection and a `thread.cancelled` event; distinct from a decided close (separate reasons, separate events, and the API test asserts `close_reason` stays null on cancel). `thread_cancel` joins the grant registry as its own action (the registry's wire-name test extended first — the canary that failed and taught the entry).

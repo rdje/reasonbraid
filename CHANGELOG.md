@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — PHASE-1.4 decomposed: the Claude CLI adapter (`PHASE-1.4`)
+
+- Tree-first decomposition on a measured gap census: backlogs 19 (deterministic fake) and 20 (Codex adapter) are Phase-0-proven (`.4.1`/`.4.2`), so `.1.4`'s delta is backlog 21 — the Claude-family adapter as the `.4.2` mirror. The live `claude` CLI is **installed** (2.1.263), so the real harness leg runs for real, env-gated like `RB_LIVE_CODEX`.
+- The machine interface is VERIFIED against the real binary before any code: three bounded probes pinned the 2.1.263 stream — `system/init` carries `session_id`; `assistant` text blocks are the reply; `result` carries `usage` AND `total_cost_usd` (Claude reports money — normalized cost, unlike Codex); the CLI REFUSES `stream-json` without `--verbose` (pre-dispatch error). Probe evidence kept on-volume in `target/claude-probes/` (the /tmp originals deleted, residue-census-verified — §13).
+- Children: `.1.4.1` the adapter core (`claude.rs` + offline stub suite) → `.1.4.2` live qualification + dependency-ledger row + book chapter + decision record. `make gate` → 13/13 at commit.
+
 ## 2026-09-06 — §13 same-volume locality for the ephemeral PG test cluster (`PHASE-1-MAINT-1`)
 
 - The defect leaf opened during `.1.1.1` is closed: `scripts/run_pg_tests.sh` no longer defaults its ephemeral PostgreSQL data dir to `${TMPDIR:-/tmp}/reasonbraid-pg.XXXXXX`. The cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX` — derived at runtime from the script's own location, same volume as the repo, gitignored via `/target`, still unique per run, still cleaned by the exit trap (only the parent directory moved; the `mktemp`/cleanup mechanics are untouched).

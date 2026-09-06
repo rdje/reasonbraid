@@ -225,10 +225,49 @@ conversation without binding-governance claims.
       invitation states; the book + CLI chapters document the surface.
 
 - ID: `PHASE-1.4`
-  Status: `proposed`
-  Goal: two genuinely distinct harness adapters where access permits, plus deterministic fakes for CI
-  Backlog: 19–22
-  Note: second real adapter may land here if Phase 0 deferred it
+  Status: `active`
+  Goal: the second genuinely distinct harness adapter — the Claude-family CLI — plus the deterministic fake for CI
+  Backlog: 21 (19 and 20 are Phase-0-proven: the deterministic fake is `.4.1`, the Codex adapter `.4.2`)
+  Note: gap census (`2026-09-06`) — backlogs 19 (deterministic fake) and 20 (Codex adapter)
+    landed in Phase 0 (`.4.1`/`.4.2`), so `.1.4`'s delta is backlog 21 (Claude-family adapter),
+    built as the `.4.2` mirror; the live CLI is INSTALLED on this host (claude 2.1.263), so the
+    real harness leg runs for real (env-gated like `RB_LIVE_CODEX`); backlog 22 (generic
+    process/MCP adapter) is not Phase 1's need — two genuinely distinct adapters exist after
+    this leaf.
+  Children: `.1.4.1`–`.1.4.2` (decomposed `2026-09-06` at the code-vs-live-qualification seam,
+    the `.4.2` mirror)
+
+  - ID: `PHASE-1.4.1`
+    Status: `active`
+    Goal: the Claude CLI adapter core (`crates/reasonbraid-adapter/src/claude.rs`) — supervises
+      `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` as a
+      child process, mapping the VERIFIED 2.1.263 stream: `system/init` (`session_id`) →
+      ProviderRequestId; `assistant` text blocks → OutputChunk (thinking blocks skipped — the
+      reply is the text); `result` (`is_error:false`) → Completed with usage AND
+      `total_cost_usd` (Claude reports money — normalized cost, unlike Codex); non-zero exit →
+      FailedKnown with the stderr tail; EOF without a result → lost response. `--restricted`
+      removes code-running tools, `--tools ''` disables ALL tools (content-only), and the CLI
+      itself REQUIRES `--verbose` with stream-json (the probe that omitted it was refused
+      pre-dispatch with exactly that error). The prompt travels as the USER prompt (after
+      `--`), never config; the adapter holds no credentials (ambient Claude login).
+      Offline stub suite (`tests/claude_adapter.rs`) over the real subprocess boundary.
+    Backlog: 21
+    Acceptance: the offline suite proves the event mapping (incl. the thinking-block skip and
+      the usage+cost normalization), the lost-response/exit-status/cancel/missing-binary legs,
+      and the declared capabilities; every existing adapter suite stays green; clippy clean.
+
+  - ID: `PHASE-1.4.2`
+    Status: `proposed`
+    Goal: the live qualification leg — `crates/reasonbraid-node/tests/claude_live.rs`
+      (`RB_LIVE_CLAUDE=1`, ignored by default) dispatching ONE bounded real run through the
+      real supervisor + journal (the `.4.2` codex_live mirror); the dependency-ledger Claude
+      row updated with the verified 2.1.263 interface + probe evidence; the book's
+      adapter-boundary chapter gains the Claude section; decision record.
+    Backlog: 21
+    Acceptance: the live test passes against claude 2.1.263 (dispatch → completed, exact usage +
+      cost, session id attached as the provider handle, honest unsupported lookup); the ledger
+      row carries checked_at + tested version + the probe evidence path; the book + decision
+      record land; full regression green.
 
 - ID: `PHASE-1.5`
   Status: `proposed`
@@ -254,7 +293,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.4` | `proposed` | `.1.3` is complete (explicit participants + simple subscriptions, backlogs 15/16) — the second genuinely distinct harness adapter (Claude-family) is the next `.1.x` lane; decompose or execute on pickup |
+| 1 | `PHASE-1.4` | `active` | `.1.3` is complete (explicit participants + simple subscriptions, backlogs 15/16) — `.1.4` decomposed (`2026-09-06`) at the code-vs-live seam: `.1.4.1` (the Claude CLI adapter core, the `.4.2` mirror) → `.1.4.2` (live qualification + ledger + book); next executable leaf `.1.4.1` |
 
 ## Changelog
 
@@ -272,6 +311,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.3.1` done — the explicit-participants contract: invite records a PENDING offer (typed `expires_in_seconds`, the additive `invitations` map), the invite enqueues NOTHING, the ACCEPT transaction dispatches the work with its reservation; `thread.accept_invitation`/`thread.decline_invitation` (the invitation IS the capability, gated by the new `thread_invitation_respond` grant — the role default gains it) and `thread.remove_participant` (tenant_admin → core `revoked`); expiry is DERIVED at read/accept (the lease-presence pattern — no sweeper, no expiry event); invited roles may not act (the auto-accept is gone, typed `invalid_transition`); re-invitation allowed over terminal states; the wiring suites + CLI e2e + two-host demo moved to the explicit contract (`rb thread accept` as the role); new `tests/invitations.rs` (3 live-PG tests incl. the concurrent accept/remove race — exactly one winner); decision record `docs/decisions/2026-09-06_explicit-participants.md`; frontier → `.1.3.2`.
 - `2026-09-06`: `.1.3` decomposed (gap census first: the `.6.2` invite dispatches work in the invite transaction with NO acceptance step — `ensure_participant` auto-accepts an invited role on first contribution; no accept/decline/expire/remove verbs or invitation records; `allow_join_requests` typed but inert; `allow_explicit_invites=false` recorded but not enforced) into `.1.3.1` (the explicit-participants contract: invitation lifecycle — invite records a pending invitation, accept/decline/remove, derived expiry, the invitation IS the acceptance capability — AND the dispatch move: work enqueues with the ACCEPT event; wiring suites + the two-host demo move to the explicit contract) and `.1.3.2` (simple subscriptions — `thread.join` under `allow_join_requests`, invite enforcement, subscription listing + CLI verbs); frontier → `.1.3.1`. Amended same-day: the lifecycle and the dispatch move are ONE contract (separating them leaves an incoherent interim — work arriving to a role that cannot act), so the original `.1.3.2` merged into `.1.3.1`.
 - `2026-09-06`: `PHASE-1-MAINT-1` done — §13 same-volume locality for the ephemeral PG cluster: `scripts/run_pg_tests.sh` now derives `ROOT` at runtime and places the data dir at `$ROOT/target/pg-ephemeral.XXXXXX` (gitignored, per-run unique, trap-cleaned — never `/tmp`); verified by two full reruns (twelve live suites + CLI e2e + demo, both `rc=0`) with a polled on-volume probe and a residue census; decision record `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md`. Frontier unchanged: `.1.4`.
+- `2026-09-06`: `.1.4` decomposed (gap census first: backlogs 19/20 — the deterministic fake and the Codex adapter — are Phase-0-proven, so `.1.4`'s delta is backlog 21; the live `claude` CLI is INSTALLED, 2.1.263, so the real leg runs for real) into `.1.4.1` (the Claude CLI adapter core — the `.4.2` subprocess mirror over the VERIFIED `-p --output-format stream-json --restricted --tools '' --verbose` interface, with the offline stub suite) and `.1.4.2` (live qualification + dependency-ledger row + book chapter + decision record); frontier → `.1.4.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

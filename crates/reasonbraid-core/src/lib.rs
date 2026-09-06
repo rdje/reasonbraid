@@ -50,5 +50,5 @@ pub use id::{
 };
 pub use state::{
     ParticipationState, ParticipationTransition, ProviderAttemptState, ProviderAttemptTransition,
-    ThreadState, ThreadTransition, TransitionError,
+    ThreadState, ThreadTransition, TransitionError, UnknownProviderAttemptState,
 };

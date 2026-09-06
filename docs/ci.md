@@ -10,7 +10,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
-| `rust` | format, clippy (deny warnings), test | `make check` |
+| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI (file-based, no service), and the server suites (skip offline) | `make check` |
 | `rust` (job `pg-tests`) | the WP2 PostgreSQL integration tests — atomic transaction (`.2.1`) and leased outbox worker with fencing + kill points (`.2.2`) — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
@@ -32,6 +32,10 @@ The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
   atomic-transaction tests and the outbox-worker fencing/kill-point tests), and tear
   everything down (no background service left running). **Requires** `postgresql@16`
   (`brew install postgresql@16`).
+- The WP3 node journal tests need no service at all: SQLite is a file, so the journal
+  kill-point sweep, the `rb-journal` CLI tests, and the journal unit tests run inside
+  plain `cargo test --all` (`make check`) and the `rust` workflow above. The PG-backed
+  suites alone require `DATABASE_URL` / `run_pg_tests.sh`.
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not

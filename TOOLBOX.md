@@ -34,6 +34,6 @@ agent should be able to reach for the right tool without reading the source. -->
 
 | Tool | Answers | How to invoke |
 | --- | --- | --- |
-| `<your-probe>` | does input X pass/fail, and where does it stop? | `<command>` |
-| `<your-tracer>` | which function/rule owns the failure? | `<command>` |
-| `<your-counter>` | how much / how often (the measured metric)? | `<command>` |
+| `rb-journal` (`crates/reasonbraid-node`) | journal health (durability profile, `quick_check`, counts), pending attempts/events, ambiguous attempts with boundary history — without opening SQLite by hand | `rb-journal inspect\|pending\|ambiguous <node.db> [--json]` |
+| `scripts/run_pg_tests.sh` | the WP2 PostgreSQL proofs (atomic transaction + outbox-worker fencing/kill points) against a live ephemeral server | `bash scripts/run_pg_tests.sh` |
+| `cargo test -p reasonbraid-node` | the WP3 journal kill-point sweep + CLI integration tests (file-based SQLite, no service) | `cargo test -p reasonbraid-node` |

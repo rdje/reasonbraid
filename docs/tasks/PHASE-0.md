@@ -186,17 +186,17 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - ID: `PHASE-0.3`
   Status: `pending`
-  Goal: outbound node, WAL journal, cursor resume, reconciliation
+  Goal: outbound node, WAL journal, cursor resume, reconciliation (`.3.1` journal done; `.3.2` channel pending)
   Depends on: `PHASE-0.1`; may proceed beside `PHASE-0.2`
   Children: `PHASE-0.3.1`, `PHASE-0.3.2`
   Roadmap: ADR 006, ADR 012
 
 - ID: `PHASE-0.3.1`
-  Status: `pending`
+  Status: `done`
   Goal: SQLite node journal (WAL, explicit durability) and journal inspection CLI
   Acceptance: operators inspect pending/ambiguous entries without opening SQLite by hand; crash after possible dispatch yields `outcome_unknown` unless the adapter can prove the result
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0015`
 
 - ID: `PHASE-0.3.2`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.3.1` | `pending` | WP3 SQLite node journal (WAL, explicit durability) + journal-inspection CLI — WP2 is complete; WP3 may proceed beside WP2 and is the next executable leaf |
+| 1 | `PHASE-0.3.2` | `pending` | WP3 outbound node channel — cursor resume + reconciliation handshake builds directly on the `.3.1` journal (command/operation dedupe, ack cursor, boundary ledger are in place); completing it finishes WP3 |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -543,6 +543,60 @@ check). Enforced by the `TASK-ACCEPTANCE` doctrine.
   `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to `PHASE-0.3.1`;
   README and mdBook unchanged (internal server machinery — no user-facing surface change).
 
+## Acceptance Checklist (PHASE-0.3.1)
+
+The `crates/reasonbraid-node` crate (`.rs` + `Cargo.toml` + `migrations/`), the
+`crates/reasonbraid-core` state-machine extension (`.rs`), and `Cargo.lock` are the CODE
+change owned by this leaf (per `.doctrine/code_paths.txt`: `crates/`; `Cargo.toml`/
+`Cargo.lock` are code by the ownership check). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §11.4/§17.4 + KICKOFF WP3 require "WAL mode
+  and an explicit development durability setting" and "a crash after possible provider
+  dispatch yields `outcome_unknown` unless the adapter can prove the result", but no node
+  crate existed — `git ls-files 'crates/*'` (before) → `reasonbraid-core` +
+  `reasonbraid-server` only, no SQLite journal, no inspection surface — and core's
+  provider-attempt machine could not even EXPRESS a proven post-dispatch failure
+  (`failed_known`) or the §11.3 provider-lookup recovery edges
+  (`OutcomeUnknown → Completed|FailedKnown`): recording "the adapter proved failure"
+  honestly was unrepresentable.
+- [x] **ADDRESSED (verified)** — landed `crates/reasonbraid-node` (`src/journal.rs` +
+  embedded `migrations/0001_node_journal.sql` + `src/bin/rb-journal.rs`) and extended the
+  core machine (`FailedKnown` + `(Dispatched, FailKnown)` + `(OutcomeUnknown,
+  Complete|FailKnown)` edges). `cargo test -p reasonbraid-node` →
+  `test result: ok. 13 passed` (journal unit) + `test result: ok. 6 passed` (CLI) +
+  `test result: ok. 10 passed` (kill points): the WAL/`synchronous=FULL` profile is applied
+  AND recorded in `journal_meta`; the dispatch boundary record is durable and visible to a
+  SECOND connection before the adapter runs; KP-1…KP-9 sweep every seam (before-command →
+  nothing persisted, after-prepare → `safe_to_redeliver`, after-dispatch →
+  `outcome_unknown`, proven status lookup → `completed`, after-result → terminal,
+  emitted/acked events stable); command/operation dedupe; invalid moves rejected by the
+  core machine; garbage files fail cleanly. `cargo test -p reasonbraid-core` →
+  `test result: ok. 24 passed; 0 failed; 1 ignored`.
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` clean + `cargo clippy
+  --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` →
+  `24 passed; 0 failed; 1 ignored` (core) + `13 passed` + `6 passed` + `10 passed` (node) +
+  `5 passed` + `7 passed` (server, skip offline); `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 5 passed` (atomic) + `test result: ok. 7 passed` (outbox worker) against
+  live PostgreSQL 16.15 (server untouched by this leaf, re-proven anyway); `make gate` →
+  `=== all doctrines green ===` (13/13); `make deny` → `advisories ok, bans ok, licenses ok,
+  sources ok` (clap + libsqlite3-sys tree; the path dependency is pinned
+  `version = "0.1.0"` to satisfy the wildcard ban); `make secret-scan` → `no leaks found`;
+  `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-node` (src/lib.rs + src/journal.rs +
+  src/bin/rb-journal.rs + migrations/0001_node_journal.sql + tests/journal_kill_points.rs +
+  tests/journal_cli.rs + Cargo.toml); `crates/reasonbraid-core/src/state.rs` gains
+  `FailedKnown`, the three new edges, `from_wire_name` + `FromStr` with
+  `UnknownProviderAttemptState`, and the exhaustive tables + parse tests; `Cargo.lock`
+  updated (clap, libsqlite3-sys, etc.).
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_node-journal.md`
+  (`answers:` present, measured behavior + rejected designs) + INDEX row;
+  `knowledge-map/subsystems.md` gains the `reasonbraid-node` row; the mdBook gains
+  `docs/book/src/node-journal.md` + its SUMMARY entry (the inspection CLI is an operator
+  surface); `TOOLBOX.md` now lists the real diagnostic tools; `docs/ci.md` notes the
+  journal tests run in plain CI; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` /
+  `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to `PHASE-0.3.2`; README
+  unchanged (no new standard command — the CLI is documented in the book).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -562,6 +616,7 @@ check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 | `2026-09-06` | `PHASE-0.1.4` | `cargo test -p reasonbraid-core` → `test result: ok. 23 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 passed; `make gate` → `=== all doctrines green ===` (13/13); §9.8 registry round-trips, unknown code preserved verbatim; decision record `2026-09-06_reason-codes.md` + INDEX row | typed errors + reason-code registry landed (WP1 complete) |
 | `2026-09-06` | `PHASE-0.2.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 5 passed; 0 failed; 0 ignored` (live PostgreSQL 16.15); `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; decision record `2026-09-06_atomic-transaction.md` + INDEX row | WP2 atomic transaction proven: 4 tables one transaction, claim-first idempotency, replay vs conflict |
 | `2026-09-06` | `PHASE-0.2.2` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed; 0 failed` (`outbox_worker`) + `5 passed` (`atomic_transaction`) on live PostgreSQL 16.15 — exclusive claim, reclaim-after-expiry with new token, stale worker refused after newer fencing value, expired lease refused, kill points 3/4/5 to one effect; `make check` → fmt clean + clippy no warnings + `cargo test --all` 23 core + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (chrono added); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_outbox-worker-fencing.md` + INDEX row | WP2 leased outbox worker proven: claim → deliver → complete with per-claim fencing tokens; **WP2 complete** |
+| `2026-09-06` | `PHASE-0.3.1` | `cargo test -p reasonbraid-node` → `test result: ok. 13 passed` (journal) + `test result: ok. 6 passed` (CLI) + `test result: ok. 10 passed` (kill points KP-1…KP-9 + end-to-end); `cargo test -p reasonbraid-core` → `test result: ok. 24 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 13 + 6 + 10 node + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (clap + libsqlite3-sys; path dep pinned); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_node-journal.md` + INDEX row | WP3 node journal proven: WAL + synchronous=FULL recorded, boundary record precedes dispatch, honest `outcome_unknown` recovery with prove/reconcile exits, read-only `rb-journal` CLI |
 
 ## Commit Log
 
@@ -581,6 +636,7 @@ check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 | `PHASE-0.1.4` | `REASONBRAID-PHASE0-0012` | `crates/reasonbraid-core` reason-code registry + typed errors + reason-codes decision record |
 | `PHASE-0.2.1` | `REASONBRAID-PHASE0-0013` | `crates/reasonbraid-server` atomic transaction + migrations + `run_pg_tests.sh` + pg-tests CI + atomic-transaction decision record |
 | `PHASE-0.2.2` | `REASONBRAID-PHASE0-0014` | `crates/reasonbraid-server` leased outbox worker (`outbox.rs`) + `migrations/0002_outbox_worker.sql` + kill-point/fencing tests + harness updates + outbox-worker-fencing decision record |
+| `PHASE-0.3.1` | `REASONBRAID-PHASE0-0015` | `crates/reasonbraid-node` SQLite journal (WAL + synchronous=FULL, boundary-before-boundary) + read-only `rb-journal` CLI + kill-point tests; core gains `failed_known` + §11.3 provider-lookup edges; node-journal decision record; mdBook chapter |
 
 ## Changelog
 
@@ -599,3 +655,4 @@ check). Enforced by the `TASK-ACCEPTANCE` doctrine.
 - `2026-09-06`: `PHASE-0.1.4` typed errors + reason-code registry — complete §9.8 registry with unknown-code preservation, `Retryability`, `DomainError`, `docs/decisions/2026-09-06_reason-codes.md`. WP1 complete; frontier is `.2.1`.
 - `2026-09-06`: `PHASE-0.2.1` WP2 atomic transaction — `crates/reasonbraid-server` (`apply_command` writes idempotency/event/state/outbox in one transaction), `migrations/0001_atomic_transaction.sql`, `scripts/run_pg_tests.sh` + `pg-tests` CI, `deny.toml` corrected for cargo-deny 0.20, `docs/decisions/2026-09-06_atomic-transaction.md`. Frontier is `.2.2`.
 - `2026-09-06`: `PHASE-0.2.2` WP2 leased outbox worker — `outbox.rs` claim/deliver/complete (each phase its own commit, per-claim fencing tokens, caller-supplied clock), `migrations/0002_outbox_worker.sql` (lease+fencing columns, `outbox_delivery` dedupe sink), 7 kill-point/fencing tests, `docs/decisions/2026-09-06_outbox-worker-fencing.md`. **WP2 complete.** Frontier is `.3.1`.
+- `2026-09-06`: `PHASE-0.3.1` WP3 node journal — `crates/reasonbraid-node` (WAL + `synchronous=FULL` recorded in `journal_meta`, `record_dispatch` commits before the adapter runs, `recover` → `outcome_unknown`, `prove_result`/`reconcile` exits, command/operation dedupe, boundary ledger, ack cursor), read-only `rb-journal` CLI (inspect/pending/ambiguous), KP-1…KP-9 kill-point sweep, core machine extended (`failed_known` + §11.3 provider-lookup edges), `docs/decisions/2026-09-06_node-journal.md`, mdBook node-journal chapter. Frontier is `.3.2`.

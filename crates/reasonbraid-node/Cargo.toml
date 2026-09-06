@@ -1,0 +1,46 @@
+# reasonbraid-node — the Rust node crate (KICKOFF.md §3): outbound connection, SQLite
+# journal, execution supervisor. PHASE-0.3.1 lands the WAL journal + the read-only
+# inspection CLI (`rb-journal`); the outbound channel with cursor resume (.3.2) and the
+# execution supervisor follow.
+[package]
+name = "reasonbraid-node"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rb-journal"
+path = "src/bin/rb-journal.rs"
+
+[dependencies]
+# Caller-supplied clock for journal timestamps (same pattern as the server's outbox
+# worker): every write records the caller's `now` as RFC 3339 TEXT, so tests advance
+# time deterministically and the journal never depends on host/DB clock agreement.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The inspection CLI's argument surface. default-features=false trims color/suggestions
+# (a node-local operator tool, not an interactive surface).
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# sqlite: the embedded node journal (§11.4). Same driver stack as the server's Postgres
+# side; the bundled SQLite keeps the build hermetic (no system library dependency).
+# migrate: `sqlx::migrate!` embeds `migrations/` in the binary — the journal schema
+# ships with the node, not with the control plane.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "migrate",
+    "macros",
+    "json",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Local operation identifiers (`op_<uuidv7>`): node-local identity for now — promoted
+# to a `reasonbraid-core` Id family the moment an operation crosses the wire.
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

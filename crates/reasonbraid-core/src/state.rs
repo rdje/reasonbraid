@@ -172,14 +172,18 @@ impl ParticipationTransition {
 
 // ── Provider attempt ──────────────────────────────────────────────────────────
 
-/// Minimal provider-attempt lifecycle (`KICKOFF.md` §3 WP1): `prepared → dispatched`
-/// (or `prepared → failed_before_dispatch`), `dispatched → completed` (proven success)
-/// or `dispatched → outcome_unknown` (ambiguous), and `outcome_unknown → reconciled`.
-/// `completed`, `failed_before_dispatch`, and `reconciled` are terminal.
+/// Minimal provider-attempt lifecycle (`KICKOFF.md` §3 WP1; extended in `PHASE-0.3.1`):
+/// `prepared → dispatched` (or `prepared → failed_before_dispatch`), `dispatched →
+/// completed` / `dispatched → failed_known` / `dispatched → outcome_unknown`, and
+/// `outcome_unknown → {completed, failed_known, reconciled}`. `completed`,
+/// `failed_before_dispatch`, `failed_known`, and `reconciled` are terminal.
 ///
-/// A *proven* failure after dispatch (`failed_known` / `cancelled_known` in the full
-/// §8.4 set) is deliberately out of Phase 0 scope: the honest minimal answer for an
-/// indeterminate attempt is `outcome_unknown → reconciled`, not a guessed failure.
+/// [`FailedKnown`] is a **proven** failure only — a definitive provider rejection at
+/// runtime, or a provider-lookup result recovered from an ambiguous attempt
+/// (`ROADMAP.md` §11.3: `OutcomeUnknown --> Completed | FailedKnown: provider lookup`).
+/// It is never a guess: a result that cannot be proven stays
+/// [`OutcomeUnknown`] until a proof or an authorized reconciliation exists.
+/// `cancelled_known` from the full §8.4 set remains out of Phase 0 scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderAttemptState {
@@ -187,6 +191,7 @@ pub enum ProviderAttemptState {
     Dispatched,
     Completed,
     FailedBeforeDispatch,
+    FailedKnown,
     OutcomeUnknown,
     Reconciled,
 }
@@ -198,8 +203,26 @@ impl ProviderAttemptState {
             ProviderAttemptState::Dispatched => "dispatched",
             ProviderAttemptState::Completed => "completed",
             ProviderAttemptState::FailedBeforeDispatch => "failed_before_dispatch",
+            ProviderAttemptState::FailedKnown => "failed_known",
             ProviderAttemptState::OutcomeUnknown => "outcome_unknown",
             ProviderAttemptState::Reconciled => "reconciled",
+        }
+    }
+
+    /// Parse a wire/record name back into a state (`std::str::FromStr`). The node
+    /// journal persists attempt states by wire name (`PHASE-0.3.1`) and needs the
+    /// inverse of [`ProviderAttemptState::as_str`]; a name this build's registry does
+    /// not know is [`UnknownProviderAttemptState`], never silently misclassified.
+    pub fn from_wire_name(s: &str) -> Option<Self> {
+        match s {
+            "prepared" => Some(ProviderAttemptState::Prepared),
+            "dispatched" => Some(ProviderAttemptState::Dispatched),
+            "completed" => Some(ProviderAttemptState::Completed),
+            "failed_before_dispatch" => Some(ProviderAttemptState::FailedBeforeDispatch),
+            "failed_known" => Some(ProviderAttemptState::FailedKnown),
+            "outcome_unknown" => Some(ProviderAttemptState::OutcomeUnknown),
+            "reconciled" => Some(ProviderAttemptState::Reconciled),
+            _ => None,
         }
     }
 
@@ -214,7 +237,12 @@ impl ProviderAttemptState {
             (Prepared, Dispatch) => Dispatched,
             (Prepared, FailBeforeDispatch) => FailedBeforeDispatch,
             (Dispatched, Complete) => Completed,
+            (Dispatched, FailKnown) => FailedKnown,
             (Dispatched, MarkOutcomeUnknown) => OutcomeUnknown,
+            // §11.3 provider-lookup recovery: an ambiguous attempt whose result is
+            // PROVEN (not guessed) may land on the proven terminal state.
+            (OutcomeUnknown, Complete) => Completed,
+            (OutcomeUnknown, FailKnown) => FailedKnown,
             (OutcomeUnknown, Reconcile) => Reconciled,
             _ => {
                 return Err(TransitionError {
@@ -234,6 +262,7 @@ pub enum ProviderAttemptTransition {
     Dispatch,
     FailBeforeDispatch,
     Complete,
+    FailKnown,
     MarkOutcomeUnknown,
     Reconcile,
 }
@@ -244,9 +273,32 @@ impl ProviderAttemptTransition {
             ProviderAttemptTransition::Dispatch => "dispatch",
             ProviderAttemptTransition::FailBeforeDispatch => "fail_before_dispatch",
             ProviderAttemptTransition::Complete => "complete",
+            ProviderAttemptTransition::FailKnown => "fail_known",
             ProviderAttemptTransition::MarkOutcomeUnknown => "mark_outcome_unknown",
             ProviderAttemptTransition::Reconcile => "reconcile",
         }
+    }
+}
+
+/// A provider-attempt state name this build's registry does not know (the string is
+/// preserved for the diagnostic).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownProviderAttemptState(pub String);
+
+impl std::fmt::Display for UnknownProviderAttemptState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown provider-attempt state `{}`", self.0)
+    }
+}
+
+impl std::error::Error for UnknownProviderAttemptState {}
+
+impl std::str::FromStr for ProviderAttemptState {
+    type Err = UnknownProviderAttemptState;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ProviderAttemptState::from_wire_name(s)
+            .ok_or_else(|| UnknownProviderAttemptState(s.to_string()))
     }
 }
 
@@ -333,18 +385,20 @@ mod tests {
         ),
     ];
 
-    const ATTEMPT_STATES: [ProviderAttemptState; 6] = [
+    const ATTEMPT_STATES: [ProviderAttemptState; 7] = [
         ProviderAttemptState::Prepared,
         ProviderAttemptState::Dispatched,
         ProviderAttemptState::Completed,
         ProviderAttemptState::FailedBeforeDispatch,
+        ProviderAttemptState::FailedKnown,
         ProviderAttemptState::OutcomeUnknown,
         ProviderAttemptState::Reconciled,
     ];
-    const ATTEMPT_EVENTS: [ProviderAttemptTransition; 5] = [
+    const ATTEMPT_EVENTS: [ProviderAttemptTransition; 6] = [
         ProviderAttemptTransition::Dispatch,
         ProviderAttemptTransition::FailBeforeDispatch,
         ProviderAttemptTransition::Complete,
+        ProviderAttemptTransition::FailKnown,
         ProviderAttemptTransition::MarkOutcomeUnknown,
         ProviderAttemptTransition::Reconcile,
     ];
@@ -370,8 +424,24 @@ mod tests {
         ),
         (
             ProviderAttemptState::Dispatched,
+            ProviderAttemptTransition::FailKnown,
+            ProviderAttemptState::FailedKnown,
+        ),
+        (
+            ProviderAttemptState::Dispatched,
             ProviderAttemptTransition::MarkOutcomeUnknown,
             ProviderAttemptState::OutcomeUnknown,
+        ),
+        // §11.3 provider-lookup recovery (PHASE-0.3.1): a proven result ends ambiguity.
+        (
+            ProviderAttemptState::OutcomeUnknown,
+            ProviderAttemptTransition::Complete,
+            ProviderAttemptState::Completed,
+        ),
+        (
+            ProviderAttemptState::OutcomeUnknown,
+            ProviderAttemptTransition::FailKnown,
+            ProviderAttemptState::FailedKnown,
         ),
         (
             ProviderAttemptState::OutcomeUnknown,
@@ -463,6 +533,28 @@ mod tests {
         );
         let back: ParticipationState = serde_json::from_str("\"accepted\"").unwrap();
         assert_eq!(back, ParticipationState::Accepted);
+    }
+
+    /// `FromStr` is the exact inverse of `as_str` (the node journal persists attempt
+    /// states by wire name, `PHASE-0.3.1`); a name this build does not know is a typed
+    /// [`UnknownProviderAttemptState`], never misclassified.
+    #[test]
+    fn provider_attempt_states_parse_from_wire_names() {
+        for s in ATTEMPT_STATES {
+            assert_eq!(s.as_str().parse::<ProviderAttemptState>(), Ok(s));
+        }
+        assert_eq!(
+            "cancelled_known".parse::<ProviderAttemptState>(),
+            Err(UnknownProviderAttemptState("cancelled_known".to_string()))
+        );
+        assert!(matches!(
+            "dispatched_typo".parse::<ProviderAttemptState>(),
+            Err(UnknownProviderAttemptState(_))
+        ));
+        assert!(matches!(
+            "".parse::<ProviderAttemptState>(),
+            Err(UnknownProviderAttemptState(_))
+        ));
     }
 
     #[test]

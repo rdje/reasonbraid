@@ -448,6 +448,12 @@ async fn enroll(
     let mut boundary = None;
     if req.tenant_id.is_none() {
         let b = dev_boundary(&tenant_id, now);
+        // The tenant's identity row FIRST: the human_principals insert below
+        // references it (PHASE-1.1.2, migrations/0007).
+        sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+            .bind(tenant_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         authority::insert_boundary_in_tx(&mut *tx, &b).await?;
         boundary = Some(b);
     }
@@ -499,6 +505,34 @@ async fn enroll(
                     .join("; ")
             ))
         })?;
+
+    // The identity record (PHASE-1.1.2, migrations/0007): the principal's row in
+    // its identity table commits in the SAME transaction as the enrollment row —
+    // an enrollment implies its identity row. The tenants row already exists
+    // (the bootstrap branch above, or an earlier bootstrap's transaction); an
+    // enrollment into a tenant with no tenants row fails the FK — fail closed,
+    // never a silent half-identity.
+    match &principal {
+        GrantSubject::Human(h) => {
+            sqlx::query(
+                "INSERT INTO human_principals (principal_id, tenant_id, name) \
+                 VALUES ($1, $2, $3)",
+            )
+            .bind(h.to_string())
+            .bind(tenant_id.to_string())
+            .bind(&req.name)
+            .execute(&mut *tx)
+            .await?;
+        }
+        GrantSubject::Role(r) => {
+            sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3)")
+                .bind(r.to_string())
+                .bind(tenant_id.to_string())
+                .bind(&req.name)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
 
     sqlx::query(
         "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, $3, $4)",

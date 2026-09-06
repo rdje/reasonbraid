@@ -16,14 +16,15 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.1.2` (`.1.1.1` aggregate/event/outbox library
-  **done** — `reasonbraid-server::agg` is the single write path, ADR-004 accepted; next is
-  the migration-0007 identity store, then `.1.1.3` thread-command-API completion).
-- **Next action:** implement `PHASE-1.1.2` — migration 0007: first-class identity tables
-  (`tenants`/`hosts`/`nodes`/`agent_roles`/`incarnations`/`runs`/`human_principals`),
-  enroll writing the enrollment row AND the identity row in one transaction (backlog 10).
+- **Active tree:** `PHASE-1` → frontier `.1.1.3` (`.1.1.1` aggregate/event/outbox library
+  **done** — ADR-004 accepted; `.1.1.2` migration-0007 identity store **done** — decision
+  record `docs/decisions/2026-09-06_identity-store.md`; next is the thread-command-API
+  completion: `thread.cancel` + typed classification/workflow-profile/participant-rules).
+- **Next action:** implement `PHASE-1.1.3` — `thread.cancel` (the `open → cancelled` core
+  edge), the three typed create fields (single-agent default per ADR-002), re-verified
+  against the `.1.1.1` library (backlog 15's API-shape portion).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.1.1` commit (pending defect leaf
+- **In-flight uncommitted work:** none after the `.1.1.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,

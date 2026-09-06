@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Migration 0007: the first-class identity store (`PHASE-1.1.2`)
+
+- Backlog 10's identity schema landed as `migrations/0007_identity_store.sql`: `tenants`, `human_principals`, `agent_roles`, `hosts`, `nodes`, `incarnations`, `runs` — the §8.1 hierarchy as records, with `tenant_id` on every material record (§17.2), UUIDv7 wire ids, and fail-closed foreign keys (a principal whose tenant does not exist is refused by the database). The `.6.1` `enrollments` table stays the dev bootstrap's name→id map; the incarnation carries only the §8.1-defining facts (provider/model/harness/config, validity interval) — later-feature columns arrive with their features (the 0002 precedent).
+- Enroll now writes the tenant row (bootstrap), the identity row, the grant, the boundary, and the enrollment row in ONE transaction — an enrollment implies its identity row; a re-enroll (same tenant + kind + name) replays and duplicates nothing at either layer.
+- New `tests/identity_store.rs` (bootstrap commits tenant+identity+enrollment together; role identity + replay duplicates nothing; FKs fail closed); the API-driving suites' purge lists gained the identity tables in FK order. Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13.
+- Decision recorded: `docs/decisions/2026-09-06_identity-store.md` (`answers:` present — the table is the record, the FK is the enforcer, the re-enroll is a replay at the identity layer too). Test-authored defect caught by the new suite and fixed in the same leaf (the human re-enroll assertion omitted `tenant_id`, which the dev API reads as a fresh bootstrap — the corrected test replays through the explicit tenant).
+
 ## 2026-09-06 — The aggregate/event/outbox library: one auditable write path (`PHASE-1.1.1`)
 
 - Backlog 9 landed as `reasonbraid-server::agg` — the WP2 machinery extracted from `tx.rs` into a typed library: the idempotency claim (the `(tenant_id, idempotency_key)` primary key is the serialization point), the locked aggregate head (the revision serialization point), the ordered event append, the current-state upsert, the outbox enqueue (its FK proves an outbox item implies its event is durable), and the semantic result — one transaction, composed by callers with authorization/validation in the same transaction. An optional `expected_revision` precondition adds optimistic concurrency; it defaults OFF, so Phase 0 behavior is preserved byte-for-byte.

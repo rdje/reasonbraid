@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.1.2: the identity store — the table is the record, the FK is the enforcer
+
+- **The identity table is the record; the enrollment table is the map.** Migration 0007 adds `tenants`/`human_principals`/`agent_roles`/`hosts`/`nodes`/`incarnations`/`runs` beside the `.6.1` `enrollments` table without upgrading the map into the schema — the identity tables model §8.1 exactly, and the dev name→id map stays disposable.
+- **Parent-row-first inside one transaction, and the FK enforces the order.** `enroll` inserts the tenant row before the principal row; a future caller that forgets the order gets a failed transaction, not a comment to remember. `identity_store`'s fail-closed test proves it: a principal with no tenant row (and a node with no host row) is refused by the database.
+- **A re-enroll is a replay at the identity layer too** — the replay path returns before any insert AND the identity tables carry their own unique keys, so idempotent bootstrap is double-enforced (count assertions after re-enroll prove no second row).
+- Promoted to `docs/decisions/2026-09-06_identity-store.md` (`answers:` present). **Frontier `PHASE-1.1.3` (thread command API completion).**
+
 ## _(2026-09-06)_ — PHASE-1.1.1: the aggregate/event/outbox library is an extraction, not a rewrite
 
 - **A proven write path extracts cleanly when the old shape becomes a shim that owns NO SQL.** `tx.rs` shrank to type conversions + delegation over `agg` (claim → locked head → event → state → outbox → result, one transaction); every Phase 0 caller kept its exact `tx::` shape, so the zero-behavior-change acceptance is proven by switching no call site and re-running the full regression — the live-PG suites AND the two-host demo rode the new library with every acceptance check green.

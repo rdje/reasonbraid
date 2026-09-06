@@ -47,7 +47,7 @@ conversation without binding-governance claims.
       test aggregate.
 
   - ID: `PHASE-1.1.2`
-    Status: `pending`
+    Status: `done`
     Goal: migration 0007 — first-class identity store: `tenants`, `hosts`, `nodes`,
       `agent_roles`, `incarnations`, `runs`, `human_principals` (the `.6.1`
       `enrollments` table is the dev stand-in). Enroll writes the enrollment row
@@ -123,7 +123,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.1.2` | `pending` | `.1.1.1` is done (the aggregate library is the write path the identity store and the thread API compose over); migration 0007 gives identity its first-class rows — backlog 10 |
+| 1 | `PHASE-1.1.3` | `pending` | `.1.1.1` and `.1.1.2` are done — the write path and the identity rows exist; the thread command API completes over them (backlog 15's API-shape portion: `thread.cancel` + the typed create fields) |
 
 ## Changelog
 
@@ -131,6 +131,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: Opened by the Phase 0 go — ADR-002 `accepted` (signed by the accountable owner, `PHASE-0.8.2`); `.1` unblocked.
 - `2026-09-06`: `.1` decomposed into `.1.1.1` (aggregate/event/outbox library — backlog 9, ADR-004), `.1.1.2` (migration 0007 identity store — backlog 10), `.1.1.3` (thread command API completion — backlog 15's API-shape portion; the invitation semantics stay with `.1.3`); `.1.3`'s goal reworded to remove the double-claim of backlog 15; frontier → `.1.1.1`.
 - `2026-09-06`: `.1.1.1` done — ADR-004 accepted; defect leaf `PHASE-1-MAINT-1` opened (§13 gap in `run_pg_tests.sh`); frontier → `.1.1.2`.
+- `2026-09-06`: `.1.1.2` done — migration 0007 identity store + enroll wiring (one transaction, FKs fail closed); decision record `docs/decisions/2026-09-06_identity-store.md`; frontier → `.1.1.3`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -179,14 +180,59 @@ The CODE change owned by this leaf: `crates/reasonbraid-server/src/agg.rs` (new)
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, ADR-004 +
   `docs/adr/INDEX.md` — same commit.
 
+## Acceptance Checklist (PHASE-1.1.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/api.rs` (enroll
+wiring), `crates/reasonbraid-server/tests/identity_store.rs` (new), the purge-list
+edits in `crates/reasonbraid-server/tests/{command_api,node_work}.rs` and
+`crates/reasonbraid-cli/tests/cli_end_to_end.rs`, and `scripts/run_pg_tests.sh`
+(all match `\.rs$`/`\.sh$` in `.doctrine/code_paths.txt`); `migrations/0007_identity_store.sql`
+is schema (non-code per the same seam).
+
+- [x] **REPRODUCE / ISSUE** — backlog 10 ("initial identity, grant, thread, event, job,
+  budget, and idempotency tables") is open; identity exists only as the `.6.1` dev map —
+  the §8.1 hierarchy (hosts, nodes, incarnations, runs) has NO rows anywhere.
+  `git log -S 'INSERT INTO enrollments' --oneline -- crates/reasonbraid-server/src/api.rs` →
+  `35f395d REASONBRAID-PHASE0-0022 (leaf PHASE-0.6.1): …` (the enroll map's only writer;
+  no identity writer exists at all).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the dev bootstrap needed only the
+  (tenant, kind, name) → id map, so `.6.1` stopped there; the §8.1 hierarchy had no
+  durable records, which node/incarnation/run lineages will require. The fix point is
+  `api.rs`'s enroll transaction (lines 446–512, the ONE-transaction block) plus a new
+  migration — `migrations/0007_identity_store.sql` (7 tables, FKs fail closed).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no identity tables;
+  enroll wrote 4 rows. After: migration 0007 (7 tables, tenant_id on every material
+  record, §17.2) + enroll writes the tenant row (bootstrap) and the identity row in the
+  SAME transaction. The new suite caught a test-authored defect on its first run
+  (`test result: FAILED. 2 passed; 1 failed` — the human re-enroll omitted `tenant_id`,
+  which the dev API reads as a fresh bootstrap); after the correction
+  `bash scripts/run_pg_tests.sh` → `test result: ok. 3 passed; 0 failed`
+  (`identity_store`: bootstrap commits tenant+identity+enrollment together; role
+  identity + replay duplicates nothing; FKs fail closed).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.`
+  4 + 5 + 9 + 5 + 7 + 3 + 13 + 6 + 7 `passed`) + the real-binary CLI e2e
+  `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed`
+  (12 PASS checks, `rc=0`); `cargo clippy --all-targets --all-features -- -D warnings` →
+  clean; `make gate` → `=== all doctrines green ===` (13/13) at commit.
+- [x] **FIX** — `migrations/0007_identity_store.sql`; `api.rs` enroll (tenants insert
+  in the bootstrap branch, identity row before the enrollment row — parent-row-first,
+  FK-enforced); `tests/identity_store.rs` (3 live-PG proofs); the purge lists of
+  `command_api`/`node_work`/`cli_end_to_end` gained the identity tables in FK order;
+  `scripts/run_pg_tests.sh` registers the suite.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_identity-store.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-06` | `PHASE-1.1.1` | `cargo clippy --all-targets --all-features -- -D warnings` → clean; `cargo test --all` → every offline suite green (server unit suite `test result: ok. 5 passed` incl. the new `agg::tests`); `bash scripts/run_pg_tests.sh` → all eight live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | aggregate/event/outbox library landed; ADR-004 accepted |
+| `2026-09-06` | `PHASE-1.1.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | identity store landed (migration 0007 + enroll wiring); the new suite caught a test-authored bootstrap/replay confusion on its first run — fixed, `test result: ok. 3 passed` |
 
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-1.1.1` | `REASONBRAID-PHASE1-0002` | `agg` library + `tx` shim + `tests/aggregate_library.rs` + ADR-004; zero call-site churn |
+| `PHASE-1.1.2` | `REASONBRAID-PHASE1-0003` | migration 0007 + enroll identity wiring + `tests/identity_store.rs` + decision record |

@@ -3,7 +3,7 @@
 # into the retrievable layer or EXPLICITLY DECLINED, never silently dropped.
 #
 # Provenance: maintainer directive 2026-08-01 in the originating project, ported by
-# BEDROCK-MAINTENANCE.2.6. THE MEASURED DEFECT this exists to stop: the notes file there carried
+# REASONBRAID-MAINTENANCE.2.6. THE MEASURED DEFECT this exists to stop: the notes file there carried
 # 1 592 dated lesson entries across 62 191 lines and is NOT a Knowledge Map scan dir, so not one of
 # them was reachable by question; the decisions dir IS a scan dir and 0 of its 142 records carried
 # `answers:`. The promotion mechanism existed, was wired, and was skipped 1 592 times — silently,

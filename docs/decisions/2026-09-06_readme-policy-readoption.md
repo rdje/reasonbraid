@@ -36,7 +36,7 @@ copy was the older revision and the guard still shipped template defaults (300 l
 meaningless ceilings for a 47-line landing page — with no routing-closure inventory.
 
 The closure leg paid for itself on its FIRST run against this repo: it caught three genuinely unrouted
-destinations (`COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, and the `<bedrock-url>` placeholder
+destinations (`COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, and the scaffold-URL placeholder
 inside the scaffold span) and a real measured legacy ceiling (`CHANGELOG.md` at 48,495 bytes vs the
 provisional 10,240) — the exact defect class the upstream policy documents. Each was either given a
 governed row or reworded, and the falsification arms (cap override, injected unrouted link, malformed

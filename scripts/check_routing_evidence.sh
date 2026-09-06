@@ -2,7 +2,7 @@
 # ROUTING-EVIDENCE — a task leaf that routes a finding OUT to a DIFFERENT task tree must record
 # what it measured before deciding the finding belongs to that family.
 #
-# Provenance: an incident in the originating project (ported by BEDROCK-MAINTENANCE.2.6): a leaf
+# Provenance: an incident in the originating project (ported by REASONBRAID-MAINTENANCE.2.6): a leaf
 # routed a target-accounting mismatch to another family as "that family's model, not the shared
 # gate". It was neither — the defect sat in the SHARED gate, the same run got a second family wrong
 # the same way, and the evidence that settled it (cross-family arithmetic over the run's own

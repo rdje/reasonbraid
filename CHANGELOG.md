@@ -1,9 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-06 — ReasonBraid-only naming: the 90-token sweep (`PHASE-0-MAINT-2`)
+
+- Director directive: no more scaffold-name references — only ReasonBraid. Census (case-insensitive `git grep` over the scaffold-name token) → **90 occurrences in 28 tracked files** (the README landing page, `DOCTRINE_VERSION`, `cargo-generate.toml`, provenance notes in `COMMIT.md` + six doctrine checkers + two artifact probes, `scripts/bootstrap.sh` + `scripts/update_scaffold.sh`, historical CHANGELOG entries, tree and live docs).
+- Sweep: ordered token map (the scaffold tracker-id prefix → `REASONBRAID-MAINTENANCE`, the maintainer-note markers → `REASONBRAID-MAINTAINER-NOTE`, the template version prefix → `reasonbraid-scaffold`, then bare tokens) plus prose polish ("the ReasonBraid spine", "scaffold-URL placeholder"); after: the same census → none. Provenance facts preserved; `bash -n` on all 11 touched scripts ok; the guard's self-test fixture now matches the README (`<reasonbraid-url>`).
+- **The PHASE-0 tree is complete** — next executable work is `PHASE-1.1`. `make gate` → 13/13 green at commit.
+
 ## 2026-09-06 — README_POLICY re-adopted: derived caps and routing-pressure closure (`PHASE-0-MAINT-1`)
 
 - `README_POLICY.md` re-adopted at the upstream 2026 revision (fenced ReasonBraid adoption note + neutral body: Authority and provenance, duplication probe, Routing pressure closure, derived caps, unconditional-check rule, 9-step checklist).
-- `scripts/check_readme_stability.sh` rewritten: **derived caps** (60 lines / 2,400 bytes from the reviewed 47-line / 1,772-byte landing page — template defaults retired), **routing-pressure closure** over `.doctrine/readme_routes.txt` (17 governed rows; prefix closure; transitive control-field leg), the CHANGELOG **96,000-byte rotation threshold** (the measured 48,495-byte baseline recorded as governed debt), and a `--self-test` arm. The closure leg's first run caught three genuinely unrouted destinations (`COMMIT.md`, `docs/adr/…`, the `<bedrock-url>` placeholder) — all given governed rows or reworded.
+- `scripts/check_readme_stability.sh` rewritten: **derived caps** (60 lines / 2,400 bytes from the reviewed 47-line / 1,772-byte landing page — template defaults retired), **routing-pressure closure** over `.doctrine/readme_routes.txt` (17 governed rows; prefix closure; transitive control-field leg), the CHANGELOG **96,000-byte rotation threshold** (the measured 48,495-byte baseline recorded as governed debt), and a `--self-test` arm. The closure leg's first run caught three genuinely unrouted destinations (`COMMIT.md`, `docs/adr/…`, the scaffold-URL placeholder) — all given governed rows or reworded.
 - Guard falsification matrix: cap override → red; injected unrouted link → red (tree restored byte-identical); malformed registry row → red; self-test ground truth → ok.
 - Decision record `docs/decisions/2026-09-06_readme-policy-readoption.md` (+ `answers:`) and INDEX row; DOCTRINE_ENFORCEMENT mirror updated. `make gate` → 13/13 green at commit.
 
@@ -199,14 +205,14 @@
 
 ## 2026-09-05 — land ROADMAP v0.4.1 and companion KICKOFF.md (`RB-SEED.1`)
 
-- Replaced the bedrock placeholder `ROADMAP.md` with ReasonBraid v0.4.1 (execution baseline).
+- Replaced the scaffold placeholder `ROADMAP.md` with ReasonBraid v0.4.1 (execution baseline).
 - Tracked `KICKOFF.md` as the Phase 0 companion: scope/gates in `ROADMAP.md`, day-to-day Phase 0 execution in `KICKOFF.md`.
 - Recorded `docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md` and `docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md`.
 - mdBook introduction now describes ReasonBraid rather than the template skeleton.
 
-## bedrock-scaffold 0.6.1 — creating a project is foolproof through its first commit
+## reasonbraid-scaffold 0.6.1 — creating a project is foolproof through its first commit
 
-`BEDROCK-MAINTENANCE.2.7`.
+`REASONBRAID-MAINTENANCE.2.7`.
 
 - ⛔ **Measured on a fresh clone of 0.6.0:** `bootstrap.sh` left the crate rename — a CODE change — with no owning
   leaf, so the new project's FIRST commit was refused by `TASK-TREE-OWNERSHIP` and `TASK-ACCEPTANCE`. A new user's
@@ -219,9 +225,9 @@
   with no hand edits. Two defects in the fix were caught by the trial itself (an enforcer run before the map
   existed; a `grep -c` fallback that split a checklist bullet).
 
-## bedrock-scaffold 0.6.0 — four evidence and ratchet doctrines: lessons reach the retrievable layer, routings carry evidence, gap claims carry their census, tables keep their columns
+## reasonbraid-scaffold 0.6.0 — four evidence and ratchet doctrines: lessons reach the retrievable layer, routings carry evidence, gap claims carry their census, tables keep their columns
 
-`BEDROCK-MAINTENANCE.2.6`.
+`REASONBRAID-MAINTENANCE.2.6`.
 
 - **Added `LESSON-PROMOTION`**: a new dated lesson heading staged in `DEV_NOTES.md` must be promoted (a
   `docs/knowledge/` change or a `docs/decisions/` record gaining `answers:`) or explicitly declined
@@ -240,9 +246,9 @@
   input-bound principles (`BASELINE-IDENTITY`, `IDENTITY-CARRIER-CURRENCY`, `SCRATCH-SLOT-HEADER`, the full
   `LIVE-DOC-CURRENCY` instrument) for a future seam.
 
-## bedrock-scaffold 0.5.0 — the day-one batch: no agent trailers, a handoff census, no self-reported dates
+## reasonbraid-scaffold 0.5.0 — the day-one batch: no agent trailers, a handoff census, no self-reported dates
 
-`BEDROCK-MAINTENANCE.2.5`.
+`REASONBRAID-MAINTENANCE.2.5`.
 
 - ⛔ **`COMMIT.md` had the trailer rule backwards.** It told every generated project to *end commit
   messages with the project's co-authorship trailer*; the upstream maintainer ruled the opposite on
@@ -260,9 +266,9 @@
 - Part 2 of the same transfer (`LESSON-PROMOTION`, `ROUTING-EVIDENCE`, `GAP-CLAIM-CENSUS`, a fresh
   `TABLE-ARITY-RATCHET`) is classified in the `.2.5` leaf and queued as `.2.6`, paused by the maintainer.
 
-## bedrock-scaffold 0.4.0 — TASK-ACCEPTANCE: a change lands with evidence, not with a claim
+## reasonbraid-scaffold 0.4.0 — TASK-ACCEPTANCE: a change lands with evidence, not with a claim
 
-`BEDROCK-MAINTENANCE.2.4`.
+`REASONBRAID-MAINTENANCE.2.4`.
 
 - **Added the `TASK-ACCEPTANCE` doctrine**: a staged CODE change must be owned by a task-tree leaf
   whose checklist has ROOT CAUSE / ADDRESSED / NO REGRESSION **ticked**, each backed by output from
@@ -287,7 +293,7 @@
 
 ## unreleased — the admission test asks about VALUE first, not vocabulary
 
-`BEDROCK-MAINTENANCE.2.3`. Process only; no check changed, so `DOCTRINE_VERSION` is unmoved
+`REASONBRAID-MAINTENANCE.2.3`. Process only; no check changed, so `DOCTRINE_VERSION` is unmoved
 (`MAINTAINING.md` and the maintenance tree are maintainer-only, not re-syncable spine files).
 
 - **The admission test is now two ordered questions.** Q1 (primary, about VALUE): *does this
@@ -302,14 +308,14 @@
   path and a `clean:` recipe, so it really offers *"benefits any project that builds with make"* —
   a conditional. **Rejected as-is.** Meanwhile `ROUTING-EVIDENCE` measures 0 build-system
   references and presumes only the task-tree system this template ships ⇒ promoted to top.
-- **The portability seam to look for:** does the check presume anything beyond what bedrock ships?
+- **The portability seam to look for:** does the check presume anything beyond what the spine ships?
   If yes, give it a project-declared seam or leave it upstream — never hardcode one project's
   answer and call it neutral.
 - ✅ Retroactive audit: all four already-ported items PASS Q1. Nothing retracted.
 
-## bedrock-scaffold 0.3.0 — WAIVER-ROUTING, and the neutrality bar for every future port
+## reasonbraid-scaffold 0.3.0 — WAIVER-ROUTING, and the neutrality bar for every future port
 
-`BEDROCK-MAINTENANCE.2.2`.
+`REASONBRAID-MAINTENANCE.2.2`.
 
 - **Added the `WAIVER-ROUTING` doctrine** (`scripts/check_waiver_routing.sh`): a task leaf saying a
   gate DOES NOT APPLY must name the leaf that owns fixing the gate. ⭐ An author writing a waiver
@@ -317,7 +323,7 @@
   Deliberately does **not** punish honesty: the waiver stays legal, it just has to name an owner.
 - **Chosen by measurement.** All 15 upstream doctrines were classified by domain-dependence of
   their LOGIC (comments stripped). `WAIVER-ROUTING` scored **0** — portable essentially unchanged.
-  The ranked remainder is now a frontier in `docs/tasks/BEDROCK-MAINTENANCE.md`, not a wish list.
+  The ranked remainder is now a frontier in `docs/tasks/REASONBRAID-MAINTENANCE.md`, not a wish list.
 - ⭐⭐ **The port FIXED a defect rather than inheriting one**: the origin's `printf … | grep -q …
   || continue` returns failure ON SUCCESS past the pipe buffer under `pipefail`, silently SKIPPING
   the file — a **fail-open**. Both sites here read a file instead. Threshold measured, not assumed:
@@ -328,9 +334,9 @@
   the reference deployment's.
 - Probes 5/0; `make gate` 7/7; added to the `update_scaffold.sh` NEUTRAL allow-list.
 
-## bedrock-scaffold 0.2.0 — README Stability Policy + a layer-A byte cap
+## reasonbraid-scaffold 0.2.0 — README Stability Policy + a layer-A byte cap
 
-`BEDROCK-MAINTENANCE.2.1`. Transferred from the reference deployment by maintainer order.
+`REASONBRAID-MAINTENANCE.2.1`. Transferred from the reference deployment by maintainer order.
 
 - **Added `README_POLICY.md`** (project-neutral, verbatim) — keeps `README.md` a stable landing
   page instead of a changelog/roadmap/catalogue, and states the caps rule.
@@ -348,7 +354,7 @@
   Layer-A caps: **50 lines** (tightened from 120, to match the "≤ ~50 lines" §6 already stated)
   and **7168 bytes**. Both env-overridable.
 - Both new files added to the `update_scaffold.sh` NEUTRAL allow-list, so existing projects
-  pull them with `scripts/update_scaffold.sh <bedrock-url>`.
+  pull them with `scripts/update_scaffold.sh <reasonbraid-url>`.
 - Verified: `make gate` 6/6 green; a 13-line / 19,304-byte fixture is REJECTED by the byte cap
   while being well under the line cap; the **retired** layer-A guard PASSES that same file
   (exit 0) — the change is proven necessary by execution, not by argument.
@@ -358,5 +364,5 @@ the immutable audit trail proper is `git log` — memory layer D). Newest first.
 
 ## _(YYYY-MM-DD)_ — bootstrap
 
-Instantiated from the `bedrock` discipline-spine template. Next: replace `ROADMAP.md` and
+Instantiated from the ReasonBraid discipline-spine template. Next: replace `ROADMAP.md` and
 seed the first task-tree.

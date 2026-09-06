@@ -8,7 +8,7 @@
 # and a reader who trusts it is misled precisely when it matters. Measured in the originating
 # project (LIVE-MEANS-LIVE.4a, 2026-07-31): the field was DELETED repo-wide after it was found
 # stale on the very documents whose currency it claimed; the template inherits the deletion, not
-# the field. Ported by BEDROCK-MAINTENANCE.2.5 as the principle; the upstream instrument that
+# the field. Ported by REASONBRAID-MAINTENANCE.2.5 as the principle; the upstream instrument that
 # additionally scores distinct dates per live surface against a declared charter stays a backlog
 # item (it needs a per-project charter).
 #

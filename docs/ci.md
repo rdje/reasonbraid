@@ -1,7 +1,7 @@
 # CI and supply-chain skeleton
 
 Phase 0 deliverable `PHASE-0.0.7` (roadmap backlog 8). This documents the automated
-checks available beyond the bedrock baseline, and draws the line between a *skeleton*
+checks available beyond the discipline-spine baseline, and draws the line between a *skeleton*
 and a *release claim*.
 
 ## What runs where
@@ -15,7 +15,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
-The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
+The first two are the discipline spine; `supply-chain` is what `.0.7` added.
 
 ## Commands
 

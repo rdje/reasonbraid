@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# scripts/bootstrap.sh — first-time setup for a project scaffolded from bedrock.
+# scripts/bootstrap.sh — first-time setup for a project scaffolded from the ReasonBraid spine.
 #
 #   scripts/bootstrap.sh [project-name]
 #
-# With a project-name it DE-TEMPLATES this copy into a fresh project: removes bedrock's own
-# maintainer files (MAINTAINING.md + the BEDROCK-MAINTENANCE tree + the provenance record)
+# With a project-name it DE-TEMPLATES this copy into a fresh project: removes the spine's own
+# maintainer files (MAINTAINING.md + the REASONBRAID-MAINTENANCE tree + the provenance record)
 # and resets the layer-A/C seeds, then installs hooks, sets the name, generates the Knowledge
 # Map, and verifies the enforcer. Without a name it just installs hooks + regenerates the map
-# (safe to run in the bedrock source repo itself — it will NOT remove the maintainer files).
+# (safe to run in the ReasonBraid spine source repo itself — it will NOT remove the maintainer files).
 #
 # Idempotent. It does NOT invent a task-tree from your roadmap — that judgment is left to you.
 set -euo pipefail
 # ⛔ Act on the repository THIS SCRIPT LIVES IN, never on the caller's working directory
-# (BEDROCK-MAINTENANCE.2.7): `git rev-parse --show-toplevel` from the caller's cwd would fail
+# (REASONBRAID-MAINTENANCE.2.7): `git rev-parse --show-toplevel` from the caller's cwd would fail
 # outside a repository and — worse — de-template the PARENT repository when a user runs
 # `<name>/scripts/bootstrap.sh <name>` from the directory they cloned into.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
 [ -d .git ] || { echo "bootstrap: $ROOT is not the root of a git clone" >&2; exit 2; }
 name="${1:-}"
 
-# 0) de-template (only when a project name is given AND this is still a pristine bedrock copy)
+# 0) de-template (only when a project name is given AND this is still a pristine spine copy)
 if [ -n "$name" ] && [ -f MAINTAINING.md ]; then
-  echo "→ de-templating this bedrock copy into project '$name'…"
-  rm -f MAINTAINING.md docs/tasks/BEDROCK-MAINTENANCE.md docs/decisions/reference_bedrock_provenance.md
+  echo "→ de-templating this spine copy into project '$name'…"
+  rm -f MAINTAINING.md docs/tasks/REASONBRAID-MAINTENANCE.md docs/decisions/reference_reasonbraid_provenance.md
 
   cat > MEMORY.md <<SEED
 # MEMORY — resume pointer (layer A; overwrite-only, keep ≤ ~50 lines)
@@ -37,7 +37,7 @@ if [ -n "$name" ] && [ -f MAINTAINING.md ]; then
 
 ## Current state
 
-- **Project:** $name — fresh from the bedrock template.
+- **Project:** $name — fresh from the ReasonBraid spine template.
 - **Active tree:** _none yet_
 - **Next action:** replace \`ROADMAP.md\`; create your first task-tree
   (\`cp docs/tasks/TEMPLATE.md docs/tasks/<TREE-ID>.md\`), register it in \`docs/TASK_TREE.md\`.
@@ -67,9 +67,9 @@ SEED
 | _none yet — seed your first tree from `ROADMAP.md`_ | | | |
 SEED
 
-  # strip the maintainer-only notes (bounded by BEDROCK-MAINTAINER-NOTE markers)
+  # strip the maintainer-only notes (bounded by REASONBRAID-MAINTAINER-NOTE markers)
   for f in CLAUDE.md ROADMAP.md; do
-    [ -f "$f" ] && sed -i '/BEDROCK-MAINTAINER-NOTE:START/,/BEDROCK-MAINTAINER-NOTE:END/d' "$f"
+    [ -f "$f" ] && sed -i '/REASONBRAID-MAINTAINER-NOTE:START/,/REASONBRAID-MAINTAINER-NOTE:END/d' "$f"
   done
   echo "✓ de-templated (maintainer files removed; layer-A/C + tree index reset)"
 fi
@@ -91,7 +91,7 @@ if [ -n "$name" ]; then
 fi
 
 # 3b) seed the leaf that OWNS the bootstrap itself (only on a fresh de-template).
-#     ⛔ WHY (BEDROCK-MAINTENANCE.2.7, measured on a trial clone): the crate rename above is a CODE
+#     ⛔ WHY (REASONBRAID-MAINTENANCE.2.7, measured on a trial clone): the crate rename above is a CODE
 #     change, so the user's very first commit — the one that records this bootstrap — was refused by
 #     TASK-TREE-OWNERSHIP and TASK-ACCEPTANCE with no owning leaf. The discipline is right; the
 #     template must therefore ship the leaf, carrying the evidence this run just produced.
@@ -103,7 +103,7 @@ if [ -n "$name" ] && [ ! -f docs/tasks/BOOTSTRAP.md ] && [ -f docs/tasks/TEMPLAT
   upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_')"
   today="$(date +%F)"
   cat > docs/tasks/BOOTSTRAP.md <<LEAF
-# BOOTSTRAP: this project's bootstrap from the bedrock template
+# BOOTSTRAP: this project's bootstrap from the ReasonBraid spine template
 
 ## Metadata
 
@@ -115,7 +115,7 @@ if [ -n "$name" ] && [ ! -f docs/tasks/BOOTSTRAP.md ] && [ -f docs/tasks/TEMPLAT
 
 ## Goal
 
-Record the one-time de-templating of this copy of bedrock ($(cat DOCTRINE_VERSION 2>/dev/null || echo 'bedrock-scaffold')) into
+Record the one-time de-templating of this copy of the ReasonBraid spine ($(cat DOCTRINE_VERSION 2>/dev/null || echo 'reasonbraid-scaffold')) into
 project \`$name\`, performed by \`scripts/bootstrap.sh $name\`, with the evidence that run produced —
 so the first commit of this project passes the same gates every later commit will.
 
@@ -131,7 +131,7 @@ so the first commit of this project passes the same gates every later commit wil
 
   ### Acceptance Checklist (enforced by \`TASK-ACCEPTANCE\`)
 
-  - [x] **ROOT CAUSE (WHY + WHERE)** — a copy of bedrock carries the template's crate name and
+  - [x] **ROOT CAUSE (WHY + WHERE)** — a spine copy carries the template's crate name and
     maintainer files: \`grep -c '^name = "app"' crates/app/Cargo.toml\` → $crate_before before the run,
     $crate_after after (\`rc=0\`); \`MAINTAINING.md\` and the maintainer tree are removed by the de-template step.
   - [x] **ADDRESSED (verified)** — crate renamed to \`$name\`; hooks installed: \`git config core.hooksPath\`
@@ -148,10 +148,10 @@ so the first commit of this project passes the same gates every later commit wil
 
 ## Commit Log
 
-- \`$today\` — \`BOOTSTRAP.1\` — \`${upper}-BOOTSTRAP-0001\`: bootstrapped from bedrock.
+- \`$today\` — \`BOOTSTRAP.1\` — \`${upper}-BOOTSTRAP-0001\`: bootstrapped from the ReasonBraid spine.
 LEAF
   # register it: the placeholder row becomes the BOOTSTRAP row; the seeding hint stays as a note
-  sed -i "s/^| _none yet — seed your first tree from \`ROADMAP.md\`_ | | | |\$/| [\`BOOTSTRAP\`](tasks\/BOOTSTRAP.md) | \`done\` | \`.1\` — bootstrapped from bedrock; seed your first real tree from \`ROADMAP.md\` | repo-local |/" docs/TASK_TREE.md
+  sed -i "s/^| _none yet — seed your first tree from \`ROADMAP.md\`_ | | | |\$/| [\`BOOTSTRAP\`](tasks\/BOOTSTRAP.md) | \`done\` | \`.1\` — bootstrapped from the ReasonBraid spine; seed your first real tree from \`ROADMAP.md\` | repo-local |/" docs/TASK_TREE.md
   sed -i "s/^- \*\*Active tree:\*\* _none yet_\$/- **Active tree:** \`BOOTSTRAP\` (done) — seed your first real tree from \`ROADMAP.md\`/" MEMORY.md
   sed -i "s/^- \*\*Latest commit:\*\* _none yet_\$/- **Latest commit:** _none yet — commit the bootstrap first (bootstrap.sh printed the command)_/" MEMORY.md
   echo "✓ docs/tasks/BOOTSTRAP.md seeded with this run's evidence (owns the crate rename for the first commit)"
@@ -176,12 +176,12 @@ fi
 
 cat <<'EOF'
 
-bedrock is ready.
+The ReasonBraid spine is ready.
 
 Next:
   0) Commit the bootstrap itself (its leaf docs/tasks/BOOTSTRAP.md carries the evidence):
        git add -A
-       printf '%s\n' '<NAME>-BOOTSTRAP-0001 (leaf BOOTSTRAP.1): bootstrapped from bedrock' > git_message_brief.txt
+       printf '%s\n' '<NAME>-BOOTSTRAP-0001 (leaf BOOTSTRAP.1): bootstrapped from reasonbraid' > git_message_brief.txt
        git commit -F git_message_brief.txt && : > git_message_brief.txt
      (the hooks run the enforcer; <NAME> = your project name in CAPITALS)
   1) Replace ROADMAP.md with your project's real roadmap.

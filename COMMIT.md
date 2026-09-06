@@ -76,7 +76,7 @@ apply to code changes.
   Claude Code, Codex, Gemini, Cursor, Aider and any future harness identically. The
   `.githooks/commit-msg` hook refuses the known agent-attribution shapes (a human co-author's
   `Co-Authored-By:` is not affected). Provenance: maintainer ruling 2026-08-22 in the originating
-  project, ported by `BEDROCK-MAINTENANCE.2.5`.
+  project, ported by `REASONBRAID-MAINTENANCE.2.5`.
 
 ## Command template
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # docs/tasks/artifacts/task_acceptance/run_task_acceptance_probes.sh
-# BEDROCK-MAINTENANCE.2.4 — RED / GREEN / CONTROL probes for scripts/check_task_acceptance.sh.
+# REASONBRAID-MAINTENANCE.2.4 — RED / GREEN / CONTROL probes for scripts/check_task_acceptance.sh.
 #
 # ⭐⭐ CTRL-1 AND CTRL-2 ARE THE POINT. They are the arms that prove BOX-SCOPING, which is the
 # soundness property this check exists for. Both replay measured leakage holes from the project

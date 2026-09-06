@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-0`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 0 (`ROADMAP.md` §20.2)
 - Created: `2026-09-05`
 - Owner: repo-local workflow
@@ -104,7 +104,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - ID: `PHASE-0.0.7`
   Status: `done`
-  Goal: CI/dependency/license/secret-scan skeleton beyond bedrock `make check`/`make gate`
+  Goal: CI/dependency/license/secret-scan skeleton beyond the scaffold's `make check`/`make gate`
   Acceptance: documented commands; `deny.toml` or equivalent policy; no public-release claim
   Roadmap: backlog 8
   Verification: recorded below
@@ -324,20 +324,19 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0027`
 
 - ID: `PHASE-0-MAINT-2`
-  Status: `pending`
-  Goal: remove every remaining "bedrock" reference — the repo self-identifies as ReasonBraid only (director directive 2026-09-06)
-  Blocked on: nothing — queued after `PHASE-0-MAINT-1`
-  Scope: sweep tracked files for `bedrock`/`BEDROCK` (README landing page + `<bedrock-url>` placeholder, LIVE_STATUS, bootstrap docs, scaffold scripts, provenance notes in `COMMIT.md` and the doctrine checkers); reword each to ReasonBraid-owned naming while preserving the facts (provenance dates/decisions stay, the token goes); keep every gate green.
-  Verification: pending
-  Commit: pending
+  Status: `done`
+  Goal: remove every remaining scaffold-name reference — the repo self-identifies as ReasonBraid only (director directive 2026-09-06)
+  Scope: sweep tracked files for the scaffold-name token (both casings) (README landing page + scaffold-URL placeholder, LIVE_STATUS, bootstrap docs, scaffold scripts, provenance notes in `COMMIT.md` and the doctrine checkers); reword each to ReasonBraid-owned naming while preserving the facts (provenance dates/decisions stay, the token goes); keep every gate green.
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0028`
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0-MAINT-2` | `pending` | remove every "bedrock" reference — ReasonBraid-only naming (director directive 2026-09-06); after it the tree completes |
+| — | — | — | **Tree complete** — WP0–WP8 + `MAINT-1`/`MAINT-2` all done; next executable work is `PHASE-1.1` |
 
-`RB-SEED` is `done`. This tree is executable.
+`RB-SEED` is `done`. This tree is complete (Status: `done` in `docs/TASK_TREE.md`).
 
 ## Decisions
 
@@ -348,15 +347,15 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ## Open Questions
 
 - Which real harness is first (Codex-family vs Claude-family) — decided in `PHASE-0.4.2` after the fake adapter.
-- **Project license is unresolved — director-deferred (2026-09-06).** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the bedrock default) but no `LICENSE` file exists; the director will resolve the choice later. Coupled to ADR-001 (no release until the name clears). Does not block the frontier; must be settled before any release or `cargo publish`.
-- **`README_POLICY.md` upstream has been revised (found 2026-09-07 at session start, §14 check).** The fsmgen source now adds: a fenced local-adoption note; an "Authority and provenance" section; "Routing pressure closure" (inventory every routed destination through a controlled terminal, per-class pressure controls, the 1.5 MB status-file cautionary tale); derived line/byte caps instead of example values; the unconditional-check rule (no changed-path short-circuit); and a 9-step adoption checklist. The repo-local copy is the older revision, and `scripts/check_readme_stability.sh` still uses template defaults (300 lines / 16384 bytes) with no routing-closure inventory. `README.md` is 47 lines, so nothing is at hazard today. Owned by leaf `PHASE-0-MAINT-1`; the director's word on timing was given 2026-09-06 — executing next.
+- **Project license is unresolved — director-deferred (2026-09-06).** `Cargo.toml` declares `license = "MIT OR Apache-2.0"` (the scaffold default) but no `LICENSE` file exists; the director will resolve the choice later. Coupled to ADR-001 (no release until the name clears). Does not block the frontier; must be settled before any release or `cargo publish`.
+- **`README_POLICY.md` upstream has been revised (found 2026-09-07 at session start, §14 check).** RESOLVED by `PHASE-0-MAINT-1` (2026-09-06): the repo-local copy is re-adopted at the upstream 2026 revision, `scripts/check_readme_stability.sh` enforces derived caps (60 lines / 2,400 bytes) plus routing-pressure closure over `.doctrine/readme_routes.txt` and the CHANGELOG rotation threshold. Recorded in `docs/decisions/2026-09-06_readme-policy-readoption.md`.
 
 ## Blockers
 
 - **Resolved (`.8.2`):** ADR-002 is signed by the accountable owner (2026-09-06) — the
-  Phase 0 exit gate (KICKOFF §7) is closed. Nothing blocks the frontier; `PHASE-0-MAINT-1`
-  is done and `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive) executes
-  next, after which the tree completes.
+  Phase 0 exit gate (KICKOFF §7) is closed.
+- **Resolved (`MAINT-2`):** the tree is complete — WP0–WP8 plus both maintenance leaves
+  done; the PHASE-0 tree closes and the next executable work is `PHASE-1.1`.
 
 ## Acceptance Checklist (PHASE-0.0.7)
 
@@ -365,7 +364,7 @@ The Makefile edit is the CODE change owned by this leaf (per `.doctrine/code_pat
 the `TASK-ACCEPTANCE` doctrine.
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — ROADMAP §16.10 / backlog 8 / KICKOFF §3 require
-  "dependency/advisory/license checks" and "secret scanning", but bedrock's `make check`
+  "dependency/advisory/license checks" and "secret scanning", but the scaffold's `make check`
   covers only fmt/clippy/test and `make gate` only doctrine — no `deny`/`secret-scan` target
   existed. `make -n check` resolves the whole Rust gate to:
   `cargo fmt --all -- --check` → `cargo clippy --all-targets --all-features -- -D warnings` → `cargo test --all`
@@ -1134,7 +1133,7 @@ doctrine.
   injected `[x](NOPE.md)` → `unrouted destination: NOPE.md`, exit 1 (README restored
   byte-identical to HEAD); malformed registry row → `malformed route row … 'BOGUS.md'`, exit 1
   (registry restored). The closure leg's FIRST run caught three genuinely unrouted destinations
-  (`COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, the `<bedrock-url>` placeholder) and a
+  (`COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, the scaffold-URL placeholder) and a
   real measured legacy ceiling (`CHANGELOG.md` 48,495 bytes vs the provisional 10,240) — each
   given a governed row or reworded; the provisional threshold was replaced by the reviewed
   96,000-byte rotation threshold with the baseline recorded as debt.
@@ -1150,6 +1149,48 @@ doctrine.
   + INDEX row; the `DOCTRINE_ENFORCEMENT.md` registry mirror updated.
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted: the decision record gained `answers:`),
   MEMORY, LIVE_STATUS, this tree's log below, `docs/TASK_TREE.md` frontier — same commit.
+
+## Acceptance Checklist (PHASE-0-MAINT-2)
+
+The CODE change owned by this leaf: the touched `.sh` files (matches `\.sh$` in
+`.doctrine/code_paths.txt`) — `scripts/bootstrap.sh`, `scripts/update_scaffold.sh`,
+`scripts/check_readme_stability.sh` (self-test fixture), and the provenance comments in
+`check_gap_claims.sh`, `check_lesson_promotion.sh`, `check_live_doc_currency.sh`,
+`check_no_background_jobs.sh`, `check_routing_evidence.sh`, `check_table_arity.sh`,
+plus the two artifact probe scripts. Comments, help strings, and the `$tmp/reasonbraid`
+temp-dir rename — no behavior change. All other touched files are non-code.
+
+- [x] **REPRODUCE / ISSUE** — director directive (2026-09-06): ReasonBraid-only naming — no
+  scaffold-name references. Census (case-insensitive `git grep` over the token):
+  **90 occurrences in 28 tracked files** — the README landing page (the scaffold-spine line
+  and the scaffold-URL placeholder), `DOCTRINE_VERSION` (the template version string),
+  `cargo-generate.toml`, provenance notes (the scaffold tracker ids) in `COMMIT.md` + six
+  doctrine checkers + two artifact probes, `scripts/bootstrap.sh` + `scripts/update_scaffold.sh`,
+  historical CHANGELOG entries, and tree/live docs.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the spine template's own project name survived the
+  bootstrap: `scripts/bootstrap.sh` de-templates crate/roadmap names but the template's
+  own naming was carried verbatim in provenance comments, the version file, the
+  scaffold-pull tooling, and the README's spine-update line — so the repo still carried
+  another project's identity after `BOOTSTRAP.1` (pinpointed by the census above, file by
+  file). `git log -S 'scaffolded from' --oneline -- scripts/bootstrap.sh` → `b932c05 Initial
+  commit` (the landing commit that carried the scaffold naming).
+- [x] **ADDRESSED (verified)** — measured before→after: the case-insensitive `git grep` census over the scaffold-name token → 90 in 28
+  files; after the sweep the same census → **no matches** (`rc=1` = none). The
+  ordered token map (compounds first: the scaffold tracker-id prefix → `REASONBRAID-MAINTENANCE`,
+  the maintainer-note markers → `REASONBRAID-MAINTAINER-NOTE`, the template version prefix →
+  `reasonbraid-scaffold`, then bare tokens) plus prose polish ("the ReasonBraid
+  spine", "scaffold-URL placeholder", "the scaffold's `make check`"). `bash -n` over all 11
+  touched scripts → `ok` each. The guard's self-test fixture now matches the README's
+  `<reasonbraid-url>` placeholder; `bash scripts/check_readme_stability.sh --self-test` → ok.
+- [x] **NO REGRESSION** — `make gate` → `=== all doctrines green ===` (13/13) at commit;
+  `bash -n` on every touched script → ok; `make check` unaffected (no Rust files changed).
+- [x] **FIX** — the sweep above; the facts preserved (provenance dates and tracker ids
+  survive as `REASONBRAID-MAINTENANCE.N`; the scaffold version string is now
+  `reasonbraid-scaffold 0.6.1` in `DOCTRINE_VERSION`).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this tree's log below,
+  `docs/TASK_TREE.md` (PHASE-0 → done) — same commit. DEV_NOTES lesson:
+  `promotion: declined (the director's directive and its census are recorded in this leaf;
+  no durable cross-cutting fact beyond the rebrand)`.
 
 ## Verification Log
 
@@ -1187,6 +1228,8 @@ doctrine.
 
 | `2026-09-06` | `PHASE-0-MAINT-1` | `bash scripts/check_readme_stability.sh` → `OK — README.md is 47/60 lines, 1772/2400 bytes; 17 routes governed (48495 bytes, threshold 96000); closure ok.`; `--self-test` → ok; falsification arms red (cap override exit 1; injected `NOPE.md` → unrouted exit 1; malformed row exit 1 — tree restored byte-identical each time); `make gate` → `=== all doctrines green ===` (13/13); first-run closure caught 3 real unrouted destinations + the CHANGELOG legacy ceiling | README_POLICY re-adopted at the 2026 revision (fenced adoption note + neutral body): derived caps 60/2,400, routing-pressure closure over 17 governed routes, CHANGELOG 96,000-byte rotation threshold, guard `--self-test`; decision record + INDEX row |
 
+| `2026-09-06` | `PHASE-0-MAINT-2` | case-insensitive `git grep` census over the scaffold-name token → 90 occurrences in 28 tracked files (before); sweep (ordered token map + prose polish); the same census → no matches (`rc=1`, after); `bash -n` on all 11 touched `.sh` files → ok; `bash scripts/check_readme_stability.sh --self-test` → ok (fixture = `<reasonbraid-url>`); `make gate` → `=== all doctrines green ===` (13/13) | every scaffold-name token removed — the repo self-identifies as ReasonBraid only; **the PHASE-0 tree is complete** |
+
 ## Commit Log
 
 | Leaf | Commit subject or reference | Notes |
@@ -1217,6 +1260,7 @@ doctrine.
 | `PHASE-0.8.1` | `REASONBRAID-PHASE0-0025` | the WP8 gate package: evidence manifest + ADR set + SubtractionRecord + ADR-002 (GO, proposed) + risk-register refresh (two new rows) + INDEX rows; no code change |
 | `PHASE-0.8.2` | `REASONBRAID-PHASE0-0026` | Phase 0 exit gate closed: ADR-002 signed by the accountable owner (explicit session decision), ADR INDEX → accepted, PHASE-1 tree opened at `.1`, Blockers resolved, live docs lockstep; docs-only |
 | `PHASE-0-MAINT-1` | `REASONBRAID-PHASE0-0027` | README_POLICY re-adopted (2026 revision + fenced ReasonBraid adoption note); guard rewritten — derived 60/2,400 caps, routing-pressure closure over `.doctrine/readme_routes.txt`, CHANGELOG 96,000-byte rotation threshold, `--self-test`; decision record + INDEX; DOCTRINE_ENFORCEMENT mirror row |
+| `PHASE-0-MAINT-2` | `REASONBRAID-PHASE0-0028` | scaffold-name → ReasonBraid sweep: 90 occurrences in 28 tracked files removed (ordered token map + prose polish; provenance facts kept as `REASONBRAID-MAINTENANCE.N`, version string `reasonbraid-scaffold 0.6.1`); tree complete |
 
 ## Changelog
 
@@ -1246,4 +1290,5 @@ doctrine.
 - `2026-09-07`: `PHASE-0.7` WP7 deliberation/routing benchmark — `crates/reasonbraid-adapter` gains `src/bench/` (versioned corpus + deterministic graders + scripted agent + four-workflow runner + spread-bearing report) + the `rb-bench` binary + `bench/v1/{corpus,prompts}.json` + `tests/bench_harness.rs` (the corpus carries its own scoring oracle; computed == expected proven over 8×4); the REAL Codex run (36 bounded calls, `RB_LIVE_CODEX=1`) caught two harness defects the scripted oracle cannot see (critique/revision template conflation; honesty-trap echoed numbers) — fixed with regression tests; the corrected run's NULL result (structure did not beat single at 2–4× cost) narrows the routing claim for WP8; `docs/decisions/2026-09-07_deliberation-benchmark.md`, `docs/evidence/2026-09-07_benchmark-codex-run.md` + INDEX rows, mdBook benchmark chapter. **WP7 complete.** Frontier is `.8`.
 - `2026-09-07`: `PHASE-0.8.1` WP8 Phase 0 decision and subtraction package — evidence manifest (G0 map + fixtures + failures + commands), ADR-set audit map, the §19.8 SubtractionRecord (non-empty throughout), ADR-002 (Phase 1 GO recommendation, `proposed` — signature line pending the director), risk register refreshed (R-AMB mitigated, R-VALUE narrowed, R-VARIANCE + R-OVERHEAD added), INDEX rows; no code change; the 2×-estimate review is not triggered (≈9.5 vs 8–14 engineer-weeks, recorded). **WP8 complete; the PHASE-0 tree is exhausted — the formal exit awaits the director's signature on ADR-002.** Frontier is `PHASE-0-MAINT-1` (director's word).
 - `2026-09-06`: `PHASE-0.8.2` Phase 0 exit gate closed — the accountable owner signed ADR-002 (GO, `accepted`, explicit session decision recorded in the ADR + ADR INDEX), `docs/tasks/PHASE-1.md` opened (`active`, frontier `.1` unblocked), Blockers resolved; docs-only commit. **Phase 0 formally exits (KICKOFF §7).** Frontier is `PHASE-0-MAINT-1` (executing next).
-- `2026-09-06`: `PHASE-0-MAINT-1` README_POLICY re-adoption — the policy is re-adopted at the upstream 2026 revision (fenced ReasonBraid adoption note + the neutral body incl. Authority and provenance, Routing pressure closure, derived caps, the unconditional-check rule, and the 9-step checklist); `scripts/check_readme_stability.sh` rewritten: derived caps 60 lines/2,400 bytes from the reviewed 47/1,772-byte survivor, routing-pressure closure over `.doctrine/readme_routes.txt` (17 governed rows; the closure leg's first run caught `COMMIT.md`, `docs/adr/…`, and the `<bedrock-url>` placeholder as genuinely unrouted), CHANGELOG 96,000-byte rotation threshold (the 48,495-byte baseline recorded as governed debt), and a `--self-test` arm; falsification runs turned the guard red on demand and restored the tree byte-identical; decision record `docs/decisions/2026-09-06_readme-policy-readoption.md` + INDEX row; DOCTRINE_ENFORCEMENT mirror updated. Frontier is `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive).
+- `2026-09-06`: `PHASE-0-MAINT-1` README_POLICY re-adoption — the policy is re-adopted at the upstream 2026 revision (fenced ReasonBraid adoption note + the neutral body incl. Authority and provenance, Routing pressure closure, derived caps, the unconditional-check rule, and the 9-step checklist); `scripts/check_readme_stability.sh` rewritten: derived caps 60 lines/2,400 bytes from the reviewed 47/1,772-byte survivor, routing-pressure closure over `.doctrine/readme_routes.txt` (17 governed rows; the closure leg's first run caught `COMMIT.md`, `docs/adr/…`, and the scaffold-URL placeholder as genuinely unrouted), CHANGELOG 96,000-byte rotation threshold (the 48,495-byte baseline recorded as governed debt), and a `--self-test` arm; falsification runs turned the guard red on demand and restored the tree byte-identical; decision record `docs/decisions/2026-09-06_readme-policy-readoption.md` + INDEX row; DOCTRINE_ENFORCEMENT mirror updated. Frontier is `PHASE-0-MAINT-2` (scaffold-reference cleanup, director directive).
+- `2026-09-06`: `PHASE-0-MAINT-2` ReasonBraid-only naming sweep — (case-insensitive `git grep` census over the scaffold-name token) → 90 occurrences in 28 tracked files; the ordered token map (the scaffold tracker-id prefix → `REASONBRAID-MAINTENANCE`, the maintainer-note markers → `REASONBRAID-MAINTAINER-NOTE`, the template version prefix → `reasonbraid-scaffold`, then bare tokens) plus prose polish removed every one (the same census after → none); `bash -n` on all 11 touched scripts ok; the guard's self-test fixture now matches the README's `<reasonbraid-url>`; all 13 doctrines green at commit. **The PHASE-0 tree is complete — next executable work is `PHASE-1.1`.**

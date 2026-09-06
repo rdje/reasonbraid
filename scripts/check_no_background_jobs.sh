@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HANDOFF BACKGROUND-JOB CENSUS — maintainer standing rule (2026-08-30, ported by BEDROCK-MAINTENANCE.2.5).
+# HANDOFF BACKGROUND-JOB CENSUS — maintainer standing rule (2026-08-30, ported by REASONBRAID-MAINTENANCE.2.5).
 #
 #   "at a handoff point, that is whenever I am ready to /exit, ensure there is
 #    no background job running."

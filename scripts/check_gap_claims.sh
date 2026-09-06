@@ -2,7 +2,7 @@
 # GAP-CLAIM-CENSUS — a task leaf that ADDS a "nothing checks X" claim must record the CENSUS it
 # rests on. Exits NONZERO on breach. Called by scripts/check_doctrines.sh (hook + CI).
 #
-# ⭐⭐ WHY THIS EXISTS (ported by BEDROCK-MAINTENANCE.2.6 from the originating project, where the
+# ⭐⭐ WHY THIS EXISTS (ported by REASONBRAID-MAINTENANCE.2.6 from the originating project, where the
 #   defect was a HABIT rather than a slip: three false "nothing checks X" claims in three days, two of
 #   them reaching a commit and one REFUTED by the very next slice — the reader it said did not exist
 #   existed, and had for weeks). An "X is checked by NOTHING" sentence is not a description — it is a

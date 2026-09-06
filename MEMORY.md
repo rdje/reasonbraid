@@ -7,28 +7,26 @@
 
 1. Read `README.md`, `MEMORY_ARCHITECTURE.md`, `TOOLBOX.md`, `DOCTRINE_ENFORCEMENT.md`.
 2. Open the active task-tree below → its Current Frontier → continue from the next action.
-3. Scope/gates: `ROADMAP.md`. Phase 0 execution: companion `KICKOFF.md`.
+3. Scope/gates: `ROADMAP.md`. Phase 1 execution: the `PHASE-1` tree under `docs/tasks/`.
 
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Phase 0 formally EXITED:** ADR-002 signed by the accountable owner (`docs/adr/002-phase1-scope.md`,
-  GO, `accepted`); WP1–WP8 complete; the WP8 gate package is published.
-- **Active tree:** `PHASE-0` → frontier leaf `PHASE-0-MAINT-2` (bedrock-reference cleanup —
-  ReasonBraid-only naming, director directive 2026-09-06). After it, the PHASE-0 tree closes.
-- **Done this session:** `MAINT-1` — README_POLICY re-adopted (derived caps 60/2,400, routing-pressure
-  closure over `.doctrine/readme_routes.txt`, CHANGELOG 96,000-byte rotation threshold, guard self-test).
-- **Opened:** `PHASE-1` (`active`) → frontier `.1` coordinator modular monolith, unblocked
-  by the ADR-002 signature.
-- **Next action:** run `PHASE-0-MAINT-2` (sweep every `bedrock`/`BEDROCK` token → ReasonBraid),
-  then start `PHASE-1.1`.
+- **Phase 0 COMPLETE:** the exit gate is closed (ADR-002 signed by the accountable owner —
+  `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
+  `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
+  `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
+- **Active tree:** `PHASE-1` → frontier `.1` (coordinator modular monolith + PG
+  migrations + aggregate/event/outbox patterns) — next executable work.
+- **Next action:** start `PHASE-1.1` — decompose the leaf per `ROADMAP.md` §20.3 and
+  `KICKOFF.md` §4 backlog items 9/10/15.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after `PHASE-0-MAINT-1`.
+- **In-flight uncommitted work:** none after `PHASE-0-MAINT-2`.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.
 - **Blockers:** none. Director-owned open items: license choice (`Cargo.toml` says
   `MIT OR Apache-2.0`, no `LICENSE` file); ADR-001 name clearance (repo stays private);
-  second real adapter (Phase 1).
+  second real adapter (Phase 1, `.4`).
 - **Dating anomaly (flagged):** host/git clock = 2026-09-06; some records from the previous
   session are dated 2026-09-07 inside 2026-09-06 commits. New records use the machine date.

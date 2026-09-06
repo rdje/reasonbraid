@@ -1,11 +1,17 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — ReasonBraid-only naming: 90 scaffold-name tokens swept from 28 files
+
+- **Census before reword, always.** (case-insensitive `git grep` census over the scaffold-name token) → 90 occurrences in 28 tracked files: the template's own name had survived the bootstrap in provenance comments (the scaffold tracker ids), the version file, the scaffold-pull tooling, and the landing page. An ordered token map (compounds first, bare tokens last) plus prose polish removed every one; the facts survived (`REASONBRAID-MAINTENANCE.N` ids, `reasonbraid-scaffold 0.6.1` version string). A naked sed for the bare token first would have mangled the compounds and the crate names.
+- **A guard's fixture must mirror the docs it guards.** The README-STABILITY self-test exercised the scaffold-URL span; when the README moved to `<reasonbraid-url>`, the fixture moved with it — a self-test asserting a placeholder the landing page no longer uses teaches the wrong lesson.
+- `promotion: declined (the directive and its census are recorded in the MAINT-2 leaf; no durable cross-cutting fact beyond the rebrand)`. **The PHASE-0 tree is complete — next executable work: `PHASE-1.1`.**
+
 ## _(2026-09-06)_ — README_POLICY re-adoption: the closure leg caught real destinations on its first run
 
-- **The routing-pressure-closure leg reproduced the upstream cautionary tale in miniature.** The moment the guard actually censused the tree it flagged three genuinely unrouted destinations — `COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, and the `<bedrock-url>` placeholder inside the scaffold span — plus a real measured legacy ceiling (`CHANGELOG.md` at 48,495 bytes against a provisional 10,240). A guard that had never been asked the question could never have caught them; the upstream policy's 1,547,057-byte neighboring sink starts exactly this way.
+- **The routing-pressure-closure leg reproduced the upstream cautionary tale in miniature.** The moment the guard actually censused the tree it flagged three genuinely unrouted destinations — `COMMIT.md`, `docs/adr/001-uncleared-working-name.md`, and the scaffold-URL placeholder inside the scaffold span — plus a real measured legacy ceiling (`CHANGELOG.md` at 48,495 bytes against a provisional 10,240). A guard that had never been asked the question could never have caught them; the upstream policy's 1,547,057-byte neighboring sink starts exactly this way.
 - **Derived caps beat template defaults.** 300 lines / 16,384 bytes was meaningless for a 47-line landing page; 60 / 2,400 is the reviewed survivor plus explicit headroom, and raising it now requires a task-tree decision — the cap became a contract instead of folklore.
 - **BSD `cut` on a no-delimiter line prints the WHOLE line (GNU prints empty).** The control-field census initially swallowed the registry's comment lines and flagged `README.md` / `scripts/check_readme_stability.sh` as unrouted destinations. Fix: `grep -v '^#'` before the field cut. Portability lesson for every future bash guard.
-- Promoted to `docs/decisions/2026-09-06_readme-policy-readoption.md` (`answers:` present). **Frontier `PHASE-0-MAINT-2` (bedrock-reference cleanup, director directive).**
+- Promoted to `docs/decisions/2026-09-06_readme-policy-readoption.md` (`answers:` present). **Frontier `PHASE-0-MAINT-2` (scaffold-reference cleanup, director directive).**
 
 ## _(2026-09-06)_ — Phase 0 exit gate closed: the owner signs the go record, the agent records it
 
@@ -207,6 +213,6 @@ engineering-continuity surface (not the public docs; that's `docs/book/`). Newes
 
 ## _(YYYY-MM-DD)_ — bootstrap
 
-Repo created from the `bedrock` template: durable 4-layer memory, task-tree tracking, the
+Repo created from the ReasonBraid spine template: durable 4-layer memory, task-tree tracking, the
 strict commit workflow, and the mechanical doctrine enforcer are in place and enforced by
 git hooks + CI. No project code yet.

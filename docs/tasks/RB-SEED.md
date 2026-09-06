@@ -40,7 +40,7 @@ the trees rather than from chat.
 
 - ID: `RB-SEED.1`
   Status: `done`
-  Goal: land `ROADMAP.md` v0.4.1 and companion `KICKOFF.md` as the canonical pair; record the companion decision; update live docs and the mdBook so a reader sees ReasonBraid, not the bedrock placeholder
+  Goal: land `ROADMAP.md` v0.4.1 and companion `KICKOFF.md` as the canonical pair; record the companion decision; update live docs and the mdBook so a reader sees ReasonBraid, not the scaffold placeholder
   Acceptance: both files tracked; each names the other; decision record exists; MEMORY/LIVE_STATUS/CHANGELOG/DEV_NOTES/book reflect the drop; no product code changed
   Verification: recorded below
   Commit: pending until `COMMIT.md` step 6
@@ -87,12 +87,14 @@ the trees rather than from chat.
 ## Acceptance Checklist (required for any leaf that lands a CODE change)
 
 Enforced by the `TASK-ACCEPTANCE` doctrine (`scripts/check_task_acceptance.sh`).
-`RB-SEED` lands documents only; the hard-gated boxes below stay unticked unless
-a later leaf stages code.
+`RB-SEED` lands documents only; the boxes below are ticked for the `PHASE-0-MAINT-2`
+sweep, which staged a one-line Goal rewording in this file (no code staged by
+`RB-SEED` itself — the code change is owned by the `PHASE-0-MAINT-2` leaf in
+`docs/tasks/PHASE-0.md`).
 
-- [ ] **ROOT CAUSE (WHY + WHERE)** — N/A unless a leaf stages code
-- [ ] **ADDRESSED (verified)** — N/A unless a leaf stages code
-- [ ] **NO REGRESSION** — N/A unless a leaf stages code
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git diff-tree --no-commit-id --name-only -r 786c25f -- docs/tasks/RB-SEED.md` → `docs/tasks/RB-SEED.md`; the `RB-SEED.1` Goal line carried the scaffold-name token; the director's directive (2026-09-06) requires ReasonBraid-only naming, owned by `PHASE-0-MAINT-2`.
+- [x] **ADDRESSED (verified)** — the same census → no matches (`rc=1`) after the sweep (the Goal line now reads "not the scaffold placeholder").
+- [x] **NO REGRESSION** — `make gate` → `=== all doctrines green ===` (13/13) at the `PHASE-0-MAINT-2` commit; no code staged by this tree. `make -n gate` → `scripts/check_doctrines.sh` (the enforcer dry-run — the gate set is unchanged).
 - [ ] **FIX** — document/programme seeding only
 - [ ] **LOCKSTEP** — live docs, book, decisions, and task index updated per leaf
 
@@ -118,3 +120,4 @@ a later leaf stages code.
 - `2026-09-05`: `RB-SEED.1` landed the roadmap pair. Frontier is `RB-SEED.2`.
 - `2026-09-05`: `RB-SEED.2` converted the programme. Frontier is `RB-SEED.3`.
 - `2026-09-05`: `RB-SEED.3` adopted claim-verification. Tree `done`. Next: `PHASE-0.0.1`.
+- `2026-09-06`: `PHASE-0-MAINT-2` sweep reworded the `RB-SEED.1` Goal line (scaffold-name token removed — director directive); the checklist boxes above record the evidence.

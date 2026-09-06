@@ -2,7 +2,7 @@
 # TABLE-ARITY-RATCHET — a staged markdown file may not RAISE the number of table rows whose cell
 # count disagrees with their own header. Exits NONZERO on a rise. Called by check_doctrines.sh.
 #
-# WHY THIS EXISTS (ported as a fresh minimal implementation by BEDROCK-MAINTENANCE.2.6; the
+# WHY THIS EXISTS (ported as a fresh minimal implementation by REASONBRAID-MAINTENANCE.2.6; the
 #   upstream instrument's self-test is bound to that project's shipped contract file). GFM's table
 #   rule is per TABLE and it is two-sided and SILENT: a row with MORE cells than its own header has
 #   the excess DISCARDED — not rendered, not warned about — and a row with FEWER is silently PADDED.

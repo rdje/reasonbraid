@@ -15,7 +15,7 @@ help:
 	@echo "make demo            - the two-host crash/reconnect demo (ephemeral PG + evidence bundle)"
 	@echo "make hooks           - install the git hooks (core.hooksPath=.githooks)"
 	@echo "make bootstrap       - first-time project bootstrap"
-	@echo "make update-scaffold - pull the latest bedrock spine (set URL=<bedrock-repo>)"
+	@echo "make update-scaffold - pull the latest ReasonBraid spine (set URL=<reasonbraid-repo>)"
 
 gate:
 	scripts/check_doctrines.sh

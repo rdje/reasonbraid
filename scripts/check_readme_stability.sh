@@ -64,8 +64,8 @@ cap_verdict() { # lines, bytes, line cap, byte cap — inclusive ceilings
 # ── self-test arm: prove the verdicts BEFORE they judge the tree ────────────────────────
 if [ "${1:-}" = "--self-test" ]; then
   # extraction control: path-shaped tokens survive; commands, URLs, plain words, and
-  # placeholder spans (`<bedrock-url>`) do not.
-  got="$(printf 'see `docs/book/` and `ROADMAP.md` and `make check` and [p](README_POLICY.md) and `https://x/y` and `./scripts/update_scaffold.sh <bedrock-url>`\n' | extract_routes)"
+  # placeholder spans (`<reasonbraid-url>`) do not.
+  got="$(printf 'see `docs/book/` and `ROADMAP.md` and `make check` and [p](README_POLICY.md) and `https://x/y` and `./scripts/update_scaffold.sh <reasonbraid-url>`\n' | extract_routes)"
   want="$(printf 'docs/book/\nREADME_POLICY.md\nROADMAP.md\nscripts/update_scaffold.sh')"
   if [ "$got" != "$want" ]; then
     printf 'self-test MISSED: extraction\n  got:  %s\n  want: %s\n' "$got" "$want" >&2

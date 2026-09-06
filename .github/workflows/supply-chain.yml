@@ -1,6 +1,6 @@
 name: supply-chain
 # Dependency/advisory/license + secret-scan skeleton (PHASE-0.0.7, backlog 8).
-# Runs alongside the bedrock `rust` (fmt/clippy/test) and `doctrines` (gate) workflows.
+# Runs alongside the `rust` (fmt/clippy/test) and `doctrines` (gate) workflows.
 # NOT a release pipeline: no SBOM, provenance, or release-signing here — those are the
 # G9 / §16.12 gates, deferred until a release exists.
 on:

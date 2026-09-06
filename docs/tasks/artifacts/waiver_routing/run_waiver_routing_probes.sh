@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # docs/tasks/artifacts/waiver_routing/run_waiver_routing_probes.sh
-# BEDROCK-MAINTENANCE.2.2 — RED / GREEN / CONTROL probes for scripts/check_waiver_routing.sh.
+# REASONBRAID-MAINTENANCE.2.2 — RED / GREEN / CONTROL probes for scripts/check_waiver_routing.sh.
 #
 # The doctrine: a task leaf claiming a gate DOES NOT APPLY must name the leaf that owns fixing
 # the gate. A waiver is a bug report about the gate — the highest-signal one it can receive —

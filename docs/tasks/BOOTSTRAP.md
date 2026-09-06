@@ -1,4 +1,4 @@
-# BOOTSTRAP: this project's bootstrap from the bedrock template
+# BOOTSTRAP: this project's bootstrap from the ReasonBraid spine template
 
 ## Metadata
 
@@ -10,7 +10,7 @@
 
 ## Goal
 
-Record the one-time de-templating of this copy of bedrock (bedrock-scaffold 0.6.1) into
+Record the one-time de-templating of this copy of the ReasonBraid spine (reasonbraid-scaffold 0.6.1) into
 project `reasonbraid`, performed by `scripts/bootstrap.sh reasonbraid`, with the evidence that run produced —
 so the first commit of this project passes the same gates every later commit will.
 
@@ -26,7 +26,7 @@ so the first commit of this project passes the same gates every later commit wil
 
   ### Acceptance Checklist (enforced by `TASK-ACCEPTANCE`)
 
-  - [x] **ROOT CAUSE (WHY + WHERE)** — a copy of bedrock carries the template's crate name and
+  - [x] **ROOT CAUSE (WHY + WHERE)** — a spine copy carries the template's crate name and
     maintainer files: `grep -c '^name = "app"' crates/app/Cargo.toml` → 1 before the run,
     0 after (`rc=0`); `MAINTAINING.md` and the maintainer tree are removed by the de-template step.
   - [x] **ADDRESSED (verified)** — crate renamed to `reasonbraid`; hooks installed: `git config core.hooksPath`
@@ -43,4 +43,4 @@ so the first commit of this project passes the same gates every later commit wil
 
 ## Commit Log
 
-- `2026-09-04` — `BOOTSTRAP.1` — `REASONBRAID-BOOTSTRAP-0001`: bootstrapped from bedrock.
+- `2026-09-04` — `BOOTSTRAP.1` — `REASONBRAID-BOOTSTRAP-0001`: bootstrapped from the ReasonBraid spine.

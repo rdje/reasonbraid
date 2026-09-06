@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/update_scaffold.sh — pull the latest project-NEUTRAL spine from the bedrock
+# scripts/update_scaffold.sh — pull the latest project-NEUTRAL spine from the ReasonBraid
 # template into THIS project, WITHOUT touching your roadmap, task-trees, decisions, or code.
 #
-#   scripts/update_scaffold.sh <bedrock-repo-url-or-local-path>
+#   scripts/update_scaffold.sh <reasonbraid-repo-url-or-local-path>
 #
 # Only the files listed in NEUTRAL below are re-synced. Everything project-owned
 # (CLAUDE.md, README.md, ROADMAP.md, the live-docs, the project doctrine slot, the curated
@@ -10,14 +10,14 @@
 # alone. After syncing: review `git diff`, run `make gate`, and commit.
 set -euo pipefail
 URL="${1:-}"
-[ -n "$URL" ] || { echo "usage: scripts/update_scaffold.sh <bedrock-repo-url-or-local-path>" >&2; exit 2; }
+[ -n "$URL" ] || { echo "usage: scripts/update_scaffold.sh <reasonbraid-repo-url-or-local-path>" >&2; exit 2; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 if [ -d "$URL/.git" ]; then
-  cp -R "$URL" "$tmp/bedrock"
+  cp -R "$URL" "$tmp/reasonbraid"
 else
-  git clone --depth 1 "$URL" "$tmp/bedrock" >/dev/null 2>&1 || { echo "clone failed: $URL" >&2; exit 1; }
+  git clone --depth 1 "$URL" "$tmp/reasonbraid" >/dev/null 2>&1 || { echo "clone failed: $URL" >&2; exit 1; }
 fi
 
 # The project-NEUTRAL spine — safe to overwrite because it never carries project content.
@@ -55,9 +55,9 @@ NEUTRAL=(
 
 n=0
 for f in "${NEUTRAL[@]}"; do
-  if [ -f "$tmp/bedrock/$f" ]; then
+  if [ -f "$tmp/reasonbraid/$f" ]; then
     mkdir -p "$(dirname "$f")"
-    cp "$tmp/bedrock/$f" "$f"
+    cp "$tmp/reasonbraid/$f" "$f"
     echo "  synced $f"
     n=$((n+1))
   fi

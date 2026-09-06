@@ -36,8 +36,8 @@ make book     # mdBook (requires mdbook)
 
 This landing page is governed by [`README_POLICY.md`](README_POLICY.md) and
 capped (line and byte) by the `README-STABILITY` doctrine. The repo keeps the
-bedrock discipline spine (task-trees, memory architecture, `COMMIT.md`, git
-hooks). Pull spine updates with `./scripts/update_scaffold.sh <bedrock-url>`.
+ReasonBraid discipline spine (task-trees, memory architecture, `COMMIT.md`, git
+hooks). Pull spine updates with `./scripts/update_scaffold.sh <reasonbraid-url>`.
 
 ## Non-negotiables
 

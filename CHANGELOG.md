@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The packaged LAN story: four self-contained binaries + a practiced runbook (`PHASE-1.7.2`)
+
+- `make release` builds the four release binaries (`rb`, `rb-server`, `rb-node`, `rb-journal`) — self-contained: the migrations and the console embed at compile time, so a deployed binary needs no runtime path back to the checkout (§12).
+- `deploy/README.md` is the LAN runbook: the two Phase 1 profiles (Developer = `make dev`; Trusted LAN = `rb-server --host 0.0.0.0` + enrolled outbound nodes), per-host steps, the demo's ssh two-host mode as the reference exercise, the honest limits (dev trust store, plain HTTP — Phase 2 owns TLS/mTLS), and the subtraction record (no config files, supervision units, containers, or PG automation — deferred to Phase 2 ops with triggers).
+- **The packaging claim is verified by running the package:** the demo gained a `--release` build-root switch and passed **24/24 on the release binaries** (rc=0; the bundle's `env.txt` records the release root). `make demo` stays debug. The book gains the `deployment` chapter. Decision recorded: `docs/decisions/2026-09-07_deployment-packaging.md` (`answers:`). Full guard green: 12 live suites + e2e + demo rc=0; `make gate` 13/13; `make book` builds. **`.1.7` complete** — frontier → `.1.8`.
+
 ## 2026-09-07 — `make dev`: the one-command development environment (`PHASE-1.7.1`)
 
 - `scripts/dev.sh` + the `make dev` target: one command boots an ephemeral on-volume PostgreSQL (§13 shape — `target/dev-ephemeral.*`, gitignored, removed on exit), starts `rb-server` in the foreground (migrations run on startup), and prints the console URL + the CLI hint. Ctrl-C stops everything with a residue census. An interactive dev loop — not the test harness.

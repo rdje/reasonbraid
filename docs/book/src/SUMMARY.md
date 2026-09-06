@@ -9,5 +9,6 @@
 - [Budgets](budget.md)
 - [The CLI](cli.md)
 - [The web console](web-ui.md)
+- [Deployment — local and LAN](deployment.md)
 - [The two-host demonstration](two-host-demo.md)
 - [The deliberation benchmark](benchmark.md)

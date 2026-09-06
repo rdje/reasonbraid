@@ -516,7 +516,7 @@ conversation without binding-governance claims.
       census-before-teardown ordering).
 
   - ID: `PHASE-1.7.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the release packaging + LAN deployment story — `make release`
       (`cargo build --release --bins`), a `deploy/` directory with the LAN
       runbook (the book gains a `deployment` chapter + SUMMARY entry: the four
@@ -532,6 +532,9 @@ conversation without binding-governance claims.
     Acceptance: `make release` produces the four binaries; the runbook is
       complete and honest; the release-built demo passes (`rc=0`); the guard
       set stays green.
+    Done (`2026-09-07`): `make release` + `deploy/` + the book chapter landed;
+      the release-built demo passed 24/24 on its first run; the acceptance
+      checklist below records the evidence — **`.1.7` is COMPLETE**.
 
 - ID: `PHASE-1.8`
   Status: `proposed`
@@ -543,7 +546,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.7.2` | `proposed` | **`.1.7.1` done** — `make dev` is the one-command dev loop (the `--check` beat proves boot → serve → call → clean teardown); the packaged LAN story executes next |
+| 1 | `PHASE-1.8` | `proposed` | **`.1.7` is COMPLETE** (`.1.7.1` `make dev` + `.1.7.2` the packaged LAN story — the release-built demo proof passed 24/24); the G1–G2 exit + Demonstration A close Phase 1 |
 
 ## Changelog
 
@@ -577,6 +580,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.7` decomposed (gap census first: no `make dev`/dev script — the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`; no `deploy/`, no release build target, no install path — the demo builds DEBUG only; the LAN surfaces exist — `rb-server --host/--port`, the node's cross-host `--server`, compile-time-embedded migrations + UI — and the demo already carries a real ssh two-host mode — but nothing runs the release binaries and no server-side runbook exists) into `.1.7.1` (the one-command dev loop: `scripts/dev.sh` + `make dev`, ephemeral on-volume PG, foreground server, residue census) and `.1.7.2` (release packaging: `make release` + the `deploy/` runbook + the book's `deployment` chapter + the release-built demo proof); frontier → `.1.7.1`.
 - `2026-09-06`: `.1.7.1` executing — `scripts/dev.sh` + the `make dev` target landed (the boot reuses the test harness's §13 ephemeral-PG shape; the difference from `run_pg_tests.sh` is the lifecycle — foreground server + interactive teardown — not the boot); the `--check` self-verification beat caught three authoring slips before its first green run (the inspect verb is `inspect threads`, the dev-profile CLI requires `--as <principal>`, and the residue census must observe the CLEANED state); the book's introduction gains the Run-it section, the README quick start gains the `make dev` line.
 - `2026-09-07`: `.1.7.1` done — `make dev` is the one-command development environment: `scripts/dev.sh` boots an ephemeral on-volume PostgreSQL (§13 shape), `rb-server` in the foreground (migrations on startup), console URL + CLI hint, Ctrl-C teardown with a residue census; `dev.sh --check` is the permanent self-verification beat (console at `/` + a real CLI enroll/inspect round-trip + residue 0 — `dev-check: OK`, rc=0); the full live guard green (12 suites + e2e + demo rc=0, `target/dev1_guard.log`); the book's Run-it section + the README quick start carry the path; frontier → `.1.7.2`.
+- `2026-09-07`: `.1.7.2` done — the packaged LAN story: `make release` builds the four self-contained binaries (migrations + console embed at compile time); `deploy/README.md` is the operator runbook (the two §6.6 profiles, the subtraction record); the book gains the `deployment` chapter; the packaging claim is VERIFIED by the demo passing 24/24 on the RELEASE binaries (`--release` build-root switch; `target/release_demo.log`; the bundle's `env.txt` records the release root; `make demo` stays debug); the standard guard green (12 suites + e2e + demo rc=0, `target/dev2_guard.log`); decision record `docs/decisions/2026-09-07_deployment-packaging.md`; **`.1.7` is COMPLETE** — frontier → `.1.8`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1532,6 +1536,53 @@ matches `(^|/)Makefile$`).
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the
   book's introduction, README — same commit.
 
+## Acceptance Checklist (PHASE-1.7.2)
+
+The CODE change owned by this leaf: `Makefile` (the `release` target + help/
+PHONY lines — `(^|/)Makefile$`) and `scripts/demo_two_host.sh` (the
+`--release` switch — `\.sh$`). `deploy/README.md` + the book's `deployment`
+chapter + the decision record are the doc deliverables.
+
+- [x] **REPRODUCE / ISSUE** — the `.1.7` census: `ls deploy/` → no such
+  directory; `git show HEAD:Makefile | grep -n "release"` → no release target
+  before this leaf; `git show HEAD:scripts/demo_two_host.sh | grep -n
+  "target/debug"` → the demo builds and runs DEBUG binaries only — nothing
+  ever exercised the shipped (release) artifact.
+- [x] **ROOT CAUSE (WHY + WHERE)** — Phase 0 + early Phase 1 shipped
+  dev-profile execution only: verification runs debug binaries, so the
+  roadmap's `deploy/` + release story had no owner until `.1.7`. The fix
+  point is the build boundary (a `make release` target) + the demo's
+  build-root seam (`BIN_SERVER`/`BIN_NODE`/`BIN_JOURNAL`/`BIN_CLI` are
+  already variables — a `--release` flag selects the root, no fork) +
+  `deploy/` as the runbook home (`docs/decisions/2026-09-07_deployment-packaging.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no release
+  target, no `deploy/`, the demo debug-only. After: `make release` → `rc=0`
+  with the four binaries (`target/release/rb` 3,734,240 B, `rb-server`
+  6,575,136 B, `rb-node` 7,209,680 B, `rb-journal` 4,522,176 B); the
+  release-built demo — `bash scripts/demo_two_host.sh --database-url <ephemeral>
+  --release` → `ALL acceptance checks passed` (24 PASS / 0 FAIL, `rc=0`;
+  log `target/release_demo.log`; the bundle's `env.txt` records `bin_root:
+  …/target/release (release)`); `deploy/README.md` + the book's `deployment`
+  chapter land with the subtraction record.
+- [x] **NO REGRESSION** — `bash -n scripts/demo_two_host.sh` → clean; `make
+  release` → rc=0; `bash scripts/run_pg_tests.sh` → all twelve live server
+  suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 +
+  6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo
+  `ALL acceptance checks passed` (`rc=0`, `target/dev2_guard.log`) — `make
+  demo` stays debug (the default guard path); `make gate` → 13/13 at commit;
+  `make book` builds (the new chapter).
+- [x] **FIX** — `Makefile` (the `release` target + help line); 
+  `scripts/demo_two_host.sh` (the `--release` flag, the `BIN_ROOT` selection,
+  the release build branch, the `bin_root` line in `env.txt`); `deploy/README.md`
+  (the LAN runbook + subtraction record); `docs/book/src/deployment.md` +
+  `SUMMARY.md`; `docs/decisions/2026-09-07_deployment-packaging.md` +
+  INDEX row.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted →
+  `docs/decisions/2026-09-07_deployment-packaging.md` gained `answers:`),
+  MEMORY, LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier,
+  the book (chapter + SUMMARY), `docs/decisions/INDEX.md`, KNOWLEDGE_MAP —
+  same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1556,6 +1607,7 @@ matches `(^|/)Makefile$`).
 | `2026-09-06` | `PHASE-1.6.2` | `cargo test -p reasonbraid-server --lib` → `test result: ok. 7 passed` (the unit suite grew 5→7: the page-contract test + the live-listener serving test); `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — the demo runs the REAL merged binary (the third router arm changes nothing); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the embedded static shell landed (`web/…` → `include_str!` → state-free `ui_router` at `/`); the contract test's first run caught the page's own comment naming the forbidden HTML-assembly API — reworded, rerun green; the `web-ui` book chapter documents the surface |
 | `2026-09-06` | `PHASE-1.6.3` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (24 PASS — 18 + the 6 console checks, `rc=0` both runs; the first run caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); `make gate` → 13/13; `make book` builds | the demo's section-10 console beat landed (shell served at `/`, `app.js` = the documented surfaces only, no write verb, the live same-origin fetches return the demo's thread + budget); **`.1.6` complete** (backlog 18) — frontier → `.1.7` |
 | `2026-09-07` | `PHASE-1.7.1` | `bash -n scripts/dev.sh` → clean; `bash scripts/dev.sh --check` → `dev-check: OK` rc=0 (console at `/`, real `rb enroll` + `inspect threads --as devcheck`, residue census 0 — the beat's first three runs caught the verb shape, the `--as` requirement, and the census-before-teardown ordering); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (`rc=0`, `target/dev1_guard.log`); `make gate` → 13/13; `make book` builds | `make dev` is the one-command development environment (ephemeral on-volume PG, foreground server, residue census); the book's Run-it section + the README quick start carry the path — frontier → `.1.7.2` |
+| `2026-09-07` | `PHASE-1.7.2` | `bash -n scripts/demo_two_host.sh` → clean; `make release` → rc=0 (the four binaries); the release-built demo — ephemeral PG + `bash scripts/demo_two_host.sh --database-url … --release` → `ALL acceptance checks passed` (24 PASS / 0 FAIL, `rc=0`, `target/release_demo.log`, `env.txt` → `bin_root: …/target/release (release)`) + PG teardown residue 0; `bash scripts/run_pg_tests.sh` → all twelve live suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + demo rc=0 (`target/dev2_guard.log`); `make gate` → 13/13; `make book` builds | the packaged LAN story landed (`make release`, `deploy/` runbook, the book's `deployment` chapter, the subtraction record, the decision record); the packaging claim verified by the release-built demo — **`.1.7` complete** — frontier → `.1.8` |
 
 ## Commit Log
 
@@ -1582,3 +1634,4 @@ matches `(^|/)Makefile$`).
 | `PHASE-1.6.3` | `REASONBRAID-PHASE1-0027` | the demo's console beat (section 10: 6 checks + bundle evidence + the book's step 11); **`.1.6` complete** — backlog 18 done |
 | `PHASE-1.7` | `REASONBRAID-PHASE1-0028` | decomposition at the census seams: `.1.7.1` the one-command dev loop → `.1.7.2` release packaging + the LAN runbook; tree + lockstep docs only |
 | `PHASE-1.7.1` | `REASONBRAID-PHASE1-0029` | `scripts/dev.sh` + the `make dev` target (ephemeral on-volume PG, foreground server, `--check` beat) + the book's Run-it section + the README quick-start line |
+| `PHASE-1.7.2` | `REASONBRAID-PHASE1-0030` | `make release` + `deploy/README.md` (the LAN runbook + subtraction record) + the book's `deployment` chapter + the demo's `--release` build-root switch; the release-built demo passed 24/24 — **`.1.7` complete** |

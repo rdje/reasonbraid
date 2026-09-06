@@ -42,6 +42,8 @@
 #
 # Usage:
 #   bash scripts/demo_two_host.sh --database-url postgres://...     # local nodes
+#   bash scripts/demo_two_host.sh --database-url ... --release      # release-built
+#       binaries (PHASE-1.7.2 — the packaging proof; requires `make release`)
 #   bash scripts/demo_two_host.sh --database-url ... --node-host h2 \
 #        --remote-workdir '~/rb-demo'                               # real two hosts
 # Env: RB_DEMO_KEEP=1 keeps the run dir on failure for inspection.
@@ -57,6 +59,7 @@ NODE_HOST=""            # empty = run nodes locally
 REMOTE_WORKDIR=""       # required when NODE_HOST is set
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 KEEP="${RB_DEMO_KEEP:-0}"
+RELEASE="${RELEASE:-0}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -66,6 +69,7 @@ while [ $# -gt 0 ]; do
         --node-host) NODE_HOST="$2"; shift 2 ;;
         --remote-workdir) REMOTE_WORKDIR="$2"; shift 2 ;;
         --run-id) RUN_ID="$2"; shift 2 ;;
+        --release) RELEASE=1; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -85,10 +89,12 @@ WORK="$ROOT/target/demo/$RUN_ID"        # repo-root-relative, same volume (§13)
 EVIDENCE="$WORK/evidence"
 mkdir -p "$WORK" "$EVIDENCE"
 
-BIN_SERVER="$ROOT/target/debug/rb-server"
-BIN_NODE="$ROOT/target/debug/rb-node"
-BIN_JOURNAL="$ROOT/target/debug/rb-journal"
-BIN_CLI="$ROOT/target/debug/rb"
+BIN_ROOT="$ROOT/target/debug"
+if [ "$RELEASE" = "1" ]; then BIN_ROOT="$ROOT/target/release"; fi
+BIN_SERVER="$BIN_ROOT/rb-server"
+BIN_NODE="$BIN_ROOT/rb-node"
+BIN_JOURNAL="$BIN_ROOT/rb-journal"
+BIN_CLI="$BIN_ROOT/rb"
 
 SERVER_BASE="http://$SERVER_HOST:$SERVER_PORT"
 SERVER_PID=""
@@ -196,6 +202,7 @@ trap cleanup EXIT
     echo "run_id: $RUN_ID"
     echo "git_rev: $(git rev-parse HEAD)"
     echo "server: $SERVER_BASE"
+    echo "bin_root: $BIN_ROOT ($([ "$RELEASE" = "1" ] && echo release || echo debug))"
     echo "node_host: ${NODE_HOST:-<local>}"
     echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
     echo "database_url: $DATABASE_URL"
@@ -210,8 +217,13 @@ trap cleanup EXIT
 
 # ── build ───────────────────────────────────────────────────────────────────────
 
-log "building the four binaries (cargo build --bins)"
-cargo build --bins -q
+if [ "$RELEASE" = "1" ]; then
+    log "building the four release binaries (cargo build --release --bins)"
+    cargo build --release --bins -q
+else
+    log "building the four binaries (cargo build --bins)"
+    cargo build --bins -q
+fi
 
 if [ -n "$NODE_HOST" ]; then
     log "deploying rb-node + rb-journal to $NODE_HOST:$REMOTE_WORKDIR"

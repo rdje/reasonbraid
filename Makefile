@@ -1,7 +1,7 @@
 # Makefile — standard commands. `make gate` = the doctrine enforcer; `make check` = Rust.
 SHELL := /usr/bin/env bash
 
-.PHONY: help gate check fmt clippy test deny secret-scan book demo dev hooks bootstrap update-scaffold
+.PHONY: help gate check fmt clippy test deny secret-scan book demo dev release hooks bootstrap update-scaffold
 
 help:
 	@echo "make gate            - run the doctrine enforcer (scripts/check_doctrines.sh)"
@@ -14,6 +14,7 @@ help:
 	@echo "make book            - build the mdBook (requires mdbook)"
 	@echo "make demo            - the two-host crash/reconnect demo (ephemeral PG + evidence bundle)"
 	@echo "make dev             - one-command dev environment: ephemeral PG + rb-server (Ctrl-C cleans up)"
+	@echo "make release         - the four release binaries (target/release/{rb,rb-server,rb-node,rb-journal})"
 	@echo "make hooks           - install the git hooks (core.hooksPath=.githooks)"
 	@echo "make bootstrap       - first-time project bootstrap"
 	@echo "make update-scaffold - pull the latest ReasonBraid spine (set URL=<reasonbraid-repo>)"
@@ -56,6 +57,14 @@ demo:
 # `bash scripts/dev.sh --check` is the self-verification beat.
 dev:
 	scripts/dev.sh
+
+# The local/LAN deployment package (PHASE-1.7.2): the four self-contained
+# binaries (migrations + the console embed at compile time). The LAN runbook
+# is deploy/README.md; the release-built proof is
+# `bash scripts/demo_two_host.sh --database-url ... --release`.
+release:
+	cargo build --release --bins
+	@ls -l target/release/rb target/release/rb-server target/release/rb-node target/release/rb-journal
 
 hooks:
 	git config core.hooksPath .githooks

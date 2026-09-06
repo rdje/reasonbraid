@@ -16,11 +16,12 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.7.2` (release packaging + the
-  `deploy/` LAN runbook). **`.1.7.1` done** — `make dev` is the one-command
-  dev environment (`scripts/dev.sh`: ephemeral on-volume PG + foreground
-  server + `--check` self-verification beat). `.1.7` decomposed:
-  `.1.7.1` dev loop → `.1.7.2` packaged LAN story.
+- **Active tree:** `PHASE-1` → frontier `.1.8` (the G1–G2 exit + Demonstration
+  A — closes Phase 1). **`.1.7` COMPLETE** — `.1.7.1` `make dev` (the
+  one-command dev loop, `--check` beat) + `.1.7.2` the packaged LAN story
+  (`make release` → four self-contained binaries, `deploy/` runbook, the
+  book's `deployment` chapter, the release-built demo proof 24/24;
+  `docs/decisions/2026-09-07_deployment-packaging.md`).
   **`.1.6` COMPLETE** (backlog 18) —
   `.1.6.1` budget read surface (`docs/decisions/2026-09-06_budget-read-surface.md`),
   `.1.6.2` the embedded static shell at `/` (read-only, text-safe;
@@ -30,10 +31,9 @@
   `1.98.0` (`PHASE-1-MAINT-3`). `.1.5` COMPLETE (backlogs 9–17 done); all
   three Phase-1 defect leaves closed (`MAINT-1` §13, `MAINT-2` drain race,
   `MAINT-3` toolchain pin); `.1.4` live-qualified.
-- **Next action:** execute `.1.7.2` (release packaging + the LAN runbook:
-  `make release`, `deploy/`, the book's `deployment` chapter, the
-  release-built demo proof) — after that `.1.8` (the G1–G2 exit +
-  Demonstration A).
+- **Next action:** execute `.1.8` (the G1–G2 exit + Demonstration A — the
+  §26.1 acceptance mapped to the existing demo beats, the gate record, the
+  subtraction record, then the Phase 1 close).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

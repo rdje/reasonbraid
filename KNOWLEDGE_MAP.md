@@ -69,6 +69,7 @@
 - [`2026-09-06_ui-direction.md`](docs/decisions/2026-09-06_ui-direction.md)
 - [`2026-09-06_ui-embedding.md`](docs/decisions/2026-09-06_ui-embedding.md)
 - [`2026-09-07_deliberation-benchmark.md`](docs/decisions/2026-09-07_deliberation-benchmark.md)
+- [`2026-09-07_deployment-packaging.md`](docs/decisions/2026-09-07_deployment-packaging.md)
 - [`2026-09-07_node-channel-wiring.md`](docs/decisions/2026-09-07_node-channel-wiring.md)
 - [`2026-09-07_phase0-adr-set.md`](docs/decisions/2026-09-07_phase0-adr-set.md)
 - [`2026-09-07_phase0-subtraction-record.md`](docs/decisions/2026-09-07_phase0-subtraction-record.md)

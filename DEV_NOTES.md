@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-1.7.2: prove the artifact, not only the behavior
+
+- **Debug proves the code; the release-built demo proves the package.** The census found the demo builds `--bins` (debug) only, so the packaging claim had zero evidence. The cheapest honest proof: a `--release` flag that switches the build root — the script already had a build-root seam (`BIN_SERVER`/`BIN_NODE`/…), so the flag is a selection, not a fork; `make demo` stays debug.
+- **A runbook without a practiced path is fiction.** The demo's ssh two-host mode existed before any runbook; `deploy/README.md`'s job is to route operators to what is already repeatable and state the honest limits at the point of use (dev trust store, plain HTTP — trusted LAN only).
+- **Self-containment is the packaging invariant.** Migrations + the console embed at compile time, so a deployed binary needs no runtime path back to the checkout (§12); PostgreSQL and the node's journal volume are explicitly operator-owned.
+- Promoted to `docs/decisions/2026-09-07_deployment-packaging.md` (`answers:` present). **Frontier `PHASE-1.8` (G1–G2 exit + Demonstration A).**
+
 ## _(2026-09-07)_ — PHASE-1.7.1: a dev loop is the test harness's boot machinery with a different lifecycle
 
 - **Reuse the boot, change the lifecycle.** The ephemeral-PG machinery (initdb → on-volume `$ROOT/target/*.XXXXXX` → `pg_ctl` → createdb → trap cleanup, the `PHASE-1-MAINT-1` §13 shape) was authored for one-shot verification; the dev loop needs the same boot with a foreground server and interactive teardown. `scripts/dev.sh` copies the shape verbatim instead of inventing a second PG boot path.

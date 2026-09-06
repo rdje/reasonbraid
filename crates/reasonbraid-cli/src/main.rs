@@ -6,10 +6,10 @@
 
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
-    resolve_agent, resolve_principal, run_enroll, run_inspect_node_inbox, run_inspect_thread,
-    run_inspect_threads, run_issue_node_token, run_prune_node_inbox, run_quarantine_command,
-    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
-    StateFile, ThreadVerbArgs,
+    resolve_agent, resolve_principal, run_enroll, run_inspect_budget, run_inspect_node_inbox,
+    run_inspect_thread, run_inspect_threads, run_issue_node_token, run_prune_node_inbox,
+    run_quarantine_command, run_thread_create, run_thread_verb, BudgetArgs, Config,
+    CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -329,6 +329,17 @@ enum ThreadCommand {
 enum InspectCommand {
     /// One thread: state, participants, counters, event timeline, and audit records.
     Thread {
+        thread: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// One thread's budget ledger: the ceiling + every reservation row — held vs
+    /// settled usage, denials with their reasons (`.1.6.1`; read-only, inspect-gated).
+    Budget {
         thread: String,
         #[arg(long)]
         as_: Option<String>,
@@ -701,6 +712,15 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_thread(cfg, &state, &principal, &thread, tenant.as_deref(), json).await
+        }
+        Command::Inspect(InspectCommand::Budget {
+            thread,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_budget(cfg, &state, &principal, &thread, tenant.as_deref(), json).await
         }
         Command::Inspect(InspectCommand::Threads { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;

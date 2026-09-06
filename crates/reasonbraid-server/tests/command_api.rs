@@ -1195,7 +1195,10 @@ async fn contribute_carries_a_typed_kind_and_evidence_refs() {
     assert_eq!(contributions.len(), 2);
     assert_eq!(contributions[0]["body"]["kind"], json!("position"));
     assert_eq!(contributions[0]["body"]["evidence_refs"], json!([]));
-    assert_eq!(contributions[1]["body"]["kind"], json!("evidence_reference"));
+    assert_eq!(
+        contributions[1]["body"]["kind"],
+        json!("evidence_reference")
+    );
     assert_eq!(
         contributions[1]["body"]["evidence_refs"],
         json!([{ "uri": "https://example.org/spec" }])
@@ -1390,7 +1393,11 @@ async fn rounds_are_server_assigned_and_advancement_is_gated() {
         .filter(|e| e["event_type"] == json!("thread.contribution_submitted"))
         .map(|e| e["body"]["round"].as_u64().unwrap())
         .collect();
-    assert_eq!(rounds, vec![1, 2], "contributions carry the round they landed in");
+    assert_eq!(
+        rounds,
+        vec![1, 2],
+        "contributions carry the round they landed in"
+    );
 
     // A closed thread refuses advancement (the state machine boundary).
     let (status, closed) = command(
@@ -1493,7 +1500,10 @@ async fn the_honest_inconclusive_close_carries_its_register() {
     assert_eq!(close_event["body"]["outcome"], json!("inconclusive"));
     assert_eq!(
         close_event["body"]["unresolved"],
-        json!(["the budget gate blocked the revision", "the challenge stands"])
+        json!([
+            "the budget gate blocked the revision",
+            "the challenge stands"
+        ])
     );
 
     let (_, inspected) = get(
@@ -1555,4 +1565,175 @@ async fn the_honest_inconclusive_close_carries_its_register() {
     .await;
     assert_eq!(status, 400, "decided with unresolved: {dishonest}");
     assert_eq!(dishonest["code"], json!("invalid_command"));
+}
+
+/// The `.1.6.1` budget read surface: the ledger (ceiling + every reservation row —
+/// held vs settled usage, denials with their reasons) is inspectable through the
+/// API only, the §26.1 "spend and uncertainty are visible" fact — and the inspect
+/// gate holds (a role without `thread_inspect` is a typed 403 with the audit row).
+#[tokio::test]
+async fn budget_read_surface_exposes_the_ledger_through_the_api_only() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Bootstrap: alice (human admin), reviewer + skeptic (roles).
+    let (status, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    assert_eq!(status, 200, "enroll alice: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, reviewer) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "reviewer", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll reviewer: {reviewer}");
+    let reviewer_id = reviewer["principal_id"].as_str().unwrap().to_string();
+    let (status, skeptic) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "skeptic", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll skeptic: {skeptic}");
+    let skeptic_id = skeptic["principal_id"].as_str().unwrap().to_string();
+
+    // A thread whose ceiling meters ONE call: the first accept's dispatch reserves
+    // it; the second accept's dispatch is DENIED — and the denial is a ledger row
+    // the read surface must show (the §14.3 "denials are rows too" invariant).
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-budget-create",
+            json!({
+                "tenant_id": tenant,
+                "subject": "budgeted deliberation",
+                "objective": "prove spend is visible",
+                "budget": { "calls": 1 },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    for (role, invite_key) in [
+        (&reviewer_id, "k-budget-invite-a"),
+        (&skeptic_id, "k-budget-invite-b"),
+    ] {
+        let (status, invited) = command(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}/commands"),
+            &alice_id,
+            &envelope(
+                "thread.invite",
+                invite_key,
+                json!({ "tenant_id": tenant, "agent_role": role }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "invite: {invited}");
+        let (status, accepted) = command(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}/commands"),
+            role,
+            &envelope(
+                "thread.accept_invitation",
+                &format!("{invite_key}-accept"),
+                json!({ "tenant_id": tenant }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "accept: {accepted}");
+    }
+
+    // The read: the ceiling + one active hold + one denial with its reason.
+    let (status, budget) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/budget?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "budget get: {budget}");
+    assert_eq!(budget["thread_id"], json!(thread_id));
+    assert_eq!(budget["ceiling"]["dimensions"]["calls"], json!(1));
+    assert!(budget["ceiling"]["policy_version"].is_string());
+    let rows = budget["reservations"]
+        .as_array()
+        .expect("reservations is an array");
+    assert_eq!(rows.len(), 2, "one hold + one denial: {budget}");
+    let active: Vec<&Value> = rows.iter().filter(|r| r["status"] == "active").collect();
+    let denied: Vec<&Value> = rows.iter().filter(|r| r["status"] == "denied").collect();
+    assert_eq!(active.len(), 1, "exactly one active hold: {budget}");
+    assert_eq!(denied.len(), 1, "exactly one recorded denial: {budget}");
+    assert!(
+        denied[0]["reason"]
+            .as_str()
+            .unwrap_or("")
+            .contains("the ceiling does not cover"),
+        "the denial carries the budget engine's reason: {budget}"
+    );
+    // Absent optional facts are OMITTED, never null (the `.1.5.1` wire shape).
+    assert!(
+        !denied[0].as_object().unwrap().contains_key("usage"),
+        "denied rows carry no usage key: {budget}"
+    );
+
+    // Settle the active hold through the real write path; the read shows the usage.
+    let reservation_id = active[0]["reservation_id"].as_str().unwrap().to_string();
+    reasonbraid_server::settle_reservation(
+        &pool,
+        &reservation_id,
+        &reasonbraid_core::BudgetDimensions::attempt_usage(Some(50), Some(100)),
+        chrono::Utc::now(),
+    )
+    .await
+    .expect("settle the active reservation");
+    let (status, after) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/budget?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "budget get after settle: {after}");
+    let settled: Vec<&Value> = after["reservations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["status"] == "settled")
+        .collect();
+    assert_eq!(settled.len(), 1, "the hold reads settled: {after}");
+    assert_eq!(settled[0]["usage"]["input_tokens"], json!(50));
+    assert_eq!(settled[0]["usage"]["output_tokens"], json!(100));
+    assert!(settled[0]["settled_at"].is_string(), "settled_at: {after}");
+
+    // The inspect gate: a role without `thread_inspect` is a typed 403 (audit row
+    // inside the message) — the UI inherits this gate unchanged.
+    let (status, role_denied) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/budget?tenant_id={tenant}"),
+        &skeptic_id,
+    )
+    .await;
+    assert_eq!(status, 403, "role budget read: {role_denied}");
+    assert_eq!(role_denied["code"], json!("unauthorized"));
+    assert!(
+        role_denied["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("authorization denied"),
+        "the denial names the audit record: {role_denied}"
+    );
 }

@@ -707,6 +707,67 @@ pub async fn run_inspect_thread(
     Ok(out)
 }
 
+/// `rb inspect budget` — the `.1.6.1` budget read surface: the ceiling + every
+/// reservation row (held vs settled usage, denials with reasons) from the ledger,
+/// read-only and inspect-gated by the server. `--json` passes the raw view through.
+pub async fn run_inspect_budget(
+    cfg: &Config,
+    state: &StateFile,
+    principal: &PrincipalRef,
+    thread_id: &str,
+    tenant_explicit: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let tenant = resolve_tenant(state, thread_id, principal, tenant_explicit)?;
+    let budget = client
+        .get(
+            &format!("/v1/threads/{thread_id}/budget?tenant_id={tenant}"),
+            &principal.id,
+        )
+        .await?;
+    if json_out {
+        return or_json(&budget, true);
+    }
+
+    let ceiling = &budget["ceiling"];
+    let mut out = String::new();
+    out.push_str(&format!(
+        "budget for thread {thread_id} (tenant {tenant})\nceiling: {} (policy {}) — created {}\n",
+        ceiling["ceiling_id"].as_str().unwrap_or("?"),
+        ceiling["policy_version"].as_str().unwrap_or("?"),
+        ceiling["created_at"].as_str().unwrap_or("?"),
+    ));
+    out.push_str(&format!("dimensions: {}\n", ceiling["dimensions"]));
+    let reservations = budget["reservations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    out.push_str(&format!("reservations ({}):\n", reservations.len()));
+    for r in reservations {
+        let usage = r
+            .get("usage")
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| "—".to_string());
+        out.push_str(&format!(
+            "  {} {} held={} usage={}{}{}\n",
+            r["reservation_id"].as_str().unwrap_or("?"),
+            r["status"].as_str().unwrap_or("?"),
+            r["dimensions"],
+            usage,
+            r["reason"]
+                .as_str()
+                .map(|s| format!(" — reason: {s}"))
+                .unwrap_or_default(),
+            r["settled_at"]
+                .as_str()
+                .map(|t| format!(" (settled {t})"))
+                .unwrap_or_default(),
+        ));
+    }
+    Ok(out)
+}
+
 pub async fn run_inspect_threads(
     cfg: &Config,
     principal: &PrincipalRef,

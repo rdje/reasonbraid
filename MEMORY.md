@@ -16,25 +16,25 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.6.1` (the budget read surface).
+- **Active tree:** `PHASE-1` → frontier `.1.6.2` (the embedded static shell).
   `.1.6` DECOMPOSED `2026-09-06` after the gap census (direction: a vanilla
   static page served by `rb-server`, no build pipeline —
-  `docs/decisions/2026-09-06_ui-direction.md`): `.1.6.1` budget read (the
-  census-found gap — budgets had NO read surface anywhere), `.1.6.2` the
-  embedded static shell (`web/{index.html,app.js,style.css}`, `/`), `.1.6.3`
-  the demo/evidence leg. `.1.5` COMPLETE (backlogs 9–17 done across
-  `.1`–`.1.5`); both Phase-1 defect leaves closed (`MAINT-1` §13,
-  `MAINT-2` drain race); `.1.4` live-qualified (backlogs 19–21).
-- **Next action:** execute `PHASE-1.6.1` — `GET /v1/threads/{id}/budget` +
-  `rb inspect budget` — then `.1.6.2`/`.1.6.3`.
+  `docs/decisions/2026-09-06_ui-direction.md`): `.1.6.1` budget read surface
+  DONE (read-only ledger pass-through, inspect-gated;
+  `docs/decisions/2026-09-06_budget-read-surface.md`), `.1.6.2` the embedded
+  static shell (`web/{index.html,app.js,style.css}`, `/`), `.1.6.3` the
+  demo/evidence leg. Toolchain PINNED to `1.98.0` (`PHASE-1-MAINT-3`;
+  `docs/decisions/2026-09-06_pinned-toolchain.md`). `.1.5` COMPLETE
+  (backlogs 9–17 done); all three Phase-1 defect leaves closed (`MAINT-1`
+  §13, `MAINT-2` drain race, `MAINT-3` toolchain pin); `.1.4` live-qualified.
+- **Next action:** execute `PHASE-1.6.2` — the static page
+  (`crates/reasonbraid-server/web/` embedded at compile time, served at `/`,
+  read-only, XSS-safe) + the offline serving test + the book chapter — then
+  `.1.6.3`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **Defects:** 0 tracked leaves outstanding after `PHASE-1-MAINT-3` (the toolchain
-  pin: `rust-toolchain.toml` + CI now pin `1.98.0` — reproducible fmt/clippy;
-  the tree was normalized once under the pin). Earlier: `MAINT-1` §13 locality,
-  `MAINT-2` drain race — closed.
-- **In-flight uncommitted work:** the `.1.6.1` leaf mid-verification (the budget
-  read surface — green on live PG run 3; docs drafted); committed next after
-  `MAINT-3`.
+- **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
+  drain race, `MAINT-3` toolchain pin — all closed).
+- **In-flight uncommitted work:** none.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude` (2.1.263,

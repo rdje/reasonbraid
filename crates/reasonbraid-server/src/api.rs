@@ -303,6 +303,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/threads/{thread_id}", get(get_thread))
         .route("/v1/threads/{thread_id}/events", get(get_events))
         .route("/v1/threads/{thread_id}/audit", get(get_audit))
+        .route("/v1/threads/{thread_id}/budget", get(get_thread_budget))
         .route("/v1/threads/{thread_id}/commands", post(thread_command))
         .with_state(state)
 }
@@ -1476,9 +1477,8 @@ async fn thread_command(
             )
         }
         threads::OP_ADVANCE_ROUND => {
-            let body: threads::AdvanceRoundBody =
-                serde_json::from_value(envelope.body.clone())
-                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let body: threads::AdvanceRoundBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
             let tenant = body.tenant_id;
             (
                 tenant,
@@ -1763,6 +1763,121 @@ async fn get_events(
                 "tenant_id": tenant_id.to_string(),
                 "events": events,
                 "next_cursor": next_cursor,
+            }))
+        },
+    )
+    .await
+}
+
+/// `GET /v1/threads/{thread_id}/budget` — the budget read surface (`PHASE-1.6.1`,
+/// the `.1.6` census finding: budgets had NO read surface anywhere). A READ-ONLY
+/// view of the ledger facts for one thread: the ceiling (dimensions, policy
+/// version, created time) plus every reservation row — held vs settled usage,
+/// denials with their reasons, release facts. The rows are the §14.3 ledger;
+/// nothing is computed or invented here, so "spend and uncertainty are visible"
+/// (`ROADMAP.md` §26.1) follows the same rows the budget engine enforces against.
+/// Gated by the same `thread_inspect` path as `get_thread`: a role without the
+/// grant is a typed 403 with the audit row.
+async fn get_thread_budget(
+    State(state): State<Arc<ApiState>>,
+    Path(thread_id_raw): Path<String>,
+    Query(q): Query<ThreadQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id = tenant_from_query(&q)?;
+    let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
+    })?;
+
+    inspect(
+        &state,
+        &principal,
+        ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+        |pool| async move {
+            let ceiling: Option<(String, Value, String, DateTime<Utc>)> = sqlx::query_as(
+                "SELECT ceiling_id, dimensions, policy_version, created_at \
+                 FROM budget_ceilings WHERE tenant_id = $1 AND thread_id = $2",
+            )
+            .bind(tenant_id.to_string())
+            .bind(thread_id.to_string())
+            .fetch_optional(&pool)
+            .await?;
+            // BUDGET-003: a thread exists with its ceiling — a thread row without
+            // one is corrupt, not an empty budget; refusing hides the anomaly
+            // rather than presenting a fabricated `{}` budget.
+            let Some((ceiling_id, dimensions, policy_version, created_at)) = ceiling else {
+                return Err(ControlApiError::scope_hidden());
+            };
+
+            type Row = (
+                String,
+                Value,
+                Option<Value>,
+                String,
+                Option<String>,
+                Option<DateTime<Utc>>,
+                DateTime<Utc>,
+                Option<DateTime<Utc>>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT reservation_id, dimensions, usage, status, reason, expires_at, \
+                 created_at, settled_at FROM budget_reservations \
+                 WHERE ceiling_id = $1 ORDER BY created_at",
+            )
+            .bind(&ceiling_id)
+            .fetch_all(&pool)
+            .await?;
+            // Absent optional facts are OMITTED on the wire (the `.1.5.1` shape
+            // discipline) — never `null`.
+            let reservations: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(
+                        reservation_id,
+                        dimensions,
+                        usage,
+                        status,
+                        reason,
+                        expires_at,
+                        created_at,
+                        settled_at,
+                    )| {
+                        let mut row = serde_json::Map::new();
+                        row.insert("reservation_id".into(), json!(reservation_id));
+                        row.insert("dimensions".into(), dimensions);
+                        if let Some(usage) = usage {
+                            row.insert("usage".into(), usage);
+                        }
+                        row.insert("status".into(), json!(status));
+                        if let Some(reason) = reason {
+                            row.insert("reason".into(), json!(reason));
+                        }
+                        if let Some(expires_at) = expires_at {
+                            row.insert("expires_at".into(), json!(expires_at.to_rfc3339()));
+                        }
+                        row.insert("created_at".into(), json!(created_at.to_rfc3339()));
+                        if let Some(settled_at) = settled_at {
+                            row.insert("settled_at".into(), json!(settled_at.to_rfc3339()));
+                        }
+                        Value::Object(row)
+                    },
+                )
+                .collect();
+
+            Ok(json!({
+                "thread_id": thread_id.to_string(),
+                "tenant_id": tenant_id.to_string(),
+                "ceiling": {
+                    "ceiling_id": ceiling_id,
+                    "dimensions": dimensions,
+                    "policy_version": policy_version,
+                    "created_at": created_at.to_rfc3339(),
+                },
+                "reservations": reservations,
             }))
         },
     )

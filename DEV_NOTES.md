@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.6.1: a read surface exposes ledger rows, it does not recompute them
+
+- **The census question is "which inspection surfaces exist", and budgets answered: none.** The ledger tables were fully formed (`0005_budget.sql`), the engine enforced against them, and no GET/CLI verb touched them — the `.1.6` goal named a surface that did not exist. The `.1.6.1` child IS that census finding.
+- **Pass-through beats summary.** `GET /v1/threads/{id}/budget` returns the ceiling + every reservation row (held vs settled usage, denials with reasons) — the same rows the engine writes; any computed "summary" would be a second authority that can drift. The test's first run proved the surface right and the TEST wrong (the row's denial reason is the engine's raw `detail`, `the ceiling does not cover …`, not the dispatch site's `budget denied the dispatch:` prefix — the latter rides the work item).
+- **A new surface reuses the existing gate.** The endpoint rides `thread_inspect` (the `get_thread` path) — zero new authority, zero new write path, zero new tables; the page inherits the typed 403 + audit row.
+- Promoted to `docs/decisions/2026-09-06_budget-read-surface.md` (`answers:` present). **Frontier `PHASE-1.6.2` (the embedded static shell).**
+
 ## _(2026-09-06)_ — PHASE-1-MAINT-3: an unpinned `stable` toolchain is a slow-motion formatter drift
 
 - **`cargo fmt --check` failing on files the current leaf never touched is a toolchain defect, not a style slip.** The `.1.6.1` verification caught it: both installed rustfmt builds (`1.9.0-stable` 2026-04-14 from rustc 1.95.0 and 2026-08-18 from 1.98.0) flag the SAME pre-existing hunks — the tree's last full fmt run predates the stable-channel move, and recent leaves verified clippy but not fmt, so the drift sat undetected.

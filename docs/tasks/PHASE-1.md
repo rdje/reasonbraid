@@ -382,7 +382,7 @@ conversation without binding-governance claims.
     budget read surface → the static shell → the evidence leg).
 
   - ID: `PHASE-1.6.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the budget read surface (the census-found gap) — `GET
       /v1/threads/{thread_id}/budget?tenant_id=` returns the ceiling (dimensions,
       policy_version, created_at) + every reservation row (status, held vs usage,
@@ -396,6 +396,12 @@ conversation without binding-governance claims.
       with the audit row); a command_api test drives create→reserve→settle→GET and a
       denial leg; the e2e drives the CLI verb through the real binary; the book's cli
       chapter documents the verb; decision record.
+    Done (`2026-09-06`): the surface landed (read-only ledger pass-through, inspect-gated,
+      absent facts omitted); the suite's first run proved the surface right and the TEST
+      wrong (the row's denial reason is the engine's raw detail), and the e2e's first
+      run caught the positional-vs-`--thread` slip; the acceptance checklist below
+      records the evidence. The leaf's verification ALSO uncovered the toolchain drift
+      → `PHASE-1-MAINT-3` (closed first: the pin + normalization).
 
   - ID: `PHASE-1.6.2`
     Status: `proposed`
@@ -464,7 +470,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.6.1` | `proposed` | `.1.6` decomposed at the census seams (gap census first: the existing read surfaces — threads list/detail, events, audit, presence, inbox — exist; budgets have NO read surface, so the census finding became `.1.6.1`); the children execute in order: the budget read surface → the static shell → the evidence leg |
+| 1 | `PHASE-1.6.2` | `proposed` | `.1.6.1` done — the budget read surface landed (read-only ledger pass-through, inspect-gated; the leaf's verification also uncovered the toolchain drift, closed as `PHASE-1-MAINT-3` with the 1.98.0 pin); the static shell executes next |
 
 ## Changelog
 
@@ -492,6 +498,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `PHASE-1-MAINT-2` done — the stderr-drain race REPRODUCED and FIXED: during the `.1.5.3` verification `codex_adapter::nonzero_exit_produces_failed_known_with_the_stderr_tail` failed with an EMPTY tail (`got: codex exited with exit status: 2; stderr tail: `) — the spawned drain task raced the EOF path's buffer snapshot (load only widens the window); `drain_stderr` now returns its JoinHandle and the EOF path awaits it (bounded 5 s) BEFORE the snapshot, in `codex.rs` AND its `claude.rs` mirror; 10× adapter-suite loops + the full offline workspace green; decision record `docs/decisions/2026-09-06_stderr-drain-race.md`. Frontier unchanged: `.1.6`.
 - `2026-09-06`: `.1.6` decomposed (gap census first: the existing read surfaces — `GET /v1/threads` list, `GET /v1/threads/{id}` detail, `GET /v1/threads/{id}/events` timeline, `GET /v1/threads/{id}/audit`, `GET /v1/nodes/presence`, `GET /v1/nodes/inbox` — exist and the page mirrors them with the dev-profile header + tenant query; the census FOUND budgets have no read surface anywhere — the ledger rows exist but no GET and no CLI verb) into `.1.6.1` (the budget read surface — the census-found gap), `.1.6.2` (the static shell: `web/{index.html,app.js,style.css}` embedded at compile time, served at `/`, read-only, XSS-safe), and `.1.6.3` (the demo/evidence leg); frontier → `.1.6.1`.
 - `2026-09-06`: `PHASE-1-MAINT-3` done — the toolchain pin: the `.1.6.1` verification found `cargo fmt --all -- --check` failing on hunks in files the leaf never touched (identical under BOTH installed rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`); the channel was `stable` everywhere and the stable channel moved since the tree's last fmt run (recent leaves verified clippy, not fmt); `rust-toolchain.toml` + CI now pin `1.98.0` and the tree was normalized once under it (`fmt rc=0`, clippy clean, 39 offline suites green); decision record `docs/decisions/2026-09-06_pinned-toolchain.md`. Frontier unchanged: `.1.6.1` (executes next — its live-PG run is green under the pin).
+- `2026-09-06`: `.1.6.1` done — the budget read surface: `GET /v1/threads/{id}/budget` is a read-only pass-through of the ledger (ceiling + every reservation row — held vs settled usage, denials with the engine's reasons; absent optional facts omitted, stored JSONB verbatim), gated by the existing `thread_inspect` path (role 403 + audit row); `rb inspect budget` mirrors it; the command_api suite's new test drives create→accept-dispatch (hold)→deny→GET→settle→GET→role-403 and its first run proved the surface right and the TEST wrong (the row reason is the engine's raw `detail`, not the dispatch site's prefix); the e2e's first run caught the positional-vs-`--thread` slip; decision record `docs/decisions/2026-09-06_budget-read-surface.md`; frontier → `.1.6.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1253,6 +1260,58 @@ The CODE change owned by this leaf: the fmt normalization of
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit. Frontier unchanged
   (`.1.6.1`), so `docs/TASK_TREE.md` and the book need no update.
 
+## Acceptance Checklist (PHASE-1.6.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/api.rs` (the
+route + `get_thread_budget`), `crates/reasonbraid-cli/src/{lib,main}.rs` (the
+verb + dispatch), `crates/reasonbraid-server/tests/command_api.rs` (the new
+test), `crates/reasonbraid-cli/tests/cli_end_to_end.rs` (the new legs) — all
+`\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1.6` gap census: budgets have NO read surface
+  anywhere — `grep -rn "budget" crates/reasonbraid-cli/src/main.rs` → only the create
+  flags (no inspect verb); `grep -n "route(" crates/reasonbraid-server/src/api.rs` → no
+  budget GET among the read routes; yet the ledger rows exist
+  (`migrations/0005_budget.sql` → `budget_ceilings` + `budget_reservations` with
+  `status`/`usage`/`reason`). The `.1.6` goal names "budgets" — the surface the page
+  is supposed to mirror does not exist.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the `.6.1` read set stopped at threads/events/audit
+  (the WP6 demo's needs); the budget engine wrote ledger rows for enforcement but
+  nothing was wired to READ them — inspection stopped at the projection's `budget`
+  dimensions while spend/denial facts sat unreadable. The fix point is a read-only
+  query over the existing tables, gated by the existing `inspect` helper
+  (`thread_inspect`, api.rs line ~1608) — no new grant, no write path
+  (`docs/decisions/2026-09-06_budget-read-surface.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no endpoint (404), no
+  verb (clap usage error). After: `bash scripts/run_pg_tests.sh` → `test result: ok. 13
+  passed; 0 failed` (`command_api`, +1: create with `calls:1` → accept A holds → accept
+  B DENIED → GET shows ceiling + `active` + `denied` rows with the engine's reason →
+  settle via the real write path → GET shows `settled` usage + `settled_at` → role GET
+  is a typed 403 naming the audit record) and the e2e's budget leg drives the REAL
+  binary (`test result: ok. 2 passed`; JSON + human output + the role's denial). The
+  suite's FIRST run proved the surface right and the TEST wrong — the row's `reason`
+  is the engine's raw detail (`the ceiling does not cover …`), not the dispatch site's
+  `budget denied the dispatch:` prefix (that rides the work item); fixed the assertion,
+  rerun green. The e2e's first run caught a positional-vs-`--thread` slip (the verb
+  mirrors `inspect thread`'s positional shape), fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → all 39 offline suites green;
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`)
+  + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks
+  passed` (18 PASS, `rc=0`) — re-run under the pinned 1.98.0 toolchain (the leaf's
+  first green run was under 1.95; `PHASE-1-MAINT-3` re-verified the compiler move);
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check`
+  → `rc=0`; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — api.rs (the route + `get_thread_budget`: ceiling + rows queries,
+  `scope_hidden` on a missing ceiling — BUDGET-003 means a thread row without one is
+  corruption, not an empty budget; absent optional facts OMITTED on the wire); lib.rs
+  (`run_inspect_budget`) + main.rs (`InspectCommand::Budget` + the dispatch arm);
+  command_api.rs (the new test); cli_end_to_end.rs (the three budget legs); the book's
+  cli chapter (the verb + the read-only/inspect-gated contract).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_budget-read-surface.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  cli chapter, `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1273,6 +1332,7 @@ The CODE change owned by this leaf: the fmt normalization of
 | `2026-09-06` | `PHASE-1.5.3` | `cargo test --all` → every offline suite green ×3 (the first run captured the `PHASE-1-MAINT-2` repro — the codex stderr-drain race — recorded in the defect leaf); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 12 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13; `make book` builds | the honest close landed (core `Inconclusive` terminal + the close body's `outcome`/`unresolved` + the demo's thread-B beat); the e2e's first run caught a missing `--json` in the new leg, fixed, rerun green; **`.1.5` complete** (backlog 17) |
 | `2026-09-06` | `PHASE-1-MAINT-2` | 10× loop over `codex_adapter` + `claude_adapter` → `loop 1..10 rc=0` each; `cargo test --all` → all 39 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the stderr-drain race REPRODUCED (`.1.5.3` verification, `nonzero_exit_produces_failed_known_with_the_stderr_tail`, EMPTY tail) and FIXED: the drain returns its JoinHandle and the EOF path awaits it (bounded 5 s) before the snapshot, in `codex.rs` AND `claude.rs` |
 | `2026-09-06` | `PHASE-1-MAINT-3` | `cargo fmt --all -- --check` → `rc=0` under the pin (was `rc=1` under BOTH rustfmt builds — rustc 1.95.0's and 1.98.0's `1.9.0-stable`, same hunks); `cargo clippy --all --all-targets -- -D warnings` → clean (rc=0); `cargo test --all` → 39 offline suites green (rc=0); `make gate` → 13/13 | the toolchain pin: `rust-toolchain.toml` + CI name `1.98.0` explicitly; the tree normalized once under it; the defect (HEAD not fmt-clean under current stable) is closed — drift can no longer arrive silently |
+| `2026-09-06` | `PHASE-1.6.1` | `cargo test --all` → all 39 offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + two-host demo `ALL acceptance checks passed` (18 PASS, `rc=0`) — under the pinned 1.98.0; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → `rc=0`; `make gate` → 13/13; `make book` builds | the budget read surface landed (`GET /v1/threads/{id}/budget` — read-only ledger pass-through, inspect-gated; `rb inspect budget`); the suite's first run proved the surface right and the TEST wrong (engine-detail reason), the e2e's first run caught the positional slip; the leaf's verification uncovered the toolchain drift → `PHASE-1-MAINT-3` closed first |
 
 ## Commit Log
 
@@ -1294,3 +1354,4 @@ The CODE change owned by this leaf: the fmt normalization of
 | `PHASE-1.5.3` | `REASONBRAID-PHASE1-0020` | the honest close: core `Inconclusive` terminal + `outcome`/`unresolved` + the dishonest-decided refusal + CLI flags + demo/e2e legs; `.1.5` complete |
 | `PHASE-1-MAINT-2` | `REASONBRAID-PHASE1-0021` | the reproduced stderr-drain race: the drain returns its JoinHandle and the EOF path awaits it (bounded) in both adapters; 10× loop + full offline green |
 | `PHASE-1-MAINT-3` | `REASONBRAID-PHASE1-0024` | the toolchain pin: `rust-toolchain.toml` + CI pin `1.98.0`, the four drifted files normalized once under it — reproducible fmt/clippy, defect leaf closed |
+| `PHASE-1.6.1` | `REASONBRAID-PHASE1-0025` | the budget read surface: `GET /v1/threads/{id}/budget` (read-only ledger pass-through, inspect-gated) + `rb inspect budget` + command_api/e2e legs + decision record |

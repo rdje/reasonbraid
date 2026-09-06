@@ -264,11 +264,51 @@ async fn the_real_cli_drives_the_whole_flow() {
     // `.1.5.2`: the human advances the round — the REAL binary drives the verb.
     let (ok, stdout, stderr) = rb
         .run(&[
-            "thread", "advance-round", "--thread", &thread_id, "--as", "alice",
+            "thread",
+            "advance-round",
+            "--thread",
+            &thread_id,
+            "--as",
+            "alice",
         ])
         .await;
     assert!(ok, "advance failed: {stderr}");
     assert!(stdout.contains("thread.round_advanced"), "{stdout}");
+
+    // `.1.6.1`: the budget read surface — the real binary drives `inspect budget`;
+    // the reviewer's accept dispatched a reservation, so the ledger shows a hold.
+    let budget = rb
+        .json(&["inspect", "budget", &thread_id, "--as", "alice", "--json"])
+        .await;
+    assert!(
+        budget["ceiling"]["ceiling_id"].is_string(),
+        "ceiling: {budget}"
+    );
+    assert!(
+        budget["ceiling"]["dimensions"]["calls"].is_number(),
+        "the default budget meters calls: {budget}"
+    );
+    let holds = budget["reservations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["status"] == serde_json::json!("active"))
+        .count();
+    assert_eq!(
+        holds, 1,
+        "the accept's dispatch holds one reservation: {budget}"
+    );
+    let (ok, stdout, stderr) = rb
+        .run(&["inspect", "budget", &thread_id, "--as", "alice"])
+        .await;
+    assert!(ok, "human budget inspect failed: {stderr}");
+    assert!(stdout.contains("reservations"), "{stdout}");
+    // The inspect gate holds for a role without `thread_inspect` — same gate the
+    // page inherits.
+    let (ok, _stdout, _stderr) = rb
+        .run(&["inspect", "budget", &thread_id, "--as", "reviewer"])
+        .await;
+    assert!(!ok, "the role has no thread_inspect grant");
 
     let challenged = rb
         .json(&[

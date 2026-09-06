@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The budget read surface: spend is visible without database surgery (`PHASE-1.6.1`)
+
+- The `.1.6` census finding became a surface: `GET /v1/threads/{thread_id}/budget` returns the ceiling (dimensions, policy version, created time) plus every reservation row — held vs settled usage, denials with the budget engine's reasons, expiry/settle times. A READ-ONLY pass-through of the ledger rows the engine enforces against: nothing computed, nothing invented, so the §26.1 "spend and uncertainty are visible" fact follows the same rows.
+- Gated by the existing `thread_inspect` path (the `get_thread` gate): a role without the grant is a typed 403 naming the audit record — the upcoming UI inherits this unchanged; no new grant, no write path, no new table. A thread whose ceiling row is missing reads `scope_hidden` (BUDGET-003: corruption, not an empty budget). Absent optional facts are OMITTED on the wire.
+- CLI: `rb inspect budget <thread>` (mirrors `inspect thread`). New `command_api` test (create → accept-hold → deny → GET → settle → GET → role-403); the e2e drives the real binary. The suite's first run proved the surface right and the TEST wrong — the row's `reason` is the engine's raw detail (`the ceiling does not cover …`), not the dispatch site's prefix; the e2e's first run caught a positional-vs-`--thread` slip. All twelve live suites (command_api 13) + e2e + demo `rc=0` under the pinned 1.98.0 toolchain; 39 offline suites green; clippy + fmt clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_budget-read-surface.md` (`answers:`).
+
 ## 2026-09-06 — Toolchain pinned: `stable` is a moving pointer (`PHASE-1-MAINT-3`)
 
 - Discovered during the `.1.6.1` verification: `cargo fmt --all -- --check` flagged pre-existing hunks in files the leaf never touched (`claude.rs`, `claude_adapter.rs`, `state.rs`, `invitations.rs`) — under BOTH installed rustfmt builds (`1.9.0-stable` 2026-04-14 from rustc 1.95.0 and 2026-08-18 from 1.98.0), so HEAD was simply not fmt-clean under the current stable channel.

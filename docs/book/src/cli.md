@@ -141,6 +141,23 @@ audit:
 `rb inspect threads` lists a tenant's threads; `--json` prints the raw API
 responses for scripting.
 
+The budget ledger is readable through the same surface (`.1.6.1`):
+
+```text
+$ rb inspect budget --thread thr_… --as alice
+budget for thread thr_… (tenant ten_…)
+ceiling: bdg_… (policy dev-budget-1) — created 2026-09-06T…
+dimensions: {"calls":3,…}
+reservations (2):
+  bdg_res_… active held={"calls":1,…} usage=—
+  bdg_res_… denied held={"calls":1,…} usage=— — reason: budget denied the dispatch: …
+```
+
+The view is read-only and `thread_inspect`-gated: it shows the ceiling plus
+every reservation row — held vs settled usage, denials with their reasons —
+the same ledger rows the budget engine enforces against, so spend and
+uncertainty are visible without database surgery.
+
 ## Node administration
 
 The node-side of the vertical slice is administered with one verb (`.1.2.1`):

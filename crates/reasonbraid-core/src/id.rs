@@ -253,6 +253,14 @@ id_family! {
     marker AuthorizationRecord, alias AuthorizationRecordId, prefix "authz", label "AuthorizationRecord"
 }
 
+// ── Aggregate-scoped identifiers (ROADMAP.md §8.2) — added in PHASE-0.1.3 ─────────
+
+id_family! {
+    /// One supervised provider execution and its ambiguity state (`ROADMAP.md` §8.2 `NodeRun`/`ProviderAttempt`).
+    /// Deferred from PHASE-0.1.1 (see `docs/decisions/2026-09-06_id-representation.md`).
+    marker ProviderAttempt, alias ProviderAttemptId, prefix "patt", label "ProviderAttempt"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +285,7 @@ mod tests {
             std::any::TypeId::of::<CorrelationId>(),
             std::any::TypeId::of::<ActorPrincipalId>(),
             std::any::TypeId::of::<AuthorizationRecordId>(),
+            std::any::TypeId::of::<ProviderAttemptId>(),
         ];
         for i in 0..kinds.len() {
             for j in (i + 1)..kinds.len() {
@@ -316,6 +325,7 @@ mod tests {
             (CorrelationId::new().to_string(), "corr"),
             (ActorPrincipalId::new().to_string(), "agt"),
             (AuthorizationRecordId::new().to_string(), "authz"),
+            (ProviderAttemptId::new().to_string(), "patt"),
         ];
         let mut seen = std::collections::HashSet::new();
         for (value, prefix) in cases {

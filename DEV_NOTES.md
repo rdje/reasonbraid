@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP1 state machines: minimal lifecycles, deterministic fallible `apply`
+
+- `ROADMAP.md` §8.4 lists lifecycle *states* but not *edges*; §8.6 requires "a deterministic aggregate may accept and translate to an event." The gap is closed with three minimal state enums whose only operation is `apply(transition) -> Result<state, TransitionError>` — total, deterministic, fallible, no panics, no history rewinds.
+- Chosen edges: thread `open → closing → closed` (two-step close, not a direct `open → closed`) plus `open/closing → cancelled`; participation `invited → {accepted, declined, expired}` and `accepted → left`; provider-attempt `prepared → {dispatched, failed_before_dispatch}`, `dispatched → {completed, outcome_unknown}`, `outcome_unknown → reconciled`.
+- A *proven* post-dispatch failure (`failed_known`/`cancelled_known`) is deliberately out of Phase 0 scope — the honest minimal answer to an indeterminate attempt is `outcome_unknown → reconciled` (kill-risk Q4), not a guessed failure.
+- Exhaustive tests assert BOTH that every listed edge resolves to its target AND that every unlisted (state, transition) pair is rejected — rejection is a property of the table, not a side effect. State enums serialize `snake_case`; transition enums are transient (the wire catalogue is backlog 6).
+- Added the deferred `ProviderAttemptId` (`patt`) to complete the WP1 distinct-types acceptance.
+- Promoted to `docs/decisions/2026-09-06_state-transitions.md` (`answers:` present).
+
 ## _(2026-09-06)_ — WP1 envelopes: intent in, authority out, forgery rejected
 
 - `ROADMAP.md` §9.1 sketches the command/event split but nothing enforced it — serde ignores unknown fields by default, so a struct that merely *omits* authoritative fields would still accept them from a client. The fix is mechanical: `#[serde(deny_unknown_fields)]` on `CommandEnvelope`, `ClientContext`, and `CommittedEvent` makes the same deserialization that accepts a valid command reject a forged one.

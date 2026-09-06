@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — WP1 minimal state machines (`PHASE-0.1.3`)
+
+- Added three minimal orthogonal lifecycles to `reasonbraid-core` (`src/state.rs`): `ThreadState` (`open`/`closing`/`closed`/`cancelled`), `ParticipationState` (`invited`/`accepted`/`declined`/`expired`/`left`), and `ProviderAttemptState` (`prepared`/`dispatched`/`completed`/`failed_before_dispatch`/`outcome_unknown`/`reconciled`). Each exposes a single fallible `apply(transition) -> Result<state, TransitionError>`; invalid moves are rejected deterministically, never panic, and never rewind history.
+- Added the deferred `ProviderAttemptId` family (wire prefix `patt`), completing the WP1 "role/incarnation/run/provider-attempt cannot be confused in types" acceptance.
+- Exhaustive edge-table tests cover every (state, transition) pair so an undocumented edge fails CI.
+- Recorded `docs/decisions/2026-09-06_state-transitions.md` (`answers:` present): the minimal edge set, the two-step thread close, and the `outcome_unknown → reconciled` handling of indeterminate attempts (kill-risk Q4).
+
 ## 2026-09-06 — WP1 command/event envelopes (`PHASE-0.1.2`)
 
 - Added `CommandEnvelope` (client intent), `ClientContext`, and `CommittedEvent` (server authority) to `reasonbraid-core`, with `PROTOCOL_VERSION = "reasonbraid/0.4"`. Both envelopes use `#[serde(deny_unknown_fields)]`, so a client-supplied authoritative field (actor/tenant/sequence/timestamps/authority) is rejected at deserialization, not ignored or trusted.

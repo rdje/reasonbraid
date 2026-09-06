@@ -1,11 +1,12 @@
 //! # reasonbraid-core
 //!
 //! The ReasonBraid domain-model crate (`KICKOFF.md` §3): strong identifiers,
-//! command/event envelopes, and minimal thread and provider-attempt state.
+//! command/event envelopes, and the minimal thread/participation/provider-attempt
+//! state machines.
 //!
-//! At this point (WP1) the strong identifiers and the command/event envelopes are
-//! implemented; minimal thread and provider-attempt state machines arrive in later WP1
-//! leaves. This is the first real crate in the repository.
+//! At this point (WP1) the strong identifiers, the command/event envelopes, and the
+//! minimal state machines are implemented. This is the first real crate in the
+//! repository.
 //!
 //! # Strong identifiers
 //!
@@ -20,14 +21,26 @@
 //! Clients submit intent through [`CommandEnvelope`]; the server commits authoritative
 //! [`CommittedEvent`]s. See [`envelope`] and
 //! `docs/decisions/2026-09-06_envelope-representation.md`.
+//!
+//! # State machines
+//!
+//! [`ThreadState`], [`ParticipationState`], and [`ProviderAttemptState`] are minimal
+//! orthogonal lifecycles whose only operation is a fallible, deterministic `apply`.
+//! See [`state`] and `docs/decisions/2026-09-06_state-transitions.md`.
 
 mod envelope;
 mod id;
+mod state;
 
 pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};
 pub use id::{
     ActorPrincipal, ActorPrincipalId, AgentIncarnation, AgentIncarnationId, AgentRole, AgentRoleId,
     AuthorizationRecord, AuthorizationRecordId, Correlation, CorrelationId, Event, EventId, Host,
     HostId, HumanPrincipal, HumanPrincipalId, Id, IdKind, IdParseError, NodeId, NodeInstance,
-    Request, RequestId, Run, RunId, Tenant, TenantId, Thread, ThreadId,
+    ProviderAttempt, ProviderAttemptId, Request, RequestId, Run, RunId, Tenant, TenantId, Thread,
+    ThreadId,
+};
+pub use state::{
+    ParticipationState, ParticipationTransition, ProviderAttemptState, ProviderAttemptTransition,
+    ThreadState, ThreadTransition, TransitionError,
 };

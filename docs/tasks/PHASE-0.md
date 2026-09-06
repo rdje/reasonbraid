@@ -144,12 +144,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   Commit: `REASONBRAID-PHASE0-0010`
 
 - ID: `PHASE-0.1.3`
-  Status: `pending`
+  Status: `done`
   Goal: minimal thread (`open`/`closing`/`closed`/`cancelled`), participation (`invited`/`accepted`/`declined`/`expired`/`left`), provider-attempt (`prepared`/`dispatched`/`completed`/`failed_before_dispatch`/`outcome_unknown`/`reconciled`) transitions
   Acceptance: invalid transitions rejected deterministically; no policy/evidence/directory/federation entities
   Roadmap: §8.4, backlog 5
-  Verification: pending
-  Commit: pending
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0011`
 
 - ID: `PHASE-0.1.4`
   Status: `pending`
@@ -303,7 +303,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.1.3` | `pending` | WP1 minimal thread/participation/provider-attempt state transitions |
+| 1 | `PHASE-0.1.4` | `pending` | WP1 typed errors + stable reason-code registry |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -405,6 +405,34 @@ The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml` + `fixtures/*.json` +
   and envelopes landed"; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README
   and mdBook unchanged (no user-facing surface change).
 
+## Acceptance Checklist (PHASE-0.1.3)
+
+The `crates/reasonbraid-core` crate (`.rs` files under `crates/`) is the CODE change owned
+by this leaf (per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `ROADMAP.md` §8.4 lists lifecycle *states* but not
+  *edges*, and §8.6 requires "a deterministic aggregate may accept and translate to an
+  event," yet no state type existed to reject an invalid move. `git ls-files
+  'crates/reasonbraid-core/src/*'` (before) → `envelope.rs` / `id.rs` / `lib.rs` only; no
+  `state.rs`, no provider-attempt ID.
+- [x] **ADDRESSED (verified)** — landed `src/state.rs` with three minimal state machines
+  (`ThreadState`, `ParticipationState`, `ProviderAttemptState`), each a total, fallible
+  `apply` returning `TransitionError` on invalid moves; added `ProviderAttemptId` (`patt`)
+  to `id.rs`. `cargo test -p reasonbraid-core` →
+  `test result: ok. 17 passed; 0 failed; 1 ignored` (three exhaustive edge-table tests,
+  terminal-rejection, deterministic-error, snake_case serde, distinct-type tests all pass).
+- [x] **NO REGRESSION** — `make check` → `cargo fmt --all -- --check` (clean),
+  `cargo clippy --all-targets --all-features -- -D warnings` (no warnings),
+  `cargo test --all` → `test result: ok. 17 passed; 0 failed; 1 ignored`; `make gate` →
+  `=== all doctrines green ===` (13/13).
+- [x] **FIX** — new `crates/reasonbraid-core/src/state.rs` (3 state enums + 3 transition
+  enums + `TransitionError` + tests); `id.rs` adds the `ProviderAttemptId` family and
+  extends the distinct-type/prefix tests to 14; `lib.rs` adds `mod state` + re-exports.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_state-transitions.md`
+  (`answers:` present) + INDEX row; `knowledge-map/subsystems.md` updated to "state
+  machines"; `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` updated; README and mdBook
+  unchanged (no user-facing surface change).
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -420,6 +448,7 @@ The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml` + `fixtures/*.json` +
 | `2026-09-06` | `PHASE-0.0.8` | `test -f spec/{README,glossary,requirements,lifecycle,threat-model}.md spec/governance/charter.md`; five G0 ID prefixes (ID/AUTH/THREAD/DELIV/BUDGET) assigned in `spec/requirements.md`; threat-model lists 11 trust boundaries; charter names Richard DJE as bootstrap human root; decision record `2026-09-06_g0-contract-id-scheme.md` + INDEX row | G0 contract drafts, all "draft — not normative" |
 | `2026-09-06` | `PHASE-0.1.1` | `cargo test -p reasonbraid-core` → `test result: ok. 6 passed; 0 failed`; `make check` → fmt clean + `cargo clippy --all-targets --all-features -- -D warnings` no warnings + `cargo test --all` 6 passed; `make gate` → `=== all doctrines green ===` (13/13); eight ID newtypes pairwise `TypeId`-distinct; decision record `2026-09-06_id-representation.md` + INDEX row | strong IDs landed; first real crate |
 | `2026-09-06` | `PHASE-0.1.2` | `cargo test -p reasonbraid-core` → `test result: ok. 10 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 10 passed; `make gate` → `=== all doctrines green ===` (13/13); golden fixtures round-trip, forged-authority fixture rejected, schema goldens in sync; decision record `2026-09-06_envelope-representation.md` + INDEX row | command/event envelopes landed; client forgery rejected |
+| `2026-09-06` | `PHASE-0.1.3` | `cargo test -p reasonbraid-core` → `test result: ok. 17 passed; 0 failed; 1 ignored`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 17 passed; `make gate` → `=== all doctrines green ===` (13/13); three state machines reject invalid transitions deterministically; decision record `2026-09-06_state-transitions.md` + INDEX row | minimal state machines landed; `ProviderAttemptId` (`patt`) added |
 
 ## Commit Log
 
@@ -435,6 +464,7 @@ The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml` + `fixtures/*.json` +
 | `PHASE-0.0.8` | `REASONBRAID-PHASE0-0008` | G0 contract drafts under `spec/` + ID-scheme decision record |
 | `PHASE-0.1.1` | `REASONBRAID-PHASE0-0009` | `crates/reasonbraid-core` strong ID newtypes + id-representation decision record |
 | `PHASE-0.1.2` | `REASONBRAID-PHASE0-0010` | `crates/reasonbraid-core` envelopes + fixtures/schemas + envelope-representation decision record |
+| `PHASE-0.1.3` | `REASONBRAID-PHASE0-0011` | `crates/reasonbraid-core` state machines + `ProviderAttemptId` + state-transitions decision record |
 
 ## Changelog
 
@@ -449,3 +479,4 @@ The `crates/reasonbraid-core` crate (`.rs` + `Cargo.toml` + `fixtures/*.json` +
 - `2026-09-06`: `PHASE-0.0.8` G0 contract drafts under `spec/` (glossary, requirements, lifecycle, threat-model, governance/charter) + `docs/decisions/2026-09-06_g0-contract-id-scheme.md`. Frontier is `.1.1`.
 - `2026-09-06`: `PHASE-0.1.1` strong IDs — `crates/reasonbraid-core` (branded newtypes over UUIDv7, eight families) + `docs/decisions/2026-09-06_id-representation.md`. Placeholder `crates/app` removed. Frontier is `.1.2`.
 - `2026-09-06`: `PHASE-0.1.2` command/event envelopes — `CommandEnvelope`/`ClientContext`/`CommittedEvent` with `deny_unknown_fields`, five new ID families, JSON Schema goldens + wire fixtures + `docs/decisions/2026-09-06_envelope-representation.md`. Frontier is `.1.3`.
+- `2026-09-06`: `PHASE-0.1.3` minimal state machines — thread/participation/provider-attempt lifecycles with deterministic fallible `apply`, `ProviderAttemptId` (`patt`), `docs/decisions/2026-09-06_state-transitions.md`. Frontier is `.1.4`.

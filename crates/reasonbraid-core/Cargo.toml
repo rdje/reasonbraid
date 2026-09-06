@@ -20,4 +20,7 @@ schemars = { version = "1", features = ["derive"] }
 # the exact policy inputs + decision it was evaluated against. Permissive-licensed
 # (MIT/Apache-2.0, RustCrypto).
 sha2 = "0.10"
-uuid = { version = "1", features = ["v7"] }
+# v7 = sortable identifiers; v5 = the deterministic dev-profile actor handle
+# (PHASE-0.6.1: UUIDv5 namespacing over the presented principal, not a security
+# boundary — the dev profile trusts the presented principal anyway).
+uuid = { version = "1", features = ["v7", "v5"] }

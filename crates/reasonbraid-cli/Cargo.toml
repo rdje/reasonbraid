@@ -1,0 +1,40 @@
+# reasonbraid-cli — the Phase 0 command-line surface (KICKOFF.md §3): enroll, create
+# thread, invite, contribute, challenge, revise, close, inspect — over the control
+# API's HTTP JSON (`PHASE-0.6.1`). The acceptance: all state inspection happens
+# through this surface, never through database surgery.
+[package]
+name = "reasonbraid-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rb"
+path = "src/main.rs"
+
+[dependencies]
+# The command envelopes and id families the CLI builds/sends (the client half of
+# the WP1 wire contract).
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+# Argument surface, same trim as rb-journal (a dev-profile operator tool).
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+# The control API's HTTP client (plain JSON, loopback dev profile).
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The binary's async runtime (the control API client is async).
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Fresh idempotency keys per invocation (opaque, no prefix — §9.2).
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+# The end-to-end suite spawns the REAL `rb` binary against an in-process control API
+# on live PostgreSQL (DATABASE_URL-gated; wired into scripts/run_pg_tests.sh).
+reasonbraid-server = { path = "../reasonbraid-server", version = "0.1.0" }
+axum = "0.8"
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "tls-none", "migrate", "macros", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "io-util"] }

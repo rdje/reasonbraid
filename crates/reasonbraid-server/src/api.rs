@@ -1,0 +1,1088 @@
+//! The control API for the WP6 CLI (`PHASE-0.6.1`): the command surface a human or
+//! agent drives — enroll, create thread, invite, contribute, challenge, revise,
+//! close, inspect — over HTTP JSON (`ROADMAP.md` §9.3/§9.4's public/control layer).
+//!
+//! # What this module owns
+//!
+//! - [`api_router`] — the axum surface. Thread commands ride the WP1
+//!   [`CommandEnvelope`]; every state/event/idempotency/outbox write goes through the
+//!   WP2 transaction (`tx`), every command through the WP5 authorization engine
+//!   (`authority`), and every acceptance through the thread domain (`threads`).
+//! - The **dev-profile actor resolution**: the `x-reasonbraid-principal` header
+//!   carries the presented principal (`hpr_…`/`rol_…`). Authentication and
+//!   certificate issuance are out of Phase 0 scope (`ID-003`; WP5 "development
+//!   credentials") — the header is TRUSTED, documented, and the actor handle recorded
+//!   in audit rows is derived deterministically from it
+//!   ([`reasonbraid_core::actor_handle_for_subject`]), so audit rows stay linkable.
+//! - The **request hash** for idempotency: SHA-256 over `operation`, the presented
+//!   principal, and the canonical (struct-order) body JSON — the same key with a
+//!   different body/hash is a conflict, never a silent overwrite (`§9.2`).
+//!
+//! # Idempotent rejections
+//!
+//! A rejection IS the semantic result of its command: the idempotency row stores
+//! `{"ok": false, "error": {code, message}}`, and a replay returns the SAME status and
+//! body (the code→status map is stable). A replayed success returns the original
+//! result with `"replayed": true` added — the stored value itself is never mutated.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
+use chrono::{DateTime, Utc};
+use reasonbraid_core::{
+    actor_handle_for_subject, AgentRoleId, BoundaryStatus, CommandEnvelope,
+    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, HumanPrincipalId,
+    ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId, PROTOCOL_VERSION,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+
+use crate::authority::{
+    self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantRefused,
+};
+use crate::budget;
+use crate::threads::{self, CreateBody};
+use crate::tx::{self, ApplyError, ClaimOutcome, Command};
+
+/// The dev-profile principal header: the presented principal's wire id. Trusted and
+/// documented (no certificate issuer in Phase 0).
+pub const PRINCIPAL_HEADER: &str = "x-reasonbraid-principal";
+
+// ── Errors ───────────────────────────────────────────────────────────────────────
+
+/// A control-API error: a stable §9.8 machine-readable code and a safe message (no
+/// secrets, no cross-tenant existence confirmation).
+#[derive(Debug)]
+pub struct ControlApiError {
+    pub status: StatusCode,
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl ControlApiError {
+    pub fn unauthenticated(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthenticated",
+            message: message.into(),
+        }
+    }
+
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            code: "unauthorized",
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid_command(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code: "invalid_command",
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid_transition(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "invalid_transition",
+            message: message.into(),
+        }
+    }
+
+    pub fn scope_hidden() -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            code: "scope_hidden",
+            message: "the requested thread is not visible in this scope".to_string(),
+        }
+    }
+
+    pub fn protocol_incompatible(got: &str) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code: "protocol_incompatible",
+            message: format!(
+                "protocol version `{got}` is not supported (expected `{PROTOCOL_VERSION}`)"
+            ),
+        }
+    }
+
+    pub fn internal() -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: "dependency_unavailable",
+            message: "internal server error".to_string(),
+        }
+    }
+
+    /// The HTTP status a stored error code maps back to (idempotent replay of a
+    /// stored rejection reproduces the ORIGINAL status).
+    fn status_for_code(code: &str) -> StatusCode {
+        match code {
+            "unauthenticated" => StatusCode::UNAUTHORIZED,
+            "unauthorized" => StatusCode::FORBIDDEN,
+            "invalid_command" => StatusCode::BAD_REQUEST,
+            "invalid_transition" => StatusCode::CONFLICT,
+            "scope_hidden" => StatusCode::NOT_FOUND,
+            "idempotency_mismatch" => StatusCode::CONFLICT,
+            "protocol_incompatible" => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// The stored failure result for a rejection ([`Self::failure_result`]).
+    fn failure_result(&self) -> Value {
+        json!({
+            "ok": false,
+            "error": { "code": self.code, "message": self.message },
+        })
+    }
+}
+
+impl std::fmt::Display for ControlApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ControlApiError {}
+
+impl IntoResponse for ControlApiError {
+    fn into_response(self) -> Response {
+        (
+            self.status,
+            Json(json!({ "code": self.code, "message": self.message })),
+        )
+            .into_response()
+    }
+}
+
+impl From<sqlx::Error> for ControlApiError {
+    fn from(e: sqlx::Error) -> Self {
+        eprintln!("control api: database error: {e}");
+        ControlApiError::internal()
+    }
+}
+
+impl From<ApplyError> for ControlApiError {
+    fn from(e: ApplyError) -> Self {
+        match e {
+            ApplyError::IdempotencyConflict { .. } => ControlApiError {
+                status: StatusCode::CONFLICT,
+                code: "idempotency_mismatch",
+                message: e.to_string(),
+            },
+            ApplyError::Sql(e) => {
+                eprintln!("control api: database error: {e}");
+                ControlApiError::internal()
+            }
+        }
+    }
+}
+
+impl From<threads::ThreadError> for ControlApiError {
+    fn from(e: threads::ThreadError) -> Self {
+        match e {
+            threads::ThreadError::InvalidCommand(msg) => ControlApiError::invalid_command(msg),
+            threads::ThreadError::InvalidTransition(te) => {
+                ControlApiError::invalid_transition(te.to_string())
+            }
+            threads::ThreadError::ThreadNotFound => ControlApiError::scope_hidden(),
+            threads::ThreadError::NotAParticipant { principal } => ControlApiError::unauthorized(
+                format!("principal `{principal}` is not a participant of this thread"),
+            ),
+            threads::ThreadError::AlreadyParticipant { principal } => {
+                ControlApiError::invalid_command(format!(
+                    "principal `{principal}` already participates in this thread"
+                ))
+            }
+            threads::ThreadError::CorruptState(detail) => {
+                eprintln!("control api: corrupt stored thread state: {detail}");
+                ControlApiError::internal()
+            }
+        }
+    }
+}
+
+// ── Principal resolution (dev profile) ───────────────────────────────────────────
+
+/// Resolve the presented principal from the trusted dev header. A missing or
+/// malformed value is `unauthenticated` — the dev profile trusts the header, but it
+/// must still be WELL-FORMED and typed.
+fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, ControlApiError> {
+    let value = headers
+        .get(PRINCIPAL_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            ControlApiError::unauthenticated(format!(
+                "missing `{PRINCIPAL_HEADER}` header (dev profile: hpr_… | rol_…)"
+            ))
+        })?;
+    if let Ok(human) = value.parse::<HumanPrincipalId>() {
+        return Ok(GrantSubject::Human(human));
+    }
+    if let Ok(role) = value.parse::<AgentRoleId>() {
+        return Ok(GrantSubject::Role(role));
+    }
+    Err(ControlApiError::unauthenticated(format!(
+        "malformed `{PRINCIPAL_HEADER}` value `{value}` (expected hpr_… | rol_…)"
+    )))
+}
+
+/// The canonical idempotency request hash: operation + presented principal +
+/// canonical (struct-field-order) body JSON, SHA-256 hex.
+fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> String {
+    let input = format!(
+        "{operation}\n{}\n{}",
+        principal.describe(),
+        serde_json::to_string(body).expect("canonical body serializes")
+    );
+    let digest = Sha256::digest(input.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+// ── State ────────────────────────────────────────────────────────────────────────
+
+pub struct ApiState {
+    pool: PgPool,
+}
+
+impl ApiState {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// The control API router (`§9.4` Phase 0 subset).
+pub fn api_router(pool: PgPool) -> Router {
+    let state = Arc::new(ApiState::new(pool));
+    Router::new()
+        .route("/v1/enrollments", post(enroll))
+        .route("/v1/threads", post(create_thread))
+        .route("/v1/threads", get(list_threads))
+        .route("/v1/threads/{thread_id}", get(get_thread))
+        .route("/v1/threads/{thread_id}/events", get(get_events))
+        .route("/v1/threads/{thread_id}/audit", get(get_audit))
+        .route("/v1/threads/{thread_id}/commands", post(thread_command))
+        .with_state(state)
+}
+
+/// A success/failure JSON result, out through the right status.
+fn json_response(status: StatusCode, body: Value) -> Response {
+    (status, Json(body)).into_response()
+}
+
+// ── Enroll (dev bootstrap) ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnrollRequest {
+    /// Omitted: bootstrap a NEW tenant (human enrollment only — the tenant's
+    /// boundary is created here). Present: enroll into an existing tenant.
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    /// `"human"` or `"role"`.
+    pub kind: String,
+    pub name: String,
+    /// For a role: the granted actions (wire names). Default: `[thread_contribute]`.
+    /// For a human: always the dev admin set (bootstrap trust — documented).
+    #[serde(default)]
+    pub actions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnrollResponse {
+    pub tenant_id: String,
+    pub principal_id: String,
+    pub kind: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boundary_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grant_id: Option<String>,
+    /// `true` when (tenant, kind, name) already exists: the ORIGINAL principal id is
+    /// returned; nothing new was created.
+    pub replayed: bool,
+}
+
+/// The dev admin action set a bootstrap human receives. It includes `tenant_admin`
+/// EXPLICITLY — never implied (`.5.1`).
+const ADMIN_ACTIONS: [GrantAction; 6] = [
+    GrantAction::ThreadCreate,
+    GrantAction::ThreadInvite,
+    GrantAction::ThreadContribute,
+    GrantAction::ThreadInspect,
+    GrantAction::ThreadClose,
+    GrantAction::TenantAdmin,
+];
+
+/// The dev enrollment boundary for a fresh tenant (one ACTIVE per tenant).
+fn dev_boundary(tenant_id: &TenantId, now: DateTime<Utc>) -> EnrollmentAuthorityBoundary {
+    EnrollmentAuthorityBoundary {
+        boundary_id: format!("bnd_{tenant_id}"),
+        tenant_id: *tenant_id,
+        parent_or_root_authority: "dev-root".to_string(),
+        target_owner: "dev-operator".to_string(),
+        permitted_actions: ADMIN_ACTIONS.to_vec(),
+        permitted_domains: vec!["deliberation".to_string()],
+        risk_ceiling: RiskClass::Low,
+        spend_ceiling: Some(json!({ "amount": 1000.0 })),
+        delegable: false,
+        max_delegation_depth: 0,
+        valid_from: now,
+        expires_at: now + chrono::Duration::days(365),
+        charter_digest: "dev-charter-000".to_string(),
+        policy_version: "dev-authz-1".to_string(),
+        status: BoundaryStatus::Active,
+    }
+}
+
+fn dev_grant(
+    boundary: &EnrollmentAuthorityBoundary,
+    issuer: HumanPrincipalId,
+    subject: GrantSubject,
+    actions: Vec<GrantAction>,
+) -> reasonbraid_core::AuthorityGrant {
+    reasonbraid_core::AuthorityGrant {
+        grant_id: format!("grt_{}", subject.id_string()),
+        boundary_id: boundary.boundary_id.clone(),
+        tenant_id: boundary.tenant_id,
+        issuer,
+        subject,
+        actions,
+        selector: TargetSelector::TenantWide,
+        risk_ceiling: RiskClass::Low,
+        spend_limits: None,
+        delegable: false,
+        // Coextensive with the boundary: a grant must never outlive its boundary
+        // (the subset checker enforces it; wall-clock skew between enroll calls
+        // would otherwise make a later grant overrun an earlier boundary's window).
+        valid_from: boundary.valid_from,
+        expires_at: boundary.expires_at,
+        status: GrantStatus::Active,
+    }
+}
+
+async fn enroll(
+    State(state): State<Arc<ApiState>>,
+    Json(req): Json<EnrollRequest>,
+) -> Result<Json<EnrollResponse>, ControlApiError> {
+    let kind = match req.kind.as_str() {
+        "human" => "human",
+        "role" => "role",
+        other => {
+            return Err(ControlApiError::invalid_command(format!(
+                "kind `{other}` is not supported (expected `human` or `role`)"
+            )))
+        }
+    };
+    let now = Utc::now();
+
+    let tenant_id: TenantId = match &req.tenant_id {
+        Some(raw) => raw.parse().map_err(|_| {
+            ControlApiError::invalid_command(format!("tenant_id `{raw}` is malformed"))
+        })?,
+        None => {
+            if kind == "role" {
+                return Err(ControlApiError::invalid_command(
+                    "a role enrolls into an existing tenant — tenant_id is required",
+                ));
+            }
+            TenantId::new()
+        }
+    };
+
+    // Replay: the same (tenant, kind, name) returns the ORIGINAL principal id.
+    let existing: Option<(String, String)> = sqlx::query_as(
+        "SELECT principal_id, kind FROM enrollments \
+         WHERE tenant_id = $1 AND kind = $2 AND name = $3",
+    )
+    .bind(tenant_id.to_string())
+    .bind(kind)
+    .bind(&req.name)
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some((principal_id, stored_kind)) = existing {
+        return Ok(Json(EnrollResponse {
+            tenant_id: tenant_id.to_string(),
+            principal_id,
+            kind: stored_kind,
+            name: req.name,
+            boundary_id: None,
+            grant_id: None,
+            replayed: true,
+        }));
+    }
+
+    let principal: GrantSubject = if kind == "human" {
+        GrantSubject::Human(HumanPrincipalId::new())
+    } else {
+        GrantSubject::Role(AgentRoleId::new())
+    };
+
+    // The bootstrap human issues its own dev grant (no certificate issuer in Phase 0;
+    // grant issuance is dev-trusted — documented). The issuer id is the human's own
+    // for a human enrollment, and the enrolling tenant's bootstrap human is not
+    // known for a role — the dev profile uses the role's principal as a stand-in
+    // issuer handle for audit purposes (recorded limitation).
+    let issuer = match principal {
+        GrantSubject::Human(h) => h,
+        GrantSubject::Role(_) => HumanPrincipalId::new(),
+    };
+
+    // ONE transaction: boundary (new tenants), grant, enrollment row — all or none.
+    let mut tx = state.pool.begin().await?;
+    let mut boundary = None;
+    if req.tenant_id.is_none() {
+        let b = dev_boundary(&tenant_id, now);
+        authority::insert_boundary_in_tx(&mut *tx, &b).await?;
+        boundary = Some(b);
+    }
+
+    let boundary_ref = match &boundary {
+        Some(b) => b.clone(),
+        None => authority::load_active_boundary_for_tenant(&state.pool, &tenant_id)
+            .await?
+            .ok_or_else(|| {
+                ControlApiError::invalid_command(
+                    "the tenant has no active enrollment boundary — enroll a human first",
+                )
+            })?,
+    };
+
+    let actions: Vec<GrantAction> = if kind == "human" {
+        ADMIN_ACTIONS.to_vec()
+    } else {
+        match &req.actions {
+            None => vec![GrantAction::ThreadContribute],
+            Some(names) => names
+                .iter()
+                .map(|n| {
+                    n.parse::<GrantAction>().map_err(|_| {
+                        ControlApiError::invalid_command(format!(
+                            "action `{n}` is not in the dev registry ({})",
+                            ADMIN_ACTIONS
+                                .iter()
+                                .map(|a| a.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        }
+    };
+
+    let grant = dev_grant(&boundary_ref, issuer, principal.clone(), actions);
+    authority::create_grant_in_tx(&mut *tx, &grant)
+        .await
+        .map_err(|GrantRefused { violations }| {
+            ControlApiError::invalid_command(format!(
+                "the dev grant exceeds its boundary: {}",
+                violations
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ))
+        })?;
+
+    sqlx::query(
+        "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(principal.id_string())
+    .bind(tenant_id.to_string())
+    .bind(kind)
+    .bind(&req.name)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(EnrollResponse {
+        tenant_id: tenant_id.to_string(),
+        principal_id: principal.id_string(),
+        kind: kind.to_string(),
+        name: req.name,
+        boundary_id: boundary.as_ref().map(|b| b.boundary_id.clone()),
+        grant_id: Some(grant.grant_id),
+        replayed: false,
+    }))
+}
+
+// ── Thread commands ──────────────────────────────────────────────────────────────
+
+/// One prepared command's execution target inside the shared transaction flow.
+enum CommandTarget<'a> {
+    /// `thread.create` — pure preparation; the thread id is server-assigned.
+    Create { body: &'a CreateBody },
+    /// A command against an existing thread — validated against the locked
+    /// projection inside the transaction.
+    Existing {
+        thread_id: ThreadId,
+        operation: &'a str,
+        body: &'a Value,
+    },
+}
+
+/// The one-transaction command flow, shared by create and thread commands:
+/// claim → authorize → prepare → apply (+ ceiling for create). Every step commits
+/// or rolls back together; a rejection stores its failure result in the idempotency
+/// row so a replay reproduces the ORIGINAL status and body.
+async fn run_thread_command(
+    pool: &PgPool,
+    tenant_id: &TenantId,
+    principal: &GrantSubject,
+    authz: &CommandAuthz,
+    idempotency_key: &str,
+    request_hash: &str,
+    target: CommandTarget<'_>,
+) -> Result<Response, ControlApiError> {
+    let mut tx = pool.begin().await?;
+
+    // 1. Idempotency claim: a replay returns the ORIGINAL stored result verbatim —
+    //    the domain is not re-validated against state the original may have changed.
+    match tx::claim_idempotency_in_tx(
+        &mut *tx,
+        &tenant_id.to_string(),
+        idempotency_key,
+        request_hash,
+    )
+    .await?
+    {
+        ClaimOutcome::Replay { result } => {
+            tx.commit().await?;
+            let mut body = result;
+            let status = if body.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+                StatusCode::OK
+            } else {
+                let code = body
+                    .get("error")
+                    .and_then(|e| e.get("code"))
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("dependency_unavailable");
+                ControlApiError::status_for_code(code)
+            };
+            if let Some(obj) = body.as_object_mut() {
+                obj.insert("replayed".to_string(), json!(true));
+            }
+            return Ok(json_response(status, body));
+        }
+        ClaimOutcome::Fresh => {}
+    }
+
+    // 2. Authorization — the audit record commits with whatever happens next.
+    let now = Utc::now();
+    match authorize_in_tx(&mut *tx, authz, now).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            let message = format!("authorization denied ({record_id}): {reason}");
+            let err = ControlApiError::unauthorized(message.clone());
+            store_rejection(&mut *tx, tenant_id, idempotency_key, &err.failure_result()).await?;
+            tx.commit().await?;
+            return Err(err);
+        }
+        AuthorizationOutcome::Allowed { .. } => {}
+    }
+
+    // 3. Domain validation (the create path is pure; existing-thread commands read
+    //    the LOCKED projection inside this transaction).
+    let (thread_id, prepared) = match target {
+        CommandTarget::Create { body } => {
+            let thread_id = ThreadId::new();
+            let prepared =
+                threads::prepare_create(tenant_id, &thread_id, &principal.id_string(), body);
+            (thread_id, prepared)
+        }
+        CommandTarget::Existing {
+            thread_id,
+            operation,
+            body,
+        } => {
+            let prepared = threads::prepare_thread_command(
+                &mut *tx,
+                tenant_id,
+                &thread_id,
+                operation,
+                &principal.id_string(),
+                body,
+            )
+            .await?;
+            (thread_id, prepared)
+        }
+    };
+
+    // 4. The WP2 durability writes + the ceiling (create) in the SAME transaction.
+    let cmd = Command {
+        tenant_id: tenant_id.to_string(),
+        aggregate_type: threads::AGGREGATE_TYPE.to_string(),
+        aggregate_id: thread_id.to_string(),
+        idempotency_key: idempotency_key.to_string(),
+        request_hash: request_hash.to_string(),
+        event_id: prepared.event_id.to_string(),
+        event_type: prepared.event_type.to_string(),
+        body: prepared.event_body,
+        next_state: prepared.next_state,
+        result: prepared.result.clone(),
+    };
+    tx::apply_fresh_in_tx(&mut *tx, &cmd).await?;
+    if let Some((ceiling_id, dims)) = &prepared.ceiling {
+        budget::create_ceiling_in_tx(
+            &mut *tx,
+            ceiling_id,
+            &tenant_id.to_string(),
+            &thread_id.to_string(),
+            dims,
+        )
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(json_response(StatusCode::OK, prepared.result))
+}
+
+/// Store a rejection as the command's semantic result (idempotent replay of the
+/// rejection reproduces the original status + body).
+async fn store_rejection<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    idempotency_key: &str,
+    failure: &Value,
+) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        "UPDATE idempotency SET response_result = $1 WHERE tenant_id = $2 AND idempotency_key = $3",
+    )
+    .bind(failure)
+    .bind(tenant_id.to_string())
+    .bind(idempotency_key)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+async fn create_thread(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(envelope): Json<CommandEnvelope>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    if envelope.protocol_version != PROTOCOL_VERSION {
+        return Err(ControlApiError::protocol_incompatible(
+            &envelope.protocol_version,
+        ));
+    }
+    if envelope.operation != threads::OP_CREATE {
+        return Err(ControlApiError::invalid_command(format!(
+            "operation `{}` is not `{}` on the thread-create surface",
+            envelope.operation,
+            threads::OP_CREATE
+        )));
+    }
+    let body: CreateBody = serde_json::from_value(envelope.body.clone())
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let tenant_id = body.tenant_id;
+    let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::ThreadCreate,
+        target: ResourceTarget::Tenant { tenant_id },
+    };
+    run_thread_command(
+        &state.pool,
+        &tenant_id,
+        &principal,
+        &authz,
+        &envelope.idempotency_key,
+        &hash,
+        CommandTarget::Create { body: &body },
+    )
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+struct ThreadQuery {
+    #[serde(default)]
+    tenant_id: Option<String>,
+}
+
+async fn thread_command(
+    State(state): State<Arc<ApiState>>,
+    Path(thread_id_raw): Path<String>,
+    headers: HeaderMap,
+    Json(envelope): Json<CommandEnvelope>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    if envelope.protocol_version != PROTOCOL_VERSION {
+        return Err(ControlApiError::protocol_incompatible(
+            &envelope.protocol_version,
+        ));
+    }
+    let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
+    })?;
+
+    // Map the operation to its typed body, authorization action, and tenant scope.
+    let (tenant_id, authz_action, hash) = match envelope.operation.as_str() {
+        threads::OP_INVITE => {
+            let body: threads::InviteBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadInvite,
+                request_hash(threads::OP_INVITE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_CONTRIBUTE => {
+            let body: threads::ContributeBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadContribute,
+                request_hash(threads::OP_CONTRIBUTE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_CHALLENGE => {
+            let body: threads::ChallengeBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadContribute,
+                request_hash(threads::OP_CHALLENGE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_REVISE => {
+            let body: threads::ReviseBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadContribute,
+                request_hash(threads::OP_REVISE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_CLOSE => {
+            let body: threads::CloseBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadClose,
+                request_hash(threads::OP_CLOSE, &principal, &envelope.body),
+            )
+        }
+        other => {
+            return Err(ControlApiError::invalid_command(format!(
+                "unknown thread operation `{other}`"
+            )))
+        }
+    };
+
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: authz_action,
+        target: ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+    };
+    run_thread_command(
+        &state.pool,
+        &tenant_id,
+        &principal,
+        &authz,
+        &envelope.idempotency_key,
+        &hash,
+        CommandTarget::Existing {
+            thread_id,
+            operation: &envelope.operation,
+            body: &envelope.body,
+        },
+    )
+    .await
+}
+
+// ── Inspection (the `.6.1` acceptance: no database surgery) ─────────────────────
+
+/// Authorize an inspection read (the audit row is recorded for reads too — the
+/// audit view is complete, `.5.1`), then run the read.
+async fn inspect<F, Fut>(
+    state: &ApiState,
+    principal: &GrantSubject,
+    target: ResourceTarget,
+    read: F,
+) -> Result<Response, ControlApiError>
+where
+    F: FnOnce(PgPool) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, ControlApiError>>,
+{
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::ThreadInspect,
+        target,
+    };
+    match authorize(&state.pool, &authz, Utc::now()).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => Err(ControlApiError::unauthorized(
+            format!("authorization denied ({record_id}): {reason}"),
+        )),
+        AuthorizationOutcome::Allowed { .. } => {
+            let body = read(state.pool.clone()).await?;
+            Ok(json_response(StatusCode::OK, body))
+        }
+    }
+}
+
+fn tenant_from_query(q: &ThreadQuery) -> Result<TenantId, ControlApiError> {
+    match &q.tenant_id {
+        Some(raw) => raw.parse().map_err(|_| {
+            ControlApiError::invalid_command(format!("tenant_id `{raw}` is malformed"))
+        }),
+        None => Err(ControlApiError::invalid_command(
+            "tenant_id query parameter is required",
+        )),
+    }
+}
+
+async fn get_thread(
+    State(state): State<Arc<ApiState>>,
+    Path(thread_id_raw): Path<String>,
+    Query(q): Query<ThreadQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id = tenant_from_query(&q)?;
+    let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
+    })?;
+
+    inspect(
+        &state,
+        &principal,
+        ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+        |pool| async move {
+            let row: Option<(String, Value)> = sqlx::query_as(
+                "SELECT aggregate_id, state FROM aggregate_state \
+             WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
+            )
+            .bind(tenant_id.to_string())
+            .bind(thread_id.to_string())
+            .fetch_optional(&pool)
+            .await?;
+            match row {
+                Some((_, state_json)) => Ok(json!({
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "state": state_json,
+                })),
+                None => Err(ControlApiError::scope_hidden()),
+            }
+        },
+    )
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+struct EventsQuery {
+    #[serde(default)]
+    tenant_id: Option<String>,
+    #[serde(default)]
+    after: Option<i64>,
+}
+
+async fn get_events(
+    State(state): State<Arc<ApiState>>,
+    Path(thread_id_raw): Path<String>,
+    Query(q): Query<EventsQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id = tenant_from_query(&ThreadQuery {
+        tenant_id: q.tenant_id.clone(),
+    })?;
+    let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
+    })?;
+
+    inspect(
+        &state,
+        &principal,
+        ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+        |pool| async move {
+            let after = q.after.unwrap_or(0);
+            type Row = (String, String, i64, DateTime<Utc>, Value);
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT event_id, event_type, aggregate_version, committed_at, body \
+             FROM event_log \
+             WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_version > $3 \
+             ORDER BY aggregate_version",
+            )
+            .bind(tenant_id.to_string())
+            .bind(thread_id.to_string())
+            .bind(after)
+            .fetch_all(&pool)
+            .await?;
+            let events: Vec<Value> = rows
+                .into_iter()
+                .map(|(event_id, event_type, version, committed_at, body)| {
+                    json!({
+                        "event_id": event_id,
+                        "event_type": event_type,
+                        "aggregate_version": version,
+                        "committed_at": committed_at,
+                        "body": body,
+                    })
+                })
+                .collect();
+            let next_cursor = events
+                .last()
+                .and_then(|e| e.get("aggregate_version"))
+                .and_then(|v| v.as_i64());
+            Ok(json!({
+                "thread_id": thread_id.to_string(),
+                "tenant_id": tenant_id.to_string(),
+                "events": events,
+                "next_cursor": next_cursor,
+            }))
+        },
+    )
+    .await
+}
+
+async fn get_audit(
+    State(state): State<Arc<ApiState>>,
+    Path(thread_id_raw): Path<String>,
+    Query(q): Query<ThreadQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id = tenant_from_query(&q)?;
+    let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
+        ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
+    })?;
+
+    inspect(
+        &state,
+        &principal,
+        ResourceTarget::Thread {
+            tenant_id,
+            thread_id,
+        },
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                DateTime<Utc>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT record_id, actor, action, decision, reason, policy_digest, decided_at \
+             FROM authorization_records \
+             WHERE tenant_id = $1 AND target_kind = 'thread' AND target_thread = $2 \
+             ORDER BY decided_at",
+            )
+            .bind(tenant_id.to_string())
+            .bind(thread_id.to_string())
+            .fetch_all(&pool)
+            .await?;
+            let records: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(record_id, actor, action, decision, reason, policy_digest, decided_at)| {
+                        json!({
+                            "record_id": record_id,
+                            "actor": actor,
+                            "action": action,
+                            "decision": decision,
+                            "reason": reason,
+                            "policy_digest": policy_digest,
+                            "decided_at": decided_at,
+                        })
+                    },
+                )
+                .collect();
+            Ok(json!({
+                "thread_id": thread_id.to_string(),
+                "tenant_id": tenant_id.to_string(),
+                "records": records,
+            }))
+        },
+    )
+    .await
+}
+
+async fn list_threads(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<ThreadQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id = tenant_from_query(&q)?;
+
+    inspect(
+        &state,
+        &principal,
+        ResourceTarget::Tenant { tenant_id },
+        |pool| async move {
+            let rows: Vec<(String, Value)> = sqlx::query_as(
+                "SELECT aggregate_id, state FROM aggregate_state \
+             WHERE tenant_id = $1 AND aggregate_type = 'thread' ORDER BY aggregate_id",
+            )
+            .bind(tenant_id.to_string())
+            .fetch_all(&pool)
+            .await?;
+            let threads: Vec<Value> = rows
+                .into_iter()
+                .map(|(thread_id, state_json)| {
+                    let subject = state_json
+                        .get("subject")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let state = state_json
+                        .get("state")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    json!({
+                        "thread_id": thread_id,
+                        "subject": subject,
+                        "state": state,
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "tenant_id": tenant_id.to_string(),
+                "threads": threads,
+            }))
+        },
+    )
+    .await
+}

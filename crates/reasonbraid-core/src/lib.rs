@@ -42,10 +42,10 @@ mod id;
 mod state;
 
 pub use authority::{
-    boundary_active_at, grant_active_at, grant_exceeds_boundary, policy_digest, AuthorityGrant,
-    AuthorizationDecisionRecord, BoundaryStatus, BoundaryViolation, Decision,
-    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass,
-    TargetSelector, UnknownAuthorityName,
+    actor_handle_for_subject, boundary_active_at, grant_active_at, grant_exceeds_boundary,
+    policy_digest, AuthorityGrant, AuthorizationDecisionRecord, BoundaryStatus, BoundaryViolation,
+    Decision, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget,
+    RiskClass, TargetSelector, UnknownAuthorityName,
 };
 pub use budget::{BudgetDimensions, BudgetError, ReservationReference};
 pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};

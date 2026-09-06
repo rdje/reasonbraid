@@ -23,12 +23,17 @@
 //! `scripts/run_pg_tests.sh` / CI. The HTTP/SSE command surface and the general-purpose
 //! API are later leaves (`.3.2` completes WP3; WP5/WP6 follow).
 
+mod api;
 mod authority;
 mod budget;
 mod node_channel;
 mod outbox;
+mod threads;
 mod tx;
 
+pub use api::{
+    api_router, ApiState, ControlApiError, EnrollRequest, EnrollResponse, PRINCIPAL_HEADER,
+};
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
     AuthorizationOutcome, AuthorizedApplyError, CommandAuthz, GrantRefused,

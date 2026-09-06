@@ -21,8 +21,14 @@ axum = "0.8"
 # Minimal chrono for the outbox worker's caller-supplied lease clock (`chrono::DateTime<Utc>`
 # binds to TIMESTAMPTZ via sqlx's `chrono` feature). default-features=false keeps it small.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The rb-server binary's argument surface (.6.1); `env` lets --database-url read
+# $DATABASE_URL.
+clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The control API's idempotency request hash (.6.1): SHA-256 over operation +
+# principal + canonical body (same crate family as core's policy digest).
+sha2 = "0.10"
 # tls-none: local/CI Postgres is reached over a plaintext socket (sslmode=disable), so no
 # TLS backend is pulled in — which also keeps the dependency tree (and its license surface)
 # small for the supply-chain gate.
@@ -35,6 +41,8 @@ sqlx = { version = "0.8", default-features = false, features = [
     "json",
     "chrono", # TIMESTAMPTZ <-> chrono DateTime<Utc> for the worker lease clock
 ] }
+# The rb-server binary's runtime (.6.1): multi-threaded tokio + shutdown signals.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 
 [dev-dependencies]
 # The node channel integration tests drive BOTH sides over real localhost sockets: the

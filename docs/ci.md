@@ -10,8 +10,8 @@ Three GitHub Actions workflows fire on every push and pull request:
 
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
-| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI, the WP4 fake-adapter behaviors + corpus integrity + supervisor flow (all file-based/in-process, no service), and the server suites (skip offline) | `make check` |
-| `rust` (job `pg-tests`) | the PostgreSQL integration tests — atomic transaction (`.2.1`), leased outbox worker with fencing + kill points (`.2.2`), node channel with cursor resume + reconciliation handshake (`.3.2`), the authority engine with the enrollment-boundary ceiling + audit records (`.5.1`), and the budget engine with reservations + denials (`.5.2`) — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
+| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI, the WP4 fake-adapter behaviors + corpus integrity + supervisor flow (all file-based/in-process, no service), the server suites (skip offline), and the CLI's unit tests | `make check` |
+| `rust` (job `pg-tests`) | the PostgreSQL integration tests — atomic transaction (`.2.1`), leased outbox worker with fencing + kill points (`.2.2`), node channel with cursor resume + reconciliation handshake (`.3.2`), the authority engine with the enrollment-boundary ceiling + audit records (`.5.1`), the budget engine with reservations + denials (`.5.2`), the WP6 command API (`.6.1`), and the real-binary CLI end-to-end suite — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
@@ -28,10 +28,11 @@ The first two are the bedrock spine; `supply-chain` is what `.0.7` added.
   (`brew install gitleaks`). Scans working tree and history for secrets; `--redact` keeps
   any finding out of the log.
 - `bash scripts/run_pg_tests.sh` — the PostgreSQL proofs: `initdb` into a temp dir,
-  start an ephemeral server on a throwaway port, run the three integration suites (the
-  atomic-transaction tests, the outbox-worker fencing/kill-point tests, and the node
-  channel reconnect/reconciliation tests), and tear everything down (no background
-  service left running). **Requires** `postgresql@16` (`brew install postgresql@16`).
+  start an ephemeral server on a throwaway port, run the six server integration
+  suites (atomic transaction, outbox-worker fencing/kill points, node channel
+  reconnect/reconciliation, authority, budget, command API) plus the real-binary
+  CLI end-to-end suite, and tear everything down (no background service left
+  running). **Requires** `postgresql@16` (`brew install postgresql@16`).
 - The WP3 node journal tests and the WP4 adapter suites need no service at all:
   SQLite is a file and the fake/stub adapters are in-process, so the journal
   kill-point sweep, the `rb-journal` CLI tests, and the adapter/ supervisor tests run

@@ -18,12 +18,13 @@ jobs:
       - name: Test
         run: cargo test --all
 
-  # PostgreSQL-backed integration tests (WP2/WP3/WP5): the atomic
+  # PostgreSQL-backed integration tests (WP2/WP3/WP5/WP6): the atomic
   # state/event/idempotency/outbox transaction (.2.1), the leased outbox worker with
   # fencing + kill points (.2.2), the node channel with cursor resume + reconciliation
-  # handshake (.3.2), and the authority engine with the enrollment-boundary ceiling +
-  # audit records (.5.1) can only be proven against a live Postgres. Mirrors the local
-  # `scripts/run_pg_tests.sh` ephemeral server.
+  # handshake (.3.2), the authority engine with the enrollment-boundary ceiling +
+  # audit records (.5.1), the budget engine (.5.2), the WP6 command API (.6.1), and
+  # the real-binary CLI end-to-end suite can only be proven against a live Postgres.
+  # Mirrors the local `scripts/run_pg_tests.sh` ephemeral server.
   pg-tests:
     runs-on: ubuntu-latest
     services:
@@ -44,5 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority + budget)
-        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget -- --nocapture
+      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority + budget + command API)
+        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api -- --nocapture
+      - name: Test (real-binary CLI end-to-end)
+        run: cargo test -p reasonbraid-cli --test cli_end_to_end -- --nocapture

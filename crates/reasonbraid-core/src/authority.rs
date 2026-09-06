@@ -38,7 +38,8 @@ use crate::id::{
 // ── Actions, risk, targets ─────────────────────────────────────────────────────
 
 /// The actions a grant may authorize in the development profile (`KICKOFF.md` WP5:
-/// create a thread, invite a named agent, contribute, inspect).
+/// create a thread, invite a named agent, contribute, inspect; `PHASE-0.6.1` adds
+/// `thread_close` for the WP6 CLI flow).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GrantAction {
@@ -46,6 +47,8 @@ pub enum GrantAction {
     ThreadInvite,
     ThreadContribute,
     ThreadInspect,
+    /// Close a thread (the lifecycle authority; distinct from contributing to one).
+    ThreadClose,
     /// Administrative authority — NEVER implied by membership or other actions.
     TenantAdmin,
 }
@@ -57,6 +60,7 @@ impl GrantAction {
             GrantAction::ThreadInvite => "thread_invite",
             GrantAction::ThreadContribute => "thread_contribute",
             GrantAction::ThreadInspect => "thread_inspect",
+            GrantAction::ThreadClose => "thread_close",
             GrantAction::TenantAdmin => "tenant_admin",
         }
     }
@@ -68,6 +72,7 @@ impl GrantAction {
             "thread_invite" => Some(GrantAction::ThreadInvite),
             "thread_contribute" => Some(GrantAction::ThreadContribute),
             "thread_inspect" => Some(GrantAction::ThreadInspect),
+            "thread_close" => Some(GrantAction::ThreadClose),
             "tenant_admin" => Some(GrantAction::TenantAdmin),
             _ => None,
         }
@@ -428,6 +433,21 @@ pub fn grant_active_at(grant: &AuthorityGrant, at: DateTime<Utc>) -> bool {
     grant.status == GrantStatus::Active && at >= grant.valid_from && at <= grant.expires_at
 }
 
+/// The development profile's actor handle for a presented principal
+/// (`PHASE-0.6.1`): a deterministic `ActorPrincipalId` (UUIDv5, namespaced) derived
+/// from the subject's canonical description.
+///
+/// Authentication and certificate-bound identity are out of Phase 0 scope
+/// (`ID-003`; WP5 "development credentials"), so the control API resolves a presented
+/// principal into a *stable* opaque actor handle instead of a per-request random one —
+/// audit rows for the same principal stay linkable across requests. UUIDv5 uses
+/// SHA-1; it is used here for stable namespacing of a dev-profile handle, NOT as a
+/// security boundary (the dev profile trusts the presented principal anyway).
+pub fn actor_handle_for_subject(subject: &GrantSubject) -> ActorPrincipalId {
+    let uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, subject.describe().as_bytes());
+    ActorPrincipalId::from_uuid(uuid)
+}
+
 from_str_via!(GrantAction);
 from_str_via!(RiskClass);
 from_str_via!(BoundaryStatus);
@@ -756,6 +776,7 @@ mod tests {
             ("thread_invite", GrantAction::ThreadInvite),
             ("thread_contribute", GrantAction::ThreadContribute),
             ("thread_inspect", GrantAction::ThreadInspect),
+            ("thread_close", GrantAction::ThreadClose),
             ("tenant_admin", GrantAction::TenantAdmin),
         ] {
             assert_eq!(s.parse::<GrantAction>(), Ok(expected));
@@ -793,5 +814,21 @@ mod tests {
             thread_id: "thr_00000000-0000-7000-8000-000000000001".parse().unwrap(),
         };
         assert_ne!(tenant.describe(), thread.describe());
+    }
+
+    /// The dev-profile actor handle (`PHASE-0.6.1`): deterministic per subject,
+    /// distinct across subject kinds, and a valid `agt_` identifier — so audit rows
+    /// for the same principal stay linkable without a certificate issuer.
+    #[test]
+    fn actor_handles_are_deterministic_and_distinct() {
+        let human =
+            GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000001".parse().unwrap());
+        let role = GrantSubject::Role("rol_00000000-0000-7000-8000-000000000001".parse().unwrap());
+
+        let a = actor_handle_for_subject(&human);
+        let b = actor_handle_for_subject(&human);
+        assert_eq!(a, b, "the same subject derives the same handle");
+        assert_ne!(a, actor_handle_for_subject(&role), "kinds stay distinct");
+        assert!(a.to_string().starts_with("agt_"));
     }
 }

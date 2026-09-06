@@ -54,7 +54,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP0 — Bootstrap and decision log (`KICKOFF` issue 1; backlog 1, 2, 4, 7, 8)
 
 - ID: `PHASE-0.0`
-  Status: `pending`
+  Status: `done`
   Goal: private-repo operating baseline, templates, CI skeleton, visible risks
   Children: `PHASE-0.0.1` … `PHASE-0.0.8`
 
@@ -122,7 +122,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP1 — Minimal contracts (`KICKOFF` issues 2–3; backlog 3, 5, 6)
 
 - ID: `PHASE-0.1`
-  Status: `pending`
+  Status: `done`
   Goal: only the types the first slice needs
   Depends on: `PHASE-0.0`
   Children: `PHASE-0.1.1` … `PHASE-0.1.4`
@@ -253,17 +253,24 @@ that constrain Phase 1. Phase 0 does not implement the product.
 ### WP6 — Two-host vertical experiment (`KICKOFF` issues 12–13)
 
 - ID: `PHASE-0.6`
-  Status: `pending`
+  Status: `in_progress`
   Goal: CLI flow and two-host crash/reconnect demonstration
   Depends on: `PHASE-0.2`–`PHASE-0.5`
   Children: `PHASE-0.6.1`, `PHASE-0.6.2`
 
 - ID: `PHASE-0.6.1`
-  Status: `pending`
+  Status: `done`
   Goal: CLI — enroll, create thread, invite, contribute, challenge, revise, close, inspect
   Acceptance: no database surgery required to inspect state
-  Verification: pending
-  Commit: pending
+  Plan: server thread domain (`src/threads.rs` — typed operation bodies, projection in
+    `aggregate_state.state`, core-machine validation) + control API (`src/api.rs` —
+    enroll bootstrap, `/v1/threads` command/query surface, dev actor header, typed
+    errors) + `rb-server` binary + `migrations/0006` (enrollments) + the new
+    `reasonbraid-cli` crate (the eight verbs; state dir repo-local by default) + a
+    live-PG command suite and a real-binary end-to-end CLI suite. Node-execution glue
+    (server→inbox dispatch, node result→thread) belongs to `.6.2`.
+  Verification: recorded below
+  Commit: `REASONBRAID-PHASE0-0022`
 
 - ID: `PHASE-0.6.2`
   Status: `pending`
@@ -303,7 +310,7 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-0.6.1` | `pending` | WP6 CLI — enroll, create thread, invite, contribute, challenge, revise, close, inspect ("no database surgery required to inspect state") — WP5 is complete (authority + budget), so the vertical slice's command surface can now be authorized AND budgeted end to end |
+| 1 | `PHASE-0.6.2` | `pending` | WP6 two-host crash/reconnect demonstration (script + reproducible evidence bundle) — `.6.1`'s command surface and transaction flow are the contract it wires the node channel into |
 
 `RB-SEED` is `done`. This tree is executable.
 
@@ -876,7 +883,67 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
   `LIVE_STATUS.md` / `MEMORY.md` updated; `docs/TASK_TREE.md` frontier moved to
   `PHASE-0.6.1`; README unchanged.
 
+## Acceptance Checklist (PHASE-0.6.1)
+
+The `crates/reasonbraid-server` control API + thread domain + `rb-server` binary
+(`.rs` + `Cargo.toml`), the repository-root `migrations/0006_control_api.sql`, the new
+`crates/reasonbraid-cli` crate, the two new test suites, `scripts/run_pg_tests.sh` +
+`.github/workflows/rust.yml`, and `Cargo.lock` are the CODE change owned by this leaf
+(per `.doctrine/code_paths.txt`). Enforced by the `TASK-ACCEPTANCE` doctrine.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `KICKOFF.md` WP6 / issue 12 requires "implement CLI
+  flow: enroll, create thread, invite, contribute, challenge, revise, close, inspect"
+  with the acceptance "no database surgery required to inspect state". Before this leaf,
+  `git ls-files 'crates/*'` → core/server/node/adapter only — no CLI crate; the server
+  exposed ONLY the node channel (no control API, no `rb-server` binary); the `.2.1`
+  transaction recorded generic rows but NO thread operation catalogue existed
+  (`apply_command` took pre-built `Command`s; nothing validated a thread lifecycle), so
+  a human could not create, drive, or inspect a thread except through psql.
+- [x] **ADDRESSED (verified)** — landed the thread domain (`threads.rs`: the six
+  operations with typed `deny_unknown_fields` bodies, the projection in
+  `aggregate_state.state`, core-machine validation, dev rules — creator seated,
+  auto-accept on first contribution, close fold, challenge/revise target checks), the
+  control API (`api.rs`: enroll bootstrap in one transaction, `/v1/threads`
+  command/query/audit surface, the trusted dev principal header + deterministic
+  UUIDv5 actor handle, SHA-256 request hash, one-transaction
+  claim→authorize→prepare→apply flow with idempotent REJECTIONS), `rb-server`, and
+  the `rb` CLI (all eight verbs; repo-local state dir). `bash scripts/run_pg_tests.sh`
+  → `test result: ok. 7 passed` (`command_api`: full flow with the ordered 6-event
+  timeline + 8 digest-carrying audit records, denials recorded and effect-free,
+  replay-vs-conflict, invalid transitions, forged-field rejection, header checks,
+  challenge targets) + `test result: ok. 2 passed` (`cli_end_to_end`: the REAL binary
+  drives the whole flow and inspects through its own stdout; typed denials + exit 1).
+  All six live-PG suites: `5 + 7 + 13 + 9 + 5 + 7 passed` on PostgreSQL 16.15.
+- [x] **NO REGRESSION** — `make check` → fmt clean + `cargo clippy --all-targets
+  --all-features -- -D warnings` no warnings + `cargo test --all` → all 28 suites green
+  offline (core `36 passed; 1 ignored`; adapter `3 + 12 + 9`; node `17 + 8 + 6 + 10 +
+  4 + 2`; server offline-skips `5 + 9 + 5 + 7 + 13 + 7`; cli `3` unit + `2` e2e-skips);
+  the `.2.1`/`.5.1`/`.5.2` refactors (claim/apply split, executor-generic authority +
+  ceiling writers) left their public behavior untouched — their live suites stay green
+  (`5 + 9 + 5 passed`); `make gate` → `=== all doctrines green ===` (13/13); `make deny`
+  → `advisories ok, bans ok, licenses ok, sources ok`; `make secret-scan` →
+  `no leaks found`; `make book` → HTML written.
+- [x] **FIX** — new `crates/reasonbraid-server/src/threads.rs` + `src/api.rs` +
+  `src/bin/rb-server.rs` + `tests/command_api.rs` (7 tests); server `tx.rs` splits
+  `claim_idempotency_in_tx` / `apply_fresh_in_tx` (public `apply_command` unchanged);
+  `authority.rs` + `budget.rs` gain executor-generic in-tx variants +
+  `load_active_boundary_for_tenant`; new `migrations/0006_control_api.sql`; new
+  `crates/reasonbraid-cli` (src/lib.rs + src/main.rs + tests/cli_end_to_end.rs);
+  core gains `GrantAction::ThreadClose` + `actor_handle_for_subject` (uuid `v5`
+  feature); `scripts/run_pg_tests.sh` + the CI `pg-tests` job run the two new suites;
+  `Cargo.lock` updated.
+- [x] **LOCKSTEP** — decision record `docs/decisions/2026-09-06_control-api-cli.md`
+  (`answers:` present, measured behavior + rejected designs + the two falsified bugs)
+  + INDEX row; the mdBook gains `docs/book/src/cli.md` + its SUMMARY entry;
+  `knowledge-map/subsystems.md` rows updated (server gains the thread domain + control
+  API + binary; the new CLI crate row); `docs/ci.md` documents the two new suites;
+  `CHANGELOG.md` / `DEV_NOTES.md` / `LIVE_STATUS.md` / `MEMORY.md` updated;
+  `docs/TASK_TREE.md` frontier moved to `PHASE-0.6.2`; README unchanged (no new
+  standard command — the CLI is documented in the book).
+
 ## Verification Log
+
+
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
@@ -901,6 +968,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `2026-09-06` | `PHASE-0.5.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 9 passed` (`authority`) + `5 passed` + `7 passed` + `13 passed` against live PostgreSQL 16.15 — membership-without-grant denied and audited with no domain effect, admin never implied, accepted commands carry actor + delegated subject + grant/boundary + decision + a re-derivable 64-hex policy digest, overreaching grants refused at creation, scope/expiry/boundary-less denials, stable digests; `cargo test -p reasonbraid-core` → `test result: ok. 31 passed`; `make check` → fmt clean + clippy no warnings + all 20 suites green; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok (sha2); `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_authority-boundary.md` + INDEX row | WP5 authority engine proven: boundary ceiling + scoped grants + audit records in the command transaction |
 | `2026-09-06` | `PHASE-0.4.2` | `RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored --nocapture` → `test result: ok. 1 passed` (one bounded REAL Codex dispatch through the real supervisor + journal: completed, streamed thread id attached, exact usage, honest `Unsupported` lookup); `cargo test -p reasonbraid-adapter --test codex_adapter` → `test result: ok. 9 passed` (offline stub boundary); `cargo test -p reasonbraid-node --test supervisor_codex_stub` → `test result: ok. 2 passed`; `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 + 9 adapter + 17 + 8 + 6 + 10 + 2 + 1 ignored node + 13 + 5 + 7 server (skip offline); `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_real-adapter-codex.md` + evidence report + INDEX rows | WP4 first real harness qualified (Codex-family CLI, `exec --json`); ledger revalidated; **WP4 complete** |
 | `2026-09-06` | `PHASE-0.4.1` | `cargo test -p reasonbraid-adapter` → `test result: ok. 12 passed` (fake) + `test result: ok. 3 passed` (corpus integrity incl. mechanical credential scan); `cargo test -p reasonbraid-node` → `test result: ok. 8 passed` (`supervisor_fake` — corpus drives every outcome to its journal terminal; lost response without lookup → `outcome_unknown` with no retry language; proven lookup → `completed`; ack ≠ completion at the journal boundary); `make check` → fmt clean + clippy no warnings + `cargo test --all` 24 core + 3 + 12 adapter + 17 + 8 + 6 + 10 node + 13 + 5 + 7 server (skip offline); `bash scripts/run_pg_tests.sh` → `5 passed` + `7 passed` + `13 passed` on live PostgreSQL 16.15; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `2026-09-06_fake-adapter.md` + INDEX row | WP4 fake harness adapter proven: scripted oracle + sanitized corpus + supervisor ambiguity path; three real bugs found by the corpus/probes (boundary-vs-refusal edge, Notify race, terminal-event loop) |
+| `2026-09-06` | `PHASE-0.6.1` | `bash scripts/run_pg_tests.sh` → `test result: ok. 7 passed` (`command_api`) + `test result: ok. 2 passed` (`cli_end_to_end`, the REAL `rb` binary) against live PostgreSQL 16.15 — full flow (bootstrap → create → invite → auto-accepted contribution → challenge → revise → close) inspected through the API only (ordered 6-event timeline + 8 digest-carrying audit records); denials recorded and effect-free; replay returns the original result / conflicts typed; invalid transitions deterministic; forged fields + bad headers rejected; challenge targets checked; `make check` → fmt clean + clippy no warnings + all 28 suites green offline; `make gate` → `=== all doctrines green ===` (13/13); `make deny` → advisories/bans/licenses/sources ok; `make secret-scan` → `no leaks found`; `make book` → HTML written; decision record `docs/decisions/2026-09-06_control-api-cli.md` + INDEX row; mdBook cli chapter + SUMMARY entry | WP6 control-API + CLI landed: every thread command runs claim → authorize → validate (locked projection) → apply (+ ceiling) in ONE transaction, rejections are idempotent results, and inspection never touches the database |
 
 ## Commit Log
 
@@ -926,6 +994,7 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 | `PHASE-0.5.1` | `REASONBRAID-PHASE0-0020` | `crates/reasonbraid-core` authority model (boundary ceiling, grants, subset checker, policy digest, decision record) + `crates/reasonbraid-server` authority engine (create/refuse, authorize + audit row, `apply_authorized_command`) + `migrations/0004` + 9 live-PG tests + authority-boundary decision record; mdBook authority chapter |
 | `PHASE-0.4.2` | `REASONBRAID-PHASE0-0019` | `crates/reasonbraid-adapter` Codex CLI adapter (`exec --json` subprocess) + contract `ProviderRequestId` + supervisor/journal handling + offline stub suite + env-gated live test + real-adapter-codex decision record + qualification evidence report + ledger revalidation; mdBook real-adapter section |
 | `PHASE-0.4.1` | `REASONBRAID-PHASE0-0018` | `crates/reasonbraid-adapter` (contract + scripted fake + sanitized 10-fixture corpus) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge + fake-adapter decision record; mdBook chapter |
+| `PHASE-0.6.1` | `REASONBRAID-PHASE0-0022` | `crates/reasonbraid-server` thread domain + control API + `rb-server` binary + `migrations/0006` (enrollments) + `crates/reasonbraid-cli` (the eight verbs; repo-local state dir) + command-API + real-binary e2e suites + control-api-cli decision record; mdBook cli chapter; core gains `thread_close` + the deterministic actor handle |
 
 ## Changelog
 
@@ -950,3 +1019,4 @@ change owned by this leaf (per `.doctrine/code_paths.txt`). Enforced by the
 - `2026-09-06`: `PHASE-0.5.1` WP5 authority engine — core boundary/grant/decision model (deterministic subset checker enforced at creation AND evaluation; SHA-256 policy digest) + server `apply_authorized_command` (audit record + `.2.1` writes in one transaction; denials audited and effect-free), `migrations/0004_authority.sql`, 9 live-PG tests, `docs/decisions/2026-09-06_authority-boundary.md`, mdBook authority chapter. Frontier is `.5.2`.
 - `2026-09-06`: `PHASE-0.4.2` WP4 first real harness — `CodexCliAdapter` supervising `codex exec --json` (qualified live on codex-cli 0.153.4: one bounded real dispatch through the real supervisor + journal), streamed thread id attached as the provider handle, honest `Unsupported` status lookup, offline stub suite, `docs/decisions/2026-09-06_real-adapter-codex.md`, qualification evidence report (second adapter recommended for Phase 1 — director-owned), Codex ledger row revalidated. **WP4 complete.** Frontier is `.5.1`.
 - `2026-09-06`: `PHASE-0.4.1` WP4 fake harness adapter — `crates/reasonbraid-adapter` (capability-declaring contract: ack ≠ completion, no credential field, unsupported lookup is never retry advice; deterministic scripted `FakeAdapter`; ten-fixture sanitized corpus with mechanical credential scan) + node supervisor (`execute_attempt`) + core proof-gated `(dispatched, fail_before_dispatch)` edge, `docs/decisions/2026-09-06_fake-adapter.md`, mdBook adapter-boundary chapter. Frontier is `.4.2`.
+- `2026-09-06`: `PHASE-0.6.1` WP6 control API + CLI — `crates/reasonbraid-server` gains the thread domain (`threads.rs`: the six operations, the projection, core-machine validation, dev rules) + the control API (`api.rs`: enroll bootstrap, `/v1/threads` command/query/audit surface, trusted dev principal header + deterministic UUIDv5 actor handle, SHA-256 request hash, ONE transaction per command — claim → authorize → validate against the locked projection → apply (+ ceiling), with idempotent REJECTIONS) + the `rb-server` binary + `migrations/0006_control_api.sql`; the new `crates/reasonbraid-cli` lands the `rb` binary (the eight verbs, repo-local state dir); core gains `thread_close` + `actor_handle_for_subject`; `docs/decisions/2026-09-06_control-api-cli.md`, mdBook cli chapter. Frontier is `.6.2`.

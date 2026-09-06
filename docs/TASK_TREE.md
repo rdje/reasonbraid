@@ -51,7 +51,7 @@ on the same commit. One commit per completed leaf.
 | [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from bedrock | repo-local |
 | [`RB-SEED`](tasks/RB-SEED.md) | `done` | `.3` — CLAIM_VERIFICATION adopted | repo-local |
 | [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-0` | repo-local |
-| [`PHASE-0`](tasks/PHASE-0.md) | `active` | `.6.1` — WP6 CLI (enroll/thread/invite/contribute/close/inspect) | repo-local |
+| [`PHASE-0`](tasks/PHASE-0.md) | `active` | `.6.2` — WP6 two-host crash/reconnect demonstration | repo-local |
 | [`PHASE-1`](tasks/PHASE-1.md) | `proposed` | `.1` — LAN monolith (blocked on Phase 0 go) | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `proposed` | `.1` — identity/recovery | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |

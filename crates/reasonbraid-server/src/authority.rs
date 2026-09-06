@@ -131,6 +131,20 @@ pub async fn create_boundary(
     pool: &PgPool,
     boundary: &EnrollmentAuthorityBoundary,
 ) -> Result<(), sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    insert_boundary_in_tx(&mut *conn, boundary).await
+}
+
+/// The transactional body of [`create_boundary`] — shared with the `.6.1` enroll
+/// bootstrap so a new tenant's boundary, grant, and enrollment row commit together.
+pub(crate) async fn insert_boundary_in_tx<'e, E>(
+    mut tx: E,
+    boundary: &EnrollmentAuthorityBoundary,
+) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     sqlx::query(
         "INSERT INTO enrollment_boundaries \
          (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
@@ -162,7 +176,7 @@ pub async fn create_boundary(
     .bind(&boundary.charter_digest)
     .bind(&boundary.policy_version)
     .bind(boundary.status.as_str())
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     Ok(())
 }
@@ -170,7 +184,26 @@ pub async fn create_boundary(
 /// Create a grant — REFUSED (no row) when it exceeds its boundary in any dimension
 /// (§4.4: "a grant cannot exceed the enrollment ceiling").
 pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), GrantRefused> {
-    let boundary = load_boundary_by_id(pool, &grant.boundary_id)
+    let mut conn = pool.acquire().await.map_err(|_| GrantRefused {
+        violations: vec![reasonbraid_core::BoundaryViolation {
+            field: "grant",
+            detail: format!("grant `{}` could not be stored", grant.grant_id),
+        }],
+    })?;
+    create_grant_in_tx(&mut *conn, grant).await
+}
+
+/// The transactional body of [`create_grant`] — shared with the `.6.1` enroll
+/// bootstrap (boundary load + subset check + insert on the caller's executor).
+pub(crate) async fn create_grant_in_tx<'e, E>(
+    mut tx: E,
+    grant: &AuthorityGrant,
+) -> Result<(), GrantRefused>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let boundary = load_boundary_by_id_in_tx(&mut *tx, &grant.boundary_id)
         .await
         .map_err(|_| GrantRefused {
             violations: vec![reasonbraid_core::BoundaryViolation {
@@ -207,7 +240,7 @@ pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), G
     .bind(grant.valid_from)
     .bind(grant.expires_at)
     .bind(grant.status.as_str())
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| GrantRefused {
         violations: vec![reasonbraid_core::BoundaryViolation {
@@ -339,10 +372,16 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
     })
 }
 
-async fn load_boundary_by_id(
-    pool: &PgPool,
+/// The executor-generic boundary loader (`PHASE-0.6.1`): the grant path reads the
+/// boundary inside the caller's transaction.
+pub(crate) async fn load_boundary_by_id_in_tx<'e, E>(
+    mut tx: E,
     boundary_id: &str,
-) -> Result<EnrollmentAuthorityBoundary, sqlx::Error> {
+) -> Result<EnrollmentAuthorityBoundary, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     let row: BoundaryRow = sqlx::query_as(
         "SELECT boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
                 permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
@@ -350,9 +389,27 @@ async fn load_boundary_by_id(
          FROM enrollment_boundaries WHERE boundary_id = $1",
     )
     .bind(boundary_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
     Ok(boundary_from_row(row).expect("stored boundary parses"))
+}
+
+/// Load a tenant's ACTIVE enrollment boundary, if one exists (`PHASE-0.6.1` enroll
+/// path for existing tenants).
+pub(crate) async fn load_active_boundary_for_tenant(
+    pool: &PgPool,
+    tenant_id: &reasonbraid_core::TenantId,
+) -> Result<Option<EnrollmentAuthorityBoundary>, sqlx::Error> {
+    let row: Option<BoundaryRow> = sqlx::query_as(
+        "SELECT boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
+                permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
+                valid_from, expires_at, charter_digest, policy_version, status \
+         FROM enrollment_boundaries WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(tenant_id.to_string())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| boundary_from_row(r).expect("stored boundary parses")))
 }
 
 // ── Evaluation ──────────────────────────────────────────────────────────────────

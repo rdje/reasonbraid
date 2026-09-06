@@ -112,16 +112,53 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    // 1. Claim the idempotency slot. The PK is what makes a redelivery idempotent: exactly
-    //    one transaction can own the key.
+    match claim_idempotency_in_tx(
+        &mut *tx,
+        &cmd.tenant_id,
+        &cmd.idempotency_key,
+        &cmd.request_hash,
+    )
+    .await?
+    {
+        ClaimOutcome::Replay { result } => Ok(CommandOutcome {
+            replayed: true,
+            result,
+        }),
+        ClaimOutcome::Fresh => apply_fresh_in_tx(&mut *tx, cmd).await,
+    }
+}
+
+/// The outcome of the idempotency claim (`PHASE-0.6.1` split): a fresh claim owns the
+/// key for this transaction, a replay returns the ORIGINAL stored result verbatim.
+pub(crate) enum ClaimOutcome {
+    Fresh,
+    Replay { result: Value },
+}
+
+/// Claim the `(tenant_id, idempotency_key)` slot for this transaction.
+///
+/// The primary key is the serialization point that makes redelivery idempotent:
+/// exactly one transaction can own the key. The `.6.1` thread handlers call this
+/// BEFORE their domain validation so a replay returns the original result without
+/// re-validating against state the original command may have since changed.
+pub(crate) async fn claim_idempotency_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    idempotency_key: &str,
+    request_hash: &str,
+) -> Result<ClaimOutcome, ApplyError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     let claim = sqlx::query(
         "INSERT INTO idempotency (tenant_id, idempotency_key, request_hash, response_result) \
          VALUES ($1, $2, $3, 'null'::jsonb) \
          ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
     )
-    .bind(&cmd.tenant_id)
-    .bind(&cmd.idempotency_key)
-    .bind(&cmd.request_hash)
+    .bind(tenant_id)
+    .bind(idempotency_key)
+    .bind(request_hash)
     .execute(&mut *tx)
     .await?;
 
@@ -131,29 +168,43 @@ where
             "SELECT request_hash, response_result FROM idempotency \
              WHERE tenant_id = $1 AND idempotency_key = $2",
         )
-        .bind(&cmd.tenant_id)
-        .bind(&cmd.idempotency_key)
+        .bind(tenant_id)
+        .bind(idempotency_key)
         .fetch_one(&mut *tx)
         .await?;
 
-        if stored_hash != cmd.request_hash {
+        if stored_hash != request_hash {
             return Err(ApplyError::IdempotencyConflict {
-                key: cmd.idempotency_key.clone(),
-                request_hash: cmd.request_hash.clone(),
+                key: idempotency_key.to_string(),
+                request_hash: request_hash.to_string(),
                 stored_hash,
             });
         }
 
         // Idempotent replay: return the ORIGINAL result; nothing new is written (the
         // caller commits).
-        return Ok(CommandOutcome {
-            replayed: true,
+        return Ok(ClaimOutcome::Replay {
             result: stored_result,
         });
     }
 
-    // 2. Fresh command. Lock the aggregate row so writers to the SAME aggregate serialize,
-    //    then derive the next ordered version.
+    Ok(ClaimOutcome::Fresh)
+}
+
+/// The fresh-command writes (steps 2–6 of the original `apply_command_in_tx`): lock
+/// the aggregate row, derive the next ordered version, write event + current state +
+/// outbox item, and record the semantic result for idempotent replay. The caller must
+/// have claimed the idempotency slot first ([`claim_idempotency_in_tx`]).
+pub(crate) async fn apply_fresh_in_tx<'e, E>(
+    mut tx: E,
+    cmd: &Command,
+) -> Result<CommandOutcome, ApplyError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    // 1. Lock the aggregate row so writers to the SAME aggregate serialize, then derive
+    //    the next ordered version.
     let current: Option<i64> = sqlx::query_scalar(
         "SELECT aggregate_version FROM aggregate_state \
          WHERE tenant_id = $1 AND aggregate_id = $2 FOR UPDATE",
@@ -165,7 +216,7 @@ where
 
     let next_version = current.map_or(1, |v| v + 1);
 
-    // 3. Ordered event (unique per (tenant, aggregate, version)).
+    // 2. Ordered event (unique per (tenant, aggregate, version)).
     sqlx::query(
         "INSERT INTO event_log (event_id, tenant_id, aggregate_id, aggregate_version, event_type, body) \
          VALUES ($1, $2, $3, $4, $5, $6)",
@@ -179,7 +230,7 @@ where
     .execute(&mut *tx)
     .await?;
 
-    // 4. Current state (upsert).
+    // 3. Current state (upsert).
     sqlx::query(
         "INSERT INTO aggregate_state (tenant_id, aggregate_id, aggregate_type, aggregate_version, state) \
          VALUES ($1, $2, $3, $4, $5) \
@@ -196,14 +247,14 @@ where
     .execute(&mut *tx)
     .await?;
 
-    // 5. Outbox item — the FK to event_log proves the event is already durable.
+    // 4. Outbox item — the FK to event_log proves the event is already durable.
     sqlx::query("INSERT INTO outbox (tenant_id, event_id) VALUES ($1, $2)")
         .bind(&cmd.tenant_id)
         .bind(&cmd.event_id)
         .execute(&mut *tx)
         .await?;
 
-    // 6. Record the semantic result for idempotent replay.
+    // 5. Record the semantic result for idempotent replay.
     sqlx::query(
         "UPDATE idempotency SET response_result = $1 \
          WHERE tenant_id = $2 AND idempotency_key = $3",

@@ -7,3 +7,4 @@
 - [The adapter boundary](adapter-boundary.md)
 - [Authority](authority.md)
 - [Budgets](budget.md)
+- [The CLI](cli.md)

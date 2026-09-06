@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — WP6 control API: the subset checker caught the bootstrap bug, and rejections became idempotent results
+
+- **The `.5.1` temporal subset rule caught THIS leaf before it shipped.** The first live run of the enroll bootstrap failed: a role grant created microseconds after its boundary "outlived" it (`grant.expires_at > boundary.expires_at`), the same wall-clock-skew class the `.5.1` fixtures exposed. Fix: dev grants are COEXTENSIVE with their boundary's validity window (`valid_from`/`expires_at` copied from the boundary) — and the failure itself is the evidence the checker binds.
+- **Rejections are the command's semantic result, stored for replay.** A denied or domain-refused command stores `{"ok": false, "error": {code, message}}` in the idempotency row, and a replay reproduces the ORIGINAL status (stable code→status map) and body. This required the `tx` split — claim FIRST, then authorize/validate/apply — because a replay must return the original result WITHOUT re-validating against state the original command may have since changed (a replayed contribution after close must not fail).
+- **The `FOR UPDATE` read is the consistency trick.** The domain validation reads the projection with `FOR UPDATE`; `apply_fresh_in_tx` re-reads the SAME row in the SAME transaction — so the version derived for the write can never diverge from the state validated. No check-then-write race, no second locking scheme.
+- **The e2e run caught a classic URL bug the unit layer could not.** The CLI's inspect joined `/events` AFTER the query string (`?tenant_id=…/events`), corrupting the tenant param — the real-binary suite failed loudly with the server's own `invalid_command`. Lesson: the e2e suite earns its place by exercising the actual bytes the binary sends.
+- **Clippy's `too_many_arguments` struck the verb runner (8/7)** — grouped into `ThreadVerbArgs`, the same class as `.5.1`'s `policy_digest` fix. And `clone_on_copy` hit `BudgetDimensions` (it derives Copy) — removed the clone, kept the one `String` clone the projection needs.
+- **Axum's Json extractor answers forged fields with 422**, not the handler's 400 — the `.3.2` channel convention; the test asserts the 422 + the serde rejection naming the field.
+- Promoted to `docs/decisions/2026-09-06_control-api-cli.md` (`answers:` present). **Frontier `.6.2`.**
+
 ## _(2026-09-06)_ — WP5 budget: one invariant, two ledgers, and a mandatory parameter that audits its own refusals
 
 - **The acceptance is one sentence enforced twice:** "no provider dispatch without an applicable reservation" — the SERVER refuses to issue what the ceiling cannot cover (with a denial ROW), and the NODE refuses to dispatch what it has not been issued (journaled `failed_before_dispatch`, adapter never invoked — proven with a counting adapter). Two ledgers, one invariant (§14.3 step 4 is a LOCAL check by design).

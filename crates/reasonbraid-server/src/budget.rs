@@ -48,6 +48,24 @@ pub async fn create_ceiling(
     thread_id: &str,
     dimensions: &BudgetDimensions,
 ) -> Result<(), sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    create_ceiling_in_tx(&mut *conn, ceiling_id, tenant_id, thread_id, dimensions).await
+}
+
+/// The transactional body of [`create_ceiling`] — shared with the `.6.1` thread-create
+/// handler so the ceiling row commits in the SAME transaction as the thread's event
+/// (`BUDGET-003`: a thread exists with its ceiling, not without one).
+pub(crate) async fn create_ceiling_in_tx<'e, E>(
+    mut tx: E,
+    ceiling_id: &str,
+    tenant_id: &str,
+    thread_id: &str,
+    dimensions: &BudgetDimensions,
+) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     sqlx::query(
         "INSERT INTO budget_ceilings (ceiling_id, tenant_id, thread_id, dimensions, policy_version) \
          VALUES ($1, $2, $3, $4, $5)",
@@ -57,7 +75,7 @@ pub async fn create_ceiling(
     .bind(thread_id)
     .bind(serde_json::to_value(dimensions).expect("dimensions serialize"))
     .bind("dev-budget-1")
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     Ok(())
 }

@@ -52,6 +52,7 @@
 - [`2026-09-06_real-adapter-codex.md`](docs/decisions/2026-09-06_real-adapter-codex.md)
 - [`2026-09-06_reason-codes.md`](docs/decisions/2026-09-06_reason-codes.md)
 - [`2026-09-06_state-transitions.md`](docs/decisions/2026-09-06_state-transitions.md)
+- [`2026-09-06_thread-api-completion.md`](docs/decisions/2026-09-06_thread-api-completion.md)
 - [`2026-09-07_deliberation-benchmark.md`](docs/decisions/2026-09-07_deliberation-benchmark.md)
 - [`2026-09-07_node-channel-wiring.md`](docs/decisions/2026-09-07_node-channel-wiring.md)
 - [`2026-09-07_phase0-adr-set.md`](docs/decisions/2026-09-07_phase0-adr-set.md)

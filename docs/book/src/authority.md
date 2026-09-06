@@ -27,8 +27,9 @@ implied by other actions.
 
 A grant's selector is tenant-wide or a named thread set, and each action has a
 target shape: `thread_create` targets the tenant; `thread_invite`,
-`thread_contribute`, and `thread_inspect` target a thread that must be inside
-the selector. Out-of-scope targets are denied with the reason recorded.
+`thread_contribute`, `thread_inspect`, `thread_close`, and `thread_cancel`
+target a thread that must be inside the selector. Out-of-scope targets are
+denied with the reason recorded.
 
 ## The audit record
 

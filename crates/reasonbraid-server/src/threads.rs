@@ -50,6 +50,7 @@ pub const OP_CONTRIBUTE: &str = "thread.contribute";
 pub const OP_CHALLENGE: &str = "thread.challenge";
 pub const OP_REVISE: &str = "thread.revise";
 pub const OP_CLOSE: &str = "thread.close";
+pub const OP_CANCEL: &str = "thread.cancel";
 
 /// The event types committed for the operations above.
 pub const EVENT_CREATED: &str = "thread.created";
@@ -58,6 +59,7 @@ pub const EVENT_CONTRIBUTED: &str = "thread.contribution_submitted";
 pub const EVENT_CHALLENGED: &str = "thread.challenge_posted";
 pub const EVENT_REVISED: &str = "thread.revision_submitted";
 pub const EVENT_CLOSED: &str = "thread.closed";
+pub const EVENT_CANCELLED: &str = "thread.cancelled";
 
 /// The thread-work kinds an inbox payload carries (`PHASE-0.6.2`): an invitation
 /// dispatches a `contribute` work item to the invited role's node; a challenge of a
@@ -87,8 +89,62 @@ pub const DEFAULT_BUDGET: BudgetDimensions = BudgetDimensions {
 
 // ── Operation bodies (client-supplied intent) ────────────────────────────────────
 
-/// `thread.create` body: the tenant the thread belongs to, the subject/objective, and
-/// an optional budget. The thread id itself is server-assigned.
+/// Thread classification (`ROADMAP.md` §3.2's scope fields, the dev registry):
+/// `general` is the default; `confidential` marks a thread whose provider use and
+/// retention later phases tighten. Recorded and inspectable today — enforcement
+/// arrives with the classification-aware policies (`PHASE-1.1.3`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Classification {
+    #[default]
+    General,
+    Confidential,
+}
+
+/// The workflow profile (`PHASE-1.1.3`; ADR-002): the routing default is
+/// **single-agent** — the WP7 null result means structure is opt-in, never the
+/// default. The other variants are the benchmark's measured shapes, reserved for
+/// later routing work; the dev profile records the choice and runs every profile
+/// as single-agent for now (stated, not silently ignored — see
+/// `docs/decisions/2026-09-06_thread-api-completion.md`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowProfile {
+    #[default]
+    SingleAgent,
+    BlindIndependent,
+    CritiqueRevise,
+    Moderator,
+}
+
+/// Participant rules (`ROADMAP.md` §20.3: explicit participants first): explicit
+/// invites on by default, join requests off — the trusted-LAN slice has no
+/// request flow yet (`PHASE-1.1.3`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticipantRules {
+    #[serde(default = "default_true")]
+    pub allow_explicit_invites: bool,
+    #[serde(default)]
+    pub allow_join_requests: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ParticipantRules {
+    fn default() -> Self {
+        ParticipantRules {
+            allow_explicit_invites: true,
+            allow_join_requests: false,
+        }
+    }
+}
+
+/// `thread.create` body: the tenant the thread belongs to, the subject/objective,
+/// and the optional budget, classification, workflow profile, and participant
+/// rules. The thread id itself is server-assigned.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateBody {
@@ -97,6 +153,12 @@ pub struct CreateBody {
     pub objective: String,
     #[serde(default)]
     pub budget: Option<BudgetSpec>,
+    #[serde(default)]
+    pub classification: Option<Classification>,
+    #[serde(default)]
+    pub workflow_profile: Option<WorkflowProfile>,
+    #[serde(default)]
+    pub participant_rules: Option<ParticipantRules>,
 }
 
 /// A budget specification for a new thread; unspecified dimensions take the
@@ -157,10 +219,21 @@ pub struct CloseBody {
     pub reason: String,
 }
 
+/// `thread.cancel` body: the scope and the abandonment reason (`PHASE-1.1.3`) —
+/// preserved for the audit view, distinct from a decided close.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CancelBody {
+    pub tenant_id: TenantId,
+    pub reason: String,
+}
+
 // ── Projection ────────────────────────────────────────────────────────────────────
 
 /// The minimal thread projection stored in `aggregate_state.state`. It keeps only
-/// what validation and inspection need; content lives in the event log.
+/// what validation and inspection need; content lives in the event log. The
+/// `PHASE-1.1.3` fields are additive and `#[serde(default)]`-ed, so a projection
+/// written before them still parses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThreadProjection {
@@ -178,6 +251,14 @@ pub struct ThreadProjection {
     /// Challenges that no revision has answered (the unresolved register).
     pub open_challenges: u64,
     pub close_reason: Option<String>,
+    #[serde(default)]
+    pub classification: Classification,
+    #[serde(default)]
+    pub workflow_profile: WorkflowProfile,
+    #[serde(default)]
+    pub participant_rules: ParticipantRules,
+    #[serde(default)]
+    pub cancel_reason: Option<String>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -299,6 +380,10 @@ pub fn prepare_create(
         revisions: 0,
         open_challenges: 0,
         close_reason: None,
+        classification: body.classification.unwrap_or_default(),
+        workflow_profile: body.workflow_profile.unwrap_or_default(),
+        participant_rules: body.participant_rules.clone().unwrap_or_default(),
+        cancel_reason: None,
         ceiling_id: ceiling_id.clone(),
         budget,
     };
@@ -311,6 +396,9 @@ pub fn prepare_create(
         "subject": body.subject,
         "objective": body.objective,
         "budget": budget,
+        "classification": projection.classification,
+        "workflow_profile": projection.workflow_profile,
+        "participant_rules": projection.participant_rules,
     });
     PreparedCommand {
         event_id,
@@ -641,6 +729,41 @@ where
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
         }
+        OP_CANCEL => {
+            let body: CancelBody = serde_json::from_value(body.clone())
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            // The abandonment terminal (`PHASE-1.1.3`): `open` or `closing` →
+            // `cancelled`, one core-machine edge, one event, reason preserved.
+            // Distinct from a decided close; the two terminals never mix.
+            let cancelled = match projection.state {
+                ThreadState::Open => ThreadState::Open
+                    .apply(ThreadTransition::Cancel)
+                    .map_err(ThreadError::InvalidTransition)?,
+                ThreadState::Closing => ThreadState::Closing
+                    .apply(ThreadTransition::Cancel)
+                    .map_err(ThreadError::InvalidTransition)?,
+                other => {
+                    return Err(ThreadError::InvalidTransition(TransitionError {
+                        aggregate: "Thread",
+                        from: other.as_str(),
+                        event: "cancel",
+                    }))
+                }
+            };
+            projection.state = cancelled;
+            projection.cancel_reason = Some(body.reason.clone());
+            (
+                EVENT_CANCELLED,
+                json!({
+                    "operation": OP_CANCEL,
+                    "thread_id": thread_id.to_string(),
+                    "tenant_id": tenant_id.to_string(),
+                    "actor_principal_id": principal,
+                    "reason": body.reason,
+                }),
+                serde_json::to_value(&projection).expect("projection serializes"),
+            )
+        }
         other => {
             return Err(ThreadError::InvalidCommand(format!(
                 "unknown thread operation `{other}`"
@@ -713,6 +836,9 @@ mod tests {
                 subject: "subject".to_string(),
                 objective: "objective".to_string(),
                 budget: None,
+                classification: None,
+                workflow_profile: None,
+                participant_rules: None,
             },
         );
         let projection: ThreadProjection =
@@ -721,6 +847,19 @@ mod tests {
         assert_eq!(
             projection.participants["hpr_00000000-0000-7000-8000-000000000001"],
             ParticipationState::Accepted
+        );
+        // The `.1.1.3` defaults are stated, not empty: general / single-agent /
+        // explicit-invites-only.
+        assert_eq!(projection.classification, Classification::General);
+        assert_eq!(projection.workflow_profile, WorkflowProfile::SingleAgent);
+        assert_eq!(projection.cancel_reason, None);
+        assert!(
+            projection.participant_rules.allow_explicit_invites,
+            "explicit invites on by default"
+        );
+        assert!(
+            !projection.participant_rules.allow_join_requests,
+            "join requests off by default"
         );
         assert_eq!(projection.ceiling_id, format!("ceil_{thread}"));
         assert_eq!(

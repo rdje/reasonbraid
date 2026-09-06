@@ -312,6 +312,63 @@ async fn the_real_cli_drives_the_whole_flow() {
         .await;
     assert!(!ok, "the role has no thread_inspect grant");
     assert!(stderr.contains("unauthorized"), "{stderr}");
+
+    // 6. `PHASE-1.1.3`: the typed create flags and the cancel terminal, driven by
+    //    the REAL binary — cancel is inspectable through the CLI only.
+    let (ok, stdout, stderr) = rb
+        .run(&[
+            "thread",
+            "create",
+            "--subject",
+            "typed and doomed",
+            "--objective",
+            "profile and cancel",
+            "--classification",
+            "confidential",
+            "--workflow-profile",
+            "critique-revise",
+            "--as",
+            "alice",
+        ])
+        .await;
+    assert!(ok, "typed create failed: {stderr}");
+    assert!(stdout.contains("created thread"), "{stdout}");
+    let second = stdout
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(2))
+        .expect("created thread id")
+        .to_string();
+
+    let (ok, stdout, stderr) = rb
+        .run(&["inspect", "thread", &second, "--as", "alice"])
+        .await;
+    assert!(ok, "inspect typed thread failed: {stderr}");
+    assert!(stdout.contains("state: open"), "{stdout}");
+
+    let (ok, stdout, stderr) = rb
+        .run(&[
+            "thread",
+            "cancel",
+            "--thread",
+            &second,
+            "--reason",
+            "no longer needed",
+            "--as",
+            "alice",
+        ])
+        .await;
+    assert!(ok, "cancel failed: {stderr}");
+    assert!(stdout.contains("thread.cancelled"), "{stdout}");
+    assert!(stdout.contains("now cancelled"), "{stdout}");
+
+    let (ok, stdout, stderr) = rb
+        .run(&["inspect", "thread", &second, "--as", "alice"])
+        .await;
+    assert!(ok, "inspect cancelled failed: {stderr}");
+    assert!(stdout.contains("state: cancelled"), "{stdout}");
+    assert!(stdout.contains("cancelled: no longer needed"), "{stdout}");
+    assert!(stdout.contains("thread.cancelled"), "{stdout}");
 }
 
 /// Deny-by-default at the CLI: a role without `thread_create` gets a typed refusal,

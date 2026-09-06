@@ -39,7 +39,8 @@ use crate::id::{
 
 /// The actions a grant may authorize in the development profile (`KICKOFF.md` WP5:
 /// create a thread, invite a named agent, contribute, inspect; `PHASE-0.6.1` adds
-/// `thread_close` for the WP6 CLI flow).
+/// `thread_close` for the WP6 CLI flow; `PHASE-1.1.3` adds `thread_cancel` — the
+/// abandonment terminal, distinct from a decided close).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GrantAction {
@@ -49,6 +50,8 @@ pub enum GrantAction {
     ThreadInspect,
     /// Close a thread (the lifecycle authority; distinct from contributing to one).
     ThreadClose,
+    /// Cancel a thread — the `open|closing → cancelled` terminal, with a reason.
+    ThreadCancel,
     /// Administrative authority — NEVER implied by membership or other actions.
     TenantAdmin,
 }
@@ -61,6 +64,7 @@ impl GrantAction {
             GrantAction::ThreadContribute => "thread_contribute",
             GrantAction::ThreadInspect => "thread_inspect",
             GrantAction::ThreadClose => "thread_close",
+            GrantAction::ThreadCancel => "thread_cancel",
             GrantAction::TenantAdmin => "tenant_admin",
         }
     }
@@ -73,6 +77,7 @@ impl GrantAction {
             "thread_contribute" => Some(GrantAction::ThreadContribute),
             "thread_inspect" => Some(GrantAction::ThreadInspect),
             "thread_close" => Some(GrantAction::ThreadClose),
+            "thread_cancel" => Some(GrantAction::ThreadCancel),
             "tenant_admin" => Some(GrantAction::TenantAdmin),
             _ => None,
         }
@@ -777,6 +782,7 @@ mod tests {
             ("thread_contribute", GrantAction::ThreadContribute),
             ("thread_inspect", GrantAction::ThreadInspect),
             ("thread_close", GrantAction::ThreadClose),
+            ("thread_cancel", GrantAction::ThreadCancel),
             ("tenant_admin", GrantAction::TenantAdmin),
         ] {
             assert_eq!(s.parse::<GrantAction>(), Ok(expected));

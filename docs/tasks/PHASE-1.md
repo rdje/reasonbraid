@@ -25,11 +25,11 @@ conversation without binding-governance claims.
 ## Task Tree
 
 - ID: `PHASE-1.1`
-  Status: `in_progress`
+  Status: `done`
   Goal: coordinator modular monolith, PostgreSQL migrations, aggregate/event/outbox patterns
   Backlog: 9, 10, 15
   ADR: 002, 004
-  Children: `.1.1.1`–`.1.1.3` (decomposed `2026-09-06` so each child is one signoff-sized slice)
+  Children: `.1.1.1`–`.1.1.3` (decomposed `2026-09-06` so each child is one signoff-sized slice; all three `done`)
 
   - ID: `PHASE-1.1.1`
     Status: `done`
@@ -59,7 +59,7 @@ conversation without binding-governance claims.
       suite regresses.
 
   - ID: `PHASE-1.1.3`
-    Status: `pending`
+    Status: `done`
     Goal: thread command API completion — `thread.cancel` (the `open → cancelled`
       edge), typed classification + workflow profile + participant rules on
       `thread.create` (default: single-agent routing, per ADR-002), and the
@@ -123,7 +123,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.1.3` | `pending` | `.1.1.1` and `.1.1.2` are done — the write path and the identity rows exist; the thread command API completes over them (backlog 15's API-shape portion: `thread.cancel` + the typed create fields) |
+| 1 | `PHASE-1.2` | `pending` | the `.1` coordinator leaf is complete (`.1.1.1`–`.1.1.3` done) — the next §20.3 bullet is the Rust node: SQLite journal, enrollment, lease/presence, reconnect, durable inbox (backlog 11–14) |
 
 ## Changelog
 
@@ -132,6 +132,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1` decomposed into `.1.1.1` (aggregate/event/outbox library — backlog 9, ADR-004), `.1.1.2` (migration 0007 identity store — backlog 10), `.1.1.3` (thread command API completion — backlog 15's API-shape portion; the invitation semantics stay with `.1.3`); `.1.3`'s goal reworded to remove the double-claim of backlog 15; frontier → `.1.1.1`.
 - `2026-09-06`: `.1.1.1` done — ADR-004 accepted; defect leaf `PHASE-1-MAINT-1` opened (§13 gap in `run_pg_tests.sh`); frontier → `.1.1.2`.
 - `2026-09-06`: `.1.1.2` done — migration 0007 identity store + enroll wiring (one transaction, FKs fail closed); decision record `docs/decisions/2026-09-06_identity-store.md`; frontier → `.1.1.3`.
+- `2026-09-06`: `.1.1.3` done — thread command API completion (cancel terminal + typed create profiles, stated single-agent default); decision record `docs/decisions/2026-09-06_thread-api-completion.md`; **the `.1` coordinator leaf is complete** — frontier → `.1.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -223,12 +224,59 @@ is schema (non-code per the same seam).
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_identity-store.md` gained `answers:`), MEMORY,
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier — same commit.
 
+## Acceptance Checklist (PHASE-1.1.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/authority.rs`
+(`GrantAction::ThreadCancel`), `crates/reasonbraid-server/src/threads.rs` (typed
+create fields + the cancel arm), `crates/reasonbraid-server/src/api.rs` (the cancel
+route + `ADMIN_ACTIONS`), `crates/reasonbraid-cli/src/{lib,main}.rs` (verb + flags),
+and the test files (all match `\.rs$` in `.doctrine/code_paths.txt`).
+
+- [x] **REPRODUCE / ISSUE** — backlog 15's API-shape portion is open: `thread.cancel`
+  has no operation (the core `open → cancelled` edge exists but nothing drives it) and
+  `thread.create` carries no classification/workflow/participant-rules typing.
+  `git grep -n "thread.cancel"` over `crates/` → no wire operation; the core edge is
+  provable in `reasonbraid_core::state` (`ThreadTransition::Cancel`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.6.1` shipped the WP6 verbs (create/invite/
+  contribute/challenge/revise/close) and left the two remaining backlog-15 items for
+  Phase 1; the fix points are `threads.rs`'s operation catalogue (one arm per verb)
+  and the `GrantAction` registry — a new lifecycle verb needs its own authority name,
+  never a borrowed one (`docs/decisions/2026-09-06_thread-api-completion.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: `thread.cancel` →
+  `unknown thread operation` (400); create ignored no profile fields (unknown fields
+  were already rejected by deny-unknown). After: `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 9 passed; 0 failed` (`command_api`, +2: cancel inspectable/
+  terminal/audited; typed fields + stated defaults + rejections) and
+  `test result: ok. 2 passed` (`cli_end_to_end`, extended with the typed-create +
+  cancel leg). The e2e's FIRST run caught a real defect — the CLI passed
+  `--workflow-profile critique-revise` while the wire enum is `critique_revise`
+  (`unknown variant … expected one of …`) — fixed by normalizing the human kebab
+  spelling to the wire form; the rerun is green.
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.`
+  4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` +
+  the two-host demo `ALL acceptance checks passed` (12 PASS checks, `rc=0`);
+  `cargo clippy --all-targets --all-features -- -D warnings` → clean; `make gate` →
+  `=== all doctrines green ===` (13/13) at commit; `make book` builds.
+- [x] **FIX** — `GrantAction::ThreadCancel` (registry + wire-name test extended);
+  `threads.rs`: `OP_CANCEL`/`EVENT_CANCELLED`/`CancelBody`, the cancel arm (core
+  `open|closing → cancelled`, `cancel_reason` in the projection), typed
+  `Classification`/`WorkflowProfile`/`ParticipantRules` with `#[default]` variants and
+  additive `#[serde(default)]` projection fields; `api.rs` cancel route + admin set;
+  CLI `thread cancel` + the three create flags (+ the kebab→snake normalization);
+  `command_api.rs` (+2 tests), `cli_end_to_end.rs` (cancel leg), book `cli.md`/
+  `authority.md` updated.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_thread-api-completion.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
+  chapters — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-06` | `PHASE-1.1.1` | `cargo clippy --all-targets --all-features -- -D warnings` → clean; `cargo test --all` → every offline suite green (server unit suite `test result: ok. 5 passed` incl. the new `agg::tests`); `bash scripts/run_pg_tests.sh` → all eight live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | aggregate/event/outbox library landed; ADR-004 accepted |
 | `2026-09-06` | `PHASE-1.1.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | identity store landed (migration 0007 + enroll wiring); the new suite caught a test-authored bootstrap/replay confusion on its first run — fixed, `test result: ok. 3 passed` |
+| `2026-09-06` | `PHASE-1.1.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | thread command API complete — cancel terminal + typed create profiles with stated defaults; the e2e's first run caught the kebab-vs-snake profile spelling, fixed by CLI normalization |
 
 ## Commit Log
 
@@ -236,3 +284,4 @@ is schema (non-code per the same seam).
 | --- | --- | --- |
 | `PHASE-1.1.1` | `REASONBRAID-PHASE1-0002` | `agg` library + `tx` shim + `tests/aggregate_library.rs` + ADR-004; zero call-site churn |
 | `PHASE-1.1.2` | `REASONBRAID-PHASE1-0003` | migration 0007 + enroll identity wiring + `tests/identity_store.rs` + decision record |
+| `PHASE-1.1.3` | `REASONBRAID-PHASE1-0004` | `thread.cancel` + typed create profiles + CLI verb/flags + decision record; `.1` complete |

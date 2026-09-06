@@ -820,3 +820,240 @@ async fn challenge_targets_are_checked() {
     assert_eq!(status, 400, "missing target: {missing_target}");
     assert_eq!(missing_target["code"], json!("invalid_command"));
 }
+
+/// `thread.cancel` (`PHASE-1.1.3`): the abandonment terminal lands on the core
+/// machine's `open → cancelled` edge, is inspectable through the API only, records
+/// its reason, and refuses both a second cancel and any content verb afterwards.
+#[tokio::test]
+async fn cancel_is_inspectable_terminal_and_audited() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-cancel-create",
+            json!({ "tenant_id": tenant, "subject": "doomed", "objective": "to be cancelled" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/threads/{thread_id}/commands");
+
+    let (status, cancelled) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.cancel",
+            "k-cancel",
+            json!({ "tenant_id": tenant, "reason": "no longer needed" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "cancel: {cancelled}");
+    assert_eq!(cancelled["thread_state"], json!("cancelled"));
+
+    // Inspect through the API: the projection carries the terminal state + reason.
+    let (status, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "inspect: {inspected}");
+    assert_eq!(inspected["state"]["state"], json!("cancelled"));
+    assert_eq!(
+        inspected["state"]["cancel_reason"],
+        json!("no longer needed")
+    );
+    assert_eq!(
+        inspected["state"]["close_reason"],
+        json!(null),
+        "cancel is not a close"
+    );
+
+    // A second cancel is a deterministic invalid transition.
+    let (status, again) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.cancel",
+            "k-cancel-again",
+            json!({ "tenant_id": tenant, "reason": "twice" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 409, "second cancel: {again}");
+    assert_eq!(again["code"], json!("invalid_transition"));
+
+    // Content verbs are refused on a cancelled thread.
+    let (status, contribution) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope(
+            "thread.contribute",
+            "k-cancel-contribute",
+            json!({ "tenant_id": tenant, "content": "too late" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 409, "contribute after cancel: {contribution}");
+    assert_eq!(contribution["code"], json!("invalid_transition"));
+}
+
+/// The typed create fields (`PHASE-1.1.3`): classification / workflow profile /
+/// participant rules land on the projection with deny-unknown typing, the stated
+/// defaults apply when unnamed, and unknown or malformed values are rejected.
+#[tokio::test]
+async fn create_carries_typed_classification_profile_and_rules() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    // All three fields named: the projection carries them verbatim.
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-profile-full",
+            json!({
+                "tenant_id": tenant,
+                "subject": "profiled",
+                "objective": "typed fields",
+                "classification": "confidential",
+                "workflow_profile": "critique_revise",
+                "participant_rules": { "allow_explicit_invites": true, "allow_join_requests": true },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (_, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(inspected["state"]["classification"], json!("confidential"));
+    assert_eq!(
+        inspected["state"]["workflow_profile"],
+        json!("critique_revise")
+    );
+    assert_eq!(
+        inspected["state"]["participant_rules"]["allow_explicit_invites"],
+        json!(true)
+    );
+    assert_eq!(
+        inspected["state"]["participant_rules"]["allow_join_requests"],
+        json!(true)
+    );
+
+    // Unnamed fields take the STATED defaults (ADR-002): general / single-agent /
+    // explicit-invites-only.
+    let (status, defaulted) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-profile-defaults",
+            json!({ "tenant_id": tenant, "subject": "plain", "objective": "defaults" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create defaults: {defaulted}");
+    let thread_id = defaulted["thread_id"].as_str().unwrap().to_string();
+    let (_, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(inspected["state"]["classification"], json!("general"));
+    assert_eq!(
+        inspected["state"]["workflow_profile"],
+        json!("single_agent")
+    );
+    assert_eq!(
+        inspected["state"]["participant_rules"]["allow_explicit_invites"],
+        json!(true)
+    );
+    assert_eq!(
+        inspected["state"]["participant_rules"]["allow_join_requests"],
+        json!(false)
+    );
+
+    // deny-unknown typing: a foreign create field is rejected.
+    let (status, unknown) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-profile-unknown",
+            json!({
+                "tenant_id": tenant,
+                "subject": "typed",
+                "objective": "rejection",
+                "classifiction": "confidential",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "unknown field: {unknown}");
+    assert_eq!(unknown["code"], json!("invalid_command"));
+
+    // An out-of-registry enum value is rejected, not silently stored.
+    let (status, bad_enum) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-profile-bad-enum",
+            json!({
+                "tenant_id": tenant,
+                "subject": "typed",
+                "objective": "rejection",
+                "workflow_profile": "committee_of_everyone",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "bad enum: {bad_enum}");
+    assert_eq!(bad_enum["code"], json!("invalid_command"));
+}

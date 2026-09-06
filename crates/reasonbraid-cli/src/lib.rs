@@ -440,12 +440,22 @@ pub struct BudgetArgs {
     pub wall_clock_seconds: Option<u64>,
 }
 
+/// The typed create fields a CLI caller may name (`PHASE-1.1.3`); all `None`/`false`
+/// lets the server apply its stated defaults (general / single-agent / explicit invites).
+#[derive(Debug, Clone, Default)]
+pub struct CreateProfileArgs {
+    pub classification: Option<String>,
+    pub workflow_profile: Option<String>,
+    pub allow_join_requests: bool,
+}
+
 pub async fn run_thread_create(
     cfg: &Config,
     principal: &PrincipalRef,
     subject: &str,
     objective: &str,
     budget: &BudgetArgs,
+    profile: &CreateProfileArgs,
     json_out: bool,
 ) -> Result<String, CliError> {
     let client = ApiClient::new(&cfg.server_base);
@@ -464,6 +474,19 @@ pub async fn run_thread_create(
             "output_tokens": budget.output_tokens,
             "wall_clock_seconds": budget.wall_clock_seconds,
         });
+    }
+    // The typed create fields (`PHASE-1.1.3`): sent only when named; the server
+    // applies the stated defaults (general / single-agent / explicit-invites).
+    // The CLI takes the human kebab-case profile spelling and normalizes it to
+    // the wire's snake_case (the server's typed error names the wire values).
+    if let Some(c) = &profile.classification {
+        body["classification"] = json!(c);
+    }
+    if let Some(w) = &profile.workflow_profile {
+        body["workflow_profile"] = json!(w.replace('-', "_"));
+    }
+    if profile.allow_join_requests {
+        body["participant_rules"] = json!({ "allow_join_requests": true });
     }
     let response = client.create_thread(&principal.id, body).await?;
 
@@ -570,7 +593,17 @@ pub async fn run_inspect_thread(
         st["close_reason"]
             .as_str()
             .map(|r| format!(" — reason: {r}"))
+            .or_else(|| {
+                st["cancel_reason"]
+                    .as_str()
+                    .map(|r| format!(" — cancelled: {r}"))
+            })
             .unwrap_or_default(),
+    ));
+    out.push_str(&format!(
+        "classification: {} · workflow: {}\n",
+        st["classification"].as_str().unwrap_or("?"),
+        st["workflow_profile"].as_str().unwrap_or("?"),
     ));
     out.push_str("participants:\n");
     if let Some(participants) = st["participants"].as_object() {

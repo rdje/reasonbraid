@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.1.3: the typed default is part of the contract
+
+- **An enum-shaped wire field stays honest when its default is a documented variant, not an empty profile.** The create profile landed as serde enums with `#[default]` variants: unnamed means exactly `general` / `single_agent` / explicit-invites-only — and the tests assert those defaults, so the ADR-002 single-agent decision is enforced on the wire, not just stated in prose.
+- **A registry grows by naming the entry in the one place the registry lives and letting the enumerating test fail first.** Adding `thread_cancel` to `GrantAction` broke the wire-name round-trip test until it was extended — the registry's own test is the canary that a new authority name was not forgotten.
+- **Two terminals must not share a reason field.** Cancel and close are separate events with separate `cancel_reason`/`close_reason` projection fields; the API test asserts `close_reason` stays null on cancel — a cancelled thread that answered "why did it close?" would be lying.
+- Promoted to `docs/decisions/2026-09-06_thread-api-completion.md` (`answers:` present). **Frontier `PHASE-1.2` (node: SQLite journal + enrollment + lease/presence + durable inbox).**
+
 ## _(2026-09-06)_ — PHASE-1.1.2: the identity store — the table is the record, the FK is the enforcer
 
 - **The identity table is the record; the enrollment table is the map.** Migration 0007 adds `tenants`/`human_principals`/`agent_roles`/`hosts`/`nodes`/`incarnations`/`runs` beside the `.6.1` `enrollments` table without upgrading the map into the schema — the identity tables model §8.1 exactly, and the dev name→id map stays disposable.

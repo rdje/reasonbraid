@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-06 — Thread command API completion: cancel + typed create profiles (`PHASE-1.1.3`)
+
+- `thread.cancel` lands as the abandonment terminal — the core `open|closing → cancelled` edge wired through the command API, with `cancel_reason` in the projection and a `thread.cancelled` event; distinct from a decided close (separate reasons, separate events, and the API test asserts `close_reason` stays null on cancel). `thread_cancel` joins the grant registry as its own action (the registry's wire-name test extended first — the canary that failed and taught the entry).
+- `thread.create` gains three typed, deny-unknown fields: `classification` (`general` default | `confidential`), `workflow_profile` (`single_agent` **stated default** per ADR-002 | `blind_independent` | `critique_revise` | `moderator` — non-default profiles recorded and executed as single-agent until routing work), `participant_rules` (`allow_explicit_invites` default on, `allow_join_requests` default off — §20.3 explicit participants first). Foreign fields and out-of-registry values are typed `invalid_command` rejections.
+- The CLI gains `thread cancel` and the three create flags (kebab-case human spellings normalized to the wire's snake_case — the e2e's first run caught the mismatch and the server's typed error named the values); inspection now shows classification/workflow and the cancel reason. Projection growth is additive (`#[serde(default)]`), so pre-`.1.1.3` projections still parse.
+- New live-PG tests (cancel inspectable/terminal/audited; typed fields + stated defaults + rejections); CLI e2e extended with the typed-create + cancel leg. Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_thread-api-completion.md` (`answers:`).
+
 ## 2026-09-06 — Migration 0007: the first-class identity store (`PHASE-1.1.2`)
 
 - Backlog 10's identity schema landed as `migrations/0007_identity_store.sql`: `tenants`, `human_principals`, `agent_roles`, `hosts`, `nodes`, `incarnations`, `runs` — the §8.1 hierarchy as records, with `tenant_id` on every material record (§17.2), UUIDv7 wire ids, and fail-closed foreign keys (a principal whose tenant does not exist is refused by the database). The `.6.1` `enrollments` table stays the dev bootstrap's name→id map; the incarnation carries only the §8.1-defining facts (provider/model/harness/config, validity interval) — later-feature columns arrive with their features (the 0002 precedent).

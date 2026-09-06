@@ -32,7 +32,26 @@ $ rb thread contribute --thread thr_… --text "Ship it: the experiments are gre
 $ rb thread challenge --thread thr_… --target evt_… --text "Which experiments?" --as alice
 $ rb thread revise --thread thr_… --target evt_… --text "The SQLite kill-point sweep…" --as reviewer
 $ rb thread close --thread thr_… --reason "decision reached" --as alice
+$ rb thread cancel --thread thr_… --reason "no longer needed" --as alice
 ```
+
+The create verb also takes the typed profile fields (`.1.1.3`):
+
+```text
+$ rb thread create --subject "…" --objective "…" --as alice \
+    --classification confidential \
+    --workflow-profile critique-revise \
+    --allow-join-requests
+```
+
+- `--classification` — `general` (default) | `confidential`.
+- `--workflow-profile` — `single-agent` (**the stated default**, ADR-002's
+  routing decision) | `blind-independent` | `critique-revise` | `moderator`.
+- `--allow-join-requests` — off by default: explicit participants first (§20.3).
+
+`thread.cancel` is the **abandonment terminal** (`open|closing → cancelled`,
+reason recorded) — distinct from a decided close; both are inspectable, and a
+cancelled thread refuses further content verbs with `invalid_transition`.
 
 The CLI keeps a local state dir (`./.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,

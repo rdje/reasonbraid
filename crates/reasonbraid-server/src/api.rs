@@ -319,13 +319,14 @@ pub struct EnrollResponse {
 }
 
 /// The dev admin action set a bootstrap human receives. It includes `tenant_admin`
-/// EXPLICITLY — never implied (`.5.1`).
-const ADMIN_ACTIONS: [GrantAction; 6] = [
+/// EXPLICITLY — never implied (`.5.1`); `thread_cancel` joins in `.1.1.3`.
+const ADMIN_ACTIONS: [GrantAction; 7] = [
     GrantAction::ThreadCreate,
     GrantAction::ThreadInvite,
     GrantAction::ThreadContribute,
     GrantAction::ThreadInspect,
     GrantAction::ThreadClose,
+    GrantAction::ThreadCancel,
     GrantAction::TenantAdmin,
 ];
 
@@ -1124,6 +1125,16 @@ async fn thread_command(
                 tenant,
                 GrantAction::ThreadClose,
                 request_hash(threads::OP_CLOSE, &principal, &envelope.body),
+            )
+        }
+        threads::OP_CANCEL => {
+            let body: threads::CancelBody = serde_json::from_value(envelope.body.clone())
+                .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+            let tenant = body.tenant_id;
+            (
+                tenant,
+                GrantAction::ThreadCancel,
+                request_hash(threads::OP_CANCEL, &principal, &envelope.body),
             )
         }
         other => {

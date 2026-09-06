@@ -7,8 +7,8 @@
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_enroll, run_inspect_thread, run_inspect_threads,
-    run_thread_create, run_thread_verb, BudgetArgs, Config, PrincipalRef, StateFile,
-    ThreadVerbArgs,
+    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
+    StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -66,6 +66,16 @@ enum ThreadCommand {
         budget_output_tokens: Option<u64>,
         #[arg(long)]
         budget_wall_clock: Option<u64>,
+        /// Thread classification: `general` | `confidential` (default `general`).
+        #[arg(long)]
+        classification: Option<String>,
+        /// Workflow profile: `single-agent` | `blind-independent` | `critique-revise`
+        /// | `moderator` (default `single-agent` — the ADR-002 routing default).
+        #[arg(long)]
+        workflow_profile: Option<String>,
+        /// Allow join requests (default off — explicit participants first, §20.3).
+        #[arg(long)]
+        allow_join_requests: bool,
         /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
         #[arg(long)]
         as_: Option<String>,
@@ -133,6 +143,19 @@ enum ThreadCommand {
     },
     /// Close a thread with a stop reason (contributions and open objections stay).
     Close {
+        #[arg(long)]
+        thread: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Cancel a thread — the abandonment terminal, with a reason (distinct from close).
+    Cancel {
         #[arg(long)]
         thread: String,
         #[arg(long)]
@@ -218,6 +241,9 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             budget_input_tokens,
             budget_output_tokens,
             budget_wall_clock,
+            classification,
+            workflow_profile,
+            allow_join_requests,
             as_,
             tenant,
             json,
@@ -235,12 +261,18 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             if let Some(t) = &tenant {
                 principal_for_create.tenant = Some(t.clone());
             }
+            let profile = CreateProfileArgs {
+                classification,
+                workflow_profile,
+                allow_join_requests,
+            };
             run_thread_create(
                 cfg,
                 &principal_for_create,
                 &subject,
                 &objective,
                 &budget,
+                &profile,
                 json,
             )
             .await
@@ -352,6 +384,28 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     thread_id: thread,
                     tenant,
                     operation: "thread.close",
+                    body: json!({ "reason": reason }),
+                    json_out: json,
+                },
+            )
+            .await
+        }
+        Command::Thread(ThreadCommand::Cancel {
+            thread,
+            reason,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_thread_verb(
+                cfg,
+                &state,
+                &principal,
+                &ThreadVerbArgs {
+                    thread_id: thread,
+                    tenant,
+                    operation: "thread.cancel",
                     body: json!({ "reason": reason }),
                     json_out: json,
                 },

@@ -97,9 +97,35 @@ RB_LIVE_CODEX=1 cargo test -p reasonbraid-node --test codex_live -- --ignored
 ```
 
 Offline, the same supervision mechanics run against a stub binary in plain
-`cargo test` (no provider spend). Whether the second real adapter (the
-Claude-family CLI) lands in late Phase 0 or Phase 1 is an open, director-owned
-question — the evidence report recommends Phase 1.
+`cargo test` (no provider spend).
+
+## The second real adapter: the Claude-family CLI
+
+`ClaudeCliAdapter` (`crates/reasonbraid-adapter/src/claude.rs`) supervises
+
+```text
+claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>
+```
+
+as a child process — the `.4.2` mirror, qualified against Claude Code 2.1.263
+(probe evidence in `target/claude-probes/`). The stream maps onto the contract:
+
+| Claude event | Contract event |
+| --- | --- |
+| `system/init` (`session_id`) | `ProviderRequestId` (the session id — the proof handle, arriving before the first chunk) |
+| `assistant` message text blocks | `OutputChunk` per text block (thinking blocks are skipped — the reply is the text) |
+| `result` (`is_error:false`; `usage`, `total_cost_usd`) | `Completed { usage }` — exact tokens AND money (Claude reports cost; Codex reports tokens only) |
+| `result` (`is_error:true`) | `FailedKnown` (the provider's own message) |
+| non-zero exit | `FailedKnown` (with the stderr tail) |
+
+`--restricted` removes the code-running tools and WebFetch, and `--tools ''`
+disables all tools — the boundary is content-only. `--verbose` is not optional:
+the CLI refuses `stream-json` without it, before any dispatch. The prompt
+travels after `--` (the `--tools` flag is variadic and would otherwise swallow
+it), as USER content — never config; the adapter holds no credentials (ambient
+Claude login). Status lookup is honestly unsupported (`--resume` continues a
+session; it does not query a past attempt), so a lost response stays
+`outcome_unknown`.
 
 ## Honest limits (Phase 0)
 

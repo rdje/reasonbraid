@@ -255,6 +255,9 @@ conversation without binding-governance claims.
     Acceptance: the offline suite proves the event mapping (incl. the thinking-block skip and
       the usage+cost normalization), the lost-response/exit-status/cancel/missing-binary legs,
       and the declared capabilities; every existing adapter suite stays green; clippy clean.
+    Done (`2026-09-06`): `claude.rs` landed as the `.4.2` mirror over the verified 2.1.263
+      interface; the offline suite is 10 tests (the stub exercises the REAL subprocess
+      boundary); the acceptance checklist below records the evidence.
 
   - ID: `PHASE-1.4.2`
     Status: `proposed`
@@ -293,7 +296,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.4` | `active` | `.1.3` is complete (explicit participants + simple subscriptions, backlogs 15/16) — `.1.4` decomposed (`2026-09-06`) at the code-vs-live seam: `.1.4.1` (the Claude CLI adapter core, the `.4.2` mirror) → `.1.4.2` (live qualification + ledger + book); next executable leaf `.1.4.1` |
+| 1 | `PHASE-1.4` | `active` | `.1.3` is complete (explicit participants + simple subscriptions, backlogs 15/16) — `.1.4` decomposed (`2026-09-06`) at the code-vs-live seam; `.1.4.1` done (the Claude CLI adapter core, the `.4.2` mirror) → next executable leaf `.1.4.2` (live qualification + ledger + book) |
 
 ## Changelog
 
@@ -312,6 +315,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.3` decomposed (gap census first: the `.6.2` invite dispatches work in the invite transaction with NO acceptance step — `ensure_participant` auto-accepts an invited role on first contribution; no accept/decline/expire/remove verbs or invitation records; `allow_join_requests` typed but inert; `allow_explicit_invites=false` recorded but not enforced) into `.1.3.1` (the explicit-participants contract: invitation lifecycle — invite records a pending invitation, accept/decline/remove, derived expiry, the invitation IS the acceptance capability — AND the dispatch move: work enqueues with the ACCEPT event; wiring suites + the two-host demo move to the explicit contract) and `.1.3.2` (simple subscriptions — `thread.join` under `allow_join_requests`, invite enforcement, subscription listing + CLI verbs); frontier → `.1.3.1`. Amended same-day: the lifecycle and the dispatch move are ONE contract (separating them leaves an incoherent interim — work arriving to a role that cannot act), so the original `.1.3.2` merged into `.1.3.1`.
 - `2026-09-06`: `PHASE-1-MAINT-1` done — §13 same-volume locality for the ephemeral PG cluster: `scripts/run_pg_tests.sh` now derives `ROOT` at runtime and places the data dir at `$ROOT/target/pg-ephemeral.XXXXXX` (gitignored, per-run unique, trap-cleaned — never `/tmp`); verified by two full reruns (twelve live suites + CLI e2e + demo, both `rc=0`) with a polled on-volume probe and a residue census; decision record `docs/decisions/2026-09-06_same-volume-pg-ephemeral.md`. Frontier unchanged: `.1.4`.
 - `2026-09-06`: `.1.4` decomposed (gap census first: backlogs 19/20 — the deterministic fake and the Codex adapter — are Phase-0-proven, so `.1.4`'s delta is backlog 21; the live `claude` CLI is INSTALLED, 2.1.263, so the real leg runs for real) into `.1.4.1` (the Claude CLI adapter core — the `.4.2` subprocess mirror over the VERIFIED `-p --output-format stream-json --restricted --tools '' --verbose` interface, with the offline stub suite) and `.1.4.2` (live qualification + dependency-ledger row + book chapter + decision record); frontier → `.1.4.1`.
+- `2026-09-06`: `.1.4.1` done — the Claude CLI adapter core: `claude.rs` supervises `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` (the interface pinned by 3 live probes BEFORE code: `system/init` session id, assistant text blocks, `result` usage + `total_cost_usd` money, `--verbose` required); the offline suite is 10 tests over a stub binary (real subprocess boundary; thinking blocks skipped, `is_error` results, lost responses, cancel, missing binary); all offline + all twelve live suites + demo green, clippy clean; the book's adapter chapter gains the Claude section; frontier → `.1.4.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -743,6 +747,57 @@ written now that the leaf executes.
   LIVE_STATUS, this tree's logs below — same commit. Frontier unchanged
   (`.1.4`), so `docs/TASK_TREE.md` and the book need no update.
 
+## Acceptance Checklist (PHASE-1.4.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-adapter/src/claude.rs` (new),
+`src/lib.rs` (module + re-export), `tests/claude_adapter.rs` (new) — all match `\.rs$`
+in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 21 (Claude-family adapter) is open: the Codex
+  adapter is the only real one (`ls crates/reasonbraid-adapter/src` → `codex.rs`, no
+  `claude.rs` before this leaf; `grep -n "ClaudeCliAdapter" crates/ --include='*.rs'`
+  → no matches), and the book's adapter chapter still says whether the second real
+  adapter lands "is an open, director-owned question".
+- [x] **ROOT CAUSE (WHY + WHERE)** — a harness adapter is the vendor's wire format
+  mapped onto the narrow contract; the risk is a GUESSED wire format. The fix point
+  is the `.4.2` mirror (`codex.rs`'s supervision mechanics are format-neutral) with
+  the Claude stream pinned by LIVE probes FIRST — 3 bounded probes against the
+  installed 2.1.263 (evidence on-volume in `target/claude-probes/`): `system/init`
+  carries `session_id`; `assistant` text blocks are the reply; `result` carries
+  `usage` AND `total_cost_usd`; `--verbose` is REQUIRED (the no-verbose probe was
+  refused pre-dispatch: `Error: … stream-json requires --verbose`, `rc=1`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no Claude module, no
+  suite. After: `claude.rs` (the `.4.2` mirror: `system/init` → ProviderRequestId;
+  assistant TEXT blocks → one chunk each, thinking blocks skipped; `result`
+  `is_error:false` → Completed with the FULL result event — usage under `usage`,
+  money under `total_cost_usd`; `is_error:true` → FailedKnown with the provider's
+  own message; non-zero exit → FailedKnown with the stderr tail; EOF without a
+  result → lost response; `--restricted` + `--tools ''` = content-only; the prompt
+  after `--`, never config). Live proof (offline stub over the REAL subprocess
+  boundary): `cargo test -p reasonbraid-adapter --test claude_adapter` →
+  `test result: ok. 10 passed; 0 failed` (`target/claude_offline2.log`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green
+  (`target/claude_all.log`; the only ignored test is the env-gated codex live
+  dispatch); `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI
+  e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed`
+  (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `make gate` → 13/13 at commit.
+- [x] **FIX** — `claude.rs` (EXEC_ARGS with the REQUIRED `--verbose` and the `--`
+  prompt separator, the three event arms + the pending-chunk queue, the
+  full-result-event receipt, `total_cost_usd` cost normalization);
+  `lib.rs` (`mod claude` + `pub use ClaudeCliAdapter`);
+  `tests/claude_adapter.rs` (10 tests; the suite's FIRST run caught a
+  test-authoring slip — `test result: FAILED. 9 passed; 1 failed`: the multi-chunk
+  assertion loop asserted every chunk while the Claude stub emits two text blocks;
+  the first chunk is the verbatim prompt, fixed to assert the first).
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book chapter (`adapter-boundary.md` — the
+  Claude section lands now, minus the live-test command which is `.1.4.2`'s
+  evidence) — same commit. DEV_NOTES: the durable lessons land with `.1.4.2`'s
+  decision record (one record for the whole `.1.4` leaf); the code's own doc
+  comments carry the verified interface meanwhile.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -756,6 +811,7 @@ written now that the leaf executes.
 | `2026-09-06` | `PHASE-1.3.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | the explicit-participants contract landed (pending invitations, accept/decline/remove, derived expiry, dispatch-on-accept); the first full run's only failure was the expected audit-timeline delta (the accept's audit record) — updated, rerun green |
 | `2026-09-06` | `PHASE-1.2.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all eleven live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | inbox hardening landed (quarantine + measured prune + inspection); the suite's own first runs caught the missing seed tenant and a `(i64,)`-vs-scalar sqlx annotation — both fixed, rerun green |
 | `2026-09-06` | `PHASE-1-MAINT-1` | `bash -n` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (both `rc=0`); polled probe → cluster on the repo volume (`PROBE-OK at poll 2 (~4s): target/pg-ephemeral.BPJbkS`), no `/tmp` usage, cleaned on exit; `make gate` → 13/13 | §13 same-volume locality: the ephemeral PG cluster now lives at `$ROOT/target/pg-ephemeral.XXXXXX` (runtime-derived, gitignored, per-run unique, trap-cleaned — never `/tmp`); defect leaf from `.1.1.1` closed |
+| `2026-09-06` | `PHASE-1.4.1` | `cargo test -p reasonbraid-adapter --test claude_adapter` → `test result: ok. 10 passed; 0 failed`; `cargo test --all` → every offline suite green; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `cargo clippy --all --all-targets -- -D warnings` → clean; `make gate` → 13/13 | the Claude CLI adapter core landed (`claude.rs` — the `.4.2` mirror over the live-verified 2.1.263 `-p --output-format stream-json --restricted --tools '' --verbose` interface; money cost from `total_cost_usd`); the suite's first run caught a test-authoring slip (multi-chunk assertion), fixed |
 
 ## Commit Log
 
@@ -770,3 +826,4 @@ written now that the leaf executes.
 | `PHASE-1.3.1` | `REASONBRAID-PHASE1-0011` | explicit participants: pending invitations + accept/decline/remove + derived expiry + dispatch-on-accept + race tests; `.1.3` decomposition amended in `REASONBRAID-PHASE1-0010` |
 | `PHASE-1.3.2` | `REASONBRAID-PHASE1-0012` | simple subscriptions: `thread.join` + enforced participant doors + the accept/decline race; `.1.3` complete |
 | `PHASE-1-MAINT-1` | `REASONBRAID-PHASE1-0013` | §13 same-volume locality: ephemeral PG data at `$ROOT/target/pg-ephemeral.XXXXXX`, never `/tmp`; two full reruns green + on-volume probe + residue census |
+| `PHASE-1.4.1` | `REASONBRAID-PHASE1-0015` | the Claude CLI adapter core: `claude.rs` (`.4.2` mirror over the verified 2.1.263 stream-json interface) + the 10-test offline stub suite + book section |

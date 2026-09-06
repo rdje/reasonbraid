@@ -16,7 +16,9 @@
 //! - [`fixtures`] — the sanitized outcome corpus (`fixtures/*.json`), mechanically
 //!   credential-scanned and coverage-checked.
 //!
-//! `.4.2` qualifies the first REAL harness behind this same contract.
+//! `.4.2` qualifies the first REAL harness behind this same contract, and
+//! `PHASE-1.4.1` the second: [`ClaudeCliAdapter`], the `.4.2` mirror over
+//! `claude -p --output-format stream-json`.
 //!
 //! `PHASE-0.7` lands [`bench`] — the WP7 deliberation/routing benchmark: a versioned
 //! eight-case corpus run through four workflows (single / blind-independent /
@@ -27,6 +29,7 @@
 //! See `docs/decisions/2026-09-06_fake-adapter.md` for the design record and
 //! `docs/book/src/adapter-boundary.md` for the boundary documentation.
 
+mod claude;
 mod codex;
 mod contract;
 mod fake;
@@ -34,6 +37,7 @@ pub mod fixtures;
 
 pub mod bench;
 
+pub use claude::ClaudeCliAdapter;
 pub use codex::CodexCliAdapter;
 pub use contract::{
     Adapter, AdapterCapabilities, AttemptEvent, AttemptHandle, AttemptResult, AttemptStream,

@@ -16,13 +16,13 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.4.1` — `.1.4` decomposed (`2026-09-06`,
-  director: follow the recommendation) at the code-vs-live seam: `.1.4.1` the Claude
-  CLI adapter core (the `.4.2` subprocess mirror over the VERIFIED `claude -p
-  --output-format stream-json --restricted --tools '' --verbose` interface) →
-  `.1.4.2` live qualification + ledger + book. `.1`/`.1.2`/`.1.3` are COMPLETE
+- **Active tree:** `PHASE-1` → frontier `.1.4.2` — `.1.4.1` done: `ClaudeCliAdapter`
+  landed (the `.4.2` mirror over the live-verified `claude -p --output-format
+  stream-json --restricted --tools '' --verbose` interface; 10-test offline stub
+  suite; `total_cost_usd` = known money cost). `.1`/`.1.2`/`.1.3` COMPLETE
   (backlogs 9–16); `PHASE-1-MAINT-1` done (§13 same-volume PG data).
-- **Next action:** execute `PHASE-1.4.1` — `claude.rs` + the offline stub suite.
+- **Next action:** execute `PHASE-1.4.2` — the env-gated live qualification
+  (`RB_LIVE_CLAUDE=1`), dependency-ledger row, book's live-test command, decision record.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.4` decomposition commit (pending
   defect leaf `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load —

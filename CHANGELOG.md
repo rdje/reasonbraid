@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The Claude CLI adapter core: `claude.rs`, the `.4.2` mirror (`PHASE-1.4.1`)
+
+- Backlog 21's first half landed: `ClaudeCliAdapter` (`crates/reasonbraid-adapter/src/claude.rs`) supervises `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` — the narrowest supported machine interface, qualified against the INSTALLED Claude Code 2.1.263. The stream maps: `system/init` (`session_id`) → `ProviderRequestId`; `assistant` text blocks → one chunk each (thinking blocks skipped — the reply is the text); `result` `is_error:false` → `Completed` with the FULL result event (usage under `usage`, money under `total_cost_usd` — Claude reports COST, so `cost` is `Some`, unlike Codex's `None`); `result` `is_error:true` → `FailedKnown` with the provider's own message; non-zero exit → `FailedKnown` with the stderr tail; EOF without a result → lost response.
+- The wire facts were pinned by three bounded live probes BEFORE code (no guessed formats): `--verbose` is REQUIRED by the CLI with `stream-json` (the no-verbose probe was refused pre-dispatch), the prompt must follow `--` (variadic `--tools` otherwise swallows it), and Anthropic's token counts already include caches/thinking (no folding — the one place the Codex normalizer differs).
+- `--restricted` + `--tools ''` make the boundary content-only; the adapter holds no credentials (ambient Claude login); status lookup is honestly `Unsupported` (`--resume` continues, it does not query). New `tests/claude_adapter.rs` (10 offline tests over a stub binary — the REAL subprocess boundary; the suite's first run caught a test-authoring slip on the multi-chunk assertion, fixed). All offline suites green + all twelve live-PG suites + CLI e2e + two-host demo `rc=0`; clippy clean; `make gate` 13/13. The book's adapter chapter gains the Claude section (the live-test command arrives with `.1.4.2`).
+
 ## 2026-09-06 — PHASE-1.4 decomposed: the Claude CLI adapter (`PHASE-1.4`)
 
 - Tree-first decomposition on a measured gap census: backlogs 19 (deterministic fake) and 20 (Codex adapter) are Phase-0-proven (`.4.1`/`.4.2`), so `.1.4`'s delta is backlog 21 — the Claude-family adapter as the `.4.2` mirror. The live `claude` CLI is **installed** (2.1.263), so the real harness leg runs for real, env-gated like `RB_LIVE_CODEX`.

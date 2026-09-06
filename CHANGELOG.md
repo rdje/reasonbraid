@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-06 — `.1.4` complete: the Claude adapter is LIVE-qualified (`PHASE-1.4.2`)
+
+- The env-gated live qualification test (`crates/reasonbraid-node/tests/claude_live.rs`, `RB_LIVE_CLAUDE=1`, ignored by default — the `.4.2` codex_live mirror) dispatched ONE bounded real run through the real supervisor + journal and **passed on its first run**: completed, the reply streamed, exact usage, **money cost** (`total_cost_usd` — the leg Codex cannot prove), the session id attached as the provider handle, and the honest unsupported status lookup.
+- The dependency-ledger Claude row is rewritten with the verified facts (checked_at 2026-09-06, tested 2.1.263, the stream-json interface, the required `--verbose`, content-only `--restricted --tools ''`, the conformance results); the book's adapter chapter gains the live-test command and the honest-limits bullets now name two real adapters; decision record `docs/decisions/2026-09-06_claude-cli-adapter.md` (`answers:`) + DEV_NOTES promoted to it.
+- **`.1.4` is complete — backlogs 19–21 done: the deterministic fake (Phase 0), the Codex adapter (Phase 0), and now the Claude adapter.** Two genuinely distinct harness adapters exist; each is qualified on one host + one CLI version with a revalidation trigger. `cargo test --all` green (the live test SKIPs without the env var), clippy clean, `make gate` 13/13, `make book` builds. Frontier → `.1.5` (structured contributions).
+
 ## 2026-09-06 — The Claude CLI adapter core: `claude.rs`, the `.4.2` mirror (`PHASE-1.4.1`)
 
 - Backlog 21's first half landed: `ClaudeCliAdapter` (`crates/reasonbraid-adapter/src/claude.rs`) supervises `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` — the narrowest supported machine interface, qualified against the INSTALLED Claude Code 2.1.263. The stream maps: `system/init` (`session_id`) → `ProviderRequestId`; `assistant` text blocks → one chunk each (thinking blocks skipped — the reply is the text); `result` `is_error:false` → `Completed` with the FULL result event (usage under `usage`, money under `total_cost_usd` — Claude reports COST, so `cost` is `Some`, unlike Codex's `None`); `result` `is_error:true` → `FailedKnown` with the provider's own message; non-zero exit → `FailedKnown` with the stderr tail; EOF without a result → lost response.

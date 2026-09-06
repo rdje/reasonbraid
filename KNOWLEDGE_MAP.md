@@ -39,6 +39,7 @@
 - [`2026-09-06_atomic-transaction.md`](docs/decisions/2026-09-06_atomic-transaction.md)
 - [`2026-09-06_authority-boundary.md`](docs/decisions/2026-09-06_authority-boundary.md)
 - [`2026-09-06_budget-reservation.md`](docs/decisions/2026-09-06_budget-reservation.md)
+- [`2026-09-06_claude-cli-adapter.md`](docs/decisions/2026-09-06_claude-cli-adapter.md)
 - [`2026-09-06_control-api-cli.md`](docs/decisions/2026-09-06_control-api-cli.md)
 - [`2026-09-06_envelope-representation.md`](docs/decisions/2026-09-06_envelope-representation.md)
 - [`2026-09-06_explicit-participants.md`](docs/decisions/2026-09-06_explicit-participants.md)

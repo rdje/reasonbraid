@@ -127,11 +127,18 @@ Claude login). Status lookup is honestly unsupported (`--resume` continues a
 session; it does not query a past attempt), so a lost response stays
 `outcome_unknown`.
 
-## Honest limits (Phase 0)
+The live qualification test is deliberately not run by default — it dispatches
+to the real harness and spends a few tokens:
 
-- The fake is the deterministic oracle; the Codex adapter is the first real one,
-  qualified on one host and one CLI version (the dependency ledger revalidation
-  trigger covers releases).
+```text
+RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored
+```
+
+## Honest limits
+
+- The fake is the deterministic oracle; the Codex and Claude adapters are the
+  two real ones, each qualified on one host and one CLI version (the dependency
+  ledger revalidation triggers cover releases).
 - A confirmed cancellation still leaves the result unknowable, so it lands on
-  `outcome_unknown` — `cancelled_known` remains out of Phase 0.
+  `outcome_unknown` — `cancelled_known` remains out of Phase 1.
 - Deadline and budget enforcement are the caller's (WP5 types the reservations).

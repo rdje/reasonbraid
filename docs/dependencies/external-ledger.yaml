@@ -138,26 +138,41 @@ entries:
       at the first real adapter (PHASE-0.4.2): codex-cli 0.153.4, exec --json JSONL
       interface, Apache-2.0 — see docs/evidence/2026-09-06_codex-adapter-qualification.md.
 
-  - name: "Claude Agent SDK (formerly Claude Code SDK)"
-    kind: "sdk + sidecar/cli"
+  - name: "Claude Code CLI (Claude-family harness)"
+    kind: "cli + harness"
     owner: "Anthropic"
     source_url: "https://code.claude.com/docs/en/agent-sdk/overview"
-    checked_at: "2026-09-04"
-    tested_versions: []        # pin the sidecar/CLI version at the adapter spike
-    protocol_versions: []
-    license: "unverified"
-    supported_features: []     # fill at spike
-    transports: []             # fill at spike
-    auth_modes: []             # fill at spike
-    known_semantic_losses: []
-    conformance_results: []
-    security_notes: []         # subscription-credit usage must comply with current vendor terms
+    checked_at: "2026-09-06"   # revalidated at the PHASE-1.4 adapter (its trigger)
+    tested_versions:
+      - "2.1.263"              # installed on the dev host; the adapter is qualified against it
+    protocol_versions: []      # the stream-json event stream is versioned by CLI release
+    license: "unverified"      # CLI EULA is not a package license; pin at a future spike
+    supported_features:
+      - "-p --output-format stream-json (JSONL: system/init, assistant, result)"
+      - "--restricted removes the code-running tools + WebFetch; --tools '' disables ALL tools (content-only)"
+      - "session_id in system/init — the provider handle, arriving before the first chunk"
+      - "result event: exact usage (input/output/cache tokens) AND total_cost_usd (money)"
+      - "--verbose is REQUIRED by the CLI with stream-json (refused pre-dispatch otherwise)"
+    transports:
+      - "CLI subprocess; prompt as argv AFTER --, JSONL on stdout, plaintext stderr"
+    auth_modes:
+      - "ambient user login; the adapter holds NO credentials"
+    known_semantic_losses:
+      - "no first-class status query for a past attempt (query_status -> Unsupported; --resume continues a session, it does not query)"
+      - "no provider idempotency-key option on the print path"
+      - "cancellation is kill-the-child: BestEffort, no provider proof of stopping"
+    conformance_results:
+      - "live qualification: RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live (1 passed, 2026-09-06)"
+      - "offline supervision suite: cargo test -p reasonbraid-adapter --test claude_adapter (10 passed)"
+    security_notes:
+      - "run payload travels as the USER prompt only (after --; never system config/policy, §16.6)"
+      - "the child runs --restricted --tools '' — no tools, no file writes, no WebFetch"
     upgrade_policy: >-
-      use a supervised sidecar/CLI or protocol boundary; never assume a first-party Rust
-      SDK, and revalidate against the official overview + migration guide.
+      revalidate the installed version and invocation mode on every CLI release;
+      re-run the live qualification test before any release gate claims this adapter.
     revalidation_trigger: >-
-      Agent SDK release or billing/availability change; before the first real Claude-family
-      adapter (PHASE-0.4.2) and at each release gate that claims it.
+      Claude Code CLI release or documented invocation-mode change; at each release gate
+      that claims the Claude-family adapter.
     baseline: >-
       2026-09-04: Anthropic's former Claude Code SDK is now the Claude Agent SDK. Official
       first-party SDK documentation describes Python and TypeScript, so a Rust core must use
@@ -166,3 +181,6 @@ entries:
       billing/availability remains an external, revalidated fact (ROADMAP.md §28.1). Secondary
       sources: migration guide https://code.claude.com/docs/en/agent-sdk/migration-guide and
       plan-credit support article https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
+      Revalidated 2026-09-06 at the second real adapter (PHASE-1.4): claude 2.1.263, the
+      stream-json print interface pinned by three bounded live probes (evidence on-volume in
+      target/claude-probes/), live-qualified by the env-gated claude_live suite.

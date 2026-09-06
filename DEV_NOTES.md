@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.4: probe the wire before coding the wire
+
+- **Three bounded live dispatches replaced a guessed event shape.** Before writing `claude.rs` I ran `claude -p --output-format stream-json` with and without `--verbose`, plus one deliberate refusal: the no-verbose probe failed with the CLI's own error ("stream-json requires --verbose") — the REQUIRED flag was discovered by the tool itself, not by reading prose. Probe evidence on-volume in `target/claude-probes/` (the /tmp originals deleted, census-verified — §13).
+- **A variadic flag eats the prompt.** `--tools ''` swallowed the positional prompt on the first probe ("Input must be provided either through stdin or as a prompt argument") — which taught the `--` separator the adapter's `EXEC_ARGS` now ship, and the stub suite pins (the prompt is always the LAST arg).
+- **Receipt shape is adapter-specific, the contract is not.** Claude reports MONEY (`total_cost_usd`) and pre-folded token counts; Codex reports tokens only and needs a reasoning fold. Both normalize onto the same `NormalizedUsage` — the differences live in each adapter's `normalize_usage`, never in the contract.
+- **"Resume" is not "query".** `claude --resume` continues a session; it cannot prove a past attempt's outcome — `query_status` stays `Unsupported` and a lost response stays `outcome_unknown`. The same honest leg as Codex.
+- **The live qualification passed FIRST TRY on the real harness** (`RB_LIVE_CLAUDE=1`, 1 passed in 1.91 s: completed, exact usage + money cost, session id attached as the provider handle) — the reward for probing first; the `.1.4.1` offline suite also caught its own test-authoring slip (the multi-chunk assertion) on its first run, fixed before commit.
+- Promoted to `docs/decisions/2026-09-06_claude-cli-adapter.md` (`answers:` present). **`.1.4` complete (Codex + Claude + the deterministic fake); frontier `PHASE-1.5` (structured contributions).**
+
 ## _(2026-09-06)_ — PHASE-1-MAINT-1: same-volume locality is re-derived per tool, not inherited
 
 - **A policy adoption does not reach backwards into pre-existing tools.** `run_pg_tests.sh` kept defaulting its ephemeral PG cluster to `${TMPDIR:-/tmp}` after §13 landed — the script predated the adoption and no reader re-derived its temp data from the repo root. The fix is the runtime `ROOT` derivation plus the one-line data-dir change; the defect leaf made the re-check itself the work item.

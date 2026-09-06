@@ -52,7 +52,7 @@ on the same commit. One commit per completed leaf.
 | [`RB-SEED`](tasks/RB-SEED.md) | `done` | `.3` — CLAIM_VERIFICATION adopted | repo-local |
 | [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-1` | repo-local |
 | [`PHASE-0`](tasks/PHASE-0.md) | `done` | tree complete — WP1–WP8 + `MAINT-1`/`MAINT-2`; next executable work is `PHASE-1.1` | repo-local |
-| [`PHASE-1`](tasks/PHASE-1.md) | `active` | `.1.4.2` — live qualification + ledger + book (`.1.4.1` Claude CLI adapter core done; `.1.3` invitation/subscription semantics complete) | repo-local |
+| [`PHASE-1`](tasks/PHASE-1.md) | `active` | `.1.5` — structured contributions (`.1.4` complete: Codex + Claude + deterministic fake; `.1.3` invitation/subscription semantics complete) | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `proposed` | `.1` — identity/recovery | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `proposed` | `.1` — resource registry | repo-local |

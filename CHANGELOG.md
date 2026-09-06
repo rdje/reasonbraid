@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-06 — PHASE-1.5 decomposed: typed contribution bodies, rounds, honest close (`PHASE-1.5`)
+
+- Tree-first decomposition on a measured gap census: the contribution body's `kind` is a FREE STRING (no typed enum), there are no evidence references, no round fields anywhere, and the core thread machine has NO `Inconclusive` terminal (Open/Closing/Closed/Cancelled only) — so backlog 17 needs three independent contracts.
+- `.1.5.1` the structured contribution body (`kind` → a typed deny-unknown §8.5 enum + `evidence_refs` — references only, acquisition stays Phase 4); `.1.5.2` rounds (a contribution names the round; enforced at the boundary, visible in inspection); `.1.5.3` the honest close (`outcome: decided|inconclusive` + the unresolved register + the core `Inconclusive` terminal). Votes/abstentions and the workflow-phase concept defer to Phase 5's workflow engine. `make gate` → 13/13 at commit.
+
 ## 2026-09-06 — `.1.4` complete: the Claude adapter is LIVE-qualified (`PHASE-1.4.2`)
 
 - The env-gated live qualification test (`crates/reasonbraid-node/tests/claude_live.rs`, `RB_LIVE_CLAUDE=1`, ignored by default — the `.4.2` codex_live mirror) dispatched ONE bounded real run through the real supervisor + journal and **passed on its first run**: completed, the reply streamed, exact usage, **money cost** (`total_cost_usd` — the leg Codex cannot prove), the session id attached as the provider handle, and the honest unsupported status lookup.

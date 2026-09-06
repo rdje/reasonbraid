@@ -16,15 +16,14 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.5` (structured contributions, backlog 17;
-  `proposed` — decompose or execute on pickup). `.1.4` is COMPLETE: `ClaudeCliAdapter`
-  (`.4.2` mirror over the live-verified `claude -p --output-format stream-json
-  --restricted --tools '' --verbose` interface; LIVE-qualified first-run via
-  `RB_LIVE_CLAUDE=1`) — backlogs 19–21 done (fake + Codex + Claude). `.1`/`.1.2`/`.1.3`
+- **Active tree:** `PHASE-1` → frontier `.1.5.1` — `.1.5` decomposed (`2026-09-06`) at the
+  body-vs-rounds-vs-close seams: `.1.5.1` typed contribution kinds (§8.5 enum) +
+  `evidence_refs` → `.1.5.2` rounds → `.1.5.3` honest inconclusive close (core
+  `Inconclusive` terminal). `.1.4` is COMPLETE: `ClaudeCliAdapter` live-qualified
+  (`RB_LIVE_CLAUDE=1`, first-run pass on 2.1.263) — backlogs 19–21 done. `.1`/`.1.2`/`.1.3`
   COMPLETE (backlogs 9–16); `PHASE-1-MAINT-1` done (§13 same-volume PG data).
-- **Next action:** execute `PHASE-1.5` (decompose first: phases/rounds, evidence
-  attachments, manual close, honest inconclusive outcome) or close
-  `PHASE-1-MAINT-2` (codex_adapter flake repro) in the meantime.
+- **Next action:** execute `PHASE-1.5.1` — the structured contribution body
+  (`kind` enum + evidence references, additive projection growth).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **In-flight uncommitted work:** none after the `.1.4` decomposition commit (pending
   defect leaf `PHASE-1-MAINT-2`: one-off `codex_adapter` flake under parallel load —

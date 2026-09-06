@@ -276,9 +276,57 @@ conversation without binding-governance claims.
       unsupported lookup); the acceptance checklist below records the evidence.
 
 - ID: `PHASE-1.5`
-  Status: `proposed`
+  Status: `active`
   Goal: structured contributions, phases/rounds, evidence attachments, manual close, honest inconclusive outcome
   Backlog: 17
+  Note: gap census (`2026-09-06`) — the contribution body's `kind` is a FREE STRING
+    (`grep -n 'kind: &str' crates/reasonbraid-server/src/threads.rs` → the contribute arm),
+    there are no evidence references, no round fields anywhere, `thread.close` exists but
+    the core machine has NO `Inconclusive` terminal (Open/Closing/Closed/Cancelled only —
+    `crates/reasonbraid-core/src/state.rs`), and the §8.5 message kinds are untyped prose.
+    Votes/abstentions and the workflow PHASE concept are deferred to Phase 5's workflow
+    engine (`.1.5` needs rounds, not phases); evidence acquisition stays Phase 4 (`.1.5`
+    attaches REFERENCES only — §3.7).
+  Children: `.1.5.1`–`.1.5.3` (decomposed `2026-09-06` at the body-vs-rounds-vs-close seams;
+    each contract is independent — no incoherent interim possible)
+
+  - ID: `PHASE-1.5.1`
+    Status: `active`
+    Goal: the structured contribution body — `kind` becomes a typed deny-unknown enum over
+      the §8.5 message kinds a contribution can carry (position/claim/assumption/
+      evidence_reference/challenge/rebuttal/question/summary — the initial subset; unknown
+      kinds preserve through the wire as typed refusals), and contributions gain
+      `evidence_refs` (a list of `{uri, digest?, note}` — references ONLY, no acquisition,
+      §3.7); additive `#[serde(default)]` projection growth; the CLI passes both; the
+      inspection view renders them.
+    Backlog: 17
+    Acceptance: an out-of-registry kind is a typed refusal; a contribution with evidence
+      refs renders them in the inspection view; pre-`.1.5.1` stored projections still parse;
+      all existing thread/wiring/CLI suites stay green.
+
+  - ID: `PHASE-1.5.2`
+    Status: `proposed`
+    Goal: rounds — contributions carry a `round` number (the thread's current round,
+      enforced: a contribution must name the current round or advance it by exactly one? —
+      the execution leaf settles the rule with a test-first pass), the projection records
+      the current round, and the inspection view shows rounds; the two-host demo's blind
+      round gains a real round label.
+    Backlog: 17
+    Acceptance: round assignment + boundary enforcement are typed and tested; the
+      inspection view shows the round of every contribution; existing suites + the demo
+      stay green.
+
+  - ID: `PHASE-1.5.3`
+    Status: `proposed`
+    Goal: the honest close — `thread.close` gains `outcome` (`decided` default |
+      `inconclusive`) and an `unresolved` register (the items/objections that prevented a
+      decision), the core machine gains the `Inconclusive` terminal state + transition
+      (distinct from Closed, its own reason field), the inspection view shows the outcome
+      and the register; the demo gains an inconclusive-close beat.
+    Backlog: 17
+    Acceptance: a close with `outcome: inconclusive` lands the thread on the `Inconclusive`
+      terminal with the register preserved and inspectable; a decided close behaves exactly
+      as before; the state-machine tests cover the new edge; existing suites stay green.
 
 - ID: `PHASE-1.6`
   Status: `proposed`
@@ -299,7 +347,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.5` | `proposed` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); structured contributions — phases/rounds, evidence attachments, manual close, honest inconclusive outcome (backlog 17) — is the next `.1.x` lane |
+| 1 | `PHASE-1.5` | `active` | `.1.4` is COMPLETE (Codex + Claude + the deterministic fake — backlogs 19–21); `.1.5` decomposed (`2026-09-06`) at the body-vs-rounds-vs-close seams: `.1.5.1` (typed contribution kinds + evidence references) → `.1.5.2` (rounds) → `.1.5.3` (honest inconclusive close); next executable leaf `.1.5.1` |
 
 ## Changelog
 
@@ -320,6 +368,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.4` decomposed (gap census first: backlogs 19/20 — the deterministic fake and the Codex adapter — are Phase-0-proven, so `.1.4`'s delta is backlog 21; the live `claude` CLI is INSTALLED, 2.1.263, so the real leg runs for real) into `.1.4.1` (the Claude CLI adapter core — the `.4.2` subprocess mirror over the VERIFIED `-p --output-format stream-json --restricted --tools '' --verbose` interface, with the offline stub suite) and `.1.4.2` (live qualification + dependency-ledger row + book chapter + decision record); frontier → `.1.4.1`.
 - `2026-09-06`: `.1.4.1` done — the Claude CLI adapter core: `claude.rs` supervises `claude -p --output-format stream-json --restricted --tools '' --verbose -- <prompt>` (the interface pinned by 3 live probes BEFORE code: `system/init` session id, assistant text blocks, `result` usage + `total_cost_usd` money, `--verbose` required); the offline suite is 10 tests over a stub binary (real subprocess boundary; thinking blocks skipped, `is_error` results, lost responses, cancel, missing binary); all offline + all twelve live suites + demo green, clippy clean; the book's adapter chapter gains the Claude section; frontier → `.1.4.2`.
 - `2026-09-06`: `.1.4.2` done — the live qualification leg: `RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored` dispatched ONE bounded real run through the real supervisor + journal and passed on its FIRST run (`test result: ok. 1 passed` — completed, exact usage + money cost, session id attached as the provider handle, honest unsupported lookup); the dependency-ledger Claude row now carries the verified 2.1.263 interface (checked_at, tested_versions, conformance), the book gains the live-test command, and the decision record `docs/decisions/2026-09-06_claude-cli-adapter.md` records the whole leaf; **`.1.4` is COMPLETE** (backlogs 19–21: the deterministic fake + Codex + Claude) — frontier → `.1.5`.
+- `2026-09-06`: `.1.5` decomposed (gap census first: the contribution `kind` is a free string, no evidence references, no round fields, and the core machine has NO `Inconclusive` terminal — Open/Closing/Closed/Cancelled only; votes/abstentions + workflow phases defer to Phase 5, evidence acquisition to Phase 4) into `.1.5.1` (the structured contribution body: typed §8.5 `kind` enum + `evidence_refs` — references only), `.1.5.2` (rounds: a round number on contributions, enforced at the boundary, visible in inspection), and `.1.5.3` (the honest close: `outcome: decided|inconclusive` + the unresolved register + the core `Inconclusive` terminal); frontier → `.1.5.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

@@ -38,7 +38,7 @@ use chrono::{DateTime, Utc};
 use reasonbraid_core::{
     actor_handle_for_subject, AgentRoleId, BoundaryStatus, BudgetDimensions, BudgetError,
     CommandEnvelope, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject,
-    HumanPrincipalId, NodeId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
+    HumanPrincipalId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
     PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
@@ -589,12 +589,13 @@ async fn issue_node_enroll_token(
     Json(req): Json<IssueNodeTokenRequest>,
 ) -> Result<Json<IssueNodeTokenResponse>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let node_id: NodeId = req.node_id.parse().map_err(|_| {
-        ControlApiError::invalid_command(format!(
-            "node_id `{}` is not a valid node identifier",
+    if !crate::node_channel::is_valid_node_identity(&req.node_id) {
+        return Err(ControlApiError::invalid_command(format!(
+            "node_id `{}` is not a valid node identity (a `nod_…` node id or the `rol_…` \
+             role wire id the dev profile serves)",
             req.node_id
-        ))
-    })?;
+        )));
+    }
 
     let authz = CommandAuthz {
         actor: actor_handle_for_subject(&principal),
@@ -627,7 +628,7 @@ async fn issue_node_enroll_token(
          RETURNING token_id, nonce, expires_at",
     )
     .bind(req.tenant_id.to_string())
-    .bind(node_id.to_string())
+    .bind(&req.node_id)
     .bind(&req.host_claim)
     .bind(now + ttl)
     .fetch_one(&state.pool)
@@ -639,8 +640,9 @@ async fn issue_node_enroll_token(
                 status: StatusCode::CONFLICT,
                 code: "invalid_command",
                 message: format!(
-                    "an unused enrollment token for node `{node_id}` already exists — \
-                     consume or expire it before issuing another"
+                    "an unused enrollment token for node `{}` already exists — \
+                     consume or expire it before issuing another",
+                    req.node_id
                 ),
             })
         }

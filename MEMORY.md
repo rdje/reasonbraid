@@ -16,16 +16,17 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.2.2` (the `.1` coordinator leaf is **done**;
+- **Active tree:** `PHASE-1` → frontier `.1.2.3` (the `.1` coordinator leaf is **done**;
   `.1.2` is decomposed — enrollment · authenticated channel + leases · inbox hardening —
-  and `.1.2.1` dev-profile node enrollment is **done**: one-time tokens + `node_keys` +
-  audited refusals; next is the key-proof handshake + lease/presence).
-- **Next action:** implement `PHASE-1.2.2` — the handshake carries an HMAC key-proof
-  over the channel fields, heartbeats renew a server-side lease, expiry leaves the node
-  `Offline` with visible presence (backlog 13; the existing channel suites move to the
-  authenticated contract).
+  `.1.2.1` dev-profile node enrollment **done**, `.1.2.2` the authenticated channel +
+  lease/presence **done**: CHANNEL_VERSION 2, HMAC key-proof handshake, fencing-token
+  leases with derived presence, the channel identity space is `nod_…` OR the `rol_…`
+  role wire id the dev wiring serves).
+- **Next action:** implement `PHASE-1.2.3` — durable inbox hardening (backlog 14's
+  remainder): a retention window for delivered rows and a quarantine status (with
+  reason) the replay path skips, plus an inspection surface for both.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1.2.1` commit (pending defect leaf
+- **In-flight uncommitted work:** none after the `.1.2.2` commit (pending defect leaf
   `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,

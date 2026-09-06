@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-06 — The authenticated node channel: key-proof handshake, leases, observable presence (`PHASE-1.2.2`)
+
+- Backlog 13's remainder landed: the channel is now authenticated end to end, `CHANNEL_VERSION` **2**. The handshake carries an **HMAC-SHA256 key-proof** over the canonical channel fields (the mirrored `ProofCoverage` shape IS the canonicalization), keyed with the `.1.2.1` dev secret — verified in constant time and refused `401 unauthorized` BEFORE any ledger fact is read; a missing field is a malformed request (422), a wrong proof and an unenrolled node fail identically (no existence leak).
+- A successful handshake issues a **lease** with a fresh **fencing token** (`fnc_<uuid>`, generated in PostgreSQL): the only token that renews the lease (`POST /v1/nodes/heartbeat` — live leases only) or guards `events`/`ack`/`poll`. Every handshake rotates it, so a stale process is fenced the moment a newer handshake lands. `poll` became a POST — the token never rides a query string.
+- **Presence is derived, never stored:** migration 0009's `node_leases` + `node_presence` view compute `online` from the 60 s expiry clock — expiry flips a node observably `offline` (`GET /v1/nodes/presence`; the token is never exposed), and only a fresh key-proof restores it.
+- The channel identity space widened: issuance + enrollment now accept the `rol_…` role wire id alongside `nod_…` (the dev wiring collapses node == role; a latent `.1.2.1` strictness the authenticated handshake exposed — a superset, the `.1.2.1` suites never asserted `nod`-only).
+- The node client keeps the fencing token in shared state (worker poll + heartbeat task + reconcile rotation observe one lease); `rb-node --node-secret` is required and runs a 15 s heartbeat loop. All 13 channel tests moved to the authenticated contract + 4 new (refusal classes, renewal + presence, fencing rotation, expiry → offline → re-handshake); the two-host demo now enrolls its nodes, re-POSTs the duplicate with the live fencing token, and asserts presence online before AND after the server restart (14 PASS checks, `rc=0`). Full live-PG regression green; offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_node-channel-auth.md` (`answers:`).
+
 ## 2026-09-06 — Dev-profile node enrollment: one-time tokens, one auditable transaction (`PHASE-1.2.1`)
 
 - Backlog 11 landed: `migrations/0008_node_enrollment.sql` (one-time tokens bound to tenant + node id + host claim + nonce + expiry; `node_keys` holding the dev signing secret + its SHA-256 fingerprint; the `node_enroll_audit` refusal log) plus the hosts get-or-create index on the 0007 table.

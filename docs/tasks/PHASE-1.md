@@ -108,7 +108,7 @@ conversation without binding-governance claims.
       no existing suite regresses.
 
   - ID: `PHASE-1.2.2`
-    Status: `pending`
+    Status: `done`
     Goal: authenticated channel + lease/presence (backlog 13's remainder; the
       journal's Phase-1 delta for backlog 12) — the handshake carries a key-proof
       signature over the channel fields (`.1.2.1`'s key), heartbeats renew a
@@ -116,6 +116,11 @@ conversation without binding-governance claims.
       state, and a fencing token guards lease renewal. Reconnect/cursor/version
       negotiation are already proven (`PHASE-0.3.2`).
     Backlog: 13
+    Note: the authenticated handshake exposes a latent `.1.2.1` strictness — the
+      dev wiring's node id IS the role wire id (`rol_…`), but issuance + enroll
+      accepted only `nod_…`. The channel identity space is now both (a superset;
+      the `.1.2.1` suites never asserted `nod`-only), recorded in the decision
+      record. `CHANNEL_VERSION` is now 2.
     Acceptance: a handshake without a valid proof is refused; lease expiry and
       renewal are observable through the API; every existing channel suite is
       updated to the authenticated contract and stays green; the two-host demo
@@ -169,7 +174,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.2.2` | `pending` | `.1.2.1` is done (tokens + `node_keys` + audited refusals) — the authenticated handshake rides the registered key, and heartbeats/leases make presence observable |
+| 1 | `PHASE-1.2.3` | `pending` | `.1.2.2` is done — the authenticated channel (key-proof handshake, lease/fencing, observable presence) rides the `.1.2.1` keys; inbox retention + quarantine closes backlog 14 |
 
 ## Changelog
 
@@ -181,6 +186,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.1.3` done — thread command API completion (cancel terminal + typed create profiles, stated single-agent default); decision record `docs/decisions/2026-09-06_thread-api-completion.md`; **the `.1` coordinator leaf is complete** — frontier → `.1.2`.
 - `2026-09-06`: `.1.2` decomposed (gap census first: enrollment absent, no node leases, no inbox retention/quarantine; backlog 12's journal is Phase-0-proven) into `.1.2.1` (dev-profile enrollment — cert issuance deferred to ADR-007), `.1.2.2` (authenticated channel + lease/presence), `.1.2.3` (inbox retention + quarantine); frontier → `.1.2.1`.
 - `2026-09-06`: `.1.2.1` done — one-time enrollment tokens + `node_keys` + audited refusals (denial-row pattern); the suite's first run caught a real defect (a re-issue 500 on the wire — fixed to a typed 409 with a regression assertion) and a test-side status expectation (node-channel `unauthorized` = HTTP 401); decision record `docs/decisions/2026-09-06_node-enrollment.md`; frontier → `.1.2.2`.
+- `2026-09-06`: `.1.2.2` done — the authenticated channel (CHANNEL_VERSION 2): HMAC key-proof handshake (refused before any ledger read), lease + fencing token (events/ack/poll/heartbeat ride it; every handshake rotates it), 60 s lease with DERIVED presence (`node_presence` view — expiry flips `offline`, only a fresh handshake restores), `poll` became a POST (the token never rides a query string), and the channel identity space widened to the dev role wire ids (the `.1.2.1` surfaces accepted only `nod_…`; the dev wiring collapses node == role). All 13 channel tests moved to the authenticated contract + 4 new ones; the demo now enrolls its nodes and asserts presence before/after the server restart; decision record `docs/decisions/2026-09-06_node-channel-auth.md`; frontier → `.1.2.3`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -362,6 +368,64 @@ enroll client + flags), the purge-list edits, `crates/reasonbraid-server/tests/n
   LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
   chapter — same commit.
 
+## Acceptance Checklist (PHASE-1.2.2)
+
+The CODE change owned by this leaf: `migrations/0009_node_leases.sql` (schema,
+non-code per the seam), `crates/reasonbraid-server/src/node_channel.rs` (wire
+v2 + proof/lease/presence handlers), `crates/reasonbraid-server/src/api.rs`
+(the issue-token identity relaxation), `crates/reasonbraid-node/src/channel.rs`
++ `src/node.rs` + `src/bin/rb-node.rs` (proof client, heartbeat task, required
+secret), the channel/wiring test updates, the purge-list edits, and
+`scripts/demo_two_host.sh`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 13's remainder is open: the `.1.2.1`
+  handshake is unauthenticated (the book's honest-limits said so), no node
+  leases/presence exist, and the demo never enrolls its nodes
+  (`grep -n "enroll" scripts/demo_two_host.sh` → no node-enrollment before this
+  leaf).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the channel was Phase-0-proven WITHOUT
+  identity by design ("the authenticated streaming profile arrives with WP5
+  identity"); `.1.2.1` registered the credential but nothing consumed it. The
+  fix point is the handshake (proof + lease issuance) + the fencing token as
+  the channel's credential + a DERIVED presence view (no background flipper);
+  AND a latent `.1.2.1` strictness — issuance/enroll accepted only `nod_…`
+  while the dev wiring's node id IS the `rol_…` role wire id (the demo's own
+  contract) — the identity space must accept both
+  (`docs/decisions/2026-09-06_node-channel-auth.md`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: unauthenticated
+  handshake, no leases, GET poll, `CHANNEL_VERSION 1`. After: HMAC-SHA256
+  key-proof (constant-time, refused before any ledger read — missing field 422
+  malformed vs wrong proof 401), handshake issues a lease with a fresh
+  `fnc_<uuid>` fencing token, events/ack/poll/heartbeat verify the token,
+  `heartbeat` renews only a LIVE lease, presence derives `online` from the
+  expiry clock (migration 0009 view), poll is a POST. Live proof:
+  `bash scripts/run_pg_tests.sh` → `test result: ok. 17 passed; 0 failed`
+  (`node_channel`: the 13 original tests moved to the authenticated contract +
+  4 new — missing/wrong proof refused, heartbeat renewal + observable
+  presence, fencing rotation refused on every surface, expiry → offline →
+  re-handshake heals) + the demo asserts presence online before AND after the
+  server restart (`ALL acceptance checks passed`, `rc=0`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test
+  result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 6 + 7 `passed`) + CLI e2e
+  `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks
+  passed` (14 PASS checks, `rc=0`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — migration 0009 (`node_leases` + `node_presence`);
+  `node_channel.rs` (wire v2: proof-covered handshake, token-guarded
+  events/ack/poll, POST poll, heartbeat, presence; `verify_handshake_proof`/
+  `verify_fencing`/`issue_lease`/`renew_lease`/`presence`); `api.rs` +
+  enroll (`is_valid_node_identity`: `nod_…` OR `rol_…`); the node client
+  (secret + shared fencing-token state, `compute_key_proof`, `heartbeat`,
+  `NotAuthenticated`); `Node::open` gains the secret; `rb-node --node-secret`
+  required + the 15 s heartbeat task; the channel/wiring tests; the demo
+  (enrollment + secrets + fencing-token duplicate POST + authenticated poll
+  probe + presence evidence); the book's node-channel + two-host-demo
+  chapters rewritten.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-06_node-channel-auth.md` gained `answers:`), MEMORY,
+  LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md` frontier, the book
+  chapters — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -370,6 +434,7 @@ enroll client + flags), the purge-list edits, `crates/reasonbraid-server/tests/n
 | `2026-09-06` | `PHASE-1.1.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 7 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13 | identity store landed (migration 0007 + enroll wiring); the new suite caught a test-authored bootstrap/replay confusion on its first run — fixed, `test result: ok. 3 passed` |
 | `2026-09-06` | `PHASE-1.1.3` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all nine live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | thread command API complete — cancel terminal + typed create profiles with stated defaults; the e2e's first run caught the kebab-vs-snake profile spelling, fixed by CLI normalization |
 | `2026-09-06` | `PHASE-1.2.1` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 13 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (12 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | node enrollment landed (one-time tokens + keys + audited refusals); the suite caught a real re-issue-500 defect (fixed to typed 409 + regression assertion) and the 401-vs-403 expectation |
+| `2026-09-06` | `PHASE-1.2.2` | `cargo clippy` → clean; `cargo test --all` → all offline suites green; `bash scripts/run_pg_tests.sh` → all ten live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 9 + 3 + 17 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + two-host demo `ALL acceptance checks passed` (14 PASS, `rc=0`); `make gate` → 13/13; `make book` builds | authenticated channel landed (key-proof handshake, lease/fencing, derived presence); the suite's own first runs caught the missing-field-422 vs wrong-proof-401 wire distinction and the tenant-purge FK gap — both fixed, rerun green |
 
 ## Commit Log
 
@@ -379,3 +444,4 @@ enroll client + flags), the purge-list edits, `crates/reasonbraid-server/tests/n
 | `PHASE-1.1.2` | `REASONBRAID-PHASE1-0003` | migration 0007 + enroll identity wiring + `tests/identity_store.rs` + decision record |
 | `PHASE-1.1.3` | `REASONBRAID-PHASE1-0004` | `thread.cancel` + typed create profiles + CLI verb/flags + decision record; `.1` complete |
 | `PHASE-1.2.1` | `REASONBRAID-PHASE1-0006` | enrollment tokens + node keys + audited refusals + decision record |
+| `PHASE-1.2.2` | `REASONBRAID-PHASE1-0007` | authenticated channel v2: key-proof handshake + lease/fencing + derived presence + identity-space relaxation + demo/demo-book updates |

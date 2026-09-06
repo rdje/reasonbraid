@@ -104,16 +104,19 @@ pub struct Node {
 
 impl Node {
     /// Open (or create) the journal at `journal_path` and build the outbound channel
-    /// toward `base_url`. The node starts `Offline`; call [`Node::reconcile`].
+    /// toward `base_url`, proving the node's identity with `key_secret` (the dev
+    /// signing secret enrolled at `.1.2.1`). The node starts `Offline`; call
+    /// [`Node::reconcile`].
     pub async fn open(
         journal_path: impl AsRef<Path>,
         base_url: impl Into<String>,
         node_id: String,
+        key_secret: String,
     ) -> Result<Self, NodeError> {
         Ok(Self {
             node_id: node_id.clone(),
             journal: Journal::open(journal_path).await?,
-            channel: NodeChannel::new(base_url, node_id),
+            channel: NodeChannel::new(base_url, node_id, key_secret),
             state: Arc::new(RwLock::new(NodeState::Offline)),
         })
     }
@@ -174,7 +177,9 @@ impl Node {
             })
             .collect();
 
-        // 3. The handshake exchange.
+        // 3. The handshake exchange. The key-proof is the CHANNEL's job (it owns
+        //    the secret): it overwrites this placeholder with the HMAC over the
+        //    fields reported here, so the proof always covers what is sent.
         let response = self
             .channel
             .handshake(&HandshakeRequest {
@@ -183,6 +188,7 @@ impl Node {
                 last_acked_cursor,
                 pending_operations,
                 ambiguous_attempts,
+                key_proof: String::new(),
             })
             .await?;
 

@@ -28,10 +28,15 @@ reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
 # in the same crate is the conformance oracle the supervisor tests replay.
 reasonbraid-adapter = { path = "../reasonbraid-adapter", version = "0.1.0" }
 # The outbound channel's HTTP client (PHASE-0.3.2): plain HTTP/1 JSON for the loopback
-# dev profile — no TLS features yet (WP5 identity brings the authenticated profile).
+# dev profile — no TLS features yet (the `.1.2.2` key-proof rides the dev secret; the
+# mTLS streaming profile is ADR-006/ADR-007, Phase 2).
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The `.1.2.2` handshake key-proof: HMAC-SHA256 over the canonical channel fields
+# with the node's dev secret (mirrors the server's verification exactly).
+hmac = "0.12"
+sha2 = "0.10"
 # sqlite: the embedded node journal (§11.4). Same driver stack as the server's Postgres
 # side; the bundled SQLite keeps the build hermetic (no system library dependency).
 # migrate: `sqlx::migrate!` embeds `migrations/` in the binary — the journal schema

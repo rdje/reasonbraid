@@ -1,16 +1,20 @@
-//! WP3 node channel integration tests (`PHASE-0.3.2`): the REAL outbound channel —
-//! the axum server in this crate and the node client from `reasonbraid-node` talk over
-//! actual `127.0.0.1` sockets, with the durable PostgreSQL inbox behind the server.
+//! WP3 node channel integration tests (`PHASE-0.3.2`; the `.1.2.2` authenticated
+//! contract): the REAL outbound channel — the axum server in this crate and the
+//! node client from `reasonbraid-node` talk over actual `127.0.0.1` sockets, with
+//! the durable PostgreSQL inbox + lease store behind the server.
 //!
 //! Run with `scripts/run_pg_tests.sh` locally or the `pg-tests` CI job. Without
-//! `DATABASE_URL` these skip, so `make check` stays green offline. The node side needs
-//! no service: its SQLite journal is a file.
+//! `DATABASE_URL` these skip, so `make check` stays green offline. The node side
+//! needs no service: its SQLite journal is a file.
 //!
 //! The acceptance: reconnect exchanges the last acknowledged server cursor and the
 //! pending local operation ids; a duplicated command never creates a second local
 //! operation; the node is not schedulable until reconciliation completes. Plus the WP3
-//! exercises: network loss, server restart, duplicate delivery, and cursor rewind
-//! (the node reporting a cursor this server cannot reproduce).
+//! exercises: network loss, server restart, duplicate delivery, cursor rewind
+//! (the node reporting a cursor this server cannot reproduce) — and the `.1.2.2`
+//! authentication: a handshake without a valid key-proof is refused, heartbeats
+//! renew the lease, a newer handshake fences the old token, and expiry flips
+//! presence to `offline` and refuses channel traffic.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -22,8 +26,12 @@ use reasonbraid_server::{node_router, NodeChannelState};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
-/// The channel tests own the inbox/event tables (like the outbox tests own the queue):
-/// tests never run concurrently against the same PG database.
+/// The dev signing secret every seeded node in this suite shares (the dev
+/// trust-store stance: the server stores it, tests read it back from node_keys).
+const DEV_SECRET: &str = "dev-secret";
+
+/// The channel tests own the inbox/event/lease/identity tables (like the outbox
+/// tests own the queue): tests never run concurrently against the same PG database.
 static CHANNEL_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
 async fn channel_guard() -> tokio::sync::MutexGuard<'static, ()> {
@@ -50,16 +58,80 @@ async fn pool() -> Option<PgPool> {
         .run(&pool)
         .await
         .expect("apply migrations");
-    // These tests exclusively own the channel tables for their duration.
-    sqlx::query("DELETE FROM node_events")
-        .execute(&pool)
-        .await
-        .expect("purge node_events");
-    sqlx::query("DELETE FROM node_inbox")
-        .execute(&pool)
-        .await
-        .expect("purge node_inbox");
+    // These tests exclusively own the channel + identity + lease tables for their
+    // duration (FK order: leases and keys before nodes, nodes before hosts, every
+    // tenant-referencing table before tenants).
+    for table in [
+        "outbox_delivery",
+        "outbox",
+        "node_events",
+        "node_inbox",
+        "node_leases",
+        "budget_reservations",
+        "budget_ceilings",
+        "authorization_records",
+        "authority_grants",
+        "enrollments",
+        "enrollment_boundaries",
+        "node_enroll_audit",
+        "node_keys",
+        "node_enrollment_tokens",
+        "runs",
+        "incarnations",
+        "nodes",
+        "hosts",
+        "agent_roles",
+        "human_principals",
+        "tenants",
+        "idempotency",
+        "event_log",
+        "aggregate_state",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table}"))
+            .execute(&pool)
+            .await
+            .expect("purge table");
+    }
+    // The seed tenant the `seed_node` host rows reference.
+    sqlx::query(
+        "INSERT INTO tenants (tenant_id, name) \
+         VALUES ('ten_00000000-0000-7000-8000-000000000000', 'channel-seed') \
+         ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed tenant");
     Some(pool)
+}
+
+/// Seed an enrolled node the `.1.2.1` way (host → node → key rows) — the
+/// `.1.2.2` handshake reads `node_keys` for this id. The enrollment ENDPOINT's
+/// own semantics are proven by `node_enrollment.rs`; here the suite owns its
+/// identity rows directly so each channel test starts from a known enrolled state.
+async fn seed_node(pool: &PgPool, node_id: &str) {
+    let host_id = format!("hst_seed_{}", &node_id[4..]);
+    let host_name = format!("seed-{node_id}");
+    sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ($1, $2, $3)")
+        .bind(&host_id)
+        .bind("ten_00000000-0000-7000-8000-000000000000")
+        .bind(&host_name)
+        .execute(pool)
+        .await
+        .expect("seed host");
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
+        .bind(node_id)
+        .bind(&host_id)
+        .bind("ten_00000000-0000-7000-8000-000000000000")
+        .execute(pool)
+        .await
+        .expect("seed node");
+    sqlx::query("INSERT INTO node_keys (node_id, key_fingerprint, key_secret) VALUES ($1, $2, $3)")
+        .bind(node_id)
+        .bind(format!("seed-fingerprint-{node_id}"))
+        .bind(DEV_SECRET)
+        .execute(pool)
+        .await
+        .expect("seed key");
 }
 
 /// The running server half: an axum listener on an ephemeral loopback port backed by the
@@ -138,14 +210,20 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000001".to_string();
+    seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_fresh_{i}")).await;
     }
 
-    let node = Node::open(journal_path("fresh"), server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        journal_path("fresh"),
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     assert_eq!(node.state().await, NodeState::Offline);
 
     node.reconcile().await.expect("first reconcile");
@@ -172,13 +250,19 @@ async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000002".to_string();
+    seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_tail_{i}")).await;
     }
-    let node = Node::open(journal_path("tail"), server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        journal_path("tail"),
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.unwrap();
 
     // Two more commands arrive server-side while the node is away (the "crash").
@@ -209,6 +293,7 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000003".to_string();
+    seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_dup_{i}")).await;
@@ -217,6 +302,7 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
         journal_path("duplicate"),
         server.base_url(),
         node_id.clone(),
+        DEV_SECRET.to_string(),
     )
     .await
     .unwrap();
@@ -250,6 +336,7 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     let Some(pool) = pool().await else { return };
     let state = NodeChannelState::new(pool.clone());
     let node_id = "nod_00000000-0000-7000-8000-000000000004".to_string();
+    seed_node(&pool, &node_id).await;
 
     // A port with nothing listening: the channel is unreachable.
     let dead = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -257,7 +344,7 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     drop(dead);
 
     let journal = journal_path("schedulable");
-    let node = Node::open(&journal, dead_url, node_id.clone())
+    let node = Node::open(&journal, dead_url, node_id.clone(), DEV_SECRET.to_string())
         .await
         .unwrap();
     assert_eq!(node.state().await, NodeState::Offline);
@@ -277,9 +364,14 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     // Bring the server up (same journal): reconciliation completes → schedulable.
     enqueue(&state, &node_id, "cmd_sched_1").await;
     let server = TestServer::start(&pool).await;
-    let node = Node::open(&journal, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile()
         .await
         .expect("reconcile against the live server");
@@ -305,6 +397,7 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000005".to_string();
+    seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("ambiguous-unknown");
     {
@@ -340,9 +433,14 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
             .unwrap();
     }
 
-    let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.expect("reconcile");
 
     let ambiguous = node.journal().ambiguous_attempts().await.unwrap();
@@ -364,6 +462,7 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000006".to_string();
+    seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("ambiguous-adjudicated");
     let (op, event_id) = {
@@ -421,9 +520,14 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
         .await
         .unwrap();
 
-    let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.expect("reconcile");
 
     // The directive landed: the attempt is reconciled, the ambiguity is closed.
@@ -457,6 +561,7 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000007".to_string();
+    seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("reemit");
     let op = {
@@ -496,9 +601,14 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
             .unwrap();
     }
 
-    let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.expect("reconcile");
 
     let (event_id,): (String,) =
@@ -521,6 +631,7 @@ async fn server_restart_preserves_the_inbox_and_resume() {
     let Some(pool) = pool().await else { return };
     let state = NodeChannelState::new(pool.clone());
     let node_id = "nod_00000000-0000-7000-8000-000000000008".to_string();
+    seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("restart");
     {
@@ -528,9 +639,14 @@ async fn server_restart_preserves_the_inbox_and_resume() {
         for i in 1..=2 {
             enqueue(&state, &node_id, &format!("cmd_rst_{i}")).await;
         }
-        let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-            .await
-            .unwrap();
+        let node = Node::open(
+            &journal_path,
+            server.base_url(),
+            node_id.clone(),
+            DEV_SECRET.to_string(),
+        )
+        .await
+        .unwrap();
         node.reconcile().await.unwrap();
         server.crash(); // the server process dies
     }
@@ -539,9 +655,14 @@ async fn server_restart_preserves_the_inbox_and_resume() {
     let dead = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let dead_url = format!("http://{}", dead.local_addr().unwrap());
     drop(dead);
-    let node = Node::open(&journal_path, dead_url, node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        dead_url,
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     assert!(node.reconcile().await.is_err());
     assert_ne!(node.state().await, NodeState::Schedulable);
 
@@ -550,9 +671,14 @@ async fn server_restart_preserves_the_inbox_and_resume() {
     for i in 3..=4 {
         enqueue(&state, &node_id, &format!("cmd_rst_{i}")).await;
     }
-    let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile()
         .await
         .expect("resume against the restarted server");
@@ -575,13 +701,19 @@ async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000009".to_string();
+    seed_node(&pool, &node_id).await;
 
     enqueue(&state, &node_id, "cmd_ahead_1").await;
     enqueue(&state, &node_id, "cmd_ahead_2").await;
 
-    let node = Node::open(journal_path("ahead"), server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        journal_path("ahead"),
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     // The node claims to hold cursor 99 — this server's ledger only goes to 2.
     node.journal().set_last_acked_cursor(99).await.unwrap();
 
@@ -606,22 +738,45 @@ async fn poll_returns_the_tail_after_a_cursor() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000010".to_string();
+    seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_poll_{i}")).await;
     }
-    let node = Node::open(journal_path("poll"), server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        journal_path("poll"),
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.unwrap();
 
     for i in 4..=5 {
         enqueue(&state, &node_id, &format!("cmd_poll_{i}")).await;
     }
-    let tail = reasonbraid_node::NodeChannel::new(server.base_url(), node_id)
-        .poll(3)
+    // A fresh client must authenticate (handshake → lease + fencing token) before
+    // polling; the handshake itself rotates the lease, fencing the node's earlier
+    // token — which is exactly the fencing contract (the worker's channel is the
+    // one `reconcile` authenticated, and it shares the token with `node`).
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            key_proof: String::new(),
+        })
         .await
-        .expect("poll");
+        .expect("handshake");
+    let tail = channel.poll(3).await.expect("poll");
 
     assert_eq!(tail.current_cursor, 5);
     assert_eq!(tail.commands.len(), 2);
@@ -646,7 +801,8 @@ async fn handshake_rejects_version_mismatch_and_unknown_fields() {
             "node_id": "nod_00000000-0000-7000-8000-000000000011",
             "last_acked_cursor": 0,
             "pending_operations": [],
-            "ambiguous_attempts": []
+            "ambiguous_attempts": [],
+            "key_proof": "00"
         }))
         .send()
         .await
@@ -687,6 +843,7 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000011".to_string();
+    seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("known-events");
     let (op_known, _op_new) = {
@@ -762,9 +919,14 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
         .await
         .unwrap();
 
-    let node = Node::open(&journal_path, server.base_url(), node_id.clone())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    )
+    .await
+    .unwrap();
     node.reconcile().await.expect("reconcile");
 
     let known_receipts: i64 =
@@ -792,12 +954,14 @@ async fn duplicate_event_emission_dedupes_server_side() {
     let state = NodeChannelState::new(pool.clone());
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000012".to_string();
+    seed_node(&pool, &node_id).await;
 
     enqueue(&state, &node_id, "cmd_dedupe").await;
     let node = Node::open(
         journal_path("event-dedupe"),
         server.base_url(),
         node_id.clone(),
+        DEV_SECRET.to_string(),
     )
     .await
     .unwrap();
@@ -827,5 +991,380 @@ async fn duplicate_event_emission_dedupes_server_side() {
             .unwrap();
     assert_eq!(receipts, 1, "two emissions, one receipt");
     assert!(node.journal().pending_events().await.unwrap().is_empty());
+    server.crash();
+}
+
+// ── The `.1.2.2` authenticated contract ─────────────────────────────────────────
+
+/// THE `.1.2.2` acceptance: a handshake without a valid key-proof is refused —
+/// a missing field is a malformed request (422 at the strict wire boundary), a
+/// wrong proof and an unenrolled node fail IDENTICALLY (`401 unauthorized`, no
+/// existence leak), and no ledger fact is readable without an authenticated
+/// handshake.
+#[tokio::test]
+async fn handshake_without_a_valid_key_proof_is_refused() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000101".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let handshake = |key_proof: Option<String>| {
+        let client = client.clone();
+        let node_id = node_id.clone();
+        let base = server.base_url();
+        async move {
+            let mut body = json!({
+                "channel_version": 2,
+                "node_id": node_id,
+                "last_acked_cursor": 0,
+                "pending_operations": [],
+                "ambiguous_attempts": [],
+            });
+            if let Some(proof) = key_proof {
+                body["key_proof"] = json!(proof);
+            }
+            client
+                .post(format!("{base}/v1/nodes/handshake"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // No proof at all: a MISSING field is a malformed request — the strict wire
+    // boundary refuses it before the handler runs (422).
+    let missing = handshake(None).await;
+    assert_eq!(
+        missing.status().as_u16(),
+        422,
+        "a missing proof is malformed"
+    );
+    // A structurally valid but wrong proof (HMAC over nothing relevant): the
+    // handler's constant-time verification refuses it 401, identically to an
+    // unenrolled node.
+    let wrong = handshake(Some(
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+    ))
+    .await;
+    assert_eq!(wrong.status().as_u16(), 401, "a wrong proof is refused");
+    let body: Value = wrong.json().await.unwrap();
+    assert_eq!(body["code"], "unauthorized");
+    assert_eq!(body["message"], "the handshake key-proof was refused");
+
+    // An unenrolled node fails the same way (no existence leak).
+    let stranger = client
+        .post(format!("{}/v1/nodes/handshake", server.base_url()))
+        .json(&json!({
+            "channel_version": 2,
+            "node_id": "nod_00000000-0000-7000-8000-0000000001ff",
+            "last_acked_cursor": 0,
+            "pending_operations": [],
+            "ambiguous_attempts": [],
+            "key_proof": "00",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stranger.status().as_u16(), 401);
+
+    // Channel traffic without an authenticated handshake is refused too. A
+    // request that OMITS the fencing token is malformed at the strict boundary
+    // (422); a WRONG token reaches the lease check and is refused 401.
+    let malformed = client
+        .post(format!("{}/v1/nodes/events", server.base_url()))
+        .json(&json!({
+            "channel_version": 2,
+            "node_id": node_id,
+            "event_id": "evt_00000000-0000-7000-8000-000000000101",
+            "operation_id": "op_00000000-0000-7000-8000-000000000101",
+            "payload": { "kind": "some_signal" },
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        malformed.status().as_u16(),
+        422,
+        "a missing token is malformed"
+    );
+    let unauthenticated = client
+        .post(format!("{}/v1/nodes/events", server.base_url()))
+        .json(&json!({
+            "channel_version": 2,
+            "node_id": node_id,
+            "event_id": "evt_00000000-0000-7000-8000-000000000101",
+            "operation_id": "op_00000000-0000-7000-8000-000000000101",
+            "payload": { "kind": "some_signal" },
+            "fencing_token": "fnc_not-the-live-token",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status().as_u16(), 401);
+
+    // Presence: the seeded node exists but holds no lease — observably offline.
+    let presence = client
+        .get(format!(
+            "{}/v1/nodes/presence?node_id={node_id}",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(presence.status().as_u16(), 200);
+    let p: Value = presence.json().await.unwrap();
+    assert_eq!(p["online"], json!(false));
+    assert!(p["last_seen_at"].is_null() && p["lease_expires_at"].is_null());
+    server.crash();
+}
+
+/// Heartbeats renew a LIVE lease: every renewal pushes the expiry forward and the
+/// presence surface reflects it (`last_seen_at` advances, `online` stays true).
+#[tokio::test]
+async fn heartbeat_renews_the_lease_and_presence_shows_online() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000102".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    );
+    let handshake = channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            key_proof: String::new(),
+        })
+        .await
+        .expect("handshake");
+    let first_expiry = handshake.lease_expires_at;
+
+    let presence = async || -> Value {
+        client
+            .get(format!(
+                "{}/v1/nodes/presence?node_id={node_id}",
+                server.base_url()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    };
+    let p = presence().await;
+    assert_eq!(
+        p["online"],
+        json!(true),
+        "the handshake made the node online"
+    );
+    assert!(p["last_seen_at"].is_string());
+
+    let renewal = channel.heartbeat().await.expect("heartbeat");
+    assert_eq!(renewal.fencing_token, handshake.fencing_token);
+    assert!(
+        renewal.lease_expires_at >= first_expiry,
+        "a heartbeat pushes the expiry forward"
+    );
+    let p = presence().await;
+    assert_eq!(p["online"], json!(true), "presence stays online");
+
+    // A second heartbeat renews again — and the lease is visible through the API.
+    let first_seen = p["last_seen_at"].as_str().unwrap().to_string();
+    let renewal2 = channel.heartbeat().await.expect("second heartbeat");
+    assert!(renewal2.lease_expires_at >= renewal.lease_expires_at);
+    let p = presence().await;
+    assert!(
+        p["last_seen_at"].as_str().unwrap() >= first_seen.as_str(),
+        "last_seen_at advances with the renewal"
+    );
+    server.crash();
+}
+
+/// The fencing contract: a second handshake rotates the lease — the OLD token is
+/// fenced and every channel surface refuses it, while the new token works. A
+/// stale process (one that missed the rotation) cannot write anything.
+#[tokio::test]
+async fn a_second_handshake_fences_the_previous_lease() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000103".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let handshake = async || -> String {
+        let channel = reasonbraid_node::NodeChannel::new(
+            server.base_url(),
+            node_id.clone(),
+            DEV_SECRET.to_string(),
+        );
+        channel
+            .handshake(&reasonbraid_node::HandshakeRequest {
+                channel_version: reasonbraid_node::CHANNEL_VERSION,
+                node_id: node_id.clone(),
+                last_acked_cursor: 0,
+                pending_operations: vec![],
+                ambiguous_attempts: vec![],
+                key_proof: String::new(),
+            })
+            .await
+            .expect("handshake")
+            .fencing_token
+    };
+    let old_token = handshake().await;
+    let new_token = handshake().await;
+    assert_ne!(old_token, new_token, "every handshake rotates the token");
+
+    let base = server.base_url();
+    let probe = |path: &'static str, token: &str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let node_id = node_id.clone();
+        let token = token.to_string();
+        async move {
+            let mut body = body;
+            body["fencing_token"] = json!(token);
+            body["channel_version"] = json!(2);
+            body["node_id"] = json!(node_id);
+            client
+                .post(format!("{base}{path}"))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        }
+    };
+
+    // The old token is fenced on EVERY surface.
+    assert_eq!(
+        probe("/v1/nodes/heartbeat", &old_token, json!({})).await,
+        401,
+        "heartbeat with a fenced token is refused"
+    );
+    assert_eq!(
+        probe(
+            "/v1/nodes/events",
+            &old_token,
+            json!({ "event_id": "evt_fenced", "operation_id": "op_fenced", "payload": {} }),
+        )
+        .await,
+        401,
+        "events with a fenced token are refused"
+    );
+    assert_eq!(
+        probe("/v1/nodes/ack", &old_token, json!({ "ack_cursor": 0 })).await,
+        401,
+        "ack with a fenced token is refused"
+    );
+    assert_eq!(
+        probe("/v1/nodes/poll", &old_token, json!({ "after_cursor": 0 })).await,
+        401,
+        "poll with a fenced token is refused"
+    );
+
+    // The new token is the live lease's.
+    assert_eq!(
+        probe("/v1/nodes/heartbeat", &new_token, json!({})).await,
+        200,
+        "the current token renews"
+    );
+    server.crash();
+}
+
+/// Lease expiry is observable AND enforced: backdating the expiry flips presence
+/// to `offline` and refuses channel traffic (a heartbeat cannot resurrect an
+/// expired lease) — only a fresh handshake, a NEW key-proof, restores it.
+#[tokio::test]
+async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000104".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        DEV_SECRET.to_string(),
+    );
+    let handshake_req = reasonbraid_node::HandshakeRequest {
+        channel_version: reasonbraid_node::CHANNEL_VERSION,
+        node_id: node_id.clone(),
+        last_acked_cursor: 0,
+        pending_operations: vec![],
+        ambiguous_attempts: vec![],
+        key_proof: String::new(),
+    };
+    let first = channel.handshake(&handshake_req).await.expect("handshake");
+    assert_eq!(
+        first.fencing_token,
+        channel.heartbeat().await.expect("heartbeat").fencing_token,
+        "sanity: a heartbeat echoes the live token (only the handshake rotates)"
+    );
+
+    let presence = async || -> Value {
+        client
+            .get(format!(
+                "{}/v1/nodes/presence?node_id={node_id}",
+                server.base_url()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    };
+    assert_eq!(presence().await["online"], json!(true));
+
+    // The clock runs out (the suite fast-forwards it; a real expiry is just time).
+    sqlx::query(
+        "UPDATE node_leases SET lease_expires_at = now() - interval '1 second' WHERE node_id = $1",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("backdate the lease");
+    assert_eq!(
+        presence().await["online"],
+        json!(false),
+        "expiry flips presence to offline"
+    );
+
+    // Channel traffic on the expired lease is refused...
+    let expired_heartbeat = channel.heartbeat().await.unwrap_err();
+    assert!(
+        expired_heartbeat.to_string().contains("expired"),
+        "got: {expired_heartbeat}"
+    );
+    let expired_ack = channel.acknowledge(0).await.unwrap_err();
+    assert!(
+        expired_ack.to_string().contains("expired"),
+        "got: {expired_ack}"
+    );
+
+    // ...and a heartbeat cannot resurrect it; only a new key-proof can.
+    let second = channel
+        .handshake(&handshake_req)
+        .await
+        .expect("re-handshake");
+    assert_ne!(second.fencing_token, first.fencing_token);
+    assert_eq!(presence().await["online"], json!(true));
+    channel.heartbeat().await.expect("the new lease renews");
     server.crash();
 }

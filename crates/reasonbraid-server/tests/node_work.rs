@@ -22,6 +22,10 @@ use reasonbraid_server::{api_router, node_router, CHANNEL_VERSION, PRINCIPAL_HEA
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
+/// The dev signing secret every node in this suite enrolls with (the dev
+/// trust-store stance; the `.1.2.2` handshake proves possession of it).
+const DEV_SECRET: &str = "dev-secret";
+
 /// The wiring tests own the thread/channel/authority/budget tables: tests never
 /// run concurrently against the same PG database.
 static WIRING_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
@@ -56,6 +60,7 @@ async fn pool() -> Option<PgPool> {
         "outbox",
         "node_events",
         "node_inbox",
+        "node_leases",
         "budget_reservations",
         "budget_ceilings",
         "authorization_records",
@@ -163,9 +168,56 @@ async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) 
     (status, response.json().await.expect("get json"))
 }
 
-/// The public channel path: the node reports holding nothing and receives its
-/// inbox replay.
-async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value {
+/// Enroll a node through the PUBLIC surface (`.1.2.1`): an authorized human
+/// issues a one-time token and the node consumes it with its dev secret. The
+/// dev wiring collapses node==role: the node id IS the role wire id.
+async fn enroll_node(
+    client: &reqwest::Client,
+    base: &str,
+    human: &str,
+    tenant: &str,
+    node_id: &str,
+    secret: &str,
+) {
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll-tokens"))
+        .header(PRINCIPAL_HEADER, human)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "host_claim": "seed-host",
+        }))
+        .send()
+        .await
+        .expect("issue-token request");
+    assert_eq!(response.status().as_u16(), 200, "the token issues");
+    let issued: Value = response.json().await.expect("issue-token json");
+
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll"))
+        .json(&json!({
+            "token_id": issued["token_id"],
+            "node_id": node_id,
+            "host_claim": "seed-host",
+            "nonce": issued["nonce"],
+            "key_secret": secret,
+        }))
+        .send()
+        .await
+        .expect("enroll request");
+    assert_eq!(response.status().as_u16(), 200, "the node enrolls");
+}
+
+/// The authenticated public channel path (`.1.2.2`): the node reports holding
+/// nothing, proves its key over the reported fields, and receives its inbox
+/// replay + a fresh lease. Returns the response and the fencing token.
+async fn handshake(
+    client: &reqwest::Client,
+    base: &str,
+    node_id: &str,
+    secret: &str,
+) -> (Value, String) {
+    let proof = reasonbraid_node::compute_key_proof(CHANNEL_VERSION, node_id, 0, &[], &[], secret);
     let response = client
         .post(format!("{base}/v1/nodes/handshake"))
         .json(&json!({
@@ -174,18 +226,25 @@ async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value
             "last_acked_cursor": 0,
             "pending_operations": [],
             "ambiguous_attempts": [],
+            "key_proof": proof,
         }))
         .send()
         .await
         .expect("handshake request");
     assert_eq!(response.status().as_u16(), 200, "handshake succeeds");
-    response.json().await.expect("handshake json")
+    let body: Value = response.json().await.expect("handshake json");
+    let token = body["fencing_token"]
+        .as_str()
+        .expect("the handshake returns a fencing token")
+        .to_string();
+    (body, token)
 }
 
 async fn submit_event(
     client: &reqwest::Client,
     base: &str,
     node_id: &str,
+    fencing_token: &str,
     event_id: &str,
     operation_id: &str,
     payload: &Value,
@@ -198,6 +257,7 @@ async fn submit_event(
             "event_id": event_id,
             "operation_id": operation_id,
             "payload": payload,
+            "fencing_token": fencing_token,
         }))
         .send()
         .await
@@ -246,6 +306,10 @@ async fn bootstrap(client: &reqwest::Client, base: &str) -> (String, String, Str
     .await;
     assert_eq!(status, 200, "role enrolls");
     let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    // The dev wiring's node IS the role: enroll it (`.1.2.1`) so the `.1.2.2`
+    // authenticated handshake has a key to verify.
+    enroll_node(client, base, &human_id, &tenant, &role_id, DEV_SECRET).await;
 
     let (status, created) = command(
         client,
@@ -313,7 +377,7 @@ async fn invite_dispatches_work_with_a_reservation() {
     assert_eq!(status, 200, "invite succeeds");
 
     // The node reads its inbox through the PUBLIC channel surface.
-    let handshake = handshake(&client, &server.base(), &role).await;
+    let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let replay = handshake["replay"].as_array().expect("replay array");
     assert_eq!(
         replay.len(),
@@ -378,7 +442,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     .await;
     assert_eq!(status, 200, "invite succeeds");
 
-    let handshake = handshake(&client, &server.base(), &role).await;
+    let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let work = handshake["replay"][0].clone();
     let command_id = work["command_id"].as_str().unwrap().to_string();
     let reservation_id = work["payload"]["reservation"]["reservation_id"]
@@ -398,6 +462,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000001",
         "op_00000000-0000-7000-8000-000000000001",
         &result,
@@ -438,6 +503,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000001",
         "op_00000000-0000-7000-8000-000000000001",
         &result,
@@ -456,6 +522,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000002",
         "op_00000000-0000-7000-8000-000000000002",
         &result,
@@ -521,7 +588,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     .await;
     assert_eq!(status, 200, "invite succeeds");
 
-    let first_view = handshake(&client, &server.base(), &role).await;
+    let (first_view, first_token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let command_id = first_view["replay"][0]["command_id"]
         .as_str()
         .unwrap()
@@ -534,6 +601,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
         &client,
         &server.base(),
         &role,
+        &first_token,
         "evt_00000000-0000-7000-8000-000000000011",
         "op_00000000-0000-7000-8000-000000000011",
         &work_result(
@@ -575,7 +643,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     assert_eq!(status, 200, "challenge succeeds");
 
     // The challenge dispatched revise work to the contribution's author (the role).
-    let replay_view = handshake(&client, &server.base(), &role).await;
+    let (replay_view, replay_token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let replay = replay_view["replay"].as_array().expect("replay array");
     assert_eq!(replay.len(), 2, "invite work + revise work");
     let revise = replay
@@ -600,6 +668,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
         &client,
         &server.base(),
         &role,
+        &replay_token,
         "evt_00000000-0000-7000-8000-000000000012",
         "op_00000000-0000-7000-8000-000000000012",
         &work_result(
@@ -687,7 +756,7 @@ async fn budget_denial_enqueues_work_without_a_reservation() {
         "the invite itself succeeds (dispatch is denied, not the invite)"
     );
 
-    let handshake = handshake(&client, &server.base(), &role).await;
+    let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let work = &handshake["replay"][0];
     assert_eq!(work["payload"]["kind"].as_str().unwrap(), "contribute");
     assert!(
@@ -734,7 +803,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
     )
     .await;
     assert_eq!(status, 200, "invite succeeds");
-    let handshake = handshake(&client, &server.base(), &role).await;
+    let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let command_id = handshake["replay"][0]["command_id"]
         .as_str()
         .unwrap()
@@ -765,6 +834,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000021",
         "op_00000000-0000-7000-8000-000000000021",
         &result,
@@ -778,6 +848,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000022",
         "op_00000000-0000-7000-8000-000000000022",
         &result,
@@ -825,10 +896,14 @@ async fn ordinary_channel_events_stay_receipts_only() {
     let client = reqwest::Client::new();
     let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
 
+    // The `.1.2.2` contract: authenticate (handshake → fencing token) before any
+    // channel traffic, even a receipt-only event.
+    let (_handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
     let (status, receipt) = submit_event(
         &client,
         &server.base(),
         &role,
+        &token,
         "evt_00000000-0000-7000-8000-000000000031",
         "op_00000000-0000-7000-8000-000000000031",
         &json!({ "kind": "some_other_signal", "value": 1 }),

@@ -46,9 +46,10 @@ pub use budget::{
     Settlement,
 };
 pub use node_channel::{
-    node_router, AckRequest, AckResponse, AmbiguousAttempt, ApiError, Directive, EventReceipt,
-    EventSubmission, HandshakeRequest, HandshakeResponse, KnownEvent, NodeChannelState, PollParams,
-    PollResponse, ReplayCommand, CHANNEL_VERSION,
+    is_valid_node_identity, node_router, AckRequest, AckResponse, AmbiguousAttempt, ApiError,
+    Directive, EventReceipt, EventSubmission, HandshakeRequest, HandshakeResponse,
+    HeartbeatRequest, HeartbeatResponse, KnownEvent, NodeChannelState, PollRequest, PollResponse,
+    PresenceParams, PresenceResponse, ReplayCommand, CHANNEL_VERSION, LEASE_TTL,
 };
 pub use outbox::{
     claim_ready, complete, deliver, ClaimedOutboxItem, CompleteOutcome, DeliverOutcome,

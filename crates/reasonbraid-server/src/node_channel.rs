@@ -1,16 +1,37 @@
-//! The WP3 node channel, server side (`PHASE-0.3.2`).
+//! The node channel, server side (`PHASE-0.3.2`; authenticated by `PHASE-1.2.2`).
 //!
 //! The control plane owns desired commands and delivery attempts (`ROADMAP.md` §17.1).
-//! This module is the server half of the Phase 0 node channel (`§9.3`'s node-channel
-//! profile, minimal: HTTP/1 JSON over the loopback dev profile — the authenticated
-//! streaming profile arrives with WP5 identity and ADR-006's formal record):
+//! This module is the server half of the node channel (§9.3's node-channel profile,
+//! minimal: HTTP/1 JSON over the loopback dev profile — the authenticated streaming
+//! profile arrives with ADR-006's formal record; `.1.2.2` adds the Phase 1
+//! authentication layer on top of the transport):
 //!
 //! - [`NodeChannelState`] — the durable state behind the channel: a per-node inbox with
-//!   a monotonic cursor and acknowledgement state (`node_inbox`), and deduplicated
-//!   receipts of node-emitted events (`node_events`, keyed on the node-assigned id).
-//! - [`node_router`] — the HTTP surface: `handshake` (the reconnect exchange),
-//!   `events` (node results with original ids), `ack` (cursor acknowledgement), and
-//!   `poll` (the live delivery path after reconciliation).
+//!   a monotonic cursor and acknowledgement state (`node_inbox`), deduplicated
+//!   receipts of node-emitted events (`node_events`, keyed on the node-assigned id),
+//!   the lease/presence store (`node_leases`, `migrations/0009_node_leases.sql`), and
+//!   the enrollment identity (`node_keys`).
+//! - [`node_router`] — the HTTP surface: `handshake` (the authenticated reconnect
+//!   exchange), `events` (node results with original ids), `ack` (cursor
+//!   acknowledgement), `poll` (the live delivery path after reconciliation),
+//!   `heartbeat` (lease renewal), `presence` (observable online/offline state), and
+//!   `enroll` (the `.1.2.1` one-time-token enrollment).
+//!
+//! # Authentication (`.1.2.2`, backlog 13)
+//!
+//! The channel is authenticated end to end, on the `.6.1` dev stance (the server IS
+//! the dev trust store):
+//!
+//! - the handshake carries an **HMAC-SHA256 key-proof** over the channel fields with
+//!   the node's dev secret (its `node_keys` row from `.1.2.1`); a handshake without a
+//!   valid proof is refused `401 unauthorized` before any ledger fact is read;
+//! - a successful handshake issues a **lease** with a fresh **fencing token** — the
+//!   only token that renews the lease (`heartbeat`) or guards `events`/`ack`/`poll`;
+//!   a later handshake rotates the token and fences the old one (stale traffic gets
+//!   `401`, never silently accepted);
+//! - expiry is a database fact (`lease_expires_at`, 60 s dev TTL): a heartbeat only
+//!   renews a LIVE lease; once expired, presence shows `offline` and channel traffic
+//!   is refused until the node re-proves its key with a new handshake.
 //!
 //! # Replay and trust
 //!
@@ -38,20 +59,53 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres};
 
+type HmacSha256 = Hmac<Sha256>;
+
 /// The node channel's wire protocol version. Both sides must agree; a mismatch is a
-/// `protocol_incompatible` error, never a silent downgrade.
-pub const CHANNEL_VERSION: u32 = 1;
+/// `protocol_incompatible` error, never a silent downgrade. Version 2 (`.1.2.2`) adds
+/// the authenticated contract: the handshake key-proof, the fencing token on
+/// `events`/`ack`/`poll`, and the `heartbeat`/`presence` endpoints.
+pub const CHANNEL_VERSION: u32 = 2;
+
+/// The dev-profile lease TTL: a heartbeat renews a LIVE lease by this much. 60 s
+/// gives the demo's 15 s heartbeat cadence a 4× margin; a process that stops
+/// heartbeating is visibly `offline` within a minute.
+pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
+
+/// A node-channel identity is the dev node-id space: a `nod_…` node id OR the
+/// `rol_…` agent-role wire id the dev wiring collapses node==role onto (one node,
+/// one role — `docs/book/src/two-host-demo.md`). The `.1.2.1` surfaces accepted only
+/// `NodeId`; the authenticated handshake looks up the `node_keys` row for whatever id
+/// the node reports, so the space must accept both.
+pub fn is_valid_node_identity(id: &str) -> bool {
+    id.parse::<reasonbraid_core::NodeId>().is_ok()
+        || id.parse::<reasonbraid_core::AgentRoleId>().is_ok()
+}
 
 // ── Wire contract ──────────────────────────────────────────────────────────────
 
+/// The exact fields the handshake key-proof covers, in canonical (serde field)
+/// order. Both sides serialize THIS shape to JSON and HMAC it — the mirrored
+/// struct is the canonicalization contract. `key_proof` itself is never inside it.
+#[derive(Debug, Serialize)]
+struct ProofCoverage<'a> {
+    channel_version: u32,
+    node_id: &'a str,
+    last_acked_cursor: i64,
+    pending_operations: &'a [String],
+    ambiguous_attempts: &'a [AmbiguousAttempt],
+}
+
 /// The reconnect exchange (`§17.4` steps 2–3): the node reports its durable resume
-/// facts, the server replies with the replay and the reconciliation guidance.
+/// facts and proves possession of its `.1.2.1` dev key; the server replies with the
+/// replay, the reconciliation guidance, and a fresh lease (fencing token + expiry).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HandshakeRequest {
@@ -63,6 +117,10 @@ pub struct HandshakeRequest {
     pub pending_operations: Vec<String>,
     /// Attempts the node's recovery classified `outcome_unknown`.
     pub ambiguous_attempts: Vec<AmbiguousAttempt>,
+    /// HMAC-SHA256 over the other fields (see [`ProofCoverage`]), hex-encoded,
+    /// keyed with the node's dev secret. A handshake without a valid proof is
+    /// refused `401 unauthorized` before any ledger fact is read.
+    pub key_proof: String,
 }
 
 /// One ambiguous attempt the node reports for reconciliation.
@@ -121,6 +179,10 @@ pub struct HandshakeResponse {
     pub directives: Vec<Directive>,
     /// Server receipts covering the node's pending operations.
     pub known_events: Vec<KnownEvent>,
+    /// The lease this handshake issued: the fresh fencing token (the only token
+    /// that renews the lease or guards `events`/`ack`/`poll`) and its expiry.
+    pub fencing_token: String,
+    pub lease_expires_at: DateTime<Utc>,
 }
 
 /// A node-emitted event (a result, with its ORIGINAL id — `§17.4` step 5).
@@ -132,6 +194,8 @@ pub struct EventSubmission {
     pub event_id: String,
     pub operation_id: String,
     pub payload: Value,
+    /// The fencing token this node's latest handshake issued.
+    pub fencing_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -149,6 +213,8 @@ pub struct AckRequest {
     pub channel_version: u32,
     pub node_id: String,
     pub ack_cursor: i64,
+    /// The fencing token this node's latest handshake issued.
+    pub fencing_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -159,10 +225,16 @@ pub struct AckResponse {
     pub acknowledged: i64,
 }
 
+/// The live delivery tail request (`.1.2.2`: `poll` is a POST — the fencing token
+/// is a credential and never rides a query string).
 #[derive(Debug, Clone, Deserialize)]
-pub struct PollParams {
+#[serde(deny_unknown_fields)]
+pub struct PollRequest {
+    pub channel_version: u32,
     pub node_id: String,
     pub after_cursor: i64,
+    /// The fencing token this node's latest handshake issued.
+    pub fencing_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -171,6 +243,44 @@ pub struct PollResponse {
     pub channel_version: u32,
     pub current_cursor: i64,
     pub commands: Vec<ReplayCommand>,
+}
+
+/// The lease renewal (`backlog 13`): a heartbeat extends a LIVE lease — the
+/// fencing token must be the one the latest handshake issued. An expired or
+/// fenced lease is refused; only a fresh handshake (a new key-proof) restores it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HeartbeatRequest {
+    pub channel_version: u32,
+    pub node_id: String,
+    pub fencing_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HeartbeatResponse {
+    pub channel_version: u32,
+    /// Echoed: the fencing token the renewal was granted to (unchanged — the
+    /// handshake is the only rotation point).
+    pub fencing_token: String,
+    pub lease_expires_at: DateTime<Utc>,
+}
+
+/// One node's observable presence (`GET /v1/nodes/presence`): `online` is DERIVED
+/// from the lease expiry clock, never a stored flag, so a crashed process cannot
+/// leave a stale `online` row behind. The fencing token is never exposed here.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PresenceResponse {
+    pub node_id: String,
+    pub online: bool,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub lease_expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PresenceParams {
+    pub node_id: String,
 }
 
 // ── API error ──────────────────────────────────────────────────────────────────
@@ -211,6 +321,45 @@ impl ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "invalid_command",
             message,
+        }
+    }
+
+    /// A handshake whose key-proof did not verify (or whose node has no key — the
+    /// same refusal: no existence leak). `401 unauthorized`, like the `.1.2.1`
+    /// enrollment refusals: the node-channel surface's bad-credential status.
+    fn proof_refused() -> Self {
+        ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "the handshake key-proof was refused".to_string(),
+        }
+    }
+
+    /// Channel traffic presented a fencing token that is not the latest lease's —
+    /// either never issued, fenced by a newer handshake, or for another node.
+    fn fencing_refused() -> Self {
+        ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "the fencing token was refused — re-handshake".to_string(),
+        }
+    }
+
+    /// The lease is no longer live: presence is `offline` and only a fresh
+    /// handshake (a new key-proof) restores the channel.
+    fn lease_expired() -> Self {
+        ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "the lease has expired — re-handshake".to_string(),
+        }
+    }
+
+    fn unknown_node(node_id: &str) -> Self {
+        ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "unknown_node",
+            message: format!("no enrolled node `{node_id}`"),
         }
     }
 
@@ -381,6 +530,149 @@ impl NodeChannelState {
         .fetch_optional(&self.pool)
         .await
     }
+
+    /// Verify the handshake's HMAC-SHA256 key-proof over the canonical channel
+    /// fields, keyed with the node's dev secret. A node with no key row and a node
+    /// with a wrong proof fail IDENTICALLY (no existence leak).
+    pub async fn verify_handshake_proof(&self, req: &HandshakeRequest) -> Result<(), ApiError> {
+        let secret: Option<String> =
+            sqlx::query_scalar("SELECT key_secret FROM node_keys WHERE node_id = $1")
+                .bind(&req.node_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let Some(secret) = secret else {
+            return Err(ApiError::proof_refused());
+        };
+        let coverage = ProofCoverage {
+            channel_version: req.channel_version,
+            node_id: &req.node_id,
+            last_acked_cursor: req.last_acked_cursor,
+            pending_operations: &req.pending_operations,
+            ambiguous_attempts: &req.ambiguous_attempts,
+        };
+        // The canonical form is the mirrored struct's JSON: field order and
+        // encoding are fixed by the struct shape on both sides.
+        let canonical = serde_json::to_vec(&coverage)
+            .map_err(|e| ApiError::bad_request(format!("unencodable handshake fields: {e}")))?;
+        let proof = decode_hex(&req.key_proof).ok_or_else(ApiError::proof_refused)?;
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| ApiError::proof_refused())?;
+        mac.update(&canonical);
+        // Constant-time comparison: a timing side channel must not leak prefix
+        // agreement with the stored secret.
+        match mac.verify_slice(&proof) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ApiError::proof_refused()),
+        }
+    }
+
+    /// Verify a fencing token against the node's lease: the token must be the
+    /// latest handshake's AND the lease must still be live. A missing/mismatched
+    /// token and an expired lease are refused differently (the node can tell a
+    /// fenced credential from a lapsed one), but neither reads any ledger fact.
+    pub async fn verify_fencing(&self, node_id: &str, token: &str) -> Result<(), ApiError> {
+        let expires: Option<DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT lease_expires_at FROM node_leases WHERE node_id = $1 AND fencing_token = $2",
+        )
+        .bind(node_id)
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await?;
+        match expires {
+            None => Err(ApiError::fencing_refused()),
+            Some(expires) if expires <= Utc::now() => Err(ApiError::lease_expired()),
+            Some(_) => Ok(()),
+        }
+    }
+
+    /// Issue (or rotate) the node's lease: a FRESH fencing token every handshake,
+    /// expiry `LEASE_TTL` out. The old token is fenced by the rotation — a stale
+    /// process's heartbeats/events stop being accepted the moment a newer
+    /// handshake lands. The token is generated IN PostgreSQL (`gen_random_uuid()`)
+    /// in the same statement that writes the row — 128 bits of server entropy,
+    /// never client-chosen.
+    pub async fn issue_lease(
+        &self,
+        node_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(String, DateTime<Utc>), sqlx::Error> {
+        let expires = now + LEASE_TTL;
+        let (token,): (String,) = sqlx::query_as(
+            "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at, issued_at) \
+             VALUES ($1, 'fnc_' || gen_random_uuid()::text, $2, $3, $3) \
+             ON CONFLICT (node_id) DO UPDATE SET \
+               fencing_token = EXCLUDED.fencing_token, \
+               lease_expires_at = EXCLUDED.lease_expires_at, \
+               last_seen_at = EXCLUDED.last_seen_at, \
+               issued_at = EXCLUDED.issued_at \
+             RETURNING fencing_token",
+        )
+        .bind(node_id)
+        .bind(expires)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((token, expires))
+    }
+
+    /// Renew a LIVE lease (the caller already verified the fencing token): push
+    /// `lease_expires_at` and `last_seen_at` forward. Returns the new expiry.
+    pub async fn renew_lease(
+        &self,
+        node_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, sqlx::Error> {
+        let expires = now + LEASE_TTL;
+        sqlx::query_scalar(
+            "UPDATE node_leases SET lease_expires_at = $3, last_seen_at = $2 \
+             WHERE node_id = $1 \
+             RETURNING lease_expires_at",
+        )
+        .bind(node_id)
+        .bind(now)
+        .bind(expires)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    /// One node's observable presence (`node_presence`, migration 0009). `None`
+    /// when the node is not enrolled.
+    pub async fn presence(&self, node_id: &str) -> Result<Option<PresenceResponse>, sqlx::Error> {
+        #[derive(sqlx::FromRow)]
+        struct PresenceRow {
+            online: bool,
+            last_seen_at: Option<DateTime<Utc>>,
+            lease_expires_at: Option<DateTime<Utc>>,
+        }
+        let row: Option<PresenceRow> = sqlx::query_as(
+            "SELECT online, last_seen_at, lease_expires_at FROM node_presence WHERE node_id = $1",
+        )
+        .bind(node_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| PresenceResponse {
+            node_id: node_id.to_string(),
+            online: r.online,
+            last_seen_at: r.last_seen_at,
+            lease_expires_at: r.lease_expires_at,
+        }))
+    }
+}
+
+/// Decode a lowercase hex string to bytes (`None` on odd length or a non-hex
+/// digit). Used for the handshake proof; NOT a general-purpose codec.
+fn decode_hex(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    hex.as_bytes()
+        .chunks(2)
+        .map(|pair| {
+            let hi = (pair[0] as char).to_digit(16)?;
+            let lo = (pair[1] as char).to_digit(16)?;
+            Some(((hi << 4) | lo) as u8)
+        })
+        .collect()
 }
 
 // ── Transactional bodies (`PHASE-0.6.2`) ────────────────────────────────────────
@@ -467,17 +759,21 @@ where
 
 // ── HTTP surface ───────────────────────────────────────────────────────────────
 
-/// The node channel router: `/v1/nodes/handshake` (reconnect exchange), `/v1/nodes/events`
-/// (node results), `/v1/nodes/ack` (cursor acknowledgement), `/v1/nodes/poll` (live tail),
+/// The node channel router: `/v1/nodes/handshake` (the authenticated reconnect
+/// exchange), `/v1/nodes/events` (node results), `/v1/nodes/ack` (cursor
+/// acknowledgement), `/v1/nodes/poll` (live tail), `/v1/nodes/heartbeat` (lease
+/// renewal), `/v1/nodes/presence` (observable online/offline state), and
 /// `/v1/nodes/enroll` (the `.1.2.1` one-time-token enrollment — the token IS the
-/// credential, so this surface carries no principal header).
+/// credential there, so that surface carries no principal header).
 pub fn node_router(pool: PgPool) -> Router {
     let state = Arc::new(NodeChannelState::new(pool));
     Router::new()
         .route("/v1/nodes/handshake", post(handshake))
         .route("/v1/nodes/events", post(events))
         .route("/v1/nodes/ack", post(ack))
-        .route("/v1/nodes/poll", get(poll))
+        .route("/v1/nodes/poll", post(poll))
+        .route("/v1/nodes/heartbeat", post(heartbeat))
+        .route("/v1/nodes/presence", get(presence))
         .route("/v1/nodes/enroll", post(enroll))
         .with_state(state)
 }
@@ -495,6 +791,10 @@ async fn handshake(
     Json(req): Json<HandshakeRequest>,
 ) -> Result<Json<HandshakeResponse>, ApiError> {
     check_version(req.channel_version)?;
+    // Authentication FIRST: a handshake without a valid key-proof is refused
+    // before any ledger fact (cursor, replay, receipts) is read.
+    state.verify_handshake_proof(&req).await?;
+
     let current = state.current_cursor(&req.node_id).await?;
     if req.last_acked_cursor > current {
         return Err(ApiError::cursor_ahead(req.last_acked_cursor, current));
@@ -533,12 +833,18 @@ async fn handshake(
         }
     }
 
+    // The authenticated reconnect issued a fresh lease: a NEW fencing token, so a
+    // stale process fenced by this rotation is refused from here on.
+    let (fencing_token, lease_expires_at) = state.issue_lease(&req.node_id, Utc::now()).await?;
+
     Ok(Json(HandshakeResponse {
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
         replay,
         directives,
         known_events,
+        fencing_token,
+        lease_expires_at,
     }))
 }
 
@@ -547,6 +853,9 @@ async fn events(
     Json(req): Json<EventSubmission>,
 ) -> Result<Json<EventReceipt>, ApiError> {
     check_version(req.channel_version)?;
+    state
+        .verify_fencing(&req.node_id, &req.fencing_token)
+        .await?;
     // ONE transaction (`PHASE-0.6.2`): the receipt and — when the payload is a
     // thread work result — the domain application (claim → authorize → validate →
     // apply + reservation settlement) commit together. A duplicate event inserts
@@ -585,6 +894,9 @@ async fn ack(
     Json(req): Json<AckRequest>,
 ) -> Result<Json<AckResponse>, ApiError> {
     check_version(req.channel_version)?;
+    state
+        .verify_fencing(&req.node_id, &req.fencing_token)
+        .await?;
     let current = state.current_cursor(&req.node_id).await?;
     if req.ack_cursor > current {
         return Err(ApiError::cursor_ahead(req.ack_cursor, current));
@@ -600,16 +912,20 @@ async fn ack(
 
 async fn poll(
     State(state): State<Arc<NodeChannelState>>,
-    Query(params): Query<PollParams>,
+    Json(req): Json<PollRequest>,
 ) -> Result<Json<PollResponse>, ApiError> {
-    if params.node_id.is_empty() {
+    check_version(req.channel_version)?;
+    if req.node_id.is_empty() {
         return Err(ApiError::bad_request("node_id is required".to_string()));
     }
-    let current = state.current_cursor(&params.node_id).await?;
-    if params.after_cursor > current {
-        return Err(ApiError::cursor_ahead(params.after_cursor, current));
+    state
+        .verify_fencing(&req.node_id, &req.fencing_token)
+        .await?;
+    let current = state.current_cursor(&req.node_id).await?;
+    if req.after_cursor > current {
+        return Err(ApiError::cursor_ahead(req.after_cursor, current));
     }
-    let commands = state.replay(&params.node_id, params.after_cursor).await?;
+    let commands = state.replay(&req.node_id, req.after_cursor).await?;
     Ok(Json(PollResponse {
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
@@ -617,12 +933,48 @@ async fn poll(
     }))
 }
 
+/// Renew a LIVE lease: the fencing token must be the latest handshake's and the
+/// lease must not have expired. Renewal returns the new expiry; the token itself
+/// rotates only at the handshake.
+async fn heartbeat(
+    State(state): State<Arc<NodeChannelState>>,
+    Json(req): Json<HeartbeatRequest>,
+) -> Result<Json<HeartbeatResponse>, ApiError> {
+    check_version(req.channel_version)?;
+    state
+        .verify_fencing(&req.node_id, &req.fencing_token)
+        .await?;
+    let lease_expires_at = state.renew_lease(&req.node_id, Utc::now()).await?;
+    Ok(Json(HeartbeatResponse {
+        channel_version: CHANNEL_VERSION,
+        fencing_token: req.fencing_token,
+        lease_expires_at,
+    }))
+}
+
+/// One node's observable presence. Presence is a read-only observability fact
+/// (no token, no key, no fingerprint — never a credential), derived from the
+/// lease clock; an unenrolled node is a 404, not a fabricated `offline`.
+async fn presence(
+    State(state): State<Arc<NodeChannelState>>,
+    Query(params): Query<PresenceParams>,
+) -> Result<Json<PresenceResponse>, ApiError> {
+    if params.node_id.is_empty() {
+        return Err(ApiError::bad_request("node_id is required".to_string()));
+    }
+    match state.presence(&params.node_id).await? {
+        Some(p) => Ok(Json(p)),
+        None => Err(ApiError::unknown_node(&params.node_id)),
+    }
+}
+
 // ── Node enrollment (PHASE-1.2.1; backlog 11) ───────────────────────────────────
 
 /// The `POST /v1/nodes/enroll` body: the one-time token (issued by an authorized
 /// human at `/v1/nodes/enroll-tokens`), the node's id, the host claim the token was
 /// bound to, the token nonce, and the node's dev signing secret (the server IS the
-/// dev trust store — the `.6.1` stance; the HMAC key-proof rides `.1.2.2`'s handshake).
+/// dev trust store — the `.6.1` stance; the secret is the key the `.1.2.2`
+/// handshake's HMAC proof rides).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeEnrollRequest {
@@ -689,9 +1041,10 @@ async fn enroll(
     State(state): State<Arc<NodeChannelState>>,
     Json(req): Json<NodeEnrollRequest>,
 ) -> Result<Json<NodeEnrollResponse>, ApiError> {
-    if req.node_id.parse::<reasonbraid_core::NodeId>().is_err() {
+    if !is_valid_node_identity(&req.node_id) {
         return Err(ApiError::bad_request(format!(
-            "node_id `{}` is not a valid node identifier",
+            "node_id `{}` is not a valid node identity (a `nod_…` node id or the `rol_…` \
+             role wire id the dev profile serves)",
             req.node_id
         )));
     }

@@ -56,6 +56,11 @@ struct Args {
     #[arg(long, default_value_t = 500)]
     poll_ms: u64,
 
+    /// Lease heartbeat cadence in milliseconds (the `.1.2.2` lease TTL is 60 s;
+    /// this default renews it 4× per TTL).
+    #[arg(long, default_value_t = 15_000)]
+    heartbeat_ms: u64,
+
     /// A one-time enrollment token issued by the control plane
     /// (`rb node issue-token`); when present, the node enrolls BEFORE reconciling.
     #[arg(long)]
@@ -70,9 +75,10 @@ struct Args {
     host_claim: String,
 
     /// The node's dev signing secret (any non-empty string; the server stores it —
-    /// the dev trust-store stance). Required with --enroll-token.
+    /// the dev trust-store stance). Required: with `--enroll-token` it is the key
+    /// being enrolled; afterwards it is the key every handshake's proof rides.
     #[arg(long)]
-    node_secret: Option<String>,
+    node_secret: String,
 }
 
 #[tokio::main]
@@ -100,18 +106,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Enrollment (`.1.2.1`): when a token is provided, consume it BEFORE any
     // channel traffic. The token is the credential; the secret becomes the node's
-    // dev signing key (its HMAC proof rides the `.1.2.2` handshake).
+    // dev signing key (the `.1.2.2` handshake's HMAC proof rides it).
     if let Some(token) = &args.enroll_token {
-        let (nonce, secret) = match (&args.enroll_nonce, &args.node_secret) {
-            (Some(n), Some(s)) => (n, s),
-            _ => {
-                eprintln!("rb-node: --enroll-token requires --enroll-nonce and --node-secret");
-                std::process::exit(1);
-            }
-        };
-        let channel = NodeChannel::new(&args.server, args.node_id.clone());
+        let nonce = args.enroll_nonce.as_deref().unwrap_or_else(|| {
+            eprintln!("rb-node: --enroll-token requires --enroll-nonce");
+            std::process::exit(1);
+        });
+        let channel =
+            NodeChannel::new(&args.server, args.node_id.clone(), args.node_secret.clone());
         channel
-            .enroll(token, &args.node_id, &args.host_claim, nonce, secret)
+            .enroll(
+                token,
+                &args.node_id,
+                &args.host_claim,
+                nonce,
+                &args.node_secret,
+            )
             .await
             .map_err(|e| format!("rb-node: enrollment failed: {e}"))?;
         eprintln!(
@@ -120,9 +130,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let node = Node::open(&args.journal, &args.server, args.node_id.clone()).await?;
+    let node = Node::open(
+        &args.journal,
+        &args.server,
+        args.node_id.clone(),
+        args.node_secret.clone(),
+    )
+    .await?;
     node.reconcile().await?;
     eprintln!("rb-node: {} reconciled with {}", args.node_id, args.server);
+
+    // The lease heartbeat (`.1.2.2`): keep the server-side lease alive while the
+    // process runs. A refused heartbeat (fenced by a newer handshake, or expired)
+    // only logs: the worker's poll fails on the same condition and the main loop's
+    // reconcile re-handshakes — the shared channel picks the fresh token up.
+    let heartbeat_channel = node.channel().clone();
+    let heartbeat_ms = args.heartbeat_ms;
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = heartbeat_channel.heartbeat().await {
+                eprintln!("rb-node: heartbeat refused ({e}) — awaiting re-handshake");
+            }
+            tokio::time::sleep(Duration::from_millis(heartbeat_ms)).await;
+        }
+    });
 
     let worker = Worker::new(
         node.clone(),

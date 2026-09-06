@@ -8,11 +8,17 @@
 # evidence bundle under target/demo/<run-id>/:
 #
 #   1. enroll a human and two agent roles; create a thread with a budget;
+#   1b. issue one-time enrollment tokens and ENROLL the two nodes (`.1.2.1`);
+#       the `.1.2.2` authenticated handshake (HMAC key-proof), the lease/fencing
+#       token, and the heartbeats ride the enrolled dev secrets from here on;
 #   2. invite agent A — the invitation's work item lands in A's inbox WITH a
 #      reservation (one transaction on the server);
 #   3. A contributes through the node channel; the result folds into the thread;
-#   4. duplicate transport: the SAME event is re-POSTed — one domain effect;
-#   5. the SERVER is killed and restarted — every accepted command survives;
+#      A's presence is observable ONLINE through the channel API;
+#   4. duplicate transport: the SAME event is re-POSTed verbatim (with A's live
+#      fencing token) — one domain effect;
+#   5. the SERVER is killed and restarted — every accepted command survives; the
+#      durable lease + presence survive with them;
 #   6. the human challenges A's contribution — revise work reaches A's inbox;
 #   7. A's revise attempt hangs after dispatch; the node is KILLED (SIGKILL);
 #      on restart the attempt recovers `outcome_unknown` — bounded and visible,
@@ -72,6 +78,7 @@ if [ -n "$NODE_HOST" ] && [ -z "$REMOTE_WORKDIR" ]; then
     exit 2
 fi
 command -v jq >/dev/null || { echo "error: jq is required (duplicate-delivery reconstruction)" >&2; exit 2; }
+command -v psql >/dev/null || { echo "error: psql is required (the .1.2.2 lease/fencing evidence)" >&2; exit 2; }
 
 WORK="$ROOT/target/demo/$RUN_ID"        # repo-root-relative, same volume (§13)
 EVIDENCE="$WORK/evidence"
@@ -192,8 +199,12 @@ trap cleanup EXIT
     echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
     echo "database_url: $DATABASE_URL"
     echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "channel: .1.2.2 authenticated (channel_version 2) — key-proof handshake,"
+    echo "  lease/fencing token, heartbeats, observable presence"
     echo "limitation: fake adapter (deterministic) — the REAL-harness leg is the"
     echo "  RB_LIVE_CODEX=1 codex_live suite, out of scope for a no-token demo (WP6)"
+    echo "limitation: dev trust store — the node secrets (channel-auth.txt) are the"
+    echo "  .6.1 dev-profile stance, NOT production workload identity (ADR-006/ADR-007, Phase 2)"
 } > "$EVIDENCE/env.txt"
 
 # ── build ───────────────────────────────────────────────────────────────────────
@@ -228,6 +239,43 @@ ROLE_A="$(cli enroll role agent-a --tenant "$TENANT" --json | jq -r .principal_i
 ROLE_B="$(cli enroll role agent-b --tenant "$TENANT" --json | jq -r .principal_id)"
 [ -n "$ROLE_A" ] && [ -n "$ROLE_B" ] || { fail "enroll roles returned ids"; exit 1; }
 
+# The `.1.2.1` enrollment bootstrap: the dev wiring's node id IS the role wire
+# id it serves. One token per node, bound to the dev host claim; the node
+# consumes it with its dev secret, and every later handshake proves the secret.
+log "issuing one-time enrollment tokens and node dev secrets (`.1.2.1`)"
+ISSUE_A="$(cli node issue-token --node "$ROLE_A" --host-claim dev-host --as organizer --tenant "$TENANT" --json)"
+TOKEN_A="$(printf '%s' "$ISSUE_A" | jq -r .token_id)"
+NONCE_A="$(printf '%s' "$ISSUE_A" | jq -r .nonce)"
+ISSUE_B="$(cli node issue-token --node "$ROLE_B" --host-claim dev-host --as organizer --tenant "$TENANT" --json)"
+TOKEN_B="$(printf '%s' "$ISSUE_B" | jq -r .token_id)"
+NONCE_B="$(printf '%s' "$ISSUE_B" | jq -r .nonce)"
+SECRET_A="dev-secret-a-$RUN_ID"
+SECRET_B="dev-secret-b-$RUN_ID"
+[ -n "$TOKEN_A" ] && [ -n "$TOKEN_B" ] || { fail "node tokens issued"; exit 1; }
+{
+    echo "# the .1.2.2 authenticated-channel facts of this run"
+    echo "node_a: $ROLE_A"
+    echo "node_b: $ROLE_B"
+    echo "secret_a: $SECRET_A"
+    echo "secret_b: $SECRET_B"
+    echo "token_a: $TOKEN_A"
+    echo "token_b: $TOKEN_B"
+    echo "# dev trust store (.6.1): the secrets are the handshake keys, NOT"
+    echo "# production workload identity (ADR-006/ADR-007, Phase 2)"
+} > "$EVIDENCE/channel-auth.txt"
+
+# The authenticated-channel probes (bash -c / wait_for) need these.
+export ROLE_A ROLE_B DATABASE_URL
+probe_poll() {
+    local tok
+    tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
+    [ -n "$tok" ] || return 1
+    curl -s -o /dev/null -X POST -H 'content-type: application/json' \
+        -d "{\"channel_version\":2,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
+        "$SERVER_BASE/v1/nodes/poll"
+}
+export -f probe_poll
+
 log "creating thread A (default budget)"
 THREAD_A="$(cli thread create --subject "is the claim justified?" \
     --objective "produce an independent answer and survive a crash mid-revision" \
@@ -241,13 +289,14 @@ cli thread invite --thread "$THREAD_A" --agent agent-a --as organizer >/dev/null
 # ── 3. node A contributes ───────────────────────────────────────────────────────
 
 NODE_A_DIR="$(node_dir a)"
-log "starting node A (fake adapter: the scripted independent answer)"
+log "starting node A (fake adapter: the scripted independent answer) — enrolling first"
 node_exec "$NODE_A_DIR" \
     --journal "$NODE_A_DIR/node.db" \
     --server "$SERVER_BASE" \
     --node-id "$ROLE_A" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: the claim holds only for"},{"step":"emit_chunk","chunk":" x<1; for x>=1 the bound fails."},{"step":"complete"}]' \
     --poll-ms 200 \
+    --enroll-token "$TOKEN_A" --enroll-nonce "$NONCE_A" --node-secret "$SECRET_A" \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "node A contributes" 60 bash -c \
@@ -261,15 +310,26 @@ log "node A's contribution landed (event $CONTRIBUTION_ID)"
 check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'AGENT-A: the claim holds only for'"
 
+# The `.1.2.2` presence surface: the enrolled + handshaked node is observably
+# ONLINE through the channel API (a derived fact of its live lease).
+curl -s "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" > "$EVIDENCE/presence-a-online.json"
+check "node A's presence is observable ONLINE through the channel API" \
+    grep -q '"online":true' "$EVIDENCE/presence-a-online.json"
+
 # ── 4. duplicate transport → one domain effect ─────────────────────────────────
 
+# The duplicate rides the node's LIVE fencing token (the lease the handshake
+# issued): it re-sends the exact authenticated event, verbatim.
+FENCE_A="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
+[ -n "$FENCE_A" ] || { fail "node A holds a live lease (fencing token present)"; exit 1; }
 EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
-DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" '
-    { channel_version: 1,
+DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE_A" '
+    { channel_version: 2,
       node_id: $n,
       event_id: .events[0].event_id,
       operation_id: .events[0].operation_id,
-      payload: (.events[0].payload | fromjson) }')"
+      payload: (.events[0].payload | fromjson),
+      fencing_token: $f }')"
 log "duplicating the delivery: re-POSTing $(printf '%s' "$DUP_BODY" | jq -r .event_id) verbatim"
 curl -s -X POST "$SERVER_BASE/v1/nodes/events" \
     -H 'content-type: application/json' \
@@ -290,10 +350,15 @@ wait "$SERVER_PID" >/dev/null 2>&1 || true
     >>"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for "server is back" 20 curl -s -o /dev/null "$SERVER_BASE/v1/threads"
-wait_for "server answers node polls after the restart" 30 bash -c \
-    "curl -s -o /dev/null '$SERVER_BASE/v1/nodes/poll?node_id=$ROLE_A&after_cursor=0'"
+# probe_poll re-reads the CURRENT fencing token every attempt: node A
+# re-handshakes after the restart (rotating its token), so a stale capture
+# would race — the probe fetches the live lease each time instead.
+wait_for "server answers authenticated node polls after the restart" 30 probe_poll
 check "every accepted command survived the restart" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'thread.created' && cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'participant_invited'"
+curl -s "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" > "$EVIDENCE/presence-a-after-restart.json"
+check "node A's durable lease + presence survived the server restart" \
+    grep -q '"online":true' "$EVIDENCE/presence-a-after-restart.json"
 
 # ── 6. challenge → revise work reaches the node ────────────────────────────────
 
@@ -316,6 +381,7 @@ node_exec "$NODE_A_DIR" \
     --node-id "$ROLE_A" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: revising…"},{"step":"hang_forever"}]' \
     --poll-ms 200 \
+    --node-secret "$SECRET_A" \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "the revise attempt is DISPATCHED (durable boundary record)" 30 bash -c \
@@ -331,6 +397,7 @@ node_exec "$NODE_A_DIR" \
     --node-id "$ROLE_A" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: a normal answer"},{"step":"complete"}]' \
     --poll-ms 200 \
+    --node-secret "$SECRET_A" \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "recovery classifies the attempt outcome_unknown" 30 bash -c \
@@ -355,13 +422,14 @@ THREAD_B="$(cli thread create --subject "tight budget" \
 cli thread invite --thread "$THREAD_B" --agent agent-b --as organizer >/dev/null
 
 NODE_B_DIR="$(node_dir b)"
-log "starting node B (fake adapter)"
+log "starting node B (fake adapter) — enrolling first"
 node_exec "$NODE_B_DIR" \
     --journal "$NODE_B_DIR/node.db" \
     --server "$SERVER_BASE" \
     --node-id "$ROLE_B" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-B: the single budgeted answer"},{"step":"complete"}]' \
     --poll-ms 200 \
+    --enroll-token "$TOKEN_B" --enroll-nonce "$NONCE_B" --node-secret "$SECRET_B" \
     >"$WORK/node-b.log" 2>&1
 
 wait_for "node B contributes within its budget" 60 bash -c \
@@ -406,6 +474,7 @@ node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
     echo "| Acceptance (KICKOFF WP6 / ROADMAP §26.1) | Evidence |"
     echo "| --- | --- |"
     echo "| no human copies messages | thread-a.json: the contribution content is the adapter's scripted chunk |"
+    echo "| authenticated channel (.1.2.2) | presence-a-online.json + presence-a-after-restart.json: observable ONLINE presence; duplicate-delivery.json rode the live fencing token |"
     echo "| accepted commands survive restart | timeline: server SIGKILL + restart, thread-a.json intact |"
     echo "| duplicate transport → one domain effect | duplicate-delivery.json (accepted:false); thread-a.json has one contribution |"
     echo "| no silent retry of indeterminate calls | journal-a-ambiguous.json: dispatched → outcome_unknown, one attempt, no revision |"

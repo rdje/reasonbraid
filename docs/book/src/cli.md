@@ -99,13 +99,31 @@ audit:
 `rb inspect threads` lists a tenant's threads; `--json` prints the raw API
 responses for scripting.
 
-## Honest limits (Phase 0)
+## Node administration
 
-- **Development credentials**: the CLI presents a trusted principal header — no
-  certificate issuer yet (workload identity arrives with WP7).
+The node-side of the vertical slice is administered with one verb (`.1.2.1`):
+
+```text
+$ rb node issue-token --node rol_… --host-claim dev-host --as alice --tenant ten_… --json
+{ "token_id": "ntk_…", "nonce": "…", "expires_at": "…" }
+```
+
+The token is bound to the tenant, the expected node id, the host claim, and the
+nonce; it is consumed ONCE by the node (`rb-node --enroll-token … --enroll-nonce
+… --node-secret …`) before any channel traffic. The node id may be a `nod_…`
+node id or the `rol_…` agent-role wire id the dev profile serves (one node, one
+role). Issuance is a `tenant_admin`-authorized, audited decision; a re-issue
+while an unused token is outstanding is a typed 409.
+
+## Honest limits (Phase 1)
+
+- **Development credentials**: the CLI presents a trusted principal header, and
+  the node channel proves a dev shared secret (HMAC key-proof) — the server is
+  the dev trust store. No certificate issuer yet (workload identity is
+  ADR-006/ADR-007, Phase 2).
 - Enroll is the dev bootstrap: a human creates the tenant boundary and its own
   admin grant (grant issuance is dev-trusted); a role's grant comes from
   `--actions` (default `thread_contribute`).
 - Agent-side execution (a node receiving an invitation and contributing through
-  the channel) is the `.6.2` two-host demonstration; this chapter covers the
-  control-plane command surface both halves share.
+  the authenticated channel) is the `.6.2`/`.1.2.2` two-host demonstration;
+  this chapter covers the control-plane command surface both halves share.

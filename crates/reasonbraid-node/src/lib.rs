@@ -25,6 +25,11 @@
 //!   becomes [`node::NodeState::Schedulable`] only when it completes — the WP3
 //!   "not schedulable until reconciliation completes" acceptance.
 //!
+//! `PHASE-1.2.2` authenticates the channel: the handshake proves the node's dev
+//! secret (HMAC key-proof over the channel fields — [`channel::compute_key_proof`]),
+//! the server's reply carries a lease + fencing token, and events/ack/poll/heartbeat
+//! all ride that token; [`channel::NodeChannel::heartbeat`] renews the lease.
+//!
 //! The execution supervisor and the adapter boundary are WP4's leaves.
 //!
 //! See `docs/decisions/2026-09-06_node-journal.md` for the journal design record and
@@ -37,8 +42,9 @@ mod supervisor;
 mod worker;
 
 pub use channel::{
-    AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt, HandshakeRequest,
-    HandshakeResponse, KnownEvent, NodeChannel, PollResponse, ReplayCommand, CHANNEL_VERSION,
+    compute_key_proof, AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt,
+    HandshakeRequest, HandshakeResponse, HeartbeatResponse, KnownEvent, NodeChannel, PollResponse,
+    ProofCoverage, ReplayCommand, CHANNEL_VERSION,
 };
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,

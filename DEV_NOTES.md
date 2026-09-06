@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.2.2: the fence rotates at the handshake; presence is derived, never stored
+
+- **A missing field and a wrong credential are different refusals.** `serde`'s strict wire boundary (required fields + `deny_unknown_fields`) rejects a MISSING `key_proof`/`fencing_token` as 422 before the handler runs; a WRONG value reaches the verifier and gets 401. My first test drafts expected 401 for both — the wire contract is under-specified unless both statuses are asserted.
+- **Rotation and renewal are different operations with different authority.** The handshake owns identity re-proof (new key-proof → fresh `fnc_…` token), the heartbeat owns liveness (extends the expiry, echoes the token). Conflating them would let a stolen heartbeat credential escalate into a fresh identity grant.
+- **Presence must be a derived fact, not a stored flag.** `node_presence` computes `online` from `lease_expires_at` — a crashed process cannot leave a stale `online` row, and the fencing token (a credential) is never exposed by the observability surface.
+- **Cross-side crypto is mirrored, not shared.** Server and node each serialize their own `ProofCoverage`; the wiring suite computes proofs with the node's public `compute_key_proof` against the server's verifier — a shared wire crate would have hidden any drift between the two canonicalizations.
+- **Suite purge lists are all-or-nothing.** Purging `tenants` in the channel suite failed until the list covered every tenant-referencing table (`human_principals` left by an earlier suite in the same run); a suite that owns a table owns everything referencing it, in FK order.
+- **The authenticated handshake exposed a latent `.1.2.1` strictness:** issuance/enroll accepted only `nod_…` while the dev wiring's node id IS the `rol_…` role wire id (the demo's own contract). The identity space now accepts both — a superset, so the `.1.2.1` suites never moved.
+- Promoted to `docs/decisions/2026-09-06_node-channel-auth.md` (`answers:` present). **Frontier `PHASE-1.2.3` (durable inbox retention + quarantine).**
+
 ## _(2026-09-06)_ — PHASE-1.2.1: one-time tokens are a row property, and refusals are rows too
 
 - **"One-time" lives in the token row, not the handler.** Enrollment serializes on `FOR UPDATE` + a nullable `used_at`: a second use is impossible at the database level, and the handler only maps the row state to a typed, audited refusal. Binding the token to node id + host claim + nonce means a stolen token cannot enroll a different identity.

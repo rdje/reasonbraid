@@ -8,7 +8,9 @@
 //!   `idempotency` result, and an `outbox` item in one PostgreSQL transaction — a successful
 //!   response corresponds to committed durable state, a resubmission with the same key+hash
 //!   returns the original result, a different hash is a conflict, and a transport redelivery
-//!   produces exactly one domain effect.
+//!   produces exactly one domain effect. `PHASE-1.1.1` extracts that machinery into the
+//!   aggregate/event/outbox library [`agg`] (the single write path; backlog 9, ADR-004) and
+//!   re-expresses `tx` as its typed compatibility shim.
 //! - [`outbox`] is the leased worker over that outbox: [`outbox::claim_ready`] leases ready
 //!   items with a per-claim fencing token and expiry, [`outbox::deliver`] writes the deduped
 //!   delivery effect, and [`outbox::complete`] acknowledges — a stale worker whose lease was
@@ -23,6 +25,7 @@
 //! `scripts/run_pg_tests.sh` / CI. The HTTP/SSE command surface and the general-purpose
 //! API are later leaves (`.3.2` completes WP3; WP5/WP6 follow).
 
+pub mod agg;
 mod api;
 mod authority;
 mod budget;

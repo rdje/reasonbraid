@@ -16,14 +16,15 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.1.1` (the `.1` coordinator leaf is `in_progress`,
-  decomposed `2026-09-06` into `.1.1.1` aggregate/event/outbox library · `.1.1.2` migration-0007
-  identity store · `.1.1.3` thread-command-API completion) — next executable work.
-- **Next action:** implement `PHASE-1.1.1` — extract the WP2 claim/apply machinery in
-  `crates/reasonbraid-server/src/tx.rs` into a typed aggregate library (backlog 9, ADR-004)
-  with every existing suite staying green.
+- **Active tree:** `PHASE-1` → frontier `.1.1.2` (`.1.1.1` aggregate/event/outbox library
+  **done** — `reasonbraid-server::agg` is the single write path, ADR-004 accepted; next is
+  the migration-0007 identity store, then `.1.1.3` thread-command-API completion).
+- **Next action:** implement `PHASE-1.1.2` — migration 0007: first-class identity tables
+  (`tenants`/`hosts`/`nodes`/`agent_roles`/`incarnations`/`runs`/`human_principals`),
+  enroll writing the enrollment row AND the identity row in one transaction (backlog 10).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
-- **In-flight uncommitted work:** none after the `.1` decomposition commit.
+- **In-flight uncommitted work:** none after the `.1.1.1` commit (pending defect leaf
+  `PHASE-1-MAINT-1`: `run_pg_tests.sh`'s ephemeral PG data dir defaults to `/tmp` — §13).
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
 - **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
   `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) for env-gated real runs.

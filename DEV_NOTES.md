@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-06)_ — PHASE-1.1.1: the aggregate/event/outbox library is an extraction, not a rewrite
+
+- **A proven write path extracts cleanly when the old shape becomes a shim that owns NO SQL.** `tx.rs` shrank to type conversions + delegation over `agg` (claim → locked head → event → state → outbox → result, one transaction); every Phase 0 caller kept its exact `tx::` shape, so the zero-behavior-change acceptance is proven by switching no call site and re-running the full regression — the live-PG suites AND the two-host demo rode the new library with every acceptance check green.
+- **The revision precondition defaults OFF and stays honest.** `AggregateCommand::expected_revision` adds optimistic concurrency (`Some(n)` requires the head at n; a fresh aggregate is revision 0) without touching existing behavior — the shim passes `None` and its impossible-arm `unreachable!` turns a future drift into a crash instead of a silent divergence. `apply_fresh_in_tx`'s doc now names the fresh-aggregate case explicitly: `FOR UPDATE` takes no row lock when the row doesn't exist, so the first write's serialization point is the primary-key insert.
+- **The library is the durability spine, not the domain.** Authorization (`authority`) and validation (`threads`) compose OVER it inside one transaction — the modular-monolith pattern made explicit, and the ADR names the extraction trigger (a measured boundary need) so a separate store crate stays forbidden until measured.
+- Promoted to `docs/decisions/2026-09-06_aggregate-library.md` (`answers:` present; ADR-004 records the pattern decision). **Frontier `PHASE-1.1.2` (migration 0007 identity store).**
+
 ## _(2026-09-06)_ — ReasonBraid-only naming: 90 scaffold-name tokens swept from 28 files
 
 - **Census before reword, always.** (case-insensitive `git grep` census over the scaffold-name token) → 90 occurrences in 28 tracked files: the template's own name had survived the bootstrap in provenance comments (the scaffold tracker ids), the version file, the scaffold-pull tooling, and the landing page. An ordered token map (compounds first, bare tokens last) plus prose polish removed every one; the facts survived (`REASONBRAID-MAINTENANCE.N` ids, `reasonbraid-scaffold 0.6.1` version string). A naked sed for the bare token first would have mangled the compounds and the crate names.

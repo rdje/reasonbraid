@@ -441,8 +441,9 @@ pub fn work_payload(
 /// Prepare a command against an EXISTING thread: read the locked projection, validate
 /// the operation against the core state machines and the dev rules, and build the
 /// next projection + event. The caller holds the transaction; the `FOR UPDATE` read
-/// here is the same row `tx::apply_fresh_in_tx` re-reads, so the version derived
-/// there matches the state validated here.
+/// here is the same row the aggregate library's fresh apply re-reads
+/// (`agg::apply_fresh_in_tx`, `PHASE-1.1.1`), so the version derived there matches
+/// the state validated here.
 pub(crate) async fn prepare_thread_command<'e, E>(
     mut tx: E,
     tenant_id: &TenantId,

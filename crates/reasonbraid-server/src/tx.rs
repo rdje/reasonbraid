@@ -1,8 +1,21 @@
-//! The WP2 atomic transaction: current state, ordered event, idempotency result, and
-//! outbox item are written in one PostgreSQL transaction — or none is.
+//! The typed command surface over the aggregate library (`agg`).
+//!
+//! `PHASE-1.1.1` extracts the WP2 transaction machinery into [`crate::agg`] — the
+//! single write path. This module keeps the Phase 0 public shape (`Command`,
+//! [`CommandOutcome`], [`ApplyError`], [`apply_command`]) as a thin, typed shim:
+//! every function delegates to the library, converting between the two shapes.
+//! `tx::Command` carries the wire/typed fields callers assemble; `agg`'s
+//! `AggregateCommand` carries the same data borrowed, plus the optional
+//! `expected_revision` precondition — which this shim always leaves `None`, so
+//! behavior is byte-for-byte the Phase 0 one.
+//!
+//! Callers that need the new capability (an optimistic-concurrency precondition)
+//! use [`crate::agg`] directly.
 
 use serde_json::Value;
 use sqlx::PgPool;
+
+use crate::agg::{self, AggregateCommand, AggregateError, AggregateEvent};
 
 /// A command the control plane has already validated and is ready to record durably.
 ///
@@ -78,6 +91,35 @@ impl From<sqlx::Error> for ApplyError {
     }
 }
 
+impl From<AggregateError> for ApplyError {
+    fn from(e: AggregateError) -> Self {
+        match e {
+            AggregateError::IdempotencyConflict {
+                key,
+                request_hash,
+                stored_hash,
+            } => ApplyError::IdempotencyConflict {
+                key,
+                request_hash,
+                stored_hash,
+            },
+            // Documented internal invariant: this shim always passes
+            // `expected_revision = None`, so the library can never produce a
+            // revision conflict on this path.
+            AggregateError::RevisionConflict { .. } => {
+                unreachable!("the tx shim never sets expected_revision")
+            }
+            AggregateError::Sql(e) => ApplyError::Sql(e),
+        }
+    }
+}
+
+/// The outcome of the idempotency claim (mirrors [`agg::ClaimOutcome`]).
+pub(crate) enum ClaimOutcome {
+    Fresh,
+    Replay { result: Value },
+}
+
 /// Apply a command in one transaction: idempotency claim, ordered event, current state,
 /// and outbox item commit together, or none of them is ever visible.
 ///
@@ -112,27 +154,11 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    match claim_idempotency_in_tx(
-        &mut *tx,
-        &cmd.tenant_id,
-        &cmd.idempotency_key,
-        &cmd.request_hash,
-    )
-    .await?
-    {
-        ClaimOutcome::Replay { result } => Ok(CommandOutcome {
-            replayed: true,
-            result,
-        }),
-        ClaimOutcome::Fresh => apply_fresh_in_tx(&mut *tx, cmd).await,
-    }
-}
-
-/// The outcome of the idempotency claim (`PHASE-0.6.1` split): a fresh claim owns the
-/// key for this transaction, a replay returns the ORIGINAL stored result verbatim.
-pub(crate) enum ClaimOutcome {
-    Fresh,
-    Replay { result: Value },
+    let outcome = agg::apply_in_tx(&mut *tx, &as_aggregate_command(cmd)).await?;
+    Ok(CommandOutcome {
+        replayed: outcome.replayed,
+        result: outcome.result,
+    })
 }
 
 /// Claim the `(tenant_id, idempotency_key)` slot for this transaction.
@@ -151,47 +177,13 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    let claim = sqlx::query(
-        "INSERT INTO idempotency (tenant_id, idempotency_key, request_hash, response_result) \
-         VALUES ($1, $2, $3, 'null'::jsonb) \
-         ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
-    )
-    .bind(tenant_id)
-    .bind(idempotency_key)
-    .bind(request_hash)
-    .execute(&mut *tx)
-    .await?;
-
-    if claim.rows_affected() == 0 {
-        // The key already exists: replay (same hash) or conflict (different hash).
-        let (stored_hash, stored_result): (String, Value) = sqlx::query_as(
-            "SELECT request_hash, response_result FROM idempotency \
-             WHERE tenant_id = $1 AND idempotency_key = $2",
-        )
-        .bind(tenant_id)
-        .bind(idempotency_key)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if stored_hash != request_hash {
-            return Err(ApplyError::IdempotencyConflict {
-                key: idempotency_key.to_string(),
-                request_hash: request_hash.to_string(),
-                stored_hash,
-            });
-        }
-
-        // Idempotent replay: return the ORIGINAL result; nothing new is written (the
-        // caller commits).
-        return Ok(ClaimOutcome::Replay {
-            result: stored_result,
-        });
+    match agg::claim_in_tx(&mut *tx, tenant_id, idempotency_key, request_hash).await? {
+        agg::ClaimOutcome::Fresh => Ok(ClaimOutcome::Fresh),
+        agg::ClaimOutcome::Replay { result } => Ok(ClaimOutcome::Replay { result }),
     }
-
-    Ok(ClaimOutcome::Fresh)
 }
 
-/// The fresh-command writes (steps 2–6 of the original `apply_command_in_tx`): lock
+/// The fresh-command writes (steps 2–6 of the aggregate library's write path): lock
 /// the aggregate row, derive the next ordered version, write event + current state +
 /// outbox item, and record the semantic result for idempotent replay. The caller must
 /// have claimed the idempotency slot first ([`claim_idempotency_in_tx`]).
@@ -203,70 +195,30 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    // 1. Lock the aggregate row so writers to the SAME aggregate serialize, then derive
-    //    the next ordered version.
-    let current: Option<i64> = sqlx::query_scalar(
-        "SELECT aggregate_version FROM aggregate_state \
-         WHERE tenant_id = $1 AND aggregate_id = $2 FOR UPDATE",
-    )
-    .bind(&cmd.tenant_id)
-    .bind(&cmd.aggregate_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    let next_version = current.map_or(1, |v| v + 1);
-
-    // 2. Ordered event (unique per (tenant, aggregate, version)).
-    sqlx::query(
-        "INSERT INTO event_log (event_id, tenant_id, aggregate_id, aggregate_version, event_type, body) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(&cmd.event_id)
-    .bind(&cmd.tenant_id)
-    .bind(&cmd.aggregate_id)
-    .bind(next_version)
-    .bind(&cmd.event_type)
-    .bind(&cmd.body)
-    .execute(&mut *tx)
-    .await?;
-
-    // 3. Current state (upsert).
-    sqlx::query(
-        "INSERT INTO aggregate_state (tenant_id, aggregate_id, aggregate_type, aggregate_version, state) \
-         VALUES ($1, $2, $3, $4, $5) \
-         ON CONFLICT (tenant_id, aggregate_id) DO UPDATE SET \
-             aggregate_type = EXCLUDED.aggregate_type, \
-             aggregate_version = EXCLUDED.aggregate_version, \
-             state = EXCLUDED.state",
-    )
-    .bind(&cmd.tenant_id)
-    .bind(&cmd.aggregate_id)
-    .bind(&cmd.aggregate_type)
-    .bind(next_version)
-    .bind(&cmd.next_state)
-    .execute(&mut *tx)
-    .await?;
-
-    // 4. Outbox item — the FK to event_log proves the event is already durable.
-    sqlx::query("INSERT INTO outbox (tenant_id, event_id) VALUES ($1, $2)")
-        .bind(&cmd.tenant_id)
-        .bind(&cmd.event_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // 5. Record the semantic result for idempotent replay.
-    sqlx::query(
-        "UPDATE idempotency SET response_result = $1 \
-         WHERE tenant_id = $2 AND idempotency_key = $3",
-    )
-    .bind(&cmd.result)
-    .bind(&cmd.tenant_id)
-    .bind(&cmd.idempotency_key)
-    .execute(&mut *tx)
-    .await?;
-
+    let outcome = agg::apply_fresh_in_tx(&mut *tx, &as_aggregate_command(cmd)).await?;
     Ok(CommandOutcome {
-        replayed: false,
-        result: cmd.result.clone(),
+        replayed: outcome.replayed,
+        result: outcome.result,
     })
+}
+
+/// The borrowed, library-shaped view of a [`Command`]. The shim's documented
+/// invariant: `expected_revision` is always `None` here — optimistic-concurrency
+/// preconditions are the caller's explicit choice via [`crate::agg`] directly.
+fn as_aggregate_command(cmd: &Command) -> AggregateCommand<'_> {
+    AggregateCommand {
+        tenant_id: &cmd.tenant_id,
+        aggregate_type: &cmd.aggregate_type,
+        aggregate_id: &cmd.aggregate_id,
+        idempotency_key: &cmd.idempotency_key,
+        request_hash: &cmd.request_hash,
+        expected_revision: None,
+        event: AggregateEvent {
+            event_id: cmd.event_id.clone(),
+            event_type: cmd.event_type.clone(),
+            body: cmd.body.clone(),
+        },
+        next_state: cmd.next_state.clone(),
+        result: cmd.result.clone(),
+    }
 }

@@ -956,25 +956,24 @@ where
 }
 
 /// Store a rejection as the command's semantic result (idempotent replay of the
-/// rejection reproduces the original status + body).
+/// rejection reproduces the original status + body). The write rides the aggregate
+/// library's step 6 (`agg::store_result_in_tx`, `PHASE-1.1.1`).
 async fn store_rejection<'e, E>(
     mut tx: E,
     tenant_id: &TenantId,
     idempotency_key: &str,
     failure: &Value,
-) -> Result<(), sqlx::Error>
+) -> Result<(), ControlApiError>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    sqlx::query(
-        "UPDATE idempotency SET response_result = $1 WHERE tenant_id = $2 AND idempotency_key = $3",
-    )
-    .bind(failure)
-    .bind(tenant_id.to_string())
-    .bind(idempotency_key)
-    .execute(&mut *tx)
-    .await?;
+    crate::agg::store_result_in_tx(&mut *tx, &tenant_id.to_string(), idempotency_key, failure)
+        .await
+        .map_err(|e| {
+            eprintln!("control api: storing the idempotent rejection failed: {e}");
+            ControlApiError::internal()
+        })?;
     Ok(())
 }
 

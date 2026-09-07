@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.7.3: a chain without a threat model is placeholder machinery; an inventory without legs is a promise
+
+- **ADR-022 pins the linkage, defers the chain.** The shipped audit rows already carry everything a future chain hashes (actor, subject, grant, digest, sequence) — the `prev_hash` column would answer a threat model the trusted-LAN dev profile does not have, so it waits for the trigger that creates the threat (a non-loopback deployment). And the retry-safety inventory earns its claim leg by leg: six measured proofs (R-1…R-6) show the machine refuses every silent re-dispatch by default — including the `.7.2` drill's surprise, the replacement fence the revocation epoch provided for free.
+- promotion: promoted → `docs/decisions/2026-09-07_phase2-retry-safety-inventory.md` (`answers:` present; ADR-022 is the ADR record). **Frontier `PHASE-2.7.4` (the Phase-2 subtraction record + the G6–G7 feed) — the last leaf of Phase 2.**
+
 ## _(2026-09-07)_ — PHASE-2.7.2: the runbook promised a ritual the machinery never shipped — the drill is the discovery instrument, four runs, four gaps
 
 - **A documented recovery path that has never been exercised is a promise, not a control.** The runbook's "replacement node: enroll the new incarnation" was fiction: the first drill run found the re-enrollment refused (the `nodes` primary key), the second the token re-issue refused (0008's unconditional UNIQUE — the table's own comment said "one UNUSED token"; the index did not), the third the dev-key insert (`node_keys_pkey`), the fourth the presence derivation (0012 would keep the replacement suspended forever). Each fix landed in the SAME leaf, and the finished drill then measured the payoff nobody predicted: the revocation epoch makes the re-delivered decision stale, so the replacement's dispatch refuses fail-closed — the no-false-safe-retry fence EXISTED and the drill proved it.

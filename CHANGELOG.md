@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-022: the audit linkage is the groundwork; the retry-safety inventory names six measured legs (`PHASE-2.7.3`)
+
+- ADR-022 accepted (evidence-gated): the shipped audit linkage (the actor/subject/grant/digest bindings, the deterministic UUIDv5 handles, the per-thread monotonic sequence, the audit reconstruction) IS the hash chain's groundwork; the chain + checkpoint + verification policy are deferred WITH their trigger (the first non-loopback deployment / the G7 ops gate).
+- `docs/decisions/2026-09-07_phase2-retry-safety-inventory.md` (`answers:`) records the §16.12 line's dev-profile proof — six measured legs (the retry decision, the dispatch gate, the quarantine gate, the replacement fence, the reboot fence, the history fence) show the machine refuses every silent re-dispatch by default; the operator's `allow_possible_duplicate` flag and the replay verb are the only human paths, by design.
+- No code changed. Frontier → `.7.4` (the Phase-2 subtraction record + the G6–G7 feed) — the last leaf of Phase 2.
+
 ## 2026-09-07 — The node-replacement ritual, measured end to end — the fence held (`PHASE-2.7.2`)
 
 - `crates/reasonbraid-server/tests/node_replacement.rs` (in the guard) runs the whole total-machine-loss ritual: the lost node's attempt lands `outcome_unknown`, the journal is destroyed, the operator revokes (the old cert is fenced, the epoch bumps), the REPLACEMENT enrolls (a new cert + a new incarnation, `replaced` in the audit), the inbox tail replays to the fresh journal — and the no-false-safe-retry fence HOLDS: the re-delivered decision is epoch-stale, the dispatch refuses fail-closed (never a silent re-dispatch of the lost node's in-flight work), the row dead-letters, the operator replays, and exactly ONE contribution lands.

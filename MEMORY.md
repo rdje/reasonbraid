@@ -23,16 +23,14 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.7.3` (`.7.2` done: the
-  node-replacement drill — the measured ritual, the epoch fence held,
-  migrations 0017/0018, the guard grew to 17 live suites). Then
-  `.7.4`; Phase 2 closes after `.7.4`.
-- **Next action:** execute `PHASE-2.7.3` — ADR-022 (the audit
-  hash-chain groundwork: the shipped actor/subject/grant/digest
-  bindings accepted-with-evidence; the chain itself deferred with its
-  trigger) + the no-false-safe-retry evidence inventory (the four
-  retry-policy legs + the quarantine replay gate + the `.7.2` drill's
-  measured epoch fence), as the §16.12 line's dev-profile proof.
+- **Active tree:** `PHASE-2` → frontier `.7.4` (`.7.3` done: ADR-022
+  — the linkage groundwork, the chain deferred with its trigger — +
+  the six-leg retry-safety inventory). Then Phase 2 closes.
+- **Next action:** execute `PHASE-2.7.4` — the Phase-2 subtraction
+  record (§19.8: what Phase 2 did NOT build, each with the profile
+  that re-opens it) + the G6–G7 feed record (the §16.12/G7 lines
+  mapped to the Phase-2 evidence vs what stays open until the
+  deployment profile exists). **Phase 2 closes after this leaf.**
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

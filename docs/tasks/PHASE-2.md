@@ -1239,7 +1239,7 @@ slice can reuse the same control plane without rewriting it.
       runbook names it; no regression.
 
   - ID: `PHASE-2.7.3`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-022 (audit hash-chain/checkpoint and verification
       policy) — the groundwork record: the shipped audit-linkage
       design (the actor/subject/grant/digest bindings, the
@@ -1251,6 +1251,21 @@ slice can reuse the same control plane without rewriting it.
       retry-policy legs + the quarantine replay gate, recorded as the
       §16.12 line's dev-profile proof (no code).
     Backlog: —
+    Done (`2026-09-07`): ADR-022 accepted (evidence-gated) —
+      `docs/adr/022-audit-hash-chain-groundwork.md`: the shipped
+      linkage (the actor/subject/grant/digest bindings, the
+      deterministic handles, the per-thread monotonic sequence, the
+      audit reconstruction) IS the chain's groundwork; the hash chain
+      + checkpoint + verification policy are deferred WITH their
+      trigger (the first non-loopback deployment / the G7 ops gate —
+      the ADR-023 family). The retry-safety inventory landed —
+      `docs/decisions/2026-09-07_phase2-retry-safety-inventory.md`
+      (`answers:`): six MEASURED legs (the retry decision, the
+      dispatch gate, the quarantine gate, the replacement fence, the
+      reboot fence, the history fence) prove the machine refuses every
+      silent re-dispatch by default; the operator's flags are the only
+      human path. The `.7.2` drill's epoch fence is the inventory's
+      R-4. No code changed. Frontier → `.7.4`.
     Acceptance: ADR-022 accepted-with-evidence + the inventory
       recorded; the chain's trigger named; no code changes.
 
@@ -1276,7 +1291,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.7.3` | `proposed` | `.7.2` done — the node-replacement drill (the measured ritual; the epoch fence held — no silent re-dispatch; the guard grew to 17 suites); ADR-022 + the no-false-safe-retry inventory executes now |
+| 1 | `PHASE-2.7.4` | `proposed` | `.7.3` done — ADR-022 (the linkage is the groundwork, the chain is a named trigger) + the six-leg retry-safety inventory; the Phase-2 subtraction record + the G6–G7 feed executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1292,6 +1307,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.7.3` done — ADR-022 accepted (the shipped
+  audit linkage is the chain's groundwork; the chain + checkpoint +
+  verification policy wait for the named trigger) + the retry-safety
+  inventory (six measured legs: the machine refuses every silent
+  re-dispatch by default); no code changed; frontier → `.7.4`.
 - `2026-09-07`: `.7.2` done — the node-replacement drill: the
   measured ritual (outcome_unknown → journal destroyed → revoke →
   replacement enroll → inbox replay → the epoch-stale refusal fence
@@ -2659,6 +2679,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.7.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-022 accepted (the linkage groundwork + the named chain trigger) + the retry-safety inventory (six measured legs); frontier → `.7.4` |
 | `2026-09-07` | `PHASE-2.7.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_replacement` → `test result: ok. 1 passed` (the measured ritual); `bash scripts/run_pg_tests.sh` → 17 live suites + the demo 34/34 (`target/pg272_guard.log`); `cargo test --all` → 50 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-replacement drill (the ritual measured end to end; the epoch fence held); frontier → `.7.3` |
 | `2026-09-07` | `PHASE-2.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test escalation` → `test result: ok. 4 passed` (the first live run caught four real behaviors the tests pinned); `bash scripts/run_pg_tests.sh` → 16 live suites + the demo 34/34 (`target/pg271b_guard.log`); `cargo test --all` → 49 offline suites; clippy/fmt clean; `make gate` → 13/13 | the non-escalation property suite (one named adversarial test per escalation surface); frontier → `.7.2` |
 | `2026-09-07` | `PHASE-2.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the exit-lane census + the contract-seam decomposition (the foundations vs the four gaps); frontier → `.7.1` |
@@ -2698,6 +2719,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.7.3` | `REASONBRAID-PHASE2-0042` | ADR-022 (the audit-linkage groundwork, the chain deferred with its trigger) + the six-leg no-false-safe-retry inventory (docs-only) |
 | `PHASE-2.7.2` | `REASONBRAID-PHASE2-0041` | the node-replacement drill (the measured ritual + the replacement enroll path + migrations 0017/0018 + the runbook ritual) |
 | `PHASE-2.7.1` | `REASONBRAID-PHASE2-0040` | the non-escalation property suite (4 measured adversarial tests + the guard's live list gained the suite) |
 | `PHASE-2.7` | `REASONBRAID-PHASE2-0039` | the exit-lane census + the contract-seam decomposition (`.7.1` adversarial suite → `.7.2` replacement drill → `.7.3` ADR-022 + retry inventory → `.7.4` subtraction + gate feed) |

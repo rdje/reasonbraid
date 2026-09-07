@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.3.2: the breaker trips inside the denial's transaction — the latch never lags the ledger
+
+- **The check belongs BEFORE the ceiling math, and the trip rides the same transaction as the refusal.** A breaker that trips in a separate write would leave a window where the crossing reservation issued anyway; `check_spend_breaker_in_tx` runs first in `create_reservation_in_tx`, so the trip, the refusal, and the (absent) reservation are one atomic fact.
+- **The latch is the point, not the recomputation.** While tripped the breaker refuses EVERYTHING new — even if the recorded spend has since fallen under the threshold — until the operator resets it. That is the §1025 semantics: stop new work within bounded control latency, then have a human look.
+- promotion: declined (the in-transaction trip rule and the latch semantics are the leaf's recorded contract — no new cross-cutting decision). **Frontier `PHASE-2.3.3` (the usage-reconciliation surface).**
+
 ## _(2026-09-07)_ — PHASE-2.3.1: two ADRs, one day, zero code — the promotion pattern is now the default for shipped machinery
 
 - **ADR-012 and ADR-013 are the fourth and fifth promotion closures** (005, 006, 008's engine half before them). The pattern is settled: when the queue item's machinery already ships and is green, the ADR promotes the decision records + names the revisit trigger — it does not re-open a shipped contract.

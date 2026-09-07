@@ -48,6 +48,19 @@ async fn pool() -> Option<PgPool> {
         .execute(&pool)
         .await
         .expect("purge budget_ceilings");
+    sqlx::query("DELETE FROM spend_breakers")
+        .execute(&pool)
+        .await
+        .expect("purge spend_breakers");
+    // The breaker's tenant FK needs a real tenant row for the breaker tests.
+    sqlx::query(
+        "INSERT INTO tenants (tenant_id, name) \
+         VALUES ('ten_00000000-0000-7000-8000-000000000000', 'budget-seed') \
+         ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed tenant");
     Some(pool)
 }
 
@@ -310,4 +323,188 @@ async fn settlement_overrun_is_recorded_never_clamped() {
     .await
     .unwrap();
     assert!(again.is_none(), "a settled row is terminal");
+}
+
+/// THE `.3.2` acceptance: the per-tenant spend latch — the projected spend
+/// (recorded + requested) crossing the threshold trips the breaker IN the
+/// reservation transaction and refuses with the typed reason; while tripped
+/// every NEW reservation is refused (the latch, not a recomputation); the
+/// reset re-opens it; the threshold persists.
+#[tokio::test]
+async fn a_spend_breaker_trips_refuses_and_resets() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000000";
+    let ceiling_id = ceiling(&pool, tenant, thread, 100, 0).await;
+
+    // Arm: one call of recorded spend is the declared threshold.
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::to_value(dims(Some(1), None)).expect("threshold serializes"))
+        .execute(&pool)
+        .await
+        .expect("arm");
+
+    // Below the threshold: 0 + 1 = 1 call — covered.
+    create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), None),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await
+    .expect("the first call holds");
+
+    // Crossing: the held 1 + the requested 1 = 2 calls — the breaker trips
+    // IN this transaction and refuses with the typed reason.
+    let refused = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), None),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await;
+    match refused {
+        Err(BudgetError::Unavailable { detail }) => {
+            assert!(
+                detail.contains("circuit breaker tripped"),
+                "the refusal names the breaker: {detail}"
+            )
+        }
+        other => panic!("the crossing reservation must be refused: {other:?}"),
+    }
+
+    // The latch: tripped with the reason, refusing EVERYTHING new — even
+    // though the recorded spend alone (1 call) is still under the threshold.
+    let (tripped_at, reason): (Option<chrono::DateTime<Utc>>, Option<String>) = sqlx::query_as(
+        "SELECT tripped_at, tripped_reason FROM spend_breakers WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("breaker row");
+    assert!(tripped_at.is_some(), "the breaker tripped");
+    assert!(
+        reason.as_deref().is_some_and(|r| r.contains("crossed")),
+        "the trip reason names the crossing: {reason:?}"
+    );
+    let while_tripped = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), None),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await;
+    match while_tripped {
+        Err(BudgetError::Unavailable { detail }) => {
+            assert!(
+                detail.contains("tripped"),
+                "a tripped breaker refuses everything new: {detail}"
+            )
+        }
+        other => panic!("a tripped breaker refuses everything new: {other:?}"),
+    }
+
+    // The operator reset: the latch clears, the threshold persists. (The held
+    // call is released first so the post-reset request stays under it — the
+    // next test proves a reset breaker still re-trips on a crossing.)
+    let held: String = sqlx::query_scalar(
+        "SELECT reservation_id FROM budget_reservations WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("the held reservation");
+    release_reservation(&pool, &held, Utc::now())
+        .await
+        .expect("release");
+    sqlx::query(
+        "UPDATE spend_breakers SET tripped_at = NULL, tripped_reason = NULL WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("reset");
+    create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), None),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await
+    .expect("after the reset a within-threshold reservation holds again");
+}
+
+/// After a reset, the threshold STILL gates: the crossing refusal trips again
+/// (the latch is not a one-shot) — the second trip carries a fresh reason.
+#[tokio::test]
+async fn a_reset_breaker_trips_again_on_the_next_crossing() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000000";
+    let ceiling_id = ceiling(&pool, tenant, thread, 100, 0).await;
+
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::to_value(dims(Some(1), None)).expect("threshold serializes"))
+        .execute(&pool)
+        .await
+        .expect("arm");
+
+    // First trip: 0 + 2 calls crosses the 1-call threshold.
+    assert!(
+        matches!(
+            create_reservation(
+                &pool,
+                &ceiling_id,
+                tenant,
+                thread,
+                &dims(Some(2), None),
+                Duration::minutes(10),
+                Utc::now(),
+            )
+            .await,
+            Err(BudgetError::Unavailable { .. })
+        ),
+        "the first crossing trips"
+    );
+    sqlx::query(
+        "UPDATE spend_breakers SET tripped_at = NULL, tripped_reason = NULL WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("reset");
+
+    // Second trip after the reset: the latch re-arms.
+    assert!(
+        matches!(
+            create_reservation(
+                &pool,
+                &ceiling_id,
+                tenant,
+                thread,
+                &dims(Some(2), None),
+                Duration::minutes(10),
+                Utc::now(),
+            )
+            .await,
+            Err(BudgetError::Unavailable { .. })
+        ),
+        "the reset breaker trips again on the next crossing"
+    );
 }

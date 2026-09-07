@@ -141,6 +141,13 @@ where
     };
     let ceiling: BudgetDimensions = serde_json::from_value(dimensions).expect("stored dims parse");
 
+    // THE spend circuit breaker (`.3.2`, backlog 23): the per-TENANT latch
+    // checks before any ceiling math. While tripped, every NEW reservation
+    // is refused with the typed reason; an armed-but-untripped breaker trips
+    // (in THIS transaction) the moment the tenant's recorded spend — settled
+    // usage + active holds across all its ceilings — crosses the threshold.
+    check_spend_breaker_in_tx(&mut *tx, tenant_id, requested, at).await?;
+
     // held = active (unexpired) reservations + settled usage, summed in Rust over
     // the stored rows (readable, testable — the single-writer dev profile needs no
     // locking aggregate).
@@ -318,4 +325,108 @@ pub async fn release_reservation(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+// ── Spend circuit breakers (`.3.2`; backlog 23) ─────────────────────────────
+
+/// The per-tenant spend latch check, IN the caller's reservation transaction.
+///
+/// A tripped breaker refuses every new reservation with the typed reason; an
+/// armed breaker trips the moment the tenant's recorded spend (settled usage
+/// plus active holds across ALL its ceilings) plus the REQUESTED reservation
+/// crosses the declared threshold. The trip and the refusal commit with the
+/// caller's transaction — the latch never lags the ledger it guards.
+pub(crate) async fn check_spend_breaker_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    requested: &BudgetDimensions,
+    at: DateTime<Utc>,
+) -> Result<(), BudgetError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let breaker: Option<(serde_json::Value, Option<DateTime<Utc>>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT threshold, tripped_at, tripped_reason FROM spend_breakers \
+             WHERE tenant_id = $1",
+        )
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| BudgetError::Unavailable {
+            detail: e.to_string(),
+        })?;
+    let Some((threshold, tripped_at, tripped_reason)) = breaker else {
+        return Ok(()); // no breaker armed
+    };
+    if tripped_at.is_some() {
+        return Err(BudgetError::Unavailable {
+            detail: format!(
+                "the tenant's spend circuit breaker is tripped{} — reset it before new work",
+                tripped_reason
+                    .as_deref()
+                    .map(|r| format!(" ({r})"))
+                    .unwrap_or_default()
+            ),
+        });
+    }
+    let threshold: BudgetDimensions =
+        serde_json::from_value(threshold).map_err(|e| BudgetError::Unavailable {
+            detail: format!("the stored breaker threshold is malformed: {e}"),
+        })?;
+
+    // The tenant's recorded spend: settled usage + active holds, across every
+    // ceiling (the breaker is tenant-scoped, unlike the per-thread ceilings).
+    let spend_rows: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT COALESCE( \
+             CASE WHEN r.status = 'active' AND r.expires_at > $2 \
+                  THEN r.dimensions ELSE r.usage END, \
+             '{}'::jsonb) \
+         FROM budget_reservations r \
+         WHERE r.tenant_id = $1 AND r.status IN ('active', 'settled')",
+    )
+    .bind(tenant_id)
+    .bind(at)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| BudgetError::Unavailable {
+        detail: e.to_string(),
+    })?;
+    let mut spend = BudgetDimensions::default();
+    for row in spend_rows {
+        let dims: BudgetDimensions =
+            serde_json::from_value(row).map_err(|e| BudgetError::Unavailable {
+                detail: format!("stored spend is malformed: {e}"),
+            })?;
+        spend = spend.add(&dims);
+    }
+    let projected = spend.add(requested);
+
+    // A dimension the threshold does not meter is NOT constrained by it (the
+    // breaker is an addition to the ceiling, not a second ceiling).
+    if threshold.covers(&projected) {
+        return Ok(());
+    }
+
+    // THE trip: the latch flips in the caller's transaction, with the reason.
+    sqlx::query(
+        "UPDATE spend_breakers SET tripped_at = $2, tripped_reason = $3 \
+         WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .bind(at)
+    .bind(format!(
+        "the recorded spend {spend:?} plus the requested {requested:?} crossed the threshold {threshold:?}"
+    ))
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| BudgetError::Unavailable {
+        detail: e.to_string(),
+    })?;
+    Err(BudgetError::Unavailable {
+        detail: format!(
+            "the tenant's spend circuit breaker tripped: {spend:?} + {requested:?} crossed {threshold:?}"
+        ),
+    })
 }

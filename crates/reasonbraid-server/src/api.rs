@@ -339,6 +339,11 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/boundaries", get(list_boundaries))
         .route("/v1/admin/incarnations", get(list_incarnations))
         .route("/v1/admin/runs", get(list_runs))
+        .route(
+            "/v1/admin/breakers",
+            post(arm_breaker).get(inspect_breakers),
+        )
+        .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -1433,6 +1438,103 @@ async fn list_runs(
     Ok(Json(
         json!({ "tenant_id": q.tenant_id.to_string(), "runs": runs }),
     ))
+}
+
+/// The spend-breaker verbs (`.3.2`, backlog 23; tenant_admin): arm (declare
+/// the threshold — re-arming clears any trip), reset (clear the trip), and
+/// inspect (the armed/tripped state with the reason).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArmBreakerRequest {
+    pub tenant_id: TenantId,
+    /// The spend threshold (BudgetDimensions JSON) the latch compares against.
+    pub threshold: reasonbraid_core::BudgetDimensions,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BreakerTenantRequest {
+    pub tenant_id: TenantId,
+}
+
+async fn arm_breaker(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<ArmBreakerRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    sqlx::query(
+        "INSERT INTO spend_breakers (tenant_id, threshold, tripped_at, tripped_reason) \
+         VALUES ($1, $2, NULL, NULL) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           threshold = EXCLUDED.threshold, tripped_at = NULL, tripped_reason = NULL",
+    )
+    .bind(req.tenant_id.to_string())
+    .bind(serde_json::to_value(req.threshold).expect("threshold serializes"))
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(
+        json!({ "tenant_id": req.tenant_id.to_string(), "armed": true }),
+    ))
+}
+
+async fn reset_breaker(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<BreakerTenantRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    let reset = sqlx::query(
+        "UPDATE spend_breakers SET tripped_at = NULL, tripped_reason = NULL \
+         WHERE tenant_id = $1 AND tripped_at IS NOT NULL",
+    )
+    .bind(req.tenant_id.to_string())
+    .execute(&state.pool)
+    .await?;
+    if reset.rows_affected() == 0 {
+        return Err(ControlApiError::invalid_transition(
+            "no tripped breaker to reset (none armed, or none tripped)",
+        ));
+    }
+    Ok(Json(
+        json!({ "tenant_id": req.tenant_id.to_string(), "reset": true }),
+    ))
+}
+
+async fn inspect_breakers(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type BreakerRow = (
+        serde_json::Value,
+        Option<DateTime<Utc>>,
+        Option<String>,
+        DateTime<Utc>,
+    );
+    let row: Option<BreakerRow> = sqlx::query_as(
+        "SELECT threshold, tripped_at, tripped_reason, armed_at \
+             FROM spend_breakers WHERE tenant_id = $1",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(Json(json!({
+        "tenant_id": q.tenant_id.to_string(),
+        "breaker": row.map(
+            |(threshold, tripped_at, tripped_reason, armed_at)| json!({
+                "threshold": threshold,
+                "tripped": tripped_at.is_some(),
+                "tripped_at": tripped_at.map(|d| d.to_rfc3339()),
+                "tripped_reason": tripped_reason,
+                "armed_at": armed_at.to_rfc3339(),
+            })
+        ),
+    })))
 }
 
 // ── Thread commands ──────────────────────────────────────────────────────────────

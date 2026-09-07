@@ -6,12 +6,13 @@
 
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
-    resolve_agent, resolve_principal, run_boundary_revoke, run_enroll, run_grant_revoke,
-    run_inspect_boundaries, run_inspect_budget, run_inspect_grants, run_inspect_incarnations,
-    run_inspect_node_inbox, run_inspect_runs, run_inspect_thread, run_inspect_threads,
-    run_issue_node_token, run_prune_node_inbox, run_quarantine_command, run_replay_command,
-    run_revoke_node, run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs,
-    PrincipalRef, StateFile, ThreadVerbArgs,
+    resolve_agent, resolve_principal, run_boundary_revoke, run_breaker_arm, run_breaker_reset,
+    run_enroll, run_grant_revoke, run_inspect_boundaries, run_inspect_breakers, run_inspect_budget,
+    run_inspect_grants, run_inspect_incarnations, run_inspect_node_inbox, run_inspect_runs,
+    run_inspect_thread, run_inspect_threads, run_issue_node_token, run_prune_node_inbox,
+    run_quarantine_command, run_replay_command, run_revoke_node, run_thread_create,
+    run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef, StateFile,
+    ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -60,6 +61,34 @@ enum Command {
     /// Enrollment-boundary administration (`.1.3.2`).
     #[command(subcommand)]
     Boundary(BoundaryCommand),
+    /// Spend circuit breaker administration (`.3.2`).
+    #[command(subcommand)]
+    Breaker(BreakerCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum BreakerCommand {
+    /// Arm the tenant's breaker: declare the spend threshold (BudgetDimensions
+    /// JSON) — re-arming clears any trip.
+    Arm {
+        #[arg(long)]
+        threshold: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reset the tenant's TRIPPED breaker (the latch re-opens).
+    Reset {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -534,6 +563,15 @@ enum InspectCommand {
         #[arg(long)]
         json: bool,
     },
+    /// The tenant's spend circuit breaker state (`.3.2`; tenant_admin).
+    Breakers {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// The tenant's runs with their attempt→incarnation links (`.1.6.2`; tenant_admin).
     Runs {
         #[arg(long)]
@@ -976,6 +1014,10 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_runs(cfg, &principal, tenant.as_deref(), json).await
         }
+        Command::Inspect(InspectCommand::Breakers { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_breakers(cfg, &principal, tenant.as_deref(), json).await
+        }
         Command::Grant(GrantCommand::Revoke {
             grant,
             reason,
@@ -1005,6 +1047,29 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 )
             })?;
             run_boundary_revoke(cfg, &principal, &tenant, &boundary, &reason, json).await
+        }
+        Command::Breaker(BreakerCommand::Arm {
+            threshold,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_breaker_arm(cfg, &principal, &tenant, &threshold, json).await
+        }
+        Command::Breaker(BreakerCommand::Reset { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_breaker_reset(cfg, &principal, &tenant, json).await
         }
         Command::Node(NodeCommand::IssueToken {
             node,

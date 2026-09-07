@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The spend circuit breaker: a tripped latch refuses everything new, in the denial's own transaction (`PHASE-2.3.2`)
+
+- Migration 0016 lands the per-tenant `spend_breakers` latch (threshold + tripped state + reason). The reservation path checks it FIRST, before any ceiling math: a tripped breaker refuses every new reservation with the typed reason; an armed breaker trips the moment the tenant's recorded spend (settled usage + active holds across ALL its ceilings) plus the request crosses the declared threshold — the trip and the refusal commit with the denial's own transaction, so the latch never lags the ledger it guards.
+- The admin verbs (`POST /v1/admin/breakers` arm — re-arming clears a trip — `POST /v1/admin/breakers/reset`, `GET /v1/admin/breakers`) + `rb breaker arm|reset` + `rb inspect breakers`.
+- The live tests prove the loop (the crossing trips + refuses, the latch refuses while tripped, the reset re-opens, a reset breaker re-trips); budget grew to 9; demo 34/34. The first guard re-run caught the FK leak (the breaker references tenants — every tenant-purging suite's list gained the row). Frontier → `.3.3` (the usage-reconciliation surface).
+
 ## 2026-09-07 — ADR-012 + ADR-013: the ambiguity contract and the budget invariants, accepted by promotion (`PHASE-2.3.1`)
 
 - ADR-012 accepted (evidence-gated): the provider-attempt ambiguity contract is the shipped machinery — the WP3 boundary-first journal, the WP4 prove/adjudicate exits, and the `.2.3` pure retry classes (a risky re-run requires the explicit `allow_possible_duplicate` authorization). No silent retry, structurally.

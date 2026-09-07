@@ -753,7 +753,7 @@ slice can reuse the same control plane without rewriting it.
       triggers named; no code changes.
 
   - ID: `PHASE-2.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the spend circuit breakers — a declared per-tenant spend
       threshold (a budget-ceiling extension or a sibling row): once the
       tenant's recorded spend (settled usage + held reservations) crosses
@@ -761,6 +761,23 @@ slice can reuse the same control plane without rewriting it.
       the breaker state is inspectable + resettable (the operator verb);
       the refusal is audited (the denial-row pattern). Backlog 23's core.
     Backlog: 23
+    Done (`2026-09-07`): the spend latch landed — migration 0016
+      (`spend_breakers`: the tenant's threshold + tripped state + the
+      reason); the reservation path checks it BEFORE any ceiling math
+      (`check_spend_breaker_in_tx`): a tripped breaker refuses every new
+      reservation with the typed reason, and an armed breaker trips IN
+      the reservation transaction when the tenant's recorded spend
+      (settled + active across all ceilings) plus the request crosses the
+      threshold — the trip and the refusal commit with the denial's
+      transaction (the latch never lags the ledger). The admin verbs
+      (`POST /v1/admin/breakers` arm — re-arming clears a trip, `POST
+      /v1/admin/breakers/reset`, `GET /v1/admin/breakers` +
+      `rb breaker arm|reset` + `rb inspect breakers`). The live tests (2,
+      the budget suite 7→9: the crossing trips + refuses with the typed
+      reason + the latch refuses while tripped + the reset re-opens; the
+      reset breaker re-trips on the next crossing) + the full guard green
+      (12 suites + e2e + demo, `target/pg232b_guard.log`). The acceptance
+      checklist below records the evidence — frontier → `.3.3`.
     Acceptance: a tenant over the threshold refuses NEW dispatches with
       the typed reason while existing reservations settle; the breaker
       resets; no regression.
@@ -805,13 +822,19 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.3.2` | `proposed` | `.3.1` done — ADR-012/013 accepted (the shipped ambiguity + budget machinery promotes; no code); the spend circuit breakers execute now |
+| 1 | `PHASE-2.3.3` | `proposed` | `.3.2` done — the spend circuit breakers (the in-tx latch + the arm/reset/inspect verbs); the usage-reconciliation surface executes now |
+ `.3.1` done — ADR-012/013 accepted (the shipped ambiguity + budget machinery promotes; no code); the spend circuit breakers execute now |
  `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
  `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.3.2` done — the spend circuit breakers: migration 0016's
+  per-tenant latch (tripped refuses every new reservation; the crossing trips
+  IN the reservation transaction — the latch never lags the ledger), the
+  arm/reset/inspect admin verbs + `rb breaker arm|reset` + `rb inspect
+  breakers`; the budget suite grew to 9; frontier → `.3.3`.
 - `2026-09-07`: `.3.1` done — ADR-012 accepted (the ambiguity contract is
   the shipped machinery: the WP3 boundary-first journal + the WP4
   prove/adjudicate exits + the `.2.3` pure retry classes) and ADR-013
@@ -1108,6 +1131,47 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.3.2)
+
+The CODE change owned by this leaf: migration `0016_spend_breakers.sql`,
+`crates/reasonbraid-server/src/{budget.rs,api.rs}` (the breaker check + the
+arm/reset/inspect verbs), `crates/reasonbraid-cli/src/{lib,main.rs}` (`rb
+breaker arm|reset` + `rb inspect breakers`), `crates/reasonbraid-server/
+tests/budget.rs` (the two live legs + the suite's purge/seed), the seven
+tenant-purging suites' `spend_breakers` purge row — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — backlog 23: the ceiling refused only
+  per-reservation; `grep -rn 'circuit' crates/ migrations/` → no matches
+  before this leaf — nothing stopped NEW dispatches once a tenant's
+  recorded spend crossed a declared threshold.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the ceiling is THREAD-scoped and
+  checked per-reservation; a tenant-level latch needs a tenant-level fact
+  + a check at the same reservation boundary. The fix: a `spend_breakers`
+  row (threshold + tripped state), checked FIRST in the reservation
+  transaction — the trip and the refusal commit with the denial's own
+  transaction, so the latch never lags the ledger it guards.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  breaker. After: `bash scripts/run_pg_tests.sh` → `test result: ok. 9
+  passed` (`budget`, +2: the crossing trips + refuses with the typed
+  reason + the latch refuses while tripped + the reset re-opens; the
+  reset breaker re-trips on the next crossing) + the full guard green (12
+  suites + e2e `2 passed` + the demo `ALL acceptance checks passed` (34
+  PASS, `rc=0`, `target/pg232c_guard.log`)).
+- [x] **NO REGRESSION** — `cargo test --all` → 45 offline suites green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds. (The FIRST guard re-run caught the FK leak: `spend_breakers`
+  references tenants, so every tenant-purging suite's list gained the
+  row — the suite-ownership doctrine, not a code bug.)
+- [x] **FIX** — migration 0016; `budget.rs`
+  (`check_spend_breaker_in_tx`: the tripped-latch refusal + the
+  crossing-trip in the caller's transaction); `api.rs` (the three admin
+  verbs + routes); the CLI (arm/reset/inspect); the live tests; the
+  purge rows.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book's cli
+  chapter, KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.2.4)
 
@@ -1681,7 +1745,9 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.2.4` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `node_work` grew to 8 with the live dead-letter/replay leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg224b_guard.log`); `cargo test -p reasonbraid-node --test worker_dead_letter` → `test result: ok. 2 passed`; `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the two-way quarantine (the once-only dead-letter report + the server's auto-quarantine + `POST /v1/nodes/replay` + `rb node replay` + the decision-scoped retry re-arm); **`.2` COMPLETE** — frontier → `.3` |
+| `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
+| `2026-09-07` | `PHASE-2.3.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `budget` grew to 9 with the two breaker legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg232c_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the spend circuit breakers (migration 0016 + the in-tx latch + the arm/reset/inspect verbs + the CLI); frontier → `.3.3` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `node_work` grew to 8 with the live dead-letter/replay leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg224b_guard.log`); `cargo test -p reasonbraid-node --test worker_dead_letter` → `test result: ok. 2 passed`; `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the two-way quarantine (the once-only dead-letter report + the server's auto-quarantine + `POST /v1/nodes/replay` + `rb node replay` + the decision-scoped retry re-arm); **`.2` COMPLETE** — frontier → `.3` |
  `cargo test -p reasonbraid-core` → `test result: ok. 49 passed` (the five retry tests); `cargo test -p reasonbraid-node --test worker_retry_policy` → `test result: ok. 4 passed`; `bash scripts/run_pg_tests.sh` → all twelve live suites + e2e + the demo 34 PASS (`rc=0`, `target/pg223_guard.log`); `cargo test --all` → 44 offline suites; clippy/fmt clean; `make gate` → 13/13 | the retry policy (the pure §14.6 decision + the typed wire flag + the worker's retry gate); frontier → `.2.4` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 7 + 7 `passed` — `node_channel` grew to 22 with the deterministic renewal-race test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg222c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the lease epoch (migration 0015 + CHANNEL_VERSION 5): the token AND the epoch fence the old session, a stale-epoch renewal matches no row, the in-tx verifier closes the check-vs-commit window; frontier → `.2.3` |
  docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-005 accepted (the PostgreSQL queue — evidence-gated); frontier → `.2.2` |
@@ -1706,6 +1772,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.3.2` | `REASONBRAID-PHASE2-0025` | the spend circuit breakers: migration 0016 + the in-tx latch (tripped refuses everything new, the crossing trips with the denial's transaction) + the arm/reset/inspect verbs + the CLI |
 | `PHASE-2.3.1` | `REASONBRAID-PHASE2-0024` | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes — no code; the pricing-snapshot trigger named) |
 | `PHASE-2.3` | `REASONBRAID-PHASE2-0023` | the contract-seam split (the state machine + settlement exist; circuit breakers, the reconciliation surface, ADR-012/013 open) |
 | `PHASE-2.2.4` | `REASONBRAID-PHASE2-0022` | the two-way quarantine: the once-only best-effort dead-letter report, the server's auto-quarantine in the receipt transaction, `POST /v1/nodes/replay` + `rb node replay` (the decision refreshes + the row re-sequences), the replayed-decision refresh + the decision-scoped retry count — **`.2` COMPLETE** |

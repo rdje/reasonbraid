@@ -256,6 +256,16 @@ delivery tail:
  node replay --node rol_… --command work_evt_… --as alice
 ```
 
+The spend circuit breaker (`.3.2`): a per-tenant latch — once the tenant's
+recorded spend crosses the declared threshold, new dispatch reservations are
+refused with the typed reason until the operator resets:
+
+```text
+ breaker arm --threshold '{"calls": 1000}' --as alice
+ breaker reset --as alice
+ inspect breakers --as alice
+```
+
 The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
 principal whose grant is the authority source:
 

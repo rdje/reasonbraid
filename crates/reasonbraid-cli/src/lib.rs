@@ -426,6 +426,31 @@ impl ApiClient {
         self.parse(response).await
     }
 
+    /// Arm the tenant's spend circuit breaker (`.3.2`): declare the threshold
+    /// (BudgetDimensions JSON) — re-arming clears any trip.
+    pub async fn arm_breaker(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/admin/breakers", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
+    /// Reset the tenant's tripped spend circuit breaker (`.3.2`).
+    pub async fn reset_breaker(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/admin/breakers/reset", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
     /// Inspect one node's inbox: delivery + quarantine facts per row (`.1.2.3`).
     pub async fn inspect_node_inbox(
         &self,
@@ -1283,6 +1308,82 @@ pub async fn run_inspect_incarnations(
         ));
     }
     Ok(out)
+}
+
+/// Arm the tenant's spend circuit breaker (`.3.2`; tenant_admin).
+pub async fn run_breaker_arm(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    threshold: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let threshold: serde_json::Value = serde_json::from_str(threshold)
+        .map_err(|e| CliError::usage(format!("--threshold is not JSON: {e}")))?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .arm_breaker(
+            &principal.id,
+            json!({ "tenant_id": tenant, "threshold": threshold }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "armed tenant {tenant}'s spend breaker ({})",
+        response["armed"].as_bool().unwrap_or(false)
+    ))
+}
+
+/// Reset the tenant's tripped spend circuit breaker (`.3.2`; tenant_admin).
+pub async fn run_breaker_reset(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .reset_breaker(&principal.id, json!({ "tenant_id": tenant }))
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "reset tenant {tenant}'s spend breaker ({})",
+        response["reset"].as_bool().unwrap_or(false)
+    ))
+}
+
+/// The tenant's spend circuit breaker state (`.3.2`; tenant_admin read).
+pub async fn run_inspect_breakers(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/breakers", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    match &response["breaker"] {
+        Value::Null => Ok(format!("tenant {tenant} has no spend breaker armed")),
+        Value::Object(b) => Ok(format!(
+            "tenant {tenant}'s spend breaker: tripped={} — {}",
+            b.get("tripped").and_then(|v| v.as_bool()).unwrap_or(false),
+            b.get("tripped_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("armed")
+        )),
+        _ => Ok(format!("tenant {tenant}'s breaker state: {response}")),
+    }
 }
 
 /// The tenant's runs with their attempt→incarnation links (`.1.6.2`; tenant_admin).

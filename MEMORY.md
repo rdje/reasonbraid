@@ -23,14 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.3.2` (`.3.1` done: ADR-012/013
-  accepted — the shipped ambiguity + budget machinery promotes). Then
-  `.3.3`.
-- **Next action:** execute `PHASE-2.3.2` — the spend circuit breakers: a
-  declared per-tenant spend threshold; once the tenant's recorded spend
-  (settled usage + held reservations) crosses it, NEW dispatch
-  reservations are refused with a typed reason; the breaker state is
-  inspectable + resettable (the operator verb); the refusal is audited.
+- **Active tree:** `PHASE-2` → frontier `.3.3` (`.3.2` done: the spend
+  circuit breakers — migration 0016's per-tenant latch + the
+  arm/reset/inspect verbs). Then `.3` closes.
+- **Next action:** execute `PHASE-2.3.3` — the usage-reconciliation
+  surface: the held-vs-settled-vs-overrun-vs-denied picture per thread/
+  tenant (per-dimension sums), tenant_admin-gated read-only (backlog 25's
+  dev slice; pricing snapshots stay Phase 4+).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

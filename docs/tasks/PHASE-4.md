@@ -504,10 +504,86 @@ of a URI is not a promise the core can resolve it.
       `.4`.
 
 - ID: `PHASE-4.4`
-  Status: `proposed`
+  Status: `done`
   Goal: pack R2 — PDFs/text/structured feeds/archives in sandboxed extraction workers
   Backlog: 34
   Roadmap: §12.3
+  Children: `.4.1`–`.4.3` (decomposed `2026-09-07` at the census
+    seams): `.4.1` the R2 contract + the parser census (the format
+    set, the §12.6 Derivation shape, the WORKER sandbox class —
+    the honest ladder-up from the packs' `none` — the measured
+    parser-library census) → `.4.2` the extraction workers (the
+    worker process + the stdio protocol + the per-format parsers +
+    the mechanical refusals) → `.4.3` the receipt + the pack
+    wiring (the Derivation receipt + the media-type routing + the
+    resolve-path execution).
+  Done (`2026-09-07`): the census mapped §12.3's R2 row against
+    the shipped surface: NOTHING extracts — no PDF/zip/tar/feed
+    crate in the lock (only flate2, the fetcher's gzip), and the
+    src's `extract` hits are axum's `extract` module + the CA's
+    EC-point helper (`git grep -c "extract\|pdf\|archive"
+    a18a25e -- crates/reasonbraid-server/src/` → the hits are
+    unrelated). The R2 lane is a greenfield with the §12.3 row as
+    its spec. The pieces R2 reuses exist: the receipt shapes (the
+    Web/Git acquisitions), the ADR-018 vocabulary (R2's parsers
+    claim `process` at least — the honest ladder-up: untrusted
+    CONTENT executes, unlike R0/R1's byte-only `none`), the
+    adapter lane's subprocess pattern (the worker-quarantine
+    boundary), and the §12.6 Derivation shape (the extraction/
+    normalization version + the derived chunk digests + the
+    parent links). Children at those seams — frontier → `.4.1`.
+
+  - ID: `PHASE-4.4.1`
+    Status: `proposed`
+    Goal: the R2 contract + the parser census — the §12.3 R2 row
+      as the TYPED contract: the format set (PDF; the open
+      formats — UTF-8 text, the structured feeds (Atom/RSS), the
+      archives (zip/tar)); the extraction contract (the §12.6
+      Derivation edge: the extraction/normalization version, the
+      derived text + chunk digests, the parent link to the
+      acquired bytes — the extraction is ALWAYS a derivation,
+      never the original); the sandbox claim (the parsers run in
+      DEDICATED WORKER PROCESSES — the ADR-018 `process` class,
+      the honest ladder-up from the packs' `none`: untrusted
+      content EXECUTES here, so the boundary is the worker
+      process + the stdio protocol, mirroring the adapter lane's
+      subprocess pattern); the refusal vocabulary (encrypted
+      PDFs, JS-bearing PDFs, recursive/nested archives, path
+      traversal, the archive bomb — the decompression-ratio rule
+      again); the media-type routing design (the R2 pack
+      PIPELINES the acquisition packs: it advertises the https/
+      git schemes with its media types and consumes the R0/R1
+      acquisition internally when it ranks) — PLUS the measured
+      parser-library census (lopdf vs pdf; zip/tar/atom_syndication
+      — the pure-Rust families against the lean supply-chain
+      doctrine). No code.
+    Backlog: 34 (the contract half)
+
+  - ID: `PHASE-4.4.2`
+    Status: `proposed`
+    Goal: the extraction workers — the worker process under the
+      `.4.1` contract: the stdio JSON protocol (the acquired bytes
+      or a temp path in, the derived text + the chunk digests +
+      the refusal out), the per-format parsers, the mechanical
+      refusals (the encrypted/JS PDFs, the nested archives, the
+      traversal, the bomb — each named), the per-extraction
+      limits (the byte/time ceilings on the WORKER side), the
+      quarantine boundary (the worker is a fresh process per
+      extraction — nothing persists).
+    Backlog: 34 (the worker half)
+
+  - ID: `PHASE-4.4.3`
+    Status: `proposed`
+    Goal: the receipt + the pack wiring — the R2 receipt (the
+      Derivation edge: the derived chunk digests + the parent
+      digest + the extractor version), the R2 registry entry (the
+      media-type routing per the `.4.1` design — the advertised
+      media types + the sandbox `process` claim), and the
+      resolution path's consumption (the resolve returns the R2
+      pack for the media-typed references, and the handler
+      executes the pipeline — the acquisition then the extraction
+      — when it ranks first, mirroring the `.2.3`/`.3.3` wiring).
+    Backlog: 34 (the receipt half)
 
 - ID: `PHASE-4.5`
   Status: `proposed`
@@ -530,7 +606,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.4` | `proposed` | `.3.3` done — **the `.3` lane (pack R1) is COMPLETE**: the contract + the acquisition + the receipt + the wiring (the git references resolve to the built-in, the refusal names the class through the resolution path); pack R2 — the sandboxed document extraction — executes now |
+| 1 | `PHASE-4.4.1` | `proposed` | `.4` decomposed at the census seams — NOTHING extracts (no parser crate in the lock; the §12.3 R2 row has no machinery); the R2 contract + the measured parser census execute now |
 
 ## Changelog
 
@@ -563,6 +639,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.4` decomposed at the census seams — NOTHING
+  extracts (no PDF/zip/tar/feed crate in the lock; the R0/R1
+  pieces exist to reuse: the receipts, the ADR-018 ladder, the
+  subprocess pattern, the Derivation shape); children `.4.1` (the
+  R2 contract + the parser census) → `.4.2` (the extraction
+  workers) → `.4.3` (the receipt + the pack wiring); frontier →
+  `.4.1`.
 - `2026-09-07`: `.3.3` done — the R1 receipt + the pack wiring
   (migration 0026's install record: the `git` scheme, the honest
   listed/none claims, the no-worktree evidence; the `GitReceipt`
@@ -1023,6 +1106,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R2 census + the contract-seam decomposition (`.4.1` the contract + the parser census → `.4.2` the workers → `.4.3` the receipt + the wiring); frontier → `.4.1` |
 | `2026-09-07` | `PHASE-4.3.3` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 6 passed` (the new receipt test: the resolved commit + the ADR-011 digest over the odb + the included manifest); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r1_resolver` → `test result: ok. 1 passed` (the git reference resolves to the built-in; the loopback refusal names the class through the resolution path; the reference preserved; the stricter requirement explicit); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg433_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R1 pack wired; **`.3` COMPLETE** — frontier → `.4` |
 | `2026-09-07` | `PHASE-4.3.2` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 5 passed` (the grammar table, the pre-flight loopback/private refusals, the offline file-transport acquisition with the resolved commit + the counts, the submodule/LFS refusals, the budget trips); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg432_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the R1 acquisition; frontier → `.3.3` |
 | `2026-09-07` | `PHASE-4.3.1` | docs-only (no code paths changed): the library census measured (`cargo add --dry-run gix` → v0.87.1 pure Rust; `cargo add --dry-run git2` → v0.21.0 with the `openssl-sys`/`vendored-libgit2` C features); `make gate` → 13/13 at commit | the R1 contract + the library census; frontier → `.3.2` |
@@ -1041,6 +1125,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.4` | `REASONBRAID-PHASE4-0014` | the R2 lane decomposed at the census seams (nothing extracts — the contract/parser-census/worker/receipt are the greenfield) |
 | `PHASE-4.3.3` | `REASONBRAID-PHASE4-0013` | the R1 receipt + the pack wiring (the git references resolve to the built-in — the refusal names the class) — **`.3` COMPLETE** |
 | `PHASE-4.3.2` | `REASONBRAID-PHASE4-0012` | the R1 acquisition (gix over the classified transport — the budgets + the named refusals + the resolved commit) |
 | `PHASE-4.3.1` | `REASONBRAID-PHASE4-0011` | the R1 contract + the library census (gix over the classified transport — the decision record) |

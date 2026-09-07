@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The R2 lane opens: the census found NOTHING extracts (`PHASE-4.4`)
+
+- No PDF/zip/tar/feed crate in the lock (only the fetcher's flate2); the codebase's `extract` hits are axum's extractor module and the CA's EC helper.
+- Reusable pieces: the Web/Git receipt shapes, the ADR-018 ladder (R2's parsers are the first to claim `process` — untrusted content EXECUTES here), the adapter lane's subprocess pattern (the worker-quarantine boundary), the §12.6 Derivation shape.
+- Decomposed at the census seams: `.4.1` the R2 contract + the measured parser census → `.4.2` the extraction workers → `.4.3` the receipt + the pack wiring. Frontier → `.4.1`.
+
 ## 2026-09-07 — Pack R1 is complete: the receipt, the install record, and the execution (`PHASE-4.3.3`)
 
 - `migrations/0026`: the R1 install record (`r1-git-fetcher` — the `git` scheme, clone/fetch, egress `listed` + sandbox `none` honestly claimed with the no-worktree evidence, `follow-classified` redirects, the ADR-011 digest format).

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The routing-policy lane is decomposed at the census seams (`PHASE-5.5`)
+
+- The §13.8 census: the routing decision is the CLIENT's choice today (the create carries the explicit profile; the bare thread defaults to the hardcoded `quick_advice`) — no rule, no case-class vocabulary, no policy; the §13.1 built-ins map §13.8's rows. Children: `.5.1` ADR-031 → `.5.2` the rule-based policy → `.5.3` the shadow recommendation.
+
 ## 2026-09-07 — The calibration and the regression gates land — the `.4` lane is COMPLETE (`PHASE-5.4.4`)
 
 - Migration 0035: the calibration accumulates the Brier + the confidence over the NAMED runs (each must be registered — never a fabrication); the gate records the baseline + the threshold; the evaluation compares each measured case against the baseline minus the threshold and APPENDS its result (a drop below is the typed failure with the delta — the gate never rewrites a result, it only blocks). Measured: evaluation 3. **The `.4` lane (the versioned evaluation service) is COMPLETE.**

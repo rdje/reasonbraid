@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.5` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.5.1` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,11 +28,12 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.5` — the deterministic/
-  constrained routing policy (§13.8): the rule-based baseline,
-  the learned routing ONLY after the rule-based baseline +
-  sufficient data, the shadow mode first. Decompose at the
-  census seams first (the `.4` lane COMPLETE).
+- **Next action:** execute `PHASE-5.5.1` — ADR-031 + the
+  census: the routing-policy contract (the case-class
+  vocabulary, the rule-based policy as the deterministic
+  class→arm resolution with the explicit profile outranking
+  it, the learned routing as the shadow recommendation
+  constrained to the existing arms). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

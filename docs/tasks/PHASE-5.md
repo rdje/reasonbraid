@@ -678,9 +678,71 @@ and honest inconclusive outcomes.
       frontier → `.5`.
 
 - ID: `PHASE-5.5`
-  Status: `proposed`
+  Status: `done`
   Goal: deterministic/constrained routing policy; learned routing only after a rule-based baseline and sufficient data, shadow mode first
   Roadmap: §13.8
+  Children: `.5.1`–`.5.3` (decomposed `2026-09-07` at the census
+    seams): `.5.1` ADR-031 + the census (the routing-policy
+    contract: the case-class vocabulary, the rule-based policy
+    as the deterministic class→arm resolution, the learned
+    routing as the SHADOW RECOMMENDATION constrained to the
+    existing arms) → `.5.2` the rule-based policy (the §13.8
+    rows as the built-in rules + the deterministic resolution)
+    → `.5.3` the shadow recommendation (the recorded,
+    never-applied learned routing over the `.4` evidence).
+  Done (`2026-09-07`): the census mapped §13.8 against the
+    shipped surface. The routing decision today is the
+    CLIENT's choice: the create carries the explicit
+    `workflow_profile`, the bare thread defaults to the
+    hardcoded `quick_advice` — no rule, no case-class
+    vocabulary, no policy (`git grep -n "routing" HEAD --
+    crates/reasonbraid-server/src/` → the hits are the
+    HTTP router + the node channel's route comments; the
+    `Classification` enum is the SECURITY classification,
+    not a routing class). The reusable pieces: the §13.1
+    built-in profiles map §13.8's left side (quick_advice =
+    low-risk/simple, evidence_review = factual/current,
+    independent_panel = uncertain/high-value, critique +
+    architecture_decision = design/policy, policy_proposal =
+    binding/high-impact), the `.4` evaluation service's
+    trials/gates (the evidence the recommendation consumes),
+    and the create boundary's validated-profile resolution.
+    The §23 queue has no routing entry — the lane opens
+    ADR-031. Frontier → `.5.1`.
+
+  - ID: `PHASE-5.5.1`
+    Status: `proposed`
+    Goal: ADR-031 + the census — the routing-policy contract:
+      the case-class vocabulary (the §13.8 rows), the
+      rule-based policy (the deterministic class→arm
+      resolution — the client's EXPLICIT profile stays
+      authoritative, the human authority outranks the rule),
+      the learned routing as the SHADOW RECOMMENDATION only
+      (it names an EXISTING arm — it cannot raise authority,
+      spend, data access, or side-effect scope), the policy
+      selection recorded + auditable. No code.
+    ADR: 031
+    Roadmap: §13.8
+
+  - ID: `PHASE-5.5.2`
+    Status: `proposed`
+    Goal: the rule-based policy — the §13.8 rows as the
+      built-in rules (the class → the profile arm), the
+      deterministic resolution (the class → the arm + the
+      rule id + the audit record), the create-boundary
+      application (the class submitted + no explicit profile
+      → the policy's arm; the explicit profile outranks it).
+    Roadmap: §13.8
+
+  - ID: `PHASE-5.5.3`
+    Status: `proposed`
+    Goal: the shadow recommendation — the learned-routing
+      surface: the recommendation records (the class → the
+      arm, the evidence reference — the `.4` trial/gate
+      results), the constraint (the arm must be one of the
+      EXISTING registered profiles — never a raise), the
+      recommendation is recorded, never applied.
+    Roadmap: §13.8
 
 - ID: `PHASE-5.6`
   Status: `proposed`
@@ -692,10 +754,16 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.5` | `proposed` | `.4.4` done — the calibration + the regression gates (the named-run accumulation, the baseline-minus-threshold gate, the append-only evaluations; evaluation 3) — **the `.4` lane (the evaluation service) is COMPLETE**; the routing-policy lane executes next |
+| 1 | `PHASE-5.5.1` | `proposed` | `.5` decomposed at the census seams (the routing decision is the client's choice today — no rule, no class vocabulary, no policy; the §13.1 profiles map §13.8's rows) — ADR-031 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.5` decomposed at the census seams — the
+  routing decision is the client's choice today (no rule, no
+  class vocabulary, no policy; the §13.1 built-ins map §13.8's
+  rows); children `.5.1` (ADR-031 + the census) → `.5.2` (the
+  rule-based policy) → `.5.3` (the shadow recommendation);
+  frontier → `.5.1`.
 - `2026-09-07`: `.4.4` done — the calibration + the regression
   gates (migration 0035: the named-run accumulation, the
   baseline/threshold gate, the append-only evaluations);

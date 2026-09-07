@@ -367,8 +367,12 @@ enum ThreadCommand {
         thread: String,
         #[arg(long)]
         reason: String,
-        /// Close outcome: `decided` (default) | `inconclusive` (the honest terminal —
-        /// name the unresolved items with `--unresolved`).
+        /// Close outcome (`.2.4.1`, §13.4): the twelve terminals — `accepted_unanimously`,
+        /// `accepted_with_recorded_objections`, `accepted_by_rule` (the `decided` alias's
+        /// canonical name, the default), `advisory_answer_only`, `deadlocked` (the
+        /// `inconclusive` alias's canonical name), `no_quorum`, `insufficient_evidence`,
+        /// `budget_exhausted`, `expired`, `cancelled`, `human_decision_required`,
+        /// `unsafe_to_continue`. A decision terminal refuses `--unresolved`.
         #[arg(long)]
         outcome: Option<String>,
         /// An item that prevented a decision (repeatable; refused on a decided close).

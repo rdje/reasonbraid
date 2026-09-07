@@ -335,22 +335,103 @@ pub struct ReviseBody {
     pub content: String,
 }
 
-/// The close outcome (`.1.5.3`): `decided` is the stated default (a close without
-/// an outcome IS a decision); `inconclusive` lands the thread on the honest
-/// `Inconclusive` terminal and REQUIRES the `unresolved` register to be meaningful
-/// (a decided close that carries unresolved items is a typed refusal — listing
-/// what prevented a decision while claiming one would be dishonest).
+/// The close outcome (`.2.4.1`, §13.4): the TWELVE valid terminals with the two
+/// legacy wire words kept as aliases — `decided` (the stated default, a close
+/// without an outcome IS a decision) → `accepted_by_rule`, `inconclusive` →
+/// `deadlocked`. The canonical names persist (the event + the projection); the
+/// legacy words never do. The family rule (the `.1.5.3` refusal, generalized):
+/// a DECISION-family terminal carrying a non-empty unresolved register is the
+/// typed refusal — listing what prevented a decision while claiming one would
+/// be dishonest.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CloseOutcome {
+    /// The legacy wire word — canonicalized to `accepted_by_rule` at persist.
     #[default]
     Decided,
+    /// The legacy wire word — canonicalized to `deadlocked` at persist.
     Inconclusive,
+    AcceptedUnanimously,
+    AcceptedWithRecordedObjections,
+    AcceptedByRule,
+    AdvisoryAnswerOnly,
+    Deadlocked,
+    NoQuorum,
+    InsufficientEvidence,
+    BudgetExhausted,
+    Expired,
+    Cancelled,
+    HumanDecisionRequired,
+    UnsafeToContinue,
 }
 
-/// `thread.close` body: the scope, the stop reason (preserved for the audit view),
-/// the outcome (default `decided`), and the unresolved register (the items that
-/// prevented a decision when the outcome is `inconclusive`).
+impl CloseOutcome {
+    /// Whether this terminal is in the DECISION family (the `decided` side of
+    /// the `.1.5.3` rule): a non-empty unresolved register is the typed
+    /// refusal. The failure family accepts (and honestly should carry) it.
+    pub fn is_decision_family(&self) -> bool {
+        matches!(
+            self,
+            CloseOutcome::Decided
+                | CloseOutcome::AcceptedUnanimously
+                | CloseOutcome::AcceptedWithRecordedObjections
+                | CloseOutcome::AcceptedByRule
+                | CloseOutcome::AdvisoryAnswerOnly
+        )
+    }
+
+    /// The §13.4 canonical terminal name — the legacy words never persist.
+    pub fn canonical(&self) -> &'static str {
+        match self {
+            CloseOutcome::Decided => "accepted_by_rule",
+            CloseOutcome::Inconclusive => "deadlocked",
+            CloseOutcome::AcceptedUnanimously => "accepted_unanimously",
+            CloseOutcome::AcceptedWithRecordedObjections => "accepted_with_recorded_objections",
+            CloseOutcome::AcceptedByRule => "accepted_by_rule",
+            CloseOutcome::AdvisoryAnswerOnly => "advisory_answer_only",
+            CloseOutcome::Deadlocked => "deadlocked",
+            CloseOutcome::NoQuorum => "no_quorum",
+            CloseOutcome::InsufficientEvidence => "insufficient_evidence",
+            CloseOutcome::BudgetExhausted => "budget_exhausted",
+            CloseOutcome::Expired => "expired",
+            CloseOutcome::Cancelled => "cancelled",
+            CloseOutcome::HumanDecisionRequired => "human_decision_required",
+            CloseOutcome::UnsafeToContinue => "unsafe_to_continue",
+        }
+    }
+}
+
+/// One coverage item of the minority report (`.2.4.1`, ADR-029 + §13.5): the
+/// objection/uncertainty item, whether the synthesis INCLUDED it, and the
+/// reason when it was excluded. The coverage report makes the synthesizer's
+/// choices checkable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoverageItem {
+    pub item: String,
+    pub included: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// The minority report riding the close (`.2.4.1`, ADR-029 + §13.5): derived
+/// content — the synthesizer identity/configuration, the input event range,
+/// the source links, and the coverage report. It rides the close EVENT; the
+/// ledger carries it, the inspection reconstructs it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MinorityReportInput {
+    pub synthesizer: String,
+    pub input_event_range: String,
+    pub sources: Vec<String>,
+    pub coverage: Vec<CoverageItem>,
+}
+
+/// `thread.close` body: the scope, the stop reason (preserved for the audit
+/// view), the outcome (the §13.4 terminal; `decided`/`inconclusive` stay
+/// accepted aliases, default `decided`), the unresolved register (the items
+/// that prevented a decision — refused on a decision-family terminal), and
+/// the minority report (`.2.4.1`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloseBody {
@@ -360,6 +441,8 @@ pub struct CloseBody {
     pub outcome: CloseOutcome,
     #[serde(default)]
     pub unresolved: Vec<String>,
+    #[serde(default)]
+    pub minority_report: Option<MinorityReportInput>,
 }
 
 /// `thread.cancel` body: the scope and the abandonment reason (`PHASE-1.1.3`) —
@@ -409,6 +492,10 @@ pub struct ThreadProjection {
     /// Challenges that no revision has answered (the unresolved register).
     pub open_challenges: u64,
     pub close_reason: Option<String>,
+    /// The §13.4 canonical close terminal (`.2.4.1`; additive — the legacy
+    /// projections close without one).
+    #[serde(default)]
+    pub close_outcome: Option<String>,
     #[serde(default)]
     pub classification: Classification,
     #[serde(default)]
@@ -587,6 +674,7 @@ pub fn prepare_create(
         structured_claims: 0,
         open_challenges: 0,
         close_reason: None,
+        close_outcome: None,
         classification: body.classification.unwrap_or_default(),
         workflow_profile: body
             .workflow_profile
@@ -1258,43 +1346,45 @@ where
         OP_CLOSE => {
             let body: CloseBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
-            // `.1.5.3`: a decided close must not carry an unresolved register —
+            // `.2.4.1` (the `.1.5.3` refusal, generalized to the family): a
+            // DECISION-family terminal must not carry an unresolved register —
             // listing the items that prevented a decision while claiming one
-            // would be dishonest.
-            if body.outcome == CloseOutcome::Decided && !body.unresolved.is_empty() {
+            // would be dishonest. The failure family accepts it.
+            if body.outcome.is_decision_family() && !body.unresolved.is_empty() {
                 return Err(ThreadError::InvalidCommand(
-                    "a decided close cannot carry unresolved items — name outcome `inconclusive`"
+                    "a decision terminal cannot carry unresolved items — name a failure terminal                      (deadlocked, no_quorum, insufficient_evidence, budget_exhausted, expired,                      cancelled, human_decision_required, unsafe_to_continue)"
                         .to_string(),
                 ));
             }
-            // Fold open → closing → terminal (both core edges validated; one terminal
-            // event records the result). A thread already `closing` only finalizes.
-            // The terminal is the OUTCOME: `decided` → closed, `inconclusive` → the
-            // honest `Inconclusive` state (the core machine's new edge, `.1.5.3`).
+            // Fold open → closing → terminal (both core edges validated; one
+            // terminal event records the result). A thread already `closing`
+            // only finalizes. The terminal state is the OUTCOME family: the
+            // decision family → closed, the failure family → the honest
+            // `Inconclusive` state (the core machine's edge, `.1.5.3`).
             let terminal = match projection.state {
                 ThreadState::Open => {
                     ThreadState::Open
                         .apply(ThreadTransition::BeginClose)
                         .map_err(ThreadError::InvalidTransition)?;
-                    if body.outcome == CloseOutcome::Inconclusive {
-                        ThreadState::Closing
-                            .apply(ThreadTransition::FinalizeInconclusive)
-                            .expect("finalize_inconclusive from closing is deterministic")
-                    } else {
+                    if body.outcome.is_decision_family() {
                         ThreadState::Closing
                             .apply(ThreadTransition::FinalizeClose)
                             .expect("finalize_close from closing is deterministic")
+                    } else {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeInconclusive)
+                            .expect("finalize_inconclusive from closing is deterministic")
                     }
                 }
                 ThreadState::Closing => {
-                    if body.outcome == CloseOutcome::Inconclusive {
-                        ThreadState::Closing
-                            .apply(ThreadTransition::FinalizeInconclusive)
-                            .expect("finalize_inconclusive from closing is deterministic")
-                    } else {
+                    if body.outcome.is_decision_family() {
                         ThreadState::Closing
                             .apply(ThreadTransition::FinalizeClose)
                             .expect("finalize_close from closing is deterministic")
+                    } else {
+                        ThreadState::Closing
+                            .apply(ThreadTransition::FinalizeInconclusive)
+                            .expect("finalize_inconclusive from closing is deterministic")
                     }
                 }
                 other => {
@@ -1307,6 +1397,8 @@ where
             };
             projection.state = terminal;
             projection.close_reason = Some(body.reason.clone());
+            // The canonical terminal persists; the legacy words never do.
+            projection.close_outcome = Some(body.outcome.canonical().to_string());
             // The profile's terminal step (the ADR-016 sequence's last).
             projection.workflow_step = projection.workflow_steps.len().saturating_sub(1);
             (
@@ -1317,8 +1409,9 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "reason": body.reason,
-                    "outcome": body.outcome,
+                    "outcome": body.outcome.canonical(),
                     "unresolved": body.unresolved,
+                    "minority_report": body.minority_report,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )

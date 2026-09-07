@@ -4516,3 +4516,291 @@ async fn the_blind_contributions_commit_at_the_round_advance() {
         "the committed target accepts the challenge: {challenged}"
     );
 }
+
+#[tokio::test]
+async fn the_twelve_terminals_and_the_minority_report_ride_the_close() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "tw-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // The §13.4 table: canonical terminal → the decision family (closed) or
+    // the failure family (inconclusive).
+    let terminals: &[(&str, bool)] = &[
+        ("accepted_unanimously", true),
+        ("accepted_with_recorded_objections", true),
+        ("accepted_by_rule", true),
+        ("advisory_answer_only", true),
+        ("deadlocked", false),
+        ("no_quorum", false),
+        ("insufficient_evidence", false),
+        ("budget_exhausted", false),
+        ("expired", false),
+        ("cancelled", false),
+        ("human_decision_required", false),
+        ("unsafe_to_continue", false),
+    ];
+
+    for (i, (outcome, decided_family)) in terminals.iter().enumerate() {
+        let key = format!("tw-create-{i}");
+        let (status, created) = post(
+            &client,
+            &base,
+            "/v1/threads",
+            &human_id,
+            &json!({
+                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                "operation": "thread.create",
+                "request_id": reasonbraid_core::RequestId::new().to_string(),
+                "idempotency_key": key,
+                "body": {
+                    "tenant_id": tenant_id,
+                    "subject": format!("tw-{i}"),
+                    "objective": "probe",
+                },
+                "client_context": {},
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the create succeeds: {created}");
+        let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+        let response = client
+            .post(format!("{base}/v1/threads/{thread_id}/commands"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                "operation": "thread.close",
+                "request_id": reasonbraid_core::RequestId::new().to_string(),
+                "idempotency_key": format!("tw-close-{i}"),
+                "body": {
+                    "tenant_id": tenant_id,
+                    "reason": "the terminal probe",
+                    "outcome": outcome,
+                },
+                "client_context": {},
+            }))
+            .send()
+            .await
+            .expect("close request");
+        assert_eq!(response.status().as_u16(), 200, "close {outcome}");
+        let closed: Value = response.json().await.unwrap();
+        assert_eq!(
+            closed["thread_state"],
+            json!(if *decided_family {
+                "closed"
+            } else {
+                "inconclusive"
+            }),
+            "{outcome}"
+        );
+
+        let (status, state) = get(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+            &human_id,
+        )
+        .await;
+        assert_eq!(status, 200, "the thread reads: {state}");
+        assert_eq!(
+            state["state"]["close_outcome"],
+            json!(outcome),
+            "the canonical terminal persists on the projection"
+        );
+    }
+
+    // The legacy aliases stay accepted on the wire but NEVER persist — the
+    // canonical names do.
+    let legacy: &[(&str, &str)] = &[
+        ("decided", "accepted_by_rule"),
+        ("inconclusive", "deadlocked"),
+    ];
+    for (i, (wire, canonical)) in legacy.iter().enumerate() {
+        let (_status, created) = post(
+            &client,
+            &base,
+            "/v1/threads",
+            &human_id,
+            &json!({
+                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                "operation": "thread.create",
+                "request_id": reasonbraid_core::RequestId::new().to_string(),
+                "idempotency_key": format!("tw-legacy-{i}"),
+                "body": {
+                    "tenant_id": tenant_id,
+                    "subject": format!("tw-legacy-{i}"),
+                    "objective": "probe",
+                },
+                "client_context": {},
+            }),
+        )
+        .await;
+        let thread_id = created["thread_id"].as_str().unwrap().to_string();
+        let response = client
+            .post(format!("{base}/v1/threads/{thread_id}/commands"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                "operation": "thread.close",
+                "request_id": reasonbraid_core::RequestId::new().to_string(),
+                "idempotency_key": format!("tw-legacy-close-{i}"),
+                "body": {
+                    "tenant_id": tenant_id,
+                    "reason": "the alias probe",
+                    "outcome": wire,
+                },
+                "client_context": {},
+            }))
+            .send()
+            .await
+            .expect("close request");
+        assert_eq!(response.status().as_u16(), 200, "the alias {wire} accepts");
+        let closed: Value = response.json().await.unwrap();
+        let (_, timeline) = get(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+            &human_id,
+        )
+        .await;
+        let close_event = timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["event_type"] == json!("thread.closed"))
+            .cloned()
+            .expect("the close event exists");
+        assert_eq!(
+            close_event["body"]["outcome"],
+            json!(canonical),
+            "the alias never persists"
+        );
+        assert!(closed["thread_id"].is_string());
+    }
+
+    // The family rule: a decision terminal refuses the unresolved register; a
+    // failure terminal accepts (and carries) it.
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "tw-refusal",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "tw-refusal",
+                "objective": "probe",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "tw-refusal-close",
+            "body": {
+                "tenant_id": tenant_id,
+                "reason": "dishonest",
+                "outcome": "accepted_unanimously",
+                "unresolved": ["an objection stands"],
+            },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(
+        response.status().as_u16(),
+        400,
+        "the decision family refuses"
+    );
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("failure terminal"),
+        "{refused}"
+    );
+
+    let response = client
+        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "tw-failure-close",
+            "body": {
+                "tenant_id": tenant_id,
+                "reason": "the evidence did not converge",
+                "outcome": "insufficient_evidence",
+                "unresolved": ["the objection stands"],
+                "minority_report": {
+                    "synthesizer": "hpr-tw-human",
+                    "input_event_range": "1..3",
+                    "sources": ["https://example.org/a"],
+                    "coverage": [
+                        { "item": "the objection", "included": true },
+                        { "item": "the weak claim", "included": false, "reason": "uncited" },
+                    ],
+                },
+            },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the failure family accepts"
+    );
+    let (_, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    let close_event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.closed"))
+        .cloned()
+        .expect("the close event exists");
+    assert_eq!(
+        close_event["body"]["outcome"],
+        json!("insufficient_evidence")
+    );
+    let report = &close_event["body"]["minority_report"];
+    assert_eq!(report["synthesizer"], json!("hpr-tw-human"));
+    assert_eq!(report["input_event_range"], json!("1..3"));
+    assert_eq!(report["sources"], json!(["https://example.org/a"]));
+    assert_eq!(report["coverage"].as_array().unwrap().len(), 2);
+    assert_eq!(report["coverage"][1]["included"], json!(false));
+    assert_eq!(report["coverage"][1]["reason"], json!("uncited"));
+}

@@ -313,7 +313,7 @@ and honest inconclusive outcomes.
       → `.2.4.1`.
 
   - ID: `PHASE-5.2.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the close vocabulary — the §13.4 twelve terminals on
       the close outcome (the legacy words stay accepted aliases
       mapping to `accepted_by_rule`/`deadlocked`; the canonical
@@ -325,6 +325,27 @@ and honest inconclusive outcomes.
       identity, the input event range, the source links, the
       coverage report of included/excluded items).
     Roadmap: §13.4, §13.5
+    Done (`2026-09-07`): the close vocabulary landed per
+      ADR-029 — the `CloseOutcome` gains the §13.4 twelve; the
+      legacy `decided`/`inconclusive` wire words stay accepted
+      aliases (→ `accepted_by_rule`/`deadlocked`) and NEVER
+      persist (the event body + the projection's new
+      `close_outcome` carry the canonical name); the
+      `.1.5.3` refusal generalized to the FAMILY rule
+      (`is_decision_family`: the four decision terminals +
+      `decided` refuse a non-empty unresolved register; the
+      eight failure terminals accept and carry it); the
+      terminal STATE follows the family (decision → closed,
+      failure → the honest `Inconclusive` state); the close
+      body gains the `minority_report` (the synthesizer, the
+      input event range, the sources, the coverage items with
+      the included/`reason` shape) riding the close event; the
+      CLI's close help documents the twelve. Measured (profiles
+      28): all twelve terminals persist canonically with the
+      family-correct thread state; the aliases accept but never
+      persist; the family refusal + the failure-family
+      acceptance with the register; the minority report rides
+      the close verbatim. Frontier → `.2.4.2`.
 
   - ID: `PHASE-5.2.4.2`
     Status: `proposed`
@@ -365,10 +386,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.4.1` | `proposed` | `.2.4` decomposed at the close/contribute seam — the close vocabulary (the twelve terminals + the minority report) executes first, then the contribution-side kinds |
+| 1 | `PHASE-5.2.4.2` | `proposed` | `.2.4.1` done — the close vocabulary (the twelve terminals with the legacy aliases never persisting, the family rule, the minority report; profiles 28); the contribution-side kinds execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.4.1` done — the close vocabulary (the §13.4
+  twelve terminals, the legacy aliases never persisting, the
+  family rule, the minority report riding the close); profiles
+  28; frontier → `.2.4.2`.
 - `2026-09-07`: `.2.4` decomposed at the close/contribute seam
   — `.2.4.1` the close vocabulary (the twelve terminals + the
   minority report) → `.2.4.2` the contribution-side execution
@@ -612,6 +637,56 @@ new test) — `\.rs$`.
   commit.
 - [x] **FIX** — `src/threads.rs`, `src/api.rs`,
   `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.2.4.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the twelve-terminal
+`CloseOutcome` + `is_decision_family` + `canonical`, the
+`MinorityReportInput`/`CoverageItem` shapes, the close arm's
+family rule + the canonical event outcome + the projection's
+`close_outcome`), `crates/reasonbraid-server/tests/profiles.rs`
+(the new test), `crates/reasonbraid-server/tests/command_api.rs`
+(the legacy-event assertion → the canonical name),
+`crates/reasonbraid-cli/src/main.rs` (the close help documents
+the twelve) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf close: a two-valued
+  outcome (`decided`/`inconclusive` — §13.4 lists twelve); no
+  minority report; the `.1.5.3` refusal was the two-valued
+  ancestor of the family rule.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "close_outcome\|MinorityReportInput\|is_decision_family"
+  d6fc732 -- crates/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-029 close contract: the twelve terminals
+  on the outcome, the aliases accepted-but-never-persisted, the
+  family rule, the report riding the event.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_twelve_terminals_and_the_minority_report_ride_the_close`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 28 tests … ok`) — the twelve terminals
+  persist canonically with the family-correct state, the
+  aliases accept but persist the canonical name, the family
+  refusal + the failure-family acceptance with the register,
+  the minority report rides the close verbatim (the
+  synthesizer/range/sources/coverage with the included +
+  reason shape).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg516_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`,
+  `tests/command_api.rs`, `crates/reasonbraid-cli/src/main.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

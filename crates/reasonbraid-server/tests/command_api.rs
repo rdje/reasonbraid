@@ -1507,7 +1507,9 @@ async fn the_honest_inconclusive_close_carries_its_register() {
         .iter()
         .find(|e| e["event_type"] == json!("thread.closed"))
         .expect("the close event exists");
-    assert_eq!(close_event["body"]["outcome"], json!("inconclusive"));
+    // `.2.4.1`: the legacy wire word is the accepted alias — the event
+    // persists the CANONICAL terminal (the aliases never persist).
+    assert_eq!(close_event["body"]["outcome"], json!("deadlocked"));
     assert_eq!(
         close_event["body"]["unresolved"],
         json!([

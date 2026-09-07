@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The close vocabulary lands (`PHASE-5.2.4.1`)
+
+- The close outcome speaks §13.4's twelve terminals: `decided`/`inconclusive` stay accepted aliases but never persist — the event and the projection's `close_outcome` carry the canonical name; the family rule replaces the `.1.5.3` check (a decision terminal with an unresolved register is the typed refusal); the minority report rides the close event (synthesizer, input range, sources, coverage). Measured: profiles 28.
+
 ## 2026-09-07 — The close/contribute seam splits the `.2.4` leaf (`PHASE-5.2.4`)
 
 - The `.2.4` census: the CLOSE side (a two-valued outcome vs §13.4's twelve; no minority report) and the CONTRIBUTION side (no `evidence_request`/`verdict` kinds; the `evidence_reference` kind accepts empty refs). Children: `.2.4.1` the close vocabulary → `.2.4.2` the contribution-side execution.

@@ -444,9 +444,11 @@ async fn the_real_cli_drives_the_whole_flow() {
         .iter()
         .find(|e| e["event_type"] == serde_json::json!("thread.closed"))
         .expect("the close event exists");
+    // `.2.4.1`: the legacy wire word is the accepted alias — the event
+    // persists the CANONICAL terminal (the aliases never persist).
     assert_eq!(
         close_event["body"]["outcome"],
-        serde_json::json!("inconclusive")
+        serde_json::json!("deadlocked")
     );
     assert_eq!(
         close_event["body"]["unresolved"],

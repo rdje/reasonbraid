@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.4: the recruitment lane has a baseline and candidates but no vocabulary — the census names the three seams
+
+- **The explicit-invitation flow (`.1.3`) and the match surface (`.3`) are the inputs; the protocol between them is missing**: no typed §10.5 response vocabulary (join/observe/defer/conditional_join/recommend/request_context/recuse), no call artifact (the window/deadline/min-max/slots), no panel snapshot with its explanation, and none of the §10.7 storm controls. ADR-015 therefore opens first (the baseline promotes; the dependence-indicator trigger is the `.6` lane's), then the call + the responses, then the storm controls built-or-named.
+- promotion: declined (the census is the leaf's recorded contract — the `.4.1`–`.4.3` children execute it). **Frontier `PHASE-3.4.1` (ADR-015).**
+
 ## _(2026-09-07)_ — PHASE-3.3.3: the match surface exposed the provenance gap — a self-declared "certified" is the lie the §10.1 rule forbids
 
 - **The query surface's own test found a gap the schema never caught**: the `.1.2` write accepted ANY confidence value, so a role could self-declare `certified` claims — the exact "high self-declared score" the §10.1 rule forbids. The fix rides this leaf: a role's own write is `self_asserted`-only, the upgrades ride the audited attest verb (the forged upgrade is a typed 400 naming the gate). The surface also pins the scope clamp (an expression cannot exceed the reader's classification) and the honest budget wire (no per-role budget facts → a budget requirement cannot be proven; unknown, never zero).

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.4` split at the census seams (`PHASE-3.4`)
+
+- The recruitment-lane census mapped §10.5/§10.7 (backlog 29/30) against the shipped surface: the `.1.3` invitation flow is the EXPLICIT baseline and the `.3` match surface supplies the candidates — but the §10.5 response vocabulary (`join`/`observe`/`defer`/`conditional_join`/`recommend`/`request_context`/`recuse`) has no typed shape, no call artifact exists (the window/deadline/min-max/slots), the panel snapshot + the selection explanation do not exist, the §10.7 storm controls have nothing, and ADR-015 is unopened.
+- Children: `.4.1` ADR-015 (the baseline promotes) → `.4.2` the call artifact + the typed responses (the panel snapshot carries the explanation) → `.4.3` the storm controls (built at the dev scale or named). Tree-only commit; frontier → `.4.1`.
+
 ## 2026-09-07 — The matching query resolves server-side — and the provenance gate closes a self-declared-upgrade gap — `.3` COMPLETE (`PHASE-3.3.3`)
 
 - `POST /v1/directory/match`: the initiator submits the expression + the preferences; the server resolves the eligibility + the ranking over the shipped facts (§10.2 — the caller never enumerates the network). The expression's scope is CLAMPED to the reader's classification (a non-owner demanding the full scope is a typed 403), the candidates' profiles ride the response filtered at the reader's class, the zero-visibility profiles never appear, and every candidate carries its stage-1 reasons + the stage-2 explanations.

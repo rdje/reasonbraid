@@ -19,13 +19,13 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.4` (`.3` COMPLETE: the
-  eligibility + the ranking + the match surface). Then `.4.1`-ish
-  children, `.5`–`.6`.
-- **Next action:** execute `PHASE-3.4` — the recruitment protocol
-  lane (backlog 29/30, §10.5/§10.7, ADR-015): decompose at the
-  census seams (the invitations/capacity reservations/fairness/
-  anti-storm machinery vs the shipped `.1.3` invitation flow).
+- **Active tree:** `PHASE-3` → frontier `.4.1` (`.4` decomposed at
+  the census seams: ADR-015 → the call artifact + the responses →
+  the storm controls). Then `.4.2`, `.4.3`, `.5`–`.6`.
+- **Next action:** execute `PHASE-3.4.1` — ADR-015 (the recruitment
+  policy baseline): the shipped explicit-invitation contract
+  promotes as the baseline; the dependence indicators are the `.6`
+  lane's input (the trigger named); no code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

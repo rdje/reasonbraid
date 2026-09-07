@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The R1 lane opens: the census found NOTHING fetches Git (`PHASE-4.3`)
+
+- The §12.5 surface is a greenfield: no git library in the lock or the registry cache; the codebase's only "clone" hits are `.cloned()`/`Arc::clone`.
+- The reusable pieces exist: the `.2.1` destination policy (the git transport dials under the same public-only rule), the `.1.3` registry's `git` scheme slot, the `.2.3` receipt (the R1 receipt extends it with the resolved immutable commit + the included/excluded manifest).
+- Decomposed at the census seams: `.3.1` the R1 contract + the measured gitoxide-vs-git2 census → `.3.2` the acquisition (the budgets + the mechanical refusals + the no-checkout-execution rule) → `.3.3` the receipt + the pack wiring. Frontier → `.3.1`.
+
 ## 2026-09-07 — Pack R0 is complete: the receipt, the install record, and the execution (`PHASE-4.2.3`)
 
 - `migrations/0025`: the built-in R0 install record (`r0-https-fetcher` — https, text/HTML, GET/HEAD, the `none` auth class, egress `listed`, sandbox `none` honestly claimed, `follow-classified` redirects, the ADR-011 digest format, the security evidence).

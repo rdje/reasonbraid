@@ -19,14 +19,15 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.1.2` (`.1.1` done: ADR-014 —
-  deterministic structural eligibility first, the embedding engine
-  behind its trigger, no embedding columns). Then `.1.3`, `.2`–`.6`.
-- **Next action:** execute `PHASE-3.1.2` — the profile schema + the
-  write surface: migration 0019 (`agent_profiles` with the typed
-  §10.1 fields + the content-addressed version history) + the write
-  verbs (the role updates its own profile; the owner attests
-  capability claims with provenance).
+- **Active tree:** `PHASE-3` → frontier `.1.3` (`.1.2` done: the
+  profile schema + the write surface — migration 0019, the typed
+  §10.1 fields, the content-addressed history, the write/attest
+  verbs, the guard at 18 live suites). Then `.2`–`.6`.
+- **Next action:** execute `PHASE-3.1.3` — the visibility
+  enforcement + the read surface: the per-field visibility policy
+  evaluated per reader (a hidden field is ABSENT, not nulled), the
+  read verbs (self/owner full view, the tenant-scoped view, the
+  privacy-filtered network view), the adversarial reads measured.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

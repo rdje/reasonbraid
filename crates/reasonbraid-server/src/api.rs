@@ -31,7 +31,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -346,6 +346,19 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/admin/usage", get(admin_usage))
         .route("/v1/admin/metrics", get(admin_metrics))
+        .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
+        .route(
+            "/v1/profiles/{role_id}/versions",
+            get(list_profile_versions),
+        )
+        .route(
+            "/v1/profiles/{role_id}/versions/{version}",
+            get(get_profile_version),
+        )
+        .route(
+            "/v1/profiles/{role_id}/attest",
+            post(attest_capability_claim),
+        )
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -1145,6 +1158,193 @@ async fn revoke_node(
         revoked_certificates: result.rows_affected() as i64,
         revoked_at: revoked_at.to_rfc3339(),
     }))
+}
+
+// ── Directory profiles (PHASE-3.1.2; backlog 26) ──────────────────────────────
+
+/// The profile write gate: ONLY the role itself may write its profile (a
+/// self-declaration — §10.1 allows self-asserted claims, the provenance is
+/// shown). The owner's path is the attestation verb below.
+fn is_self(principal: &GrantSubject, role_id: &str) -> bool {
+    matches!(principal, GrantSubject::Role(r) if r.to_string() == role_id)
+}
+
+async fn role_tenant(pool: &PgPool, role_id: &str) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT tenant_id FROM agent_roles WHERE role_id = $1")
+        .bind(role_id)
+        .fetch_optional(pool)
+        .await
+}
+
+/// The shared read gate for `.1.2` (the `.1.3` leaf adds the per-reader
+/// filtering): the role itself or its tenant owner sees the full profile.
+async fn authorize_profile_read(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    role_id: &str,
+) -> Result<(), ControlApiError> {
+    if is_self(principal, role_id) {
+        return Ok(());
+    }
+    let Some(tenant) = role_tenant(pool, role_id).await? else {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    };
+    authorize_tenant_admin(
+        pool,
+        principal,
+        tenant.parse().map_err(|_| ControlApiError::internal())?,
+    )
+    .await
+}
+
+/// `PUT /v1/profiles/{role_id}` — the role declares its own profile. A NEW
+/// content-addressed version every write; the writer is the actor handle.
+async fn put_profile(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_id): Path<String>,
+    Json(profile): Json<crate::profiles::AgentProfile>,
+) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    if !is_self(&principal, &role_id) {
+        return Err(ControlApiError::unauthorized(
+            "only the role itself may write its profile (the owner attests via /attest)",
+        ));
+    }
+    let Some(tenant) = role_tenant(&state.pool, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    };
+    // The lineage link, when present, must name a real incarnation of THIS role.
+    if let Some(incarnation_id) = &profile.incarnation_id {
+        let exists: Option<bool> = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM incarnations WHERE incarnation_id = $1 AND role_id = $2)",
+        )
+        .bind(incarnation_id)
+        .bind(&role_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if !exists.unwrap_or(false) {
+            return Err(ControlApiError::invalid_command(format!(
+                "incarnation `{incarnation_id}` is not an incarnation of `{role_id}`"
+            )));
+        }
+    }
+    let _ = tenant;
+    let writer = actor_handle_for_subject(&principal).to_string();
+    let written = crate::profiles::write_profile(&state.pool, &role_id, &writer, &profile)
+        .await
+        .map_err(|e| profile_error(e, &role_id))?;
+    Ok(Json(written))
+}
+
+fn profile_error(e: sqlx::Error, role_id: &str) -> ControlApiError {
+    if e.as_database_error()
+        .is_some_and(|d| d.is_foreign_key_violation())
+    {
+        ControlApiError::not_found(format!("no role `{role_id}`"))
+    } else {
+        ControlApiError::internal_with_log(format!("profile write failed: {e}"))
+    }
+}
+
+/// `GET /v1/profiles/{role_id}` — the full current profile (self or owner).
+async fn get_profile(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_id): Path<String>,
+) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_profile_read(&state.pool, &principal, &role_id).await?;
+    let Some(current) = crate::profiles::current_profile(&state.pool, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!(
+            "no profile for `{role_id}`"
+        )));
+    };
+    Ok(Json(current))
+}
+
+/// `GET /v1/profiles/{role_id}/versions` — the content-addressed history.
+async fn list_profile_versions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_profile_read(&state.pool, &principal, &role_id).await?;
+    let rows = crate::profiles::version_list(&state.pool, &role_id).await?;
+    Ok(Json(json!({
+        "role_id": role_id,
+        "versions": rows
+            .into_iter()
+            .map(|(version, content_hash, written_by, written_at)| json!({
+                "version": version,
+                "content_hash": content_hash,
+                "written_by": written_by,
+                "written_at": written_at.to_rfc3339(),
+            }))
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// `GET /v1/profiles/{role_id}/versions/{version}` — one historical version.
+async fn get_profile_version(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((role_id, version)): Path<(String, i32)>,
+) -> Result<Json<crate::profiles::ProfileVersionRow>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_profile_read(&state.pool, &principal, &role_id).await?;
+    let Some(row) = crate::profiles::version_at(&state.pool, &role_id, version).await? else {
+        return Err(ControlApiError::not_found(format!(
+            "no version {version} of `{role_id}`'s profile"
+        )));
+    };
+    Ok(Json(row))
+}
+
+/// The attestation body: the owner upgrades ONE named capability claim's
+/// provenance to `owner_attested` with the evidence reference.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AttestRequest {
+    taxonomy_id: String,
+    evidence_ref: String,
+}
+
+/// `POST /v1/profiles/{role_id}/attest` — tenant_admin-gated (audited); a NEW
+/// version whose writer is the attesting owner.
+async fn attest_capability_claim(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_id): Path<String>,
+    Json(req): Json<AttestRequest>,
+) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(tenant) = role_tenant(&state.pool, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    };
+    authorize_tenant_admin(
+        &state.pool,
+        &principal,
+        tenant.parse().map_err(|_| ControlApiError::internal())?,
+    )
+    .await?;
+    let writer = actor_handle_for_subject(&principal).to_string();
+    let Some(written) = crate::profiles::attest_capability(
+        &state.pool,
+        &role_id,
+        &writer,
+        &req.taxonomy_id,
+        &req.evidence_ref,
+    )
+    .await?
+    else {
+        return Err(ControlApiError::not_found(format!(
+            "no profile for `{role_id}` or no capability `{}` in it",
+            req.taxonomy_id
+        )));
+    };
+    Ok(Json(written))
 }
 
 // ── Grant/boundary revocation + inspection (`.1.3.2`) ─────────────────────────

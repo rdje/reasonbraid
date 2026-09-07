@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.1.2: content addressing is the audit of the profile — identical content hashes identically, and the FK ripple is the spend_breakers lesson again
+
+- **The profile's history IS its audit trail**: every write is a new version whose hash is server-computed over the typed profile — identical content re-hashes identically (measured), changed content versions anew, the old versions stay readable, and each version records its writer. A profile therefore cannot be silently rewritten: the content-addressed history makes the mutation visible by construction, without a separate audit table.
+- The 0019 FK ripple repeated the spend_breakers lesson from `.3.2`: a new table referencing `agent_roles` breaks EVERY tenant-purging suite's purge list — the first guard run caught it (the CLI e2e's purge hit the FK), and ten purge lists gained the pair.
+- promotion: declined (the content-addressing pattern is the leaf's own measured contract; the FK-ripple lesson is the existing decisions record's rule re-applied). **Frontier `PHASE-3.1.3` (the visibility enforcement + the read surface).**
+
 ## _(2026-09-07)_ — PHASE-3.1.1: the roadmap's own table settles the engine question — stage-1 eligibility has no semantic term in it
 
 - **ADR-014 needed no experiment**: §10.3's stage-1 list (scope, status, capability requirements, policy restrictions, separation rules, ceilings, budget availability) contains NO semantic term — every field is a typed fact the shipped authority machinery already evaluates deterministically, and "an ineligible role is never restored by a high semantic score" pins the ordering. The embedding engine therefore arrives behind its trigger in shadow mode, and the profile schema carries no embedding columns — the versioned profiles stay interpretable typed facts.

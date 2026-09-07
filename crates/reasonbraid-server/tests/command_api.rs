@@ -68,6 +68,8 @@ async fn pool() -> Option<PgPool> {
         "incarnations",
         "nodes",
         "hosts",
+        "profile_versions",
+        "agent_profiles",
         "agent_roles",
         "human_principals",
         "tenants",

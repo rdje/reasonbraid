@@ -32,6 +32,7 @@ mod budget;
 pub mod ca;
 mod node_channel;
 mod outbox;
+mod profiles;
 mod telemetry;
 mod threads;
 mod tx;

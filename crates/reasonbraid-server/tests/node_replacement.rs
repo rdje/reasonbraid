@@ -80,6 +80,8 @@ async fn pool() -> Option<PgPool> {
         "incarnations",
         "nodes",
         "hosts",
+        "profile_versions",
+        "agent_profiles",
         "agent_roles",
         "human_principals",
         "tenants",
@@ -387,7 +389,6 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
         node.reconcile().await.expect("reconcile the lost node");
         let work = node.journal().work_items().await.expect("work items");
         assert_eq!(work.len(), 1, "the work item delivered to the lost node");
-        let work_command_id = work[0].command_id.clone();
         let worker = reasonbraid_node::Worker::new(
             node.clone(),
             reasonbraid_adapter::FakeAdapter::new(

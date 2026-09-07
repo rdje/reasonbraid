@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The directory profile lands: typed, versioned, content-addressed (`PHASE-3.1.2`)
+
+- Migration 0019 (`agent_profiles` + `profile_versions`): one current pointer per role + the content-addressed history — every write is a new version, the SHA-256 hash is server-computed over the typed profile, the old versions stay readable, and each version records its writer (the actor handle).
+- `crates/reasonbraid-server/src/profiles.rs`: the typed §10.1 `AgentProfile` (the capabilities with the four provenance classes — self-asserted/owner-attested/benchmarked/certified — the interests/scopes/availability/ceilings, the per-field visibility policy, the grants-by-reference, the incarnation lineage) with `deny_unknown_fields`.
+- The verbs: `PUT /v1/profiles/{role_id}` (ONLY the role itself writes — a self-declaration), `POST /v1/profiles/{role_id}/attest` (tenant_admin-audited: the claim's provenance upgrades to `owner_attested` with the evidence), the self/owner reads + the version history.
+- Measured (`tests/profiles.rs`, in the guard): identical content hashes identically, changed content versions anew, strangers (owner AND sibling) cannot write or read, a dangling lineage reference is 400, a forged field is a typed 422, the attestation is audited. The guard grew to 18 live suites; the 0019 FK ripple updated every tenant-purging purge list (the first guard run caught it). Frontier → `.1.3` (the visibility enforcement + the read surface).
+
 ## 2026-09-07 — ADR-014: deterministic eligibility first, embeddings behind their trigger (`PHASE-3.1.1`)
 
 - ADR-014 accepted (evidence-gated): §10.3's stage-1 eligibility is STRUCTURAL by the roadmap's own table (scope, status, capability requirements, policy restrictions, ceilings, budget availability) and the shipped authority machinery evaluates it deterministically — "an ineligible role is never restored by a high semantic score" pins the ordering.
@@ -428,36 +435,9 @@
 - **One-time is a database fact:** `FOR UPDATE` on the token row + `used_at` makes replay impossible; every refusal (unknown/used/expired/mismatched/nonce) is a committed audit row before the typed error returns — the budget engine's denial-row pattern.
 - Operator surface: `rb node issue-token` + `rb-node --enroll-token … --enroll-nonce … --host-claim … --node-secret …` (the node enrolls before any channel traffic). New `tests/node_enrollment.rs` (3 live-PG tests: one-time + identity rows; four audited refusal classes; tenant-admin-only issuance). Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_node-enrollment.md` (`answers:`).
 
-## 2026-09-06 — PHASE-1.2 decomposed: enrollment, authenticated channel + leases, inbox hardening (`PHASE-1.2`)
-
-- The node leaf is decomposed into three signoff-sized children (tree-first, no code change), on a measured gap census: node enrollment is absent, the node channel has no leases/presence (only the outbox worker leases), the per-node inbox has no retention/quarantine, and backlog 12's journal is already Phase-0-proven (the WP3 kill-point sweep carries it).
-- `.1.2.1` dev-profile node enrollment (backlog 11: one-time tokens, registration into the 0007 `nodes` table, dev signing key, audit; certificate issuance deferred to ADR-007), `.1.2.2` authenticated channel + lease/presence (backlog 13's remainder: key-proof handshake, heartbeat leases, expiry → visible offline state), `.1.2.3` durable inbox retention + quarantine (backlog 14's remainder; filtered delivery stays with Phase 3's directory). `make gate` → 13/13 green at commit.
-
-## 2026-09-06 — Thread command API completion: cancel + typed create profiles (`PHASE-1.1.3`)
-
-- `thread.cancel` lands as the abandonment terminal — the core `open|closing → cancelled` edge wired through the command API, with `cancel_reason` in the projection and a `thread.cancelled` event; distinct from a decided close (separate reasons, separate events, and the API test asserts `close_reason` stays null on cancel). `thread_cancel` joins the grant registry as its own action (the registry's wire-name test extended first — the canary that failed and taught the entry).
-- `thread.create` gains three typed, deny-unknown fields: `classification` (`general` default | `confidential`), `workflow_profile` (`single_agent` **stated default** per ADR-002 | `blind_independent` | `critique_revise` | `moderator` — non-default profiles recorded and executed as single-agent until routing work), `participant_rules` (`allow_explicit_invites` default on, `allow_join_requests` default off — §20.3 explicit participants first). Foreign fields and out-of-registry values are typed `invalid_command` rejections.
-- The CLI gains `thread cancel` and the three create flags (kebab-case human spellings normalized to the wire's snake_case — the e2e's first run caught the mismatch and the server's typed error named the values); inspection now shows classification/workflow and the cancel reason. Projection growth is additive (`#[serde(default)]`), so pre-`.1.1.3` projections still parse.
-- New live-PG tests (cancel inspectable/terminal/audited; typed fields + stated defaults + rejections); CLI e2e extended with the typed-create + cancel leg. Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13. Decision recorded: `docs/decisions/2026-09-06_thread-api-completion.md` (`answers:`).
-
-## 2026-09-06 — Migration 0007: the first-class identity store (`PHASE-1.1.2`)
-
-- Backlog 10's identity schema landed as `migrations/0007_identity_store.sql`: `tenants`, `human_principals`, `agent_roles`, `hosts`, `nodes`, `incarnations`, `runs` — the §8.1 hierarchy as records, with `tenant_id` on every material record (§17.2), UUIDv7 wire ids, and fail-closed foreign keys (a principal whose tenant does not exist is refused by the database). The `.6.1` `enrollments` table stays the dev bootstrap's name→id map; the incarnation carries only the §8.1-defining facts (provider/model/harness/config, validity interval) — later-feature columns arrive with their features (the 0002 precedent).
-- Enroll now writes the tenant row (bootstrap), the identity row, the grant, the boundary, and the enrollment row in ONE transaction — an enrollment implies its identity row; a re-enroll (same tenant + kind + name) replays and duplicates nothing at either layer.
-- New `tests/identity_store.rs` (bootstrap commits tenant+identity+enrollment together; role identity + replay duplicates nothing; FKs fail closed); the API-driving suites' purge lists gained the identity tables in FK order. Full live-PG regression + two-host demo green; offline suites green; clippy clean; `make gate` 13/13.
-- Decision recorded: `docs/decisions/2026-09-06_identity-store.md` (`answers:` present — the table is the record, the FK is the enforcer, the re-enroll is a replay at the identity layer too). Test-authored defect caught by the new suite and fixed in the same leaf (the human re-enroll assertion omitted `tenant_id`, which the dev API reads as a fresh bootstrap — the corrected test replays through the explicit tenant).
-
-## 2026-09-06 — The aggregate/event/outbox library: one auditable write path (`PHASE-1.1.1`)
-
-- Backlog 9 landed as `reasonbraid-server::agg` — the WP2 machinery extracted from `tx.rs` into a typed library: the idempotency claim (the `(tenant_id, idempotency_key)` primary key is the serialization point), the locked aggregate head (the revision serialization point), the ordered event append, the current-state upsert, the outbox enqueue (its FK proves an outbox item implies its event is durable), and the semantic result — one transaction, composed by callers with authorization/validation in the same transaction. An optional `expected_revision` precondition adds optimistic concurrency; it defaults OFF, so Phase 0 behavior is preserved byte-for-byte.
-- `tx.rs` is now a typed compatibility shim that owns NO SQL (type conversion + delegation; its documented invariant makes an impossible drift a crash). `api.rs`'s rejection store rides the library's step 6. Zero call sites changed shape.
-- Proven through the library's own surface: new `tests/aggregate_library.rs` (fresh-apply vs replay with the original result, request-hash conflicts, the revision precondition hold/refusal, outbox→event integrity) — green against live PostgreSQL 16.15, alongside the full regression: all eight server suites, the real-binary CLI e2e, and the two-host demo (every acceptance check PASS). Offline `cargo test --all` all green; clippy `-D warnings` clean; `make gate` 13/13.
-- Decision recorded: ADR-004 `accepted` (evidence-gated) — locked head + claim-first + one-transaction writes; a separate store crate stays forbidden until a measured boundary need (ADR-002); the durable lesson is promoted to `docs/decisions/2026-09-06_aggregate-library.md` (`answers:`). Defect tracked: `PHASE-1-MAINT-1` (the ephemeral PG cluster's data dir defaults to `/tmp` — §13 same-volume locality gap in `scripts/run_pg_tests.sh`, pre-existing from `.2.1`).
-
-## 2026-09-06 — PHASE-1.1 decomposed: three signoff-sized coordinator slices (`PHASE-1.1`)
-
-- The coordinator leaf is decomposed into children (tree-first; no code change): `.1.1.1` the aggregate/event/outbox library (extract the `tx.rs` claim → authorize → validate → apply machinery into a typed reusable module with revision-checked transitions + in-tx test helpers; backlog 9, ADR-004), `.1.1.2` migration 0007 identity store (`tenants`/`hosts`/`nodes`/`agent_roles`/`incarnations`/`runs`/`human_principals`; backlog 10), `.1.1.3` thread command API completion (`thread.cancel`, typed classification/workflow-profile/participant-rules with the ADR-002 single-agent default; backlog 15's API-shape portion — the invitation accept/decline/timeout semantics stay with `.1.3`).
-- Lockstep drift fixed in the same commit: the book's roadmap chapter names Phase 1 as current (Phase 0 closed, ADR-002 signed), and `PROGRAM.md`'s Phase-1 row + frontier line moved off the stale `proposed`/"next work is PHASE-0" wording. `make gate` → 13/13 green at commit.
+> The Phase-0/early-Phase-1 histories rotated into git history on 2026-09-07
+> at the README-STABILITY 96,000-byte threshold (`git log -- CHANGELOG.md` is
+> the query path).
 
 Changelog-style summary of completed work + its validation (internal continuity surface;
 the immutable audit trail proper is `git log` — memory layer D). Newest first.

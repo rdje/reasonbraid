@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The evaluation lane is decomposed at the census seams (`PHASE-5.4`)
+
+- The §13.7/§19.5 census: the WP7 bench harness (Phase 0) is a substantial substrate — the digest-carrying versioned corpus, the four deliberation workflows over the real Adapter contract, the deterministic grading (Brier + rubrics), the spread-bearing reports, the ScriptedAgent self-test; the GREENFIELD is the service itself (the case registry, the run records, the randomized trials, the cohorts, the calibration record, the regression gates). Children: `.4.1` ADR-017 → `.4.2` the service core → `.4.3` the routing experiments + the cohorts → `.4.4` the calibration + the gates.
+
 ## 2026-09-07 — The synthesis record lands — the `.3` lane is COMPLETE (`PHASE-5.3.3`)
 
 - The `synthesis` record rides a `summary`-kind contribution on the `synthesize` step: the synthesizer identity, the event-log input range (validated — `1 <= from <= to <=` the thread's max version, so the transformation is re-derivable), the source links, the coverage report. The live pass caught the `.1.3`-lane gap: the create handlers resolved the profile only when named, so a bare thread's steps were EMPTY (the step gates read `none`) — both handlers now resolve always (`None` → `quick_advice`). Measured: profiles 31. **The `.3` lane (moderator/synthesizer constraints) is COMPLETE.**

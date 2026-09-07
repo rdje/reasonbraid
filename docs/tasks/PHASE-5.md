@@ -506,11 +506,92 @@ and honest inconclusive outcomes.
       range refusals. **`.3` COMPLETE** — frontier → `.4`.
 
 - ID: `PHASE-5.4`
-  Status: `proposed`
+  Status: `done`
   Goal: versioned evaluation service, randomized routing experiments, cohort tracking, calibration, regression gates
   Backlog: 37
   ADR: 017
   Roadmap: §13.7, §19.5
+  Children: `.4.1`–`.4.4` (decomposed `2026-09-07` at the census
+    seams): `.4.1` ADR-017 + the census (the evaluation-service
+    contract: the versioned case registry, the experiment
+    records with the declared seeds, the randomized routing
+    trials, the cohort tracking, the calibration record, the
+    regression gates — the G5 thresholds) → `.4.2` the service
+    core (the case registry + the experiment records + the
+    results persistence) → `.4.3` the randomized routing
+    experiments + the cohort tracking → `.4.4` the calibration +
+    the regression gates.
+  Done (`2026-09-07`): the census mapped §13.7/§19.5 against the
+    shipped surface. The WP7 bench harness (Phase 0,
+    `crates/reasonbraid-adapter/bench/`) IS a substantial
+    substrate: the versioned corpus (the 9 cases + the ground
+    truths + the rubrics + the expected scores, digest-carrying
+    `corpus.json`/`prompts.json`), the four deliberation
+    workflows over the real Adapter contract (single / blind+
+    adjudication / critique-revise / moderator-synthesis), the
+    deterministic grading (`grade`/`brier`/`normalize`/`Trap`),
+    the per-case confidence + the cost accounting, the
+    spread-bearing report (`build`/`write`), the ScriptedAgent
+    self-test asserting the expected scores, the `rb-bench`
+    binary. The GREENFIELD (backlog 37): no evaluation SERVICE
+    (the harness is static files + a binary — no case registry,
+    no run records, no persistence); no randomized routing
+    experiments; no cohort tracking; no calibration RECORD
+    (the Brier computes per-run, nothing accumulates); no
+    regression gates (nothing fails when a score drops below a
+    baseline); the §19.5 axes the harness misses (the citation
+    entailment, the unresolved visibility, the robustness
+    under correlated agents) stay out of scope for the `.4`
+    service (the harness's axes grow later). The `.1`–`.3`
+    lanes just shipped the deliberation machinery the
+    evaluation will measure. The queue's 017 (the evaluator
+    hierarchy + the release thresholds) is THIS lane's ADR.
+    Frontier → `.4.1`.
+
+  - ID: `PHASE-5.4.1`
+    Status: `proposed`
+    Goal: ADR-017 + the census — the evaluation-service
+      contract: the versioned case registry (the corpus
+      versions ride the service, the digests pin them), the
+      experiment records (the workflow + the corpus version +
+      the DECLARED SEED + the repeated trials — §19.7), the
+      randomized routing trials (the seeded assignment, the
+      shadow mode first — §13.8), the cohort tracking (the
+      subject/case cohorts), the calibration record (the
+      Brier + the confidence accumulated across runs, the
+      model graders never the sole authority — §19.5), the
+      regression gates (the G5 thresholds — a drop below the
+      baseline blocks the claim). No code.
+    ADR: 017
+    Roadmap: §13.7, §19.5, §19.7
+
+  - ID: `PHASE-5.4.2`
+    Status: `proposed`
+    Goal: the evaluation-service core — the case registry (the
+      versioned cases + the digests) + the experiment records
+      (the run record: the workflow, the corpus version, the
+      seed, the trial count, the result rows) + the results
+      persistence (the per-case grades + the confidence + the
+      cost).
+    Roadmap: §13.7, §19.7
+
+  - ID: `PHASE-5.4.3`
+    Status: `proposed`
+    Goal: the randomized routing experiments + the cohort
+      tracking — the trial assignment (the seeded
+      randomization over the workflow arms), the cohort
+      records (the case cohorts + the subject cohorts), the
+      per-arm results.
+    Roadmap: §13.7, §13.8
+
+  - ID: `PHASE-5.4.4`
+    Status: `proposed`
+    Goal: the calibration + the regression gates — the
+      calibration record (the Brier + the confidence
+      accumulated across the runs), the regression gate (the
+      per-case threshold — a score below the baseline is the
+      typed failure, the CI manifest's G5 row).
+    Roadmap: §13.7, §19.5, §19.6 (G5)
 
 - ID: `PHASE-5.5`
   Status: `proposed`
@@ -527,10 +608,18 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.4` | `proposed` | `.3.3` done — the synthesis record (the validated input range, the coverage; profiles 31 — plus the bare-thread steps gap fixed) — **the `.3` lane (the moderator/synthesizer constraints) is COMPLETE**; the evaluation-service lane executes next |
+| 1 | `PHASE-5.4.1` | `proposed` | `.4` decomposed at the census seams (the WP7 bench harness is the substrate; the service/experiments/cohorts/calibration/gates are the greenfield) — ADR-017 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.4` decomposed at the census seams — the WP7
+  bench harness is the substrate (the versioned corpus, the
+  four workflows, the deterministic grading, the reports); the
+  service/experiments/cohorts/calibration/gates are the
+  greenfield; children `.4.1` (ADR-017 + the census) → `.4.2`
+  (the service core) → `.4.3` (the routing experiments + the
+  cohorts) → `.4.4` (the calibration + the regression gates);
+  frontier → `.4.1`.
 - `2026-09-07`: `.3.3` done — the synthesis record (the
   validated event-log input range, the coverage report, the
   step gate; the bare-thread steps gap fixed); profiles 31;

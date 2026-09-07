@@ -145,10 +145,69 @@ of a URI is not a promise the core can resolve it.
       regression.
 
 - ID: `PHASE-4.2`
-  Status: `proposed`
+  Status: `done`
   Goal: pack R0 — safe HTTPS documents/pages (SSRF/DNS/redirect/size/content defenses, snapshot receipt)
   Backlog: 32
   Roadmap: §12.3–12.4
+  Children: `.2.1`–`.2.3` (decomposed `2026-09-07` at the census
+    seams): `.2.1` the destination classification + the SSRF policy
+    (the pure §12.4 IP rules) → `.2.2` the safe HTTPS fetcher (the
+    hardened URL parsing, the ceilings, the redirect policy at
+    every hop, the TLS verification, the decompression-ratio
+    limit) → `.2.3` the snapshot receipt + the pack wiring (the
+    ADR-011 receipt + the R0 registry entry).
+  Done (`2026-09-07`): the census mapped §12.4 against the shipped
+    surface: NOTHING fetches (the reqwest dependency serves the
+    wire tests only — no fetcher, no destination classification,
+    no receipt machinery: `grep -rn "classify_destination\|fetch"
+    crates/reasonbraid-server/src/` → only the SQL `fetch_*`
+    calls). The R0 pack is a greenfield with the §12.4 rules as
+    its spec. Children at those seams — frontier → `.2.1`.
+  - ID: `PHASE-4.2.1`
+    Status: `proposed`
+    Goal: the destination classification + the SSRF policy — the
+      PURE `classify_destination(ip)` over the §12.4 rules (the
+      loopback, the link-local, the private ranges, the multicast,
+      the reserved, the cloud-metadata special cases — the
+      dev-profile egress is the `listed` class) + the policy
+      (which classes the R0 fetcher may reach) — pure + tested
+      (each range has a named class); the proxy configuration
+      stays in the threat model (named, not built).
+    Backlog: 32 (the SSRF half)
+    Acceptance: the classification is pure + tested (the private/
+      loopback/link-local/multicast/reserved refusals); no
+      regression.
+
+  - ID: `PHASE-4.2.2`
+    Status: `proposed`
+    Goal: the safe HTTPS fetcher — the hardened URL parsing (the
+      ambiguous/userinfo/invalid-encoding refusals), the GET/HEAD
+      with the byte + time ceilings, the redirect policy at EVERY
+      hop (the re-classification + the hop cap), the TLS
+      verification (the system roots), the response-type sniffing,
+      the decompression-ratio limit, NO ambient credentials. The
+      fetcher is the R0 resolver's engine; it reaches ONLY the
+      classes the `.2.1` policy allows (the measured refusal of a
+      loopback/private target is the SSRF proof).
+    Backlog: 32 (the fetcher half)
+    Acceptance: the fetcher refuses the ambiguous URL + the
+      private/loopback target + the redirect-chain escapes,
+      measured; no regression.
+
+  - ID: `PHASE-4.2.3`
+    Status: `proposed`
+    Goal: the snapshot receipt + the pack wiring — the acquisition
+      receipt (the ADR-011 `sha256:<hex>` over the ACQUIRED bytes,
+      the resolved URL chain, the byte count, the content type,
+      the acquisition time — the `.6` snapshot lane's input
+      shape), the R0 resolver's registry entry (the `https`
+      scheme + the egress/sandbox claims), and the resolution
+      path's consumption (the `.1.3` resolve returns the R0
+      resolver for the https references).
+    Backlog: 32 (the receipt half)
+    Acceptance: the receipt carries the digest + the chain; the R0
+      registry entry resolves the https references, measured; no
+      regression.
 
 - ID: `PHASE-4.3`
   Status: `proposed`
@@ -183,7 +242,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.2` | `proposed` | `.1.3` done — the resolver capability registry (the §12.2 advertise + the filter-then-rank order + the explicit unresolvable-now); **`.1` COMPLETE** — the R0 safe-HTTPS pack executes now |
+| 1 | `PHASE-4.2.1` | `proposed` | `.2` decomposed at the census seams (nothing fetches — the R0 pack is a greenfield with the §12.4 spec); the destination classification + the SSRF policy executes now |
 
 ## Changelog
 
@@ -206,6 +265,12 @@ of a URI is not a promise the core can resolve it.
   (migration 0024 + the register/resolve verbs; the filter-then-
   rank order + the explicit unresolvable-now); the profiles suite
   grew to 14; **`.1` COMPLETE** — frontier → `.2`.
+- `2026-09-07`: `.2` decomposed at the census seams — nothing
+  fetches (the reqwest dep serves the wire tests only); the R0
+  pack is a greenfield with the §12.4 rules as its spec; children
+  `.2.1` (the destination classification + the SSRF policy) →
+  `.2.2` (the safe HTTPS fetcher) → `.2.3` (the snapshot receipt +
+  the pack wiring); frontier → `.2.1`.
 
 ## Acceptance Checklist (PHASE-4.1.3)
 
@@ -303,6 +368,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-4.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R0 census + the contract-seam decomposition (`.2.1` the SSRF classification → `.2.2` the fetcher → `.2.3` the receipt); frontier → `.2.1` |
 | `2026-09-07` | `PHASE-4.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_resolver_registry` → `test result: ok. 1 passed` (the filter + the rank, the off-ladder 400, the explicit unresolvable-now with the preserved reference); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg413_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the resolver capability registry; **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-4.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles a_reference_submits` → `test result: ok. 1 passed` (the submit, the replay, the conflict, the 422/400 refusals); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg412_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the typed reference + the submission; frontier → `.1.3` |
 | `2026-09-07` | `PHASE-4.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); frontier → `.1.2` |
@@ -312,6 +378,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
+| `PHASE-4.2` | `REASONBRAID-PHASE4-0005` | the R0 pack decomposed at the census seams (nothing fetches — the classification/fetcher/receipt are the greenfield) |
 | `PHASE-4.1.3` | `REASONBRAID-PHASE4-0004` | the resolver capability registry (the §12.2 advertise + the filter-then-rank resolution + the explicit unresolvable-now) — **`.1` COMPLETE** |
 | `PHASE-4.1.2` | `REASONBRAID-PHASE4-0003` | the typed `ResourceReference` + the submission (migration 0023 + the replay/conflict immutability) |
 | `PHASE-4.1.1` | `REASONBRAID-PHASE4-0002` | ADR-011 + ADR-018 accepted (the `sha256:<hex>` format + the isolation-class vocabulary — no code) |

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.2` split at the census seams (`PHASE-4.2`)
+
+- The R0 census mapped §12.4 against the shipped surface: NOTHING fetches — the reqwest dependency serves the wire tests only, and no destination classification, fetcher, or receipt machinery exists (the grep found only the SQL `fetch_*` calls). The safe-HTTPS pack is a greenfield with the §12.4 rules as its spec.
+- Children: `.2.1` the destination classification + the SSRF policy (the pure IP rules — the loopback/link-local/private/multicast/reserved refusals) → `.2.2` the safe HTTPS fetcher (the hardened URL parsing, the ceilings, the per-hop redirect re-classification, the TLS verification, the decompression limit, no ambient credentials) → `.2.3` the snapshot receipt + the pack wiring (the ADR-011 receipt + the R0 registry entry). Tree-only commit; frontier → `.2.1`.
+
 ## 2026-09-07 — The resolver registry: filter first, rank second, fail explicitly — `.1` COMPLETE (`PHASE-4.1.3`)
 
 - Migration 0024 (`resolver_capabilities`) + `src/resolvers.rs`: the typed §12.2 advertise with the ADR-018 classes + the resolution order — the scheme + the sandbox/egress filters FIRST (a resolver declaring LESS than the required class is ineligible), then the latency rank.

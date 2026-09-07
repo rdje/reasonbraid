@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.2: the safe-HTTPS pack is a greenfield — the SSRF rules are its spec, the census is its boundary
+
+- **Nothing fetches, so the §12.4 rules ARE the design**: the pack splits at the classification (the pure IP rules — the SSRF half that is testable without a socket), the fetcher (the hardened parsing + the per-hop re-classification + the ceilings — the measured refusal of a loopback/private target is the SSRF proof), and the receipt (the ADR-011 digest + the resolved chain — the `.6` snapshot lane's input). The proxy configuration stays in the threat model (named, not built).
+- promotion: declined (the census is the leaf's recorded contract — the `.2.1`–`.2.3` children execute it). **Frontier `PHASE-4.2.1` (the destination classification + the SSRF policy).**
+
 ## _(2026-09-07)_ — PHASE-4.1.3: the registry's honesty is the explicit failure — unresolvable-now preserves the reference, never fabricates it
 
 - **The §12.2 order landed as data semantics**: the scheme + the ADR-018 isolation filters run FIRST (a resolver declaring less than the required class is ineligible — the silent downgrade ADR-018 forbade), then the latency rank; and the empty result is the explicit `resource_unresolvable_now` with the reference LEFT SUBMITTED — the measured test proves the unsupported scheme fails explicitly while the inspection still reads the reference. The first live run caught the SQL-continuation doubling a third time (the heredoc pattern) — the test is the reason it surfaced before the commit.

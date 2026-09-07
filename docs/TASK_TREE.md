@@ -55,7 +55,7 @@ on the same commit. One commit per completed leaf.
 | [`PHASE-1`](tasks/PHASE-1.md) | `done` | tree complete — G1–G2 **Met** + Demonstration A passed 30/30 (debug + release-built); next executable work is `PHASE-2.1` | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `done` | tree complete — the exit line's properties measured (non-escalation, restore + replacement, no false safe-retry) + the subtraction record; next executable work is `PHASE-3.1` | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `done` | tree complete — the directory, the presence, the matching, the recruitment, the subscriptions, the dependence indicators; next executable work is `PHASE-4.1` | repo-local |
-| [`PHASE-4`](tasks/PHASE-4.md) | `active` | `.2` — the R0 safe-HTTPS pack (`.1` complete: the reference + the registry) | repo-local |
+| [`PHASE-4`](tasks/PHASE-4.md) | `active` | `.2.1` — the destination classification + the SSRF policy (`.2` decomposed at the census seams) | repo-local |
 | [`PHASE-5`](tasks/PHASE-5.md) | `proposed` | `.1` — workflow profiles | repo-local |
 | [`PHASE-6`](tasks/PHASE-6.md) | `proposed` | `.1` — semantic policy | repo-local |
 | [`PHASE-7`](tasks/PHASE-7.md) | `proposed` | `.1` — Internet hardening | repo-local |

@@ -19,13 +19,13 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.2` (`.1` COMPLETE: the
-  two ADRs, the typed reference + the submission, the resolver
-  registry). Then `.2.1`-ish children, `.3`–`.7`.
-- **Next action:** execute `PHASE-4.2` — the pack R0 safe-HTTPS
-  resolver (backlog 32, §12.3–12.4): decompose at the census seams
-  (the SSRF/DNS/redirect/size/content defenses + the snapshot
-  receipt vs the shipped registry/reference surface).
+- **Active tree:** `PHASE-4` → frontier `.2.1` (`.2` decomposed at
+  the census seams: nothing fetches — the classification/fetcher/
+  receipt are the greenfield). Then `.2.2`, `.2.3`, `.3`–`.7`.
+- **Next action:** execute `PHASE-4.2.1` — the destination
+  classification + the SSRF policy: the pure `classify_destination`
+  over the §12.4 IP rules (the loopback/link-local/private/
+  multicast/reserved classes) + the policy the fetcher enforces.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

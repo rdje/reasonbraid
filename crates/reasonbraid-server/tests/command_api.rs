@@ -2339,3 +2339,108 @@ async fn the_usage_surface_reconciles_the_ledger_rows() {
     assert_eq!(threads[0]["overrun"]["calls"], json!(3));
     assert_eq!(threads[0]["denied"], json!(1));
 }
+
+/// THE `.5.2` acceptance: the admin metrics surface counts what the server
+/// observed — MEASURED: the denial counter's delta matches the new denied
+/// authorization rows, the replay counter's delta matches the replayed
+/// command. tenant_admin-gated.
+#[tokio::test]
+async fn the_metrics_surface_counts_match_the_records() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+
+    // Bootstrap: the human holds tenant_admin (the gate); the role holds
+    // thread_contribute only.
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "metrics-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "metrics-role", "tenant_id": tenant, "actions": ["thread_contribute"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    async fn metrics(client: &reqwest::Client, base: &str, alice: &str) -> Value {
+        let response = client
+            .get(format!("{base}/v1/admin/metrics"))
+            .header(PRINCIPAL_HEADER, alice)
+            .send()
+            .await
+            .expect("metrics request");
+        assert_eq!(response.status().as_u16(), 200);
+        response.json::<Value>().await.expect("metrics json")
+    }
+    let before = metrics(&client, &base, &alice_id).await;
+
+    // One denial: the role (no tenant_admin) attempts an admin WRITE — the
+    // authorize path writes the audited denial row (the record the counter
+    // must agree with).
+    let (status, refused) = admin_revoke(
+        &client,
+        &base,
+        "/v1/admin/grants/grt_bogus/revoke",
+        &role_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 403, "the role is refused: {refused}");
+
+    // One replay: the same enroll twice.
+    let (status, _) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "metrics-role-2", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "first role enroll");
+    let (status, replayed) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "metrics-role-2", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "replay enroll");
+    assert_eq!(replayed["replayed"], json!(true));
+
+    let after = metrics(&client, &base, &alice_id).await;
+    let delta = |name: &str| {
+        after[name]
+            .as_u64()
+            .unwrap_or(0)
+            .saturating_sub(before[name].as_u64().unwrap_or(0))
+    };
+    assert_eq!(
+        delta("authorization_denials"),
+        1,
+        "one denial counted: {after}"
+    );
+
+    // MEASURED against the records: the denied authorization rows for the
+    // role's actor handle grew by exactly one (a direct authorization binds
+    // the principal to the actor column; the subject columns are the
+    // delegation split).
+    let actor = reasonbraid_core::actor_handle_for_subject(&reasonbraid_core::GrantSubject::Role(
+        role_id.parse().unwrap(),
+    ))
+    .to_string();
+    let denied_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM authorization_records WHERE actor = $1 AND decision = 'denied'",
+    )
+    .bind(&actor)
+    .fetch_one(&pool)
+    .await
+    .expect("denied rows");
+    assert_eq!(denied_rows, 1, "the record agrees with the counter");
+}

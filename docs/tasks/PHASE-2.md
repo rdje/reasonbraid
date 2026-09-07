@@ -947,7 +947,7 @@ slice can reuse the same control plane without rewriting it.
       shipped design; the sink trigger named); no code changes.
 
   - ID: `PHASE-2.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the structured-log + metrics slice — the `eprintln!` sites
       become structured JSON lines (a `log_event!`-style helper: level,
       event, the correlation fields — no new dependencies, the
@@ -957,6 +957,20 @@ slice can reuse the same control plane without rewriting it.
       `GET /v1/admin/metrics` (tenant_admin, read-only) — the §18.3
       minimums that apply to the dev profile.
     Backlog: —
+    Done (`2026-09-07`): the observability slice landed — a process-wide
+      in-memory registry (`telemetry.rs`: the seven counters), the
+      increment sites on the real paths (the authorize denial arms, the
+      read-gate refusals, the idempotency replay arm, the dead-letter
+      auto-quarantine, the lease/proof refusals in the channel, the
+      result fold/reject), the structured `log_event!` (JSON lines with
+      the correlation fields — the rejected-result site converted), and
+      `GET /v1/admin/metrics` (the gate: the caller HOLDS `tenant_admin`
+      in any active grant — a process-global surface has no single
+      tenant). The live test is MEASURED (the denial counter's delta
+      matches the denied authorization row for the actor handle —
+      command_api 18); the full guard green (15 suites + e2e + demo,
+      `target/pg252d_guard.log`). The acceptance checklist below records
+      the evidence — frontier → `.5.3`.
     Acceptance: the admin metrics surface answers with the counted
       signals; the counts match the records (measured); the structured
       logs carry the correlation fields; no regression.
@@ -990,7 +1004,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.5.2` | `proposed` | `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
+| 1 | `PHASE-2.5.3` | `proposed` | `.5.2` done — the structured-log + metrics slice (the seven counters + the measured surface); the SLO record + the runbook slice executes now |
+ `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
  `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
@@ -1005,6 +1020,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.5.2` done — the structured-log + metrics slice: the
+  process-wide registry (seven counters on the real paths), the `log_event!`
+  JSON lines, `GET /v1/admin/metrics` (the caller-holds-tenant_admin gate),
+  the measured live test (the denial delta matches the record); command_api
+  18; frontier → `.5.3`.
 - `2026-09-07`: `.5.1` done — ADR-023 accepted: the four records are
   separate systems (the shipped design), the §18.2 redaction rules pin the
   future sink, the OpenTelemetry dependency waits for the trigger; no code
@@ -1235,6 +1255,64 @@ slice can reuse the same control plane without rewriting it.
   has no suspended state; children `.1.3.1` (node/cert revocation + the
   suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
   verbs); frontier → `.1.3.1`.
+
+## Acceptance Checklist (PHASE-2.5.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+telemetry.rs` (NEW — the process-wide registry + the `log_event!` macro),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the increment sites + the
+`/v1/admin/metrics` surface), `crates/reasonbraid-server/src/
+node_channel.rs` (the channel-side increments + the structured rejected-
+result line), `crates/reasonbraid-server/tests/command_api.rs` (the
+measured test) — `\.rs$` + `(^|/)crates/` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.5` census found UNSTRUCTURED
+  observability: 16 `eprintln!` sites, no metrics, no structured lines
+  (the `.5` decompose row in the changelog). Nothing measures the
+  governance-relevant signals (denials, replays, dead letters,
+  refusals), so no §18.3 surface can answer "did anything get refused
+  since the last check".
+- [x] **ROOT CAUSE (WHY + WHERE)** — the eprintln sites format by
+  hand: they drop the correlation fields and carry no machine-readable
+  event name, and no registry counts the refusal-family paths —
+  `git grep -c "log_event!" bb42f65 -- crates/` → rc=1 (no structured
+  emitter existed) and `git grep -c "admin/metrics" bb42f65 --
+  crates/` → rc=1 (no metrics surface existed). The fix point is the
+  boundary where each refusal is decided (the authorize arms in
+  `api.rs`, the channel verifies in `node_channel.rs`, the result
+  fold/reject tails) — each gains a counter increment and the log
+  lines gain a JSON shape (`level`, `event`, the correlation fields —
+  ADR-023's redaction rules hold: no prompt text, no credentials, no
+  secret URLs in the attributes).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: zero
+  counters, zero structured lines. After:
+  `bash scripts/run_pg_tests.sh` → command_api `test result: ok. 18
+  passed` — the new `the_metrics_surface_counts_match_the_records`
+  test denies an authorization through the REAL API, then asserts the
+  `authorization_denials` DELTA equals the denied record's row for the
+  actor handle AND the `/v1/admin/metrics` surface returns the same
+  value (the record-vs-surface agreement); the full guard log
+  `target/pg252d_guard.log` shows 15 `test result: ok` lines (incl. the
+  e2e suite) + `ALL acceptance checks passed` (the demo — the
+  structured lines do not break its beat).
+- [x] **NO REGRESSION** — `cargo test --all` → the 47 offline suites
+  green; `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `crates/reasonbraid-server/src/telemetry.rs` (NEW:
+  `Metrics`/`metrics()` on `OnceLock`, the seven counters, the
+  `log_event!` macro); `src/lib.rs` (`mod telemetry;`); `src/api.rs`
+  (the authorize deny + read-gate refuse arms, the replay outcome, the
+  result fold tail, the dead-letter auto-quarantine, the
+  `admin_metrics` handler gated on `authority_grants` HOLDING
+  `tenant_admin` — a process-global surface has no single tenant);
+  `src/node_channel.rs` (the lease/proof refusals, the
+  `results_rejected` counter + the structured line);
+  `tests/command_api.rs` (the measured test).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier,
+  `docs/adr/INDEX.md` (023 stays the owner), KNOWLEDGE_MAP — same
+  commit.
 
 ## Acceptance Checklist (PHASE-2.1.5.1)
 
@@ -2058,6 +2136,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.5.2` | `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 18 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — `command_api` grew to 18 with the measured metrics leg: the denied authorization's counter DELTA matches the denied record for the actor handle AND the `/v1/admin/metrics` surface agrees) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg252d_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the structured-log + metrics slice (the seven counters on the real paths, the `log_event!` JSON lines, the admin metrics surface); frontier → `.5.3` |
  docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
  `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
  `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
@@ -2088,6 +2167,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.5.2` | `REASONBRAID-PHASE2-0033` | the structured-log + metrics slice (the seven counters on the real paths + `GET /v1/admin/metrics` + the measured denial-vs-record test) |
 | `PHASE-2.5.1` | `REASONBRAID-PHASE2-0032` | ADR-023 accepted (the four-record separation + the §18.2 redaction rules pinning the future sink; the OpenTelemetry trigger named — no code) |
 | `PHASE-2.5` | `REASONBRAID-PHASE2-0031` | the contract-seam split (eprintln-only observability; the four-record doctrine structurally true, nothing measures) |
 | `PHASE-2.4.3` | `REASONBRAID-PHASE2-0030` | the inventory-groundwork deferral record (the absent §17.5/§17.6 controls named with their triggers — no placeholder infrastructure) — **`.4` COMPLETE** |

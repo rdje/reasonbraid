@@ -23,14 +23,15 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.5.2` (`.5.1` done: ADR-023
-  accepted — the four-record separation + the §18.2 redaction rules pin
-  the future sink). Then `.5.3`.
-- **Next action:** execute `PHASE-2.5.2` — the structured-log + metrics
-  slice: the `eprintln!` sites become structured JSON lines (a
-  `log_event!`-style helper, no new dependencies) + a minimal in-process
-  metrics registry (denials, attempt outcomes, dead letters, replays,
-  handshake refusals) exposed at `GET /v1/admin/metrics` (tenant_admin).
+- **Active tree:** `PHASE-2` → frontier `.5.3` (`.5.2` done: the
+  structured-log + metrics slice — the seven counters on the real
+  refusal paths + `GET /v1/admin/metrics` + the measured record-vs-
+  surface test, command_api 18). Then `.6`.
+- **Next action:** execute `PHASE-2.5.3` — the SLO record + the runbook
+  slice (docs-only): the initial SLO hypotheses (the §18.4 shape)
+  instantiated from the guard/demo measurements as a decisions record,
+  and ONE runbook (node lost/replaced — the demo's SIGKILL beat is the
+  exercise) with the §18.6 shape.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

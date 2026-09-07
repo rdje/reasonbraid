@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The refusal paths now measure themselves: structured logs + the admin metrics surface (`PHASE-2.5.2`)
+
+- The observability slice lands (the §18.3 minimums that apply to the dev profile): `crates/reasonbraid-server/src/telemetry.rs` (NEW) holds the process-wide in-memory registry — seven counters (`authorization_denials`, `idempotency_replays`, `handshake_refusals`, `lease_refusals`, `dead_letters`, `results_folded`, `results_rejected`) — and the `log_event!` macro (JSON lines on stderr: `level`, `event`, the correlation fields; ADR-023's redaction rules hold — no prompt text, no credentials, no secret URLs).
+- The increment sites sit on the real refusal paths: the authorize deny arms + the read-gate refusals, the idempotency replay outcome, the result fold/reject tails, the dead-letter auto-quarantine, and the channel's lease/proof verifies. The rejected-result `eprintln!` becomes a structured `log_event!`.
+- `GET /v1/admin/metrics` exposes the counters (JSON). The gate: the caller HOLDS `tenant_admin` in any active grant — a process-global surface has no single tenant, so the holding check replaces the per-tenant row.
+- MEASURED: `bash scripts/run_pg_tests.sh` → command_api 18 (the new test denies an authorization through the REAL API, then asserts the counter DELTA matches the denied record for the actor handle AND the surface agrees); 15 live suites + the demo 34/34 (`target/pg252d_guard.log`); 47 offline suites; clippy/fmt clean. Frontier → `.5.3` (the SLO record + the runbook).
+
 ## 2026-09-07 — ADR-023: the four records are separate systems, the sink is a named trigger (`PHASE-2.5.1`)
 
 - ADR-023 accepted (evidence-gated): the four-record separation is the SHIPPED design (the operational `eprintln!` stream and the durable audit/event tables are separate systems by construction — no log line can become an audit record, no audit row is a log). The §18.2 redaction rules pin the FUTURE sink (never prompt text, credentials, secret-bearing URLs, private evidence, or model output in span attributes; sensitive IDs tokenized at the sink boundary).

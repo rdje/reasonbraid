@@ -32,6 +32,7 @@ mod budget;
 pub mod ca;
 mod node_channel;
 mod outbox;
+mod telemetry;
 mod threads;
 mod tx;
 /// The `.1.6.2` static inspection console (embedded at compile time; no API

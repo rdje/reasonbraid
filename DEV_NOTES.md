@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.5.2: a counter's truth anchor is the RECORD it counts — the measured test asserts the delta against the denied row
+
+- **The metrics surface is verified against the ledger, not against itself.** The live test denies an authorization through the REAL API and asserts the `authorization_denials` DELTA equals the denied authorization row — and that row's principal is bound to the `actor` column (the UUIDv5 handle `agt_…`), NOT `subject_id` (that's the delegation split — the first test revision counted `subject_id` and read 0; the fact is already recorded in `docs/decisions/2026-09-06_control-api-cli.md`). Because every counter is incremented at the same boundary that writes its record, the surface can never drift from the ledger — a property the future OpenTelemetry sink inherits.
+- The `GET /v1/admin/metrics` gate holds: the caller must HOLD `tenant_admin` in any active grant — a process-global surface has no single tenant to check a row against.
+- promotion: declined (the actor-binding fact lives in the control-api record; the record-anchoring + holding-gate decisions are this leaf's own, recorded above). **Frontier `PHASE-2.5.3` (the SLO record + the runbook).**
+
 ## _(2026-09-07)_ — PHASE-2.5.1: the redaction rules pin a sink that does not exist yet — the ADR is the contract for the future
 
 - **The four-record separation needed no work; the FUTURE sink needed a contract.** The ADR pins the §18.2 rules NOW so the OpenTelemetry stack, when the trigger fires, lands under them — the tokenization boundary and the never-in-spans list are decided before the first export, not discovered at the first incident.

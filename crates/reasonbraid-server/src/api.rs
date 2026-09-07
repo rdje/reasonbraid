@@ -345,6 +345,7 @@ pub fn api_router(pool: PgPool) -> Router {
         )
         .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/admin/usage", get(admin_usage))
+        .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -691,9 +692,10 @@ async fn issue_node_enroll_token(
     };
     match authorize(&state.pool, &authz, Utc::now()).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
             return Err(ControlApiError::unauthorized(format!(
                 "authorization denied ({record_id}): {reason}"
-            )))
+            )));
         }
         AuthorizationOutcome::Allowed { .. } => {}
     }
@@ -758,9 +760,12 @@ async fn authorize_tenant_admin(
         target: ResourceTarget::Tenant { tenant_id },
     };
     match authorize(pool, &authz, Utc::now()).await? {
-        AuthorizationOutcome::Denied { reason, record_id } => Err(ControlApiError::unauthorized(
-            format!("authorization denied ({record_id}): {reason}"),
-        )),
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )))
+        }
         AuthorizationOutcome::Allowed { .. } => Ok(()),
     }
 }
@@ -1254,6 +1259,7 @@ async fn authorize_tenant_admin_read(
     .fetch_optional(pool)
     .await?;
     let Some((actions, valid_from, expires_at)) = row else {
+        crate::telemetry::metrics().incr("authorization_denials");
         return Err(ControlApiError::unauthorized(
             "authorization denied: no applicable grant".to_string(),
         ));
@@ -1266,6 +1272,7 @@ async fn authorize_tenant_admin_read(
     if in_window && has_admin {
         Ok(())
     } else {
+        crate::telemetry::metrics().incr("authorization_denials");
         Err(ControlApiError::unauthorized(
             "authorization denied: the tenant_admin grant is revoked or outside its window"
                 .to_string(),
@@ -1579,6 +1586,7 @@ async fn run_thread_command(
     .await?
     {
         ClaimOutcome::Replay { result } => {
+            crate::telemetry::metrics().incr("idempotency_replays");
             tx.commit().await?;
             let mut body = result;
             let status = if body.get("ok").and_then(|v| v.as_bool()) == Some(true) {
@@ -1606,6 +1614,7 @@ async fn run_thread_command(
     let now = Utc::now();
     let admission = match authorize_in_tx(&mut *tx, authz, now).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
             let message = format!("authorization denied ({record_id}): {reason}");
             let err = ControlApiError::unauthorized(message.clone());
             store_rejection(&mut *tx, tenant_id, idempotency_key, &err.failure_result()).await?;
@@ -1896,6 +1905,7 @@ where
         ) else {
             return Ok(()); // malformed report — the receipt stands, no domain effect
         };
+        crate::telemetry::metrics().incr("dead_letters");
         sqlx::query(
             "UPDATE node_inbox SET quarantined_at = $3, quarantine_reason = $4 \
              WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NULL",
@@ -1983,6 +1993,7 @@ where
     let now = Utc::now();
     match authorize_in_tx(&mut *tx, &authz, now).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
             let err = ControlApiError::unauthorized(format!(
                 "authorization denied ({record_id}): {reason}"
             ));
@@ -2070,6 +2081,7 @@ where
         }
     }
 
+    crate::telemetry::metrics().incr("results_folded");
     Ok(())
 }
 
@@ -2332,9 +2344,12 @@ where
         target,
     };
     match authorize(&state.pool, &authz, Utc::now()).await? {
-        AuthorizationOutcome::Denied { reason, record_id } => Err(ControlApiError::unauthorized(
-            format!("authorization denied ({record_id}): {reason}"),
-        )),
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )))
+        }
         AuthorizationOutcome::Allowed { .. } => {
             let body = read(state.pool.clone()).await?;
             Ok(json_response(StatusCode::OK, body))
@@ -2476,6 +2491,40 @@ async fn get_events(
         },
     )
     .await
+}
+
+/// `GET /v1/admin/metrics` — the operational metrics surface (`.5.2`; ADR-023:
+/// OPERATIONAL counters, never audit facts — the audit record is the durable
+/// table row). tenant_admin-gated, read-only.
+async fn admin_metrics(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    // The process-global registry has no single tenant: the gate is "the
+    // caller HOLDS the tenant_admin action in ANY of their active grants"
+    // (the dev root trust — a tenant admin sees the process's counters).
+    let holds_admin: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS( \
+             SELECT 1 FROM authority_grants \
+             WHERE subject_id = $1 AND status = 'active' \
+               AND actions ? 'tenant_admin' \
+               AND valid_from <= now() AND (expires_at IS NULL OR expires_at > now()))",
+    )
+    .bind(principal.id_string())
+    .fetch_one(&state.pool)
+    .await?;
+    if !holds_admin.unwrap_or(false) {
+        return Err(ControlApiError::unauthorized(
+            "the metrics surface is tenant_admin-gated",
+        ));
+    }
+    let snapshot: serde_json::Map<String, Value> = crate::telemetry::metrics()
+        .snapshot()
+        .into_iter()
+        .map(|(k, v)| (k, json!(v)))
+        .collect();
+    Ok(Json(Value::Object(snapshot)))
 }
 
 /// `GET /v1/admin/usage?tenant_id=…` — the usage-reconciliation surface

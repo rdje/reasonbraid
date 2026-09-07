@@ -674,9 +674,13 @@ impl NodeChannelState {
     /// read; a node with no certificate and a node with a bad proof fail
     /// IDENTICALLY (no existence leak).
     pub async fn verify_cert_proof(&self, req: &HandshakeRequest) -> Result<(), ApiError> {
-        let cert_der = decode_hex(&req.cert_der).ok_or_else(ApiError::proof_refused)?;
-        let signature = decode_hex(&req.proof_signature).ok_or_else(ApiError::proof_refused)?;
-        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| ApiError::proof_refused())?;
+        let refused = || {
+            crate::telemetry::metrics().incr("handshake_refusals");
+            ApiError::proof_refused()
+        };
+        let cert_der = decode_hex(&req.cert_der).ok_or_else(refused)?;
+        let signature = decode_hex(&req.proof_signature).ok_or_else(refused)?;
+        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| refused())?;
         let fingerprint = crate::ca::cert_fingerprint(&cert_der);
         let row: Option<(String, bool)> = sqlx::query_as(
             "SELECT node_id, (revoked_at IS NOT NULL OR expires_at <= now()) \
@@ -758,8 +762,14 @@ impl NodeChannelState {
         .fetch_optional(&self.pool)
         .await?;
         match expires {
-            None => Err(ApiError::fencing_refused()),
-            Some(expires) if expires <= Utc::now() => Err(ApiError::lease_expired()),
+            None => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                Err(ApiError::fencing_refused())
+            }
+            Some(expires) if expires <= Utc::now() => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                Err(ApiError::lease_expired())
+            }
             Some(_) => Ok(()),
         }
     }
@@ -787,8 +797,14 @@ impl NodeChannelState {
         .fetch_optional(&mut **tx)
         .await?;
         match expires {
-            None => Err(ApiError::fencing_refused()),
-            Some(expires) if expires <= Utc::now() => Err(ApiError::lease_expired()),
+            None => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                Err(ApiError::fencing_refused())
+            }
+            Some(expires) if expires <= Utc::now() => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                Err(ApiError::lease_expired())
+            }
             Some(_) => Ok(()),
         }
     }
@@ -1176,10 +1192,8 @@ async fn events(
         if let Err(e) =
             crate::api::apply_node_result_in_tx(&mut *tx, &req.node_id, &req.payload).await
         {
-            eprintln!(
-                "node channel: thread result from {} was rejected: {e}",
-                req.node_id
-            );
+            crate::telemetry::metrics().incr("results_rejected");
+            crate::log_event!("thread_result_rejected", "node_id" => &req.node_id, "reason" => e.to_string());
         }
     }
     tx.commit().await?;

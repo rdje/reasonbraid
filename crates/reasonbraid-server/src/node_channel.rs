@@ -1473,19 +1473,30 @@ async fn enroll(
             .await?;
 
     // The node + its dev key + the token consumption + the audit row: all or none.
-    let node_insert =
-        sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
-            .bind(&req.node_id)
-            .bind(&host_id)
-            .bind(&tenant_id)
-            .execute(&mut *tx)
-            .await;
-    match node_insert {
-        Ok(_) => {}
-        Err(e)
-            if e.as_database_error()
-                .is_some_and(|d| d.is_unique_violation()) =>
-        {
+    // A REPLACEMENT enroll (`.7.2` — the node-lost ritual) rides the same path:
+    // the node row exists but every certificate is revoked (the operator declared
+    // the loss), so the enrollment proceeds as the replacement — a fresh cert +
+    // key + incarnation land below, the old certs stay revoked (fenced). The
+    // state check runs BEFORE any insert (a unique-violation probe would abort
+    // the transaction).
+    let (active_certs, total_certs, node_exists): (i64, i64, bool) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL), \
+                (SELECT count(*) FROM node_certificates WHERE node_id = $1), \
+                EXISTS(SELECT 1 FROM nodes WHERE node_id = $1 AND tenant_id = $2)",
+    )
+    .bind(&req.node_id)
+    .bind(&tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let replacement = if node_exists {
+        // The node row already exists: a replacement enroll requires the
+        // operator's revocation first (every certificate revoked) — otherwise it
+        // is a duplicate enrollment and refuses (the audit row commits with the
+        // error).
+        if active_certs == 0 && total_certs > 0 {
+            true
+        } else {
             let record = insert_refusal_audit(
                 &mut tx,
                 token_tenant.as_deref(),
@@ -1499,15 +1510,37 @@ async fn enroll(
                 "the node is already enrolled (audit {record})"
             )));
         }
-        Err(e) => return Err(e.into()),
-    }
+    } else {
+        sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
+            .bind(&req.node_id)
+            .bind(&host_id)
+            .bind(&tenant_id)
+            .execute(&mut *tx)
+            .await?;
+        false
+    };
 
-    sqlx::query("INSERT INTO node_keys (node_id, key_fingerprint, key_secret) VALUES ($1, $2, $3)")
+    // The dev key: a fresh enrollment inserts the row; a replacement SWAPS the
+    // secret (the old one died with the machine — one dev secret per node).
+    if replacement {
+        sqlx::query(
+            "UPDATE node_keys SET key_fingerprint = $1, key_secret = $2 WHERE node_id = $3",
+        )
+        .bind(&fingerprint)
+        .bind(&req.key_secret)
+        .bind(&req.node_id)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO node_keys (node_id, key_fingerprint, key_secret) VALUES ($1, $2, $3)",
+        )
         .bind(&req.node_id)
         .bind(&fingerprint)
         .bind(&req.key_secret)
         .execute(&mut *tx)
         .await?;
+    }
 
     // The workload certificate (`.1.2.1`, ADR-007): issue the short-lived leaf,
     // persist it, and return it (with the dev-escrowed key) to the node.
@@ -1534,13 +1567,15 @@ async fn enroll(
         .execute(&mut *tx)
         .await?;
 
+    let decision = if replacement { "replaced" } else { "enrolled" };
     sqlx::query(
         "INSERT INTO node_enroll_audit (record_id, tenant_id, node_id, token_id, decision, reason) \
-         VALUES ('naux_' || gen_random_uuid()::text, $1, $2, $3, 'enrolled', NULL)",
+         VALUES ('naux_' || gen_random_uuid()::text, $1, $2, $3, $4, NULL)",
     )
     .bind(&tenant_id)
     .bind(&req.node_id)
     .bind(&req.token_id)
+    .bind(decision)
     .execute(&mut *tx)
     .await?;
 

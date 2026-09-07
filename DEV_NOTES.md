@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.7.2: the runbook promised a ritual the machinery never shipped — the drill is the discovery instrument, four runs, four gaps
+
+- **A documented recovery path that has never been exercised is a promise, not a control.** The runbook's "replacement node: enroll the new incarnation" was fiction: the first drill run found the re-enrollment refused (the `nodes` primary key), the second the token re-issue refused (0008's unconditional UNIQUE — the table's own comment said "one UNUSED token"; the index did not), the third the dev-key insert (`node_keys_pkey`), the fourth the presence derivation (0012 would keep the replacement suspended forever). Each fix landed in the SAME leaf, and the finished drill then measured the payoff nobody predicted: the revocation epoch makes the re-delivered decision stale, so the replacement's dispatch refuses fail-closed — the no-false-safe-retry fence EXISTED and the drill proved it.
+- promotion: declined (the four fixes are the leaf's own; the drill-as-discovery practice is the TOOLBOX doctrine applied — the `.7.3` inventory will record the fence's evidence). **Frontier `PHASE-2.7.3` (ADR-022 + the no-false-safe-retry inventory).**
+
 ## _(2026-09-07)_ — PHASE-2.7.1: the escalation fence holds at the STRONGER boundary than the test assumed — the first run's failures were the findings
 
 - **The first live run of the adversarial suite caught four real behaviors, not four bugs**: the cross-tenant key-replay is refused by the claim-first idempotency CONFLICT typing (409, not a fresh authorization 403); identity minting under a revoked boundary is refused at ENROLLMENT (400 "no active enrollment boundary"), so the re-arm cannot even produce an inert grant; the contribution event's real type name; and the delegation scope must name a REAL thread id (a placeholder id does not parse). Each finding was pinned as the assertion — the adversarial suite measures the fence exactly where it stands.

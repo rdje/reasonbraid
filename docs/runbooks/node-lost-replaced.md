@@ -65,11 +65,21 @@
   `.2.3` retry policy: never a silent retry of a possibly-completed call).
 - **Dead-lettered work:** `rb node replay` (the `.2.4` decision-scoped retry
   re-arm) — only after the cause is understood, and only the named attempt.
-- **Replacement node:** enroll the new incarnation (same role id; the
-  incarnation writer records the §8.1 facts), then let the channel replay the
-  inbox from the node's durable cursor — the new node journals its own state.
+- **Replacement node (the `.7.2` ritual — measured by the drill):**
+  1. `rb node revoke` — the operator declares the loss; the old cert is fenced
+     and the tenant's revocation epoch bumps.
+  2. Issue a fresh enrollment token (`POST /v1/nodes/enroll-tokens`) and enroll
+     the replacement with a NEW secret — the replacement is a NEW incarnation
+     (same role id; the old certs stay revoked, the dev secret swaps).
+  3. The fresh journal reconciles and the inbox tail replays from cursor 0.
+  4. **The fence holds:** the re-delivered work carries the decision the LOST
+     incarnation cached (epoch N), so the replacement's dispatch refuses
+     FAIL-CLOSED against the current epoch (N+1) — no silent re-dispatch of the
+     lost node's in-flight work — and the row dead-letters (auto-quarantine).
+  5. `rb node replay` the dead-lettered work (the decision refreshes against
+     the current epoch), then the replacement completes it.
 - **Total machine loss with a live database:** the database is the durable
-  truth; the above plus a fresh enroll. **Total loss including the database:**
+  truth; the ritual above. **Total loss including the database:**
   the `.4.1` restore exercise is the control — `scripts/backup.sh` dumps,
   `scripts/restore.sh` restores into an isolated database; a production RPO/RTO
   pair is a Phase-7 boundary, not invented here (SLO-3's record).
@@ -101,6 +111,9 @@
 - **The replay beat:** the node_channel suite (22 tests, incl. the replay pair)
   + the `.2.4` dead-letter/replay suite on every guard pass.
 - **The total-loss beat:** the `.4.1` restore exercise on every guard pass.
-- A replacement drill (destroy a journal, re-enroll, replay, verify the
-  honest-terminal outcomes) is the Phase-7 game-day item when the HA profile
-  exists — named here so the runbook's own gap is tracked.
+- **The replacement drill (`.7.2`):** the guard's `node_replacement` suite runs
+  the whole ritual on every pass — destroy the journal mid-ambiguity, revoke,
+  replacement enroll, inbox replay, the stale-decision fence (no silent
+  re-dispatch), the dead letter, the operator replay, exactly one fold. The
+  Phase-7 game day then EXERCISES the runbook at scale (multi-node churn); it
+  no longer has to build it.

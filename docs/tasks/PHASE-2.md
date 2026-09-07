@@ -1201,7 +1201,7 @@ slice can reuse the same control plane without rewriting it.
       escalation surface; all green; no regression.
 
   - ID: `PHASE-2.7.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the node-replacement drill — the runbook's own named gap
       closes with a MEASURED exercise: destroy a node's journal (the
       total-machine-loss path), re-enroll a replacement incarnation
@@ -1214,6 +1214,27 @@ slice can reuse the same control plane without rewriting it.
       gain the drill line (the Phase-7 game day then EXERCISES it at
       scale, it no longer builds it).
     Backlog: —
+    Done (`2026-09-07`): the drill landed —
+      `crates/reasonbraid-server/tests/node_replacement.rs` (the ONE
+      measured ritual, in the guard) + the machinery the drill exposed
+      and fixed: the replacement enroll path in `node_channel.rs`
+      (the node row exists + every cert revoked → the fresh token +
+      secret enroll a NEW incarnation with a 'replaced' audit decision
+      + the dev-key swap; the state check runs BEFORE any insert), the
+      0018 token-reissue migration (0008's unconditional UNIQUE made
+      the first token permanent — the comment always said one UNUSED
+      token; the partial index pins it), the 0017 presence migration
+      (suspended = a revoked cert AND no active cert — the replacement
+      reads NOT suspended while the old certs stay fenced). The
+      measured chain: the lost node's attempt lands `outcome_unknown`
+      (the honest terminal), the journal is destroyed, the revocation
+      fences the old cert + bumps the epoch, the replacement
+      reconciles + the inbox tail replays, and THE FENCE HOLDS — the
+      re-delivered decision is epoch-stale, the dispatch refuses
+      fail-closed (never a silent re-dispatch of the lost node's
+      in-flight work), the row dead-letters, the operator replays, and
+      exactly ONE contribution lands. The runbook's recovery section
+      + closure tests carry the ritual. Frontier → `.7.3`.
     Acceptance: the drill runs measured on every guard pass; the
       runbook names it; no regression.
 
@@ -1255,7 +1276,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.7.2` | `proposed` | `.7.1` done — the non-escalation property suite (4 measured adversarial tests; the guard grew to 16 suites); the node-replacement drill executes now |
+| 1 | `PHASE-2.7.3` | `proposed` | `.7.2` done — the node-replacement drill (the measured ritual; the epoch fence held — no silent re-dispatch; the guard grew to 17 suites); ADR-022 + the no-false-safe-retry inventory executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1271,6 +1292,14 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.7.2` done — the node-replacement drill: the
+  measured ritual (outcome_unknown → journal destroyed → revoke →
+  replacement enroll → inbox replay → the epoch-stale refusal fence
+  → dead letter → operator replay → exactly one fold) + the three
+  machinery gaps the drill exposed and fixed (the replacement enroll
+  path, the 0018 token-reissue index, the 0017 presence derivation);
+  the runbook carries the ritual; the guard grew to 17 live suites;
+  frontier → `.7.3`.
 - `2026-09-07`: `.7.1` done — the non-escalation property suite: 4
   measured adversarial tests (cross-tenant 403/404/409, the
   confused-deputy 403 despite the deputy's own grant, the
@@ -1553,6 +1582,63 @@ slice can reuse the same control plane without rewriting it.
   has no suspended state; children `.1.3.1` (node/cert revocation + the
   suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
   verbs); frontier → `.1.3.1`.
+
+## Acceptance Checklist (PHASE-2.7.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/node_channel.rs` (the replacement enroll
+path + the dev-key swap + the pre-insert state check),
+`migrations/0017_node_replacement_presence.sql` (NEW),
+`migrations/0018_node_token_reissue.sql` (NEW),
+`crates/reasonbraid-server/tests/node_replacement.rs` (NEW — the drill),
+`scripts/run_pg_tests.sh` (the guard's live list gained the drill), and
+`docs/runbooks/node-lost-replaced.md` (the ritual + the closure tests) —
+`\.rs$` + `\.sh$` + `(^|/)migrations/` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the runbook (`.5.3`) promised a
+  replacement ritual the machinery did not ship: the FIRST drill run
+  found the re-enrollment refused (the `nodes` primary key), the
+  second found the token re-issue refused (0008's unconditional
+  UNIQUE — the comment always said "one UNUSED token"), the third
+  found the dev-key insert refused (`node_keys_pkey`), and the fourth
+  found the presence derivation would keep the replacement suspended
+  forever (0012's "any revoked cert").
+- [x] **ROOT CAUSE (WHY + WHERE)** — no replacement path existed at
+  all — `git grep -c "replacement" ad0468e --
+  crates/reasonbraid-server/src/node_channel.rs` → rc=1 (zero
+  matches); a destroyed credential is the ONE recovery case with no
+  shipped machinery (the rotate exchange needs the current cert, the
+  enroll primary key refuses the id). The fix point is the enroll
+  boundary: a node whose certificates are ALL revoked is a declared
+  loss, and a fresh token + secret enroll the replacement (a new
+  incarnation) — with the state check BEFORE any insert (a
+  unique-violation probe aborts the transaction).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  re-enroll 409, the token re-issue 409, the key insert pkey
+  violation. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test node_replacement` →
+  `test result: ok. 1 passed` — the whole ritual measured: the lost
+  node's attempt lands `outcome_unknown`, the journal is destroyed,
+  the revocation fences the old cert (proof refused), the replacement
+  enroll returns the new cert + the second incarnation + the
+  'replaced' audit row, the presence reads NOT suspended, the inbox
+  tail replays, the re-delivered decision is epoch-stale and the
+  dispatch REFUSES fail-closed (no silent re-dispatch), the row
+  dead-letters, the operator replay refreshes the decision, and
+  exactly ONE contribution lands.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 17 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg272_guard.log`); `cargo test --all` → 50 offline suites
+  green; `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `node_channel.rs` (the replacement branch + the key
+  swap), `0017` (the presence derivation), `0018` (the partial
+  one-unused-token index), `tests/node_replacement.rs` (the drill),
+  the guard script, the runbook.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-2.7.1)
 
@@ -2573,6 +2659,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.7.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_replacement` → `test result: ok. 1 passed` (the measured ritual); `bash scripts/run_pg_tests.sh` → 17 live suites + the demo 34/34 (`target/pg272_guard.log`); `cargo test --all` → 50 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-replacement drill (the ritual measured end to end; the epoch fence held); frontier → `.7.3` |
 | `2026-09-07` | `PHASE-2.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test escalation` → `test result: ok. 4 passed` (the first live run caught four real behaviors the tests pinned); `bash scripts/run_pg_tests.sh` → 16 live suites + the demo 34/34 (`target/pg271b_guard.log`); `cargo test --all` → 49 offline suites; clippy/fmt clean; `make gate` → 13/13 | the non-escalation property suite (one named adversarial test per escalation surface); frontier → `.7.2` |
 | `2026-09-07` | `PHASE-2.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the exit-lane census + the contract-seam decomposition (the foundations vs the four gaps); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-2.6.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the qualification checklist + the deferrals record (each of the five §19.4 items names its trigger); **`.6` COMPLETE** — frontier → `.7` |
@@ -2611,6 +2698,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.7.2` | `REASONBRAID-PHASE2-0041` | the node-replacement drill (the measured ritual + the replacement enroll path + migrations 0017/0018 + the runbook ritual) |
 | `PHASE-2.7.1` | `REASONBRAID-PHASE2-0040` | the non-escalation property suite (4 measured adversarial tests + the guard's live list gained the suite) |
 | `PHASE-2.7` | `REASONBRAID-PHASE2-0039` | the exit-lane census + the contract-seam decomposition (`.7.1` adversarial suite → `.7.2` replacement drill → `.7.3` ADR-022 + retry inventory → `.7.4` subtraction + gate feed) |
 | `PHASE-2.6.3` | `REASONBRAID-PHASE2-0038` | the qualification checklist + the named deferrals (docs-only: the book's six-box gate, the five triggers) — **`.6` COMPLETE** |

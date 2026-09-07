@@ -6,7 +6,8 @@
 
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
-    resolve_agent, resolve_principal, run_enroll, run_inspect_budget, run_inspect_node_inbox,
+    resolve_agent, resolve_principal, run_boundary_revoke, run_enroll, run_grant_revoke,
+    run_inspect_boundaries, run_inspect_budget, run_inspect_grants, run_inspect_node_inbox,
     run_inspect_thread, run_inspect_threads, run_issue_node_token, run_prune_node_inbox,
     run_quarantine_command, run_revoke_node, run_thread_create, run_thread_verb, BudgetArgs,
     Config, CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
@@ -52,6 +53,47 @@ enum Command {
     /// Node administration (`.1.2.1`).
     #[command(subcommand)]
     Node(NodeCommand),
+    /// Grant administration (`.1.3.2`).
+    #[command(subcommand)]
+    Grant(GrantCommand),
+    /// Enrollment-boundary administration (`.1.3.2`).
+    #[command(subcommand)]
+    Boundary(BoundaryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum GrantCommand {
+    /// Revoke a grant — the subject loses its authority at the next decision.
+    Revoke {
+        #[arg(long)]
+        grant: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum BoundaryCommand {
+    /// Revoke the enrollment boundary — the tenant's ceiling is gone, so every
+    /// grant under it is refused at the next decision (the nuclear option).
+    Revoke {
+        #[arg(long)]
+        boundary: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -367,6 +409,24 @@ enum InspectCommand {
     },
     /// All threads in a tenant.
     Threads {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The tenant's grants with their statuses (`.1.3.2`; tenant_admin).
+    Grants {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The tenant's enrollment boundaries with their statuses (`.1.3.2`; tenant_admin).
+    Boundaries {
         #[arg(long)]
         as_: Option<String>,
         #[arg(long)]
@@ -742,6 +802,44 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Inspect(InspectCommand::Threads { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_threads(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Inspect(InspectCommand::Grants { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_grants(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Inspect(InspectCommand::Boundaries { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_boundaries(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Grant(GrantCommand::Revoke {
+            grant,
+            reason,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_grant_revoke(cfg, &principal, &tenant, &grant, &reason, json).await
+        }
+        Command::Boundary(BoundaryCommand::Revoke {
+            boundary,
+            reason,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_boundary_revoke(cfg, &principal, &tenant, &boundary, &reason, json).await
         }
         Command::Node(NodeCommand::IssueToken {
             node,

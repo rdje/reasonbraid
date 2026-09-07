@@ -203,11 +203,30 @@ $ rb node revoke --node rol_… --reason "compromised adapter output" --as alice
 node rol_… revoked (1 certificate(s), at 2026-09-07T…Z)
 ```
 
-Revocation marks the node's ACTIVE workload certificates revoked: its next
+Revocation marks the node.s ACTIVE workload certificates revoked: its next
 handshake is refused (the certificate-proof ladder sees the revoked row) and
 presence reads `suspended` — the live lease, if any, is not cut. An unknown
 node is a typed 404; a second revocation (no active certificate left) is a
 typed 409.
+
+The authority revocation verbs (`.1.3.2`) complete the set — also
+tenant_admin-authorized and audited:
+
+```text
+ grant revoke --grant grt_rol_… --reason "role retired" --as alice
+grant grt_rol_… revoked (at 2026-09-07T…Z)
+
+ boundary revoke --boundary bnd_ten_… --reason "tenant frozen" --as alice
+boundary bnd_ten_… revoked (at 2026-09-07T…Z)
+
+ inspect grants --as alice
+ inspect boundaries --as alice
+```
+
+A revoked grant loses its authority at the next decision (the refusal is
+audited); a revoked boundary freezes the tenant.s WRITES — every grant under
+it is refused — while the inspection lists stay open (the freeze never blinds
+the operator).
 
 ## Honest limits (Phase 1)
 

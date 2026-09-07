@@ -1739,3 +1739,262 @@ async fn budget_read_surface_exposes_the_ledger_through_the_api_only() {
         "the denial names the audit record: {role_denied}"
     );
 }
+
+/// THE `.1.3.2` acceptance: revoking a grant refuses the subject's NEXT
+/// authorization while other principals keep working; the refusal is audited,
+/// the state is inspectable through the admin list, and the refusals are typed.
+#[tokio::test]
+async fn revoking_a_grant_refuses_its_next_authorization_while_others_work() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rev-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll alice: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "rev-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let role_grant = role["grant_id"].as_str().unwrap().to_string();
+
+    // A thread the role can act in: the human creates, the role contributes.
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-rev-c1",
+            json!({ "tenant_id": tenant, "subject": "rev probe", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread = created["thread_id"].as_str().unwrap().to_string();
+
+    // The explicit-participants contract (`.1.3`): the human invites, the role
+    // accepts — only then may the role act.
+    let (status, invited) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &alice_id,
+        &envelope(
+            "thread.invite",
+            "key-rev-inv",
+            json!({ "tenant_id": tenant, "agent_role": role_id }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite: {invited}");
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &role_id,
+        &envelope(
+            "thread.accept_invitation",
+            "key-rev-acc",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "accept: {accepted}");
+
+    let (status, contributed) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &role_id,
+        &envelope(
+            "thread.contribute",
+            "key-rev-c2",
+            json!({ "tenant_id": tenant, "content": "before the revocation" }),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the role contributes before the revocation: {contributed}"
+    );
+
+    // Revoke the role's grant (the human admin).
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/grants/{role_grant}/revoke"),
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the revocation succeeds: {revoked}");
+
+    // The role's NEXT command is refused 403 (the evaluation's active filter)
+    // and the refusal is audited.
+    let (status, refused) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &role_id,
+        &envelope(
+            "thread.contribute",
+            "key-rev-c3",
+            json!({ "tenant_id": tenant, "content": "after the revocation" }),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "the revoked grant refuses the next authorization: {refused}"
+    );
+    let (n_denied,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1 AND decision = 'denied'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("count denials");
+    assert!(n_denied >= 1, "the refusal is audited");
+
+    // The human's own authority is untouched.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the human still inspects: {listed}");
+
+    // The inspection surface shows the revoked status.
+    let (status, grants) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let row = grants["grants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["grant_id"] == json!(role_grant))
+        .expect("the role's grant is listed");
+    assert_eq!(row["status"], json!("revoked"));
+
+    // Typed refusals: an unknown grant is 404; a second revocation is 409.
+    let (status, unknown) = admin_revoke(
+        &client,
+        &base,
+        "/v1/admin/grants/grt_nope/revoke",
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 404, "an unknown grant: {unknown}");
+    let (status, again) = admin_revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/grants/{role_grant}/revoke"),
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 409, "a second revocation: {again}");
+}
+
+/// The admin revoke POST (tenant_admin-audited server-side).
+async fn admin_revoke(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    tenant: &str,
+) -> (u16, Value) {
+    let response = client
+        .post(format!("{base}{path}"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({ "tenant_id": tenant, "reason": "test revocation" }))
+        .send()
+        .await
+        .expect("revoke request");
+    let status = response.status().as_u16();
+    (status, response.json().await.expect("revoke json"))
+}
+
+/// Revoking the boundary suspends the CEILING: every grant under it is refused
+/// at the next decision (the core's revoked-boundary stance) — the nuclear
+/// option, inspectable through the admin list.
+#[tokio::test]
+async fn revoking_the_boundary_suspends_the_ceiling() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rev-alice-2" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll alice: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = alice["boundary_id"].as_str().unwrap().to_string();
+
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/boundaries/{boundary_id}/revoke"),
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the boundary revocation succeeds: {revoked}");
+
+    // The next authorization fails: the active-boundary lookup finds no ceiling.
+    let (status, denied) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-rev-b1",
+            json!({ "tenant_id": tenant, "subject": "after the boundary revocation", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "the revoked boundary refuses the next decision: {denied}"
+    );
+
+    // The inspection surface shows the status.
+    let (status, boundaries) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/boundaries?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(boundaries["boundaries"][0]["status"], json!("revoked"));
+}

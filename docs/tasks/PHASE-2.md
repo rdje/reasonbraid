@@ -196,7 +196,9 @@ slice can reuse the same control plane without rewriting it.
       crates/reasonbraid-cli/src/main.rs` → no verbs) + the suspended
       presence state (the 0009 view derives online/offline only).
     Children: `.1.3.1`–`.1.3.2` (decomposed `2026-09-07` at the
-      cert-vs-grant seam — two independent contracts).
+      cert-vs-grant seam — two independent contracts). **`.1.3` is
+      COMPLETE** — the revocation surfaces are live (cert + grant +
+      boundary), the refusals ride the existing ladders.
 
   - ID: `PHASE-2.1.3.1`
     Status: `done`
@@ -226,7 +228,7 @@ slice can reuse the same control plane without rewriting it.
       beat; no regression.
 
   - ID: `PHASE-2.1.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: grant/boundary revocation — `POST
       /v1/admin/grants/{grant_id}/revoke` + `POST
       /v1/admin/boundaries/{boundary_id}/revoke` (tenant_admin-audited):
@@ -236,6 +238,18 @@ slice can reuse the same control plane without rewriting it.
       the tenant's other grants keep working); `rb grant revoke` + `rb
       boundary revoke`; the inspection surfaces show the status.
     Backlog: 11
+    Done (`2026-09-07`): the `Revoked` statuses got their write paths —
+      `POST /v1/admin/grants/{id}/revoke` + `POST
+      /v1/admin/boundaries/{id}/revoke` (tenant_admin-audited, typed 404/
+      409 refusals) + `rb grant revoke` / `rb boundary revoke` + the
+      admin inspection lists (`GET /v1/admin/grants|boundaries`, `rb
+      inspect grants|boundaries`); the tests prove the next authorization
+      refuses (403 + audit) while other grants work, and the boundary
+      revocation freezes the tenant's writes while the reads stay open
+      (the freeze carve-out — recorded in
+      `docs/decisions/2026-09-07_boundary-revocation-freeze.md`); the
+      acceptance checklist below records the evidence — **`.1.3` is
+      COMPLETE** — frontier → `.1.4`.
     Acceptance: a revoked grant is refused at the next authorization
       (with the audit row) while other grants evaluate; a revoked boundary
       refuses its ceiling checks; unknown ids are 404; non-admin callers
@@ -320,7 +334,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.3.2` | `proposed` | `.1.3.1` done (node/cert revocation + the suspended presence + the demo beat); the grant/boundary revoke verbs execute now |
+| 1 | `PHASE-2.1.4` | `proposed` | `.1.3` is COMPLETE (node/cert + grant + boundary revocation, all riding the existing refusal ladders); the delegated authority context executes now |
 
 ## Changelog
 
@@ -381,6 +395,16 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.3.2` done — the grant/boundary revocation write paths:
+  the `Revoked` statuses got their verbs (`POST /v1/admin/grants/{id}/revoke`
+  + `/v1/admin/boundaries/{id}/revoke`, tenant_admin-audited, typed 404/409
+  refusals), the admin inspection lists (`GET /v1/admin/grants|boundaries` +
+  `rb inspect grants|boundaries`), and the CLI verbs (`rb grant revoke` / `rb
+  boundary revoke`); the tests prove the next authorization refuses with the
+  audit row while other grants keep working, and the boundary revocation
+  freezes the tenant's WRITES while the READ surfaces stay open (the freeze
+  carve-out — `docs/decisions/2026-09-07_boundary-revocation-freeze.md`);
+  command_api grew to 15; **`.1.3` is COMPLETE**; frontier → `.1.4`.
 - `2026-09-07`: `.1.3` decomposed at the cert-vs-grant seam — the census
   found the REFUSAL paths already exist (the `.1.2.2` handshake checks
   `revoked_at`, the evaluation filters `status = 'active'`) while NO write
@@ -441,6 +465,53 @@ files, and `scripts/demo_two_host.sh` — all code paths.
   `docs/decisions/2026-09-07_cert-proof-verification.md` gained
   `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
   `docs/TASK_TREE.md` frontier, the book (node-channel + two-host-demo),
+  `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.3.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/authority.rs`
+(the revoke helpers), `src/api.rs` (the four admin endpoints + the read
+carve-out), `crates/reasonbraid-cli/src/{lib,main}.rs` (the verbs + runners),
+and `crates/reasonbraid-server/tests/command_api.rs` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's revocation sliver: the `Revoked`
+  statuses exist as types + tests only — `grep -n "UPDATE authority_grants\|
+  UPDATE enrollment_boundaries" crates/reasonbraid-server/src/authority.rs`
+  → no matches before this leaf; no revoke verb (`grep -n "revoke"
+  crates/reasonbraid-cli/src/main.rs` → only the node revoke from `.1.3.1`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the evaluation filters
+  `status = 'active'` (the refusal path is free), but no operator surface
+  writes the status; the fix point is the tenant_admin surface (the
+  `.1.3.1` pattern) + the two UPDATE helpers. The boundary case forced a
+  REAL semantics decision mid-leaf: the admin authorization itself rides
+  the boundary, so a boundary revocation would refuse even the inspection
+  lists — the freeze carve-out (reads authorize grant-directly) is
+  recorded in `docs/decisions/2026-09-07_boundary-revocation-freeze.md`.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no verbs,
+  no lists. After: `bash scripts/run_pg_tests.sh` → `test result: ok. 15
+  passed` (`command_api`, +2: the grant revocation refuses the subject's
+  NEXT command 403 + audited denial while the human keeps working, the
+  list shows `revoked`, unknown 404, re-revoke 409; the boundary
+  revocation freezes the tenant's writes 403 while the admin list stays
+  200) + the demo stays 32/32 (`rc=0`, `target/pg132c_guard.log`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve live
+  server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 15 + 3 + 4 + 21
+  + 4 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the
+  demo `ALL acceptance checks passed` (32 PASS, `rc=0`,
+  `target/pg132c_guard.log`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` →
+  13/13 at commit; `make book` builds.
+- [x] **FIX** — `authority.rs` (`revoke_grant`/`revoke_boundary` — the
+  row-first UPDATEs); `api.rs` (`RevokeAuthorityRequest`, the two revoke
+  endpoints with the 404/409 ladder, `AdminListQuery` + the two list
+  endpoints, `authorize_tenant_admin_read` — the freeze carve-out, the
+  routes); the CLI (`GrantCommand::Revoke`/`BoundaryCommand::Revoke` +
+  `InspectCommand::Grants|Boundaries` + the dispatch arms + the four
+  runners + `post_admin`/`get_admin`); the two `command_api` tests.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted →
+  `docs/decisions/2026-09-07_boundary-revocation-freeze.md` gained
+  `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book's cli chapter,
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.1.3.1)
@@ -612,6 +683,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.2.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 4 + 3 + 6 + 7 `passed` — `node_enrollment` grew to 4 with the CA-persistence test) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`, `target/pg121b_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0; `make gate` → 13/13 | cert issuance at enrollment: the persisted `ServerCa` (generated on first boot, loaded thereafter — the rebuild test proves the same key + cert), the enroll response carries the leaf + dev-escrowed key + fingerprint, `rb-node` stores `cert.der`/`key.der`; the HMAC channel untouched (the coherent interim) — frontier → `.1.2.2` |
 | `2026-09-07` | `PHASE-2.1.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19 + 4 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + the demo 31 PASS rc=0 (`target/pg122e_guard.log`); 42 offline suites; clippy/fmt clean; `make deny` rc=0; `make gate` 13/13 | the channel v3 cert-proof handshake + rotation landed; the ring-SPKI interop discovery recorded; **`.1.2` complete** — frontier → `.1.3` |
 | `2026-09-07` | `PHASE-2.1.3.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 21 with the revocation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg131f_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | node/cert revocation: `POST /v1/nodes/revoke` (tenant_admin-audited, the typed refusals), the suspended presence (migration 0012), `rb node revoke`, the demo beat — frontier → `.1.3.2` |
+| `2026-09-07` | `PHASE-2.1.3.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 15 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 15 with the revocation pair) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg132c_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the grant/boundary revocation write paths + the admin inspection lists + the freeze carve-out; **`.1.3` complete** — frontier → `.1.4` |
 
 ## Commit Log
 
@@ -624,3 +696,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.2.2` | `REASONBRAID-PHASE2-0005` | the channel v3 cert-proof handshake + rotation (as recorded — see the leaf's checklist); the 19 channel tests + the demo 31/31 |
 | `PHASE-2.1.3` | `REASONBRAID-PHASE2-0006` | the cert-vs-grant split (the refusal paths exist; the write paths don't) |
 | `PHASE-2.1.3.1` | `REASONBRAID-PHASE2-0007` | node/cert revocation: `POST /v1/nodes/revoke` + the suspended presence (migration 0012) + `rb node revoke` + the demo beat; the channel suite grew to 21 |
+| `PHASE-2.1.3.2` | `REASONBRAID-PHASE2-0008` | the grant/boundary revoke verbs + the admin inspection lists + the freeze carve-out (reads survive the boundary revocation); `command_api` grew to 15 — **`.1.3` complete** |

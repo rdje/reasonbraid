@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The `Revoked` statuses got their write paths (`PHASE-2.1.3.2`)
+
+- `POST /v1/admin/grants/{id}/revoke` + `POST /v1/admin/boundaries/{id}/revoke` (tenant_admin-audited, typed 404/409 refusals) — the evaluation's existing `status = 'active'` filters refuse the subjects at the NEXT decision: the tests prove a revoked grant's next command is a 403 with the audited denial while the human's own grant keeps working.
+- **A boundary revocation is the tenant freeze** — every grant under it (including the bootstrap human's) is refused at the next decision, and the tenant is read-only until a future superseding act. The tests caught the trap: the admin's own authorization rides the ceiling, so the inspection lists would have 403'd too — the carve-out (`authorize_tenant_admin_read`) authorizes admin READS grant-directly: the freeze stops writes, never the operator's eyes. Recorded in `docs/decisions/2026-09-07_boundary-revocation-freeze.md`.
+- The admin inspection lists (`GET /v1/admin/grants|boundaries`) + `rb grant revoke` / `rb boundary revoke` / `rb inspect grants|boundaries` land. The command_api suite grew to 15; the full guard green (12 suites + e2e + demo 32/32 rc=0); clippy/fmt clean; gate 13/13. **`.1.3` complete** — frontier → `.1.4` (the delegated authority context).
+
 ## 2026-09-07 — The operator can now revoke a node (`PHASE-2.1.3.1`)
 
 - `POST /v1/nodes/revoke` (tenant_admin-audited — the authorization record IS the audit) marks the node's active workload certificates revoked; the `.1.2.2` handshake ladder refuses them at the next crossing (typed 401) — the refusal path already existed, this leaf wired the operator verb.

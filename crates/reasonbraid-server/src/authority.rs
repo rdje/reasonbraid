@@ -738,3 +738,54 @@ pub async fn load_authorization_record(
         },
     ))
 }
+
+// ── Revocation write paths (`.1.3.2`) ────────────────────────────────────────
+
+/// Revoke a grant by id: sets `status = 'revoked'`. Returns `(tenant_id,
+/// previous_status)` — `None` when no such grant exists (the caller maps that
+/// to the typed 404). The evaluation's `status = 'active'` filters already
+/// refuse a revoked grant at the next authorization.
+pub(crate) async fn revoke_grant(
+    pool: &PgPool,
+    grant_id: &str,
+) -> Result<Option<(String, Option<GrantStatus>)>, sqlx::Error> {
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT tenant_id, status FROM authority_grants WHERE grant_id = $1")
+            .bind(grant_id)
+            .fetch_optional(pool)
+            .await?;
+    let Some((tenant_id, status)) = row else {
+        return Ok(None);
+    };
+    let previous = status.parse::<GrantStatus>().ok();
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(grant_id)
+        .execute(pool)
+        .await?;
+    Ok(Some((tenant_id, previous)))
+}
+
+/// Revoke a boundary by id: sets `status = 'revoked'`. Returns
+/// `(tenant_id, previous_status)` — `None` when no such boundary exists. The
+/// active-boundary lookup then finds no ceiling, so every grant under it is
+/// refused at the next decision (the core's revoked-boundary stance).
+pub(crate) async fn revoke_boundary(
+    pool: &PgPool,
+    boundary_id: &str,
+) -> Result<Option<(String, Option<BoundaryStatus>)>, sqlx::Error> {
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT tenant_id, status FROM enrollment_boundaries WHERE boundary_id = $1",
+    )
+    .bind(boundary_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((tenant_id, status)) = row else {
+        return Ok(None);
+    };
+    let previous = status.parse::<BoundaryStatus>().ok();
+    sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE boundary_id = $1")
+        .bind(boundary_id)
+        .execute(pool)
+        .await?;
+    Ok(Some((tenant_id, previous)))
+}

@@ -347,6 +347,39 @@ impl ApiClient {
         self.parse(response).await
     }
 
+    /// A tenant_admin POST to an arbitrary admin path (the `.1.3.2` revokes).
+    pub async fn post_admin(
+        &self,
+        principal: &str,
+        path: &str,
+        body: Value,
+    ) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}{}", self.base, path))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
+    /// A tenant_admin GET to an arbitrary admin path (the `.1.3.2` lists).
+    pub async fn get_admin(
+        &self,
+        principal: &str,
+        path: &str,
+        tenant: &str,
+    ) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .get(format!("{}{}?tenant_id={}", self.base, path, tenant))
+            .header(PRINCIPAL_HEADER, principal)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
     pub async fn quarantine_command(
         &self,
         principal: &str,
@@ -997,6 +1030,126 @@ pub async fn run_prune_node_inbox(
         response["after"].as_i64().unwrap_or(0),
         response["cutoff_at"].as_str().unwrap_or("?"),
     ))
+}
+
+// ── Grant/boundary revocation + inspection (`.1.3.2`) ─────────────────────────
+
+/// Revoke a grant (tenant_admin-audited server-side; the subject loses its
+/// authority at the next decision).
+pub async fn run_grant_revoke(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    grant_id: &str,
+    reason: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .post_admin(
+            &principal.id,
+            &format!("/v1/admin/grants/{grant_id}/revoke"),
+            json!({ "tenant_id": tenant, "reason": reason }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "grant {grant_id} revoked (at {})\n",
+        response["revoked_at"].as_str().unwrap_or("?")
+    ))
+}
+
+/// Revoke the enrollment boundary — the tenant's ceiling is gone, so every
+/// grant under it is refused at the next decision.
+pub async fn run_boundary_revoke(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    boundary_id: &str,
+    reason: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .post_admin(
+            &principal.id,
+            &format!("/v1/admin/boundaries/{boundary_id}/revoke"),
+            json!({ "tenant_id": tenant, "reason": reason }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "boundary {boundary_id} revoked (at {})\n",
+        response["revoked_at"].as_str().unwrap_or("?")
+    ))
+}
+
+/// The tenant's grants with their statuses (tenant_admin).
+pub async fn run_inspect_grants(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/grants", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let grants = response["grants"].as_array().cloned().unwrap_or_default();
+    let mut out = format!("tenant {tenant}'s grants ({}):\n", grants.len());
+    for g in grants {
+        out.push_str(&format!(
+            "  {} — {} {} — {}\n",
+            g["grant_id"].as_str().unwrap_or("?"),
+            g["subject_kind"].as_str().unwrap_or("?"),
+            g["subject_id"].as_str().unwrap_or("?"),
+            g["status"].as_str().unwrap_or("?"),
+        ));
+    }
+    Ok(out)
+}
+
+/// The tenant's enrollment boundaries with their statuses (tenant_admin).
+pub async fn run_inspect_boundaries(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/boundaries", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let boundaries = response["boundaries"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut out = format!("tenant {tenant}'s boundaries ({}):\n", boundaries.len());
+    for b in boundaries {
+        out.push_str(&format!(
+            "  {} — {} — {}\n",
+            b["boundary_id"].as_str().unwrap_or("?"),
+            b["status"].as_str().unwrap_or("?"),
+            b["target_owner"].as_str().unwrap_or("?"),
+        ));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

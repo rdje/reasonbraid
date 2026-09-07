@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.3.2: a revoked ceiling must freeze writes, never the operator's eyes
+
+- **The tests found the governance semantics, not the other way around.** The boundary-revocation test's FIRST run failed with the admin's own inspection list returning 403: the tenant_admin authorization evaluates against the active boundary, so revoking it refused everything — including the surfaces meant to prove the revocation. The fix is a named carve-out: admin READS authorize against the principal's own grant (no ceiling); admin WRITES stay ceiling-checked, so a boundary revocation is an honest freeze.
+- **The freeze is the feature.** After a boundary revocation every grant under it — including the bootstrap human's — is refused at the next decision, and the tenant is read-only until a future superseding act (Phase 5's correction machinery). Recorded, not smuggled.
+- Promoted to `docs/decisions/2026-09-07_boundary-revocation-freeze.md` (`answers:` present). **Frontier `PHASE-2.1.4` (the delegated authority context).**
+
 ## _(2026-09-07)_ — PHASE-2.1.2.2: when every valid proof is refused, isolate the legs before touching the crypto
 
 - **The ladder probe turned a mystery into a named interop fact.** 16 channel tests refused 401 with all-valid certificates; the probe (chain / SPKI / self-SPKI / ring-only control / digest variants) isolated it in three runs: the chain verified, the keys matched byte-for-byte, a pure-ring control passed — and yet ring's `UnparsedPublicKey` refused rcgen's SPKI DER in every format. The fix: verify against the **bare EC point** (the path webpki uses internally — which is why the chain check always worked). Probe removed before commit; the fix + record remain.

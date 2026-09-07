@@ -23,14 +23,14 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.3.2` (`.1.3.1` done: node/cert
-  revocation + the suspended presence + the demo beat; `.1.2` complete: the
-  cert lifecycle rides the channel). Then `.1.4` → `.1.6`.
-- **Next action:** execute `PHASE-2.1.3.2` — the grant/boundary revoke
-  verbs: `POST /v1/admin/grants/{id}/revoke` + `/v1/admin/boundaries/{id}/revoke`
-  (tenant_admin-audited); the evaluation.s existing `status = .active.`
-  filters refuse them at the next decision; `rb grant revoke` + `rb boundary
-  revoke`; the inspection surfaces show the status.
+- **Active tree:** `PHASE-2` → frontier `.1.4` (`.1.3` complete: node/cert +
+  grant + boundary revocation — the freeze carve-out recorded; `.1.2`
+  complete: the cert lifecycle rides the channel). Then `.1.5` → `.1.6`.
+- **Next action:** execute `PHASE-2.1.4` — the delegated authority context
+  (`AuthorityContext`: actor, subject, scopes, selectors, issuer chain,
+  validity) rides the command envelope + the authorization record; the
+  §16.3 invariants hold mechanically (a delegate cannot widen); ADR-009
+  records the representation choice after a measured spike.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

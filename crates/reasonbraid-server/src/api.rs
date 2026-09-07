@@ -307,6 +307,13 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/nodes/inbox", get(inspect_node_inbox))
         .route("/v1/nodes/inbox/prune", post(prune_node_inbox))
         .route("/v1/nodes/revoke", post(revoke_node))
+        .route("/v1/admin/grants/{grant_id}/revoke", post(revoke_grant))
+        .route(
+            "/v1/admin/boundaries/{boundary_id}/revoke",
+            post(revoke_boundary),
+        )
+        .route("/v1/admin/grants", get(list_grants))
+        .route("/v1/admin/boundaries", get(list_boundaries))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -1005,6 +1012,218 @@ async fn revoke_node(
         revoked_certificates: result.rows_affected() as i64,
         revoked_at: revoked_at.to_rfc3339(),
     }))
+}
+
+// ── Grant/boundary revocation + inspection (`.1.3.2`) ─────────────────────────
+
+/// The revoke bodies: the acting human names the tenant they administer (the
+/// target id rides the path); the reason is required.
+#[derive(Debug, Deserialize)]
+pub struct AdminListQuery {
+    pub tenant_id: TenantId,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RevokeAuthorityRequest {
+    pub tenant_id: TenantId,
+    pub reason: String,
+}
+
+async fn revoke_grant(
+    State(state): State<Arc<ApiState>>,
+    Path(grant_id): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<RevokeAuthorityRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    if req.reason.trim().is_empty() {
+        return Err(ControlApiError::invalid_command(
+            "the revocation reason is required (a revocation without a reason is a silent skip)",
+        ));
+    }
+    let Some((tenant, previous)) = authority::revoke_grant(&state.pool, &grant_id).await? else {
+        return Err(ControlApiError::not_found(format!(
+            "no grant `{grant_id}` in this tenant"
+        )));
+    };
+    if tenant != req.tenant_id.to_string() {
+        return Err(ControlApiError::not_found(format!(
+            "no grant `{grant_id}` in this tenant"
+        )));
+    }
+    if previous == Some(GrantStatus::Revoked) {
+        return Err(ControlApiError::invalid_transition(format!(
+            "grant `{grant_id}` is already revoked"
+        )));
+    }
+    Ok(Json(json!({
+        "grant_id": grant_id,
+        "tenant_id": tenant,
+        "revoked_at": Utc::now().to_rfc3339(),
+    })))
+}
+
+async fn revoke_boundary(
+    State(state): State<Arc<ApiState>>,
+    Path(boundary_id): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<RevokeAuthorityRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    if req.reason.trim().is_empty() {
+        return Err(ControlApiError::invalid_command(
+            "the revocation reason is required (a revocation without a reason is a silent skip)",
+        ));
+    }
+    let Some((tenant, previous)) = authority::revoke_boundary(&state.pool, &boundary_id).await?
+    else {
+        return Err(ControlApiError::not_found(format!(
+            "no boundary `{boundary_id}` in this tenant"
+        )));
+    };
+    if tenant != req.tenant_id.to_string() {
+        return Err(ControlApiError::not_found(format!(
+            "no boundary `{boundary_id}` in this tenant"
+        )));
+    }
+    if previous == Some(BoundaryStatus::Revoked) {
+        return Err(ControlApiError::invalid_transition(format!(
+            "boundary `{boundary_id}` is already revoked"
+        )));
+    }
+    Ok(Json(json!({
+        "boundary_id": boundary_id,
+        "tenant_id": tenant,
+        "revoked_at": Utc::now().to_rfc3339(),
+    })))
+}
+
+/// The admin READ authorization (the `.1.3.2` lists): the principal's OWN
+/// grant must carry `tenant_admin` and be within its window — the boundary
+/// ceiling is deliberately NOT required, so inspection survives a boundary
+/// revocation (the freeze stops writes, never the operator's eyes). The
+/// dev-profile root trust is the bootstrap human's grant.
+async fn authorize_tenant_admin_read(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+) -> Result<(), ControlApiError> {
+    let (subject_kind, subject_id) = match principal {
+        GrantSubject::Human(h) => ("human", h.to_string()),
+        GrantSubject::Role(r) => ("role", r.to_string()),
+    };
+    let row: Option<(Value, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT actions, valid_from, expires_at FROM authority_grants \
+         WHERE tenant_id = $1 AND subject_kind = $2 AND subject_id = $3 AND status = 'active' \
+         ORDER BY valid_from DESC LIMIT 1",
+    )
+    .bind(tenant_id.to_string())
+    .bind(subject_kind)
+    .bind(subject_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((actions, valid_from, expires_at)) = row else {
+        return Err(ControlApiError::unauthorized(
+            "authorization denied: no applicable grant".to_string(),
+        ));
+    };
+    let now = Utc::now();
+    let in_window = valid_from <= now && now <= expires_at;
+    let has_admin = actions
+        .as_array()
+        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some("tenant_admin")));
+    if in_window && has_admin {
+        Ok(())
+    } else {
+        Err(ControlApiError::unauthorized(
+            "authorization denied: the tenant_admin grant is revoked or outside its window"
+                .to_string(),
+        ))
+    }
+}
+
+/// The tenant's grants, newest first — the inspection surface the revocation
+/// state rides (`tenant_admin`-gated).
+async fn list_grants(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type Row = (
+        String,
+        String,
+        String,
+        Value,
+        String,
+        DateTime<Utc>,
+        DateTime<Utc>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at \
+         FROM authority_grants WHERE tenant_id = $1 ORDER BY valid_from DESC",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let grants: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at)| {
+                json!({
+                    "grant_id": grant_id,
+                    "subject_kind": subject_kind,
+                    "subject_id": subject_id,
+                    "actions": actions,
+                    "status": status,
+                    "valid_from": valid_from.to_rfc3339(),
+                    "expires_at": expires_at.to_rfc3339(),
+                })
+            },
+        )
+        .collect();
+    Ok(Json(
+        json!({ "tenant_id": q.tenant_id.to_string(), "grants": grants }),
+    ))
+}
+
+/// The tenant's enrollment boundaries — the same inspection contract.
+async fn list_boundaries(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type Row = (String, String, String, DateTime<Utc>, DateTime<Utc>);
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT boundary_id, status, target_owner, valid_from, expires_at \
+         FROM enrollment_boundaries WHERE tenant_id = $1 ORDER BY valid_from DESC",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let boundaries: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(boundary_id, status, target_owner, valid_from, expires_at)| {
+                json!({
+                    "boundary_id": boundary_id,
+                    "status": status,
+                    "target_owner": target_owner,
+                    "valid_from": valid_from.to_rfc3339(),
+                    "expires_at": expires_at.to_rfc3339(),
+                })
+            },
+        )
+        .collect();
+    Ok(Json(
+        json!({ "tenant_id": q.tenant_id.to_string(), "boundaries": boundaries }),
+    ))
 }
 
 // ── Thread commands ──────────────────────────────────────────────────────────────

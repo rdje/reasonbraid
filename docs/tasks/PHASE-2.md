@@ -1137,16 +1137,109 @@ slice can reuse the same control plane without rewriting it.
       each deferral names its trigger; no code changes.
 
 - ID: `PHASE-2.7`
-  Status: `proposed`
+  Status: `done`
   Goal: exit — non-escalation properties; restore + node replacement; no false safe-retry of unknown attempts
   Gate: feeds G6–G7; subtraction record required
   ADR: 022 (audit hash-chain groundwork)
+  Children: `.7.1`–`.7.4` (decomposed `2026-09-07` at the census
+    seams): `.7.1` the non-escalation property suite (the §16.12
+    adversarial line — cross-tenant, confused-deputy, delegation
+    widening, revoked-reuse) → `.7.2` the node-replacement drill (the
+    runbook's named gap, measured) → `.7.3` ADR-022 (the audit
+    hash-chain groundwork) + the no-false-safe-retry inventory →
+    `.7.4` the Phase-2 subtraction record + the G6–G7 feed.
+  Done (`2026-09-07`): the census mapped the exit lane's three
+    properties + the gate items against the shipped surface: the
+    non-escalation FOUNDATIONS exist (the deny-by-default evaluation,
+    the subset checker, the freeze carve-out, the four
+    escalation-adjacent authority tests — membership grants nothing,
+    admin never implied, every decision recorded, grants can't exceed
+    the boundary) but NO adversarial property suite names the
+    §16.12 line (`grep -rn "escalat|cross.tenant"` over the server
+    tests → 0 matches); the restore exercise + the replay machinery
+    exist but the node-replacement DRILL is the runbook's own named
+    gap; the no-false-safe-retry property has four measured legs
+    (`worker_retry_policy`: the reserved refusal redispatch, the
+    budget denial never redispatch, the ambiguous refusal without
+    authorization, the authorized redispatch) — the exit lane records
+    the inventory, it does not re-prove; ADR-022 is unopened (the
+    roadmap's "audit hash-chain/checkpoint and verification policy").
+    Children at those seams — frontier → `.7.1`.
+  - ID: `PHASE-2.7.1`
+    Status: `proposed`
+    Goal: the non-escalation property suite — the §16.12 line
+      "authorization non-escalation properties and confused-deputy
+      tests" becomes a NAMED adversarial suite over the shipped
+      surface: a cross-tenant access attempt refuses (every tenant
+      boundary), a confused deputy cannot widen (a delegated caller
+      acting on the principal's grant cannot exceed the delegated
+      scope — the `.1.4` ladder), a revoked credential/epoch-stale
+      decision refuses (the `.1.3` revocation + the `.1.5.2` cache),
+      a freeze refuses the writes while the reads stay authorized
+      (the `.1.3.2` carve-out), and a replayed/forged envelope is
+      refused (the idempotency + the digest bindings). The existing
+      four escalation-adjacent authority tests stay; this suite names
+      the ADVERSARIAL surface as one file.
+    Backlog: —
+    Acceptance: the adversarial suite lands with a named test per
+      escalation surface; all green; no regression.
+
+  - ID: `PHASE-2.7.2`
+    Status: `proposed`
+    Goal: the node-replacement drill — the runbook's own named gap
+      closes with a MEASURED exercise: destroy a node's journal (the
+      total-machine-loss path), re-enroll a replacement incarnation
+      (same role id), let the channel replay the inbox from the
+      durable cursor, prove the in-flight attempt lands its honest
+      terminal (`outcome_unknown` — never a silent retry), then
+      `rb node replay` the dead-lettered one; the guard gains the
+      drill as a live suite (or the demo gains the beat — whichever
+      the census finds cheaper to hold). The runbook's closure tests
+      gain the drill line (the Phase-7 game day then EXERCISES it at
+      scale, it no longer builds it).
+    Backlog: —
+    Acceptance: the drill runs measured on every guard pass; the
+      runbook names it; no regression.
+
+  - ID: `PHASE-2.7.3`
+    Status: `proposed`
+    Goal: ADR-022 (audit hash-chain/checkpoint and verification
+      policy) — the groundwork record: the shipped audit-linkage
+      design (the actor/subject/grant/digest bindings, the
+      deterministically derived handles) is the chain's GROUNDWORK,
+      accepted-with-evidence; the hash-chain itself is deferred WITH
+      its trigger (the first non-loopback deployment or the G7 ops
+      gate — the same trigger family ADR-023 named). Plus the
+      no-false-safe-retry evidence inventory: the four measured
+      retry-policy legs + the quarantine replay gate, recorded as the
+      §16.12 line's dev-profile proof (no code).
+    Backlog: —
+    Acceptance: ADR-022 accepted-with-evidence + the inventory
+      recorded; the chain's trigger named; no code changes.
+
+  - ID: `PHASE-2.7.4`
+    Status: `proposed`
+    Goal: the Phase-2 subtraction record + the G6–G7 feed — the
+      §19.8 mandatory record names what Phase 2 did NOT build (no
+      Internet exposure, no external review, no SSRF suite, no
+      prompt-injection suite, no release signing, no chaos injection
+      beyond the kill beats, no rate-limit machinery — each with the
+      profile that re-opens it); and the gate-feed record maps the
+      §16.12/G7 lines to the Phase-2 evidence (the restore exercise,
+      the drill, the SLO record, the runbook, the conformance kit)
+      vs what stays open until the deployment profile exists. No
+      code (docs).
+    Backlog: —
+    Acceptance: the subtraction record + the gate-feed record land;
+      each deferred item names its re-opening profile; no code
+      changes. **`PHASE-2.7` and Phase 2 close.**
+
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.7` | `proposed` | `.6.3` done — the qualification checklist + the named deferrals (**`.6` COMPLETE**: the harness, the pinned corpus, the checklist); the exit lane (non-escalation, restore + node replacement) executes now |
+| 1 | `PHASE-2.7.1` | `proposed` | `.7` decomposed at the census seams (the foundations exist, the adversarial suite is absent, the replacement drill is the runbook's named gap, ADR-022 is unopened); the non-escalation property suite executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1162,6 +1255,14 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.7` decomposed at the census seams — the exit lane's
+  three properties mapped: the non-escalation foundations exist (no
+  adversarial suite), the replacement drill is the runbook's named
+  gap, the no-false-safe-retry property has four measured legs,
+  ADR-022 is unopened; children `.7.1` (the non-escalation suite) →
+  `.7.2` (the replacement drill) → `.7.3` (ADR-022 + the retry
+  inventory) → `.7.4` (the subtraction record + the G6–G7 feed);
+  frontier → `.7.1`.
 - `2026-09-07`: `.6.3` done — the manual qualification checklist
   (the book's six-box gate over the env-gated live runs) + the
   deferrals record (the five §19.4 items with no dev-profile
@@ -2407,6 +2508,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the exit-lane census + the contract-seam decomposition (the foundations vs the four gaps); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-2.6.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the qualification checklist + the deferrals record (each of the five §19.4 items names its trigger); **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-2.6.2` | `cargo test -p reasonbraid-adapter --lib` → `test result: ok. 9 passed` (the two manifest guarantees); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg262_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the permanent failure-fixture corpus (the versioned manifest + the exact-match drift check + the item-coverage check); frontier → `.6.3` |
 | `2026-09-07` | `PHASE-2.6.1` | `cargo test -p reasonbraid-adapter --test adapter_conformance` → `test result: ok. 3 passed` (the fake + codex + claude all pass the ONE harness); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg261_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the conformance harness (the six cross-adapter invariant checks over the scenario shape); frontier → `.6.2` |
@@ -2443,6 +2545,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.7` | `REASONBRAID-PHASE2-0039` | the exit-lane census + the contract-seam decomposition (`.7.1` adversarial suite → `.7.2` replacement drill → `.7.3` ADR-022 + retry inventory → `.7.4` subtraction + gate feed) |
 | `PHASE-2.6.3` | `REASONBRAID-PHASE2-0038` | the qualification checklist + the named deferrals (docs-only: the book's six-box gate, the five triggers) — **`.6` COMPLETE** |
 | `PHASE-2.6.2` | `REASONBRAID-PHASE2-0037` | the permanent failure-fixture corpus (the versioned manifest + the exact-match + item-coverage guarantees) |
 | `PHASE-2.6.1` | `REASONBRAID-PHASE2-0036` | the conformance harness (one suite, three adapters, the six §19.4 invariant checks; the shared provider stubs) |

@@ -23,13 +23,15 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.7` (`.6` COMPLETE: the
-  conformance harness, the pinned corpus, the qualification checklist
-  + the deferrals). Then Phase 2 exits.
-- **Next action:** execute `PHASE-2.7` — the exit lane: the
-  non-escalation properties, restore + node replacement, no false
-  safe-retry of unknown attempts (feeds G6–G7; a subtraction record
-  required; ADR-022 the audit hash-chain groundwork).
+- **Active tree:** `PHASE-2` → frontier `.7.1` (`.7` decomposed at the
+  census seams: the non-escalation suite → the replacement drill →
+  ADR-022 + the retry inventory → the subtraction + gate feed). Then
+  `.7.2`–`.7.4`; Phase 2 closes after `.7.4`.
+- **Next action:** execute `PHASE-2.7.1` — the non-escalation
+  property suite: a named adversarial test per escalation surface
+  (cross-tenant access, confused-deputy delegation widening, revoked/
+  epoch-stale reuse, the freeze carve-out, forged/replayed
+  envelopes) over the shipped authority surface.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

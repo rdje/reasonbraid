@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.7` split at the census seams (`PHASE-2.7`)
+
+- The exit-lane census mapped the three properties + the gate items against the shipped surface. The non-escalation FOUNDATIONS exist (deny-by-default evaluation, the subset checker, the freeze carve-out, the four escalation-adjacent authority tests) but no adversarial property suite names the §16.12 line (`grep -rn "escalat|cross.tenant"` over the server tests → 0 matches). The restore exercise + the replay machinery exist, but the node-replacement drill is the runbook's own named gap. The no-false-safe-retry property has four measured legs (`worker_retry_policy`). ADR-022 (audit hash-chain/checkpoint and verification policy) is unopened.
+- Children: `.7.1` the non-escalation property suite → `.7.2` the node-replacement drill → `.7.3` ADR-022 + the no-false-safe-retry inventory → `.7.4` the Phase-2 subtraction record + the G6–G7 feed. Tree-only commit; frontier → `.7.1`.
+
 ## 2026-09-07 — The qualification checklist is one artifact and the absent surfaces are named deferrals — `.6` COMPLETE (`PHASE-2.6.3`)
 
 - The book's adapter-boundary chapter gains the six-box qualification checklist (the conformance-harness pass, the stub-mechanics pass, the env-gated bounded live dispatch, the credential containment, the corpus-manifest entry, the dependency-ledger row) — the §19.4 last item as ONE artifact over the live runs the qualification already follows (`RB_LIVE_CODEX=1` / `RB_LIVE_CLAUDE=1`).

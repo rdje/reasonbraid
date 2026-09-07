@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.7: the exit lane's properties are founded, not proven — the adversarial suite is the gap between the two
+
+- **The escalation surface has FOUNDATIONS, not an adversarial proof.** The deny-by-default evaluation, the subset checker, the freeze carve-out, and the four escalation-adjacent authority tests are the machinery — but §16.12's line ("authorization non-escalation properties and confused-deputy tests") has no NAMED adversarial suite, the node-replacement drill is the runbook's own named gap, ADR-022 is unopened, and the mandatory §19.8 subtraction record does not exist yet. The exit lane is four children: the property suite, the drill, the ADR + the retry inventory, the subtraction + gate feed.
+- promotion: declined (the census is the leaf's recorded contract — the `.7.1`–`.7.4` children execute it). **Frontier `PHASE-2.7.1` (the non-escalation property suite).**
+
 ## _(2026-09-07)_ — PHASE-2.6.3: the conformance kit's manual half is a human gate, and its absent half is named — not built
 
 - **§19.4's ten items split into three honest halves**: five are mechanical (the `.6.1` harness + the `.6.2` pinned corpus prove them every run), the manual qualification checklist is ONE artifact (the book's six boxes over the env-gated live runs — the human gate), and five items (rate-limit/backoff normalization, output-size limits, tool-call validation, the provider error taxonomy, projection fidelity) have no machinery or no surface to bind — each is named with the exact trigger that re-opens it, in the subtraction doctrine's shape.

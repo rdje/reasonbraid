@@ -23,12 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.5` (**`.4` is COMPLETE** — the
-  restore exercise runs on every guard pass, the upgrade path is
-  measured, the absent controls are named deferrals).
-- **Next action:** execute `PHASE-2.5` — OpenTelemetry, operator
-  dashboards, initial SLO baselines, game days (backlog —; ADR-023;
-  Roadmap §18) — pick it up with a census like the previous lanes'.
+- **Active tree:** `PHASE-2` → frontier `.5.1` (`.5` split at the contract
+  seams: eprintln-only observability; the four-record doctrine is
+  structurally true, nothing measures). Then `.5.2`, `.5.3`.
+- **Next action:** execute `PHASE-2.5.1` — ADR-023 (telemetry
+  storage/redaction, the dev profile's four-record answer: the records
+  stay separate by design, no third-party sink yet, the §18.2 redaction
+  rules pin the future sink; no code changes).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

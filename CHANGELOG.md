@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.5` split at the contract seams (`PHASE-2.5`)
+
+- The census found UNSTRUCTURED observability: 16 `eprintln!` sites (api 8, node_channel 2, worker 6), no metrics, no traces, no SLO record, no runbook — while the four-record doctrine (§18.1) is structurally TRUE (the operational logs and the durable audit/event tables are separate systems by construction). ADR-023 is unopened.
+- Children: `.5.1` ADR-023 (the four-record answer + the §18.2 redaction rules pinning the future sink) → `.5.2` the structured-log + metrics slice (JSON logs + the admin metrics surface over the §18.3 minimums that apply) → `.5.3` the SLO record + the runbook slice. Tree-only commit.
+
 ## 2026-09-07 — The absent controls are named deferrals, not placeholder infrastructure — `.4` is COMPLETE (`PHASE-2.4.3`)
 
 - `docs/decisions/2026-09-07_phase2-inventory-deferrals.md` lands (`answers:` present): the object-store inventory (Phase 4), the canonical Git mirror (Phase 6), the signing-key recovery (the first signed release), the multi-store reconciliation (the first multi-store restore), and the backup encryption each name the exact product surface whose arrival re-opens them.

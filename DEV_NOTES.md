@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.5: the four-record doctrine is already structurally true — the logs are eprintln, the audit is tables, and nothing measures either
+
+- **§18.1 is satisfied by construction**: the operational `eprintln!` stream and the durable event/audit tables are separate systems — no log line can become an audit record, no audit row is a log. What's missing is the MEASUREMENT (no metrics, no SLO, no runbook), not the separation.
+- promotion: declined (the separation-by-construction fact is the leaf's census note — the ADR-023 answer lands with `.5.1`). **Frontier `PHASE-2.5.1` (ADR-023).**
+
 ## _(2026-09-07)_ — PHASE-2.4.3: a deferral with a trigger is a control; placeholder infrastructure is the lie
 
 - **The dev profile inventories what it HAS** — the database, via the `.4.1` restore exercise — and defers the rest by naming the exact surface whose arrival re-opens each item (object store → Phase 4, Git mirror → Phase 6, key recovery → the first signed release). No empty tables, no stub scripts, no exactly-once-of-inventory.

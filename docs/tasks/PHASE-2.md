@@ -901,11 +901,73 @@ slice can reuse the same control plane without rewriting it.
       trigger; no code changes.
 
 - ID: `PHASE-2.5`
-  Status: `proposed`
+  Status: `active`
   Goal: OpenTelemetry, operator dashboards, initial SLO baselines, game days
   Backlog: —
   ADR: 023
   Roadmap: §18
+  Note: gap census (`2026-09-07`, on pickup): the observability is
+    UNSTRUCTURED — the code's operational logs are `eprintln!` (16 sites:
+    `grep -c 'eprintln!' server/src/*.rs node/src/*.rs` → api 8,
+    node_channel 2, worker 6); no metrics, no traces, no SLO record, no
+    runbook (`grep -rn 'tracing|opentelemetry|metrics'` → no matches).
+    The four-record doctrine (§18.1) IS structurally true (the
+    operational eprintln vs the durable event/audit tables are separate
+    systems — a log is not an audit record by construction), but nothing
+    measures, and ADR-023 is unopened.
+  Children: `.5.1`–`.5.3` (decomposed `2026-09-07` at the contract
+    seams): `.5.1` ADR-023 (the dev profile's four-record answer: no
+    external telemetry sink yet — the trigger is named; the §18.2
+    redaction rules pin the future sink) → `.5.2` the structured-log +
+    metrics slice (JSON operational logs + a minimal admin metrics
+    surface over the §18.3 minimums that APPLY: denials, attempt
+    outcomes, command lag, dead letters) → `.5.3` the SLO record + the
+    runbook slice (hypotheses from the existing guard/demo measurements;
+    the demo's kill points ARE the game day, named).
+
+  - ID: `PHASE-2.5.1`
+    Status: `proposed`
+    Goal: ADR-023 — telemetry storage/redaction, accepted with the dev
+      profile's answer: the four records stay separate BY DESIGN (the
+      operational eprintln/structured logs, the durable audit tables, and
+      NO third-party telemetry sink yet); the §18.2 redaction rules pin
+      the future sink (never prompt text, credentials, secret-bearing
+      URLs, private evidence, or model output in span attributes;
+      sensitive IDs tokenized at the sink boundary; a trace sampler can
+      never decide whether a governance action remains provable — the
+      audit record is the proof). No code.
+    ADR: 023
+    Acceptance: ADR-023 accepted (the four-record separation is the
+      shipped design; the sink trigger named); no code changes.
+
+  - ID: `PHASE-2.5.2`
+    Status: `proposed`
+    Goal: the structured-log + metrics slice — the `eprintln!` sites
+      become structured JSON lines (a `log_event!`-style helper: level,
+      event, the correlation fields — no new dependencies, the
+      OpenTelemetry sink stays the `.5.1` trigger) + a minimal metrics
+      registry (counters for authorization denials, attempt outcomes,
+      dead letters, idempotency replays, handshake refusals) exposed at
+      `GET /v1/admin/metrics` (tenant_admin, read-only) — the §18.3
+      minimums that apply to the dev profile.
+    Backlog: —
+    Acceptance: the admin metrics surface answers with the counted
+      signals; the counts match the records (measured); the structured
+      logs carry the correlation fields; no regression.
+
+  - ID: `PHASE-2.5.3`
+    Status: `proposed`
+    Goal: the SLO record + the runbook slice — the initial SLO
+      HYPOTHESES (the §18.4 shape: population, window, statistic,
+      target, error budget, owner) instantiated from the existing
+      guard/demo measurements (the demo's 34 checks, the guard's 15
+      suites, the restore exercise) as a decisions record; ONE runbook
+      (node lost/replaced — the demo's SIGKILL beat is the exercise)
+      with the §18.6 shape (detection, authority, safe first actions,
+      diagnostics, containment, recovery, evidence). No code (docs).
+    Backlog: —
+    Acceptance: the SLO record + the runbook land; the runbook's
+      closure test names the existing exercise; no code changes.
 
 - ID: `PHASE-2.6`
   Status: `proposed`
@@ -922,7 +984,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.5` | `proposed` | `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
+| 1 | `PHASE-2.5.1` | `proposed` | `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
+ `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
  `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
  `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
  `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
@@ -935,6 +998,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.5` decomposed at the contract seams — the census found
+  UNSTRUCTURED observability (16 `eprintln!` sites, no metrics/traces/SLO/
+  runbook) while the four-record doctrine is structurally true; children
+  `.5.1` (ADR-023) → `.5.2` (the structured-log + metrics slice) → `.5.3`
+  (the SLO record + the runbook slice); frontier → `.5.1`.
 - `2026-09-07`: `.4.3` done — the inventory-groundwork deferral record
   (`docs/decisions/2026-09-07_phase2-inventory-deferrals.md`, `answers:`): the
   object/Git inventory, the key recovery, the multi-store reconciliation, and
@@ -2008,6 +2076,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.5` | `REASONBRAID-PHASE2-0031` | the contract-seam split (eprintln-only observability; the four-record doctrine structurally true, nothing measures) |
 | `PHASE-2.4.3` | `REASONBRAID-PHASE2-0030` | the inventory-groundwork deferral record (the absent §17.5/§17.6 controls named with their triggers — no placeholder infrastructure) — **`.4` COMPLETE** |
 | `PHASE-2.4.2` | `REASONBRAID-PHASE2-0029` | the migration upgrade test (the N-1 → N path: the real API seeds, the remaining migrations apply over the existing data, the rows + behavior survive — measured) |
 | `PHASE-2.4.1` | `REASONBRAID-PHASE2-0028` | the backup + restore automation: `scripts/backup.sh`/`restore.sh` + the guard's restore exercise (seed → dump → mutate → restore → assert the pre-mutation state) |

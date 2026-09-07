@@ -19,16 +19,17 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.1.2` (`.1.1` done:
-  ADR-011 + ADR-018 — the `sha256:<hex>` format + the isolation
-  classes). Then `.1.3`, `.2`–`.7`.
-- **Next action:** execute `PHASE-4.1.2` — the typed
-  `ResourceReference`: the §12.1 contract (the immutable locator,
-  the scheme, the media-type hint, the TYPED `expected_digest`, the
-  fragment/selector, the opaque credential-binding ref, the
-  ownership/visibility/purpose/retention/risk fields, the
-  submitted-by) + the durable submission verb (the locator's
-  immutability is the update-refusal).
+- **Active tree:** `PHASE-4` → frontier `.1.3` (`.1.2` done: the
+  typed `ResourceReference` + the submission — migration 0023, the
+  replay/conflict immutability). Then `.2`–`.7`.
+- **Next action:** execute `PHASE-4.1.3` — the resolver capability
+  registry: the §12.2 advertises (the schemes/patterns, the media
+  types + the max bytes, the abilities, the auth classes, the
+  egress class + the sandbox level per ADR-018, the policies, the
+  snapshot formats, the latency range, the version + the security
+  evidence) + the resolution order (the authz + the risk filters
+  FIRST, then the rank) + the explicit `resource_unresolvable_now`
+  (the reference is PRESERVED — never fabricated).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

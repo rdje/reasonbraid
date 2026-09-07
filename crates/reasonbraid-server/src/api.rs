@@ -366,6 +366,8 @@ pub fn api_router(pool: PgPool) -> Router {
             "/v1/profiles/{role_id}/attest",
             post(attest_capability_claim),
         )
+        .route("/v1/resources", post(submit_resource))
+        .route("/v1/resources/{resource_id}", get(get_resource))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads/auto", post(create_thread_auto))
         .route("/v1/threads", get(list_threads))
@@ -1222,6 +1224,84 @@ async fn list_node_presence(
     Ok(Json(json!({
         "tenant_id": q.tenant_id.to_string(),
         "nodes": nodes,
+    })))
+}
+
+// ── The universal resource reference (PHASE-4.1.2; backlog 31) ─────────────────────
+
+/// `POST /v1/resources` — submit the typed §12.1 reference (any enrolled
+/// principal; the reference is declarative — the resolution is `.1.3`'s).
+/// The locator is IMMUTABLE: the same locator + digest is the replay, the
+/// same locator with a DIFFERENT digest is the typed conflict.
+async fn submit_resource(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(reference): Json<crate::resources::ResourceReference>,
+) -> Result<Json<crate::resources::SubmitOutcome>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal submits no reference",
+        ));
+    }
+    if let Some(error) = reference.digest_error() {
+        return Err(ControlApiError::invalid_command(error));
+    }
+    let submitted_by = actor_handle_for_subject(&principal).to_string();
+    match crate::resources::submit(&state.pool, &reference, &submitted_by).await {
+        Ok(outcome) => Ok(Json(outcome)),
+        Err(e) if e.as_database_error().is_some_and(|d| d.is_unique_violation()) => {
+            Err(ControlApiError {
+                status: StatusCode::CONFLICT,
+                code: "locator_digest_conflict",
+                message: "the locator's digest is immutable — the same locator with a different digest conflicts"
+                    .to_string(),
+            })
+        }
+        Err(e) if e
+            .to_string()
+            .contains("locator_digest_conflict") =>
+        {
+            Err(ControlApiError {
+                status: StatusCode::CONFLICT,
+                code: "locator_digest_conflict",
+                message: "the locator's digest is immutable — the same locator with a different digest conflicts"
+                    .to_string(),
+            })
+        }
+        Err(e) => Err(ControlApiError::internal_with_log(format!(
+            "the reference submit failed: {e}"
+        ))),
+    }
+}
+
+/// `GET /v1/resources/{resource_id}` — the inspection (the submitted shape +
+/// the submitter + the creation time).
+async fn get_resource(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(resource_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no reference",
+        ));
+    }
+    let Some((id, reference, submitted_by, created_at)) =
+        crate::resources::get(&state.pool, &resource_id).await?
+    else {
+        return Err(ControlApiError::not_found(format!(
+            "no reference `{resource_id}`"
+        )));
+    };
+    Ok(Json(json!({
+        "resource_id": id,
+        "reference": reference,
+        "submitted_by": submitted_by,
+        "created_at": created_at.to_rfc3339(),
     })))
 }
 

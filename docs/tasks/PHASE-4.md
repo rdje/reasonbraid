@@ -77,7 +77,7 @@ of a URI is not a promise the core can resolve it.
       classes named); no code changes.
 
   - ID: `PHASE-4.1.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the typed `ResourceReference` — the §12.1 contract (the
       resource id, the IMMUTABLE original locator, the scheme, the
       media-type hint, the expected digest, the fragment/selector,
@@ -88,6 +88,22 @@ of a URI is not a promise the core can resolve it.
       reference lands in a durable table; the locator's immutability
       is the update-refusal, not a convention).
     Backlog: 31 (the contract half)
+    Done (`2026-09-07`): the typed reference landed — migration
+      0023 (`resource_references` with the UNIQUE
+      (original_locator, expected_digest)) + `crates/reasonbraid-
+      server/src/resources.rs` (the §12.1 `ResourceReference` with
+      the deny-unknown-fields boundary + the ADR-011 digest
+      validation) + the verbs: `POST /v1/resources` (any enrolled
+      principal; the same locator + digest is the REPLAY; the same
+      locator with a DIFFERENT digest is the typed
+      `locator_digest_conflict` — the immutability is the
+      update-refusal + the conflict, not a convention) and `GET
+      /v1/resources/{id}` (the inspection). Measured
+      (`a_reference_submits_typed_and_the_locator_is_immutable`,
+      profiles 13): the fresh submit, the replay, the conflict, the
+      unknown-field 422, the malformed-digest 400 (the first run
+      caught the digest validator's early-return bug), the
+      read-back. Frontier → `.1.3`.
     Acceptance: the typed reference + the submission land, measured
       (the immutability + the unknown-field refusals); no
       regression.
@@ -150,7 +166,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.1.2` | `proposed` | `.1.1` done — ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); the typed `ResourceReference` + the submission executes now |
+| 1 | `PHASE-4.1.3` | `proposed` | `.1.2` done — the typed `ResourceReference` + the submission (the replay + the immutability conflict, measured); the resolver capability registry executes now |
 
 ## Changelog
 
@@ -165,12 +181,62 @@ of a URI is not a promise the core can resolve it.
 - `2026-09-07`: `.1.1` done — ADR-011 + ADR-018 accepted (the
   `sha256:<hex>` format + the isolation-class vocabulary); no code
   changed; frontier → `.1.2`.
+- `2026-09-07`: `.1.2` done — the typed `ResourceReference` + the
+  submission (migration 0023 + the verbs; the locator's
+  immutability is the replay + the typed conflict); the profiles
+  suite grew to 13; frontier → `.1.3`.
+
+## Acceptance Checklist (PHASE-4.1.2)
+
+The CODE change owned by this leaf:
+`migrations/0023_resource_references.sql` (NEW),
+`crates/reasonbraid-server/src/resources.rs` (NEW — the typed
+reference + the digest validation + the submit/get functions),
+`crates/reasonbraid-server/src/api.rs` + `src/lib.rs` (the two
+verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
+(the measured test), and the eleven purge lists (the 0023 ripple) —
+`\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1` census: the §12.1 contract
+  has no typed shape (only the reason name + the `EvidenceRef`s
+  exist) and no submission surface.
+- [x] **ROOT CAUSE (WHY + WHERE)** — no reference machinery existed
+  — `git grep -c "resource_references\|ResourceReference"
+  34419a9 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the typed contract + the durable table
+  whose UNIQUE (locator, digest) makes the immutability mechanical
+  (the replay + the conflict, never an update).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  a_reference_submits` → `test result: ok. 1 passed` — the fresh
+  submit; the same locator + digest is the REPLAY (the same id);
+  the same locator with a different digest is the typed
+  `locator_digest_conflict`; the unknown field is the 422; the
+  malformed digest is the 400 naming the scheme; the inspection
+  reads the submitted shape back. The first live run caught two
+  real bugs (the SQL continuation doubling + the digest
+  validator's early-return) — both fixed.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg412_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0023_resource_references.sql`, `src/resources.rs`,
+  `src/api.rs`, `src/lib.rs`, `tests/profiles.rs`, the eleven
+  purge lists.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-4.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles a_reference_submits` → `test result: ok. 1 passed` (the submit, the replay, the conflict, the 422/400 refusals); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg412_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the typed reference + the submission; frontier → `.1.3` |
 | `2026-09-07` | `PHASE-4.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); frontier → `.1.2` |
 
 ## Commit Log
@@ -178,4 +244,5 @@ of a URI is not a promise the core can resolve it.
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
+| `PHASE-4.1.2` | `REASONBRAID-PHASE4-0003` | the typed `ResourceReference` + the submission (migration 0023 + the replay/conflict immutability) |
 | `PHASE-4.1.1` | `REASONBRAID-PHASE4-0002` | ADR-011 + ADR-018 accepted (the `sha256:<hex>` format + the isolation-class vocabulary — no code) |

@@ -72,6 +72,7 @@ async fn pool() -> Option<PgPool> {
         "recruitment_calls",
         "agent_roles",
         "human_principals",
+        "resource_references",
         "tenants",
         "idempotency",
         "event_log",
@@ -2002,4 +2003,114 @@ async fn the_panel_snapshot_carries_the_dependence_indicators() {
         2,
         "both members ride: {inspected}"
     );
+}
+
+/// THE `.4.1.2` acceptance: the typed §12.1 reference submits; the SAME
+/// locator + digest is the replay; the same locator with a DIFFERENT digest
+/// is the typed immutability conflict; an unknown field and a malformed
+/// digest are typed refusals; the inspection reads the submitted shape back.
+#[tokio::test]
+async fn a_reference_submits_typed_and_the_locator_is_immutable() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "res-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let body = json!({
+        "original_locator": "https://example.org/parser-guidance",
+        "scheme": "https",
+        "media_type_hint": "text/html",
+        "expected_digest": digest,
+        "fragment_or_selector": "#rationale",
+        "credential_binding_ref": "cb_ref_1",
+        "owning_node_or_capability": "nod_00000000-0000-7000-8000-000000000001",
+        "visibility_scope": "tenant",
+        "purpose": "the parser trivia deliberation's guidance",
+        "retention_class": "standard",
+        "risk_class": "low",
+    });
+    let submit = |body: &Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let body = body.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("submit request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("submit body");
+            let parsed = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, parsed)
+        }
+    };
+
+    // The fresh submit.
+    let (status, submitted) = submit(&body).await;
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+    assert!(resource_id.starts_with("res_"), "{submitted}");
+    assert_eq!(submitted["replayed"], json!(false));
+
+    // The replay: the same locator + digest returns the SAME id.
+    let (status, replayed) = submit(&body).await;
+    assert_eq!(status, 200, "the replay: {replayed}");
+    assert_eq!(replayed["resource_id"], json!(resource_id));
+    assert_eq!(replayed["replayed"], json!(true));
+
+    // The immutability: the same locator with a DIFFERENT digest conflicts.
+    let mut changed = body.clone();
+    changed["expected_digest"] = json!(format!("sha256:{}", "b".repeat(64)));
+    let (status, conflicted) = submit(&changed).await;
+    assert_eq!(
+        status, 409,
+        "the locator's digest is immutable: {conflicted}"
+    );
+    assert_eq!(conflicted["code"], json!("locator_digest_conflict"));
+
+    // An unknown field is the typed 422.
+    let mut forged = body.clone();
+    forged["fabricated"] = json!(true);
+    let (status, rejected) = submit(&forged).await;
+    assert_eq!(status, 422, "the unknown field is rejected: {rejected}");
+
+    // A malformed digest is the typed 400.
+    let mut malformed = body.clone();
+    malformed["expected_digest"] = json!("md5:not-sha256");
+    let (status, refused) = submit(&malformed).await;
+    assert_eq!(status, 400, "the malformed digest is refused: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap_or("").contains("sha256"),
+        "the refusal names the scheme: {refused}"
+    );
+
+    // The inspection reads the submitted shape back.
+    let (status, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the inspection: {inspected}");
+    assert_eq!(
+        inspected["reference"]["original_locator"],
+        json!("https://example.org/parser-guidance")
+    );
+    assert_eq!(inspected["reference"]["expected_digest"], json!(digest));
 }

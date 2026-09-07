@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The universal reference submits typed; the locator's immutability is mechanical (`PHASE-4.1.2`)
+
+- Migration 0023 (`resource_references` with the UNIQUE (original_locator, expected_digest)) + `src/resources.rs`: the typed §12.1 `ResourceReference` (deny-unknown-fields, the ADR-011 `sha256:<hex>` digest validation) + the verbs: `POST /v1/resources` (any enrolled principal — the reference is declarative, the resolution is `.1.3`'s) and `GET /v1/resources/{id}`.
+- The immutability is the absent update verb PLUS the measured semantics: the same locator + digest is the REPLAY (the same id), the same locator with a DIFFERENT digest is the typed `locator_digest_conflict` — a reference cannot be silently re-bound.
+- Measured (`tests/profiles.rs` grew to 13): the submit, the replay, the conflict, the unknown-field 422, the malformed-digest 400. The first live run caught two real bugs (the SQL continuation doubling + the digest validator's early-return). Frontier → `.1.3` (the resolver capability registry).
+
 ## 2026-09-07 — ADR-011 + ADR-018: one digest scheme, one isolation vocabulary (`PHASE-4.1.1`)
 
 - ADR-011 accepted (evidence-gated): the content-addressing format is `sha256:<hex>` over the ACQUIRED bytes (as acquired, pre-transformation) — the references' `expected_digest` and the future snapshots speak one scheme; the store + the derivation graph ride the `.6` lane behind the first-snapshot-receipt trigger.

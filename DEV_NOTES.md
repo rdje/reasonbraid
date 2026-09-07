@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.1.2: the locator's immutability is the replay and the conflict — a reference cannot be silently re-bound
+
+- **The immutability rule became data semantics, not a comment**: the UNIQUE (locator, digest) plus the pre-check turn the re-submission into the idempotent replay (the same binding) or the typed `locator_digest_conflict` (a different digest for the same locator) — there is no update path at all. The first live run caught two of my own bugs (the doubled SQL continuations + the digest validator's `?` early-return — the "malformed digest" was passing through) — the measured test is the reason they surfaced before the commit.
+- promotion: declined (the replay/conflict semantics are the leaf's own contract). **Frontier `PHASE-4.1.3` (the resolver capability registry).**
+
 ## _(2026-09-07)_ — PHASE-4.1.1: the two ADRs pin the vocabulary the machinery will speak — a digest scheme and an isolation ladder, both before the first consumer
 
 - **ADR-011 + ADR-018 settle the formats the greenfield needs before its first table**: the digest (`sha256:<hex>` over the ACQUIRED bytes) lets the reference's `expected_digest` and the future snapshots verify the SAME fact, and the isolation ladder + the egress classes let a reference fail EXPLICITLY (no eligible resolver in the required class) instead of silently degrading to a weaker sandbox. The machinery (the store, the runtimes) rides the lanes whose triggers name it.

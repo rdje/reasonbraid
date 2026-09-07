@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The stage-1 eligibility evaluation: typed, pure, visibility-scoped (`PHASE-3.3.1`)
+
+- `crates/reasonbraid-server/src/matching.rs`: the typed `EligibilityExpression` (the §10.3 stage-1 fields — scope, capability requirements with the minimum provenance, interests, confidentiality classes, the concurrency + budget gates, the allowed presence states, the exclusions — with the least-restrictive defaults) + the pure `eligible(expression, candidate)`.
+- The evaluator's honesty order: the explicit exclusion, the presence gate, the VISIBILITY-SCOPED checks (every capability/interest/confidentiality requirement reads the profile filtered at the expression's scope — a tenant-hidden capability cannot satisfy a network-scope requirement), then the concurrency + budget gates. Every decision carries the named reasons.
+- Measured: 6 unit tests (the provenance refusal, the visibility refusal, the presence refusal, the exclusion, the concurrency/budget shortfalls, the happy path). No live surface yet — the `.3.3` query surface wires the evaluator to the shipped facts. Frontier → `.3.2` (the stage-2 explainable ranking).
+
 ## 2026-09-07 — `.3` split at the census seams (`PHASE-3.3`)
 
 - The matching-lane census mapped §10.3 (backlog 28/29) against the shipped surface: the matching INPUTS exist (the `.1` profiles with the provenance + the interests/scopes/ceilings, the `.2` derived presence states, the grants + budget facts from Phase 2) but NO matching machinery — no expression, no evaluator, no scoring, no query surface.

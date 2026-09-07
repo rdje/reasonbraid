@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.3.1: the eligibility checks read the profile AS VISIBLE — a hidden capability satisfies nothing
+
+- **Privacy is inside the evaluator, not around it.** Every stage-1 check (the capabilities, the interests, the confidentiality classes) runs against the profile filtered at the expression's scope — so a tenant-hidden capability cannot satisfy a network-scope requirement, and the evaluator needs no post-hoc scrubbing. The honesty order (exclusion → presence → visibility-scoped fields → concurrency → budget) makes every refusal a named reason, and the provenance gate enforces the §10.1 rule mechanically (a self-asserted claim fails a benchmarked requirement).
+- promotion: declined (the visibility-scoped evaluation is the leaf's own contract; the `.3.2` explanations ride these reasons). **Frontier `PHASE-3.3.2` (the stage-2 explainable ranking).**
+
 ## _(2026-09-07)_ — PHASE-3.3: the matching lane has its inputs but no machinery — the census names the three seams before a line of evaluator ships
 
 - **Everything the matcher consumes exists; the matcher does not.** The `.1` profiles (with the provenance + the ceilings), the `.2` presence states, and the Phase-2 grants/budget facts are the inputs — but there is no eligibility expression, no evaluator, no scoring, and no query surface. The three seams: the typed stage-1 expression + the pure evaluator (an ineligible role is never restored by ranking), the stage-2 features each with a source + contribution + a visibility-safe explanation (the semantic slot stays empty per ADR-014), and the query surface whose candidate list the `.4` recruitment lane consumes.

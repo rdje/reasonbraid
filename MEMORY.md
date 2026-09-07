@@ -19,15 +19,15 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.3.1` (`.3` decomposed at
-  the census seams: the matching inputs exist, the machinery does
-  not). Then `.3.2`, `.3.3`, `.4`–`.6`.
-- **Next action:** execute `PHASE-3.3.1` — the eligibility
-  expression + the stage-1 evaluation: the typed §10.3 stage-1
-  expression (scope, capability requirements, policy restrictions,
-  confidentiality classes, concurrency + budget availability,
-  exclusions) + the pure `eligible(...)` evaluator over the shipped
-  facts, resolved server-side.
+- **Active tree:** `PHASE-3` → frontier `.3.2` (`.3.1` done: the
+  eligibility expression + the pure visibility-scoped stage-1
+  evaluation, six measured gates). Then `.3.3`, `.4`–`.6`.
+- **Next action:** execute `PHASE-3.3.2` — the stage-2 explainable
+  ranking: the deterministic feature scores (the exact capability
+  match, the interest match, the domain affinity, the latency
+  class, the workload balance) each with its source + contribution +
+  a visibility-safe explanation; the semantic slot stays empty
+  (ADR-014); the ranking never controls authorization.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -293,7 +293,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     no scoring, no query surface). Children at those seams —
     frontier → `.3.1`.
   - ID: `PHASE-3.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the eligibility expression + the stage-1 evaluation — the
       typed expression over the §10.3 stage-1 fields (the visibility
       scope, the capability requirements, the policy restrictions,
@@ -306,6 +306,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
       need not know the membership size); an ineligible role is
       never restored by ranking (ADR-014's ordering).
     Backlog: 29 (the policy-filter half)
+    Done (`2026-09-07`): the stage-1 evaluation landed —
+      `crates/reasonbraid-server/src/matching.rs`: the typed
+      `EligibilityExpression` (the §10.3 stage-1 fields with the
+      least-restrictive defaults; unknown fields are typed
+      rejections) + the pure `eligible(expression, candidate)` with
+      the honesty order — the explicit exclusion, the presence gate,
+      the VISIBILITY-SCOPED checks (every capability/interest/
+      confidentiality requirement reads the profile filtered at the
+      expression's scope: a tenant-hidden capability cannot satisfy
+      a network-scope requirement), the declared-concurrency gate,
+      the hard-budget gate — and every decision (either way) carries
+      the named reasons. Six unit tests measure the gates (the
+      provenance refusal, the visibility refusal, the presence
+      refusal, the exclusion, the concurrency + budget shortfalls,
+      the happy path with the reasons). Frontier → `.3.2`.
     Acceptance: the expression parses typed; the evaluator is pure +
       tested (each stage-1 field has a named reason); no regression.
 
@@ -367,7 +382,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.3.1` | `proposed` | `.3` decomposed at the census seams (the matching inputs exist; no expression, no evaluator, no scoring, no surface); the eligibility expression + the stage-1 evaluation executes now |
+| 1 | `PHASE-3.3.2` | `proposed` | `.3.1` done — the eligibility expression + the stage-1 evaluation (the typed expression, the pure evaluator with the visibility-scoped checks, six measured gates); the stage-2 explainable ranking executes now |
 
 ## Changelog
 
@@ -419,6 +434,53 @@ eligibility before ranking. Dependence indicators, never an independence score.
   the stage-1 evaluation) → `.3.2` (the stage-2 explainable
   ranking) → `.3.3` (the matching query surface); frontier →
   `.3.1`.
+- `2026-09-07`: `.3.1` done — the eligibility expression + the
+  stage-1 evaluation (the typed expression, the pure evaluator with
+  the visibility-scoped checks, the named reasons); six unit tests;
+  frontier → `.3.2`.
+
+## Acceptance Checklist (PHASE-3.3.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/matching.rs` (NEW — the typed
+`EligibilityExpression` + the pure `eligible` evaluator + the six
+unit tests), `crates/reasonbraid-server/src/profiles.rs` (the
+`ClaimConfidence::rank_name` + the serde on `ReaderClass`),
+`crates/reasonbraid-server/src/lib.rs` (the module) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.3` census: the matching inputs
+  exist but no expression/evaluator/scoring/surface — §10.3's
+  stage-1 gate has no typed shape an initiator can express.
+- [x] **ROOT CAUSE (WHY + WHERE)** — no matching machinery existed
+  at all — `git grep -c "eligible\|EligibilityExpression"
+  c6c49c9 -- crates/` → 1 match, the core state machine's §8.4
+  comment (no machinery, rc=0). The fix point is the PURE stage-1
+  evaluation: the typed expression +
+  the deterministic evaluator whose every check reads the profile
+  AS VISIBLE AT THE EXPRESSION'S SCOPE (a hidden field satisfies
+  nothing) — an ineligible role is never restored by ranking.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib matching` → `test result:
+  ok. 6 passed` — a self-asserted claim fails a benchmarked
+  requirement (the provenance gate); a tenant-hidden capability
+  cannot satisfy a network-scope requirement (the visibility gate);
+  an offline candidate refuses the default expression; an excluded
+  role refuses regardless; the concurrency + budget gates refuse
+  shortfalls; the happy path carries the named positive reasons.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg331_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/matching.rs` (the expression + the evaluator +
+  the tests), `src/profiles.rs` (the rank names + the serde),
+  `src/lib.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.2.3)
 
@@ -668,6 +730,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.3.1` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 6 passed` (the provenance/visibility/presence/exclusion/concurrency/budget gates + the happy path); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg331_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-1 evaluation (pure, visibility-scoped, named reasons); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-3.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the matching-lane census + the contract-seam decomposition (`.3.1` expression + stage-1 → `.3.2` ranking → `.3.3` surface); frontier → `.3.1` |
 | `2026-09-07` | `PHASE-3.2.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_directory` → `test result: ok. 1 passed` (the three scopes + the zero-visibility rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg323_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the privacy-filtered directory views; **`.2` COMPLETE** — frontier → `.3` |
 | `2026-09-07` | `PHASE-3.2.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_offline_known` → `test result: ok. 1 passed` (the three-way distinction + the enumeration); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg322_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the offline-known distinction + the operator's enumeration; frontier → `.2.3` |
@@ -681,6 +744,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.3.1` | `REASONBRAID-PHASE3-0010` | the eligibility expression + the stage-1 evaluation (the typed expression, the pure visibility-scoped evaluator, six measured gates) |
 | `PHASE-3.3` | `REASONBRAID-PHASE3-0009` | the matching lane decomposed at the census seams (the inputs exist; the expression/evaluator/scoring/surface are the gaps) |
 | `PHASE-3.2.3` | `REASONBRAID-PHASE3-0008` | the privacy-filtered directory views (the three measured scopes + the zero-visibility rule) — **`.2` COMPLETE** |
 | `PHASE-3.2.2` | `REASONBRAID-PHASE3-0007` | the offline-known distinction + the operator's presence enumeration (the measured three-way distinction) |

@@ -73,6 +73,18 @@ fn default_confidence() -> ClaimConfidence {
     ClaimConfidence::SelfAsserted
 }
 
+impl ClaimConfidence {
+    /// The wire name (the `.3.1` reasons + the profile surface share it).
+    pub fn rank_name(&self) -> &'static str {
+        match self {
+            ClaimConfidence::SelfAsserted => "self_asserted",
+            ClaimConfidence::OwnerAttested => "owner_attested",
+            ClaimConfidence::Benchmarked => "benchmarked",
+            ClaimConfidence::Certified => "certified",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaimConfidence {
@@ -153,7 +165,8 @@ impl Default for VisibilityPolicy {
 /// The reader's visibility class (the per-reader classification the `.1.3`
 /// read surface applies). `Self` sees everything; the ladder is
 /// Public < Network < Tenant < Self.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReaderClass {
     /// The role itself (or its accountable owner): the full profile.
     Full,

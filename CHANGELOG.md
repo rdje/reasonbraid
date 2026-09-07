@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The synthesis record lands — the `.3` lane is COMPLETE (`PHASE-5.3.3`)
+
+- The `synthesis` record rides a `summary`-kind contribution on the `synthesize` step: the synthesizer identity, the event-log input range (validated — `1 <= from <= to <=` the thread's max version, so the transformation is re-derivable), the source links, the coverage report. The live pass caught the `.1.3`-lane gap: the create handlers resolved the profile only when named, so a bare thread's steps were EMPTY (the step gates read `none`) — both handlers now resolve always (`None` → `quick_advice`). Measured: profiles 31. **The `.3` lane (moderator/synthesizer constraints) is COMPLETE.**
+
 ## 2026-09-07 — The moderation kinds land (`PHASE-5.3.2`)
 
 - The closed moderation vocabulary (`classify`, `request_clarification`, `propose_close`, `draft_summary`, `identify_unanswered`) rides the contribute verb: the capability-shaped fields refuse on it (the §13.5 prohibitions by construction), the action references its target via `ref_event_id` (must exist in the thread), the `moderate` step joins the step vocabulary and gates the kinds, and the action is challengeable — the appeal IS the challenge. Measured: profiles 30.

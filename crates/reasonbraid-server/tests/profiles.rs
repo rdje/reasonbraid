@@ -5410,3 +5410,230 @@ async fn the_moderation_actions_are_bounded_contributions() {
     .await
     .expect("the custom profile row deletes");
 }
+
+#[tokio::test]
+async fn the_synthesis_record_is_derived_content() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "sy-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // The DEFAULT quick_advice profile: solicit → synthesize → decide.
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "sy-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "sy",
+                "objective": "probe",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the create succeeds: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // 1. The input contribution (version 2).
+    let (status, posted) = command(
+        "sy-position",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the advice",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the position contributes: {posted}");
+
+    // 2. The kind + step gates: a synthesis during `solicit`, and on a
+    // non-summary kind, both refuse.
+    let synthesis = json!({
+        "synthesizer": "hpr-sy-human",
+        "input_from": 1,
+        "input_to": 2,
+        "sources": ["https://example.org/source"],
+        "coverage": [
+            { "item": "the objection", "included": true },
+            { "item": "the weak claim", "included": false, "reason": "uncited" },
+        ],
+    });
+    let (status, refused) = command(
+        "sy-early",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "too early",
+            "kind": "summary",
+            "synthesis": synthesis,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the early synthesis refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("synthesize"),
+        "{refused}"
+    );
+    let (status, refused) = command(
+        "sy-wrong-kind",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "wrong kind",
+            "kind": "position",
+            "synthesis": synthesis,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the wrong-kind synthesis refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("summary"),
+        "{refused}"
+    );
+
+    // 3. The round advance seats `synthesize`.
+    let (status, advanced) = command(
+        "sy-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances: {advanced}");
+
+    // 4. The synthesis on its step: accepted, the record rides the event.
+    let (status, synthesized) = command(
+        "sy-synthesize",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the synthesis",
+            "kind": "summary",
+            "synthesis": synthesis,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the synthesis succeeds: {synthesized}");
+    let (status, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let synthesis_event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| {
+            e["event_type"] == json!("thread.contribution_submitted")
+                && e["body"]["kind"] == json!("summary")
+        })
+        .cloned()
+        .expect("the synthesis event exists");
+    assert_eq!(
+        synthesis_event["body"]["synthesis"]["synthesizer"],
+        json!("hpr-sy-human")
+    );
+    assert_eq!(synthesis_event["body"]["synthesis"]["input_from"], json!(1));
+    assert_eq!(synthesis_event["body"]["synthesis"]["input_to"], json!(2));
+    assert_eq!(
+        synthesis_event["body"]["synthesis"]["coverage"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    // 5. An input range that names events beyond the log refuses (the
+    // transformation must be re-derivable — never a claim over nothing).
+    let (status, refused) = command(
+        "sy-beyond",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "overreach",
+            "kind": "summary",
+            "synthesis": {
+                "synthesizer": "hpr-sy-human",
+                "input_from": 1,
+                "input_to": 99,
+                "sources": [],
+                "coverage": [],
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the overreaching range refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("exceeds"),
+        "{refused}"
+    );
+    let (status, refused) = command(
+        "sy-inverted",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "inverted",
+            "kind": "summary",
+            "synthesis": {
+                "synthesizer": "hpr-sy-human",
+                "input_from": 3,
+                "input_to": 2,
+                "sources": [],
+                "coverage": [],
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the inverted range refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("invalid"),
+        "{refused}"
+    );
+}

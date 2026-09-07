@@ -476,7 +476,7 @@ and honest inconclusive outcomes.
       challenge). Frontier → `.3.3`.
 
   - ID: `PHASE-5.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the synthesis record — the `synthesize` step executes
       as the derived-content contribution (the synthesizer
       identity, the input event range, the source links, the
@@ -484,6 +484,26 @@ and honest inconclusive outcomes.
       gate, the auditable transformation (the input range is
       the event log's, never a rewrite).
     Roadmap: §13.5
+    Done (`2026-09-07`): the synthesis record landed per
+      ADR-030 — the contribute body gains `synthesis`
+      (`SynthesisInput`: the synthesizer, the `input_from`/
+      `input_to` event-log version range, the sources, the
+      coverage — the `.2.4.1` shapes generalized); it rides a
+      `summary`-kind contribution on the `synthesize` step
+      only; the input range is VALIDATED against the event log
+      (`1 <= from <= to` AND `to <=` the thread's max version
+      — the transformation names events that exist, never a
+      claim over nothing); the record rides the event (the
+      synthesis is itself an event — it never mutates a prior
+      one). The first live pass caught the `.1.3`-lane gap the
+      bare-thread default carried: the create handlers resolved
+      the profile ONLY when one was named, so a bare thread's
+      steps were EMPTY (the step gates read `none`) — both
+      handlers now resolve ALWAYS (`None` → `quick_advice`).
+      Measured (profiles 31): the solicit-step + the
+      wrong-kind refusals, the advance → the synthesize-step
+      record riding the event, the overreaching + the inverted
+      range refusals. **`.3` COMPLETE** — frontier → `.4`.
 
 - ID: `PHASE-5.4`
   Status: `proposed`
@@ -507,10 +527,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.3.3` | `proposed` | `.3.2` done — the moderation kinds (the closed vocabulary's negative space, the ref_event_id, the moderate step gate; profiles 30); the synthesis record executes next |
+| 1 | `PHASE-5.4` | `proposed` | `.3.3` done — the synthesis record (the validated input range, the coverage; profiles 31 — plus the bare-thread steps gap fixed) — **the `.3` lane (the moderator/synthesizer constraints) is COMPLETE**; the evaluation-service lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.3` done — the synthesis record (the
+  validated event-log input range, the coverage report, the
+  step gate; the bare-thread steps gap fixed); profiles 31;
+  **`.3` COMPLETE** — frontier → `.4`.
 - `2026-09-07`: `.3.2` done — the moderation kinds (the closed
   vocabulary's negative space: the capability-shaped fields
   refuse, the `ref_event_id` check, the `moderate` step gate,
@@ -924,6 +948,53 @@ ref-exists validations, the event's `ref_event_id`),
   `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
   commit.
 - [x] **FIX** — `src/workflows.rs`, `src/threads.rs`,
+  `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.3.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the `SynthesisInput`
+shape, the synthesis kind/step/range validations, the
+`max_event_version_in_thread` helper, the event's `synthesis`
+field), `crates/reasonbraid-server/src/api.rs` (both create
+handlers resolve the profile ALWAYS — the bare thread's steps
+were empty), `crates/reasonbraid-server/tests/profiles.rs` (the
+new test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  `synthesize` step + the `Summary` kind existed as names, but
+  nothing carried the derived-content record; the bare-thread
+  steps were EMPTY (the create resolved only a NAMED profile —
+  the step gates read `none`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "SynthesisInput\|max_event_version_in_thread" e8d11a6 --
+  crates/` → rc=1 (nothing before this leaf); the empty-steps
+  gap is the `.1.3` Some-only resolve in both create handlers.
+  The fix point is the ADR-030 synthesis contract + the
+  always-resolve default.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above + the live `none`-step refusal. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_synthesis_record_is_derived_content` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 31 tests … ok`) — the solicit-step + the
+  wrong-kind refusals, the advance → the synthesize-step
+  record riding the event (the synthesizer/range/sources/
+  coverage), the overreaching + the inverted range refusals;
+  the bare thread now carries the quick_advice steps.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg519_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `src/api.rs`,
   `tests/profiles.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the

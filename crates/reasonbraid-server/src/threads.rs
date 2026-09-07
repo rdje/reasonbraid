@@ -338,6 +338,26 @@ pub struct ContributeBody {
     /// moderation-kind contribution; the reference must exist in the thread.
     #[serde(default)]
     pub ref_event_id: Option<String>,
+    /// `.3.3` (ADR-030): the synthesis record — legal only on a
+    /// `summary`-kind contribution during the `synthesize` step.
+    #[serde(default)]
+    pub synthesis: Option<SynthesisInput>,
+}
+
+/// The synthesis record (`.3.3`, ADR-030): derived content, auditable by
+/// construction — the synthesizer identity/configuration, the INPUT EVENT
+/// RANGE (the event log's version range — the transformation is
+/// re-derivable from the named events), the source links, and the coverage
+/// report (the `.2.4.1` shapes, generalized). The synthesis never mutates a
+/// prior event: it is itself an event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SynthesisInput {
+    pub synthesizer: String,
+    pub input_from: i64,
+    pub input_to: i64,
+    pub sources: Vec<String>,
+    pub coverage: Vec<CoverageItem>,
 }
 
 /// The adjudication verdict input (`.2.4.2`, ADR-029): the judged digest, the
@@ -873,6 +893,26 @@ where
     .await
 }
 
+/// `.3.3` (ADR-030): the thread's highest event-log version — the synthesis's
+/// input range must name events that exist.
+async fn max_event_version_in_thread<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    thread_id: &ThreadId,
+) -> Result<Option<i64>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "SELECT MAX(aggregate_version) FROM event_log WHERE tenant_id = $1 AND aggregate_id = $2",
+    )
+    .bind(tenant_id.to_string())
+    .bind(thread_id.to_string())
+    .fetch_one(&mut *tx)
+    .await
+}
+
 /// `.2.4.2` (ADR-029): whether ONE claim digest is a claim of ANY contribution
 /// of this thread — the evidence request targets a claim that exists HERE (the
 /// request is not an acquisition, and it cannot demand evidence for a claim
@@ -1367,6 +1407,44 @@ where
                     step.unwrap_or("none")
                 )));
             }
+            // `.3.3` (ADR-030): the synthesis rides a `summary`-kind
+            // contribution on the `synthesize` step — derived content whose
+            // input range must name events that EXIST (the transformation is
+            // re-derivable, never a claim over nothing).
+            if body.synthesis.is_some() {
+                if body.kind != ContributionKind::Summary {
+                    return Err(ThreadError::InvalidCommand(
+                        "the synthesis rides a `summary`-kind contribution only".to_string(),
+                    ));
+                }
+                if step != Some("synthesize") {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the synthesis requires the current step to be `synthesize` \
+                         (it is `{}`)",
+                        step.unwrap_or("none")
+                    )));
+                }
+                let Some(record) = body.synthesis.as_ref() else {
+                    unreachable!("the is_some guard holds above");
+                };
+                if record.input_from < 1 || record.input_from > record.input_to {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the synthesis input range {}..{} is invalid (1 <= from <= to)",
+                        record.input_from, record.input_to
+                    )));
+                }
+                let max_version = max_event_version_in_thread(&mut *tx, tenant_id, thread_id)
+                    .await
+                    .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                    .unwrap_or(0);
+                if record.input_to > max_version {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the synthesis input range {}..{} exceeds the thread's event log \
+                         (max version {max_version})",
+                        record.input_from, record.input_to
+                    )));
+                }
+            }
             // `.2.2` (ADR-029): the digest is SERVER-computed over the claim
             // content — the client never supplies it, so an objection can
             // only name a digest the server derived.
@@ -1402,6 +1480,7 @@ where
                     "claims": claims,
                     "target_claim_digest": body.target_claim_digest,
                     "ref_event_id": body.ref_event_id,
+                    "synthesis": body.synthesis,
                     "verdict": body.verdict.as_ref().map(|v| json!({
                         "target_digest": v.target_digest,
                         "rule": v.rule,

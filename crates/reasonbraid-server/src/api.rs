@@ -2287,13 +2287,12 @@ async fn create_thread_auto(
     let body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let hash = request_hash(threads::OP_CREATE, &principal, &body_value);
-    let mut workflow_steps = Vec::new();
-    if let Some(profile) = body.workflow_profile.as_deref() {
-        let resolved = crate::workflows::resolve(&state.pool, Some(profile))
-            .await
-            .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-        workflow_steps = resolved.steps;
-    }
+    // The same `.3.3` catch as `create_thread`: the resolve ALWAYS runs —
+    // the bare thread defaults to `quick_advice` (never empty steps).
+    let resolved = crate::workflows::resolve(&state.pool, body.workflow_profile.as_deref())
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let workflow_steps = resolved.steps;
     let key = format!("auto_{}_{}", role, tenant_id);
     let response = run_thread_command(
         &state.pool,
@@ -4289,15 +4288,15 @@ async fn create_thread(
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     // The ADR-016 boundary: the workflow profile is a VALIDATED reference —
     // the unknown id is the typed refusal (never a stored string), and the
-    // canonical id + the resolved steps ride the create onward.
-    let mut workflow_steps = Vec::new();
-    if let Some(profile) = body.workflow_profile.as_deref() {
-        let resolved = crate::workflows::resolve(&state.pool, Some(profile))
-            .await
-            .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-        body.workflow_profile = Some(resolved.profile_id);
-        workflow_steps = resolved.steps;
-    }
+    // canonical id + the resolved steps ride the create onward. The resolve
+    // ALWAYS runs: a bare thread defaults to `quick_advice` (the `.3.3`
+    // catch — the earlier Some-only call left the bare thread's steps
+    // EMPTY, so its step gates read `none`).
+    let resolved = crate::workflows::resolve(&state.pool, body.workflow_profile.as_deref())
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let workflow_steps = resolved.steps;
+    body.workflow_profile = Some(resolved.profile_id);
     let tenant_id = body.tenant_id;
     let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
     let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;

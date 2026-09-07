@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-032: the policy-lifecycle contract (`PHASE-6.2.1`)
+
+- ADR-032 accepted (`docs/adr/032-policy-lifecycle.md`): the five records never fold (the discussion rides the thread, the decision/approval/publication/deployment are their own rows); the proposal is a reference, not a copy; the decision freezes the electorate snapshot at the action time; the approval re-checks the grant at the approval boundary. No code.
+
 ## 2026-09-07 — The lifecycle lane is decomposed at the census seams (`PHASE-6.2`)
 
 - The §15.6 lifecycle records are the greenfield (no proposal/approval/decision row exists); the substrate ships: the `.1` policy registry, the Phase-5 deliberation threads (one thread, multiple decisions — the verdict kind), the Phase-2 authority model (the proofs' substrate). Children: `.2.1` ADR-032 → `.2.2` the proposal + the decision records → `.2.3` the approvals + the proofs.

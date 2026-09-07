@@ -202,7 +202,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     Frontier → `.2.1`.
 
   - ID: `PHASE-6.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-032 + the census — the policy-lifecycle
       contract: the five records stay SEPARATE (the
       discussion, the decision, the approval, the
@@ -215,6 +215,24 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       boundary). No code.
     ADR: 032
     Roadmap: §4.5, §15.6
+    Done (`2026-09-07`): ADR-032 accepted (evidence-gated) —
+      `docs/adr/032-policy-lifecycle.md` (top-level
+      `answers:`): the five records NEVER fold (the
+      discussion rides the existing THREAD machinery — the
+      verdict kind is its decision-shaped contribution, one
+      thread → multiple decisions; the decision/approval/
+      publication/deployment are their own typed rows
+      referencing the previous stage's id; a stage skipping
+      its predecessor is the typed refusal); the proposal is
+      a REFERENCE (the policy version + the digest + the
+      thread — never a content copy); the decision freezes
+      the ELECTorate snapshot at the action time (the
+      participants + the denominator + the abstentions —
+      §4.5's "at action time"); the approval carries its
+      AUTHORITY PROOF (the grant re-checked at the approval
+      boundary — a lapsed grant refuses); the publication/
+      deployment record ids are reserved for the `.4`/`.5`
+      leaves. No code changed. Frontier → `.2.2`.
 
   - ID: `PHASE-6.2.2`
     Status: `proposed`
@@ -273,10 +291,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.2.1` | `proposed` | `.2` decomposed at the census seams (the lifecycle records are the greenfield; the threads + the authority model + the `.1` registry are the substrate) — ADR-032 opens the lane |
+| 1 | `PHASE-6.2.2` | `proposed` | `.2.1` done — ADR-032 accepted (the five records never fold, the proposal is a reference, the decision freezes the snapshot, the approval re-checks the grant); the proposal + the decision records execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.1` done — ADR-032 accepted (the
+  policy-lifecycle contract: the five records never fold, the
+  proposal is a reference, the decision freezes the
+  electorate snapshot, the approval re-checks the grant); no
+  code; frontier → `.2.2`.
 - `2026-09-07`: `.2` decomposed at the census seams — the
   lifecycle records are the greenfield (no proposal/approval/
   decision row exists; the threads + the authority model +

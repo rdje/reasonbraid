@@ -11,9 +11,11 @@ publication. Model output stays untrusted until deterministic rules accept it.
 
 ## Status
 
-Phase 0 — contracts and kill-risk experiments. Scope and gates:
-`ROADMAP.md` (v0.4.1, frozen). Day-to-day execution: companion `KICKOFF.md`.
-Work is owned by task-trees under `docs/tasks/` (start at `PHASE-0`).
+Phases 0–5 complete: the G5 gate closed as a subtraction gate — the
+deliberation machinery ships and measures, and the quality claims narrow
+per `ROADMAP.md` §25.1 (the gate + subtraction records under
+`docs/decisions/`). The frontier is `PHASE-6.1` (the semantic policy
+lane). Work is owned by task-trees under `docs/tasks/`.
 
 ## Quick start
 

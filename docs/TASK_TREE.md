@@ -50,14 +50,14 @@ on the same commit. One commit per completed leaf.
 | --- | --- | --- | --- |
 | [`BOOTSTRAP`](tasks/BOOTSTRAP.md) | `done` | `.1` — bootstrapped from the ReasonBraid spine | repo-local |
 | [`RB-SEED`](tasks/RB-SEED.md) | `done` | `.3` — CLAIM_VERIFICATION adopted | repo-local |
-| [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-4` | repo-local |
+| [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-6.1` | repo-local |
 | [`PHASE-0`](tasks/PHASE-0.md) | `done` | tree complete — WP1–WP8 + `MAINT-1`/`MAINT-2`; next executable work is `PHASE-1.1` | repo-local |
 | [`PHASE-1`](tasks/PHASE-1.md) | `done` | tree complete — G1–G2 **Met** + Demonstration A passed 30/30 (debug + release-built); next executable work is `PHASE-2.1` | repo-local |
 | [`PHASE-2`](tasks/PHASE-2.md) | `done` | tree complete — the exit line's properties measured (non-escalation, restore + replacement, no false safe-retry) + the subtraction record; next executable work is `PHASE-3.1` | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `done` | tree complete — the directory, the presence, the matching, the recruitment, the subscriptions, the dependence indicators; next executable work is `PHASE-4.1` | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `done` | tree complete — the five pack lanes + the evidence pipeline; the G4 gate Met (the record + the subtraction + the manifest) | repo-local |
-| [`PHASE-5`](tasks/PHASE-5.md) | `active` | `.6.2` — the G5 gate package (`.6.1` done: the claim census — the mechanism claim stands, five subtraction candidates) | repo-local |
-| [`PHASE-6`](tasks/PHASE-6.md) | `proposed` | `.1` — semantic policy | repo-local |
+| [`PHASE-5`](tasks/PHASE-5.md) | `done` | tree complete — the five lanes + the G5 gate **Met as a subtraction gate** (the lift claim withdrawn per §25.1; the record + the subtraction + the manifest); next executable work is `PHASE-6.1` | repo-local |
+| [`PHASE-6`](tasks/PHASE-6.md) | `active` | `.1` — semantic policy (frontier; §25.1's pre-Phase-6 gate applies) | repo-local |
 | [`PHASE-7`](tasks/PHASE-7.md) | `proposed` | `.1` — Internet hardening | repo-local |
 | [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |
 | [`PHASE-9`](tasks/PHASE-9.md) | `proposed` | `.1` — stable release | repo-local |

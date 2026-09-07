@@ -85,6 +85,8 @@
 - [`2026-09-07_phase2-subtraction-record.md`](docs/decisions/2026-09-07_phase2-subtraction-record.md)
 - [`2026-09-07_phase4-gate-record.md`](docs/decisions/2026-09-07_phase4-gate-record.md)
 - [`2026-09-07_phase4-subtraction-record.md`](docs/decisions/2026-09-07_phase4-subtraction-record.md)
+- [`2026-09-07_phase5-gate-record.md`](docs/decisions/2026-09-07_phase5-gate-record.md)
+- [`2026-09-07_phase5-subtraction-record.md`](docs/decisions/2026-09-07_phase5-subtraction-record.md)
 - [`2026-09-07_r1-git-acquisition-contract.md`](docs/decisions/2026-09-07_r1-git-acquisition-contract.md)
 - [`2026-09-07_r2-extraction-contract.md`](docs/decisions/2026-09-07_r2-extraction-contract.md)
 - [`2026-09-07_r5r3rx-contracts-opt-in.md`](docs/decisions/2026-09-07_r5r3rx-contracts-opt-in.md)

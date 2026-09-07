@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-5`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 5 (`ROADMAP.md` §20.7); Quality track
 - Created: `2026-09-05`
 - Estimate: 15–26 engineer-weeks plus domain-evaluator effort
@@ -882,7 +882,7 @@ and honest inconclusive outcomes.
       Frontier → `.6.2`.
 
   - ID: `PHASE-5.6.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the G5 gate package — the gate record (the G5
       outcome on the declared domains + the evidence
       manifest), the §19.8 subtraction record (the narrowed
@@ -890,15 +890,39 @@ and honest inconclusive outcomes.
       alignment), the Phase-5 tree close.
     Gate: G5; subtraction record required
     Roadmap: §19.6 (G5), §19.8, §25.1
+    Done (`2026-09-07`): the G5 gate package landed — the
+      gate record (`docs/decisions/2026-09-07_phase5-gate-
+      record.md`): **G5 Met as a subtraction gate** (the
+      blocking function discharged — the product makes no
+      "deliberation improves answers" claim; the `.6.1`
+      census + the first controlled evaluation's H1-null read
+      per §25.1 narrow the claims; the honest-inconclusive
+      half ships + tests; the benchmark-threshold half ships
+      as the instrument; four named deferrals); the §19.8
+      subtraction record (`2026-09-07_phase5-subtraction-
+      record.md`: the features_removed, the deferred with the
+      triggers, the narrowed claims, the rejected
+      abstractions, the avoided dependencies, the manual
+      fallbacks, the eliminated entities, the effort removed,
+      the parking lot); the evidence manifest
+      (`docs/evidence/2026-09-07_phase5-evidence-manifest.md`:
+      the G5 clause map); the README status line fixed (the
+      S-5 candidate — the landing page reads the current
+      phase). **PHASE 5 IS CLOSED** — frontier → `PHASE-6.1`.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.6.2` | `proposed` | `.6.1` done — the G5 evidence census (the README carries no quality claim to retract; the bench's first live run reads H1 null on the sample; five subtraction candidates named); the G5 gate package executes next |
+| 1 | `PHASE-6.1` | `proposed` | `.6.2` done — the G5 gate package (**G5 Met as a subtraction gate**: the claim withdrawn per §25.1, the subtraction record, the evidence manifest, the README fixed) — **PHASE 5 IS CLOSED**; the semantic-policy lane (`PHASE-6`) executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.6.2` done — the G5 gate package (the gate
+  record: **G5 Met as a subtraction gate** — the claim
+  withdrawn per §25.1; the §19.8 subtraction record; the
+  evidence manifest; the README status fix). **PHASE 5 IS
+  CLOSED** — frontier → `PHASE-6.1`.
 - `2026-09-07`: `.6.1` done — the G5 evidence census (the
   claim census: the README's mechanism claim stands, no
   quality claim exists to retract; the bench's live run reads
@@ -1668,3 +1692,46 @@ routing.rs` (the `RecommendationSubmission` shape, the
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
   heading).
+
+
+## Acceptance Checklist (PHASE-5.6.2)
+
+The PACKAGE change owned by this leaf (no code — the records + the
+landing-page fix):
+`docs/decisions/2026-09-07_phase5-gate-record.md` (NEW),
+`docs/decisions/2026-09-07_phase5-subtraction-record.md` (NEW),
+`docs/evidence/2026-09-07_phase5-evidence-manifest.md` (NEW),
+`README.md` (the stale status line — the S-5 candidate),
+`docs/decisions/INDEX.md` + `docs/evidence/INDEX.md` (the rows) —
+`\.md$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf state: the G5 gate
+  had no record, no subtraction record, no manifest; the
+  README's status line still read "Phase 0 — contracts and
+  kill-risk experiments" (the `.6.1` census's S-5).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the exit gate's package
+  was unwritten (the machinery shipped across `.1`–`.5`, the
+  gate's evidence unassembled); the README's status line was
+  a hand-kept fact nobody refreshed. The fix point is the
+  gate-package pattern (the Phase-1/Phase-4 precedents): the
+  record + the subtraction + the manifest + the landing-page
+  alignment.
+- [x] **ADDRESSED (verified)** — the gate record states **G5
+  Met as a subtraction gate** (the blocking function
+  discharged: no "deliberation improves answers" claim exists
+  — the `.6.1` census + the H1-null sample per §25.1); the
+  subtraction record carries every §19.8 list (none empty);
+  the manifest maps every G5 clause to a re-runnable
+  artifact; `git grep -c "Phase 0 — contracts" HEAD --
+  README.md` → rc=1 after the edit.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 57 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 20 live suites + the
+  demo `ALL acceptance checks passed` (the `.6.1` guard —
+  no code changed since); `cargo clippy --all --all-targets
+  -- -D warnings` → rc=0; `cargo fmt --all -- --check` →
+  rc=0; `make gate` → 13/13 at commit; `make book` builds.
+- [x] **FIX** — the three records, `README.md`, the two
+  INDEX rows.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` (the PHASE-5 row →
+  done, the PHASE-6 row → active) — same commit.

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G5 gate package — PHASE 5 IS CLOSED (`PHASE-5.6.2`)
+
+- **G5 Met as a subtraction gate**: the "deliberation improves answers" claim is withdrawn per §25.1 (the first controlled evaluation reads H1 null on the 4-case sample); the honest-inconclusive machinery ships and tests; the benchmark thresholds ship as the instrument; the §19.8 subtraction record + the evidence manifest + the gate record land; the README's stale status line is fixed. The frontier moves to `PHASE-6.1` (the semantic policy lane).
+
 ## 2026-09-07 — The G5 evidence census (`PHASE-5.6.1`)
 
 - The claim census: the README carries NO quality claim to retract (its claim is the mechanism one — shipped and tested); the bench's first live run reads H1 null on the 4-case differential sample (no structured workflow beat `single`; the burden 2–4×); five subtraction candidates named (S-1 the narrowed structure claim, S-2 the deferred calibration, S-3 the already-shadow learned routing, S-4 the supported cost claim, S-5 the README's stale status line); the declared domains are the seven §13.8 case classes. No code.

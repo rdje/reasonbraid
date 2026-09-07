@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The R1 acquisition: gix behind the classified dial (`PHASE-4.3.2`)
+
+- `src/git.rs`: the hardened URL grammar (https-only, the fragment-carried ref selector), the pre-flight classification (the loopback/private refusals name their classes before any socket), the classified transport — gix's `Http` trait wrapped around a blocking reqwest client whose DNS rides the `.2.2` belt (every dial, redirects included, passes the policy; no proxy env; the unbounded upload kind refused), the mechanical budgets (depth/file/object/byte ceilings), the named refusals (submodule gitlinks, LFS pointers), the bare-repo no-checkout property, the resolved immutable commit.
+- Five tests including the offline file-transport wire path. Frontier → `.3.3` (the receipt + the R1 pack wiring).
+
 ## 2026-09-07 — The R1 contract is decided: gix over the classified transport (`PHASE-4.3.1`)
 
 - The library census, measured: `gix` v0.87.1 (pure Rust, 32 features, no C) vs `git2` v0.21.0 (whose features name `openssl-sys`, `vendored-libgit2`, `vendored-openssl`) — the lean supply-chain doctrine picks gix.

@@ -45,8 +45,26 @@ the failure was measured only by the workspace-wide run.
   provider-family change (e.g., a FIPS requirement) is a deliberate,
   whole-workspace decision — update this record + every pin in one leaf.
 
+## Update (`2026-09-07`, the `.3.2` leaf)
+
+The rule struck a THIRD time, from the direction this record didn't name:
+gix's `blocking-http-transport-reqwest-rust-tls` feature sounded aligned but
+enables reqwest's PLAIN `rustls` feature — rustls compiled with its default
+provider (aws-lc-rs) — and the offline sweep caught the ambiguity again.
+The fix: gix-transport's backend-less `http-client` feature (the `Http`
+trait + `new_http` only) — the classified wrapper IS the backend, so no
+backend feature, no second provider. New rule: every transport/library
+feature is checked against `cargo tree -e features -i rustls` for the
+ring-only invariant BEFORE the build, not after the sweep.
+
 answers:
 
+- **A backend feature is a provider vote.** "reqwest-rust-tls" is not "the
+  workspace's rustls" — it is reqwest's own rustls request, provider
+  unspecified, and the default provider is aws-lc-rs. The seam to prefer is
+  the one that gives the TRAIT without the backend (gix-transport's
+  `http-client`), because the workspace's own client (with the belt) is the
+  backend.
 - **Feature unification is a workspace property, not a crate property.** The
   resolver 2's per-graph isolation does NOT apply when cargo builds multiple
   workspace packages in one invocation — the union of every member's

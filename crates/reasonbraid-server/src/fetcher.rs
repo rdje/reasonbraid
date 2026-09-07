@@ -289,9 +289,18 @@ impl DestinationResolver for SystemResolver {
 /// resolver and keeps ONLY the addresses the destination policy allows. A
 /// connection therefore can never dial a refused address, even when the DNS
 /// answer changed between the pre-flight and the dial.
-struct ClassifiedDns {
+pub(crate) struct ClassifiedDns {
     resolver: Arc<dyn DestinationResolver>,
     policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync>,
+}
+
+impl ClassifiedDns {
+    pub(crate) fn new(
+        resolver: Arc<dyn DestinationResolver>,
+        policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync>,
+    ) -> Self {
+        Self { resolver, policy }
+    }
 }
 
 impl Resolve for ClassifiedDns {

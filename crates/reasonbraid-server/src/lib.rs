@@ -32,6 +32,7 @@ mod budget;
 pub mod ca;
 mod dependence;
 pub mod fetcher;
+pub mod git;
 mod matching;
 mod node_channel;
 mod outbox;

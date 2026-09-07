@@ -412,7 +412,7 @@ of a URI is not a promise the core can resolve it.
       decision record with top-level answers); no code changes.
 
   - ID: `PHASE-4.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the acquisition — the clone/fetch machinery under the
       `.3.1` contract: the transport dials through the `.2.1`
       classification, the shallow/partial fetch where adequate,
@@ -423,6 +423,47 @@ of a URI is not a promise the core can resolve it.
       working tree, no hooks, no filters), the resolved immutable
       commit recorded, the archive/symlink/path-traversal checks.
     Backlog: 33 (the acquisition half)
+    Done (`2026-09-07`): the acquisition landed —
+      `crates/reasonbraid-server/src/git.rs` (gix 0.87.1, the
+      pure-Rust engine, driven through an API spike that proved
+      the blocking fetch flow end-to-end first): the hardened URL
+      grammar (https-only, the userinfo + numeric-literal
+      refusals, the fragment-carried ref selector — a branch, a
+      tag, a full ref name, or a 40-hex commit, anything else the
+      typed refusal), the pre-flight classification (the
+      loopback/private literals refuse with the class NAMED
+      before any socket opens — the R1 SSRF proof), the
+      CLASSIFIED transport (the `.3.1` seam verified mechanically:
+      gix's generic `new_http` + the `Http` trait implemented on
+      a wrapper around a blocking reqwest client whose DNS rides
+      the `.2.2` belt — every dial, redirect hops included, passes
+      the destination policy; no proxy env; the unbounded upload
+      kind is refused — R1 never pushes), the budgets enforced
+      mechanically (the depth ceiling trips DURING the tree walk;
+      the file/object/byte ceilings trip with their names), the
+      default-deny refusal list (a gitlink entry refuses as a
+      SUBMODULE, an LFS pointer blob refuses as Git LFS — named,
+      never skipped), NO checkout execution (the target is a BARE
+      repository — no worktree, no hooks, no filters), the
+      shallow depth (the `DepthAtRemote` mapping), and the
+      resolved immutable commit recorded (the requested ref
+      resolved through the advertised refs, verified present).
+      Five tests: the grammar table, the pre-flight refusals, the
+      acquisition over the injected file transport (the offline
+      wire path — the resolved commit + the counts measured), the
+      submodule/LFS refusals, the budget trips. The first runs
+      caught three real bugs (the WHATWG numeric-host
+      normalization, the second commit's missing parent, the
+      depth ceiling not counting leaf entries) — all fixed. The
+      offline sweep ALSO caught the THIRD occurrence of the
+      workspace rustls-provider rule: gix's
+      `blocking-http-transport-reqwest-rust-tls` feature pulled
+      reqwest's plain `rustls` (the aws-lc-rs default provider)
+      back into the union — fixed by the backend-less
+      gix-transport `http-client` feature (the classified wrapper
+      IS the backend); the rule is sharpened in the
+      `2026-09-07_workspace-single-rustls-provider.md` record.
+      Frontier → `.3.3`.
 
   - ID: `PHASE-4.3.3`
     Status: `proposed`
@@ -464,7 +505,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.3.2` | `proposed` | `.3.1` done — the R1 contract decided (`docs/decisions/2026-09-07_r1-git-acquisition-contract.md`: gix over the classified reqwest transport, the fragment-carried ref, the budget + default-deny vocabularies, no checkout execution); the acquisition machinery executes now |
+| 1 | `PHASE-4.3.3` | `proposed` | `.3.2` done — the R1 acquisition (gix over the classified transport: the pre-flight names the class, the belt guards every dial; the budgets + the submodule/LFS refusals named; no checkout execution; the resolved commit recorded — five tests); the receipt + the pack wiring execute now |
 
 ## Changelog
 
@@ -497,6 +538,14 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.3.2` done — the R1 acquisition (`src/git.rs`:
+  gix over the classified transport — the `Http` trait wrapped
+  around the belt-riding blocking client (the seam verified
+  mechanically), the hardened URL grammar + the fragment-carried
+  ref, the pre-flight class-named refusals, the mechanical budget
+  trips, the submodule/LFS named refusals, the bare-repo
+  no-checkout property, the resolved immutable commit); five
+  tests (the offline file-transport wire path); frontier → `.3.3`.
 - `2026-09-07`: `.3.1` done — the R1 contract + the library
   census: gix v0.87.1 (the pure-Rust family, measured against
   git2's `openssl-sys`/`vendored-libgit2` C surface); the
@@ -565,6 +614,57 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.3.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/git.rs` (NEW — the hardened grammar,
+the pre-flight, the classified transport, the acquisition, the five
+tests), `crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/Cargo.toml` (gix + gix-transport; reqwest
+gains `blocking`), and `crates/reasonbraid-server/src/fetcher.rs`
+(the belt's `pub(crate)` exposure) — `\.rs$` + `Cargo.toml`.
+
+- [x] **REPRODUCE / ISSUE** — the `.3` census: NOTHING fetches Git
+  (no git library in the lock or the cache; the §12.5 rules have
+  no machinery).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the R1 pack was a greenfield
+  — `git grep -c "gix\|git2\|gitoxide" efc9ba8 -- crates/` →
+  rc=1 (nothing before this leaf). The fix point is the
+  acquisition under the `.3.1` contract: the classified transport
+  (the seam verified mechanically — gix's `new_http` + the `Http`
+  trait), the mechanical budgets, the named refusals, the
+  bare-repo no-checkout property, the resolved commit.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib git` → `test result:
+  ok. 5 passed` — the grammar table (the https-only + userinfo +
+  numeric + selector refusals), the pre-flight loopback/private
+  refusals (the class NAMED before any socket — the R1 SSRF
+  proof), the acquisition over the injected file transport (the
+  OFFLINE wire path: the resolved commit matches the source's,
+  the file/depth/object counts measured), the submodule gitlink +
+  the LFS pointer refusals with their names, the budget trips
+  (file/depth/object ceilings). An API spike proved the gix
+  blocking fetch flow end-to-end before the module was written
+  (deleted after). The first runs caught three real bugs (the
+  WHATWG numeric-host normalization, the second commit's missing
+  parent, the depth ceiling skipping leaf entries) — all fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 51 suites (the sweep CAUGHT the
+  third rustls-provider occurrence — the gix reqwest backend's
+  plain-`rustls` aws-lc-rs default — fixed by the backend-less
+  `http-client` seam; the ring-only union verified via
+  `cargo tree -e features -i rustls`);
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg432b_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/git.rs`, `src/lib.rs`, `src/fetcher.rs`,
+  `crates/reasonbraid-server/Cargo.toml`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.2.3)
 
@@ -846,6 +946,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.3.2` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 5 passed` (the grammar table, the pre-flight loopback/private refusals, the offline file-transport acquisition with the resolved commit + the counts, the submodule/LFS refusals, the budget trips); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg432_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the R1 acquisition; frontier → `.3.3` |
 | `2026-09-07` | `PHASE-4.3.1` | docs-only (no code paths changed): the library census measured (`cargo add --dry-run gix` → v0.87.1 pure Rust; `cargo add --dry-run git2` → v0.21.0 with the `openssl-sys`/`vendored-libgit2` C features); `make gate` → 13/13 at commit | the R1 contract + the library census; frontier → `.3.2` |
 | `2026-09-07` | `PHASE-4.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R1 census + the contract-seam decomposition (`.3.1` the contract + the library census → `.3.2` the acquisition → `.3.3` the receipt + the wiring); frontier → `.3.1` |
 | `2026-09-07` | `PHASE-4.2.3` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 17 passed` (the receipt's digest + chain, pure); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r0_resolver` → `test result: ok. 1 passed` (the https reference resolves to the built-in; the loopback + private refusals name their classes through the resolution path; the reference preserved; the stricter requirement is the explicit unresolvable-now); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg423b_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R0 pack wired; **`.2` COMPLETE** — frontier → `.3` |
@@ -862,6 +963,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.3.2` | `REASONBRAID-PHASE4-0012` | the R1 acquisition (gix over the classified transport — the budgets + the named refusals + the resolved commit) |
 | `PHASE-4.3.1` | `REASONBRAID-PHASE4-0011` | the R1 contract + the library census (gix over the classified transport — the decision record) |
 | `PHASE-4.3` | `REASONBRAID-PHASE4-0010` | the R1 lane decomposed at the census seams (nothing fetches Git — the contract/library-census/acquisition/receipt are the greenfield) |
 | `PHASE-4.2.3` | `REASONBRAID-PHASE4-0009` | the snapshot receipt + the R0 pack wiring (the built-in executes through the resolve path — the refusal names the class) — **`.2` COMPLETE** |

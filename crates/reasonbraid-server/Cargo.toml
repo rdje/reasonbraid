@@ -71,6 +71,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-native-roots",
     "stream", # Response::bytes_stream — the byte-ceiling reads the body bounded
+    "blocking", # the R1 git transport's classified blocking client (the same belt)
 ] }
 # The hardened URL parse the §12.4 rules demand (one library, everywhere the
 # fetcher sees a URL — the redirect joins included).
@@ -81,6 +82,17 @@ futures-util = "0.3"
 # itself): gzip/deflate via flate2 (miniz_oxide, pure Rust), br via brotli.
 flate2 = "1"
 brotli = "7"
+# The R1 engine. NO http-backend feature: the classified wrapper IS the
+# transport's http implementation (gix-transport's `Http` trait + `new_http`
+# are backend-independent) — the backend feature would pull reqwest's plain
+# `rustls` (the aws-lc-rs provider) into the workspace union and re-create
+# the two-provider ambiguity the workspace decision forbids.
+gix = { version = "0.87.1", features = ["blocking-network-client"] }
+# The R1 classified transport seam (the `.2.2` belt rides the git dial too):
+# `http-client` gives the `Http` trait + the `new_http` constructor WITHOUT a
+# backend — the classified wrapper IS the backend, so no reqwest/curl backend
+# feature (and no second rustls provider) ever enters the workspace union.
+gix-transport = { version = "0.59", features = ["http-client"] }
 
 [dev-dependencies]
 # The node channel integration tests drive BOTH sides over real localhost sockets: the

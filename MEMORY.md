@@ -19,15 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.3.2` (`.2` — pack R0 —
-  COMPLETE; `.3.1` done: the R1 contract — gix over the classified
-  transport, decision `2026-09-07_r1-git-acquisition-contract.md`;
-  `MAINT-1` done: the clippy debt repaired). Then `.3.3`, `.4`–`.7`.
-- **Next action:** execute `PHASE-4.3.2` — the R1 acquisition:
-  gix clone/fetch under the `.3.1` contract (verify the gix reqwest
-  client-injection seam FIRST), the named budget refusals, the
-  default-deny list (submodules/hooks/filters/alternates/drivers/
-  LFS), NO checkout execution, the resolved commit recorded.
+- **Active tree:** `PHASE-4` → frontier `.3.3` (`.2` — pack R0 —
+  COMPLETE; `.3.1` done: the R1 contract (decision record); `.3.2`
+  done: the R1 acquisition — gix behind the classified dial, 5
+  tests; `MAINT-1` done: the clippy debt repaired). Then `.4`–`.7`.
+- **Next action:** execute `PHASE-4.3.3` — the receipt + the R1
+  pack wiring: the R1 receipt (the resolved immutable commit + the
+  requested URL/ref + the included/excluded manifest + the `.2.3`
+  digest/chain fields), the `git` scheme registry entry (the
+  egress/sandbox claims), the resolve-path execution (mirroring
+  the `.2.3` R0 wiring).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

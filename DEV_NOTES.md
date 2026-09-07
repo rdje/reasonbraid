@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.3.2: the rustls-provider rule strikes a THIRD time — the transport BACKEND feature is the trap
+
+- **A library's backend feature is a provider vote.** gix's `blocking-http-transport-reqwest-rust-tls` sounds aligned (reqwest + rustls) but enables reqwest's PLAIN `rustls` feature — which compiles rustls with its DEFAULT provider (aws-lc-rs) — re-creating the two-provider ambiguity the workspace decision forbids. The fix is the gix-transport `http-client` feature WITHOUT any backend: it gives the `Http` trait + `new_http` and nothing else — the classified wrapper IS the backend, so no second provider ever enters the union. The rule, sharpened: EVERY new transport/library feature must be checked against `cargo tree -e features -i rustls` for the ring-only invariant BEFORE the build.
+- **The offline sweep is the provider-ambiguity detector (again).** Only `cargo test --all` saw it — the guard's live suites passed untouched; the sweep caught it in seconds.
+- promotion: promoted → `docs/decisions/2026-09-07_workspace-single-rustls-provider.md` (the third occurrence + the backend-feature rule added to `answers:`). **Frontier `PHASE-4.3.3`.**
+
 ## _(2026-09-07)_ — PHASE-4.2.2: `cargo test --all` unifies dependency features across members — mutually exclusive provider features must be pinned IDENTICALLY everywhere
 
 - **A workspace-wide build is ONE feature resolution**: the cargo book documents that `--workspace`/`--all` unifies dependency features across ALL members (resolver 2 included). The fetcher's rustls/ring (reqwest's system-roots stack) joined cert-spike's default rustls/aws-lc-rs into an AMBIGUOUS two-provider build — rustls panics when both provider features are compiled in, and only the `cargo test --all` run (not `-p`) saw it. The fix: the spike pins `ring` explicitly (the workspace's crypto family). ANY future rustls consumer must name the same provider, explicitly, with default-features=false — the ambiguity reproduces silently otherwise.

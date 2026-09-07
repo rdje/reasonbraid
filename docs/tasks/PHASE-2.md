@@ -18,7 +18,7 @@ slice can reuse the same control plane without rewriting it.
 ## Task Tree
 
 - ID: `PHASE-2.1`
-  Status: `active`
+  Status: `complete`
   Goal: workload certificate lifecycle, scoped grants, delegated authority context, revocation, cached-decision rules
   Backlog: 11
   ADR: 007, 008, 009
@@ -52,7 +52,11 @@ slice can reuse the same control plane without rewriting it.
       candidates SPIFFE/SPIRE, step-ca, rcgen are unrecorded).
   Children: `.1.1`–`.1.6` (decomposed `2026-09-07` at the census seams:
     ADRs+spike → cert lifecycle → revocation → delegation → caching →
-    incarnations).
+    incarnations). **`.1` is COMPLETE** — all six gaps closed: the
+    project-local CA + cert lifecycle (GAP 1), the revocation write paths
+    (GAP 2), the delegated authority context (GAP 3), the cached-decision
+    semantics (GAP 4), the incarnation/run writers (GAP 5 — the Phase-1
+    deferral #4 closes), the ledger identity row (GAP 6).
 
   - ID: `PHASE-2.1.1`
     Status: `done`
@@ -491,7 +495,10 @@ slice can reuse the same control plane without rewriting it.
       keyed on the result receipt.
     Children: `.1.6.1`–`.1.6.2` (decomposed `2026-09-07` at the
       incarnation-vs-run seam — the `.1.2.1`-first precedent: a coherent
-      interim exists, incarnations without runs).
+      interim exists, incarnations without runs). **`.1.6` is COMPLETE** —
+      the incarnation writer (enrollment's §8.1 facts) + the run writer
+      (the result receipt's attempt→incarnation link) landed; the Phase-1
+      gate-record deferral #4 CLOSES.
 
   - ID: `PHASE-2.1.6.1`
     Status: `done`
@@ -532,6 +539,20 @@ slice can reuse the same control plane without rewriting it.
       rides the result payload); the run is inspectable beside its
       attempt; deferral #4 closes.
     Backlog: —
+    Done (`2026-09-07`): the run writer landed — migration 0014 adds
+      `runs.attempt_id`; the result fold (`apply_node_result_in_tx`)
+      writes the run row AFTER the idempotency claim (one result = one
+      run, ever — a redelivered result replays the original application
+      and writes no second run), linking the payload's attempt id to the
+      role's CURRENT incarnation (valid_to IS NULL, latest valid_from);
+      a result without an attempt id or an incarnation still folds (the
+      linkage is best-effort, not a gate); the tenant_admin inspection
+      (`GET /v1/admin/runs` + `rb inspect runs`) shows the run → attempt
+      → incarnation → role chain. The live test (the result-fold test
+      gained the three legs: the row + the chain + the inspection + the
+      no-second-run count) + the demo beat (34 checks) + the acceptance
+      checklist below record the evidence — **`.1.6` is COMPLETE** — the
+      Phase-1 gate-record deferral #4 CLOSES.
     Acceptance: a dispatched attempt's result links its run + attempt +
       incarnation; inspection shows the chain; no regression.
 
@@ -573,7 +594,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.6.2` | `proposed` | `.1.6.1` done — the incarnation writer landed (the enroll request's §8.1 facts → the `incarnations` row + the inspection surface + the demo beat); the run writer executes now |
+| 1 | `PHASE-2.2` | `proposed` | `.1` is COMPLETE (all six gaps closed: cert lifecycle, revocation, delegation, cached decisions, incarnation/run writers — deferral #4 closes); the production-grade leases/fencing + retry + dead-letter lane executes now |
 
 ## Changelog
 
@@ -634,6 +655,13 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.6.2` done — the run writer: migration 0014 adds
+  `runs.attempt_id`; the result fold writes the run row AFTER the
+  idempotency claim (one result = one run, ever) linking the attempt to
+  the role's CURRENT incarnation; `GET /v1/admin/runs` + `rb inspect
+  runs` show the chain; the result-fold test gained the legs + the demo
+  beat (34 checks). **`.1.6` complete — deferral #4 closes — `.1` is
+  COMPLETE** (all six census gaps closed); frontier → `.2`.
 - `2026-09-07`: `.1.6.1` done — the incarnation writer: the enroll request
   gains the §8.1 facts, the enroll transaction writes the `incarnations`
   row when the node id is the role wire id it serves (a plain `nod_…` node
@@ -866,6 +894,46 @@ the verb), `crates/reasonbraid-server/tests/node_enrollment.rs`,
   the route); the node's `enroll_with_facts` client; `rb-node`'s four
   flags; the CLI verb + the `rb inspect incarnations` text; the live
   test; the demo beat; the book's cli chapter.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book,
+  KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.6.2)
+
+The CODE change owned by this leaf: migration `0014_run_attempt_link.sql`,
+`crates/reasonbraid-server/src/api.rs` (the run writer + `list_runs` +
+the route), `crates/reasonbraid-cli/src/{lib,main.rs}`
+(`run_inspect_runs` + the verb), `crates/reasonbraid-server/tests/
+node_work.rs` (the result-fold test's three legs),
+`scripts/demo_two_host.sh`, `docs/book/src/cli.md` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — deferral #4's second half: `grep -rn
+  'INSERT INTO runs' crates/` → no matches before this leaf — a result
+  receipt folded its contribution and its reservation, but the
+  incarnation→attempt linkage the §8.1 hierarchy promises did not exist.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the linkage facts are split across
+  two boundaries: the incarnation is server-side (`.1.6.1`), the attempt
+  is a NODE-local journal fact that only rides the result payload. The
+  fix point is the result fold — the ONE server transaction that already
+  sees the attempt id (the payload) and the current incarnation (the
+  table): write the run row there, AFTER the idempotency claim, so
+  redelivery can never duplicate it.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no runs
+  row, no attempt link. After: `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 7 passed` (`node_work` — the result-fold test gained
+  the legs: the run row links the payload's attempt to the role's current
+  incarnation, the tenant_admin list shows the chain, and the two
+  duplicate transports write NO second run) + the full guard green (12
+  suites + e2e `2 passed` + the demo `ALL acceptance checks passed` — 34
+  checks, `rc=0`, `target/pg162_guard.log`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds.
+- [x] **FIX** — `migrations/0014_run_attempt_link.sql` (the attempt
+  column); `api.rs` (the writer in `apply_node_result_in_tx` + the
+  `list_runs` inspection + the route); the CLI verb; the result-fold
+  test's legs; the demo beat; the book's cli chapter.
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
@@ -1225,7 +1293,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.1.6.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
+| `2026-09-07` | `PHASE-2.1.6.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — the result-fold test gained the run-writer legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg162_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the run writer (the result receipt's attempt→incarnation link + the inspection chain); **`.1.6` complete — deferral #4 closes — `.1` COMPLETE**; frontier → `.2` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
 
 ## Commit Log
@@ -1245,6 +1314,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.1.6.2` | `REASONBRAID-PHASE2-0017` | the run writer: migration 0014 + the result fold's run row (after the idempotency claim — one result = one run) + `GET /v1/admin/runs` + `rb inspect runs` + the demo beat — **`.1.6` complete, deferral #4 closes, `.1` COMPLETE** |
 | `PHASE-2.1.6.1` | `REASONBRAID-PHASE2-0016` | the incarnation writer: the enroll request's §8.1 facts → the `incarnations` row (role nodes only) + `GET /v1/admin/incarnations` + `rb inspect incarnations` + `rb-node`'s four flags + the demo beat |
 | `PHASE-2.1.6` | `REASONBRAID-PHASE2-0015` | the incarnation-vs-run split (the 0007 hierarchy is schema-only — deferral #4; the enroll request carries no §8.1 facts) |
 | `PHASE-2.1.5.2` | `REASONBRAID-PHASE2-0014` | the cached-decision machinery: migration 0013 (the tenant epoch + the inbox decision columns), the revocation writes bump the epoch in-transaction, the delivery-carried admission decision + CHANNEL_VERSION 4, the node journal's cached decision + the dispatch gate (refuses stale/denied/absent — journaled, adapter never invoked); the measured live revocation-invalidation leg — **`.1.5` complete** |

@@ -239,6 +239,14 @@ enrolls AS a role (the dev wiring — its id IS the role wire id) records the
 A plain `nod_…` node serves no role and records no incarnation (the hierarchy
 binds incarnations to roles).
 
+The run surface (`.1.6.2`; deferral #4's second half): a node-emitted result
+receipt records the run linking its attempt to the incarnation that ran it —
+one result = one run, ever (the idempotency claim dedupes redelivery first):
+
+```text
+ inspect runs --as alice
+```
+
 The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
 principal whose grant is the authority source:
 

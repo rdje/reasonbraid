@@ -1239,6 +1239,38 @@ pub async fn run_inspect_incarnations(
     Ok(out)
 }
 
+/// The tenant's runs with their attempt→incarnation links (`.1.6.2`; tenant_admin).
+pub async fn run_inspect_runs(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/runs", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let runs = response["runs"].as_array().cloned().unwrap_or_default();
+    let mut out = format!("tenant {tenant}'s runs ({}):\n", runs.len());
+    for r in runs {
+        out.push_str(&format!(
+            "  {} — attempt {} — incarnation {} (role {}) — at {}\n",
+            r["run_id"].as_str().unwrap_or("?"),
+            r["attempt_id"].as_str().unwrap_or("?"),
+            r["incarnation_id"].as_str().unwrap_or("?"),
+            r["role_id"].as_str().unwrap_or("?"),
+            r["created_at"].as_str().unwrap_or("?"),
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

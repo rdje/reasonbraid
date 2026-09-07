@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.6.2: the run's uniqueness is the idempotency claim's job — the writer just stands behind it
+
+- **One result = one run, structurally, not policed.** The run row writes AFTER `claim_idempotency_in_tx` in the result fold: a redelivered result hits `Replay` and returns before the writer, so duplicates can never reach it. The test proves it by counting (two duplicate transports, one run) — the same stance as `.1.6.1`'s no-duplication.
+- **The linkage facts live on opposite sides of the trust boundary** — the incarnation is a server row, the attempt is a node-local journal fact that only the result payload carries. The fold is the ONE transaction that already sees both, so the writer belongs there, not at dispatch.
+- **Best-effort, not a gate**: a result without an attempt id (or a role with no incarnation) still folds its contribution — the run row is observability linkage, not a precondition. Refusing work over a missing audit link would invert the priorities.
+- promotion: declined (the writer-placement and best-effort rules are the leaf's recorded facts — no new cross-cutting decision). **`.1` COMPLETE — deferral #4 closes. Frontier `PHASE-2.2` (leases/fencing + retry + dead-letter).**
+
 ## _(2026-09-07)_ — PHASE-2.1.6.1: the enrollment boundary alone sees the incarnation facts — the writer lives there, not at dispatch
 
 - **The facts exist exactly once, at node start** — the enroll request is the ONLY boundary where the node declares what it is (provider/model/harness/config); every later surface (handshake, poll, results) sees an already-committed identity. The writer rides the enroll transaction so a refused enrollment writes nothing.

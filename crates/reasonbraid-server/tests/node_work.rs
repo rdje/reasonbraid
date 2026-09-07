@@ -594,6 +594,47 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     .expect("count settled");
     assert_eq!(settled, 1, "the reservation settled with the result");
 
+    // THE `.1.6.2` run writer: the result's attempt id linked the run to the
+    // role's CURRENT incarnation, in the same transaction as the fold.
+    let run: (String, String, String, String, String) = sqlx::query_as(
+        "SELECT r.run_id, r.attempt_id, r.incarnation_id, i.role_id, r.tenant_id \
+         FROM runs r JOIN incarnations i ON i.incarnation_id = r.incarnation_id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the run row");
+    assert!(
+        run.0.starts_with("run_"),
+        "the run id is branded: {}",
+        run.0
+    );
+    assert_eq!(
+        run.1, "att_00000000-0000-7000-8000-000000000001",
+        "the run links the result's attempt"
+    );
+    assert_eq!(run.3, role, "the run links the role's incarnation");
+    assert_eq!(run.4, tenant, "the run belongs to the tenant");
+
+    // The inspection surface shows the chain (no database surgery).
+    let response = client
+        .get(format!(
+            "{}/v1/admin/runs?tenant_id={tenant}",
+            server.base()
+        ))
+        .header(PRINCIPAL_HEADER, &human)
+        .send()
+        .await
+        .expect("runs list");
+    assert_eq!(response.status().as_u16(), 200);
+    let runs: Value = response.json().await.expect("runs json");
+    let listed = runs["runs"].as_array().expect("runs array");
+    assert_eq!(listed.len(), 1, "exactly one run: {runs}");
+    assert_eq!(
+        listed[0]["attempt_id"],
+        json!("att_00000000-0000-7000-8000-000000000001")
+    );
+    assert_eq!(listed[0]["role_id"], json!(role));
+
     // Duplicate transport #1: the SAME event id → the receipt dedupe says no.
     let (status, receipt) = submit_event(
         &client,
@@ -641,6 +682,13 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         1,
         "the redelivered result produced NO second domain effect"
     );
+
+    // Neither duplicate produced a second run: one result = one run, ever.
+    let run_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runs")
+        .fetch_one(&pool)
+        .await
+        .expect("count runs");
+    assert_eq!(run_count, 1, "the duplicates wrote no second run");
 
     // The audit trail records the role's authorized application.
     let (status, audit) = get(

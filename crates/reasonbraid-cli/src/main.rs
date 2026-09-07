@@ -8,10 +8,10 @@ use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_boundary_revoke, run_enroll, run_grant_revoke,
     run_inspect_boundaries, run_inspect_budget, run_inspect_grants, run_inspect_incarnations,
-    run_inspect_node_inbox, run_inspect_thread, run_inspect_threads, run_issue_node_token,
-    run_prune_node_inbox, run_quarantine_command, run_revoke_node, run_thread_create,
-    run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef, StateFile,
-    ThreadVerbArgs,
+    run_inspect_node_inbox, run_inspect_runs, run_inspect_thread, run_inspect_threads,
+    run_issue_node_token, run_prune_node_inbox, run_quarantine_command, run_revoke_node,
+    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
+    StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -516,6 +516,15 @@ enum InspectCommand {
         #[arg(long)]
         json: bool,
     },
+    /// The tenant's runs with their attempt→incarnation links (`.1.6.2`; tenant_admin).
+    Runs {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Resolve the acting principal: `--as` value, or the most recently used one.
@@ -944,6 +953,10 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Inspect(InspectCommand::Incarnations { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_incarnations(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Inspect(InspectCommand::Runs { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_runs(cfg, &principal, tenant.as_deref(), json).await
         }
         Command::Grant(GrantCommand::Revoke {
             grant,

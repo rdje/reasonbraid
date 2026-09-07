@@ -341,6 +341,11 @@ check "the workload certificate is stored beside the journal (.1.2.2)" bash -c \
 check "the incarnation row records the enrolled node's §8.1 facts (.1.6.1)" bash -c \
     "cli inspect incarnations --as organizer --tenant '$TENANT' --json | grep -q 'fake'"
 
+# The `.1.6.2` run surface: the result receipt recorded the run linking the
+# attempt to the incarnation; the tenant_admin inspection shows the chain.
+check "the run row links the attempt to the incarnation (.1.6.2)" bash -c \
+    "cli inspect runs --as organizer --tenant '$TENANT' --json | grep -q 'run_'"
+
 # no human copies messages: the content came from the adapter script, not the CLI.
 check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'AGENT-A: the claim holds only for'"

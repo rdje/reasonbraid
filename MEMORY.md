@@ -23,14 +23,12 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.6.2` (`.1.6.1` done: the
-  incarnation writer — the enroll request's §8.1 facts land in the
-  `incarnations` row, `rb inspect incarnations` + the demo beat). Then
-  `.1` closes (deferral #4).
-- **Next action:** execute `PHASE-2.1.6.2` — the run writer: a
-  node-emitted result receipt records a `runs` row linked to the CURRENT
-  incarnation + the attempt (the attempt id rides the result payload);
-  the run is inspectable beside its attempt; deferral #4 closes.
+- **Active tree:** `PHASE-2` → frontier `.2` (**`.1` is COMPLETE** — all six
+  census gaps closed: cert lifecycle, revocation, delegation, cached
+  decisions, incarnation/run writers; the Phase-1 deferral #4 closes).
+- **Next action:** execute `PHASE-2.2` — production-grade leases/fencing,
+  retry policy, dead-letter/quarantine/replay (ADR-005 if open) — pick it
+  up with a census like `.1`'s.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

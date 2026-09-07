@@ -337,6 +337,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/grants", get(list_grants))
         .route("/v1/admin/boundaries", get(list_boundaries))
         .route("/v1/admin/incarnations", get(list_incarnations))
+        .route("/v1/admin/runs", get(list_runs))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -1307,6 +1308,44 @@ async fn list_incarnations(
     ))
 }
 
+/// The tenant's runs (`.1.6.2`; deferral #4's second half) — each run links its
+/// attempt to the incarnation that ran it, the inspection surface the chain
+/// rides.
+async fn list_runs(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type Row = (String, String, String, Option<String>, DateTime<Utc>);
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT r.run_id, r.incarnation_id, i.role_id, r.attempt_id, r.created_at \
+         FROM runs r JOIN incarnations i ON i.incarnation_id = r.incarnation_id \
+         WHERE r.tenant_id = $1 ORDER BY r.created_at DESC",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let runs: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(run_id, incarnation_id, role_id, attempt_id, created_at)| {
+                json!({
+                    "run_id": run_id,
+                    "incarnation_id": incarnation_id,
+                    "role_id": role_id,
+                    "attempt_id": attempt_id,
+                    "created_at": created_at.to_rfc3339(),
+                })
+            },
+        )
+        .collect();
+    Ok(Json(
+        json!({ "tenant_id": q.tenant_id.to_string(), "runs": runs }),
+    ))
+}
+
 // ── Thread commands ──────────────────────────────────────────────────────────────
 
 /// One prepared command's execution target inside the shared transaction flow.
@@ -1738,6 +1777,34 @@ where
             return Err(err);
         }
         AuthorizationOutcome::Allowed { .. } => {}
+    }
+
+    // The run writer (`.1.6.2`; deferral #4's second half): the attempt id rides
+    // the result payload (the node's local journal fact); the run links it to the
+    // role's CURRENT incarnation. The idempotency claim above dedupes redelivery
+    // BEFORE this write — one result = one run, ever. A result without an
+    // attempt id (or a role with no incarnation) still folds: the run row is
+    // best-effort linkage, not a gate.
+    if let Some(attempt_id) = payload.get("attempt_id").and_then(|v| v.as_str()) {
+        let current_incarnation: Option<String> = sqlx::query_scalar(
+            "SELECT incarnation_id FROM incarnations \
+             WHERE role_id = $1 AND valid_to IS NULL \
+             ORDER BY valid_from DESC NULLS LAST LIMIT 1",
+        )
+        .bind(node_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(incarnation_id) = current_incarnation {
+            sqlx::query(
+                "INSERT INTO runs (run_id, incarnation_id, tenant_id, attempt_id) \
+                 VALUES ('run_' || gen_random_uuid()::text, $1, $2, $3)",
+            )
+            .bind(&incarnation_id)
+            .bind(tenant_id.to_string())
+            .bind(attempt_id)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
 
     let prepared = match threads::prepare_thread_command(

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The run writer: the result receipt closes deferral #4 — `.1` is COMPLETE (`PHASE-2.1.6.2`)
+
+- Migration 0014 adds `runs.attempt_id`; the result fold writes the run row **after the idempotency claim** — one result = one run, ever: a redelivered result replays the original application and writes no second run (the live test's two duplicate transports prove the count stays 1).
+- The run links the result payload's attempt id to the role's CURRENT incarnation (`valid_to IS NULL`, latest `valid_from`); a result without an attempt id or an incarnation still folds (the linkage is best-effort, not a gate). The tenant_admin inspection (`GET /v1/admin/runs` + `rb inspect runs`) shows the run → attempt → incarnation → role chain.
+- **`.1.6` complete — the Phase-1 gate-record deferral #4 closes — `.1` is COMPLETE**: all six census gaps from the pickup note are closed (cert lifecycle, revocation write paths, delegation, cached decisions, incarnation/run writers, the ledger identity row). The demo is at 34 checks. Frontier → `.2` (production-grade leases/fencing, retry, dead-letter).
+
 ## 2026-09-07 — The incarnation writer: enrollment stops discarding the §8.1 facts (`PHASE-2.1.6.1`)
 
 - Deferral #4's first half closes: the enroll request gains the §8.1 facts the node KNOWS at start (`provider`/`model`/`harness`/`config` — all optional, `deny_unknown_fields` keeps the wire strict), and the enroll transaction writes the `incarnations` row — but only when the node id is the agent ROLE wire id it serves (the dev wiring; a plain `nod_…` node serves no role and records no incarnation, per the hierarchy's `role_id IS NOT NULL`).

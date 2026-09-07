@@ -235,7 +235,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       leaves. No code changed. Frontier → `.2.2`.
 
   - ID: `PHASE-6.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the proposal + the decision records — the typed
       proposal (the target policy version + the thread
       reference + the status), the decision record (the
@@ -245,6 +245,30 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       approved → published → deployed stages as the typed
       statuses).
     Roadmap: §15.6
+    Done (`2026-09-07`): the proposal + the decision records
+      landed per ADR-032 — migration 0039
+      (`policy_proposals`: the proposal = a REFERENCE (the
+      policy version + the thread) with the typed status
+      vocabulary (draft/decided/approved/published/deployed/
+      withdrawn); `policy_decisions`: the rule + the frozen
+      ELECTorate snapshot + the verdict reference);
+      `crates/reasonbraid-server/src/lifecycle.rs` (NEW):
+      the `register_proposal` (the policy version + the
+      thread must exist — the references resolve, never
+      dangle), the `record_decision` (the proposal must be
+      at `draft` — one proposal, one decision; the
+      electorate names at least one participant; the verdict
+      must be a `verdict`-kind contribution of the
+      PROPOSAL's thread — the foreign verdict refuses; the
+      decision advances the proposal to `decided`), the list
+      verbs; the api: `POST`/`GET /v1/policy-proposals` +
+      `POST`/`GET /v1/policy-decisions`. Measured (policy
+      3): the proposal registers as a reference; the ghost
+      policy + the ghost thread refusals; the decision with
+      the frozen snapshot + the verdict; the stage advance;
+      the second-decision refusal (the stage gate); the
+      foreign-verdict + the empty-electorate refusals; the
+      lists. Frontier → `.2.3`.
 
   - ID: `PHASE-6.2.3`
     Status: `proposed`
@@ -291,10 +315,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.2.2` | `proposed` | `.2.1` done — ADR-032 accepted (the five records never fold, the proposal is a reference, the decision freezes the snapshot, the approval re-checks the grant); the proposal + the decision records execute next |
+| 1 | `PHASE-6.2.3` | `proposed` | `.2.2` done — the proposal + the decision records (the reference-shaped proposal, the frozen snapshot, the stage machine; policy 3); the approval records + the authority proofs execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.2` done — the proposal + the decision
+  records (migration 0039: the reference-shaped proposal,
+  the frozen electorate snapshot, the verdict reference, the
+  typed stage machine); policy 3; frontier → `.2.3`.
 - `2026-09-07`: `.2.1` done — ADR-032 accepted (the
   policy-lifecycle contract: the five records never fold, the
   proposal is a reference, the decision freezes the
@@ -417,6 +445,52 @@ policy.rs` (the new test) — `\.rs$`.
   commit.
 - [x] **FIX** — `src/policy.rs`, `src/api.rs`,
   `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.2.2)
+
+The CODE change owned by this leaf:
+`migrations/0039_policy_lifecycle.sql` (NEW — the proposal +
+the decision tables), `crates/reasonbraid-server/src/
+lifecycle.rs` (NEW — the shapes + the register_proposal +
+the record_decision + the lists),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the four verbs),
+`crates/reasonbraid-server/tests/policy.rs` (the new test) —
+`\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  proposal/decision row existed (the `.2` census — the
+  lifecycle records were the greenfield).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_proposals\|policy_decisions\|ProposalInput" 2f4d802
+  -- crates/ migrations/` → rc=1 (nothing before this leaf).
+  The fix point is the ADR-032 contract: the reference-shaped
+  proposal + the frozen-snapshot decision + the stage
+  machine.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_proposal_and_the_decision_stay_separate_records` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 3 tests … ok`) — the proposal as a
+  reference, the ghost policy + the ghost thread refusals,
+  the decision with the frozen snapshot + the verdict, the
+  stage advance, the second-decision refusal, the foreign-
+  verdict + the empty-electorate refusals, the lists.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 58 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg527_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0039_policy_lifecycle.sql`, `src/lifecycle.rs`,
+  `src/lib.rs`, `src/api.rs`, `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

@@ -678,3 +678,296 @@ async fn the_seven_step_resolution_fails_closed() {
     let (status, refused) = get(&client, &base, "/v1/policies/ghost/1.0.0/impact", &human_id).await;
     assert_eq!(status, 400, "the ghost impact refuses: {refused}");
 }
+
+#[tokio::test]
+async fn the_proposal_and_the_decision_stay_separate_records() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The policy the proposal targets.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "lc-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "lc",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the lifecycle clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    // The deliberation thread: independent_panel → advance → the verdict
+    // contribution (the decision references it).
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "lc-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "lc",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, advanced) = command(
+        "lc-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances: {advanced}");
+    let (status, verdict) = command(
+        "lc-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel judged",
+            "kind": "verdict",
+            "verdict": {
+                "target_digest": "sha256:00",
+                "rule": "unanimity",
+                "outcome": "accepted_unanimously",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the verdict contributes: {verdict}");
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    // 1. The proposal registers (the draft stage; a REFERENCE).
+    let (status, proposal) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "lc-prop-1",
+            "policy_id": "lc-policy",
+            "policy_version": "1.0.0",
+            "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the proposal registers: {proposal}");
+    assert_eq!(proposal["status"], json!("draft"));
+
+    // 2. The ghost policy + the ghost thread refuse.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "lc-ghost-policy",
+            "policy_id": "ghost",
+            "policy_version": "1.0.0",
+            "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost policy refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "lc-ghost-thread",
+            "policy_id": "lc-policy",
+            "policy_version": "1.0.0",
+            "thread_id": "thr_ghost",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost thread refuses: {refused}");
+
+    // 3. The decision: the frozen electorate snapshot + the verdict
+    // reference; the proposal advances to `decided`.
+    let (status, decision) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "lc-dec-1",
+            "proposal_id": "lc-prop-1",
+            "rule": "unanimity",
+            "electorate": {
+                "participants": [human_id],
+                "denominator": 1,
+                "abstentions": [],
+            },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the decision records: {decision}");
+    assert_eq!(decision["rule"], json!("unanimity"));
+    let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &human_id).await;
+    assert_eq!(status, 200, "the proposals read: {proposals}");
+    assert_eq!(
+        proposals[0]["status"],
+        json!("decided"),
+        "the stage advanced"
+    );
+
+    // 4. A second decision on the SAME proposal refuses (one proposal, one
+    // decision — the stage gate).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "lc-dec-2",
+            "proposal_id": "lc-prop-1",
+            "rule": "unanimity",
+            "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the second decision refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("draft"),
+        "{refused}"
+    );
+
+    // 5. A verdict from ANOTHER thread refuses (the reference is scoped to
+    // the proposal's thread).
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "lc-other-thread",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "lc-other",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let other_thread = created["thread_id"].as_str().unwrap().to_string();
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "lc-prop-2",
+            "policy_id": "lc-policy",
+            "policy_version": "1.0.0",
+            "thread_id": other_thread,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second proposal registers");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "lc-dec-3",
+            "proposal_id": "lc-prop-2",
+            "rule": "unanimity",
+            "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the foreign verdict refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("verdict"),
+        "{refused}"
+    );
+
+    // 6. The empty electorate refuses; the lists carry both records.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "lc-dec-4",
+            "proposal_id": "lc-prop-2",
+            "rule": "unanimity",
+            "electorate": { "participants": [], "denominator": 0, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the empty electorate refuses: {refused}");
+    let (status, decisions) = get(&client, &base, "/v1/policy-decisions", &human_id).await;
+    assert_eq!(status, 200, "the decisions read: {decisions}");
+    let decisions = decisions.as_array().unwrap();
+    assert_eq!(decisions.len(), 1, "{decisions:?}");
+    assert_eq!(decisions[0]["decision_id"], json!("lc-dec-1"));
+}

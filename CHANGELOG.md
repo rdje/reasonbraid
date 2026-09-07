@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The proposal and the decision records land (`PHASE-6.2.2`)
+
+- Migration 0039: the proposal is a REFERENCE (the policy version + the deliberation thread — never a copy) with the typed stage machine; the decision freezes the electorate snapshot at the action time and references a verdict of the PROPOSAL's thread (a foreign verdict refuses); one proposal, one decision (the stage gate). The verbs: `POST`/`GET /v1/policy-proposals` + `POST`/`GET /v1/policy-decisions`. Measured: policy 3.
+
 ## 2026-09-07 — ADR-032: the policy-lifecycle contract (`PHASE-6.2.1`)
 
 - ADR-032 accepted (`docs/adr/032-policy-lifecycle.md`): the five records never fold (the discussion rides the thread, the decision/approval/publication/deployment are their own rows); the proposal is a reference, not a copy; the decision freezes the electorate snapshot at the action time; the approval re-checks the grant at the approval boundary. No code.

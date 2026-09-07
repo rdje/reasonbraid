@@ -472,6 +472,14 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/policies", post(register_policy).get(list_policies))
         .route("/v1/policies/resolve", post(resolve_policies))
         .route(
+            "/v1/policy-proposals",
+            post(register_policy_proposal).get(list_policy_proposals),
+        )
+        .route(
+            "/v1/policy-decisions",
+            post(record_policy_decision).get(list_policy_decisions),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2326,6 +2334,78 @@ async fn policy_impact(
         Ok(map) => Ok(Json(map)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
+}
+
+// ── The policy lifecycle (PHASE-6.2.2; ADR-032) ─────────────────────────────────────
+
+/// `POST /v1/policy-proposals` — register one proposal (the draft stage;
+/// the reference to the policy version + the deliberation thread).
+async fn register_policy_proposal(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::lifecycle::ProposalInput>,
+) -> Result<Json<crate::lifecycle::StoredProposal>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no proposal",
+        ));
+    }
+    match crate::lifecycle::register_proposal(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-proposals` — the proposals, newest first.
+async fn list_policy_proposals(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::lifecycle::StoredProposal>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no proposals",
+        ));
+    }
+    Ok(Json(crate::lifecycle::list_proposals(&state.pool).await?))
+}
+
+/// `POST /v1/policy-decisions` — record one decision (the draft → decided
+/// transition; the frozen electorate snapshot + the verdict reference).
+async fn record_policy_decision(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::lifecycle::DecisionInput>,
+) -> Result<Json<crate::lifecycle::StoredDecision>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no decision",
+        ));
+    }
+    match crate::lifecycle::record_decision(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-decisions` — the decisions, newest first.
+async fn list_policy_decisions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::lifecycle::StoredDecision>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no decisions",
+        ));
+    }
+    Ok(Json(crate::lifecycle::list_decisions(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

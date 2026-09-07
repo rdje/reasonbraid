@@ -39,6 +39,7 @@ pub mod evaluation;
 pub mod extraction;
 pub mod fetcher;
 pub mod git;
+pub mod lifecycle;
 mod matching;
 pub mod mediated;
 mod node_channel;

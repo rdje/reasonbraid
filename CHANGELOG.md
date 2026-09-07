@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The dependence indicators: named overlaps, never a score (`PHASE-3.6.1`)
+
+- `crates/reasonbraid-server/src/dependence.rs`: the pure `dependence_indicators(members)` over the §10.4 observable conditions (the common provider, the model family, the harness, the declared lineage, the owner) — each attribute yields its overlap groups (a group of ONE member is variation, not dependence) and an explanation naming the counts + the values, never a probability.
+- Five unit tests: the shared-provider group, the spread-attribute variation, the single-member rule, the owner overlap, and the no-overclaim rule (the explanation strings never claim independence — the label discipline pre-checked at the source).
+- The similarity/timing + the calibrated correlated-error estimator stay the named deferrals (the labeled-evaluation domain). Frontier → `.6.2` (the diversity feature + the panel wiring).
+
 ## 2026-09-07 — `.6` split at the census seams (`PHASE-3.6`)
 
 - The dependence-lane census mapped §10.4 against the shipped surface: the INDICATOR INPUTS exist (the incarnation lineage — provider/model/harness/config — rides the `.1.6.1` rows + the profile's incarnation link; the owners/role templates ride the enroll facts) but NOTHING computes the overlaps, the `.3` ranking has no diversity feature, and no UI label exists to discipline.

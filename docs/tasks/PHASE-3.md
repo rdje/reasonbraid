@@ -649,7 +649,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     and no UI label exists to discipline. Children at those seams —
     frontier → `.6.1`.
   - ID: `PHASE-3.6.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the dependence-indicator computation — the PURE
       `dependence_indicators(panel_facts)` over the §10.4 observable
       conditions the shipped facts carry: the common provider, the
@@ -661,6 +661,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
       triggers (the labeled-evaluation domain — the §10.4 rule:
       domain-specific, versioned, evaluated, uncertainty-exposing).
     Backlog: 29 (the indicator half)
+    Done (`2026-09-07`): the indicator computation landed —
+      `crates/reasonbraid-server/src/dependence.rs`: the PURE
+      `dependence_indicators(members)` over the §10.4 observable
+      conditions (the common provider, the model family, the
+      harness, the declared lineage, the owner — the shipped
+      incarnation/ownership facts), each as a
+      `DependenceIndicator { attribute, groups, explanation }` — a
+      group of ONE member is variation, not dependence; the
+      explanation names the counts + the values, NEVER a
+      probability (the test pre-checks the label rule at the
+      strings' source). Five unit tests measure the shared-provider
+      group, the spread-attribute variation, the single-member
+      rule, the owner overlap, and the no-overclaim rule. The
+      similarity/timing + the calibrated estimator stay the named
+      deferrals. Frontier → `.6.2`.
     Acceptance: the computation is pure + tested (each attribute has
       a named indicator); no regression.
 
@@ -700,7 +715,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.6.1` | `proposed` | `.6` decomposed at the census seams (the lineage inputs exist; the overlap computation, the diversity feature, and the label discipline do not); the indicator computation executes now |
+| 1 | `PHASE-3.6.2` | `proposed` | `.6.1` done — the dependence-indicator computation (the five attributes, the named groups, the no-overclaim strings); the diversity feature + the panel wiring execute now |
 
 ## Changelog
 
@@ -809,6 +824,47 @@ eligibility before ranking. Dependence indicators, never an independence score.
   the gaps; children `.6.1` (the indicators) → `.6.2` (the
   diversity + the panel wiring) → `.6.3` (the labels); frontier →
   `.6.1`.
+- `2026-09-07`: `.6.1` done — the dependence-indicator computation
+  (the five attributes, the named overlap groups, the
+  no-overclaim explanations); five unit tests; frontier → `.6.2`.
+
+## Acceptance Checklist (PHASE-3.6.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/dependence.rs` (NEW — the pure
+indicator computation + the five unit tests) and
+`crates/reasonbraid-server/src/lib.rs` (the module) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.6` census: the §10.4 inputs
+  ride the shipped facts (the incarnation lineage + the owners)
+  but NOTHING computes the overlaps.
+- [x] **ROOT CAUSE (WHY + WHERE)** — no indicator machinery
+  existed — `git grep -c "dependence_indicators\|Dependence"
+  1772e66 -- crates/` → rc=1 (nothing before this leaf). The fix
+  point is the PURE overlap computation: each attribute groups the
+  members by the value; a group of ONE is variation, not
+  dependence; the explanation names the counts — never a score,
+  never a probability.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib dependence` → `test
+  result: ok. 5 passed` — the shared provider forms the overlap
+  group (2 of 3, named); a spread attribute forms no group (the
+  variation is the honest fact); a single member is never a group;
+  the shared owner rides the role-template overlap; and the
+  explanations never claim independence or probability (the §10.4
+  label rule pre-checked at the strings' source).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg361_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/dependence.rs`, `src/lib.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.5.3)
 
@@ -1409,6 +1465,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.6.1` | `cargo test -p reasonbraid-server --lib dependence` → `test result: ok. 5 passed` (the overlap group, the variation, the single-member rule, the owner overlap, the no-overclaim rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg361_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the dependence-indicator computation; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-3.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the dependence-lane census + the contract-seam decomposition (`.6.1` indicators → `.6.2` diversity + wiring → `.6.3` labels); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-3.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_auto_initiation` → `test result: ok. 1 passed` (the no-grant 403, the landing, the topic/spend refusals, the no-inheritance rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg353_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-initiated thread API; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-3.5.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_advertises` → `test result: ok. 1 passed` + `cargo test -p reasonbraid-server --test node_channel the_zero_concurrency` → `test result: ok. 1 passed` (the offers + the hold, measured); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg352_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the subscriptions + the wake gate; frontier → `.5.3` |
@@ -1434,6 +1491,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.6.1` | `REASONBRAID-PHASE3-0022` | the dependence-indicator computation (the pure overlaps over the lineage/ownership facts, never a score) |
 | `PHASE-3.6` | `REASONBRAID-PHASE3-0021` | the dependence-indicators lane decomposed at the census seams (the inputs exist; the computation/feature/labels are the gaps) |
 | `PHASE-3.5.3` | `REASONBRAID-PHASE3-0020` | the node-initiated thread API (the `thread_create_auto` grant + the server-side checklist) — **`.5` COMPLETE** |
 | `PHASE-3.5.2` | `REASONBRAID-PHASE3-0019` | the subscriptions + the wake gate (migration 0022's offers + the delivery-boundary hold) |

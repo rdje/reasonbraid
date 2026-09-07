@@ -30,6 +30,7 @@ mod api;
 mod authority;
 mod budget;
 pub mod ca;
+mod dependence;
 mod matching;
 mod node_channel;
 mod outbox;

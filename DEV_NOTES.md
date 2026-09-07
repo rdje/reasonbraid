@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.6.1: a group of one is variation, not dependence — the indicator's honesty is the counts, not a number
+
+- **The dependence computation refuses the number altogether.** Each §10.4 attribute yields its overlap groups (only the ≥2-member groups ride) and an explanation naming the counts + the values — a spread attribute's explanation SAYS "varies across the panel", and a test pre-checks that no explanation string ever claims independence or probability. The calibrated estimator (the only place a number would live) stays a named deferral in the domain that can evaluate it.
+- promotion: declined (the indicator shape is the leaf's own contract; the `.6.2` diversity feature consumes the groups). **Frontier `PHASE-3.6.2` (the diversity feature + the panel wiring).**
+
 ## _(2026-09-07)_ — PHASE-3.6: the dependence inputs exist but nothing computes them — the indicators are the difference between data and honesty
 
 - **§10.4's observable conditions ride the shipped facts already** (the incarnation lineage: the provider/model/harness/config; the owners/role templates) — but nothing overlaps them, the ranking has no diversity feature, and no label exists to discipline. The three seams: the pure indicator computation (each attribute a named `Indicator`, never a score — the similarity/timing + the calibrated estimator are named with their labeled-evaluation triggers), the selection-side diversity feature + the panel snapshot's indicators, and the mechanical label sweep (the forbidden term appears nowhere).

@@ -19,19 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.5.1` (packs R0 + R1 + R2
-  COMPLETE; `.5` decomposed at the census seams — nothing exists:
-  `.5.1` the three contracts + the OPT-IN gate → `.5.2` the
-  machinery → `.5.3` the receipt + the wiring; `MAINT-1` done).
-  Then `.6`–`.7`.
-- **Next action:** execute `PHASE-4.5.1` — the three contracts +
-  the OPT-IN gate: the R5 credential broker (LOCAL, the opaque
-  binding ref, the delegated session, the explicit disclosure),
-  the R3 browser contract (the bounded interaction + the network
-  log + the ladder-top isolation claim + the measured
-  browser-runtime census), the RX §12.8 vocabulary, and the
-  enablement gate (compiled but DISABLED — never a default) —
-  one decision record. No code.
+- **Active tree:** `PHASE-4` → frontier `.5.2` (packs R0 + R1 + R2
+  COMPLETE; `.5.1` done: the three contracts + the OPT-IN gate —
+  decision `2026-09-07_r5r3rx-contracts-opt-in.md`; `MAINT-1`
+  done). Then `.5.3`, `.6`–`.7`.
+- **Next action:** execute `PHASE-4.5.2` — the gated machinery:
+  the credential broker (the binding-ref resolution at the
+  request boundary), the browser worker (the step + network-log
+  budgets behind the deployment-checked boundary), the §12.8
+  response vocabulary — ALL behind the OPT-IN gate (compiled but
+  disabled; the resolve never returns a disabled pack).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -6,6 +6,14 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The highest-risk lane's contracts are decided: disclosed, contained, and off by default (`PHASE-4.5.1`)
+
+- R5: the LOCAL credential broker — the opaque binding ref, the per-request delegated session, the explicit-disclosure receipt (a credential is a disclosure, not a permission).
+- R3: the bounded browser — the step + network-log budgets, the killing worker, and the deployment-checked `vm_container` requirement (the gate refuses to open without it); the census measured chromiumoxide 0.9.1 over headless_chrome 1.0.22; the engine is a pinned, provenance-named chromium with a startup version check.
+- RX: the typed §12.8 vocabulary (the six response shapes, the not-inspected-original record, the second-verifier rule).
+- The OPT-IN gate: compiled but DISABLED; the enablement is a named recorded change; the resolve never returns a disabled pack.
+- Durable in `docs/decisions/2026-09-07_r5r3rx-contracts-opt-in.md` (top-level `answers:`). No code. Frontier → `.5.2` (the gated machinery).
+
 ## 2026-09-07 — The R3/R5/RX lane opens: the census found NOTHING exists (`PHASE-4.5`)
 
 - No browser/MCP crate in the lock; the credential surface is the `.1.2` opaque binding-ref plus the fetcher's no-ambient-credentials baseline; §12.8 (the agent-mediated vocabulary) has no machinery.

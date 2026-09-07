@@ -693,7 +693,7 @@ of a URI is not a promise the core can resolve it.
     → `.5.1`.
 
   - ID: `PHASE-4.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the three contracts + the OPT-IN gate — the R5
       credential-broker contract (the LOCAL broker only — the
       credential never enters the reference, the
@@ -713,6 +713,26 @@ of a URI is not a promise the core can resolve it.
       registry row) — one decision record with top-level
       `answers:`. No code.
     Backlog: 35 (the contracts half)
+    Done (`2026-09-07`): the contracts are decided + durable —
+      `docs/decisions/2026-09-07_r5r3rx-contracts-opt-in.md`
+      (top-level `answers:`): R5 — the LOCAL broker (the opaque
+      binding ref, the per-request delegated session, the
+      explicit-disclosure receipt — a credential is a disclosure,
+      not a permission); R3 — the bounded interaction (the step +
+      network-log budgets, the killing worker, the rendering
+      denials) + the DEPLOYMENT-CHECKED isolation (the
+      `vm_container` requirement the gate refuses to open
+      without) + the measured browser census (chromiumoxide
+      0.9.1 chosen over headless_chrome 1.0.22; the engine binary
+      = a pinned chromium, not vendored — the provenance named +
+      the startup version check; the pure-Rust doctrine ends at
+      the browser engine); RX — the typed §12.8 vocabulary (the
+      six response shapes + the not-inspected-original record +
+      the second-verifier rule); the OPT-IN gate — the packs ship
+      COMPILED but DISABLED, the enablement is a named recorded
+      configuration change, the resolve never returns a disabled
+      pack, the default is OFF everywhere. No code changed.
+      Frontier → `.5.2`.
 
   - ID: `PHASE-4.5.2`
     Status: `proposed`
@@ -753,7 +773,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.5.1` | `proposed` | `.5` decomposed at the census seams — NOTHING exists for the browser/credential-broker/agent-mediated acquisition (the R3/R5/RX rows + §12.8 have no machinery); the three contracts + the OPT-IN gate execute now |
+| 1 | `PHASE-4.5.2` | `proposed` | `.5.1` done — the three contracts + the OPT-IN gate decided (`docs/decisions/2026-09-07_r5r3rx-contracts-opt-in.md`: the disclosed broker, the deployment-checked browser, the §12.8 vocabulary, off by default); the gated machinery executes now |
 
 ## Changelog
 
@@ -786,6 +806,12 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.5.1` done — the three contracts + the OPT-IN
+  gate: the local disclosed credential broker, the bounded
+  browser with the deployment-checked `vm_container` requirement
+  (chromiumoxide measured), the typed §12.8 vocabulary, and the
+  off-by-default enablement — durable in `docs/decisions/2026-
+  09-07_r5r3rx-contracts-opt-in.md`; no code; frontier → `.5.2`.
 - `2026-09-07`: `.5` decomposed at the census seams — NOTHING
   exists for the browser/credential-broker/agent-mediated
   acquisition (no crate in the lock; only the `.1.2` opaque
@@ -1363,6 +1389,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.5.1` | docs-only (no code paths changed): the browser census measured (`cargo add --dry-run chromiumoxide/headless_chrome` → 0.9.1/1.0.22); `make gate` → 13/13 at commit | the three contracts + the OPT-IN gate; frontier → `.5.2` |
 | `2026-09-07` | `PHASE-4.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R3/R5/RX census + the contract-seam decomposition (`.5.1` the contracts + the opt-in gate → `.5.2` the machinery → `.5.3` the receipt + the wiring); frontier → `.5.1` |
 | `2026-09-07` | `PHASE-4.4.3` | `cargo test -p reasonbraid-server --lib extraction` → `test result: ok. 1 passed` (the spawner roundtrip against the REAL worker binary: the Derivation response + the surfaced refusal); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r2_resolver` → `test result: ok. 1 passed` (the hinted reference ranks the R2 built-in; the pipeline's acquisition leg names the loopback class; the hintless reference keeps the R0 path; the stricter requirement explicit); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg443_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R2 pack wired; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-4.4.2` | `cargo test -p reasonbraid-extract` → `test result: ok. 9 passed` (the per-format extractions + refusals + the two stdio roundtrips spawning the built binary); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg442_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the extraction worker; frontier → `.4.3` |
@@ -1386,6 +1413,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.5.1` | `REASONBRAID-PHASE4-0019` | the R3/R5/RX contracts + the OPT-IN gate (the disclosed broker, the deployment-checked browser, the §12.8 vocabulary — the decision record) |
 | `PHASE-4.5` | `REASONBRAID-PHASE4-0018` | the R3/R5/RX lane decomposed at the census seams (nothing exists — the contracts/machinery/wiring are the greenfield) |
 | `PHASE-4.4.3` | `REASONBRAID-PHASE4-0017` | the R2 receipt + the pack wiring (the hinted references pipeline acquire→extract — the Derivation receipt) — **`.4` COMPLETE** |
 | `PHASE-4.4.2` | `REASONBRAID-PHASE4-0016` | the extraction worker (the stdio protocol + the four parsers + the named refusals — the fresh-process quarantine) |

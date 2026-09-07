@@ -85,6 +85,7 @@
 - [`2026-09-07_phase2-subtraction-record.md`](docs/decisions/2026-09-07_phase2-subtraction-record.md)
 - [`2026-09-07_r1-git-acquisition-contract.md`](docs/decisions/2026-09-07_r1-git-acquisition-contract.md)
 - [`2026-09-07_r2-extraction-contract.md`](docs/decisions/2026-09-07_r2-extraction-contract.md)
+- [`2026-09-07_r5r3rx-contracts-opt-in.md`](docs/decisions/2026-09-07_r5r3rx-contracts-opt-in.md)
 - [`2026-09-07_verification-set-coverage.md`](docs/decisions/2026-09-07_verification-set-coverage.md)
 - [`2026-09-07_workload-identity-issuance.md`](docs/decisions/2026-09-07_workload-identity-issuance.md)
 - [`2026-09-07_workspace-single-rustls-provider.md`](docs/decisions/2026-09-07_workspace-single-rustls-provider.md)

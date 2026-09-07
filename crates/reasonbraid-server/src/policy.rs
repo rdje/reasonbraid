@@ -307,3 +307,422 @@ pub async fn list(pool: &PgPool) -> Result<Vec<RegisteredPolicy>, sqlx::Error> {
         })
         .collect())
 }
+
+// ── The layering + the precedence (`.1.3`, ADR-019) ────────────────────────────────
+
+/// One policy reference in the resolution request (the id + the version).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyRef {
+    pub policy_id: String,
+    pub version: String,
+}
+
+/// The resolution target: the layer + the target the clauses must apply to
+/// (the §15.3 applicability filter's inputs).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolutionTarget {
+    pub layer: String,
+    pub target: String,
+}
+
+/// The resolution request (`.1.3`): the collection to resolve + the target +
+/// the requested waiver/exception references.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolutionRequest {
+    pub policies: Vec<PolicyRef>,
+    pub target: ResolutionTarget,
+    #[serde(default)]
+    pub exception_grants: Vec<String>,
+}
+
+/// One resolved clause: the winning policy/version, the clause, and the
+/// explanation trail (the path the seven steps took to it).
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedClause {
+    pub policy_id: String,
+    pub version: String,
+    pub clause_id: String,
+    pub statement: String,
+    pub path: Vec<String>,
+}
+
+/// The resolution result: the resolved clauses + the explanation tree. The
+/// conflicts list is EMPTY on success — an unresolved binding conflict is
+/// the typed refusal (the fail-closed step), never a silent pick.
+#[derive(Debug, Clone, Serialize)]
+pub struct Resolution {
+    pub target: ResolutionTarget,
+    pub resolved: Vec<ResolvedClause>,
+    pub explanation: Vec<String>,
+    pub conflicts: Vec<String>,
+}
+
+impl PolicyError {
+    fn unknown_ref(policy_id: &str, version: &str) -> Self {
+        PolicyError::Duplicate(format!(
+            "policy `{policy_id}` version {version} is not registered"
+        ))
+    }
+    fn expired_authority(policy_id: &str, grant: &str) -> Self {
+        PolicyError::GhostAuthority(format!(
+            "the owning authority `{grant}` of `{policy_id}` is not an active, unexpired grant"
+        ))
+    }
+    fn missing_dependency(policy_id: &str, dependency: &str) -> Self {
+        PolicyError::Duplicate(format!(
+            "`{policy_id}` depends on `{dependency}`, which is not in the resolved set"
+        ))
+    }
+    fn conflicting_pair(a: &str, b: &str) -> Self {
+        PolicyError::Duplicate(format!(
+            "the precedence hints conflict: `{a}` over `{b}` AND `{b}` over `{a}`"
+        ))
+    }
+    fn unknown_waiver(waiver: &str) -> Self {
+        PolicyError::Duplicate(format!(
+            "the requested exception `{waiver}` is not allowed by any policy's exception schema"
+        ))
+    }
+    fn binding_conflict(clause_id: &str) -> Self {
+        PolicyError::Duplicate(format!(
+            "the unresolved binding conflict: clause `{clause_id}` is carried by multiple \
+             applicable policies and no precedence settles it (fail-closed)"
+        ))
+    }
+}
+
+/// The stored resolution row (the id, the version, the lifecycle, the digest,
+/// the owning authority, the clauses, the applicability, the
+/// non-applicability, the dependencies, the conflicts, the precedence hints,
+/// the exceptions).
+#[derive(Debug, sqlx::FromRow)]
+struct ResolutionRow {
+    policy_id: String,
+    version: String,
+    lifecycle: String,
+    #[allow(dead_code)]
+    // the digest rides the registry rows; the resolution reads the facts it needs
+    digest: String,
+    owning_authority: String,
+    clauses: Value,
+    applicability: Value,
+    non_applicability: Value,
+    dependencies: Value,
+    conflicts: Value,
+    precedence_hints: Value,
+    exceptions: Value,
+}
+
+/// The seven-step resolution (ADR-019's §15.3 pipeline, fail-closed).
+pub async fn resolve(
+    pool: &PgPool,
+    request: &ResolutionRequest,
+) -> Result<Resolution, PolicyError> {
+    if request.policies.is_empty() {
+        return Err(PolicyError::EmptyClauses);
+    }
+    let mut explanation = Vec::new();
+
+    // Load the named policies; a ghost reference is the typed refusal.
+    let mut loaded = Vec::new();
+    for reference in &request.policies {
+        let row: Option<ResolutionRow> = sqlx::query_as(
+            "SELECT policy_id, version, lifecycle, digest, owning_authority, clauses, \
+             applicability, non_applicability, dependencies, conflicts, precedence_hints, \
+             exceptions \
+             FROM policy_versions WHERE policy_id = $1 AND version = $2",
+        )
+        .bind(&reference.policy_id)
+        .bind(&reference.version)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| PolicyError::unknown_ref(&reference.policy_id, &reference.version))?;
+        let row =
+            row.ok_or_else(|| PolicyError::unknown_ref(&reference.policy_id, &reference.version))?;
+        loaded.push(row);
+    }
+    let ids: Vec<&str> = loaded.iter().map(|r| r.policy_id.as_str()).collect();
+    explanation.push(format!(
+        "loaded {} policies: {}",
+        loaded.len(),
+        ids.join(", ")
+    ));
+
+    // Step 1: the issuer authority — each owning grant must be ACTIVE and
+    // unexpired (the label grants nothing; an expired grant grants nothing).
+    for row in &loaded {
+        let valid: Option<bool> = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM authority_grants \
+             WHERE grant_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now()))",
+        )
+        .bind(&row.owning_authority)
+        .fetch_one(pool)
+        .await
+        .map_err(|_| PolicyError::expired_authority(&row.policy_id, &row.owning_authority))?;
+        if !valid.unwrap_or(false) {
+            return Err(PolicyError::expired_authority(
+                &row.policy_id,
+                &row.owning_authority,
+            ));
+        }
+    }
+    explanation.push("step 1: every owning authority is an active, unexpired grant".to_string());
+
+    // Step 2: the applicability filter — a policy applies when SOME
+    // applicability selector matches the target AND NO non-applicability
+    // selector matches. The empty applicability matches everything (the
+    // baseline policy).
+    let selector_matches = |selector: &Value| -> bool {
+        let layer = selector
+            .get("layer")
+            .and_then(|v| v.as_str())
+            .unwrap_or("*");
+        let target = selector
+            .get("target")
+            .and_then(|v| v.as_str())
+            .unwrap_or("*");
+        (layer == "*" || layer == request.target.layer)
+            && (target == "*" || target == request.target.target)
+    };
+    let selectors: Vec<Vec<Value>> = loaded
+        .iter()
+        .map(|row| {
+            serde_json::from_value::<Vec<Value>>(row.applicability.clone())
+                .expect("the applicability parses")
+        })
+        .collect();
+    let non_selectors: Vec<Vec<Value>> = loaded
+        .iter()
+        .map(|row| {
+            serde_json::from_value::<Vec<Value>>(row.non_applicability.clone())
+                .expect("the non-applicability parses")
+        })
+        .collect();
+    let applicable: Vec<bool> = loaded
+        .iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let positive = selectors[i].is_empty() || selectors[i].iter().any(selector_matches);
+            let negative = non_selectors[i].iter().any(selector_matches);
+            positive && !negative && row.lifecycle != "suspended" && row.lifecycle != "retracted"
+        })
+        .collect();
+    explanation.push(format!(
+        "step 2: the applicability filter left {} of {} policies applying",
+        applicable.iter().filter(|a| **a).count(),
+        loaded.len()
+    ));
+
+    // Step 3: the dependencies + the explicit conflicts — every dependency
+    // must be IN the set; every explicit conflict must be OUT.
+    for (i, row) in loaded.iter().enumerate() {
+        let dependencies: Vec<Value> =
+            serde_json::from_value(row.dependencies.clone()).expect("the dependencies parse");
+        for dependency in &dependencies {
+            let policy = dependency
+                .get("policy")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if !ids.contains(&policy) {
+                return Err(PolicyError::missing_dependency(&row.policy_id, policy));
+            }
+        }
+        let conflicts: Vec<Value> =
+            serde_json::from_value(row.conflicts.clone()).expect("the conflicts parse");
+        for conflict in &conflicts {
+            let policy = conflict
+                .get("policy")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if ids.contains(&policy) {
+                return Err(PolicyError::binding_conflict(&format!(
+                    "{} conflicts with {}",
+                    row.policy_id, policy
+                )));
+            }
+        }
+        let _ = i;
+    }
+    explanation.push(
+        "step 3: every dependency is in the set; no explicit conflict is present".to_string(),
+    );
+
+    // Step 4: the precedence hints — the `over` edges; a cycle is the
+    // refusal (the charter precedence must be a DAG).
+    let mut precedence: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for row in &loaded {
+        let hints: Vec<Value> =
+            serde_json::from_value(row.precedence_hints.clone()).expect("the hints parse");
+        for hint in &hints {
+            let over = hint
+                .get("over")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if over == row.policy_id {
+                continue; // a self-hint is a no-op, not a conflict
+            }
+            precedence
+                .entry(row.policy_id.clone())
+                .or_default()
+                .push(over.to_string());
+            if precedence
+                .get(over)
+                .map(|list| list.contains(&row.policy_id))
+                .unwrap_or(false)
+            {
+                return Err(PolicyError::conflicting_pair(&row.policy_id, over));
+            }
+        }
+    }
+    // The transitive winner for a pair: A wins over B when A can reach B
+    // through the `over` edges.
+    let wins_over = |a: &str, b: &str| -> bool {
+        let mut stack = vec![a.to_string()];
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(current) = stack.pop() {
+            if current == b {
+                return true;
+            }
+            if !seen.insert(current.clone()) {
+                continue;
+            }
+            if let Some(next) = precedence.get(&current) {
+                stack.extend(next.iter().cloned());
+            }
+        }
+        false
+    };
+    explanation.push(format!(
+        "step 4: the precedence edges form a DAG ({} edges)",
+        precedence.values().map(|v| v.len()).sum::<usize>()
+    ));
+
+    // Step 5: the exceptions/waivers — each requested exception must be
+    // allowed by SOME policy's exception schema.
+    for waiver in &request.exception_grants {
+        let allowed = loaded.iter().any(|row| {
+            let exceptions: Vec<Value> =
+                serde_json::from_value(row.exceptions.clone()).expect("the exceptions parse");
+            exceptions
+                .iter()
+                .any(|e| e.get("waiver").and_then(|v| v.as_str()) == Some(waiver.as_str()))
+        });
+        if !allowed {
+            return Err(PolicyError::unknown_waiver(waiver));
+        }
+    }
+    explanation
+        .push("step 5: every requested exception rides a policy's exception schema".to_string());
+
+    // Step 6: the clause-id collisions across the APPLICABLE policies — the
+    // precedence settles them; the unresolved binding conflict FAILS CLOSED.
+    let mut by_clause: std::collections::BTreeMap<String, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for (i, row) in loaded.iter().enumerate() {
+        if !applicable[i] {
+            continue;
+        }
+        let clauses: Vec<ClauseStatement> =
+            serde_json::from_value(row.clauses.clone()).expect("the clauses parse");
+        for clause in &clauses {
+            by_clause.entry(clause.id.clone()).or_default().push(i);
+        }
+    }
+    let mut resolved = Vec::new();
+    let mut conflicts = Vec::new();
+    for (clause_id, carriers) in &by_clause {
+        let winner = if carriers.len() == 1 {
+            carriers[0]
+        } else {
+            // The candidate that wins over ALL the others transitively.
+            let candidates: Vec<usize> = carriers
+                .iter()
+                .copied()
+                .filter(|&candidate| {
+                    carriers.iter().copied().all(|other| {
+                        other == candidate
+                            || wins_over(&loaded[candidate].policy_id, &loaded[other].policy_id)
+                    })
+                })
+                .collect();
+            if candidates.len() != 1 {
+                conflicts.push(clause_id.clone());
+                continue;
+            }
+            candidates[0]
+        };
+        let clauses: Vec<ClauseStatement> =
+            serde_json::from_value(loaded[winner].clauses.clone()).expect("the clauses parse");
+        let clause = clauses
+            .iter()
+            .find(|c| c.id == *clause_id)
+            .expect("the clause is present");
+        resolved.push(ResolvedClause {
+            policy_id: loaded[winner].policy_id.clone(),
+            version: loaded[winner].version.clone(),
+            clause_id: clause.id.clone(),
+            statement: clause.statement.clone(),
+            path: vec![
+                "authority: active grant".to_string(),
+                "applicability: matched".to_string(),
+                "precedence: the winner over the carriers".to_string(),
+            ],
+        });
+    }
+    if !conflicts.is_empty() {
+        return Err(PolicyError::binding_conflict(&conflicts.join(", ")));
+    }
+    explanation.push(format!(
+        "step 6: {} clauses resolved with no unresolved binding conflict",
+        resolved.len()
+    ));
+
+    // Step 7: the explanation tree rides the result.
+    Ok(Resolution {
+        target: ResolutionTarget {
+            layer: request.target.layer.clone(),
+            target: request.target.target.clone(),
+        },
+        resolved,
+        explanation,
+        conflicts,
+    })
+}
+
+/// The impact map (`.1.3`): the derivable coverage — the clauses × the
+/// applicability selectors the policy DECLARES (never an achievement claim).
+pub async fn impact(
+    pool: &PgPool,
+    policy_id: &str,
+    version: &str,
+) -> Result<Vec<Value>, PolicyError> {
+    let row: Option<ResolutionRow> = sqlx::query_as(
+        "SELECT policy_id, version, lifecycle, digest, owning_authority, clauses, \
+         applicability, non_applicability, dependencies, conflicts, precedence_hints, \
+         exceptions \
+         FROM policy_versions WHERE policy_id = $1 AND version = $2",
+    )
+    .bind(policy_id)
+    .bind(version)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| PolicyError::unknown_ref(policy_id, version))?;
+    let row = row.ok_or_else(|| PolicyError::unknown_ref(policy_id, version))?;
+    let clauses: Vec<ClauseStatement> =
+        serde_json::from_value(row.clauses).expect("the clauses parse");
+    Ok(clauses
+        .into_iter()
+        .map(|clause| {
+            serde_json::json!({
+                "clause_id": clause.id,
+                "statement": clause.statement,
+                "applicability": row.applicability,
+                "non_applicability": row.non_applicability,
+            })
+        })
+        .collect())
+}

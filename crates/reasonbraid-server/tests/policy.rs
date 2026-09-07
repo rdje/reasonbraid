@@ -407,3 +407,274 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     .await;
     assert_eq!(status, 401, "the unenrolled register refuses");
 }
+
+#[tokio::test]
+async fn the_seven_step_resolution_fails_closed() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "res-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    let register = |policy: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move { post(&client, &base, "/v1/policies", &human_id, &policy).await }
+    };
+    let resolve = |request: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move { post(&client, &base, "/v1/policies/resolve", &human_id, &request).await }
+    };
+    let base_policy = |policy_id: &str, version: &str, clauses: Value, extra: Value| {
+        json!({
+            "policy_id": policy_id,
+            "version": version,
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": policy_id,
+            "owning_authority": grant_id,
+            "clauses": clauses,
+            "applicability": extra.get("applicability").cloned().unwrap_or(json!([])),
+            "dependencies": extra.get("dependencies").cloned().unwrap_or(json!([])),
+            "conflicts": extra.get("conflicts").cloned().unwrap_or(json!([])),
+            "precedence_hints": extra.get("precedence_hints").cloned().unwrap_or(json!([])),
+            "exceptions": extra.get("exceptions").cloned().unwrap_or(json!([])),
+        })
+    };
+
+    // The org baseline (the c1 + c2 clauses; one allowed waiver) + the
+    // project policy (the c1 override via the precedence hint + the
+    // dependency on the baseline).
+    let (status, _) = register(base_policy(
+        "org-baseline",
+        "1.0.0",
+        json!([
+            { "id": "c1", "statement": "every thread declares its objective" },
+            { "id": "c2", "statement": "every publication names its authority" },
+        ]),
+        json!({ "exceptions": [ { "waiver": "wv-1" } ] }),
+    ))
+    .await;
+    assert_eq!(status, 200, "the baseline registers");
+    let (status, _) = register(base_policy(
+        "project-x",
+        "1.0.0",
+        json!([
+            { "id": "c1", "statement": "the project requires the evidence gate" },
+        ]),
+        json!({
+            "applicability": [ { "layer": "project", "target": "prj-x" } ],
+            "precedence_hints": [ { "over": "org-baseline" } ],
+            "dependencies": [ { "policy": "org-baseline", "version": "1.0.0" } ],
+        }),
+    ))
+    .await;
+    assert_eq!(status, 200, "the project registers");
+
+    // 1. The happy resolution: both policies apply; the c1 collision settles
+    // by the precedence (project-x over the baseline); c2 rides the
+    // baseline; the explanation tree carries the seven steps.
+    let (status, resolved) = resolve(json!({
+        "policies": [
+            { "policy_id": "org-baseline", "version": "1.0.0" },
+            { "policy_id": "project-x", "version": "1.0.0" },
+        ],
+        "target": { "layer": "project", "target": "prj-x" },
+    }))
+    .await;
+    assert_eq!(status, 200, "the resolution: {resolved}");
+    let clauses = resolved["resolved"].as_array().unwrap();
+    assert_eq!(clauses.len(), 2, "{resolved}");
+    let c1 = clauses
+        .iter()
+        .find(|c| c["clause_id"] == json!("c1"))
+        .unwrap();
+    assert_eq!(c1["policy_id"], json!("project-x"), "the precedence won");
+    assert_eq!(
+        c1["statement"],
+        json!("the project requires the evidence gate")
+    );
+    let c2 = clauses
+        .iter()
+        .find(|c| c["clause_id"] == json!("c2"))
+        .unwrap();
+    assert_eq!(c2["policy_id"], json!("org-baseline"));
+    assert_eq!(resolved["explanation"].as_array().unwrap().len(), 7);
+    assert_eq!(resolved["conflicts"].as_array().unwrap().len(), 0);
+
+    // 2. The FAIL-CLOSED: the same clause id without the precedence is the
+    // typed refusal (never a silent pick).
+    let (status, _) = register(base_policy(
+        "project-y",
+        "1.0.0",
+        json!([
+            { "id": "c1", "statement": "a rival objective clause" },
+        ]),
+        json!({
+            "applicability": [ { "layer": "project", "target": "prj-y" } ],
+        }),
+    ))
+    .await;
+    assert_eq!(status, 200, "the rival registers");
+    let (status, refused) = resolve(json!({
+        "policies": [
+            { "policy_id": "org-baseline", "version": "1.0.0" },
+            { "policy_id": "project-y", "version": "1.0.0" },
+        ],
+        "target": { "layer": "project", "target": "prj-y" },
+    }))
+    .await;
+    assert_eq!(status, 400, "the binding conflict refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("binding conflict"),
+        "{refused}"
+    );
+
+    // 3. The missing dependency refuses.
+    let (status, _) = register(base_policy(
+        "project-z",
+        "1.0.0",
+        json!([ { "id": "cz", "statement": "z" } ]),
+        json!({
+            "dependencies": [ { "policy": "missing-policy", "version": "1.0.0" } ],
+        }),
+    ))
+    .await;
+    assert_eq!(status, 200, "the dependent registers");
+    let (status, refused) = resolve(json!({
+        "policies": [
+            { "policy_id": "org-baseline", "version": "1.0.0" },
+            { "policy_id": "project-z", "version": "1.0.0" },
+        ],
+        "target": { "layer": "project", "target": "prj-z" },
+    }))
+    .await;
+    assert_eq!(status, 400, "the missing dependency refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("depends on"),
+        "{refused}"
+    );
+
+    // 4. The requested exception must ride a policy's exception schema.
+    let (status, refused) = resolve(json!({
+        "policies": [ { "policy_id": "org-baseline", "version": "1.0.0" } ],
+        "target": { "layer": "organization", "target": "*" },
+        "exception_grants": ["wv-9"],
+    }))
+    .await;
+    assert_eq!(status, 400, "the unknown waiver refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("exception schema"),
+        "{refused}"
+    );
+    let (status, resolved) = resolve(json!({
+        "policies": [ { "policy_id": "org-baseline", "version": "1.0.0" } ],
+        "target": { "layer": "organization", "target": "*" },
+        "exception_grants": ["wv-1"],
+    }))
+    .await;
+    assert_eq!(status, 200, "the allowed waiver resolves: {resolved}");
+
+    // 5. A ghost policy reference refuses.
+    let (status, refused) = resolve(json!({
+        "policies": [ { "policy_id": "ghost", "version": "1.0.0" } ],
+        "target": { "layer": "organization", "target": "*" },
+    }))
+    .await;
+    assert_eq!(status, 400, "the ghost reference refuses: {refused}");
+
+    // 6. A SUSPENDED policy is excluded by the applicability step (no
+    // conflict, no clause).
+    let (status, _) = register(json!({
+        "policy_id": "suspended-p",
+        "version": "1.0.0",
+        "digest": DIGEST,
+        "lifecycle": "suspended",
+        "title": "suspended-p",
+        "owning_authority": grant_id,
+        "clauses": [ { "id": "c1", "statement": "a suspended clause" } ],
+        "applicability": [ { "layer": "organization", "target": "*" } ],
+    }))
+    .await;
+    assert_eq!(status, 200, "the suspended registers");
+    let (status, resolved) = resolve(json!({
+        "policies": [
+            { "policy_id": "org-baseline", "version": "1.0.0" },
+            { "policy_id": "suspended-p", "version": "1.0.0" },
+        ],
+        "target": { "layer": "organization", "target": "*" },
+    }))
+    .await;
+    assert_eq!(status, 200, "the suspended set resolves: {resolved}");
+    let clauses = resolved["resolved"].as_array().unwrap();
+    assert_eq!(
+        clauses.len(),
+        2,
+        "the suspended policy contributes nothing: {resolved}"
+    );
+
+    // 7. The precedence CYCLE refuses (the DAG check).
+    let (status, _) = register(base_policy(
+        "cycle-a",
+        "1.0.0",
+        json!([ { "id": "ca", "statement": "a" } ]),
+        json!({ "precedence_hints": [ { "over": "cycle-b" } ] }),
+    ))
+    .await;
+    assert_eq!(status, 200, "cycle-a registers");
+    let (status, _) = register(base_policy(
+        "cycle-b",
+        "1.0.0",
+        json!([ { "id": "cb", "statement": "b" } ]),
+        json!({ "precedence_hints": [ { "over": "cycle-a" } ] }),
+    ))
+    .await;
+    assert_eq!(status, 200, "cycle-b registers");
+    let (status, refused) = resolve(json!({
+        "policies": [
+            { "policy_id": "cycle-a", "version": "1.0.0" },
+            { "policy_id": "cycle-b", "version": "1.0.0" },
+        ],
+        "target": { "layer": "organization", "target": "*" },
+    }))
+    .await;
+    assert_eq!(status, 400, "the precedence cycle refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("conflict"),
+        "{refused}"
+    );
+
+    // 8. The impact map: the clauses × the declared coverage.
+    let (status, impact) = get(
+        &client,
+        &base,
+        "/v1/policies/org-baseline/1.0.0/impact",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the impact map reads: {impact}");
+    let map = impact.as_array().unwrap();
+    assert_eq!(map.len(), 2, "{impact}");
+    assert_eq!(map[0]["clause_id"], json!("c1"));
+    let (status, refused) = get(&client, &base, "/v1/policies/ghost/1.0.0/impact", &human_id).await;
+    assert_eq!(status, 400, "the ghost impact refuses: {refused}");
+}

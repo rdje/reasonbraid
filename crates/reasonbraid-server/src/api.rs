@@ -470,6 +470,11 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(record_routing_recommendation).get(list_routing_recommendations),
         )
         .route("/v1/policies", post(register_policy).get(list_policies))
+        .route("/v1/policies/resolve", post(resolve_policies))
+        .route(
+            "/v1/policies/{policy_id}/{version}/impact",
+            get(policy_impact),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -2278,6 +2283,49 @@ async fn list_policies(
         ));
     }
     Ok(Json(crate::policy::list(&state.pool).await?))
+}
+
+/// `POST /v1/policies/resolve` — the seven-step layered resolution (`.1.3`):
+/// the issuer authority, the applicability, the dependencies/conflicts, the
+/// precedence, the exceptions, the FAIL-CLOSED binding conflict, and the
+/// explanation tree.
+async fn resolve_policies(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::policy::ResolutionRequest>,
+) -> Result<Json<crate::policy::Resolution>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal resolves no policy set",
+        ));
+    }
+    match crate::policy::resolve(&state.pool, &request).await {
+        Ok(resolution) => Ok(Json(resolution)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policies/{id}/{version}/impact` — the impact map (`.1.3`): the
+/// derivable coverage — the clauses × the declared applicability (never an
+/// achievement claim).
+async fn policy_impact(
+    State(state): State<Arc<ApiState>>,
+    Path((policy_id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no impact map",
+        ));
+    }
+    match crate::policy::impact(&state.pool, &policy_id, &version).await {
+        Ok(map) => Ok(Json(map)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

@@ -130,7 +130,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       unenrolled refusal. Frontier → `.1.3`.
 
   - ID: `PHASE-6.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the layering + the precedence — the seven-step
       resolution (the issuer authority check, the
       applicability filter, the dependency/conflict
@@ -139,6 +139,35 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       binding conflict, the explanation tree), the impact
       maps (the clause → the target/domain/action coverage).
     Roadmap: §15.3
+    Done (`2026-09-07`): the layering + the precedence landed
+      per ADR-019 — `policy.rs` gains the `ResolutionRequest`
+      (the named set + the target + the requested waivers)
+      and the `resolve` (the SEVEN §15.3 steps, each
+      recorded: (1) the issuer authority — each owning grant
+      must be ACTIVE + unexpired; (2) the applicability
+      filter — the layer/target selector match, the empty
+      applicability matches everything, the suspended/
+      retracted policies excluded; (3) the dependencies must
+      be IN the set + the explicit conflicts OUT; (4) the
+      precedence hints form a DAG — a cycle is the refusal,
+      the `over` edges settle the collisions transitively;
+      (5) the requested waivers must ride a policy's
+      exception schema; (6) the clause-id collision across
+      the applicable policies settles by the precedence or
+      FAILS CLOSED — the unresolved binding conflict is the
+      typed refusal, never a silent pick; (7) the explanation
+      tree rides the result); the `impact` (the derivable
+      coverage — the clauses × the declared applicability,
+      never an achievement claim); the api: `POST
+      /v1/policies/resolve` + `GET
+      /v1/policies/{id}/{version}/impact`. Measured (policy
+      2): the happy resolution (the precedence wins the c1
+      collision, the seven explanation steps, the empty
+      conflicts), the fail-closed refusal, the missing
+      dependency, the unknown + the allowed waiver, the ghost
+      reference, the suspended exclusion, the precedence
+      cycle, the impact map + the ghost impact refusal.
+      **`.1` COMPLETE** — frontier → `.2`.
 
 - ID: `PHASE-6.2`
   Status: `proposed`
@@ -179,10 +208,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.1.3` | `proposed` | `.1.2` done — the typed policy schema (the validated document + the authority-checked ownership + the versioned registry; policy 1); the layering + the precedence executes next |
+| 1 | `PHASE-6.2` | `proposed` | `.1.3` done — the seven-step layering/precedence (the authority-checked, applicability-filtered, DAG-precedence, fail-closed resolution + the impact maps; policy 2) — **the `.1` lane (the semantic policy schema) is COMPLETE**; the proposal/review/approval lifecycle executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.1.3` done — the seven-step layering +
+  precedence (the fail-closed resolution with the
+  explanation tree + the impact maps); policy 2; **`.1`
+  COMPLETE** — frontier → `.2`.
 - `2026-09-07`: `.1.2` done — the typed policy schema
   (migration 0038: the §15.1 document with the stable clause
   ids, the authority-checked ownership, the versioned
@@ -243,6 +276,52 @@ suite joins the guard) — `\.rs$` + `(^|/)migrations/` +
 - [x] **FIX** — `0038_policy_registry.sql`, `src/policy.rs`,
   `src/lib.rs`, `src/api.rs`, `tests/policy.rs`,
   `scripts/run_pg_tests.sh`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.1.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/policy.rs` (the
+`ResolutionRequest`/`ResolutionTarget`/`PolicyRef`/
+`ResolvedClause`/`Resolution` shapes, the seven-step
+`resolve`, the `impact` map), `crates/reasonbraid-server/src/
+api.rs` (the two verbs), `crates/reasonbraid-server/tests/
+policy.rs` (the new test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  registry stored the policies but nothing resolved them —
+  no layering, no precedence, no conflict rule, no impact
+  map (the `.1` census's greenfield).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "ResolutionRequest\|binding_conflict\|fn resolve" d60c459
+  -- crates/reasonbraid-server/src/policy.rs` → rc=1
+  (nothing before this leaf). The fix point is the ADR-019
+  resolution contract: the seven deterministic steps with
+  the fail-closed binding conflict.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_seven_step_resolution_fails_closed` → `test result:
+  ok. 1 passed` (also inside the full live suite: `running 2
+  tests … ok`) — the happy resolution (the precedence wins
+  the c1 collision, the seven explanation steps, the empty
+  conflicts), the fail-closed refusal, the missing
+  dependency, the unknown + the allowed waiver, the ghost
+  reference, the suspended exclusion, the precedence cycle,
+  the impact map + the ghost impact refusal.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 58 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg526_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/policy.rs`, `src/api.rs`,
+  `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

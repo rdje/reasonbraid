@@ -1023,10 +1023,10 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.7.1` | `proposed` | `.7` decomposed at the census seams — the explicit-failure machinery exists and is measured per-lane, but the G4 gate has no consolidated suite and no subtraction record; the hostile-content suite executes now |
+| 1 | `PHASE-4.7.2` | `proposed` | `.7.1` done — the hostile suite (profiles 23: eight refusal scenarios in one gate-citable test + the worker's nine offline refusals); the G4 gate record + the subtraction record execute now |
 
   - ID: `PHASE-4.7.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the hostile-content suite — the consolidated G4 proof:
       ONE profiles-style suite assembling the hostile scenarios
       end-to-end (the loopback/private/mapped refusals through
@@ -1036,6 +1036,18 @@ of a URI is not a promise the core can resolve it.
       scheme/type/kind refusals) — the gate's citation is ONE
       test result, not a per-lane hunt.
     Gate: G4 (the suite is the evidence)
+    Done (`2026-09-07`): the hostile suite landed (profiles 23:
+      `the_g4_hostile_suite_names_every_refusal`) — EIGHT hostile
+      scenarios in ONE gate-citable test: the loopback + the
+      private + the mapped-form refusals through the resolution
+      path (each names its class), the userinfo refusal, the
+      unsupported scheme's explicit unresolvable-now, the fake
+      digest's 400 (the content-addressing verified), the
+      unknown assessment kind's vocabulary refusal, and the
+      forged-field 422 (the deny-unknown boundary). The worker-
+      side hostile cases (the zip bomb, the traversal, the
+      encrypted/JS PDFs) are the extract crate's nine measured
+      refusals — the gate cites both. Frontier → `.7.2`.
 
   - ID: `PHASE-4.7.2`
     Status: `proposed`
@@ -1081,6 +1093,10 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.7.1` done — the hostile-content suite
+  (profiles 23: the eight refusal scenarios in one
+  gate-citable test + the worker's nine offline refusals);
+  frontier → `.7.2`.
 - `2026-09-07`: `.7` decomposed at the census seams — the
   explicit-failure machinery exists and is measured per-lane
   (the refusal matrices, the budget trips, the fake
@@ -1252,6 +1268,38 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.7.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/tests/profiles.rs` (the G4 suite —
+profiles 23) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the `.7` census: the refusals exist
+  per-lane, but the G4 gate has no consolidated suite to cite.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the hostile scenarios were
+  scattered across the lanes — `git grep -c "the_g4_hostile"
+  562a937 -- crates/` → rc=1 (nothing before this leaf). The fix
+  point is ONE gate-citable test assembling them.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_g4_hostile_suite` → `test result: ok. 1 passed`
+  — the loopback + the private + the mapped-form refusals (each
+  names its class), the userinfo refusal, the unsupported
+  scheme's unresolvable-now, the fake digest's 400, the unknown
+  kind's vocabulary refusal, the forged-field 422. The worker's
+  hostile cases ride the extract crate's nine offline refusals.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg471_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.6.4)
 
@@ -1955,6 +2003,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_g4_hostile_suite` → `test result: ok. 1 passed` (the eight refusal scenarios); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg471_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the hostile-content suite; frontier → `.7.2` |
 | `2026-09-07` | `PHASE-4.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the G4 census + the suite/record decomposition (`.7.1` the hostile-content suite → `.7.2` the gate record + the subtraction record); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-4.6.4` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_retention_enforcement` → `test result: ok. 1 passed` (the license + the horizon, the staleness, the `at`-driven expiry, the replay-refresh); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg464_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the license/retention + the freshness; **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-4.6.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_claim_assessments` → `test result: ok. 1 passed` (the true excerpt accepts + the replay, the FAKE excerpt refuses, the unknown kind names itself, the two read surfaces); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg463_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the claim-evidence graph + the citation validation; frontier → `.6.4` |
@@ -1987,6 +2036,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.7.1` | `REASONBRAID-PHASE4-0028` | the G4 hostile-content suite (eight refusal scenarios in one gate-citable test) |
 | `PHASE-4.7` | `REASONBRAID-PHASE4-0027` | the G4 exit decomposed at the census seams (the suite + the gate record) |
 | `PHASE-4.6.4` | `REASONBRAID-PHASE4-0026` | the license/retention + the freshness (the TTL enforcement + the staleness + the replay-refresh) — **`.6` COMPLETE** |
 | `PHASE-4.6.3` | `REASONBRAID-PHASE4-0025` | the claim-evidence graph + the citation validation (the excerpt must be in the bytes — citation existence alone never satisfies the gate) |

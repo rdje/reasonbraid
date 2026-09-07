@@ -19,20 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.7.1` (packs R0 + R1 + R2
-  COMPLETE; the `.5` lane COMPLETE; the `.6` lane COMPLETE; `.7`
-  decomposed at the census seams — the refusals exist per-lane,
-  the consolidated proof does not: `.7.1` the hostile-content
-  suite → `.7.2` the G4 gate record + the subtraction record;
-  `MAINT-1` done). Then the G4 exit.
-- **Next action:** execute `PHASE-4.7.1` — the hostile-content
-  suite: ONE profiles-style test assembling the hostile
-  scenarios end-to-end (the loopback/private/mapped refusals
-  through the resolution path, the bomb + the traversal through
-  the worker, the fake digest + the fake excerpt through the
-  evidence store, the budget trips, the unsupported
-  scheme/type/kind refusals) — the gate's citation is ONE test
-  result.
+- **Active tree:** `PHASE-4` → frontier `.7.2` (packs R0 + R1 + R2
+  COMPLETE; the `.5` lane COMPLETE; the `.6` lane COMPLETE;
+  `.7.1` done: the G4 hostile suite (profiles 23); `MAINT-1`
+  done). Then the G4 exit.
+- **Next action:** execute `PHASE-4.7.2` — the G4 gate record +
+  the subtraction record: the gate package (the Phase-1 `.1.8.2`
+  pattern) — the G4 record (Met, with the named deferrals: the
+  R3 container gate, the RX delivery, the media formats beyond
+  the four, the browser-engine provenance) + the §19.8-style
+  subtraction record + the Phase-4 evidence manifest.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

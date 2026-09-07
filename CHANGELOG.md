@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G4 hostile suite ships: eight refusal scenarios, one gate-citable test (`PHASE-4.7.1`)
+
+- `profiles 23` (`the_g4_hostile_suite_names_every_refusal`): the loopback/private/mapped-form refusals through the resolution path, the userinfo refusal, the unsupported scheme's unresolvable-now, the fake digest 400, the unknown assessment kind, the forged-field 422 — each names its reason.
+- The worker-side hostile cases ride the extract crate's nine offline refusals (the bomb, the traversal, the encrypted/JS PDFs). Frontier → `.7.2` (the G4 gate record + the subtraction record).
+
 ## 2026-09-07 — The G4 exit opens: the refusals exist, the consolidated proof does not (`PHASE-4.7`)
 
 - The explicit-failure machinery is measured per-lane (the refusal matrices, the budget trips, the fake digest/excerpt refusals, the unresolvable-now) — but the G4 gate has no consolidated suite and no subtraction record.

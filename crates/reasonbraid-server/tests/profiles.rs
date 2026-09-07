@@ -3551,3 +3551,198 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
     assert_eq!(status, 200, "the refreshed snapshot reads: {stored}");
     assert!(stored["refreshed_at"].is_string(), "{stored}");
 }
+
+/// The G4 hostile-content suite (PHASE-4.7.1): ONE gate-citable test
+/// assembling the hostile scenarios end-to-end — every refusal NAMES its
+/// reason (the unsupported, denied, mutable, and non-reproducible paths
+/// fail explicitly rather than becoming fabricated evidence).
+#[tokio::test]
+async fn the_g4_hostile_suite_names_every_refusal() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "g4-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submit = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("submit request");
+            let parsed: Value = response.json().await.expect("submit json");
+            parsed["resource_id"].as_str().unwrap().to_string()
+        }
+    };
+    let resolve = |resource_id: &str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let resource_id = resource_id.to_owned();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+                .send()
+                .await
+                .expect("resolve request");
+            response.json::<Value>().await.unwrap()
+        }
+    };
+
+    // 1. The loopback literal refuses with its class named.
+    let id = submit(json!({
+        "original_locator": "https://127.0.0.1/hostile",
+        "scheme": "https",
+    }))
+    .await;
+    let resolved = resolve(&id).await;
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "{resolved}"
+    );
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "{resolved}"
+    );
+
+    // 2. The private literal.
+    let id = submit(json!({
+        "original_locator": "https://10.0.0.1/hostile",
+        "scheme": "https",
+    }))
+    .await;
+    let resolved = resolve(&id).await;
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("private"),
+        "{resolved}"
+    );
+
+    // 3. The mapped-form loopback (the `.2.1` re-classification).
+    let id = submit(json!({
+        "original_locator": "https://[::ffff:127.0.0.1]/hostile",
+        "scheme": "https",
+    }))
+    .await;
+    let resolved = resolve(&id).await;
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "{resolved}"
+    );
+
+    // 4. The userinfo URL refuses with its name.
+    let id = submit(json!({
+        "original_locator": "https://user@127.0.0.1/hostile",
+        "scheme": "https",
+    }))
+    .await;
+    let resolved = resolve(&id).await;
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("userinfo_forbidden"),
+        "{resolved}"
+    );
+
+    // 5. The unsupported scheme is the explicit unresolvable-now.
+    let id = submit(json!({
+        "original_locator": "ftp://example.org/hostile",
+        "scheme": "ftp",
+    }))
+    .await;
+    let resolved = resolve(&id).await;
+    assert_eq!(resolved["unresolvable_now"], json!(true), "{resolved}");
+
+    // 6. The fake digest: the snapshot submit refuses (the
+    // content-addressing is verified, not trusted).
+    let id = submit(json!({
+        "original_locator": "https://example.org/g4-evidence",
+        "scheme": "https",
+    }))
+    .await;
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "reference_id": id,
+            "original_locator": "https://example.org/g4-evidence",
+            "final_locator": "https://example.org/g4-evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "byte_length": 10,
+            "media_type": "text/plain",
+            "bytes_base64": "aG9zdGlsZQ==",
+        }))
+        .send()
+        .await
+        .expect("fake-digest request");
+    assert_eq!(response.status().as_u16(), 400, "the fake digest refuses");
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap().contains("hash"),
+        "{refused}"
+    );
+
+    // 7. The unknown assessment kind refuses with its name.
+    let response = client
+        .post(format!("{base}/v1/assessments"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "claim_id": "clm_g4",
+            "snapshot_id": "snp_missing",
+            "assessment": "proves",
+            "author": human_id,
+            "excerpt": "x",
+            "rationale": "nope",
+        }))
+        .send()
+        .await
+        .expect("unknown-kind request");
+    assert_eq!(response.status().as_u16(), 400, "the unknown kind refuses");
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap().contains("vocabulary"),
+        "{refused}"
+    );
+
+    // 8. The unknown-field boundary: the submission's deny-unknown
+    // refuses the forged field.
+    let response = client
+        .post(format!("{base}/v1/resources"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "original_locator": "https://example.org/g4",
+            "scheme": "https",
+            "forged_field": true,
+        }))
+        .send()
+        .await
+        .expect("forged-field request");
+    assert_eq!(response.status().as_u16(), 422, "the forged field refuses");
+}

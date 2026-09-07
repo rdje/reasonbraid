@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G5-exit lane is decomposed at the census seams (`PHASE-5.6`)
+
+- The G5 gate ships as the `.4.4` SERVICE (the calibration + the baseline/threshold gates); the exit needs the PACKAGE: the claim census (the docs' quality claims vs the evidence), the gate record, the §19.8 subtraction record, and the narrowed product claims. Children: `.6.1` the evidence census → `.6.2` the gate package.
+
 ## 2026-09-07 — The shadow recommendation lands — the `.5` lane is COMPLETE (`PHASE-5.5.3`)
 
 - Migration 0037: the recommendation maps a class to an arm drawn from the EXISTING registered profiles (never a raise), names its `.4` evidence reference, and is recorded with `applied: false` on its face — the create boundary keeps resolving the RULE table (the shadow proof). Measured: routing 2. **The `.5` lane (the routing policy) is COMPLETE.**

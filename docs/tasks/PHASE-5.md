@@ -800,19 +800,72 @@ and honest inconclusive outcomes.
       **`.5` COMPLETE** — frontier → `.6`.
 
 - ID: `PHASE-5.6`
-  Status: `proposed`
+  Status: `done`
   Goal: G5 exit on declared domains; honest inconclusive behavior; subtract unsupported quality claims
   Gate: G5; subtraction record required
   Kill/pivot: `ROADMAP.md` §25.1 after Phase 5
+  Children: `.6.1`–`.6.2` (decomposed `2026-09-07` at the census
+    seams): `.6.1` the G5 evidence census (the claim census —
+    what the product claims vs what the evidence supports; the
+    honest-inconclusive machinery shipped across `.1`–`.3`;
+    the benchmark evidence the WP7 harness + the `.4` service
+    hold) → `.6.2` the G5 gate package (the gate record, the
+    §19.8 subtraction record, the evidence manifest, the
+    narrowed product claims — the README/book edits, the
+    Phase-5 close).
+  Done (`2026-09-07`): the census at the seams. The G5 gate
+    (`.4.4`'s machinery) exists as a SERVICE: the calibration
+    records + the baseline/threshold gates + the append-only
+    evaluations — the gate MEASURES; what the exit needs is
+    the PACKAGE: the claim census (the docs' quality claims vs
+    the shipped evidence), the gate record (the G5 outcome +
+    the evidence), and the §19.8 subtraction record (the
+    claims that must be narrowed). The precedents exist: the
+    Phase-1 and Phase-4 gate records + the subtraction records
+    + the evidence manifests
+    (`docs/decisions/2026-09-07_phase{1,4}-gate-record.md`,
+    `phase{1,2}-subtraction-record.md`, `docs/evidence/`).
+    The honest-inconclusive machinery is SHIPPED and tested
+    (the twelve terminals, the unresolved register, the
+    budget-exhausted denial, the blind commitment — profiles
+    31). Frontier → `.6.1`.
+
+  - ID: `PHASE-5.6.1`
+    Status: `proposed`
+    Goal: the G5 evidence census — the claim census (the
+      quality claims across the README/book/ROADMAP vs the
+      evidence: the WP7 harness's expected scores + the `.4`
+      service's registry/runs/gates, the honest-inconclusive
+      behavior shipped across `.1`–`.3`), the subtraction
+      candidates (the claims the evidence does NOT support),
+      the declared domains (the case classes the exit names).
+      No code.
+    Roadmap: §19.5, §19.6 (G5), §19.8
+
+  - ID: `PHASE-5.6.2`
+    Status: `proposed`
+    Goal: the G5 gate package — the gate record (the G5
+      outcome on the declared domains + the evidence
+      manifest), the §19.8 subtraction record (the narrowed
+      product claims), the doc edits (the README/book claim
+      alignment), the Phase-5 tree close.
+    Gate: G5; subtraction record required
+    Roadmap: §19.6 (G5), §19.8, §25.1
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.6` | `proposed` | `.5.3` done — the shadow recommendation (the registered-arm constraint, the named evidence, the stated non-application; routing 2) — **the `.5` lane (the routing policy) is COMPLETE**; the G5-exit lane executes next |
+| 1 | `PHASE-5.6.1` | `proposed` | `.6` decomposed at the census seams (the G5 machinery ships as the `.4.4` service; the exit needs the PACKAGE — the claim census → the gate record + the subtraction record) — the evidence census executes first |
 
 ## Changelog
 
+- `2026-09-07`: `.6` decomposed at the census seams — the G5
+  gate ships as the `.4.4` service; the exit needs the
+  package (the claim census → the gate record + the §19.8
+  subtraction record + the narrowed claims); children `.6.1`
+  (the evidence census) → `.6.2` (the gate package);
+  frontier → `.6.1`.
 - `2026-09-07`: `.5.3` done — the shadow recommendation
   (migration 0037: the registered-arm constraint, the named
   evidence, the stated `applied: false`; the shadow proof —

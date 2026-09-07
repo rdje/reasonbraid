@@ -35,6 +35,7 @@ pub mod ca;
 pub mod claims;
 mod dependence;
 pub mod derivations;
+pub mod evaluation;
 pub mod extraction;
 pub mod fetcher;
 pub mod git;

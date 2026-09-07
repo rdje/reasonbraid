@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The evaluation-service core lands (`PHASE-5.4.2`)
+
+- Migration 0033: the versioned corpus registry (the declared 64-hex digests) + the experiment run records (the workflow arm, the corpus reference, the DECLARED seed — a non-deterministic run without one is the typed refusal — the trial count, the harness's results). The four verbs (`POST`/`GET /v1/evaluations/corpora`, `POST`/`GET /v1/evaluations/runs`) record, never re-grade: the service RECORDS, the WP7 harness MEASURES. The pg script gained the `evaluation` suite.
+
 ## 2026-09-07 — ADR-017: the evaluation-service contract (`PHASE-5.4.1`)
 
 - ADR-017 accepted (`docs/adr/017-evaluation-service.md`): the service RECORDS, the harness MEASURES (one grading implementation); the registry is versioned + digest-pinned; the experiment records declare their seeds; the randomized routing trials are shadow-only; the cohorts are recorded labels; the calibration accumulates; the regression gate is the blocking-only G5 threshold. No code.

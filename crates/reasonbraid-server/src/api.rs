@@ -434,6 +434,14 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/workflow-profiles",
             post(register_workflow_profile).get(list_workflow_profiles),
         )
+        .route(
+            "/v1/evaluations/corpora",
+            post(register_evaluation_corpus).get(list_evaluation_corpora),
+        )
+        .route(
+            "/v1/evaluations/runs",
+            post(record_evaluation_run).get(list_evaluation_runs),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -1841,6 +1849,79 @@ async fn list_workflow_profiles(
         ));
     }
     Ok(Json(crate::workflows::list(&state.pool).await?))
+}
+
+// ── The evaluation service (PHASE-5.4.2; ADR-017, backlog 37) ─────────────────────
+
+/// `POST /v1/evaluations/corpora` — register one corpus version (the
+/// content-addressed registry row; the digests are the declared 64-hex
+/// file digests — the harness re-derives them at run time).
+async fn register_evaluation_corpus(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(registration): Json<crate::evaluation::CorpusRegistration>,
+) -> Result<Json<crate::evaluation::RegisteredCorpus>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no corpus",
+        ));
+    }
+    match crate::evaluation::register_corpus(&state.pool, &registration).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/corpora` — the registry rows.
+async fn list_evaluation_corpora(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::evaluation::RegisteredCorpus>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no corpora",
+        ));
+    }
+    Ok(Json(crate::evaluation::list_corpora(&state.pool).await?))
+}
+
+/// `POST /v1/evaluations/runs` — record one experiment run (the seed
+/// declares the randomness; a non-deterministic run without one refuses).
+async fn record_evaluation_run(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(run): Json<crate::evaluation::RunRecord>,
+) -> Result<Json<crate::evaluation::StoredRun>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no run",
+        ));
+    }
+    match crate::evaluation::record_run(&state.pool, &run).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/runs` — the recorded runs, newest first.
+async fn list_evaluation_runs(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::evaluation::StoredRun>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no runs",
+        ));
+    }
+    Ok(Json(crate::evaluation::list_runs(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

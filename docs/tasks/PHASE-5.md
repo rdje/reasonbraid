@@ -581,7 +581,7 @@ and honest inconclusive outcomes.
       and only BLOCKS. No code changed. Frontier → `.4.2`.
 
   - ID: `PHASE-5.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the evaluation-service core — the case registry (the
       versioned cases + the digests) + the experiment records
       (the run record: the workflow, the corpus version, the
@@ -589,6 +589,29 @@ and honest inconclusive outcomes.
       persistence (the per-case grades + the confidence + the
       cost).
     Roadmap: §13.7, §19.7
+    Done (`2026-09-07`): the service core landed per ADR-017 —
+      migration 0033 (`evaluation_corpora`: the corpus id +
+      the version + the declared 64-hex digests + the cases
+      JSONB; `evaluation_runs`: the workflow arm + the corpus
+      reference + the seed + the determinism flag + the trial
+      count + the harness's results JSONB);
+      `crates/reasonbraid-server/src/evaluation.rs` (NEW):
+      the `register_corpus` (the digest shape check, the
+      duplicate = the typed refusal — never an overwrite),
+      the `record_run` (the positive trial count; the
+      UNDECLARED-seed refusal — a non-deterministic run must
+      declare its seed; the registered-corpus check — never a
+      phantom; the duplicate run id refuses), the list verbs;
+      the api: `POST`/`GET /v1/evaluations/corpora` +
+      `POST`/`GET /v1/evaluations/runs` (the enrolled gate —
+      the dev-trusted operator surface, like the profile
+      register); the pg script gained the `evaluation` suite.
+      Measured (evaluation 1): the corpus registers with the
+      digests; the duplicate + the malformed-digest + the
+      seedless-run + the phantom-corpus + the duplicate-run
+      refusals; the seeded + the deterministic runs record;
+      the lists (the runs newest first); the unenrolled read
+      refuses. Frontier → `.4.3`.
 
   - ID: `PHASE-5.4.3`
     Status: `proposed`
@@ -623,10 +646,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.4.2` | `proposed` | `.4.1` done — ADR-017 accepted (the service records, the harness measures; the seed-declaring records; the shadow-only trials); the evaluation-service core executes next |
+| 1 | `PHASE-5.4.3` | `proposed` | `.4.2` done — the evaluation-service core (the registry + the seed-declaring run records + the lists; evaluation 1); the randomized routing experiments + the cohorts execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.2` done — the evaluation-service core
+  (migration 0033: the registry + the run records; the
+  declared-seed rule, the phantom-corpus + duplicate
+  refusals, the four verbs; the pg script gained the
+  evaluation suite); evaluation 1; frontier → `.4.3`.
 - `2026-09-07`: `.4.1` done — ADR-017 accepted (the
   evaluation-service contract: the records-and-gates service,
   the digest-pinned registry, the declared seeds, the shadow
@@ -1105,6 +1133,53 @@ new test) — `\.rs$`.
   commit.
 - [x] **FIX** — `src/threads.rs`, `src/api.rs`,
   `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.4.2)
+
+The CODE change owned by this leaf:
+`migrations/0033_evaluation_service.sql` (NEW — the registry +
+the run tables), `crates/reasonbraid-server/src/evaluation.rs`
+(NEW — the register/record/list + the typed refusals),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the four verbs),
+`crates/reasonbraid-server/tests/evaluation.rs` (NEW — the
+suite), `scripts/run_pg_tests.sh` (the evaluation suite joins
+the guard) — `\.rs$` + `(^|/)migrations/` + `scripts/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the WP7
+  harness ran from static files + a binary; nothing persisted
+  a registry or a run; no seed rule, no phantom-corpus check
+  (the `.4` census).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "evaluation_corpora\|evaluation_runs" a2f96a5 -- crates/
+  migrations/` → rc=1 (nothing before this leaf). The fix
+  point is the ADR-017 service core: the versioned registry +
+  the seed-declaring run records persist the harness's
+  outputs.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test evaluation` → `test result: ok. 1
+  passed` — the corpus registers (the digests echo), the
+  duplicate + the malformed-digest + the seedless-run (the
+  undeclared randomness) + the phantom-corpus + the
+  duplicate-run refusals, the seeded + the deterministic runs
+  record, the lists (the runs newest first), the unenrolled
+  read refuses.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 56 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 19 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg520_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0033_evaluation_service.sql`, `src/evaluation.rs`,
+  `src/lib.rs`, `src/api.rs`, `tests/evaluation.rs`,
+  `scripts/run_pg_tests.sh`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

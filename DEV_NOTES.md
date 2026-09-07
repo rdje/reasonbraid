@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.1: the resource surface is a greenfield with a reason name and a reference shape already waiting
+
+- **Phase 4 opens on the §9.8 `resource_unresolvable` reason name and the typed `EvidenceRef`s** — the honest vocabulary for the explicit-failure doctrine (unsupported/mutable resources fail explicitly, never become fabricated evidence) existed before any resource machinery. The `.1` census splits the lane at the seams: the two ADRs (the content-addressing format + the isolation classes), the typed contract (the locator's immutability is an update-refusal), and the registry (the authz→risk→rank order + the preserved-on-failure reference).
+- promotion: declined (the census is the leaf's recorded contract — the `.1.1`–`.1.3` children execute it). **Frontier `PHASE-4.1.1` (ADR-011 + ADR-018).**
+
 ## _(2026-09-07)_ — PHASE-3.6.3: the label discipline is a grep, not a convention — every hit is the roadmap's own rule or a negation
 
 - **The §10.4 acceptance is mechanically provable**: the sweep shows every occurrence of "independence score/probability" is either the ROADMAP's normative text or a NEGATION ("no independence score" — the discipline itself), so no surface CLAIMS the forbidden term. The approved label rides the wire (`dependence_indicators`). Phase 3 closes with the exit line held at the dev scale: the match surface recruits without enumeration, and the recuse/visibility/concurrency/spend controls + the storm caps all have their measured tests.

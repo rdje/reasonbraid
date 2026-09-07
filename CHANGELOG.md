@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Phase 4 opens: the resource-reference lane decomposed at the census seams (`PHASE-4.1`)
+
+- The Phase-2/3 closes delivered the authz/budgets legs of the tree's blocker (the object store is this phase's own `.6`), so `PHASE-4` goes `active` and its `.1` (the universal `ResourceReference` + the resolver capability registry — backlog 31) decomposes at the census seams.
+- The census found the resource surface a GREENFIELD: the §9.8 registry carries the `resource_unresolvable` reason name and the contributions carry the typed `EvidenceRef`s (the Phase-1 §8.5 shape), but no `ResourceReference` type, no resolver registry, no submission verb; ADR-011 + ADR-018 are unopened.
+- Children: `.1.1` ADR-011 + ADR-018 (the content-addressing format + the isolation classes) → `.1.2` the typed reference + the submission (the locator's immutability is the update-refusal) → `.1.3` the resolver registry + the resolution order + the explicit `resource_unresolvable_now`. Tree-only commit; frontier → `.1.1`.
+
 ## 2026-09-07 — The label sweep proves the discipline — Phase 3 CLOSED (`PHASE-3.6.3`)
 
 - The §10.4 acceptance ran mechanically: `grep -rni "independent probability\|independence score" docs/ crates/ scripts/` — every hit is either the ROADMAP's own §10.4 rule (the normative source) or a "no independence score" NEGATION (the discipline itself: the benchmark's report hygiene, the deliberation record, the tree's own goal). No UI surface — the book, the CLI output, an explanation, a record — claims the forbidden term anywhere. The approved label "diversity and dependence indicators" rides the indicator's wire name (the snapshot's `dependence_indicators` key).

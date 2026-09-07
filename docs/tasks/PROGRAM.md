@@ -38,7 +38,7 @@ post-LAN track has a named owner. This tree does not implement product code.
 | 1 | `PHASE-1` | `active` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
 | 2 | `PHASE-2` | `done` | 12–20 | Phase 1 | authority non-escalation (the adversarial suite); restore + node replacement (the exercises); no silent unknown-retry (the six-leg inventory) — CLOSED 2026-09-07 |
 | 3 | `PHASE-3` | `done` | 12–19 | stable identity, inbox, grants | recruit without enumerating the network — CLOSED 2026-09-07 |
-| 4 | `PHASE-4` | `proposed` | 16–27 | authz, budgets, object store, observability | G4 |
+| 4 | `PHASE-4` | `active` | 16–27 | authz, budgets, object store, observability | G4 |
 | 5 | `PHASE-5` | `proposed` | 15–26 + evaluators | evidence provenance, workflows | G5 on declared domains |
 | 6 | `PHASE-6` | `proposed` | 18–30 + governance review | authority, deliberation, Git/object, correction | G3; reconstructable policy lifecycle |
 | 7 | `PHASE-7` | `proposed` | 18–32 + external review | Phase 1 + applicable Phase 2; not Phases 3–6 if disabled | G6–G7 for a named profile |

@@ -12,27 +12,23 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Phases 0–2 COMPLETE:** Phase 0's exit gate closed (ADR-002 signed, the
-  WP1–WP8 + MAINT leaves `done`); Phase 1's G1–G2 **Met** + Demonstration A
-  30/30 (the gate + subtraction records ship); Phase 2's exit line measured —
-  authority non-escalation (the `.7.1` adversarial suite), restore + node
-  replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
-  of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
-  record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Phase 3 COMPLETE (2026-09-07):** the directory profile lane
-  (ADR-014, the content-addressed profiles, the per-reader
-  visibility), the presence lane (the six-state derivation, the
-  offline-known distinction, the filtered views), the two-stage
-  matching (the eligibility + the explainable ranking + the match
-  surface), the recruitment protocol (ADR-015, the call artifact,
-  the storm controls), the subscriptions lane (the delivery
-  ladder, the wake gate, the node-initiated API), and the
-  dependence indicators (the named overlaps + the diversity
-  feature + the label sweep); the tree is `done`.
-- **Active tree:** `PHASE-4` → frontier `.1` (the resource-registry
-  lane).
-- **Next action:** execute `PHASE-4.1` — the `PHASE-4` tree's
-  frontier (the resource registry).
+- **Phases 0–3 COMPLETE:** Phase 0's exit gate closed (ADR-002 signed);
+  Phase 1's G1–G2 **Met** + Demonstration A 30/30; Phase 2's exit line
+  measured (the adversarial suite, the replacement drill, the six-leg
+  retry inventory) + the §19.8 subtraction record + the G6–G7 feed; Phase 3's
+  six lanes shipped (the directory profiles, the presence, the two-stage
+  matching, the recruitment protocol, the subscriptions + the node-initiated
+  API, the dependence indicators) — all four trees `done`.
+- **Active tree:** `PHASE-4` → frontier `.1.1` (the tree opened by
+  the Phase-2/3 closes; `.1` decomposed at the census seams: the
+  resource surface is a greenfield, ADR-011/018 unopened). Then
+  `.1.2`, `.1.3`, `.2`–`.7`.
+- **Next action:** execute `PHASE-4.1.1` — ADR-011 (the object
+  store + the content-addressing format) + ADR-018 (the resolver
+  sandbox/runtime + the network isolation): the dev profile's
+  answers (the digest scheme the snapshots + the expected digests
+  share; the isolation classes the resolver packs declare; the
+  store rides the `.6` snapshots lane); no code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

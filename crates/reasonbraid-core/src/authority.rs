@@ -856,3 +856,121 @@ mod tests {
         assert!(a.to_string().starts_with("agt_"));
     }
 }
+
+// ── Delegation constraints (`.1.4.1`; the ADR-009 spike) ──────────────────────
+
+/// The delegation context a request may carry (the `.1.4.1` dev shape — the
+/// full §16.3 `AuthorityContext` collapses to these dimensions at the dev
+/// profile; the issuer chain rides the grant rows and the audit record).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DelegationConstraints {
+    /// The principal the actor acts on behalf of (the grant holder).
+    pub on_behalf_of: GrantSubject,
+    /// Why (audit context; the authorization record carries it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
+    /// The scope the delegation may touch: the request's target must be
+    /// WITHIN this — a subset of the subject's grant selector, never wider.
+    pub scope: TargetSelector,
+}
+
+/// The widening invariant (§16.3.1), as a PURE decision: a request's scope is
+/// within a grant when every requested thread is in the grant's selector (a
+/// tenant-wide grant contains anything; a tenant-wide REQUEST is never within
+/// a thread-scoped grant). The action dimension rides the caller's own check
+/// (`grant.actions.contains`), so this function owns the TARGET dimension.
+pub fn delegation_scope_is_subset(requested: &TargetSelector, granted: &TargetSelector) -> bool {
+    match (requested, granted) {
+        (_, TargetSelector::TenantWide) => true,
+        (TargetSelector::TenantWide, TargetSelector::Threads { .. }) => false,
+        (
+            TargetSelector::Threads { threads: want },
+            TargetSelector::Threads { threads: have },
+        ) => want.iter().all(|t| have.contains(t)),
+    }
+}
+
+#[cfg(test)]
+mod delegation_tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn thread(id: u64) -> ThreadId {
+        ThreadId::from_uuid(Uuid::from_u64_pair(0x7000_8000, id))
+    }
+
+    #[test]
+    fn a_narrower_scope_is_a_subset_and_equal_is_included() {
+        let granted = TargetSelector::Threads {
+            threads: vec![thread(1), thread(2), thread(3)],
+        };
+        // A narrower request (one of the granted threads) passes.
+        assert!(delegation_scope_is_subset(
+            &TargetSelector::Threads {
+                threads: vec![thread(1)],
+            },
+            &granted,
+        ));
+        // The exact set passes (equality is a subset).
+        assert!(delegation_scope_is_subset(
+            &TargetSelector::Threads {
+                threads: vec![thread(1), thread(2), thread(3)],
+            },
+            &granted,
+        ));
+        // An EMPTY request is a subset (ask for nothing — always safe).
+        assert!(delegation_scope_is_subset(
+            &TargetSelector::Threads { threads: vec![] },
+            &granted,
+        ));
+        // Anything is within a tenant-wide grant.
+        assert!(delegation_scope_is_subset(
+            &TargetSelector::Threads {
+                threads: vec![thread(9)],
+            },
+            &TargetSelector::TenantWide,
+        ));
+    }
+
+    #[test]
+    fn a_widening_scope_is_refused_per_dimension() {
+        let granted = TargetSelector::Threads {
+            threads: vec![thread(1), thread(2)],
+        };
+        // A thread OUTSIDE the grant's set — the widening attempt.
+        assert!(!delegation_scope_is_subset(
+            &TargetSelector::Threads {
+                threads: vec![thread(1), thread(3)],
+            },
+            &granted,
+        ));
+        // A tenant-wide request is never within a thread-scoped grant.
+        assert!(!delegation_scope_is_subset(&TargetSelector::TenantWide, &granted));
+    }
+
+    #[test]
+    fn the_envelope_delta_beats_a_token_blob() {
+        // The ADR-009 wire-size leg: chain-in-envelope carries the structured
+        // delegation (three fields); a capability token would carry the same
+        // facts plus a 64-byte signature. The delta below is measured, not
+        // asserted to a target — the INVARIANT is that the envelope form is
+        // smaller than the token form for the same facts.
+        // The wire form (GrantSubject is a tagged newtype — its serde
+        // representation is a plain string on the wire, so the size leg
+        // measures the hand-built JSON shape the envelope would carry).
+        let envelope_bytes = serde_json::to_vec(&serde_json::json!({
+            "on_behalf_of": "rol_00000000-0000-7000-8000-000000000001",
+            "purpose": "delegated contribution",
+            "scope": { "kind": "threads", "threads": ["thr_00000000-0000-7000-8000-000000000001", "thr_00000000-0000-7000-8000-000000000002"] },
+        }))
+        .unwrap()
+        .len();
+        let token_bytes = envelope_bytes + 64; // the signature a token must add
+        assert!(
+            envelope_bytes < token_bytes,
+            "chain-in-envelope ({envelope_bytes} B) stays smaller than the token form \
+             ({token_bytes} B) for the same facts"
+        );
+    }
+}

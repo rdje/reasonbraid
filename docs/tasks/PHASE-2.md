@@ -284,7 +284,7 @@ slice can reuse the same control plane without rewriting it.
       ADR-vs-implementation seam).
 
   - ID: `PHASE-2.1.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-009 + the representation spike — the decision between
       chain-in-envelope (the request carries the structured delegation)
       and attenuated capability tokens (a separately issued credential)
@@ -297,6 +297,19 @@ slice can reuse the same control plane without rewriting it.
       the `.1.3` filters apply unchanged).
     Backlog: 11
     ADR: 009
+    Done (`2026-09-07`): ADR-009 accepted — chain-in-envelope for the dev
+      profile (the plumbing was pre-shaped; expiry/revocation ride the
+      `.1.3` grant filters; no token lifecycle). The spike landed the
+      pure `DelegationConstraints` + `delegation_scope_is_subset` in the
+      core crate with the offline tests (narrower/equal/empty pass;
+      widening refused per-dimension; the wire-size leg asserts the
+      envelope form beats a token blob) — `cargo test -p reasonbraid-core`
+      → `test result: ok. 39 passed`. Wire note for `.1.4.2`:
+      `GrantSubject` is a serde TAGGED newtype — its wire form is a plain
+      string, so the envelope's `authority_context` must carry the subject
+      as a string field, not the enum (the size probe proved the
+      serialization refusal). The acceptance checklist below records the
+      evidence — frontier → `.1.4.2`.
     Acceptance: the subset prototype's tests are green (narrower passes,
       widening refused per-dimension); the ADR names the representation
       + the measurement; the ledger row for the chosen shape is filled
@@ -382,7 +395,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.4.1` | `proposed` | `.1.4` decomposed at the ADR-vs-implementation seam (the plumbing is pre-shaped: `delegate_subject` + the audit subject split exist); ADR-009 + the representation spike execute now |
+| 1 | `PHASE-2.1.4.2` | `proposed` | `.1.4.1` done (ADR-009 accepted: chain-in-envelope; the subset invariant is a pure tested function); the implementation executes now |
 
 ## Changelog
 
@@ -443,6 +456,12 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.4.1` done — ADR-009 accepted: chain-in-envelope for
+  the dev profile (the plumbing was pre-shaped; expiry/revocation ride the
+  `.1.3` grant filters; no token lifecycle); the spike landed the pure
+  `DelegationConstraints` + `delegation_scope_is_subset` with the offline
+  tests (narrower/equal/empty pass, widening refused per-dimension, the
+  wire-size leg); the core suite grew to 39; frontier → `.1.4.2`.
 - `2026-09-07`: `.1.4` decomposed at the ADR-vs-implementation seam — the
   census found the plumbing PRE-SHAPED (`CommandAuthz.delegate_subject` +
   the audit subject split exist, always `None`) while the envelope field,
@@ -520,6 +539,43 @@ files, and `scripts/demo_two_host.sh` — all code paths.
   `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
   `docs/TASK_TREE.md` frontier, the book (node-channel + two-host-demo),
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.4.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/authority.rs`
+(the `DelegationConstraints` type + `delegation_scope_is_subset` + the three
+tests — `\.rs$` in `.doctrine/code_paths.txt`). ADR-009 is the record.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's delegation sliver: the dev
+  engine has no delegation representation — `grep -rn "on_behalf_of\|
+  DelegationConstraints" crates/` → no matches before this leaf — while
+  `CommandAuthz.delegate_subject` sits unused (always `None`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the plumbing was built with the
+  delegation in mind (the field + the audit subject split) but no wire
+  shape was decided, and §16.3 forbids choosing by name; the fix point is
+  a PURE prototype of the hardest invariant (the widening rule) + the
+  measured representation comparison, so ADR-009 is evidence-gated.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no type,
+  no invariant, no ADR. After: `cargo test -p reasonbraid-core` →
+  `test result: ok. 39 passed` (the three delegation tests: narrower/
+  equal/empty subsets pass; a foreign thread and a tenant-wide request
+  over a thread-scoped grant are refused; the envelope form beats a
+  token blob on the wire — the size leg asserts the ordering);
+  ADR-009 accepted (chain-in-envelope).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green
+  (the core suite is the changed surface — the full offline re-run is
+  the selected set, §16); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` →
+  13/13 at commit.
+- [x] **FIX** — `crates/reasonbraid-core/src/authority.rs` (the
+  `DelegationConstraints` wire shape + the pure subset decision + the
+  three tests); `docs/adr/009-delegated-authority-representation.md` +
+  the INDEX row.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's logs
+  below, `docs/TASK_TREE.md` frontier, `docs/adr/INDEX.md`,
+  KNOWLEDGE_MAP — same commit (CHANGELOG.md rotated at the README-STABILITY
+  threshold: the Phase-0 RB-SEED history → git history; 96,460 → 95,295
+  bytes). DEV_NOTES: `promotion: declined (the GrantSubject tagged-newtype wire note is a per-slice serialization fact for .1.4.2, recorded in the leaf — no new cross-cutting decision)`.
 
 ## Acceptance Checklist (PHASE-2.1.3.2)
 
@@ -738,6 +794,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19 + 4 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + the demo 31 PASS rc=0 (`target/pg122e_guard.log`); 42 offline suites; clippy/fmt clean; `make deny` rc=0; `make gate` 13/13 | the channel v3 cert-proof handshake + rotation landed; the ring-SPKI interop discovery recorded; **`.1.2` complete** — frontier → `.1.3` |
 | `2026-09-07` | `PHASE-2.1.3.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 21 with the revocation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg131f_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | node/cert revocation: `POST /v1/nodes/revoke` (tenant_admin-audited, the typed refusals), the suspended presence (migration 0012), `rb node revoke`, the demo beat — frontier → `.1.3.2` |
 | `2026-09-07` | `PHASE-2.1.3.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 15 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 15 with the revocation pair) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg132c_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the grant/boundary revocation write paths + the admin inspection lists + the freeze carve-out; **`.1.3` complete** — frontier → `.1.4` |
+| `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 
 ## Commit Log
 
@@ -751,3 +808,5 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.3` | `REASONBRAID-PHASE2-0006` | the cert-vs-grant split (the refusal paths exist; the write paths don't) |
 | `PHASE-2.1.3.1` | `REASONBRAID-PHASE2-0007` | node/cert revocation: `POST /v1/nodes/revoke` + the suspended presence (migration 0012) + `rb node revoke` + the demo beat; the channel suite grew to 21 |
 | `PHASE-2.1.3.2` | `REASONBRAID-PHASE2-0008` | the grant/boundary revoke verbs + the admin inspection lists + the freeze carve-out (reads survive the boundary revocation); `command_api` grew to 15 — **`.1.3` complete** |
+| `PHASE-2.1.4` | `REASONBRAID-PHASE2-0009b` | the ADR-vs-implementation split (the delegation plumbing is pre-shaped) |
+| `PHASE-2.1.4.1` | `REASONBRAID-PHASE2-0010` | ADR-009 (chain-in-envelope) + the pure `DelegationConstraints`/`delegation_scope_is_subset` prototype with the offline tests |

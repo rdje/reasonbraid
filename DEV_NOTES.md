@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.4.1: decide the representation from the plumbing that already exists
+
+- **The census chose the ADR's answer in advance.** The delegation plumbing was pre-shaped (`delegate_subject` + the audit subject split) — chain-in-envelope rides it for free, while a capability token would add an issuance/store/signature lifecycle duplicating the `.1.3` grant filters that already revoke. The spike's job was to prove the invariant (a pure subset function) and measure the wire delta, not to re-litigate the shape.
+- **A tagged-newtype enum is not a wire field.** `GrantSubject` derives Serialize with a tag; serializing `DelegationConstraints` containing it fails ("cannot serialize tagged newtype variant"). The envelope's `authority_context` must carry the subject as a STRING and parse it — the size probe surfaced the refusal the implementation would have hit.
+- promotion: declined (the GrantSubject tagged-newtype wire note is a per-slice serialization fact for .1.4.2, recorded in the leaf — no new cross-cutting decision). **Frontier `PHASE-2.1.4.2` (the delegation implementation).**
+
 ## _(2026-09-07)_ — PHASE-2.1.3.2: a revoked ceiling must freeze writes, never the operator's eyes
 
 - **The tests found the governance semantics, not the other way around.** The boundary-revocation test's FIRST run failed with the admin's own inspection list returning 403: the tenant_admin authorization evaluates against the active boundary, so revoking it refused everything — including the surfaces meant to prove the revocation. The fix is a named carve-out: admin READS authorize against the principal's own grant (no ceiling); admin WRITES stay ceiling-checked, so a boundary revocation is an honest freeze.

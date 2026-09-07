@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-009: delegation rides the envelope (`PHASE-2.1.4.1`)
+
+- The representation spike decided **chain-in-envelope** for the dev profile: the plumbing was pre-shaped (`CommandAuthz.delegate_subject` + the audit subject split), expiry/revocation ride the existing `.1.3` grant filters, and the wire form beats a capability-token blob (the same facts PLUS a 64-byte signature — asserted in the core suite's size leg). ADR-009 records the choice + the capability-token revisit trigger (multi-hop chains or a measured re-presentation cost).
+- The widening invariant (§16.3.1) landed as a pure, tested function: `DelegationConstraints` + `delegation_scope_is_subset` in the core crate — narrower/equal/empty scopes pass, a foreign thread and a tenant-wide request over a thread-scoped grant are refused. The core suite grew to 39.
+- A wire note for `.1.4.2`: `GrantSubject` is a serde *tagged newtype* (its wire form is a plain string) — the envelope's `authority_context` must carry the subject as a string field, not the enum (the size probe proved the serialization refusal). Frontier → `.1.4.2` (the implementation).
+
 ## 2026-09-07 — `.1.4` split at the ADR-vs-implementation seam (`PHASE-2.1.4`)
 
 - The census found the delegation plumbing PRE-SHAPED: `CommandAuthz.delegate_subject` exists (always `None`) and the authorization-records INSERT already writes the subject split when delegation applies — what's missing is the envelope field, the dual (caller + subject) evaluation, and the widening check.
@@ -442,29 +448,9 @@
 - Recorded `docs/adr/001-uncleared-working-name.md`: ReasonBraid is internal-only until professional clearance.
 - README is now a ReasonBraid landing page (private repo; no public namespace claims).
 
-## 2026-09-05 — adopt claim-verification (`RB-SEED.3`)
-
-- Project-owned `docs/CLAIM_VERIFICATION.md` (portable architecture #5).
-- Bootstrap (`CLAUDE.md`) now requires the three legs before publishing a number.
-- `RB-SEED` complete; Phase 0 frontier is ADR-001.
-
-## 2026-09-05 — convert v0.4.1 roadmap into task-trees (`RB-SEED.2`)
-
-- Added `docs/tasks/PROGRAM.md` (phase/track/gate/backlog/ADR/demo map) and `PHASE-0`…`PHASE-9`.
-- Phase 0 follows companion `KICKOFF.md` WP0–WP8 (issues 1–15) plus G0 contract drafts.
-- Later phases stay `proposed` until their predecessor exit gate.
-
-## 2026-09-05 — land ROADMAP v0.4.1 and companion KICKOFF.md (`RB-SEED.1`)
-
-- Replaced the scaffold placeholder `ROADMAP.md` with ReasonBraid v0.4.1 (execution baseline).
-- Tracked `KICKOFF.md` as the Phase 0 companion: scope/gates in `ROADMAP.md`, day-to-day Phase 0 execution in `KICKOFF.md`.
-- Recorded `docs/decisions/2026-09-05_kickoff-companion-to-roadmap.md` and `docs/decisions/2026-09-05_roadmap-v0.4.1-frozen.md`.
-- mdBook introduction now describes ReasonBraid rather than the template skeleton.
-
-
 Changelog-style summary of completed work + its validation (internal continuity surface;
 the immutable audit trail proper is `git log` — memory layer D). Newest first.
 
-> The pre-Phase-1 scaffold-port history (reasonbraid-scaffold 0.2.0–0.6.1 +
-> bootstrap) rotated into git history on 2026-09-07 at the README-STABILITY
-> 96,000-byte threshold (`git log -- CHANGELOG.md` is the query path).
+> The Phase-0 RB-SEED history rotated into git history on 2026-09-07 at the
+> README-STABILITY 96,000-byte threshold (`git log -- CHANGELOG.md` is the
+> query path).

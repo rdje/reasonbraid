@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-014: deterministic eligibility first, embeddings behind their trigger (`PHASE-3.1.1`)
+
+- ADR-014 accepted (evidence-gated): §10.3's stage-1 eligibility is STRUCTURAL by the roadmap's own table (scope, status, capability requirements, policy restrictions, ceilings, budget availability) and the shipped authority machinery evaluates it deterministically — "an ineligible role is never restored by a high semantic score" pins the ordering.
+- The embedding engine arrives behind its trigger (the first recruitment run whose stage-2 ranking under-selects without the semantic feature, measured on a non-loopback corpus) and in shadow mode — never an authorization control. The `.1.2` profile schema therefore carries NO embedding columns: the versioned profiles stay interpretable typed facts.
+- No code changed. Frontier → `.1.2` (the profile schema + the write surface).
+
 ## 2026-09-07 — Phase 3 opens: the directory profile lane decomposed at the census seams (`PHASE-3.1`)
 
 - The Phase-2 close delivered the tree's blocker (stable identity, inbox, and grants), so `PHASE-3` goes `active` and its `.1` (capability/interest/visibility profiles + versioned embeddings — backlog 26) decomposes at the census seams.

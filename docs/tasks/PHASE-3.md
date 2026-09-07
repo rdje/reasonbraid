@@ -46,7 +46,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     `.1.1`.
     promotion: declined (the census is the leaf's recorded contract — the `.1.1`–`.1.3` children execute it).
   - ID: `PHASE-3.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-014 — the directory semantic-index engine + the
       embedding lifecycle, accepted with the dev profile's answer:
       the two-stage matching (§10.3) evaluates DETERMINISTIC
@@ -58,6 +58,15 @@ eligibility before ranking. Dependence indicators, never an independence score.
       provenance rides every capability claim. No code.
     Backlog: 26 (the ADR half)
     ADR: 014
+    Done (`2026-09-07`): ADR-014 accepted (evidence-gated) —
+      `docs/adr/014-directory-semantic-index.md`: the §10.3 stage-1
+      eligibility is STRUCTURAL by the roadmap's own table and the
+      shipped authority machinery evaluates it deterministically; the
+      embedding engine arrives behind its trigger (the first measured
+      under-selection on a non-loopback corpus) in shadow mode —
+      never an authorization control; the `.1.2` profile schema
+      therefore carries NO embedding columns. No code changed.
+      Frontier → `.1.2`.
     Acceptance: ADR-014 accepted (the dev answer named; the embedding
       trigger named); no code changes.
 
@@ -139,7 +148,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.1.1` | `proposed` | `.1` decomposed at the census seams (nothing shipped for the §10.1 profile; ADR-014 unopened); the ADR-014 record executes now |
+| 1 | `PHASE-3.1.2` | `proposed` | `.1.1` done — ADR-014 accepted (structural eligibility first, the embedding engine behind its trigger, no embedding columns); the profile schema + the write surface executes now |
 
 ## Changelog
 
@@ -150,3 +159,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
   verbs, no visibility policy, ADR-014 unopened); children `.1.1`
   (ADR-014) → `.1.2` (the schema + writes) → `.1.3` (the visibility
   enforcement + reads); frontier → `.1.1`.
+- `2026-09-07`: `.1.1` done — ADR-014 accepted (the deterministic
+  eligibility stage is structural and shipped; the embedding engine
+  waits for the first measured under-selection, in shadow mode); no
+  code changed; frontier → `.1.2`.
+
+## Verification Log
+
+| Date | Leaf | Checks | Result |
+| --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+
+## Commit Log
+
+| Leaf | Commit subject or reference | Notes |
+| --- | --- | --- |
+| `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.1.1` | `REASONBRAID-PHASE3-0002` | ADR-014 accepted (deterministic eligibility first; the embedding engine behind its trigger; no embedding columns) |

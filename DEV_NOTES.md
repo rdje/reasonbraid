@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.1.1: the roadmap's own table settles the engine question — stage-1 eligibility has no semantic term in it
+
+- **ADR-014 needed no experiment**: §10.3's stage-1 list (scope, status, capability requirements, policy restrictions, separation rules, ceilings, budget availability) contains NO semantic term — every field is a typed fact the shipped authority machinery already evaluates deterministically, and "an ineligible role is never restored by a high semantic score" pins the ordering. The embedding engine therefore arrives behind its trigger in shadow mode, and the profile schema carries no embedding columns — the versioned profiles stay interpretable typed facts.
+- promotion: declined (the ADR-014 record itself holds the answer). **Frontier `PHASE-3.1.2` (the profile schema + the write surface).**
+
 ## _(2026-09-07)_ — PHASE-3.1: the directory profile is a greenfield — the census is what makes the ADR honest
 
 - **Phase 3 opens on the Phase-2 deliverables** (stable identity, inbox, grants — the blocker the tree named at creation), and the `.1` census found the §10.1 registration profile has NOTHING shipped: no table, no verbs, no visibility policy — only the incarnation lineage sliver from `.1.6.1`. ADR-014 therefore pins the dev profile's answer BEFORE any embedding machinery: deterministic structural eligibility first (§10.3's two-stage matching), learned embeddings behind their trigger — and the §10.1 rule that a high self-declared score is never equivalent to verified competence rides every capability claim.

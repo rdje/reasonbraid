@@ -16,15 +16,17 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.1.1` (**PHASE 5 CLOSED**; the `.1` block LIFTED — the schema is the greenfield).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.1.2` (**PHASE 5 CLOSED**; ADR-019 accepted — the digest-pinned policy document, the ownership = the authority binding).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.1.1` — ADR-019 + the census: the
-  semantic-policy contract (the `PolicyVersion`/`PolicySetVersion`
-  shapes, the seven-step layered resolution with the fail-closed rule,
-  the ownership = the authority binding). No code.
+- **Next action:** execute `PHASE-6.1.2` — the policy schema: the typed
+  `PolicyVersion` (the §15.1 fields: the stable id + the semantic
+  version + the digest + the lifecycle status, the normative statements
+  with the stable clause ids, the applicability, the dependencies,
+  the exception schema, the ownership metadata) + the validation + the
+  versioned registry — per ADR-019.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

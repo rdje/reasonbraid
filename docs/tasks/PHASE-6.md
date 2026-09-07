@@ -61,7 +61,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     leaf's ADR. Frontier → `.1.1`.
 
   - ID: `PHASE-6.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-019 + the census — the semantic-policy
       contract: the `PolicyVersion` shape (the §15.1 fields),
       the `PolicySetVersion` (the compatible authorized
@@ -74,6 +74,25 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       label grants nothing, §15.3). No code.
     ADR: 019
     Roadmap: §15.1–15.3
+    Done (`2026-09-07`): ADR-019 accepted (evidence-gated) —
+      `docs/adr/019-semantic-policy.md` (top-level `answers:`):
+      the policy is a versioned digest-pinned DOCUMENT (the
+      ADR-011 digest over the canonical bytes — never prose);
+      the `PolicyVersion` carries the §15.1 fields (the stable
+      clause ids, the applicability + the explicit
+      non-applicability, the exception schema, the
+      provenance, the triggers); the ownership is the
+      AUTHORITY BINDING (the owning authority is a grant
+      reference — the label grants nothing, §15.3's rule made
+      structural; an unresolvable owning authority is invalid
+      at registration); the `PolicySetVersion` is a LOCK
+      MANIFEST (every version/digest/dependency/grant basis —
+      the §15.2 publication truth); the resolution is the
+      seven deterministic steps with the FAIL-CLOSED binding
+      conflict (never a silent pick) and the explanation tree
+      riding the result; the impact maps are derivable
+      coverage, never achievement claims. No code changed.
+      Frontier → `.1.2`.
 
   - ID: `PHASE-6.1.2`
     Status: `proposed`
@@ -137,10 +156,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.1.1` | `proposed` | `.1` decomposed at the census seams (the block is LIFTED — Phase 5 closed the deliberation dependency; the policy schema is the greenfield) — ADR-019 opens the lane |
+| 1 | `PHASE-6.1.2` | `proposed` | `.1.1` done — ADR-019 accepted (the digest-pinned document, the ownership = the authority binding, the seven-step fail-closed resolution); the typed policy schema executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.1.1` done — ADR-019 accepted (the
+  semantic-policy contract: the digest-pinned document, the
+  ownership = the authority binding, the seven-step
+  fail-closed resolution, the lock-manifest set); no code;
+  frontier → `.1.2`.
 - `2026-09-07`: `.1` decomposed at the census seams — the block
   is LIFTED (the authority/deliberation/Git-object/correction
   dependencies all ship; the policy schema is the greenfield);

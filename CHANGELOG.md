@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-019: the semantic-policy contract (`PHASE-6.1.1`)
+
+- ADR-019 accepted (`docs/adr/019-semantic-policy.md`): the policy is a versioned digest-pinned document (never prose); the ownership is the authority binding (the label grants nothing); the `PolicySetVersion` is a lock manifest; the resolution is the seven §15.3 steps, fail-closed, with the explanation tree riding the result. No code.
+
 ## 2026-09-07 — The semantic-policy lane is decomposed at the census seams (`PHASE-6.1`)
 
 - The `.1` block is LIFTED: the authority (Phase 2), the deliberation (Phase 5 — now closed), the Git/object consistency (Phase 4), and the correction model all ship; the policy schema itself is the greenfield. Children: `.1.1` ADR-019 (the queue's canonical-policy-schema item) → `.1.2` the typed `PolicyVersion` + the registry → `.1.3` the seven-step layering/precedence + the impact maps.

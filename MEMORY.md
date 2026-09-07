@@ -23,15 +23,17 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.7.1` (`.7` decomposed at the
-  census seams: the non-escalation suite → the replacement drill →
-  ADR-022 + the retry inventory → the subtraction + gate feed). Then
-  `.7.2`–`.7.4`; Phase 2 closes after `.7.4`.
-- **Next action:** execute `PHASE-2.7.1` — the non-escalation
-  property suite: a named adversarial test per escalation surface
-  (cross-tenant access, confused-deputy delegation widening, revoked/
-  epoch-stale reuse, the freeze carve-out, forged/replayed
-  envelopes) over the shipped authority surface.
+- **Active tree:** `PHASE-2` → frontier `.7.2` (`.7.1` done: the
+  non-escalation property suite — 4 measured adversarial tests, the
+  guard grew to 16 live suites). Then `.7.3`, `.7.4`; Phase 2 closes
+  after `.7.4`.
+- **Next action:** execute `PHASE-2.7.2` — the node-replacement
+  drill: destroy a node's journal, re-enroll a replacement
+  incarnation (same role id), replay the inbox from the durable
+  cursor, prove the in-flight attempt lands `outcome_unknown` (never
+  a silent retry) and `rb node replay` recovers the dead-lettered
+  one; the guard gains the drill; the runbook's closure tests gain
+  the drill line.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

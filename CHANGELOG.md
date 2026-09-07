@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The escalation surfaces are attacked, measured: the non-escalation property suite (`PHASE-2.7.1`)
+
+- `crates/reasonbraid-server/tests/escalation.rs` stages each escalation attempt as a REAL envelope over live PostgreSQL and asserts the refusal AND its audit row: a cross-tenant attempt refuses at every boundary (create 403 + audited, thread read 404 with no existence leak, key-replay 409 with the typed idempotency conflict); a delegation scope is the ceiling even for a deputy whose OWN grant covers the target (403 + the widening invariant named); the nuclear option cannot be re-armed (identity minting under a revoked boundary is refused 400 at enrollment, no row left); a revocation fences future work but never rewrites history (the original replay returns its stored result with exactly ONE contribution event, the next command 403 + audited).
+- The first live run caught four real behaviors the tests then pinned (the conflict typing, the enrollment-boundary fence, the real event-type name, the real thread-scope requirement) — the suite is measured, not argued.
+- The guard's live list gained the suite — 16 live suites + the demo 34/34. Frontier → `.7.2` (the node-replacement drill).
+
 ## 2026-09-07 — `.7` split at the census seams (`PHASE-2.7`)
 
 - The exit-lane census mapped the three properties + the gate items against the shipped surface. The non-escalation FOUNDATIONS exist (deny-by-default evaluation, the subset checker, the freeze carve-out, the four escalation-adjacent authority tests) but no adversarial property suite names the §16.12 line (`grep -rn "escalat|cross.tenant"` over the server tests → 0 matches). The restore exercise + the replay machinery exist, but the node-replacement drill is the runbook's own named gap. The no-false-safe-retry property has four measured legs (`worker_retry_policy`). ADR-022 (audit hash-chain/checkpoint and verification policy) is unopened.

@@ -1166,7 +1166,7 @@ slice can reuse the same control plane without rewriting it.
     roadmap's "audit hash-chain/checkpoint and verification policy").
     Children at those seams — frontier → `.7.1`.
   - ID: `PHASE-2.7.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the non-escalation property suite — the §16.12 line
       "authorization non-escalation properties and confused-deputy
       tests" becomes a NAMED adversarial suite over the shipped
@@ -1181,6 +1181,22 @@ slice can reuse the same control plane without rewriting it.
       four escalation-adjacent authority tests stay; this suite names
       the ADVERSARIAL surface as one file.
     Backlog: —
+    Done (`2026-09-07`): the adversarial suite landed —
+      `crates/reasonbraid-server/tests/escalation.rs` (4 measured
+      tests, one per escalation surface): the cross-tenant attempt
+      refuses at every boundary (the create 403 + audited denial, the
+      thread read 404 with no existence leak, the key-replay 409 with
+      the typed idempotency conflict); the delegation scope is the
+      ceiling even for a deputy whose OWN grant covers the target
+      (403 + the widening invariant named); the nuclear option cannot
+      be re-armed (identity minting under a revoked boundary is 400
+      at enrollment, no row left); the revocation fences future work
+      but never rewrites history (the original replay returns its
+      stored result with exactly ONE contribution event, the next new
+      command 403 + audited). The first live run caught four REAL
+      behaviors the tests then pinned (the conflict typing, the
+      enrollment fence). The guard's live list gained the suite
+      (16 suites now). Frontier → `.7.2`.
     Acceptance: the adversarial suite lands with a named test per
       escalation surface; all green; no regression.
 
@@ -1239,7 +1255,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.7.1` | `proposed` | `.7` decomposed at the census seams (the foundations exist, the adversarial suite is absent, the replacement drill is the runbook's named gap, ADR-022 is unopened); the non-escalation property suite executes now |
+| 1 | `PHASE-2.7.2` | `proposed` | `.7.1` done — the non-escalation property suite (4 measured adversarial tests; the guard grew to 16 suites); the node-replacement drill executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1255,6 +1271,12 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.7.1` done — the non-escalation property suite: 4
+  measured adversarial tests (cross-tenant 403/404/409, the
+  confused-deputy 403 despite the deputy's own grant, the
+  re-arm fence at enrollment, the revocation fence around
+  history); the guard gained the suite (16 live suites);
+  frontier → `.7.2`.
 - `2026-09-07`: `.7` decomposed at the census seams — the exit lane's
   three properties mapped: the non-escalation foundations exist (no
   adversarial suite), the replacement drill is the runbook's named
@@ -1531,6 +1553,49 @@ slice can reuse the same control plane without rewriting it.
   has no suspended state; children `.1.3.1` (node/cert revocation + the
   suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
   verbs); frontier → `.1.3.1`.
+
+## Acceptance Checklist (PHASE-2.7.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/tests/escalation.rs` (NEW — the adversarial
+suite) and `scripts/run_pg_tests.sh` (the guard's live list gained the
+suite) — `\.rs$` + `\.sh$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.7` census: the §16.12 line
+  "authorization non-escalation properties and confused-deputy tests"
+  has foundations but no NAMED adversarial suite.
+- [x] **ROOT CAUSE (WHY + WHERE)** — every refusal path is exercised
+  only by happy-path-adjacent tests; NO test asserts the headline §5
+  property (no known cross-tenant escalation) — `git grep -c
+  "cross.tenant\|escalat" ad0468e -- crates/reasonbraid-server/tests/`
+  → rc=1 (zero matches before this leaf). The fix point is one
+  adversarial suite staging each escalation attempt as a REAL
+  envelope and asserting the refusal AND its audit row.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test escalation` → `test result:
+  ok. 4 passed` — the four attacks: the cross-tenant create 403 +
+  audited (read 404, replay 409 conflict-typed), the confused
+  deputy's delegation widening 403 DESPITE its own grant, the
+  re-arm 400 at the enrollment fence (no row left), the revocation
+  fence (replay returns the stored result with exactly ONE
+  contribution event; the next command 403 + audited). The first
+  live run caught four real behaviors (the conflict typing, the
+  enrollment fence) that the tests then pinned.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 16 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg271b_guard.log`); `cargo test --all` → 49 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `tests/escalation.rs` (the four adversarial tests +
+  the shared scaffolding); `scripts/run_pg_tests.sh` (the guard's
+  live list gained `--test escalation` — the suite runs on every
+  guard pass).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-2.6.2)
 
@@ -2508,6 +2573,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test escalation` → `test result: ok. 4 passed` (the first live run caught four real behaviors the tests pinned); `bash scripts/run_pg_tests.sh` → 16 live suites + the demo 34/34 (`target/pg271b_guard.log`); `cargo test --all` → 49 offline suites; clippy/fmt clean; `make gate` → 13/13 | the non-escalation property suite (one named adversarial test per escalation surface); frontier → `.7.2` |
 | `2026-09-07` | `PHASE-2.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the exit-lane census + the contract-seam decomposition (the foundations vs the four gaps); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-2.6.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the qualification checklist + the deferrals record (each of the five §19.4 items names its trigger); **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-2.6.2` | `cargo test -p reasonbraid-adapter --lib` → `test result: ok. 9 passed` (the two manifest guarantees); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg262_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the permanent failure-fixture corpus (the versioned manifest + the exact-match drift check + the item-coverage check); frontier → `.6.3` |
@@ -2545,6 +2611,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.7.1` | `REASONBRAID-PHASE2-0040` | the non-escalation property suite (4 measured adversarial tests + the guard's live list gained the suite) |
 | `PHASE-2.7` | `REASONBRAID-PHASE2-0039` | the exit-lane census + the contract-seam decomposition (`.7.1` adversarial suite → `.7.2` replacement drill → `.7.3` ADR-022 + retry inventory → `.7.4` subtraction + gate feed) |
 | `PHASE-2.6.3` | `REASONBRAID-PHASE2-0038` | the qualification checklist + the named deferrals (docs-only: the book's six-box gate, the five triggers) — **`.6` COMPLETE** |
 | `PHASE-2.6.2` | `REASONBRAID-PHASE2-0037` | the permanent failure-fixture corpus (the versioned manifest + the exact-match + item-coverage guarantees) |

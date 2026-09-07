@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.7.1: the escalation fence holds at the STRONGER boundary than the test assumed — the first run's failures were the findings
+
+- **The first live run of the adversarial suite caught four real behaviors, not four bugs**: the cross-tenant key-replay is refused by the claim-first idempotency CONFLICT typing (409, not a fresh authorization 403); identity minting under a revoked boundary is refused at ENROLLMENT (400 "no active enrollment boundary"), so the re-arm cannot even produce an inert grant; the contribution event's real type name; and the delegation scope must name a REAL thread id (a placeholder id does not parse). Each finding was pinned as the assertion — the adversarial suite measures the fence exactly where it stands.
+- promotion: declined (the findings are the leaf's own pinned assertions — no new cross-cutting decision). **Frontier `PHASE-2.7.2` (the node-replacement drill).**
+
 ## _(2026-09-07)_ — PHASE-2.7: the exit lane's properties are founded, not proven — the adversarial suite is the gap between the two
 
 - **The escalation surface has FOUNDATIONS, not an adversarial proof.** The deny-by-default evaluation, the subset checker, the freeze carve-out, and the four escalation-adjacent authority tests are the machinery — but §16.12's line ("authorization non-escalation properties and confused-deputy tests") has no NAMED adversarial suite, the node-replacement drill is the runbook's own named gap, ADR-022 is unopened, and the mandatory §19.8 subtraction record does not exist yet. The exit lane is four children: the property suite, the drill, the ADR + the retry inventory, the subtraction + gate feed.

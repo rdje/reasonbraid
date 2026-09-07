@@ -19,16 +19,18 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.5.2` (packs R0 + R1 + R2
-  COMPLETE; `.5.1` done: the three contracts + the OPT-IN gate —
-  decision `2026-09-07_r5r3rx-contracts-opt-in.md`; `MAINT-1`
-  done). Then `.5.3`, `.6`–`.7`.
-- **Next action:** execute `PHASE-4.5.2` — the gated machinery:
-  the credential broker (the binding-ref resolution at the
-  request boundary), the browser worker (the step + network-log
-  budgets behind the deployment-checked boundary), the §12.8
-  response vocabulary — ALL behind the OPT-IN gate (compiled but
-  disabled; the resolve never returns a disabled pack).
+- **Active tree:** `PHASE-4` → frontier `.5.3` (packs R0 + R1 + R2
+  COMPLETE; `.5.1` done: the three contracts + the OPT-IN gate
+  (decision record); `.5.2` done: the machinery — the browser
+  worker (`crates/reasonbraid-browse`, the REAL-Chrome tests),
+  the broker, the §12.8 vocabulary — compiled, unwired;
+  `MAINT-1` done). Then `.6`–`.7`.
+- **Next action:** execute `PHASE-4.5.3` — the receipt + the
+  gated wiring: the disclosure receipts, the GATED registry
+  entries (the R3/R5/RX rows exist ONLY when the gate is open),
+  the resolve-path execution (the resolve never returns a
+  disabled pack; the handler runs the broker/browser behind the
+  ranked-first rule — mirroring the `.2.3`–`.4.3` wiring).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

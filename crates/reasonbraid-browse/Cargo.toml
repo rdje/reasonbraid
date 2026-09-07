@@ -1,0 +1,40 @@
+[package]
+name = "reasonbraid-browse"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# The R3 browser worker (PHASE-4.5.2, the `2026-09-07_r5r3rx-contracts-opt-in.md`
+# contract): a dedicated worker process the gated resolve path spawns per
+# render. It reads ONE JSON request (the already-classified URL + the step
+# list + the budgets) on stdin, answers ONE JSON response (the rendered text
+# chunks + the network log, or a named refusal), and exits — the fresh
+# process inside the deployment's container boundary is the quarantine.
+#
+# The `.5.1` census's measured set: chromiumoxide (the pure-Rust async CDP
+# client) driving a pinned, provenance-named chromium — the engine is NOT
+# vendored; the worker verifies the binary at startup and refuses to run
+# without it.
+
+[lints]
+workspace = true
+
+[dependencies]
+# The CDP client (the `.5.1` census: chromiumoxide over headless_chrome).
+# The CDP client (the `.5.1` census: chromiumoxide over headless_chrome).
+# default features: the tokio runtime + the rustls fetcher (no native-tls).
+chromiumoxide = "0.9"
+# The worker's runtime (the multi-thread flavor keeps the CDP event loop off
+# the current thread).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"] }
+# The wire protocol + the chunk digests (the ADR-011 scheme).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# The event-stream + handler iteration.
+futures-util = "0.3"
+
+[dev-dependencies]
+# The offline wire test: a local origin the browser navigates to.
+axum = "0.8"

@@ -28,6 +28,7 @@
 pub mod agg;
 mod api;
 mod authority;
+pub mod broker;
 mod budget;
 pub mod ca;
 mod dependence;
@@ -35,6 +36,7 @@ pub mod extraction;
 pub mod fetcher;
 pub mod git;
 mod matching;
+pub mod mediated;
 mod node_channel;
 mod outbox;
 mod presence;

@@ -43,6 +43,9 @@ fn command<'a>(command_id: &'a str, cursor: &'a str, payload: &'a Value) -> Comm
         thread_id: "thr_00000000-0000-7000-8000-000000000000",
         payload,
         authz_ref: None,
+        policy_digest: None,
+        decided_at: None,
+        revocation_epoch: None,
         server_cursor: cursor,
     }
 }

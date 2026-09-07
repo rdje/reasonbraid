@@ -174,6 +174,26 @@ async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) 
     (status, response.json().await.expect("get json"))
 }
 
+/// The admin revocation verb (`.1.3.2`; the `.1.5.2` test uses it to bump the
+/// tenant epoch).
+async fn admin_revoke(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    tenant: &str,
+) -> (u16, Value) {
+    let response = client
+        .post(format!("{base}{path}"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({ "tenant_id": tenant, "reason": "test revocation" }))
+        .send()
+        .await
+        .expect("revoke request");
+    let status = response.status().as_u16();
+    (status, response.json().await.expect("revoke json"))
+}
+
 /// Enroll a node through the PUBLIC surface (`.1.2.1`): an authorized human
 /// issues a one-time token and the node consumes it with its dev secret. The
 /// dev wiring collapses node==role: the node id IS the role wire id.
@@ -1026,6 +1046,234 @@ async fn ordinary_channel_events_stay_receipts_only() {
     assert_eq!(claims, 1, "only the thread-create command claimed a key");
     let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
     assert_eq!(events.len(), 1, "the thread timeline is untouched");
+}
+
+/// A temporary journal path under the repo's build dir (same-volume locality, §13).
+fn journal_path(name: &str) -> std::path::PathBuf {
+    let base = std::env::var_os("CARGO_TARGET_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target")
+        });
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    let dir = base
+        .join("cached-decision-live")
+        .join(format!("{name}-{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join("node.db")
+}
+
+/// THE `.1.5.2` acceptance leg (ADR-008), measured end-to-end: the delivery
+/// carries the admission decision; a FRESH, epoch-current cached allow drives
+/// the REAL node worker to completion (the contribution lands); a revocation
+/// bumps the tenant epoch; and the NEXT dispatch — of work delivered BEFORE the
+/// revocation — is refused at the dispatch boundary WITHOUT a re-ask (the
+/// adapter never runs, the refusal is journaled, no contribution lands).
+#[tokio::test]
+async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
+
+    // The invitation rides the accept; the work item carries the admission decision.
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.invite",
+            "key-cd-inv",
+            json!({ "tenant_id": tenant, "agent_role": role }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-cd-acc",
+    )
+    .await;
+
+    // THE delivery carries the decision: the handshake replay names the admitting
+    // record + digest + decision time + the epoch at decision time (0 — no
+    // revocation yet), and the response carries the current epoch.
+    let (view, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    assert_eq!(view["revocation_epoch"], json!(0), "fresh tenant epoch");
+    let work = &view["replay"][0];
+    assert!(
+        work["authz_ref"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("authz_")),
+        "the delivery names the admitting record: {work}"
+    );
+    assert!(
+        work["policy_digest"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "the delivery carries the policy digest"
+    );
+    assert!(
+        work["decided_at"].as_str().is_some(),
+        "the delivery carries the decision time"
+    );
+    assert_eq!(work["revocation_epoch"], json!(0), "decided under epoch 0");
+
+    // Drive the REAL node worker against the live server: the fresh, epoch-
+    // current cached allow dispatches and the contribution lands.
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let cert_der = from_hex(&cert_hex).expect("cert hex");
+    let node = reasonbraid_node::Node::open(
+        journal_path("revoked-cache"),
+        server.base(),
+        role.clone(),
+        cert_der,
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile()
+        .await
+        .expect("reconcile journals the delivery");
+    let worker = reasonbraid_node::Worker::new(
+        node.clone(),
+        reasonbraid_adapter::FakeAdapter::new(
+            vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        ),
+        reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        std::time::Duration::from_millis(50),
+    );
+    worker.tick().await.expect("the fresh allow dispatches");
+
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    let contribution_id = events
+        .iter()
+        .find(|e| e["event_type"] == "thread.contribution_submitted")
+        .expect("the contribution exists")["event_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Second work item, delivered BEFORE the revocation (the epoch is still 0):
+    // the human challenges the contribution, the revise work rides the
+    // challenge transaction.
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.challenge",
+            "key-cd-chl",
+            json!({
+                "tenant_id": tenant,
+                "target_event_id": contribution_id,
+                "content": "justify",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "challenge succeeds");
+    let epoch_after_delivery: i64 =
+        sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+            .bind(&tenant)
+            .fetch_one(&pool)
+            .await
+            .expect("epoch");
+    assert_eq!(epoch_after_delivery, 0, "still no revocation yet");
+
+    // Revoke the role's grant — the epoch bump is the cache-invalidation signal.
+    let role_grant: String = sqlx::query_scalar(
+        "SELECT grant_id FROM authority_grants WHERE tenant_id = $1 AND status = 'active' \
+         AND subject_kind = 'role'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("the role's active grant");
+    let (status, revoked) = admin_revoke(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/grants/{role_grant}/revoke"),
+        &human,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the revocation succeeds: {revoked}");
+    let epoch_after_revocation: i64 =
+        sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+            .bind(&tenant)
+            .fetch_one(&pool)
+            .await
+            .expect("epoch");
+    assert_eq!(
+        epoch_after_revocation, 1,
+        "the revocation bumped the tenant epoch (measured)"
+    );
+
+    // THE next dispatch refuses WITHOUT a re-ask: the revise work was decided
+    // under epoch 0, the node now knows epoch 1 — the cached decision is stale,
+    // so the dispatch boundary refuses it and the adapter never runs.
+    worker
+        .tick()
+        .await
+        .expect("the tick journals the refusal, no error");
+    let refused = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.latest_attempt_status.as_deref() == Some("failed_before_dispatch"))
+        .expect("the revise dispatch was refused");
+    let attempts = node
+        .journal()
+        .attempts_for_operation(refused.operation_id.as_deref().expect("operation"))
+        .await
+        .expect("attempt list");
+    assert_eq!(attempts.len(), 1, "exactly one attempt — the refusal");
+    let evidence = attempts[0].evidence.clone().unwrap_or_default();
+    assert!(
+        evidence.contains("stale"),
+        "the refusal names the staleness (recorded epoch 0 vs current 1): {evidence}"
+    );
+    assert_eq!(attempts[0].status, "failed_before_dispatch");
+
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "thread.contribution_submitted")
+            .count(),
+        1,
+        "the refused revise dispatched nothing — exactly one contribution landed"
+    );
 }
 
 /// Lowercase-hex decode (the enroll response ships DER as hex).

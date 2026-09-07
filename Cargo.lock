@@ -1466,6 +1466,7 @@ dependencies = [
  "chrono",
  "clap",
  "rcgen",
+ "reasonbraid-adapter",
  "reasonbraid-core",
  "reasonbraid-node",
  "reqwest",

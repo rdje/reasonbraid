@@ -38,6 +38,9 @@ fn command<'a>(command_id: &'a str, cursor: &'a str, payload: &'a Value) -> Comm
         thread_id: "thr_00000000-0000-7000-8000-000000000000",
         payload,
         authz_ref: None,
+        policy_digest: None,
+        decided_at: None,
+        revocation_epoch: None,
         server_cursor: cursor,
     }
 }
@@ -123,7 +126,7 @@ async fn inspect_reports_profile_and_counts() {
         "{stdout}"
     );
     assert!(stdout.contains("quick_check: ok"), "{stdout}");
-    assert!(stdout.contains("schema user_version: 2"), "{stdout}");
+    assert!(stdout.contains("schema user_version: 3"), "{stdout}");
     assert!(
         stdout.contains("attempts: prepared=0 dispatched=1"),
         "{stdout}"

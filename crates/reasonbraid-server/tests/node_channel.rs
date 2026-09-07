@@ -466,6 +466,9 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
                     thread_id: "thr_00000000-0000-7000-8000-000000000000",
                     payload: &payload,
                     authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
                     server_cursor: "1",
                 },
                 Utc::now(),
@@ -533,6 +536,9 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
                     thread_id: "thr_00000000-0000-7000-8000-000000000000",
                     payload: &payload,
                     authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
                     server_cursor: "1",
                 },
                 Utc::now(),
@@ -633,6 +639,9 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
                     thread_id: "thr_00000000-0000-7000-8000-000000000000",
                     payload: &payload,
                     authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
                     server_cursor: "1",
                 },
                 Utc::now(),
@@ -928,6 +937,9 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
                     thread_id: "thr_00000000-0000-7000-8000-000000000000",
                     payload: &payload,
                     authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
                     server_cursor: "1",
                 },
                 Utc::now(),
@@ -947,6 +959,9 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
                     thread_id: "thr_00000000-0000-7000-8000-000000000000",
                     payload: &payload,
                     authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
                     server_cursor: "1",
                 },
                 Utc::now(),
@@ -1090,7 +1105,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
         let base = server.base_url();
         async move {
             let mut body = json!({
-                "channel_version": 3,
+                "channel_version": 4,
                 "node_id": node_id,
                 "last_acked_cursor": 0,
                 "pending_operations": [],
@@ -1136,7 +1151,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let stranger = client
         .post(format!("{}/v1/nodes/handshake", server.base_url()))
         .json(&json!({
-            "channel_version": 3,
+            "channel_version": 4,
             "node_id": "nod_00000000-0000-7000-8000-0000000001ff",
             "last_acked_cursor": 0,
             "pending_operations": [],
@@ -1155,7 +1170,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let malformed = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 3,
+            "channel_version": 4,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
@@ -1172,7 +1187,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let unauthenticated = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 3,
+            "channel_version": 4,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
@@ -1319,7 +1334,7 @@ async fn a_second_handshake_fences_the_previous_lease() {
         async move {
             let mut body = body;
             body["fencing_token"] = json!(token);
-            body["channel_version"] = json!(3);
+            body["channel_version"] = json!(4);
             body["node_id"] = json!(node_id);
             client
                 .post(format!("{base}{path}"))
@@ -1491,7 +1506,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
     channel.install_identity(fresh_cert, fresh_key);
     channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 3,
+            channel_version: 4,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1511,7 +1526,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
     );
     old_channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 3,
+            channel_version: 4,
             node_id,
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1539,7 +1554,7 @@ async fn rotation_without_a_valid_certificate_proof_is_refused() {
     let forged = client
         .post(format!("{}/v1/nodes/rotate", server.base_url()))
         .json(&json!({
-            "channel_version": 3,
+            "channel_version": 4,
             "node_id": node_id,
             "cert_der": "00",
             "proof_signature": "00",
@@ -1620,7 +1635,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
     );
     channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 3,
+            channel_version: 4,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1649,7 +1664,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
     // The NEXT handshake is refused: the ladder sees the revoked row.
     let refused = channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 3,
+            channel_version: 4,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],

@@ -63,7 +63,10 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal
 [dev-dependencies]
 # The node channel integration tests drive BOTH sides over real localhost sockets: the
 # axum server here and the node client from reasonbraid-node (reqwest: the wire-forging
-# tests need a raw HTTP client; plain http, no TLS features).
+# tests need a raw HTTP client; plain http, no TLS features). The `.1.5.2` cached-
+# decision test drives the REAL node worker against the live server, with the scripted
+# fake adapter standing in for the provider.
 reasonbraid-node = { path = "../reasonbraid-node", version = "0.1.0" }
+reasonbraid-adapter = { path = "../reasonbraid-adapter", version = "0.1.0" }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }

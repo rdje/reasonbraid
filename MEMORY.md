@@ -23,17 +23,15 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.5.2` (`.1.5.1` done: ADR-008
-  accepted — the shipped evaluator stays, the node caches ONLY the
-  admission decisions riding its delivery; the pure cache semantics + 5
-  tests landed, core suite 44). Then `.1.6`.
-- **Next action:** execute `PHASE-2.1.5.2` — the implementation: the poll
-  payload's commands gain the admission-decision metadata (authz_ref +
-  digest + decided_at + the epoch at decision time), migration 0013 adds
-  the tenant revocation epoch bumped by every `.1.3` revocation write,
-  the journal's pre-shaped `authz_ref` finally gains a value, and the
-  dispatch boundary honors the `.1.5.1` rules (fresh + epoch-current
-  allow dispatches; stale → re-ask; unreachable → fail closed).
+- **Active tree:** `PHASE-2` → frontier `.1.6` (`.1.5` complete: ADR-008 +
+  the delivery-carried admission decision + the tenant revocation epoch +
+  the node-side dispatch gate — a revocation refuses the next dispatch
+  without a re-ask, measured). Then `.1` closes.
+- **Next action:** execute `PHASE-2.1.6` — the incarnation/run writers:
+  enroll records the incarnation row (harness + model/provider facts known
+  at node start; the 0007 hierarchy gets its writers), dispatches record
+  run rows linked to the attempt; the Phase-1 gate-record deferral #4
+  closes.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

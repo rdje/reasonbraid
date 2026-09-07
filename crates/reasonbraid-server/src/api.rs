@@ -1016,13 +1016,18 @@ async fn revoke_node(
     }
 
     let revoked_at = Utc::now();
+    // The cert revocation + the epoch bump commit together (`.1.5.2`, ADR-008):
+    // a node-side cached decision is invalidated the moment the revocation is
+    // durable — the handshake ladder refuses the certs, the epoch refuses the
+    // cache, and neither can observe a window where one landed without the other.
+    let mut tx = state.pool.begin().await?;
     let result = sqlx::query(
         "UPDATE node_certificates SET revoked_at = $2 \
          WHERE node_id = $1 AND revoked_at IS NULL",
     )
     .bind(&req.node_id)
     .bind(revoked_at)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
     if result.rows_affected() == 0 {
         return Err(ControlApiError::invalid_transition(format!(
@@ -1030,6 +1035,8 @@ async fn revoke_node(
             req.node_id
         )));
     }
+    authority::bump_revocation_epoch(&mut tx, &req.tenant_id.to_string()).await?;
+    tx.commit().await?;
 
     Ok(Json(RevokeNodeResponse {
         node_id: req.node_id,
@@ -1312,8 +1319,11 @@ async fn run_thread_command(
     }
 
     // 2. Authorization — the audit record commits with whatever happens next.
+    //    An allowance captures what the delivery needs (`.1.5.2`, ADR-008): the
+    //    record id + digest + decision time, plus the tenant's epoch AT DECISION
+    //    TIME (read in the same transaction — the dispatch hook carries them).
     let now = Utc::now();
-    match authorize_in_tx(&mut *tx, authz, now).await? {
+    let admission = match authorize_in_tx(&mut *tx, authz, now).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             let message = format!("authorization denied ({record_id}): {reason}");
             let err = ControlApiError::unauthorized(message.clone());
@@ -1321,8 +1331,24 @@ async fn run_thread_command(
             tx.commit().await?;
             return Err(err);
         }
-        AuthorizationOutcome::Allowed { .. } => {}
-    }
+        AuthorizationOutcome::Allowed {
+            record_id,
+            policy_digest,
+            decided_at,
+        } => {
+            let revocation_epoch: i64 =
+                sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+                    .bind(tenant_id.to_string())
+                    .fetch_one(&mut *tx)
+                    .await?;
+            Some(AdmissionDecision {
+                authz_ref: record_id,
+                policy_digest,
+                decided_at,
+                revocation_epoch,
+            })
+        }
+    };
 
     // 3. Domain validation (the create path is pure; existing-thread commands read
     //    the LOCKED projection inside this transaction).
@@ -1410,6 +1436,9 @@ async fn run_thread_command(
                                 agent_role: &role.to_string(),
                                 target_event_id: None,
                                 projection: &projection,
+                                admission: admission
+                                    .as_ref()
+                                    .expect("the dispatch path runs after the authorization step"),
                             },
                         )
                         .await?;
@@ -1446,6 +1475,9 @@ async fn run_thread_command(
                                 agent_role: &author,
                                 target_event_id: Some(event_id.as_str()),
                                 projection: &projection,
+                                admission: admission
+                                    .as_ref()
+                                    .expect("the dispatch path runs after the authorization step"),
                             },
                         )
                         .await?;
@@ -1460,6 +1492,17 @@ async fn run_thread_command(
     Ok(json_response(StatusCode::OK, prepared.result))
 }
 
+/// The admission decision metadata a dispatched work item carries (`.1.5.2`,
+/// ADR-008): the node caches exactly this and evaluates it at the dispatch
+/// boundary against the freshness TTL + the tenant's current revocation epoch.
+#[derive(Debug, Clone)]
+pub struct AdmissionDecision {
+    pub authz_ref: String,
+    pub policy_digest: String,
+    pub decided_at: chrono::DateTime<chrono::Utc>,
+    pub revocation_epoch: i64,
+}
+
 /// The dispatch parameters for one work item (the `.6.2` hook's argument bundle).
 struct DispatchSpec<'a> {
     tenant_id: &'a TenantId,
@@ -1469,6 +1512,9 @@ struct DispatchSpec<'a> {
     agent_role: &'a str,
     target_event_id: Option<&'a str>,
     projection: &'a threads::ThreadProjection,
+    /// The admission decision the work item carries (always present — the
+    /// dispatch hook runs after the authorization step of the same transaction).
+    admission: &'a AdmissionDecision,
 }
 
 /// The `.6.2` dispatch body: hand one work item to the target role's node in the
@@ -1535,6 +1581,10 @@ where
         &spec.tenant_id.to_string(),
         &spec.thread_id.to_string(),
         &payload,
+        &spec.admission.authz_ref,
+        &spec.admission.policy_digest,
+        spec.admission.decided_at,
+        spec.admission.revocation_epoch,
     )
     .await?;
     Ok(())

@@ -377,7 +377,10 @@ slice can reuse the same control plane without rewriting it.
       `policy_digest`/`policy_version`/`decided_at` (migration 0004; the
       version is the hardcoded `"dev-authz-1"`).
     Children: `.1.5.1`–`.1.5.2` (decomposed `2026-09-07` at the
-      ADR-vs-implementation seam — the `.1.4` precedent).
+      ADR-vs-implementation seam — the `.1.4` precedent). **`.1.5` is
+      COMPLETE** — ADR-008 accepted + the delivery-carried decision +
+      the tenant epoch + the node-side dispatch gate (a revocation refuses
+      the next dispatch without a re-ask, measured).
 
   - ID: `PHASE-2.1.5.1`
     Status: `done`
@@ -424,7 +427,7 @@ slice can reuse the same control plane without rewriting it.
       product code changes (pure core types consumed by `.1.5.2`).
 
   - ID: `PHASE-2.1.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the implementation — the delivery carries the decision: the
       poll payload's commands gain the admission-decision metadata
       (authz_ref + policy_digest + decided_at + the epoch at decision
@@ -439,6 +442,27 @@ slice can reuse the same control plane without rewriting it.
       revocation invalidation (measured), fail-closed.
     Backlog: 11
     ADR: 008
+    Done (`2026-09-07`): the cached-decision machinery landed —
+      migration 0013 (the per-tenant `revocation_epoch` + the inbox's
+      decision columns), the three `.1.3` revocation writes bump the epoch
+      IN their transaction, the delivery carries the admission decision
+      (authz_ref + digest + decided_at + epoch-at-decision; the handshake/
+      poll responses carry the CURRENT epoch; CHANNEL_VERSION 4), the
+      journal stores the cached decision (migration 0003; the pre-shaped
+      `authz_ref` finally gains a value), and the worker's dispatch
+      boundary evaluates it (`.1.5.1` rules: fresh + epoch-current
+      dispatches; expired/epoch-stale/denied/absent refuses, journaled
+      `failed_before_dispatch` with the reason — the adapter is never
+      invoked). THE measured acceptance leg: the live test drives the REAL
+      node worker — the fresh allow completes (the contribution lands),
+      the grant revocation bumps the epoch 0→1, and the next dispatch (of
+      work decided under epoch 0) is refused WITHOUT a re-ask (the
+      staleness is in the journaled evidence; no second contribution). The
+      five offline gate tests (expired/epoch-bumped/absent/fresh-allow/
+      budget-still-gates) + the live test passed; the full guard green
+      (12 suites + e2e + demo 32/32, `target/pg152b_guard.log`). The
+      acceptance checklist below records the evidence — **`.1.5` is
+      COMPLETE** — frontier → `.1.6`.
     Acceptance: a cached allow expires/refreshes on the declared rule; a
       revocation invalidates the cache (measured — the next dispatch
       refuses without a re-ask); an unreachable authority store fails
@@ -493,7 +517,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.5.2` | `proposed` | `.1.5.1` done — ADR-008 accepted + the pure cache semantics landed (44 core tests); the implementation (the delivery-carried decision + the tenant epoch + the node-side cache) executes now |
+| 1 | `PHASE-2.1.6` | `proposed` | `.1.5` is COMPLETE (ADR-008 + the delivery-carried decision + the tenant epoch + the node-side dispatch gate — the measured revocation invalidation); the incarnation/run writers execute now |
 
 ## Changelog
 
@@ -554,6 +578,18 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.5.2` done — the cached-decision machinery: migration
+  0013 (the per-tenant revocation epoch + the inbox's decision columns), the
+  `.1.3` revocation writes bump the epoch IN their transaction, the delivery
+  carries the admission decision (authz_ref + digest + decided_at +
+  epoch-at-decision; the handshake/poll responses carry the current epoch;
+  CHANNEL_VERSION 4), the journal stores the cached decision (the pre-shaped
+  `authz_ref` finally gains a value), and the worker's dispatch boundary
+  evaluates it — fresh + epoch-current dispatches, expired/epoch-stale/
+  denied/absent refuses (journaled `failed_before_dispatch`, the adapter
+  never runs). The measured live leg: the real worker completes the fresh
+  allow, the grant revocation bumps the epoch 0→1, the next dispatch refuses
+  WITHOUT a re-ask. **`.1.5` is COMPLETE**; frontier → `.1.6`.
 - `2026-09-07`: `.1.5.1` done — ADR-008 accepted: the shipped in-tx
   evaluator stays (accepted with evidence — the OPA/Cedar comparison parks
   behind a measured trigger) and the node caches ONLY the admission
@@ -664,6 +700,60 @@ regenerated golden — a drift fix; see below) — `\.rs$` + `(^|/)crates/` in
   same commit. DEV_NOTES: promoted →
   `docs/decisions/2026-09-07_verification-set-coverage.md` gained
   `answers:`.
+
+## Acceptance Checklist (PHASE-2.1.5.2)
+
+The CODE change owned by this leaf: migration `0013_cached_decisions.sql`
+(`(^|/)migrations/` is a code path), `crates/reasonbraid-server/src/
+{authority.rs,node_channel.rs,api.rs}` (the epoch + the delivery metadata +
+the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
+{channel.rs,journal.rs,node.rs,worker.rs}` + `migrations/0003_cached_decisions.sql`
+(the cached decision + the dispatch gate + the epoch store),
+`crates/reasonbraid-node/tests/worker_cached_decision.rs` +
+`crates/reasonbraid-server/tests/node_work.rs` + `scripts/demo_two_host.sh`
+(the version bump) + `docs/book/src/node-channel.md` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — the §16.4 rule has no machinery (the `.1.5`
+  census): `grep -rn 'cache' crates/reasonbraid-node/src/
+  crates/reasonbraid-server/src/` → 0 matches before this leaf; the poll
+  payload carried no decision metadata and no epoch existed to bump.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the dev profile evaluates fresh at
+  admission and the node dispatches at an irreversible boundary with NO
+  re-check: a revocation between admission and dispatch would NOT refuse.
+  The fix point is the dispatch boundary (`.1.5.1`'s semantics wired to the
+  real surfaces): the delivery carries the decision, the revocation writes
+  bump the epoch, the node evaluates the cache before any provider contact.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: fresh
+  evaluation everywhere, no cache, no epoch. After: `bash
+  scripts/run_pg_tests.sh` → `test result: ok. 7 passed` (`node_work`, +1:
+  the live measured leg — the REAL node worker completes the fresh allow
+  (the contribution lands), the grant revocation bumps the tenant epoch 0→1
+  (`SELECT revocation_epoch`), the NEXT dispatch of work decided under epoch
+  0 is refused without a re-ask: `failed_before_dispatch` with the staleness
+  in the evidence, no second contribution) + the full guard green (12 suites
+  + e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS,
+  `rc=0`, `target/pg152b_guard.log`)); `cargo test -p reasonbraid-node
+  --test worker_cached_decision` → `test result: ok. 5 passed` (expired /
+  epoch-bumped / absent decision refuse; the fresh + epoch-current allow
+  reaches the adapter and completes; the budget gate still refuses after
+  the cached decision allows).
+- [x] **NO REGRESSION** — `cargo test --all` → 43 offline suites green
+  (rc=0); `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit;
+  `make book` builds.
+- [x] **FIX** — migration 0013 (the epoch column + the inbox's decision
+  columns); `authority.rs` (the `Allowed` outcome's digest/decided_at, the
+  `bump_revocation_epoch` helper, the revoke helpers' transactions);
+  `node_channel.rs` (the decision-carrying `enqueue_in_tx` + `ReplayCommand`
+  + the current-epoch accessor + the response fields + CHANNEL_VERSION 4);
+  `api.rs` (the `AdmissionDecision` capture + threading); the node's
+  `channel.rs`/`journal.rs`/`node.rs`/`worker.rs` (the DTO fields, journal
+  migration 0003, the cached-decision reader + epoch store, the dispatch
+  gate + `refuse_dispatch`); the tests + the demo's version bump + the
+  book's cached-decisions section.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book,
+  KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.1.2.2)
 
@@ -1020,6 +1110,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
+| `2026-09-07` | `PHASE-2.1.5.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
 
 ## Commit Log
 
@@ -1038,3 +1129,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.1.5.2` | `REASONBRAID-PHASE2-0014` | the cached-decision machinery: migration 0013 (the tenant epoch + the inbox decision columns), the revocation writes bump the epoch in-transaction, the delivery-carried admission decision + CHANNEL_VERSION 4, the node journal's cached decision + the dispatch gate (refuses stale/denied/absent — journaled, adapter never invoked); the measured live revocation-invalidation leg — **`.1.5` complete** |

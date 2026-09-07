@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.5.2: the cache's only job is to refuse — and the boundary where it refuses IS the feature
+
+- **The dispatch boundary, not the poll, is where revocation bites.** A command authorized at admission and delivered before a revocation was previously dispatched anyway. Now the admission decision rides the delivery, the revocation bumps the tenant epoch IN the revocation's transaction, and the node evaluates the cached decision before any provider contact — the measured live leg proves a fresh allow completes, then a revocation makes the NEXT dispatch refuse without a re-ask (`failed_before_dispatch`, staleness in the evidence, adapter never invoked).
+- **The channel version is the honest signal for the wire growth.** The delivery gained four decision fields and both responses gained the current epoch — CHANNEL_VERSION 4 (the `.1.2.2` precedent: the version gate makes a shape change loud on both sides).
+- **`AuthorizationOutcome::Allowed` grew what the delivery needs.** The outcome now carries the digest + decision time alongside the record id — the enqueue path binds exactly what the node's TTL and the audit row agree on; no second read, no drift window.
+- promotion: declined (the dispatch-boundary rule, the epoch-in-transaction rule, and the version bump are the ADR-008 implementation facts recorded in the leaf — ADR-008 already holds the semantics). **Frontier `PHASE-2.1.6` (the incarnation/run writers).**
+
 ## _(2026-09-07)_ — PHASE-2.1.5.1: the cached decision is a server fact the node borrows — and the golden caught a one-leaf-old drift
 
 - **§17.1 settled the cache's shape before any code**: the node journal is explicitly NOT authoritative for "global grants or final decisions", so the node can never locally re-evaluate a grant — the only cacheable thing is the server's ADMISSION decision riding the delivery. The spike's pure types (`CachedDecision` + `CacheVerdict` + the `ActionClass` fail table) encode exactly that: a 60s freshness TTL from `decided_at`, a revocation epoch a bump invalidates however fresh the entry looks, a deny never widened by time.

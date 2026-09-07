@@ -194,10 +194,19 @@ impl Node {
             })
             .await?;
 
+        // 3.5 The tenant's current revocation epoch (`.1.5.2`, ADR-008) — stored
+        //     before the replay journals, so every command journaled here is
+        //     evaluated against an epoch at least as fresh as its delivery.
+        self.journal
+            .set_revocation_epoch(response.revocation_epoch)
+            .await?;
+
         // 4. Journal the replay, deduplicated by command id (a duplicated command never
-        //    creates a second local operation).
+        //    creates a second local operation). The admission decision metadata rides
+        //    the row (`.1.5.2`): the cached decision the dispatch boundary evaluates.
         let mut max_cursor = last_acked_cursor;
         for cmd in &response.replay {
+            let decided_at = cmd.decided_at.as_ref().map(|d| d.to_rfc3339());
             self.journal
                 .record_command(
                     &CommandInput {
@@ -205,7 +214,10 @@ impl Node {
                         tenant_id: &cmd.tenant_id,
                         thread_id: &cmd.thread_id,
                         payload: &cmd.payload,
-                        authz_ref: None,
+                        authz_ref: cmd.authz_ref.as_deref(),
+                        policy_digest: cmd.policy_digest.as_deref(),
+                        decided_at: decided_at.as_deref(),
+                        revocation_epoch: cmd.revocation_epoch,
                         server_cursor: &cmd.cursor.to_string(),
                     },
                     now,

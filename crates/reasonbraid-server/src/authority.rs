@@ -51,11 +51,20 @@ pub struct CommandAuthz {
     pub target: ResourceTarget,
 }
 
-/// The outcome of [`authorize`].
+/// The outcome of [`authorize_in_tx`]. An allowance carries what the delivery
+/// needs (`.1.5.2`, ADR-008): the record id, the policy digest the record bound,
+/// and the decision time (the node-side freshness TTL runs from it).
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthorizationOutcome {
-    Allowed { record_id: String },
-    Denied { reason: String, record_id: String },
+    Allowed {
+        record_id: String,
+        policy_digest: String,
+        decided_at: DateTime<Utc>,
+    },
+    Denied {
+        reason: String,
+        record_id: String,
+    },
 }
 
 /// The typed failure of [`create_grant`] when the grant exceeds its boundary.
@@ -699,7 +708,11 @@ where
     .await?;
 
     Ok(match decision {
-        Decision::Allowed => AuthorizationOutcome::Allowed { record_id },
+        Decision::Allowed => AuthorizationOutcome::Allowed {
+            record_id,
+            policy_digest: digest,
+            decided_at: at,
+        },
         Decision::Denied { reason } => AuthorizationOutcome::Denied { reason, record_id },
     })
 }
@@ -818,20 +831,39 @@ pub async fn load_authorization_record(
     ))
 }
 
-// ── Revocation write paths (`.1.3.2`) ────────────────────────────────────────
+// ── Revocation write paths (`.1.3.2`; the epoch bump is `.1.5.2`, ADR-008) ──
 
-/// Revoke a grant by id: sets `status = 'revoked'`. Returns `(tenant_id,
+/// Bump the tenant's revocation epoch — the cached-decision invalidation signal.
+/// MUST run in the same transaction as the revocation write it accompanies: the
+/// epoch and the status change commit together, so a node holding a cached
+/// decision recorded under the old epoch is invalidated the moment the
+/// revocation is durable.
+pub(crate) async fn bump_revocation_epoch(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE tenants SET revocation_epoch = revocation_epoch + 1 WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// Revoke a grant by id: sets `status = 'revoked'` and bumps the tenant's
+/// revocation epoch in the SAME transaction. Returns `(tenant_id,
 /// previous_status)` — `None` when no such grant exists (the caller maps that
 /// to the typed 404). The evaluation's `status = 'active'` filters already
-/// refuse a revoked grant at the next authorization.
+/// refuse a revoked grant at the next authorization; the epoch bump refuses
+/// any node-side cached admission decision under it at the next dispatch.
 pub(crate) async fn revoke_grant(
     pool: &PgPool,
     grant_id: &str,
 ) -> Result<Option<(String, Option<GrantStatus>)>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT tenant_id, status FROM authority_grants WHERE grant_id = $1")
             .bind(grant_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *tx)
             .await?;
     let Some((tenant_id, status)) = row else {
         return Ok(None);
@@ -839,24 +871,29 @@ pub(crate) async fn revoke_grant(
     let previous = status.parse::<GrantStatus>().ok();
     sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
         .bind(grant_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    bump_revocation_epoch(&mut tx, &tenant_id).await?;
+    tx.commit().await?;
     Ok(Some((tenant_id, previous)))
 }
 
-/// Revoke a boundary by id: sets `status = 'revoked'`. Returns
+/// Revoke a boundary by id: sets `status = 'revoked'` and bumps the tenant's
+/// revocation epoch in the SAME transaction. Returns
 /// `(tenant_id, previous_status)` — `None` when no such boundary exists. The
 /// active-boundary lookup then finds no ceiling, so every grant under it is
-/// refused at the next decision (the core's revoked-boundary stance).
+/// refused at the next decision (the core's revoked-boundary stance); the
+/// epoch bump invalidates every node-side cached decision in the tenant.
 pub(crate) async fn revoke_boundary(
     pool: &PgPool,
     boundary_id: &str,
 ) -> Result<Option<(String, Option<BoundaryStatus>)>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT tenant_id, status FROM enrollment_boundaries WHERE boundary_id = $1",
     )
     .bind(boundary_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((tenant_id, status)) = row else {
         return Ok(None);
@@ -864,7 +901,9 @@ pub(crate) async fn revoke_boundary(
     let previous = status.parse::<BoundaryStatus>().ok();
     sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE boundary_id = $1")
         .bind(boundary_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    bump_revocation_epoch(&mut tx, &tenant_id).await?;
+    tx.commit().await?;
     Ok(Some((tenant_id, previous)))
 }

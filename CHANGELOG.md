@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The cache refuses at the dispatch boundary: a revocation stops the next dispatch, measured (`PHASE-2.1.5.2`)
+
+- The `.1.5.1` semantics got wired to the real surfaces: migration 0013 (the per-tenant `revocation_epoch` + the inbox's decision columns), the three `.1.3` revocation writes bump the epoch **in their own transaction** (the status change and the invalidation commit together — no window where one is durable without the other), and the delivered work item carries the admission decision (`authz_ref` + `policy_digest` + `decided_at` + the epoch at decision time). The handshake/poll responses carry the tenant's CURRENT epoch; the wire growth is CHANNEL_VERSION 4.
+- The node journals the cached decision (the pre-shaped `authz_ref` finally gains a value) and the worker's dispatch boundary evaluates it before any provider contact: a fresh, epoch-current cached allow dispatches; an expired, epoch-stale, denied, or ABSENT decision refuses — journaled as `failed_before_dispatch` with the reason, the adapter never invoked, never silently retried.
+- **The measured acceptance leg**: the live test drives the REAL node worker — the fresh allow completes and the contribution lands; a grant revocation bumps the epoch 0→1; the NEXT dispatch, of work decided under epoch 0, is refused without a re-ask (the staleness rides the journaled evidence, no second contribution). Five offline gate tests + the live leg; the full guard green (12 suites + e2e + demo 32/32). **`.1.5` complete** — frontier → `.1.6` (the incarnation/run writers).
+
 ## 2026-09-07 — ADR-008: the cache is the admission decision, borrowed — never re-evaluated (`PHASE-2.1.5.1`)
 
 - ADR-008 accepted (evidence-gated): the shipped in-tx evaluator stays the engine (an OPA/Cedar re-platform has no measured trigger — the comparison parks behind one), and the node caches ONLY the server's admission decisions riding its delivery — §17.1 settles the shape (the journal is explicitly not authoritative for "global grants or final decisions", so the node can never locally re-evaluate a grant).

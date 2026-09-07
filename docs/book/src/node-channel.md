@@ -21,9 +21,10 @@ GET  /v1/nodes/presence    observable online/offline state
 POST /v1/nodes/enroll      the one-time-token enrollment (`.1.2.1`)
 ```
 
-Every message carries a `channel_version` (currently **2**) and rejects unknown
+Every message carries a `channel_version` (currently **4**) and rejects unknown
 fields, so a forged authoritative field or a future version fails loudly, on
-both sides.
+both sides. Version 4 added the cached-decision fields (below); version 3 was
+the certificate-proofed handshake (`.1.2.2`).
 
 ## Authentication (`.1.2.2`, certificate-proofed)
 
@@ -44,7 +45,7 @@ secret, but the CHANNEL identity is the certificate:
 
    ```json
    {
-     "channel_version": 3,
+     "channel_version": 4,
      "node_id": "rol_…",
      "last_acked_cursor": 3,
      "pending_operations": ["op_…"],
@@ -153,7 +154,38 @@ Two operator actions harden the per-node inbox (both on the control API,
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 
-## Honest limits (Phase 2, after `.1.2.2`)
+## Cached decisions (`.1.5.2`, ADR-008)
+
+The node caches exactly one class of decision: the server's **admission
+decision** that rides each delivered work item (ROADMAP §16.4: nodes may cache
+only explicitly cacheable decisions; §11.1: the minimum authorized state). A
+delivered command carries `authz_ref` (the admitting authorization record),
+`policy_digest`, `decided_at`, and `revocation_epoch` — the tenant's epoch **at
+decision time**. The handshake and poll responses carry the tenant's **current**
+`revocation_epoch`.
+
+At the **dispatch boundary** (before any provider contact) the node evaluates
+the cached decision against the declared rules:
+
+- **Freshness** — `decided_at + 60 s` bounds the window a cached allow may
+  stand without re-validation.
+- **Revocation epoch** — every revocation write (node, grant, or boundary)
+  bumps the tenant's epoch in the same transaction as the status change; a
+  cached decision whose recorded epoch no longer matches the current one is
+  invalidated, however fresh it looks. The node learns the current epoch from
+  the next handshake/poll — so a revocation refuses the next dispatch within
+  one poll interval (the honest dev bound).
+- **Fail closed** — an expired or epoch-stale cached allow, a cached deny, or
+  a command with **no** cached decision (a pre-migration row or plain channel
+  traffic) is refused at the boundary and journaled as
+  `failed_before_dispatch` with the reason. The adapter is never invoked and
+  the refusal is never silently retried.
+
+The journal is explicitly **not authoritative** for "global grants or final
+decisions" (§17.1) — the cache borrows a server fact, it never re-evaluates a
+grant locally.
+
+## Honest limits (Phase 2, after `.1.5.2`)
 
 - The channel identity is the workload certificate with the certificate-proof
   handshake (chain-to-CA + node-id fingerprint + signature). The TRANSPORT is

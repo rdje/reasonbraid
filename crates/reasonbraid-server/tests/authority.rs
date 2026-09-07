@@ -661,8 +661,8 @@ async fn digests_are_stable_across_identical_evaluations() {
     let first = authorize(&pool, &ctx, Utc::now()).await.unwrap();
     let second = authorize(&pool, &ctx, Utc::now()).await.unwrap();
     let (
-        AuthorizationOutcome::Allowed { record_id: a },
-        AuthorizationOutcome::Allowed { record_id: b },
+        AuthorizationOutcome::Allowed { record_id: a, .. },
+        AuthorizationOutcome::Allowed { record_id: b, .. },
     ) = (&first, &second)
     else {
         panic!("both evaluations must be allowed");
@@ -712,7 +712,7 @@ async fn record_readback_round_trips_through_the_core_type() {
         GrantAction::ThreadContribute,
         thread_target(tenant, "thr_00000000-0000-7000-8000-000000000109"),
     );
-    let AuthorizationOutcome::Allowed { record_id } =
+    let AuthorizationOutcome::Allowed { record_id, .. } =
         authorize(&pool, &ctx, Utc::now()).await.unwrap()
     else {
         panic!("expected allowed");

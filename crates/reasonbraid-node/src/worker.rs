@@ -31,7 +31,9 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use reasonbraid_adapter::{Adapter, RunRequest};
-use reasonbraid_core::{BudgetDimensions, EventId, ProviderAttemptState, ReservationReference};
+use reasonbraid_core::{
+    BudgetDimensions, EventId, ProviderAttemptId, ProviderAttemptState, ReservationReference,
+};
 use serde_json::{json, Value};
 
 use crate::channel::ChannelError;
@@ -137,7 +139,17 @@ impl<A: Adapter> Worker<A> {
         let cursor = self.node.journal().last_acked_cursor().await?;
 
         let poll = self.node.channel().poll(cursor).await?;
+        // The tenant's current epoch (`.1.5.2`, ADR-008) — the freshness
+        // reference every cached admission decision is evaluated against at the
+        // dispatch boundary. Stored BEFORE the commands journal, so a command
+        // journaled in this tick is always evaluated against an epoch at least
+        // as fresh as its delivery.
+        self.node
+            .journal()
+            .set_revocation_epoch(poll.revocation_epoch)
+            .await?;
         for cmd in &poll.commands {
+            let decided_at = cmd.decided_at.as_ref().map(|d| d.to_rfc3339());
             self.node
                 .journal()
                 .record_command(
@@ -146,7 +158,10 @@ impl<A: Adapter> Worker<A> {
                         tenant_id: &cmd.tenant_id,
                         thread_id: &cmd.thread_id,
                         payload: &cmd.payload,
-                        authz_ref: None,
+                        authz_ref: cmd.authz_ref.as_deref(),
+                        policy_digest: cmd.policy_digest.as_deref(),
+                        decided_at: decided_at.as_deref(),
+                        revocation_epoch: cmd.revocation_epoch,
                         server_cursor: &cmd.cursor.to_string(),
                     },
                     now,
@@ -185,6 +200,64 @@ impl<A: Adapter> Worker<A> {
         };
         if !safe {
             return Ok(());
+        }
+
+        // THE cached-decision gate (`.1.5.2`, ADR-008): the dispatch boundary
+        // honors the ADMISSION decision the delivery carried — a fresh,
+        // epoch-current cached allow dispatches; an expired or epoch-stale one
+        // refuses the irreversible write (fail-closed), and a command with NO
+        // cached decision is never dispatched (no admission = no dispatch).
+        // The refusal is journaled as `failed_before_dispatch` — visible,
+        // bounded, never a silent skip.
+        let now = Utc::now();
+        match self
+            .node
+            .journal()
+            .cached_decision(&item.command_id)
+            .await?
+        {
+            None => {
+                self.refuse_dispatch(
+                    item,
+                    "no cached admission decision (the delivery carried none — \
+                     a pre-0013 row or plain channel traffic)",
+                    now,
+                )
+                .await?;
+                return Ok(());
+            }
+            Some(decision) => {
+                let current_epoch = self.node.journal().revocation_epoch().await?;
+                let Some(current_epoch) = current_epoch else {
+                    self.refuse_dispatch(
+                        item,
+                        "no revocation epoch reference (the node has not seen a \
+                         handshake/poll yet)",
+                        now,
+                    )
+                    .await?;
+                    return Ok(());
+                };
+                match decision.evaluate(now, current_epoch as u64) {
+                    reasonbraid_core::CacheVerdict::Allow => {}
+                    reasonbraid_core::CacheVerdict::Deny { reason } => {
+                        self.refuse_dispatch(item, &reason, now).await?;
+                        return Ok(());
+                    }
+                    reasonbraid_core::CacheVerdict::Stale => {
+                        let reason = format!(
+                            "cached admission decision is stale (decided {}, expires {}, \
+                             recorded epoch {}, current epoch {})",
+                            decision.decided_at,
+                            decision.expires_at,
+                            decision.revocation_epoch,
+                            current_epoch
+                        );
+                        self.refuse_dispatch(item, &reason, now).await?;
+                        return Ok(());
+                    }
+                }
+            }
         }
 
         let payload: Value = serde_json::from_str(&item.payload)
@@ -276,6 +349,43 @@ impl<A: Adapter> Worker<A> {
                 );
             }
         }
+        Ok(())
+    }
+
+    /// Journal a dispatch-boundary refusal (`.1.5.2`, ADR-008): the attempt is
+    /// prepared and IMMEDIATELY failed before dispatch with the reason — the
+    /// adapter is never contacted and the item's terminal status makes the next
+    /// skip decision permanent (a refused dispatch is never silently retried).
+    async fn refuse_dispatch(
+        &self,
+        item: &WorkItem,
+        reason: &str,
+        at: chrono::DateTime<Utc>,
+    ) -> Result<(), WorkerError> {
+        let operation_id = match &item.operation_id {
+            Some(op) => op.clone(),
+            None => {
+                self.node
+                    .journal()
+                    .ensure_operation(&item.command_id, at)
+                    .await?
+                    .operation_id
+            }
+        };
+        let attempt_id = ProviderAttemptId::new().to_string();
+        self.node
+            .journal()
+            .prepare_attempt(&attempt_id, &operation_id, at)
+            .await?;
+        self.node
+            .journal()
+            .record_failed_before_dispatch(&attempt_id, Some(reason), at)
+            .await?;
+        eprintln!(
+            "worker: {} REFUSED the dispatch of {} (fail-closed): {reason}",
+            self.node.node_id(),
+            item.command_id
+        );
         Ok(())
     }
 }

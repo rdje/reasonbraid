@@ -69,7 +69,7 @@ use sqlx::{PgPool, Postgres};
 /// `protocol_incompatible` error, never a silent downgrade. Version 2 (`.1.2.2`) adds
 /// the authenticated contract: the handshake key-proof, the fencing token on
 /// `events`/`ack`/`poll`, and the `heartbeat`/`presence` endpoints.
-pub const CHANNEL_VERSION: u32 = 3;
+pub const CHANNEL_VERSION: u32 = 4;
 
 /// The dev-profile lease TTL: a heartbeat renews a LIVE lease by this much. 60 s
 /// gives the demo's 15 s heartbeat cadence a 4× margin; a process that stops
@@ -161,7 +161,10 @@ pub struct AmbiguousAttempt {
     pub operation_id: String,
 }
 
-/// One inbox row replayed to the node, in cursor order.
+/// One inbox row replayed to the node, in cursor order. The decision fields
+/// (`.1.5.2`, ADR-008) carry the ADMISSION decision the node caches: a row
+/// enqueued before migration 0013 has none — the node treats that as
+/// fail-closed (no cached decision, no dispatch).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ReplayCommand {
@@ -170,6 +173,14 @@ pub struct ReplayCommand {
     pub tenant_id: String,
     pub thread_id: String,
     pub payload: Value,
+    /// The admitting authorization record id.
+    pub authz_ref: Option<String>,
+    /// The policy digest the record bound.
+    pub policy_digest: Option<String>,
+    /// The decision time — the node-side freshness TTL runs from it.
+    pub decided_at: Option<DateTime<Utc>>,
+    /// The tenant's revocation epoch AT DECISION TIME (a later bump invalidates).
+    pub revocation_epoch: Option<i64>,
 }
 
 /// Reconciliation guidance for one of the node's ambiguous attempts (`§11.4`).
@@ -213,6 +224,10 @@ pub struct HandshakeResponse {
     /// that renews the lease or guards `events`/`ack`/`poll`) and its expiry.
     pub fencing_token: String,
     pub lease_expires_at: DateTime<Utc>,
+    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008): the node
+    /// stores it and evaluates every cached admission decision against it at
+    /// the dispatch boundary.
+    pub revocation_epoch: i64,
 }
 
 /// A node-emitted event (a result, with its ORIGINAL id — `§17.4` step 5).
@@ -273,6 +288,9 @@ pub struct PollResponse {
     pub channel_version: u32,
     pub current_cursor: i64,
     pub commands: Vec<ReplayCommand>,
+    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008) — the node's
+    /// freshness reference for every cached admission decision.
+    pub revocation_epoch: i64,
 }
 
 /// The lease renewal (`backlog 13`): a heartbeat extends a LIVE lease — the
@@ -454,6 +472,10 @@ impl NodeChannelState {
     /// (monotonic, starting at 1). Concurrent enqueues to the SAME node collide on the
     /// `(node_id, cursor)` primary key — the dev profile is single-writer; the collision
     /// is a conflict error, never a silent overwrite.
+    ///
+    /// Plain channel traffic carries NO admission decision (the decision columns are
+    /// NULL — a node would refuse to dispatch it, fail-closed); dispatched WORK items
+    /// ride [`enqueue_in_tx`] with the full `.1.5.2` metadata.
     pub async fn enqueue(
         &self,
         node_id: &str,
@@ -463,9 +485,19 @@ impl NodeChannelState {
         payload: &Value,
     ) -> Result<i64, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
-        enqueue_in_tx(
-            &mut *conn, node_id, command_id, tenant_id, thread_id, payload,
+        sqlx::query_scalar(
+            "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+             VALUES ($1, \
+                     (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
+                     $2, $3, $4, $5) \
+             RETURNING cursor",
         )
+        .bind(node_id)
+        .bind(command_id)
+        .bind(tenant_id)
+        .bind(thread_id)
+        .bind(payload)
+        .fetch_one(&mut *conn)
         .await
     }
 
@@ -489,6 +521,20 @@ impl NodeChannelState {
             .await
     }
 
+    /// The tenant's CURRENT revocation epoch for this node (`.1.5.2`, ADR-008):
+    /// the freshness reference the node evaluates every cached admission
+    /// decision against. Rides the node's enrollment tenant (the `nodes` row —
+    /// a fenced node is always enrolled, so the row exists).
+    pub async fn revocation_epoch(&self, node_id: &str) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT t.revocation_epoch FROM tenants t JOIN nodes n ON n.tenant_id = t.tenant_id \
+             WHERE n.node_id = $1",
+        )
+        .bind(node_id)
+        .fetch_one(&self.pool)
+        .await
+    }
+
     /// The inbox rows after `after_cursor`, in cursor order — the replay for a node
     /// that reports holding up to `after_cursor`. Quarantined rows are ALWAYS
     /// filtered (`.1.2.3`): a quarantined command is never re-delivered, whatever
@@ -499,8 +545,23 @@ impl NodeChannelState {
         node_id: &str,
         after_cursor: i64,
     ) -> Result<Vec<ReplayCommand>, sqlx::Error> {
-        let rows = sqlx::query_as::<_, (i64, String, String, String, Value)>(
-            "SELECT cursor, command_id, tenant_id, thread_id, payload FROM node_inbox \
+        let rows = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                String,
+                String,
+                Value,
+                Option<String>,
+                Option<String>,
+                Option<DateTime<Utc>>,
+                Option<i64>,
+            ),
+        >(
+            "SELECT cursor, command_id, tenant_id, thread_id, payload, authz_ref, \
+                    policy_digest, decided_at, revocation_epoch \
+             FROM node_inbox \
              WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
              ORDER BY cursor",
         )
@@ -511,12 +572,28 @@ impl NodeChannelState {
         Ok(rows
             .into_iter()
             .map(
-                |(cursor, command_id, tenant_id, thread_id, payload)| ReplayCommand {
+                |(
                     cursor,
                     command_id,
                     tenant_id,
                     thread_id,
                     payload,
+                    authz_ref,
+                    policy_digest,
+                    decided_at,
+                    revocation_epoch,
+                )| {
+                    ReplayCommand {
+                        cursor,
+                        command_id,
+                        tenant_id,
+                        thread_id,
+                        payload,
+                        authz_ref,
+                        policy_digest,
+                        decided_at,
+                        revocation_epoch,
+                    }
                 },
             )
             .collect())
@@ -761,6 +838,10 @@ fn decode_hex(hex: &str) -> Option<Vec<u8>> {
 /// The transactional body of [`NodeChannelState::enqueue`]: the `.6.1` command
 /// transaction enqueues an invite/challenge work item in the SAME transaction as
 /// the thread event that produced it — an invitation exists iff its inbox row does.
+/// The decision metadata (`.1.5.2`, ADR-008) rides the row: the admitting
+/// authorization record, the policy digest, the decision time (the node-side
+/// freshness TTL runs from it), and the tenant's epoch AT DECISION TIME.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn enqueue_in_tx<'e, E>(
     mut tx: E,
     node_id: &str,
@@ -768,16 +849,21 @@ pub(crate) async fn enqueue_in_tx<'e, E>(
     tenant_id: &str,
     thread_id: &str,
     payload: &Value,
+    authz_ref: &str,
+    policy_digest: &str,
+    decided_at: DateTime<Utc>,
+    revocation_epoch: i64,
 ) -> Result<i64, sqlx::Error>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
 {
     sqlx::query_scalar(
-        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload, \
+                                 authz_ref, policy_digest, decided_at, revocation_epoch) \
          VALUES ($1, \
                  (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
-                 $2, $3, $4, $5) \
+                 $2, $3, $4, $5, $6, $7, $8, $9) \
          RETURNING cursor",
     )
     .bind(node_id)
@@ -785,6 +871,10 @@ where
     .bind(tenant_id)
     .bind(thread_id)
     .bind(payload)
+    .bind(authz_ref)
+    .bind(policy_digest)
+    .bind(decided_at)
+    .bind(revocation_epoch)
     .fetch_one(&mut *tx)
     .await
 }
@@ -918,6 +1008,7 @@ async fn handshake(
     // The authenticated reconnect issued a fresh lease: a NEW fencing token, so a
     // stale process fenced by this rotation is refused from here on.
     let (fencing_token, lease_expires_at) = state.issue_lease(&req.node_id, Utc::now()).await?;
+    let revocation_epoch = state.revocation_epoch(&req.node_id).await?;
 
     Ok(Json(HandshakeResponse {
         channel_version: CHANNEL_VERSION,
@@ -927,6 +1018,7 @@ async fn handshake(
         known_events,
         fencing_token,
         lease_expires_at,
+        revocation_epoch,
     }))
 }
 
@@ -1060,10 +1152,12 @@ async fn poll(
         return Err(ApiError::cursor_ahead(req.after_cursor, current));
     }
     let commands = state.replay(&req.node_id, req.after_cursor).await?;
+    let revocation_epoch = state.revocation_epoch(&req.node_id).await?;
     Ok(Json(PollResponse {
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
         commands,
+        revocation_epoch,
     }))
 }
 

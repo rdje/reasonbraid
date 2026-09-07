@@ -140,8 +140,16 @@ pub struct CommandInput<'a> {
     pub tenant_id: &'a str,
     pub thread_id: &'a str,
     pub payload: &'a Value,
-    /// Authorization snapshot/reference (§17.4); filled in WP5, nullable for now.
+    /// The admitting authorization record id (`.1.5.2`, ADR-008 — the delivery
+    /// carries the admission decision; a command without one has no cached
+    /// decision and is refused at the dispatch boundary, fail-closed).
     pub authz_ref: Option<&'a str>,
+    /// The policy digest the record bound.
+    pub policy_digest: Option<&'a str>,
+    /// The decision time (RFC 3339) — the freshness TTL runs from it.
+    pub decided_at: Option<&'a str>,
+    /// The tenant's revocation epoch AT DECISION TIME.
+    pub revocation_epoch: Option<i64>,
     /// The server cursor (sequence) this command arrived under — reconnect evidence for `.3.2`.
     pub server_cursor: &'a str,
 }
@@ -434,14 +442,18 @@ impl Journal {
     ) -> Result<CommandRecorded, JournalError> {
         let res = sqlx::query(
             "INSERT OR IGNORE INTO commands \
-             (command_id, tenant_id, thread_id, payload, authz_ref, server_cursor, received_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+             (command_id, tenant_id, thread_id, payload, authz_ref, policy_digest, \
+              decided_at, revocation_epoch, server_cursor, received_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(cmd.command_id)
         .bind(cmd.tenant_id)
         .bind(cmd.thread_id)
         .bind(cmd.payload)
         .bind(cmd.authz_ref)
+        .bind(cmd.policy_digest)
+        .bind(cmd.decided_at)
+        .bind(cmd.revocation_epoch)
         .bind(cmd.server_cursor)
         .bind(at.to_rfc3339())
         .execute(&self.pool)
@@ -947,6 +959,73 @@ impl Journal {
         Ok(())
     }
 
+    /// The tenant's revocation epoch as of the LATEST handshake/poll the node has
+    /// seen (`.1.5.2`, ADR-008): the freshness reference every cached admission
+    /// decision is evaluated against at the dispatch boundary. `None` until the
+    /// first handshake/poll — a dispatch gate with no epoch reference fails
+    /// closed (the cache cannot be validated without one).
+    pub async fn revocation_epoch(&self) -> Result<Option<i64>, JournalError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM channel_state WHERE key = 'revocation_epoch'")
+                .fetch_optional(&self.pool)
+                .await?;
+        match value {
+            None => Ok(None),
+            Some(v) => v
+                .parse::<i64>()
+                .map(Some)
+                .map_err(|_| JournalError::CorruptState {
+                    key: "revocation_epoch",
+                    value: v,
+                }),
+        }
+    }
+
+    /// Record the latest seen tenant revocation epoch (idempotent overwrite).
+    pub async fn set_revocation_epoch(&self, epoch: i64) -> Result<(), JournalError> {
+        sqlx::query(
+            "INSERT INTO channel_state (key, value) VALUES ('revocation_epoch', ?) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(epoch.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// The cached ADMISSION decision for one command (`.1.5.2`, ADR-008) — the
+    /// server's decision metadata journaled with the delivery. `None` when the
+    /// command carries no decision (pre-0003 row or plain traffic): the dispatch
+    /// boundary treats that as fail-closed. The cached kind is always `Allow`
+    /// (the server only DELIVERS allowed work; a re-ask denial is journaled as a
+    /// refusal, not a cached row).
+    pub async fn cached_decision(
+        &self,
+        command_id: &str,
+    ) -> Result<Option<reasonbraid_core::CachedDecision>, JournalError> {
+        let row: Option<(Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+            "SELECT policy_digest, decided_at, revocation_epoch FROM commands \
+             WHERE command_id = ?",
+        )
+        .bind(command_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((Some(policy_digest), Some(decided_at), Some(revocation_epoch))) = row else {
+            return Ok(None);
+        };
+        let decided_at = chrono::DateTime::parse_from_rfc3339(&decided_at)
+            .map(|d| d.with_timezone(&chrono::Utc))
+            .map_err(|_| JournalError::CorruptState {
+                key: "commands.decided_at",
+                value: decided_at,
+            })?;
+        Ok(Some(reasonbraid_core::CachedDecision::allow(
+            decided_at,
+            revocation_epoch as u64,
+            policy_digest,
+        )))
+    }
+
     /// The local operations that have not reached a terminal state (no attempt yet, or
     /// every attempt still in flight/ambiguous) — the "pending local operation IDs" the
     /// reconnect handshake reports (`§17.4` step 2).
@@ -1086,6 +1165,48 @@ impl Journal {
             .collect())
     }
 
+    /// Every attempt of one operation, oldest first — the inspection surface the
+    /// `.1.5.2` refusal tests (and operators) read the dispatch-boundary verdict
+    /// from (a refused cached decision is a `failed_before_dispatch` with the
+    /// staleness in its evidence).
+    pub async fn attempts_for_operation(
+        &self,
+        operation_id: &str,
+    ) -> Result<Vec<AttemptSummary>, JournalError> {
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                String,
+            ),
+        >(
+            "SELECT attempt_id, operation_id, status, provider_request_id, evidence, updated_at \
+             FROM attempts WHERE operation_id = ? ORDER BY created_at",
+        )
+        .bind(operation_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(attempt_id, operation_id, status, provider_request_id, evidence, updated_at)| {
+                    AttemptSummary {
+                        attempt_id,
+                        operation_id,
+                        status,
+                        provider_request_id,
+                        evidence,
+                        updated_at,
+                    }
+                },
+            )
+            .collect())
+    }
+
     /// Inspectable health: the recorded durability profile, live connection settings,
     /// the schema version, and a `quick_check` integrity result.
     pub async fn health(&self) -> Result<JournalHealth, JournalError> {
@@ -1194,6 +1315,9 @@ mod tests {
             thread_id: "thr_00000000-0000-7000-8000-000000000000",
             payload,
             authz_ref: None,
+            policy_digest: None,
+            decided_at: None,
+            revocation_epoch: None,
             server_cursor: cursor,
         }
     }
@@ -1228,7 +1352,7 @@ mod tests {
         assert_eq!(health.journal_mode, "wal");
         assert_eq!(health.synchronous, "FULL");
         assert_eq!(health.foreign_keys, 1);
-        assert_eq!(health.user_version, 2, "migrations set the schema version");
+        assert_eq!(health.user_version, 3, "migrations set the schema version");
         assert_eq!(health.quick_check, "ok");
         assert!(health.busy_timeout_ms > 0);
     }

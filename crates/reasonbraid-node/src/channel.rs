@@ -27,7 +27,7 @@ use serde_json::Value;
 
 /// The node channel's wire protocol version (must equal the server's). Version 3
 /// (`.1.2.2`) is the certificate-proof contract.
-pub const CHANNEL_VERSION: u32 = 3;
+pub const CHANNEL_VERSION: u32 = 4;
 
 /// The exact fields the handshake proof covers, in canonical (serde field)
 /// order — the mirrored [`ProofCoverage`] shape the server verifies. Both sides
@@ -135,6 +135,15 @@ pub struct ReplayCommand {
     pub tenant_id: String,
     pub thread_id: String,
     pub payload: Value,
+    /// The admitting authorization record id (`.1.5.2`, ADR-008) — `None` for
+    /// rows enqueued before migration 0013 or plain channel traffic.
+    pub authz_ref: Option<String>,
+    /// The policy digest the record bound.
+    pub policy_digest: Option<String>,
+    /// The decision time — the freshness TTL runs from it.
+    pub decided_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The tenant's revocation epoch AT DECISION TIME.
+    pub revocation_epoch: Option<i64>,
 }
 
 /// Reconciliation guidance for one of the node's ambiguous attempts (`§11.4`).
@@ -173,6 +182,8 @@ pub struct HandshakeResponse {
     pub known_events: Vec<KnownEvent>,
     pub fencing_token: String,
     pub lease_expires_at: chrono::DateTime<chrono::Utc>,
+    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008).
+    pub revocation_epoch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -198,6 +209,10 @@ pub struct PollResponse {
     pub channel_version: u32,
     pub current_cursor: i64,
     pub commands: Vec<ReplayCommand>,
+    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008) — the node
+    /// stores it and evaluates every cached admission decision against it at
+    /// the dispatch boundary.
+    pub revocation_epoch: i64,
 }
 
 /// The lease renewal (`POST /v1/nodes/heartbeat`): a heartbeat extends a LIVE

@@ -409,7 +409,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     machinery); ADR-015 is unopened. Children at those seams —
     frontier → `.4.1`.
   - ID: `PHASE-3.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-015 — the recruitment policy baseline: the shipped
       explicit-invitation contract (`.1.3`: the invite →
       accept/decline/remove + dispatch-on-accept) PROMOTES as the
@@ -420,6 +420,17 @@ eligibility before ranking. Dependence indicators, never an independence score.
       the vocabulary the `.4.2`/`.4.3` children build. No code.
     Backlog: 29, 30 (the ADR half)
     ADR: 015
+    Done (`2026-09-07`): ADR-015 accepted (evidence-gated) —
+      `docs/adr/015-recruitment-policy-baseline.md`: the shipped
+      `.1.3` explicit invitation PROMOTES as the recruitment
+      baseline (the human names the participants; the invitation is
+      the real capability; dispatch-on-accept); the open call is
+      the matching lane's consumer (the `.4.2` artifact rides the
+      shipped invitation machinery, never a parallel system); the
+      storm controls gate BOTH paths; the dependence indicators land
+      with `.6` (the early trigger named: the first recruitment
+      decision that needs them). No code changed. Frontier →
+      `.4.2`.
     Acceptance: ADR-015 accepted (the baseline named; the
       dependence-indicator trigger named); no code changes.
 
@@ -476,7 +487,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.4.1` | `proposed` | `.4` decomposed at the census seams (the explicit-invitation baseline + the match candidates exist; the responses vocabulary, the call artifact, and the storm controls do not); ADR-015 executes now |
+| 1 | `PHASE-3.4.2` | `proposed` | `.4.1` done — ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane); the call artifact + the typed responses execute now |
 
 ## Changelog
 
@@ -548,6 +559,10 @@ eligibility before ranking. Dependence indicators, never an independence score.
   and the §10.7 storm controls are the gaps (ADR-015 unopened);
   children `.4.1` (ADR-015) → `.4.2` (the call + the responses) →
   `.4.3` (the storm controls); frontier → `.4.1`.
+- `2026-09-07`: `.4.1` done — ADR-015 accepted (the explicit
+  invitation promotes; the open call is the matching lane's
+  consumer; the dependence indicators land with `.6`); no code
+  changed; frontier → `.4.2`.
 
 ## Acceptance Checklist (PHASE-3.3.3)
 
@@ -927,6 +942,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-015 accepted (the baseline + the dependence-indicator trigger); frontier → `.4.2` |
 | `2026-09-07` | `PHASE-3.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the recruitment-lane census + the contract-seam decomposition (`.4.1` ADR-015 → `.4.2` the call + responses → `.4.3` the storm controls); frontier → `.4.1` |
 | `2026-09-07` | `PHASE-3.3.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_match` → `test result: ok. 1 passed` (the ranked resolution + the clamp + the gate); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg333_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the matching query surface; **`.3` COMPLETE** — frontier → `.4` |
 | `2026-09-07` | `PHASE-3.3.2` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 10 passed` (the stage-1 gates + the ordering, the zero weight, the eligible-only rule, the deterministic tie); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg332_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-2 explainable ranking; frontier → `.3.3` |
@@ -944,6 +960,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.4.1` | `REASONBRAID-PHASE3-0014` | ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane — no code) |
 | `PHASE-3.4` | `REASONBRAID-PHASE3-0013` | the recruitment lane decomposed at the census seams (the baseline + the candidates exist; the vocabulary/call/storm machinery are the gaps) |
 | `PHASE-3.3.3` | `REASONBRAID-PHASE3-0012` | the matching query surface (the scope clamp + the filtered candidates + the provenance gate) — **`.3` COMPLETE** |
 | `PHASE-3.3.2` | `REASONBRAID-PHASE3-0011` | the stage-2 explainable ranking (the five weighted features, the visibility-safe explanations, the eligible-only ordering) |

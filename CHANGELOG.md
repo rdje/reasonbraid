@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-015: the explicit invitation promotes, the open call consumes the matching lane (`PHASE-3.4.1`)
+
+- ADR-015 accepted (evidence-gated): the shipped `.1.3` explicit-invitation contract (the human names the participants, the invitation is the real capability, dispatch-on-accept) is the recruitment baseline; the open call rides the SAME invitation machinery (never a parallel system) and consumes the matching lane's candidates.
+- The storm controls will gate both paths; the dependence indicators land with `.6` (the early trigger named: the first recruitment decision that needs them). No code changed. Frontier → `.4.2` (the call artifact + the typed responses).
+
 ## 2026-09-07 — `.4` split at the census seams (`PHASE-3.4`)
 
 - The recruitment-lane census mapped §10.5/§10.7 (backlog 29/30) against the shipped surface: the `.1.3` invitation flow is the EXPLICIT baseline and the `.3` match surface supplies the candidates — but the §10.5 response vocabulary (`join`/`observe`/`defer`/`conditional_join`/`recommend`/`request_context`/`recuse`) has no typed shape, no call artifact exists (the window/deadline/min-max/slots), the panel snapshot + the selection explanation do not exist, the §10.7 storm controls have nothing, and ADR-015 is unopened.

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.4.1: the baseline is the promotion, not the parallel — the open call rides the invitation that already works
+
+- **ADR-015 settles the lane's shape before the machinery lands**: the shipped explicit invitation (the human names the participants, the invitation IS the capability, dispatch-on-accept) promotes as the recruitment baseline, and the open call is the matching lane's consumer riding the SAME machinery — the failure mode the ADR rules out is a second, parallel invitation system. The dependence indicators stay with their owning lane (`.6`) behind a named early trigger.
+- promotion: declined (the ADR-015 record itself holds the answer). **Frontier `PHASE-3.4.2` (the call artifact + the typed recruitment responses).**
+
 ## _(2026-09-07)_ — PHASE-3.4: the recruitment lane has a baseline and candidates but no vocabulary — the census names the three seams
 
 - **The explicit-invitation flow (`.1.3`) and the match surface (`.3`) are the inputs; the protocol between them is missing**: no typed §10.5 response vocabulary (join/observe/defer/conditional_join/recommend/request_context/recuse), no call artifact (the window/deadline/min-max/slots), no panel snapshot with its explanation, and none of the §10.7 storm controls. ADR-015 therefore opens first (the baseline promotes; the dependence-indicator trigger is the `.6` lane's), then the call + the responses, then the storm controls built-or-named.

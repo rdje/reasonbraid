@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-012 + ADR-013: the ambiguity contract and the budget invariants, accepted by promotion (`PHASE-2.3.1`)
+
+- ADR-012 accepted (evidence-gated): the provider-attempt ambiguity contract is the shipped machinery — the WP3 boundary-first journal, the WP4 prove/adjudicate exits, and the `.2.3` pure retry classes (a risky re-run requires the explicit `allow_possible_duplicate` authorization). No silent retry, structurally.
+- ADR-013 accepted (evidence-gated): the budget contract is the shipped WP5 engine — reserve before dispatch at both boundaries, settle with actual usage, overruns reported never clamped, holds on indeterminate attempts. Pricing snapshots are the named Phase-4+ trigger (the invariants stay pinned when they land).
+- Both promote the existing decision records; no code changed. Frontier → `.3.2` (the spend circuit breakers).
+
 ## 2026-09-07 — `.3` split at the contract seams (`PHASE-2.3`)
 
 - The census found the machinery largely shipped: the provider-attempt state machine (core, deterministic `apply`), the budget settlement (actual usage recorded, overruns reported never clamped), and the ambiguity basics (`outcome_unknown` → proof/adjudication; the `.2.3` retry gate's `retry_requires_authorization`). What's open: spend CIRCUIT breakers (backlog 23 — nothing stops NEW dispatches once a tenant's spend crosses a declared threshold; the ceiling only refuses per-reservation), the usage RECONCILIATION surface (backlog 25 — the settlement records usage but nothing reconciles held vs settled vs overrun), and ADR-012/013 (unopened, though their machinery shipped — the promotion precedent).

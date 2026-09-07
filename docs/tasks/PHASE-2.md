@@ -727,7 +727,7 @@ slice can reuse the same control plane without rewriting it.
     receipts picture).
 
   - ID: `PHASE-2.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-012 + ADR-013, accepted with evidence: the ambiguity
       machinery (outcome_unknown → proof/adjudication, the §14.6
       no-silent-retry rule, the `.2.3` retry classes) promotes to
@@ -736,6 +736,19 @@ slice can reuse the same control plane without rewriting it.
       clamped, denials recorded) promote to ADR-013 (the pricing-
       snapshot machinery is named as the Phase-4+ trigger). No code.
     ADR: 012, 013
+    Done (`2026-09-07`): ADR-012 accepted — the ambiguity contract is the
+      shipped machinery (the WP3 boundary-first journal, the WP4
+      prove/adjudicate exits, the `.2.3` pure retry classes; the risky
+      re-run requires the explicit possible-duplicate authorization);
+      ADR-013 accepted — the budget contract is the shipped WP5 engine
+      (reserve before dispatch at both boundaries, settle with actual
+      usage, overruns reported never clamped, holds on indeterminate
+      attempts; pricing snapshots deferred to Phase 4+ with the named
+      trigger). Both promote the existing decision records
+      (`docs/decisions/2026-09-06_node-journal.md`,
+      `…fake-adapter.md`, `…real-adapter-codex.md`,
+      `…budget-reservation.md`) — no code changed; the ADR INDEX gained
+      both rows (012/013 close). Frontier → `.3.2`.
     Acceptance: both ADRs accepted (evidence-gated), the revisit
       triggers named; no code changes.
 
@@ -792,13 +805,19 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.3.1` | `proposed` | `.3` decomposed at the contract seams (the census: the state machine + settlement + ambiguity basics exist; circuit breakers + the reconciliation surface + ADR-012/013 are open); the ADR-012/013 records execute now |
+| 1 | `PHASE-2.3.2` | `proposed` | `.3.1` done — ADR-012/013 accepted (the shipped ambiguity + budget machinery promotes; no code); the spend circuit breakers execute now |
  `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
  `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.3.1` done — ADR-012 accepted (the ambiguity contract is
+  the shipped machinery: the WP3 boundary-first journal + the WP4
+  prove/adjudicate exits + the `.2.3` pure retry classes) and ADR-013
+  accepted (the WP5 budget invariants; pricing snapshots deferred to Phase
+  4+ with the named trigger); both promote the existing decision records,
+  no code changed; frontier → `.3.2`.
 - `2026-09-07`: `.3` decomposed at the contract seams — the census found
   the state machine + the settlement + the ambiguity basics EXIST while
   the circuit breakers (backlog 23), the usage-reconciliation surface
@@ -1687,6 +1706,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.3.1` | `REASONBRAID-PHASE2-0024` | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes — no code; the pricing-snapshot trigger named) |
 | `PHASE-2.3` | `REASONBRAID-PHASE2-0023` | the contract-seam split (the state machine + settlement exist; circuit breakers, the reconciliation surface, ADR-012/013 open) |
 | `PHASE-2.2.4` | `REASONBRAID-PHASE2-0022` | the two-way quarantine: the once-only best-effort dead-letter report, the server's auto-quarantine in the receipt transaction, `POST /v1/nodes/replay` + `rb node replay` (the decision refreshes + the row re-sequences), the replayed-decision refresh + the decision-scoped retry count — **`.2` COMPLETE** |
 | `PHASE-2.2.3` | `REASONBRAID-PHASE2-0021` | the retry policy: the pure `retry_decision` (§14.6 classes) + the `allow_possible_duplicate` wire flag + the worker's retry gate (attempt-counted, budget-denials terminal, ambiguity authorization-required) |

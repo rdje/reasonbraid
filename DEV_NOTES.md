@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.3.1: two ADRs, one day, zero code — the promotion pattern is now the default for shipped machinery
+
+- **ADR-012 and ADR-013 are the fourth and fifth promotion closures** (005, 006, 008's engine half before them). The pattern is settled: when the queue item's machinery already ships and is green, the ADR promotes the decision records + names the revisit trigger — it does not re-open a shipped contract.
+- promotion: declined (the promotion-by-evidence pattern is already ADR-005/006's recorded precedent; the ADR records themselves hold the answers). **Frontier `PHASE-2.3.2` (the spend circuit breakers).**
+
 ## _(2026-09-07)_ — PHASE-2.3: the lane's census found the machinery shipped and the records unwritten — again
 
 - **Third promotion lane in a row** (ADR-005, ADR-006 before it): the state machine, the settlement, and the ambiguity paths all exist and are green — ADR-012/013's job is to promote the evidence and name the triggers, not to build. The genuinely open contracts are the circuit breakers (backlog 23) and the reconciliation surface (backlog 25).

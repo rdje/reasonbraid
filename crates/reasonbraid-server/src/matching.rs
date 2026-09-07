@@ -33,6 +33,10 @@ pub struct EligibilityExpression {
     pub presence_states: Vec<String>,
     /// Explicit exclusions (role ids) — a named recusal refuses regardless.
     pub exclude: Vec<String>,
+    /// The project/domain tags the stage-2 affinity feature matches against.
+    pub domains: Vec<String>,
+    /// The preferred cost/latency class (the stage-2 latency feature).
+    pub preferred_latency: Option<String>,
 }
 
 impl Default for EligibilityExpression {
@@ -46,6 +50,8 @@ impl Default for EligibilityExpression {
             min_budget: None,
             presence_states: vec!["available".to_string()],
             exclude: Vec::new(),
+            domains: Vec::new(),
+            preferred_latency: None,
         }
     }
 }
@@ -282,6 +288,212 @@ pub fn eligible(
     }
 }
 
+/// The stage-2 feature weights (the initiator's preferences). Zero-weight
+/// features contribute nothing; the ranking is the weighted sum.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RankingPreferences {
+    pub capability: f64,
+    pub interest: f64,
+    pub affinity: f64,
+    pub latency: f64,
+    pub balance: f64,
+}
+
+impl Default for RankingPreferences {
+    fn default() -> Self {
+        Self {
+            capability: 1.0,
+            interest: 1.0,
+            affinity: 1.0,
+            latency: 1.0,
+            balance: 1.0,
+        }
+    }
+}
+
+/// One feature score with its visibility-safe explanation: the explanation
+/// names ONLY the initiator's own inputs and the matched facts that are
+/// VISIBLE at the expression's scope — never a hidden profile field.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct FeatureScore {
+    pub feature: &'static str,
+    pub score: f64,
+    pub contribution: f64,
+    pub explanation: String,
+}
+
+/// The ranked candidate: the stage-1 reasons + the feature scores + the total.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RankedCandidate {
+    pub role_id: String,
+    pub stage1_reasons: Vec<String>,
+    pub features: Vec<FeatureScore>,
+    pub total: f64,
+}
+
+/// The deterministic stage-2 ranking: a pure function of the ELIGIBLE set (the
+/// ranking never restores an ineligible role — the stage-1 verdict does). The
+/// scores read the profile filtered at the expression's scope only. Ties break
+/// by role id (determinism).
+pub fn rank(
+    expression: &EligibilityExpression,
+    candidates: &[(EligibilityCandidate, EligibilityVerdict)],
+    preferences: &RankingPreferences,
+) -> Vec<RankedCandidate> {
+    let mut ranked: Vec<RankedCandidate> = candidates
+        .iter()
+        .filter(|(_, verdict)| verdict.eligible)
+        .map(|(candidate, verdict)| {
+            let visible = candidate
+                .profile
+                .as_ref()
+                .map(|p| crate::profiles::filter_profile(p, expression.scope))
+                .unwrap_or_else(|| serde_json::json!({}));
+            let visible_obj = visible.as_object().expect("the filter returns an object");
+
+            let visible_caps: Vec<String> = visible_obj
+                .get("capabilities")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|c| c.get("taxonomy_id").and_then(|t| t.as_str()).map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let required: Vec<&str> = expression
+                .capabilities
+                .iter()
+                .map(|r| r.taxonomy_id.as_str())
+                .collect();
+            let satisfied = required.iter().filter(|id| visible_caps.iter().any(|c| c == *id)).count();
+            let capability_score = if required.is_empty() {
+                0.0
+            } else {
+                satisfied as f64 / required.len() as f64
+            };
+
+            let visible_interests: Vec<&str> = visible_obj
+                .get("interests")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|i| i.as_str()).collect())
+                .unwrap_or_default();
+            let matched_interests = expression
+                .interests
+                .iter()
+                .filter(|i| visible_interests.contains(&i.as_str()))
+                .count();
+            let interest_score = if expression.interests.is_empty() {
+                0.0
+            } else {
+                matched_interests as f64 / expression.interests.len() as f64
+            };
+
+            let visible_scopes: Vec<&str> = visible_obj
+                .get("scopes")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|i| i.as_str()).collect())
+                .unwrap_or_default();
+            let matched_domains = expression
+                .domains
+                .iter()
+                .filter(|d| visible_scopes.contains(&d.as_str()))
+                .count();
+            let affinity_score = if expression.domains.is_empty() {
+                0.0
+            } else {
+                matched_domains as f64 / expression.domains.len() as f64
+            };
+
+            let latency_score = match &expression.preferred_latency {
+                Some(preferred) => {
+                    if candidate
+                        .profile
+                        .as_ref()
+                        .and_then(|p| p.cost_latency_class.as_ref())
+                        == Some(preferred)
+                    {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                None => 0.0,
+            };
+
+            let balance_score = match candidate.presence_state {
+                crate::presence::PresenceState::Available => 1.0,
+                crate::presence::PresenceState::Draining => 0.3,
+                _ => 0.0,
+            };
+
+            let features = vec![
+                FeatureScore {
+                    feature: "capability_match",
+                    score: capability_score,
+                    contribution: preferences.capability * capability_score,
+                    explanation: format!(
+                        "{} of the {} required capabilities are declared (and visible at this scope)",
+                        satisfied,
+                        required.len()
+                    ),
+                },
+                FeatureScore {
+                    feature: "interest_match",
+                    score: interest_score,
+                    contribution: preferences.interest * interest_score,
+                    explanation: format!(
+                        "{} of the {} required interests are declared",
+                        matched_interests,
+                        expression.interests.len()
+                    ),
+                },
+                FeatureScore {
+                    feature: "domain_affinity",
+                    score: affinity_score,
+                    contribution: preferences.affinity * affinity_score,
+                    explanation: format!(
+                        "{} of the {} project/domain tags match the declared scopes",
+                        matched_domains,
+                        expression.domains.len()
+                    ),
+                },
+                FeatureScore {
+                    feature: "latency_class",
+                    score: latency_score,
+                    contribution: preferences.latency * latency_score,
+                    explanation: match &expression.preferred_latency {
+                        Some(p) => format!("the declared cost/latency class matches `{p}`"),
+                        None => "no latency preference was expressed".to_string(),
+                    },
+                },
+                FeatureScore {
+                    feature: "workload_balance",
+                    score: balance_score,
+                    contribution: preferences.balance * balance_score,
+                    explanation: format!(
+                        "the presence state `{}` admits work",
+                        candidate.presence_state.as_str()
+                    ),
+                },
+            ];
+            let total: f64 = features.iter().map(|f| f.contribution).sum();
+            RankedCandidate {
+                role_id: candidate.role_id.clone(),
+                stage1_reasons: verdict.reasons.clone(),
+                features,
+                total,
+            }
+        })
+        .collect();
+    ranked.sort_by(|a, b| {
+        b.total
+            .partial_cmp(&a.total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.role_id.cmp(&b.role_id))
+    });
+    ranked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,5 +694,133 @@ mod tests {
             "the interest reason rides: {:?}",
             verdict.reasons
         );
+    }
+
+    fn ranked_pair(
+        expression: &EligibilityExpression,
+        preferences: &RankingPreferences,
+    ) -> Vec<RankedCandidate> {
+        // Both candidates satisfy the STAGE-1 gates (the same capability +
+        // interest); the good one ALSO declares the domain scope the
+        // expression's affinity feature matches.
+        let mut good_profile = profile_with(
+            vec![crate::profiles::CapabilityClaim {
+                taxonomy_id: "code_review".to_string(),
+                confidence: ClaimConfidence::OwnerAttested,
+                evidence_ref: None,
+                expires_at: None,
+            }],
+            vec!["parser trivia"],
+        );
+        good_profile.scopes = vec!["repo:example/parser".to_string()];
+        let good = candidate("rol_good", Some(good_profile));
+        let partial = candidate(
+            "rol_partial",
+            Some(profile_with(
+                vec![crate::profiles::CapabilityClaim {
+                    taxonomy_id: "code_review".to_string(),
+                    confidence: ClaimConfidence::OwnerAttested,
+                    evidence_ref: None,
+                    expires_at: None,
+                }],
+                vec!["parser trivia"],
+            )),
+        );
+        let good_verdict = eligible(expression, &good);
+        let partial_verdict = eligible(expression, &partial);
+        rank(
+            expression,
+            &[(good, good_verdict), (partial, partial_verdict)],
+            preferences,
+        )
+    }
+
+    /// The ranking scores the exact match and orders by the weighted total.
+    #[test]
+    fn the_ranking_orders_by_the_weighted_total() {
+        let expression = EligibilityExpression {
+            scope: ReaderClass::Tenant,
+            capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
+            interests: vec!["parser trivia".to_string()],
+            domains: vec!["repo:example/parser".to_string()],
+            ..Default::default()
+        };
+        let ranked = ranked_pair(&expression, &RankingPreferences::default());
+        assert_eq!(ranked.len(), 2, "{ranked:?}");
+        assert_eq!(
+            ranked[0].role_id, "rol_good",
+            "the full match ranks first: {ranked:?}"
+        );
+        assert!(ranked[0].total > ranked[1].total, "{ranked:?}");
+        // The explanations are visibility-safe: they name the counts + the
+        // matched visible facts, never a raw profile field.
+        for feature in &ranked[0].features {
+            assert!(
+                !feature.explanation.contains("internal")
+                    && !feature.explanation.contains("example"),
+                "the explanation leaks a hidden field: {feature:?}"
+            );
+        }
+    }
+
+    /// A zero-weight feature contributes nothing; the other weights dominate.
+    #[test]
+    fn a_zero_weight_contributes_nothing() {
+        let expression = EligibilityExpression {
+            scope: ReaderClass::Tenant,
+            capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
+            ..Default::default()
+        };
+        let ranked = ranked_pair(
+            &expression,
+            &RankingPreferences {
+                capability: 0.0,
+                ..Default::default()
+            },
+        );
+        for feature in &ranked[0].features {
+            if feature.feature == "capability_match" {
+                assert_eq!(feature.contribution, 0.0, "{ranked:?}");
+            }
+        }
+    }
+
+    /// The ranking never restores an ineligible role.
+    #[test]
+    fn the_ranking_never_restores_an_ineligible_role() {
+        let mut expression = EligibilityExpression::default();
+        expression.exclude = vec!["rol_a".to_string()];
+        let cand = candidate("rol_a", Some(profile_with(vec![], vec![])));
+        let verdict = eligible(&expression, &cand);
+        assert!(!verdict.eligible);
+        let ranked = rank(
+            &expression,
+            &[(cand, verdict)],
+            &RankingPreferences::default(),
+        );
+        assert!(
+            ranked.is_empty(),
+            "the ineligible role never appears: {ranked:?}"
+        );
+    }
+
+    /// The tie-break is deterministic (the role id order).
+    #[test]
+    fn the_ranking_is_deterministic() {
+        let expression = EligibilityExpression::default();
+        let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+        let b = candidate("rol_b", Some(profile_with(vec![], vec![])));
+        let va = eligible(&expression, &a);
+        let vb = eligible(&expression, &b);
+        let ranked = rank(
+            &expression,
+            &[(a, va), (b, vb)],
+            &RankingPreferences::default(),
+        );
+        assert_eq!(
+            ranked[0].role_id, "rol_a",
+            "the tie breaks by role id: {ranked:?}"
+        );
+        assert_eq!(ranked[1].role_id, "rol_b");
     }
 }

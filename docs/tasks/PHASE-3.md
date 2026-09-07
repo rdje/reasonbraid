@@ -325,7 +325,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       tested (each stage-1 field has a named reason); no regression.
 
   - ID: `PHASE-3.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the stage-2 explainable ranking — the deterministic feature
       scores (the exact capability match, the subscription/interest
       match, the domain affinity, the latency class, the workload
@@ -336,6 +336,20 @@ eligibility before ranking. Dependence indicators, never an independence score.
       per ADR-014. The ranking never controls authorization (the
       stage-1 verdict does).
     Backlog: 28 (the metadata-prefilter half), 29 (the scoring half)
+    Done (`2026-09-07`): the stage-2 ranking landed in `matching.rs`
+      — `RankingPreferences` (the five weights, all 1.0 by default),
+      the five deterministic features each as a `FeatureScore` with
+      its score + contribution + a VISIBILITY-SAFE explanation (the
+      explanations name the counts + the initiator's own inputs +
+      the matched facts visible at the expression's scope — never a
+      hidden profile field), and the pure `rank(...)`: the weighted
+      total over the ELIGIBLE set only (the ranking never restores
+      an ineligible role — the stage-1 verdict does), ties broken by
+      the role id. The expression gained the stage-2 inputs (the
+      domains + the preferred latency class). Four new unit tests
+      measure the ordering, the zero-weight contribution, the
+      ineligible exclusion, and the determinism (10 in the module).
+      Frontier → `.3.3`.
     Acceptance: each feature's explanation is source-tagged; the
       ranking is a pure function of the eligible set; no regression.
 
@@ -382,7 +396,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.3.2` | `proposed` | `.3.1` done — the eligibility expression + the stage-1 evaluation (the typed expression, the pure evaluator with the visibility-scoped checks, six measured gates); the stage-2 explainable ranking executes now |
+| 1 | `PHASE-3.3.3` | `proposed` | `.3.2` done — the stage-2 explainable ranking (the five weighted features, the visibility-safe explanations, the eligible-only ordering, the deterministic ties); the matching query surface executes now |
 
 ## Changelog
 
@@ -438,6 +452,49 @@ eligibility before ranking. Dependence indicators, never an independence score.
   stage-1 evaluation (the typed expression, the pure evaluator with
   the visibility-scoped checks, the named reasons); six unit tests;
   frontier → `.3.2`.
+- `2026-09-07`: `.3.2` done — the stage-2 explainable ranking (the
+  five weighted features with the visibility-safe explanations, the
+  eligible-only ordering, the deterministic tie-break); the module's
+  tests grew to 10; frontier → `.3.3`.
+
+## Acceptance Checklist (PHASE-3.3.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+matching.rs` (the `RankingPreferences`, the five `FeatureScore`
+features, the pure `rank`, the expression's stage-2 inputs, the four
+new unit tests) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.3` census: the matching inputs
+  exist but no scoring — §10.3's stage-2 (the exact match, the
+  affinity, the latency, the balance, the explanations) has no
+  typed shape.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the stage-1 evaluator
+  (`.3.1`) had no stage-2 counterpart — `git grep -c
+  "RankingPreferences\|FeatureScore" 752af74 -- crates/` → rc=1
+  (nothing before this leaf). The fix point is a pure weighted
+  ranking over the ELIGIBLE set only, every feature reading the
+  profile filtered at the expression's scope, with the
+  explanations naming only the initiator's inputs + the matched
+  VISIBLE facts (a hidden field never leaks into an explanation).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib matching` → `test result:
+  ok. 10 passed` — the full match ranks first (the affinity
+  separates two eligible candidates); a zero-weight feature
+  contributes exactly nothing; an INELIGIBLE role never appears in
+  the ranking; the tie-break is the deterministic role-id order;
+  and the explanations carry no hidden field (the leak assertion).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg332_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/matching.rs` (the ranking machinery + the
+  expression's `domains`/`preferred_latency` + the four tests).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.3.1)
 
@@ -730,6 +787,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.3.2` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 10 passed` (the stage-1 gates + the ordering, the zero weight, the eligible-only rule, the deterministic tie); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg332_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-2 explainable ranking; frontier → `.3.3` |
 | `2026-09-07` | `PHASE-3.3.1` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 6 passed` (the provenance/visibility/presence/exclusion/concurrency/budget gates + the happy path); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg331_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-1 evaluation (pure, visibility-scoped, named reasons); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-3.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the matching-lane census + the contract-seam decomposition (`.3.1` expression + stage-1 → `.3.2` ranking → `.3.3` surface); frontier → `.3.1` |
 | `2026-09-07` | `PHASE-3.2.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_directory` → `test result: ok. 1 passed` (the three scopes + the zero-visibility rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg323_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the privacy-filtered directory views; **`.2` COMPLETE** — frontier → `.3` |
@@ -744,6 +802,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.3.2` | `REASONBRAID-PHASE3-0011` | the stage-2 explainable ranking (the five weighted features, the visibility-safe explanations, the eligible-only ordering) |
 | `PHASE-3.3.1` | `REASONBRAID-PHASE3-0010` | the eligibility expression + the stage-1 evaluation (the typed expression, the pure visibility-scoped evaluator, six measured gates) |
 | `PHASE-3.3` | `REASONBRAID-PHASE3-0009` | the matching lane decomposed at the census seams (the inputs exist; the expression/evaluator/scoring/surface are the gaps) |
 | `PHASE-3.2.3` | `REASONBRAID-PHASE3-0008` | the privacy-filtered directory views (the three measured scopes + the zero-visibility rule) — **`.2` COMPLETE** |

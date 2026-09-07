@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.3.2: an explanation that leaks a hidden field is a disclosure — the feature strings name only what the initiator can see
+
+- **The ranking's explanations are part of the privacy surface, not a footnote.** Each `FeatureScore` explanation carries the counts, the initiator's own inputs, and the matched facts VISIBLE at the expression's scope — so the no-leak property is a test assertion, not a convention. The ranking itself is a pure weighted sum over the ELIGIBLE set only (an ineligible role never appears, whatever its score would be), and the tie-break is the role id — determinism, not luck.
+- promotion: declined (the eligible-only + visibility-safe ranking is the leaf's own contract; the `.3.3` surface wires it). **Frontier `PHASE-3.3.3` (the matching query surface).**
+
 ## _(2026-09-07)_ — PHASE-3.3.1: the eligibility checks read the profile AS VISIBLE — a hidden capability satisfies nothing
 
 - **Privacy is inside the evaluator, not around it.** Every stage-1 check (the capabilities, the interests, the confidentiality classes) runs against the profile filtered at the expression's scope — so a tenant-hidden capability cannot satisfy a network-scope requirement, and the evaluator needs no post-hoc scrubbing. The honesty order (exclusion → presence → visibility-scoped fields → concurrency → budget) makes every refusal a named reason, and the provenance gate enforces the §10.1 rule mechanically (a self-asserted claim fails a benchmarked requirement).

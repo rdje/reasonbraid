@@ -254,7 +254,7 @@ of a URI is not a promise the core can resolve it.
       measured; no regression.
 
   - ID: `PHASE-4-MAINT-1`
-    Status: `proposed`
+    Status: `done`
     Goal: the clippy evidence debt — the recorded
       `cargo clippy --all --all-targets -- -D warnings → clean`
       evidence of the Phase-3 leaves (the matching/recruitment/
@@ -274,6 +274,25 @@ of a URI is not a promise the core can resolve it.
     Defect (tracked `2026-09-07`, discovered during the `.2.2`
       verification): the acceptance checklist is written when the
       leaf executes.
+    Done (`2026-09-07`): the debt is repaired — `cargo clippy --all
+      --all-targets -- -D warnings` → rc=0 (the recorded evidence
+      reproduces again). The census the `.2.2` routing named was
+      NINE findings, but it was a SHADOWED census: the lib
+      failure stopped the downstream targets from compiling, so
+      THREE more pre-existing findings in the profiles suite
+      (`unused_mut` ×2 + `let_and_return`, tests/profiles.rs
+      1308/1636/1866) only surfaced after the nine were fixed —
+      twelve total, all repaired: the `useless_format` (api), the
+      three `type_complexity` sites (the `AttributePicker`, the
+      `CallTuple`, the `ResourceRow` aliases — dependence,
+      recruitment, resources), the `collapsible_if` (the match
+      guard), the `unnecessary if let` (the `.flatten()` form),
+      the four `field_reassign` test sites (the struct-update
+      form), the `too_many_arguments` (the `OpenCallParams` struct
+      + the call site), and the three profiles findings. The
+      re-run discipline the shadowing demanded: after EVERY fix
+      round the FULL clippy run is the census, never the previous
+      error list. Frontier → `.2.3`.
 
   - ID: `PHASE-4.2.3`
     Status: `proposed`
@@ -323,8 +342,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4-MAINT-1` | `proposed` | `.2.2` done — its verification measured the pre-existing clippy evidence debt (9 findings fail the recorded `-D warnings` command under the pinned clippy; `b26f529` reproduces them); the mechanical repair + the one signature refactor execute next, then `.2.3` |
-| 2 | `PHASE-4.2.3` | `proposed` | `.2.2` done — the safe HTTPS fetcher (the hardened parse, the ceilings, the per-hop redirect policy, the two-layer destination enforcement, the manual decode + the ratio brake); the snapshot receipt + the R0 pack wiring execute now |
+| 1 | `PHASE-4.2.3` | `proposed` | `PHASE-4-MAINT-1` done — the clippy evidence debt repaired (`cargo clippy --all --all-targets -- -D warnings` → rc=0, twelve findings fixed: the routed nine + the three the lib failure had shadowed); the snapshot receipt + the R0 pack wiring execute now |
 
 ## Changelog
 
@@ -357,6 +375,14 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `PHASE-4-MAINT-1` done — the clippy evidence debt
+  repaired: `cargo clippy --all --all-targets -- -D warnings` →
+  rc=0 — TWELVE pre-existing findings fixed (the nine the `.2.2`
+  routing named + three profiles findings the lib failure had
+  shadowed — the census is the full run after every fix round);
+  the `OpenCallParams` refactor, the three row/attribute type
+  aliases, the match-guard + flatten + struct-update forms;
+  frontier → `.2.3`.
 - `2026-09-07`: `.2.2` done — the safe HTTPS fetcher (the hardened
   URL parse, the byte/time ceilings, the manual per-hop redirect
   policy, the two-layer destination enforcement — the pre-flight
@@ -392,6 +418,45 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4-MAINT-1)
+
+The CODE change owned by this leaf: the twelve lint repairs across
+`crates/reasonbraid-server/src/api.rs`,
+`src/dependence.rs`, `src/matching.rs` (+ its tests),
+`src/recruitment.rs` (the `OpenCallParams` refactor + the
+`CallTuple` alias), `src/resources.rs` (the `ResourceRow` alias),
+and `tests/profiles.rs` — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the `.2.2` routing: `cargo clippy
+  --all --all-targets -- -D warnings` → rc=101 (nine findings),
+  identical at `b26f529`.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the recorded clippy evidence
+  of the Phase-3 leaves + `.1.2` does not reproduce under the
+  pinned clippy 0.1.98; the census the routing named was SHADOWED
+  — the lib failure stopped the downstream targets (profiles)
+  from compiling, so three more pre-existing findings surfaced
+  only after the nine were fixed (twelve total).
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  rc=101 at this HEAD AND at `b26f529` (the `.2.1` commit). After:
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0 — the
+  `useless_format` to `.to_string()`, the three `type_complexity`
+  sites to the `AttributePicker`/`CallTuple`/`ResourceRow`
+  aliases, the `collapsible_if` to the match guard, the
+  `unnecessary if let` to the `.flatten()` form, the four
+  `field_reassign` test sites to the struct-update form, the
+  `too_many_arguments` to the `OpenCallParams` struct, and the
+  three profiles findings (`unused_mut` ×2 + `let_and_return`).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 51 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pgm1_guard.log`);
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/api.rs`, `src/dependence.rs`, `src/matching.rs`,
+  `src/recruitment.rs`, `src/resources.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP — same
+  commit.
 
 ## Acceptance Checklist (PHASE-4.2.2)
 
@@ -585,6 +650,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4-MAINT-1` | `cargo clippy --all --all-targets -- -D warnings` → rc=0 (twelve findings fixed: the routed nine + the three profiles findings the lib failure shadowed); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pgm1_guard.log`); `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the clippy evidence debt repaired; frontier → `.2.3` |
 | `2026-09-07` | `PHASE-4.2.2` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 16 passed` (the pure refusals + the OFFLINE wire refusals — the SSRF proof with the zero-request counter, the private hop, the hop cap, the ceilings, the REAL gzip bomb); `cargo test --all` → rc=0, 51 suites, 327 tests (the cert-spike rustls-provider ambiguity the sweep caught is fixed — the spike pinned to ring; `b26f529` verified green before the leaf); `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg422_guard.log`); clippy/fmt clean for the leaf's files (the crate-wide `-D warnings` run fails on 9 PRE-EXISTING findings — ROUTING EVIDENCE → `PHASE-4-MAINT-1`); `make gate` → 13/13 | the safe HTTPS fetcher; frontier → `PHASE-4-MAINT-1` → `.2.3` |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-4.2.1` | `cargo test -p reasonbraid-server --lib ssrf` → `test result: ok. 4 passed` (the 18-case refusal matrix, the allowed publics, the mapped-form re-classification, the metadata class); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg421_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the SSRF classification + policy; frontier → `.2.2` |
@@ -597,6 +663,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4-MAINT-1` | `REASONBRAID-PHASE4-0008` | the clippy evidence debt repaired (twelve pre-existing findings — the `-D warnings` run is green again) |
 | `PHASE-4.2.2` | `REASONBRAID-PHASE4-0007` | the safe HTTPS fetcher (the hardened parse + the two-layer destination enforcement + the manual decode + the ratio brake) — the SSRF proof measured offline |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
 | `PHASE-4.2.1` | `REASONBRAID-PHASE4-0006` | the destination classification + the SSRF policy (the pure §12.4 rules + the public-only evaluation) |

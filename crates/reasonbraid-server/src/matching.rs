@@ -432,19 +432,16 @@ pub fn rank_with_dependence(
             };
 
             let latency_score = match &expression.preferred_latency {
-                Some(preferred) => {
+                Some(preferred)
                     if candidate
                         .profile
                         .as_ref()
                         .and_then(|p| p.cost_latency_class.as_ref())
-                        == Some(preferred)
-                    {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                        == Some(preferred) =>
+                {
+                    1.0
                 }
-                None => 0.0,
+                Some(_) | None => 0.0,
             };
 
             let balance_score = match candidate.presence_state {
@@ -467,14 +464,16 @@ pub fn rank_with_dependence(
                         .collect();
                     let mut heaviest = 0.0f64;
                     if let Some(mine) = mine {
-                        for attribute in [
+                        for value in [
                             &mine.provider,
                             &mine.model_family,
                             &mine.harness,
                             &mine.lineage,
                             &mine.owner,
-                        ] {
-                            if let Some(value) = attribute {
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
                                 let sharers = others
                                     .iter()
                                     .filter(|o| {
@@ -491,7 +490,6 @@ pub fn rank_with_dependence(
                                         heaviest = fraction;
                                     }
                                 }
-                            }
                         }
                     }
                     1.0 - heaviest
@@ -703,8 +701,10 @@ mod tests {
     /// The explicit exclusion refuses regardless of every other fact.
     #[test]
     fn an_excluded_role_refuses_regardless() {
-        let mut expression = EligibilityExpression::default();
-        expression.exclude = vec!["rol_a".to_string()];
+        let expression = EligibilityExpression {
+            exclude: vec!["rol_a".to_string()],
+            ..EligibilityExpression::default()
+        };
         let verdict = eligible(
             &expression,
             &candidate("rol_a", Some(profile_with(vec![], vec![]))),
@@ -875,8 +875,10 @@ mod tests {
     /// The ranking never restores an ineligible role.
     #[test]
     fn the_ranking_never_restores_an_ineligible_role() {
-        let mut expression = EligibilityExpression::default();
-        expression.exclude = vec!["rol_a".to_string()];
+        let expression = EligibilityExpression {
+            exclude: vec!["rol_a".to_string()],
+            ..EligibilityExpression::default()
+        };
         let cand = candidate("rol_a", Some(profile_with(vec![], vec![])));
         let verdict = eligible(&expression, &cand);
         assert!(!verdict.eligible);

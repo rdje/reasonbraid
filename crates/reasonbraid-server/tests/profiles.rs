@@ -1294,18 +1294,15 @@ async fn the_call_artifact_rides_the_invitation_machinery() {
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
     // A thread the call rides (the human holds the invite authority).
-    let envelope = |operation: &str, key: &str, body: Value| {
-        let env = reasonbraid_core::CommandEnvelope {
-            protocol_version: reasonbraid_core::PROTOCOL_VERSION.to_string(),
-            operation: operation.to_string(),
-            request_id: reasonbraid_core::RequestId::new(),
-            idempotency_key: key.to_string(),
-            expected_aggregate_version: None,
-            body,
-            authority_context: None,
-            client_context: Default::default(),
-        };
-        env
+    let envelope = |operation: &str, key: &str, body: Value| reasonbraid_core::CommandEnvelope {
+        protocol_version: reasonbraid_core::PROTOCOL_VERSION.to_string(),
+        operation: operation.to_string(),
+        request_id: reasonbraid_core::RequestId::new(),
+        idempotency_key: key.to_string(),
+        expected_aggregate_version: None,
+        body,
+        authority_context: None,
+        client_context: Default::default(),
     };
     let command = |path: String, principal: String, env: reasonbraid_core::CommandEnvelope| {
         let client = client.clone();
@@ -1633,7 +1630,7 @@ async fn the_open_call_advertises_to_the_subscribers() {
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
     // Two roles declaring the SAME interest; one also declares a second.
-    let mut profile = |extra: &[&str]| {
+    let profile = |extra: &[&str]| {
         let mut p = visibility_profile();
         p["interests"] = json!(["parser trivia"]);
         for e in extra {
@@ -1862,17 +1859,14 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     let response = client
         .post(format!("{base}/v1/threads"))
         .header(PRINCIPAL_HEADER, &role_id)
-        .json(&{
-            let mut env = serde_json::json!({
-                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
-                "operation": "thread.create",
-                "request_id": reasonbraid_core::RequestId::new().to_string(),
-                "idempotency_key": "key-auto-plain",
-                "body": { "tenant_id": tenant, "subject": "plain", "objective": "probe" },
-                "client_context": {},
-            });
-            env
-        })
+        .json(&serde_json::json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "key-auto-plain",
+            "body": { "tenant_id": tenant, "subject": "plain", "objective": "probe" },
+            "client_context": {},
+        }))
         .send()
         .await
         .expect("plain create");

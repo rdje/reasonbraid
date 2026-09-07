@@ -103,19 +103,25 @@ pub struct CallRow {
     pub status: String,
 }
 
+/// The `open_call` inputs: the call's identity, its spec expression, and its
+/// participation/deadline policy — one typed argument instead of ten.
+pub struct OpenCallParams<'a> {
+    pub tenant_id: &'a str,
+    pub thread_id: &'a str,
+    pub initiator: &'a str,
+    pub expression: &'a Value,
+    pub min_participants: i32,
+    pub max_participants: i32,
+    pub recommendations_allowed: bool,
+    pub join_deadline: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
 /// Open a call: the spec's expression is stored verbatim (the server resolves
 /// it at every response).
 pub async fn open_call(
     pool: &sqlx::PgPool,
-    tenant_id: &str,
-    thread_id: &str,
-    initiator: &str,
-    expression: &Value,
-    min_participants: i32,
-    max_participants: i32,
-    recommendations_allowed: bool,
-    join_deadline: DateTime<Utc>,
-    expires_at: DateTime<Utc>,
+    params: OpenCallParams<'_>,
 ) -> Result<String, sqlx::Error> {
     let now = Utc::now();
     sqlx::query(
@@ -125,16 +131,16 @@ pub async fn open_call(
          VALUES ('cal_' || gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open') \
          RETURNING call_id",
     )
-    .bind(tenant_id)
-    .bind(thread_id)
-    .bind(initiator)
-    .bind(expression)
-    .bind(min_participants)
-    .bind(max_participants)
-    .bind(recommendations_allowed)
+    .bind(params.tenant_id)
+    .bind(params.thread_id)
+    .bind(params.initiator)
+    .bind(params.expression)
+    .bind(params.min_participants)
+    .bind(params.max_participants)
+    .bind(params.recommendations_allowed)
     .bind(now)
-    .bind(join_deadline)
-    .bind(expires_at)
+    .bind(params.join_deadline)
+    .bind(params.expires_at)
     .fetch_one(pool)
     .await
     .map(|row: sqlx::postgres::PgRow| row.get::<String, _>(0))
@@ -199,22 +205,25 @@ pub async fn responses(
     .await
 }
 
+/// The durable `recruitment_calls` row shape (the query's tuple type).
+type CallTuple = (
+    String,
+    String,
+    String,
+    String,
+    Value,
+    i32,
+    i32,
+    bool,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    String,
+);
+
 /// The call row (the response gate needs the expression + the deadlines).
 pub async fn call(pool: &sqlx::PgPool, call_id: &str) -> Result<Option<CallRow>, sqlx::Error> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        Value,
-        i32,
-        i32,
-        bool,
-        DateTime<Utc>,
-        DateTime<Utc>,
-        DateTime<Utc>,
-        String,
-    )> = sqlx::query_as(
+    let row: Option<CallTuple> = sqlx::query_as(
         "SELECT call_id, tenant_id, thread_id, initiator, expression, min_participants, \
                 max_participants, recommendations_allowed, advertises_at, join_deadline, expires_at, status \
          FROM recruitment_calls WHERE call_id = $1",

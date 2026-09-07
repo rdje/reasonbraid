@@ -41,11 +41,15 @@ pub struct DependenceIndicator {
     pub explanation: String,
 }
 
+/// One observable condition the shipped facts carry: its display name and
+/// the picker that reads it from a member's facts.
+type AttributePicker = (&'static str, fn(&MemberFacts) -> Option<&str>);
+
 /// The pure computation over the §10.4 observable conditions the shipped
 /// facts carry: the common provider, the model family, the harness, the
 /// declared lineage, and the owner.
 pub fn dependence_indicators(members: &[MemberFacts]) -> Vec<DependenceIndicator> {
-    let attributes: [(&'static str, fn(&MemberFacts) -> Option<&str>); 5] = [
+    let attributes: [AttributePicker; 5] = [
         ("provider", |m: &MemberFacts| m.provider.as_deref()),
         ("model_family", |m: &MemberFacts| m.model_family.as_deref()),
         ("harness", |m: &MemberFacts| m.harness.as_deref()),

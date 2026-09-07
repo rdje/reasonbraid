@@ -8,6 +8,24 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
+/// The durable `resource_references` row shape (the query's tuple type).
+type ResourceRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    chrono::DateTime<chrono::Utc>,
+);
+
 /// The typed §12.1 reference (deny-unknown-fields; the digest is the ADR-011
 /// scheme).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -135,22 +153,7 @@ pub async fn get(
     )>,
     sqlx::Error,
 > {
-    let row: Option<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-        chrono::DateTime<chrono::Utc>,
-    )> = sqlx::query_as(
+    let row: Option<ResourceRow> = sqlx::query_as(
         "SELECT resource_id, original_locator, scheme, media_type_hint, expected_digest, \
                 fragment_or_selector, credential_binding_ref, owning_node_or_capability, \
                 visibility_scope, purpose, retention_class, risk_class, submitted_by, created_at \

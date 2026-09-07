@@ -1631,15 +1631,17 @@ async fn open_recruitment_call(
         .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;
     let call_id = crate::recruitment::open_call(
         &state.pool,
-        &req.tenant_id,
-        &req.thread_id,
-        &initiator,
-        &expression,
-        req.min_participants,
-        req.max_participants,
-        req.recommendations_allowed,
-        req.join_deadline,
-        req.expires_at,
+        crate::recruitment::OpenCallParams {
+            tenant_id: &req.tenant_id,
+            thread_id: &req.thread_id,
+            initiator: &initiator,
+            expression: &expression,
+            min_participants: req.min_participants,
+            max_participants: req.max_participants,
+            recommendations_allowed: req.recommendations_allowed,
+            join_deadline: req.join_deadline,
+            expires_at: req.expires_at,
+        },
     )
     .await?;
 
@@ -2008,9 +2010,9 @@ async fn directory_match(
     };
     // The scope clamp: the expression must not exceed the reader's class.
     if scope_rank(req.expression.scope) > scope_rank(reader_class) {
-        return Err(ControlApiError::unauthorized(format!(
-            "the expression's scope exceeds the reader's classification"
-        )));
+        return Err(ControlApiError::unauthorized(
+            "the expression's scope exceeds the reader's classification".to_string(),
+        ));
     }
 
     type Row = (

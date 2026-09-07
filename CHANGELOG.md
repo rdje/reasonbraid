@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The clippy evidence debt is repaired: the `-D warnings` run is green again (`PHASE-4-MAINT-1`)
+
+- Twelve pre-existing lint findings fixed across `api.rs`, `dependence.rs`, `matching.rs` (+ its tests), `recruitment.rs`, `resources.rs`, and `tests/profiles.rs` — the `useless_format`, the three `type_complexity` sites (the `AttributePicker`/`CallTuple`/`ResourceRow` aliases), the `collapsible_if` (the match guard), the `unnecessary if let` (the `.flatten()` form), the four `field_reassign` test sites (the struct-update form), the `too_many_arguments` (the `OpenCallParams` struct), and the three profiles findings the lib failure had shadowed in the original census.
+- `cargo clippy --all --all-targets -- -D warnings` → rc=0 — the recorded evidence of the Phase-3 leaves + `.1.2` reproduces again. The lesson: a failing lib target stops the downstream test targets from compiling, so the census is the FULL run after every fix round, never the previous error list. Frontier → `.2.3` (the snapshot receipt + the R0 pack wiring).
+
 ## 2026-09-07 — The safe HTTPS fetcher: the refusal is the proof, measured before any socket opens (`PHASE-4.2.2`)
 
 - `src/fetcher.rs`: the hardened URL parse (the length cap, the control-char/backslash + userinfo + alternative-numeric-literal refusals, the scheme/port allowlists); the GET/HEAD with byte + time ceilings; the manual redirect policy at EVERY hop (full re-parse + re-classification + the hop cap); the `.2.1` policy enforced at TWO layers — the pre-flight resolve+classify that names the refusing class BEFORE any socket opens, and the classified DNS belt inside reqwest's resolver hook so a dial can never touch a refused address; the manual gzip/deflate/br decode so the ratio brake can measure the envelope (the REAL gzip bomb trips it; a small gzip page passes); the response-type sniff (header → HTML magic → JSON refusal → UTF-8 fallback); no proxy env, no cookies, no ambient credentials.

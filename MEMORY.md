@@ -16,16 +16,14 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.4` (**PHASE 5 CLOSED**; the `.3` lane COMPLETE — the byte-identical compiler + the four targets; compiler 8 + policy 6).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.4.1` (**PHASE 5 CLOSED**; the `.3` lane COMPLETE; the `.4` lane decomposed — the publication records + the reconciliation are the greenfield).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.4` — the signed canonical
-  publication protocol (ADR-020, backlog 39, §15.7–15.8): the staged
-  bundle + the manifest, the signed refs, the kill-point-tested
-  Git/PostgreSQL reconciliation. Decompose at the census seams first
-  (the `.3` lane COMPLETE).
+- **Next action:** execute `PHASE-6.4.1` — ADR-020 + the census: the
+  publication contract (the nine-step §15.7 state machine, the
+  publication records, the §15.8 reconciliation matrix). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

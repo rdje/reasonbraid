@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The publication lane is decomposed at the census seams (`PHASE-6.4`)
+
+- The inputs + the substrate ship (the decisions/approvals, the byte-identical projections, the Git machinery, the CA keys, the transactional outbox); the publication records + the reconciliation matrix are the greenfield. Children: `.4.1` ADR-020 → `.4.2` the records + the staging → `.4.3` the Git publication + the reconciliation.
+
 ## 2026-09-07 — The Codex and the Claude projections land — the `.3` lane is COMPLETE (`PHASE-6.3.3`)
 
 - The compiler crate gains the `codex` (the AGENTS.md fragment — the backticked clause ids) and the `claude` (the CLAUDE.md fragment — the plain ids) renderers over the same stable-sorted core; the §15.5 coverage ships: the backtick escape (the harness-parse safety), the 8192-character statement ceiling (the oversized statement DECLARES itself, never truncates), the per-target byte-identical repeats. Measured: compiler 8 + policy 6. **The `.3` lane (the deterministic compiler) is COMPLETE.**

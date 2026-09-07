@@ -429,11 +429,73 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       frontier → `.4`.
 
 - ID: `PHASE-6.4`
-  Status: `proposed`
+  Status: `done`
   Goal: signed canonical publication protocol; kill-point-tested Git/PostgreSQL reconciliation
   Backlog: 39
   ADR: 020
   Roadmap: §15.7–15.8
+  Children: `.4.1`–`.4.3` (decomposed `2026-09-07` at the census
+    seams): `.4.1` ADR-020 + the census (the publication
+    contract: the nine-step §15.7 state machine, the
+    publication records, the immutable-ref rules, the §15.8
+    reconciliation matrix) → `.4.2` the publication records +
+    the staging (the publication aggregate over the decision +
+    the approval + the projection, the staged state, the
+    manifest digests) → `.4.3` the Git publication + the
+    reconciliation (the ref writes + the compare-and-swap,
+    the reconciliation matrix rows, the kill-point tests).
+  Done (`2026-09-07`): the census at the seams. The
+    publication INPUTS ship: the decisions + the approvals
+    (`.2` — the authority proofs), the byte-identical
+    projections + the digests (`.3` — the verification
+    primitives). The SUBSTRATE ships: the Git machinery
+    (Phase 4's gix pack + the snapshots), the CA/signature
+    keys (the Phase-2 certificate infra), the transactional
+    outbox (the §15.7 step-4's "one transaction stores
+    staged + outbox"). The GREENFIELD: no publication
+    record, no staged state, no ref protocol, no
+    reconciliation (the §15.8 matrix's rows exist nowhere).
+    The §23 queue's 020 (the Git publication refs +
+    signatures + reconciliation) is THIS leaf's ADR.
+    Frontier → `.4.1`.
+
+  - ID: `PHASE-6.4.1`
+    Status: `proposed`
+    Goal: ADR-020 + the census — the publication contract:
+      the nine-step §15.7 state machine (the lock, the
+      clean-worker compile, the sign, the one-transaction
+      staged + outbox, the staging write, the fetch-back
+      verify, the immutable ref + the effective channel via
+      the compare-and-swap, the effective record, the
+      deployment offers), the publication records (the
+      staged/effective/failed states), the §15.8
+      reconciliation matrix (the PostgreSQL/Git state pairs →
+      the reconciler action — the idempotent, the
+      kill-point-exercised, the never-silent-promote). No
+      code.
+    ADR: 020
+    Roadmap: §15.7–15.8
+
+  - ID: `PHASE-6.4.2`
+    Status: `proposed`
+    Goal: the publication records + the staging — the
+      publication aggregate (the decision + the approval +
+      the projection references), the staged state, the
+      manifest (the digests + the authority basis), the
+      stage machine (the staged → effective → failed
+      transitions).
+    Roadmap: §15.7
+
+  - ID: `PHASE-6.4.3`
+    Status: `proposed`
+    Goal: the Git publication + the reconciliation — the
+      staging-branch write + the fetch-back verification,
+      the immutable ref + the effective channel via the
+      compare-and-swap, the §15.8 reconciliation matrix
+      (the six state pairs → the actions), the kill-point
+      tests (the idempotent reconciler, the never-silent
+      promote).
+    Roadmap: §15.7–15.8
 
 - ID: `PHASE-6.5`
   Status: `proposed`
@@ -456,10 +518,18 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4` | `proposed` | `.3.3` done — the Codex + the Claude projections (the harness-shaped renderers, the size + escape declarations; compiler 8 + policy 6) — **the `.3` lane (the deterministic compiler) is COMPLETE**; the signed-publication lane executes next |
+| 1 | `PHASE-6.4.1` | `proposed` | `.4` decomposed at the census seams (the inputs + the substrate ship — the decisions/approvals, the projections, the Git + the CA + the outbox; the publication records + the reconciliation are the greenfield) — ADR-020 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.4` decomposed at the census seams — the
+  publication inputs + the substrate ship (the decisions/
+  approvals, the byte-identical projections, the Git + the
+  CA + the outbox); the publication records + the
+  reconciliation are the greenfield; children `.4.1`
+  (ADR-020 + the census) → `.4.2` (the records + the
+  staging) → `.4.3` (the Git publication + the
+  reconciliation); frontier → `.4.1`.
 - `2026-09-07`: `.3.3` done — the Codex + the Claude
   projections (the AGENTS.md + the CLAUDE.md renderers, the
   size + escape declarations, the harness shapes); compiler

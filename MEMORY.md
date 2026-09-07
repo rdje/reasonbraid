@@ -19,15 +19,20 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.2` (**PHASE 4 CLOSED**;
-  the `.1` lane COMPLETE: ADR-016 + the registry + the
-  validation + the execution (the steps ride the projection,
-  profiles 25); `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.2` — the blind-first
-  contributions + the structured claims/objections/revisions +
-  the evidence requests + the adjudication + the minority
-  reports + the unresolved registers (§13.4, §13.6; decompose at
-  the census seams first).
+- **Active tree:** `PHASE-5` → frontier `.2.1` (**PHASE 4 CLOSED**;
+  the `.1` lane COMPLETE (ADR-016 + the registry + the
+  validation + the execution — the steps ride the projection,
+  profiles 25); the `.2` lane decomposed at the census seams
+  (the blind-first visibility, the structured records, the
+  evidence requests, the adjudication + the minority reports +
+  the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
+  the blind lane → `.2.4` the requests + the adjudication);
+  `MAINT-1` done). Then `.3`–`.4`.
+- **Next action:** execute `PHASE-5.2.1` — ADR-029 + the
+  census: the structured-deliberation contract (the typed
+  claim/objection/revision records, the blind commitment point,
+  the evidence-request shape, the adjudication record, the
+  minority report, the §13.4 terminals). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

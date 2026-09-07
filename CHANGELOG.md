@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The deliberation lane is decomposed at the census seams (`PHASE-5.2`)
+
+- The §13.4/§13.6 census: FOUR greenfields (the blind-first visibility, the structured claim/objection/revision records, the evidence requests, the adjudication + the minority reports + the terminals) against the reusable pieces (the contribution kind vocabulary, the open_challenges + unresolved registers, the Phase-4 evidence pipeline). Children: `.2.1` ADR-029 → `.2.2` the structured records → `.2.3` the blind-first lane → `.2.4` the requests + the adjudication + the reports.
+
 ## 2026-09-07 — The workflow-profile lane is complete: the steps ride the projection (`PHASE-5.1.3`)
 
 - The projection carries the resolved step sequence + the current index: the create seats step 0 with the registry's steps, the close advances to the terminal step — the lifecycle's own transitions are the only step transitions, so the authorization/budget/lifecycle invariants ride every step by construction.

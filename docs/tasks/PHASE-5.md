@@ -142,9 +142,90 @@ and honest inconclusive outcomes.
       **`.1` COMPLETE** — frontier → `.2`.
 
 - ID: `PHASE-5.2`
-  Status: `proposed`
+  Status: `done`
   Goal: blind-first contributions, structured claims/objections/revisions, evidence requests, adjudication, minority reports, unresolved registers
   Roadmap: §13.4, §13.6
+  Children: `.2.1`–`.2.4` (decomposed `2026-09-07` at the census
+    seams): `.2.1` ADR-029 + the census (the structured-
+    deliberation contract: the typed claim/objection/revision
+    records, the blind commitment point, the evidence-request
+    shape, the adjudication record, the minority report, the
+    §13.4 terminal vocabulary) → `.2.2` the structured records
+    (the typed claims/objections/revisions over the
+    contribute/challenge/revise wire) → `.2.3` the blind-first
+    lane (the deferred visibility + the commitment point — the
+    `blind_solicit` step executes) → `.2.4` the evidence requests
+    + the adjudication + the minority reports (the
+    `evidence_request` verb riding the Phase-4 pipeline, the
+    `adjudicate` execution, the minority report on the close, the
+    §13.4 terminals).
+  Done (`2026-09-07`): the census mapped §13.4/§13.6 against the
+    shipped surface. The lane is a greenfield at four seams: (1)
+    BLIND-FIRST — nothing defers visibility; a contribution is
+    visible at post time, no commitment point exists
+    (`git grep -c "blind" HEAD -- crates/reasonbraid-server/src/`
+    → the 4 hits are the `blind_solicit` step NAME in
+    `workflows.rs`); (2) STRUCTURED CLAIMS/OBJECTIONS/REVISIONS —
+    the challenge/revise pair is free text against a target
+    event id (no typed claim, objection, or revision records);
+    (3) EVIDENCE REQUESTS — `evidence_request` is a step name
+    only (1 hit), no verb; (4) ADJUDICATION + MINORITY REPORTS +
+    TERMINALS — `adjudicate` is a step name only (the
+    node_channel hits are the delivery-fate adjudication, not
+    deliberation); no minority report exists; the close carries
+    two outcomes (`decided`/`inconclusive`) vs §13.4's twelve.
+    What the lane REUSES: the contribute kind vocabulary (six
+    kinds incl. `claim`/`assumption`) + the `evidence_refs`
+    (Phase 1/4), the open_challenges register, the unresolved
+    register riding the close, and the Phase-4 evidence pipeline
+    (the claim assessments + the citation validation). The §23
+    queue's 017 (the evaluator hierarchy) is the `.4` leaf's and
+    019 (the canonical policy schema) is the policy lane's, so
+    `.2.1` opens ADR-029 (the first free number past the queue).
+    Frontier → `.2.1`.
+
+  - ID: `PHASE-5.2.1`
+    Status: `proposed`
+    Goal: ADR-029 + the census — the structured-deliberation
+      contract: the typed claim/objection/revision records (the
+      digest-targeted structure over the existing
+      contribute/challenge/revise verbs), the blind commitment
+      point (the visibility deferral + the §13.6 no-totals rule),
+      the evidence-request shape (riding the Phase-4 pipeline),
+      the adjudication record (the verdict is attributable, never
+      a silent rewrite), the minority report (the synthesis's
+      coverage report), and the §13.4 terminal vocabulary. No
+      code.
+    ADR: 029
+    Roadmap: §13.4, §13.6
+
+  - ID: `PHASE-5.2.2`
+    Status: `proposed`
+    Goal: the structured records — the typed claim/objection/
+      revision over the contribute/challenge/revise wire: the
+      contribution carries structured claims (the claim digest +
+      the kind), the objection targets a claim (not free text),
+      the revision answers the objection; the projection carries
+      the structure; the registers stay honest.
+    Roadmap: §13.4
+
+  - ID: `PHASE-5.2.3`
+    Status: `proposed`
+    Goal: the blind-first lane — the `blind_solicit` step
+      executes: the deferred visibility (a blind contribution is
+      NOT readable until the commitment point), the commitment
+      point (the round advance), the §13.6 no-totals-before-
+      commitment rule.
+    Roadmap: §13.6
+
+  - ID: `PHASE-5.2.4`
+    Status: `proposed`
+    Goal: the evidence requests + the adjudication + the
+      minority reports — the `evidence_request` verb (riding the
+      Phase-4 claim-evidence pipeline), the `adjudicate`
+      execution (the attributable verdict record), the minority
+      report on the close, the §13.4 terminal vocabulary.
+    Roadmap: §13.4, §13.6
 
 - ID: `PHASE-5.3`
   Status: `proposed`
@@ -174,10 +255,19 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2` | `proposed` | `.1.3` done — **the `.1` lane (the workflow profiles) is COMPLETE**: ADR-016 + the registry + the validation + the execution (the steps ride the projection, the close advances to the terminal — profiles 25); the blind-first contributions lane executes next |
+| 1 | `PHASE-5.2.1` | `proposed` | `.2` decomposed at the census seams (the four greenfields: the blind-first visibility, the structured records, the evidence requests, the adjudication + the minority reports + the terminals — the reusable pieces: the kind vocabulary, the registers, the Phase-4 pipeline) — ADR-029 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.2` decomposed at the census seams — the four
+  greenfields (the blind-first visibility, the structured
+  records, the evidence requests, the adjudication + the
+  minority reports + the terminals) against the reusable pieces
+  (the kind vocabulary, the registers, the Phase-4 pipeline);
+  children `.2.1` (ADR-029 + the census) → `.2.2` (the
+  structured records) → `.2.3` (the blind-first lane) → `.2.4`
+  (the requests + the adjudication + the reports); frontier →
+  `.2.1`.
 - `2026-09-07`: `.1.3` done — the profile-driven execution (the
   projection's steps + the index: the create seats step 0, the
   close advances to the terminal); profiles 25; **`.1`

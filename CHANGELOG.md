@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The storm controls' dev-scale core: fan-out caps + expiry binding — `.4` COMPLETE (`PHASE-3.4.3`)
+
+- BUILT + measured: the per-tenant + per-initiator open-call fan-out caps (the typed 429 `storm_control` naming the limit) and the call-expiry enforcement (the `.4.2` spec's `expires_at` now binds the responses — an expired call refuses with the typed reason). The test's fifth open is refused 429; the rewind-the-expiry call refuses the response.
+- NAMED with their triggers (not built for a scale the dev profile cannot produce): the duplicate-thread suggestions (the `.5` subscription semantics), the parent/causation chains + the max autonomous depth + the cycle detection (the first agent-initiated call), the storm-grade per-origin/global breakers (the first multi-tenant storm observed), the quiet hours (the local node policy), the max offline backlog (the `.5` subscriptions), the emergency broadcast authority (no emergency class exists yet).
+- **`.4` COMPLETE**; frontier → `.5` (the subscriptions/notifications lane).
+
 ## 2026-09-07 — The open call rides the invitation machinery: typed responses, a ranked panel, the explanation (`PHASE-3.4.2`)
 
 - Migration 0020 (`recruitment_calls` + `recruitment_responses` + `recruitment_panels`) + `src/recruitment.rs`: the §10.5 call spec (the expression + the audience + the min/max + the slots + the window + the deadline + the expiry + the recommendations flag) and the typed response vocabulary (join/observe/decline/defer/conditional_join/recommend/request_context/recuse).

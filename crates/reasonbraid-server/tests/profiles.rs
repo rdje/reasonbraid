@@ -1475,3 +1475,131 @@ async fn the_call_artifact_rides_the_invitation_machinery() {
         "the selection explanation rides: {inspected}"
     );
 }
+
+/// THE `.3.4.3` acceptance at the dev scale: the open-call fan-out caps hold
+/// (the initiator's 5th open is the typed 429) and an expired call refuses
+/// the responses — the storm controls' buildable core, measured.
+#[tokio::test]
+async fn the_open_call_storm_controls_hold_at_the_dev_scale() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "storm-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "storm-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes its profile");
+
+    let open = |key: &str, deadline: &str, expiry: &str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let tenant = tenant.clone();
+        let thread_id = "thr_00000000-0000-7000-8000-000000000001".to_string();
+        let key = key.to_string();
+        let deadline = deadline.to_string();
+        let expiry = expiry.to_string();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/calls"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "tenant_id": tenant,
+                    "thread_id": thread_id,
+                    "expression": { "scope": "tenant", "presence_states": ["available", "offline"] },
+                    "min_participants": 1,
+                    "join_deadline": deadline,
+                    "expires_at": expiry,
+                }))
+                .send()
+                .await
+                .expect("open request");
+            let status = response.status().as_u16();
+            let body: Value = response.json().await.expect("open json");
+            (status, body, key)
+        }
+    };
+    let future_deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let future_expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+
+    // Four opens: the initiator's cap (4) is reached exactly.
+    for i in 1..=4 {
+        let (status, body, _key) =
+            open(&format!("key-storm-{i}"), &future_deadline, &future_expiry).await;
+        assert_eq!(status, 200, "the open {i}: {body}");
+    }
+    // The FIFTH open: the typed 429 names the fan-out limit.
+    let (status, refused, _key) = open("key-storm-5", &future_deadline, &future_expiry).await;
+    assert_eq!(status, 429, "the fan-out cap refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("fan-out"),
+        "the refusal names the limit: {refused}"
+    );
+
+    // The expiry enforcement: rewind one call's expiry to the past (the
+    // test's clock control — the same row-level seed the lease tests use),
+    // then the response refuses with the typed reason.
+    sqlx::query(
+        "UPDATE recruitment_calls SET expires_at = now() - interval '1 minute' \
+         WHERE tenant_id = $1 AND status = 'open'",
+    )
+    .bind(&tenant)
+    .execute(&pool)
+    .await
+    .expect("rewind the expiry");
+    let call_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT call_id FROM recruitment_calls WHERE tenant_id = $1 AND status = 'open' LIMIT 1",
+    )
+    .bind(&tenant)
+    .fetch_all(&pool)
+    .await
+    .expect("the call ids");
+    let response = client
+        .post(format!("{base}/v1/calls/{}/respond", call_ids[0]))
+        .header(PRINCIPAL_HEADER, &role_id)
+        .json(&json!({ "kind": "join" }))
+        .send()
+        .await
+        .expect("respond request");
+    assert_eq!(
+        response.status().as_u16(),
+        409,
+        "the expired call refuses the response"
+    );
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("expired"),
+        "the refusal names the expiry: {refused}"
+    );
+}

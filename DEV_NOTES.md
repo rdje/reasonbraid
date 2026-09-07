@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.4.3: a storm control built for a scale the profile cannot produce is placeholder machinery — the caps bind, the rest is named
+
+- **The dev-scale core is the caps + the expiry**: the fan-out limits (the typed 429 naming the limit) and the expiry binding (the stored `expires_at` now refuses the responses) are measurable with the shipped identities — the fifth open IS the test. Everything else (the depth/cycle chains, the storm-grade breakers, the quiet hours, the emergency authority) is NAMED with the trigger that produces the threat — a control built before its scale exists is exactly the subtraction doctrine's placeholder lie.
+- promotion: declined (the built-or-named split is the leaf's own contract; the `.5` lane owns the named items' triggers). **`.4` COMPLETE. Frontier `PHASE-3.5` (the subscriptions/notifications lane).**
+
 ## _(2026-09-07)_ — PHASE-3.4.2: a decline is a declaration, not a refusal — the eligibility gate applies to the participation claims only
 
 - **The response vocabulary carries its own gate semantics**: `join`/`conditional_join` claim participation, so the server re-resolves the eligibility expression against the respondent's CURRENT facts and refuses the ineligible (the typed 403 with the stage-1 reasons); `decline`/`recuse`/`recommend`/`request_context` are exactly the ineligible (or unwilling) declaring WHY — refusing them would silence the very signal the protocol exists to collect. The panel snapshot then ranks the joiners and stores the selection explanation (the reasons + the features) — the audit of what was chosen and why.

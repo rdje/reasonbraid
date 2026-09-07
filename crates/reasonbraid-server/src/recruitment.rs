@@ -51,6 +51,41 @@ impl RecruitmentResponse {
     }
 }
 
+/// The dev-scale storm controls (`.4.3`): the per-tenant + per-initiator
+/// open-call fan-out caps — the §10.7 "per-tenant, initiator … fan-out
+/// limits" at the dev profile's scale. The storm-grade circuit breakers +
+/// the quiet hours + the depth/cycle machinery are the named deferrals (the
+/// triggers ride the leaf's Done line).
+pub const MAX_OPEN_CALLS_PER_TENANT: i64 = 8;
+pub const MAX_OPEN_CALLS_PER_INITIATOR: i64 = 4;
+
+/// The initiator's current open calls (the fan-out cap's count).
+pub async fn open_calls_by(
+    pool: &sqlx::PgPool,
+    tenant_id: Option<&str>,
+    initiator: Option<&str>,
+) -> Result<i64, sqlx::Error> {
+    let mut query = String::from("SELECT count(*) FROM recruitment_calls WHERE status = 'open'");
+    if tenant_id.is_some() {
+        query.push_str(" AND tenant_id = $1");
+    }
+    if initiator.is_some() {
+        query.push_str(if tenant_id.is_some() {
+            " AND initiator = $2"
+        } else {
+            " AND initiator = $1"
+        });
+    }
+    let mut q = sqlx::query_scalar(&query);
+    if let Some(t) = tenant_id {
+        q = q.bind(t);
+    }
+    if let Some(i) = initiator {
+        q = q.bind(i);
+    }
+    q.fetch_one(pool).await
+}
+
 /// The call spec as stored (the expression rides as the `.3` typed shape).
 #[derive(Debug, Clone, Serialize)]
 pub struct CallRow {

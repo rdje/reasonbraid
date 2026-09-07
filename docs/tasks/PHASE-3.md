@@ -473,7 +473,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       regression.
 
   - ID: `PHASE-3.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the storm controls — the §10.7 items at the dev profile's
       scale: the per-tenant/initiator/node/role/topic/thread fan-out
       limits, the call expiry + the max offline backlog, the
@@ -484,6 +484,24 @@ eligibility before ranking. Dependence indicators, never an independence score.
       NAMED with its trigger (the emergency broadcast authority is
       a named deferral: no emergency class exists yet).
     Backlog: 30 (the storm half)
+    Done (`2026-09-07`): the storm controls' buildable core landed —
+      the fan-out caps (the per-tenant + per-initiator open-call
+      limits, the typed 429 `storm_control` naming the limit) + the
+      call-expiry enforcement (an expired call refuses the responses
+      with the typed reason; the `.4.2` spec's expiry now BINDS). The
+      named deferrals, each with its trigger: the duplicate-thread
+      suggestions (the `.5` subscription machinery's semantic layer),
+      the parent/causation chains + the max autonomous depth + the
+      cycle detection (the first agent-initiated call — the `.5`
+      autonomous-initiation lane), the storm-grade per-origin/global
+      circuit breakers (the first multi-tenant storm observed), the
+      quiet hours (the local node policy — the `.5` wake-policy
+      lane), the max offline backlog (the `.5` subscriptions), and
+      the emergency broadcast authority (no emergency class exists
+      yet). Measured (`the_open_call_storm_controls_hold_at_the_dev_
+      scale`, profiles 9 — the first live run passed): the
+      initiator's 5th open is the typed 429, the expired call's
+      response refuses. **`.4` COMPLETE** — frontier → `.5`.
     Acceptance: each §10.7 item is built-and-measured or named with
       its trigger; no regression.
 
@@ -508,7 +526,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.4.3` | `proposed` | `.4.2` done — the call artifact + the typed responses (the participation-only eligibility gate, the ranked panel + the explanation); the storm controls execute now |
+| 1 | `PHASE-3.5` | `proposed` | `.4.3` done — the storm controls (the fan-out caps + the expiry enforcement built; the six named deferrals with their triggers); **`.4` COMPLETE** — the subscriptions/notifications lane executes now |
 
 ## Changelog
 
@@ -589,6 +607,53 @@ eligibility before ranking. Dependence indicators, never an independence score.
   only eligibility gate + the ranked panel with the explanation);
   the profiles suite grew to 8; the eleven purge lists gained the
   0020 tables; frontier → `.4.3`.
+- `2026-09-07`: `.4.3` done — the storm controls (the fan-out caps
+  + the expiry enforcement measured; the six §10.7 deferrals named
+  with their triggers); the profiles suite grew to 9;
+  **`.4` COMPLETE** — frontier → `.5`.
+
+## Acceptance Checklist (PHASE-3.4.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+recruitment.rs` (the dev-scale fan-out caps + the `open_calls_by`
+helper), `crates/reasonbraid-server/src/api.rs` (the caps + the
+expiry enforcement in the handlers), and
+`crates/reasonbraid-server/tests/profiles.rs` (the measured storm
+test) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.4` census: none of the §10.7
+  storm controls exist (the fan-out limits, the expiry enforcement,
+  the depth/cycle machinery, the quiet hours, the emergency
+  authority).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the call surface (`.4.2`) had
+  no flow control — `git grep -c "storm_control\|fan.out" 1c2ee80
+  -- crates/` → rc=1 (nothing before this leaf). The fix point at
+  the dev scale: the per-tenant + per-initiator open-call caps
+  (the typed 429 naming the limit) + the call-expiry enforcement
+  (the stored expiry now BINDS the responses) — the storm-grade
+  machinery (the breakers, the depth/cycle checks, the quiet
+  hours) is NAMED with its trigger, not built for a scale the dev
+  profile cannot produce.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  the_open_call_storm` → `test result: ok. 1 passed` (the FIRST
+  live run passed) — four opens succeed, the initiator's FIFTH is
+  the typed 429 naming the fan-out limit, and the rewind-the-expiry
+  call refuses the response with the typed `expired` reason.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg343_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/recruitment.rs` (the caps + the helper),
+  `src/api.rs` (the two checks), `tests/profiles.rs` (the
+  measurement).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.4.2)
 
@@ -1014,6 +1079,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.4.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_storm` → `test result: ok. 1 passed` (the 5th open's typed 429 + the expired call's refusal — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg343_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the storm controls' buildable core + the named deferrals; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-3.4.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_call` → `test result: ok. 1 passed` (the open/join/refuse/decline/close chain — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg342_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the call artifact + the typed responses; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-3.4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-015 accepted (the baseline + the dependence-indicator trigger); frontier → `.4.2` |
 | `2026-09-07` | `PHASE-3.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the recruitment-lane census + the contract-seam decomposition (`.4.1` ADR-015 → `.4.2` the call + responses → `.4.3` the storm controls); frontier → `.4.1` |
@@ -1033,6 +1099,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.4.3` | `REASONBRAID-PHASE3-0016` | the storm controls' buildable core (the fan-out caps + the expiry enforcement) + the six named deferrals — **`.4` COMPLETE** |
 | `PHASE-3.4.2` | `REASONBRAID-PHASE3-0015` | the call artifact + the typed recruitment responses (migration 0020 + the four verbs + the panel snapshot with the explanation) |
 | `PHASE-3.4.1` | `REASONBRAID-PHASE3-0014` | ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane — no code) |
 | `PHASE-3.4` | `REASONBRAID-PHASE3-0013` | the recruitment lane decomposed at the census seams (the baseline + the candidates exist; the vocabulary/call/storm machinery are the gaps) |

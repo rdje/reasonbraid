@@ -1286,13 +1286,40 @@ async fn open_recruitment_call(
             "min_participants must be ≥ 1 and max_participants ≥ min_participants",
         ));
     }
+    // The dev-scale storm controls (`.4.3`): the per-tenant + per-initiator
+    // open-call fan-out caps — the typed 429 names the limit.
+    let initiator = actor_handle_for_subject(&principal).to_string();
+    let tenant_open =
+        crate::recruitment::open_calls_by(&state.pool, Some(&req.tenant_id), None).await?;
+    if tenant_open >= crate::recruitment::MAX_OPEN_CALLS_PER_TENANT {
+        return Err(ControlApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "storm_control",
+            message: format!(
+                "the tenant's open-call fan-out limit ({}) is reached",
+                crate::recruitment::MAX_OPEN_CALLS_PER_TENANT
+            ),
+        });
+    }
+    let initiator_open =
+        crate::recruitment::open_calls_by(&state.pool, None, Some(&initiator)).await?;
+    if initiator_open >= crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR {
+        return Err(ControlApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "storm_control",
+            message: format!(
+                "the initiator's open-call fan-out limit ({}) is reached",
+                crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR
+            ),
+        });
+    }
     let expression = serde_json::to_value(&req.expression)
         .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;
     let call_id = crate::recruitment::open_call(
         &state.pool,
         &req.tenant_id,
         &req.thread_id,
-        &actor_handle_for_subject(&principal).to_string(),
+        &initiator,
         &expression,
         req.min_participants,
         req.max_participants,
@@ -1378,6 +1405,9 @@ async fn respond_to_call(
         return Err(ControlApiError::invalid_transition(
             "the join deadline has passed",
         ));
+    }
+    if Utc::now() > call.expires_at {
+        return Err(ControlApiError::invalid_transition("the call has expired"));
     }
     let expression: crate::matching::EligibilityExpression =
         serde_json::from_value(call.expression).map_err(|e| {

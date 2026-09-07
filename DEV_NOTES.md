@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.4.2: the upgrade test needs a runtime Migrator, not the macro — the prefix is the point
+
+- **`migrate!` applies everything; the upgrade test needs a PREFIX.** The runtime `Migrator::new(path)` + the public (semver-exempt) fields build the all-but-last migrator, stage the pre-upgrade database, then run the full one over the seeded data — the N-1 → N path that no fresh-migration suite ever exercised.
+- promotion: declined (the prefix-migrator technique is the leaf's recorded contract — no new cross-cutting decision). **Frontier `PHASE-2.4.3` (the inventory-groundwork deferral record).**
+
 ## _(2026-09-07)_ — PHASE-2.4.1: the restore exercise runs the real tools — the URL's user/host/port each got their own failure
 
 - **The control is the restore, so the test runs the real pg_dump/pg_restore pair** — no mocked dumps. The first three guard runs each caught a real integration fact (the URL's userinfo, the host:port split, the dropdb-before-assert ordering) — exactly the failure class a mock would have hidden.

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The upgrade path, measured: an existing database upgrades and its data survives (`PHASE-2.4.2`)
+
+- The guard gains the `migration_upgrade` suite: a runtime `Migrator` applies all but the last migration to a clean schema, the REAL API seeds the tenant + boundary rows, the remaining migrations apply over the existing data, and the rows + the post-upgrade API behavior (the role enroll) survive — §17.6's upgrade-an-existing-database path, which every fresh-migration suite left unexercised, now runs on every guard pass.
+- The first run caught a real sqlx fact (multi-statement prepared queries are refused — the schema reset splits). 15 live suites + the demo 34/34. Frontier → `.4.3` (the inventory-groundwork deferral record).
+
 ## 2026-09-07 — The restore is the recovery control: a backup restored on every guard run (`PHASE-2.4.1`)
 
 - `scripts/backup.sh` (custom-format pg_dump, dated file under `target/backups/`) + `scripts/restore.sh` (pg_restore --clean --if-exists --exit-on-error into a caller-chosen isolated database) land.

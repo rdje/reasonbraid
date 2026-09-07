@@ -23,13 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.4.2` (`.4.1` done: the backup +
-  restore automation — the guard's restore exercise is the recovery
-  control). Then `.4.3`.
-- **Next action:** execute `PHASE-2.4.2` — the migration upgrade test: a
-  live suite applies migrations to N-1, seeds data through the real API,
-  applies the rest, and asserts the data + behavior survive (the
-  expand/migrate/contract reality; destructive contraction deferred).
+- **Active tree:** `PHASE-2` → frontier `.4.3` (`.4.2` done: the migration
+  upgrade test — the existing-database path, measured). Then `.4` closes.
+- **Next action:** execute `PHASE-2.4.3` — the inventory-groundwork
+  deferral record (the object/Git inventory, the signing-key recovery
+  design, the post-restore reconciliation, the backup encryption have
+  nothing to bind in the dev profile; a decisions record names each with
+  its trigger). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

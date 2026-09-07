@@ -857,7 +857,7 @@ slice can reuse the same control plane without rewriting it.
       guard leg is green.
 
   - ID: `PHASE-2.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the migration upgrade test — a live suite applies migrations
       up to N-1 on a fresh database, SEEDS data through the real API,
       applies the remaining migrations, and asserts the seeded data +
@@ -867,6 +867,14 @@ slice can reuse the same control plane without rewriting it.
       stays deferred (no rollback point exists in the dev profile — the
       §17.6 note).
     Roadmap: §17.6
+    Done (`2026-09-07`): the upgrade-an-EXISTING-database path runs in
+      the guard (`migration_upgrade` suite): all but the last migration
+      apply to a clean schema, the REAL API seeds the tenant + boundary
+      rows, the remaining migrations apply over the existing data, and
+      the rows + the post-upgrade API behavior (the role enroll) survive
+      — measured. The suite joins the guard (15 suites + the demo 34/34,
+      `target/pg242b_guard.log`); the acceptance checklist below records
+      the evidence — frontier → `.4.3`.
     Acceptance: the N-1 → N upgrade preserves the seeded rows + the API
       behavior (measured); no regression.
 
@@ -903,7 +911,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.4.2` | `proposed` | `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
+| 1 | `PHASE-2.4.3` | `proposed` | `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
+ `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
  `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
  `.3` is COMPLETE (ADR-012/013, the spend latch, the reconciliation surface); the backup/PITR + migrations lane executes now |
  `.3.2` done — the spend circuit breakers (the in-tx latch + the arm/reset/inspect verbs); the usage-reconciliation surface executes now |
@@ -914,6 +923,10 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.4.2` done — the migration upgrade test: the guard's
+  `migration_upgrade` suite applies all but the last migration, seeds through
+  the REAL API, upgrades over the existing data, and asserts the rows + the
+  behavior survive (measured); frontier → `.4.3`.
 - `2026-09-07`: `.4.1` done — the backup + restore automation:
   `scripts/backup.sh`/`scripts/restore.sh` + the guard's restore exercise
   (seed → real pg_dump → mutate → restore into an isolated database →
@@ -1231,6 +1244,38 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.4.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/tests/
+migration_upgrade.rs` (`\.rs$`), `scripts/run_pg_tests.sh` (the suite joins
+the guard) — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — §17.6: every suite migrates a FRESH
+  database; the upgrade-an-EXISTING-database path — the one the section
+  is about — had never run (the `.4` census).
+- [x] **ROOT CAUSE (WHY + WHERE)** — sqlx's `migrate!` macro applies
+  everything; the gap is a RUNTIME migrator that can apply a PREFIX. The
+  fix uses `Migrator::new(path)` + a filtered `Migrator` (the public
+  semver-exempt fields) to stage the pre-upgrade database, then the full
+  migrator over the seeded data.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  upgrade path. After: `bash scripts/run_pg_tests.sh` → `test result:
+  ok. 1 passed` (`migration_upgrade` — the all-but-last migrations apply
+  to a clean schema, the REAL API seeds the tenant + boundary rows, the
+  remaining migrations apply over them, and the rows + the post-upgrade
+  role-enroll behavior survive) + the full guard green (15 suites + e2e
+  `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`,
+  `target/pg242b_guard.log`)).
+- [x] **NO REGRESSION** — `cargo test --all` → 47 offline suites green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds.
+- [x] **FIX** — `migration_upgrade.rs` (the prefix migrator + the real-
+  API seed + the upgrade + the survival assertions); the guard list.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP — same
+  commit.
 
 ## Acceptance Checklist (PHASE-2.4.1)
 
@@ -1916,7 +1961,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
-| `2026-09-07` | `PHASE-2.4.1` | `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
+| `2026-09-07` | `PHASE-2.4.2` | `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
+ `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `command_api` grew to 17 with the measured reconciliation leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg233_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture); **`.3` COMPLETE** — frontier → `.4` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `budget` grew to 9 with the two breaker legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg232c_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the spend circuit breakers (migration 0016 + the in-tx latch + the arm/reset/inspect verbs + the CLI); frontier → `.3.3` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `node_work` grew to 8 with the live dead-letter/replay leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg224b_guard.log`); `cargo test -p reasonbraid-node --test worker_dead_letter` → `test result: ok. 2 passed`; `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the two-way quarantine (the once-only dead-letter report + the server's auto-quarantine + `POST /v1/nodes/replay` + `rb node replay` + the decision-scoped retry re-arm); **`.2` COMPLETE** — frontier → `.3` |
@@ -1944,6 +1990,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.4.2` | `REASONBRAID-PHASE2-0029` | the migration upgrade test (the N-1 → N path: the real API seeds, the remaining migrations apply over the existing data, the rows + behavior survive — measured) |
 | `PHASE-2.4.1` | `REASONBRAID-PHASE2-0028` | the backup + restore automation: `scripts/backup.sh`/`restore.sh` + the guard's restore exercise (seed → dump → mutate → restore → assert the pre-mutation state) |
 | `PHASE-2.4` | `REASONBRAID-PHASE2-0027` | the contract-seam split (no backup tooling, the upgrade path unexercised, the inventory has nothing to bind) |
 | `PHASE-2.3.3` | `REASONBRAID-PHASE2-0026` | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture, measured against the ledger rows) — **`.3` COMPLETE** |

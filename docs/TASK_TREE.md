@@ -53,7 +53,7 @@ on the same commit. One commit per completed leaf.
 | [`PROGRAM`](tasks/PROGRAM.md) | `active` | index only — next executable work is `PHASE-2` | repo-local |
 | [`PHASE-0`](tasks/PHASE-0.md) | `done` | tree complete — WP1–WP8 + `MAINT-1`/`MAINT-2`; next executable work is `PHASE-1.1` | repo-local |
 | [`PHASE-1`](tasks/PHASE-1.md) | `done` | tree complete — G1–G2 **Met** + Demonstration A passed 30/30 (debug + release-built); next executable work is `PHASE-2.1` | repo-local |
-| [`PHASE-2`](tasks/PHASE-2.md) | `active` | `.4.2` — the migration upgrade test (`.4.1` done: backup + restore with the guard's restore exercise) | repo-local |
+| [`PHASE-2`](tasks/PHASE-2.md) | `active` | `.4.3` — the inventory-groundwork deferral record (`.4.2` done: the migration upgrade test) | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `proposed` | `.1` — directory | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `proposed` | `.1` — resource registry | repo-local |
 | [`PHASE-5`](tasks/PHASE-5.md) | `proposed` | `.1` — workflow profiles | repo-local |

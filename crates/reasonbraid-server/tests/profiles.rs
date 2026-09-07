@@ -2045,6 +2045,99 @@ async fn the_workflow_profile_registry_validates_and_resolves() {
     );
 }
 
+/// The profile-driven execution (PHASE-5.1.3, ADR-016): the projection
+/// carries the resolved step sequence + the current index — the create
+/// seats step 0, the close advances to the terminal step — and the
+/// inspection shows the plan.
+#[tokio::test]
+async fn the_profile_steps_ride_the_projection_through_the_close() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "stp-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "stp-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "stp",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("create request");
+    assert_eq!(response.status().as_u16(), 200, "the create succeeds");
+    let created: Value = response.json().await.unwrap();
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let inspect = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        let tenant_id = tenant_id.clone();
+        async move {
+            let (_, state) = get(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+                &human_id,
+            )
+            .await;
+            state["state"].clone()
+        }
+    };
+
+    // The create seats step 0 with the resolved sequence.
+    let state = inspect().await;
+    assert_eq!(state["workflow_profile"], json!("independent_panel"));
+    assert_eq!(
+        state["workflow_steps"],
+        json!(["blind_solicit", "adjudicate", "decide"])
+    );
+    assert_eq!(state["workflow_step"], json!(0));
+
+    // The close advances to the terminal step (index 2 = `decide`).
+    let response = client
+        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "stp-close",
+            "body": { "tenant_id": tenant_id, "reason": "the panel decided" },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(response.status().as_u16(), 200, "the close succeeds");
+    let state = inspect().await;
+    assert_eq!(state["workflow_step"], json!(2));
+    assert_eq!(state["workflow_steps"][2], json!("decide"));
+}
+
 /// THE `.3.6.2` panel-wiring acceptance: two joiners sharing the provider
 /// produce the named overlap group in the panel snapshot's dependence
 /// indicators.

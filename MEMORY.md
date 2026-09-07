@@ -19,16 +19,15 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.1.3` (**PHASE 4 CLOSED**;
-  `.1.1` done: ADR-016; `.1.2` done: the profile registry + the
-  validation (the eight built-ins, the validated create
-  boundary, profiles 25); `MAINT-1` done). Then `.2`–`.4`.
-- **Next action:** execute `PHASE-5.1.3` — the profile-driven
-  execution: the step composition over the state machine (the
-  profile selects the contribution/terminal sequence), the
-  invariants enforced at the transition level (the
-  authorization/budget/lifecycle checks ride every step), the
-  explicit per-step failures.
+- **Active tree:** `PHASE-5` → frontier `.2` (**PHASE 4 CLOSED**;
+  the `.1` lane COMPLETE: ADR-016 + the registry + the
+  validation + the execution (the steps ride the projection,
+  profiles 25); `MAINT-1` done). Then `.3`–`.4`.
+- **Next action:** execute `PHASE-5.2` — the blind-first
+  contributions + the structured claims/objections/revisions +
+  the evidence requests + the adjudication + the minority
+  reports + the unresolved registers (§13.4, §13.6; decompose at
+  the census seams first).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

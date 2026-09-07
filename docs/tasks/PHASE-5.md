@@ -117,7 +117,7 @@ and honest inconclusive outcomes.
       roundtrip. Frontier → `.1.3`.
 
   - ID: `PHASE-5.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the profile-driven execution — the step composition
       over the state machine: the profile selects the
       contribution/terminal sequence, the invariants enforced at
@@ -125,6 +125,21 @@ and honest inconclusive outcomes.
       lifecycle checks ride every step), the explicit per-step
       failures (the profile never fabricates progress).
     Backlog: 36 (the execution half)
+    Done (`2026-09-07`): the profile-driven execution landed —
+      the projection carries the RESOLVED step sequence + the
+      current index (`workflow_steps` + `workflow_step`: the
+      create seats step 0 with the registry's steps, the close
+      advances to the terminal step — the lifecycle's own
+      transitions are the only step transitions, so the
+      authorization/budget/lifecycle invariants ride EVERY step
+      by construction); the create boundary resolves the FULL
+      profile (the steps ride the create event — the event
+      replay carries them; the auto-initiation path resolves
+      too); the inspection shows the plan (the steps + the
+      index). Measured (profiles 25 — the suite grew 24→25): the independent_panel
+      create seats `["blind_solicit", "adjudicate", "decide"]`
+      at index 0; the close advances to index 2 (`decide`).
+      **`.1` COMPLETE** — frontier → `.2`.
 
 - ID: `PHASE-5.2`
   Status: `proposed`
@@ -159,10 +174,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.1.3` | `proposed` | `.1.2` done — the profile registry + the validation (migration 0032 + `src/workflows.rs`: the twelve-kind vocabulary, the three composition rules, the eight built-ins, the create-boundary resolution — profiles 25); the profile-driven execution executes now |
+| 1 | `PHASE-5.2` | `proposed` | `.1.3` done — **the `.1` lane (the workflow profiles) is COMPLETE**: ADR-016 + the registry + the validation + the execution (the steps ride the projection, the close advances to the terminal — profiles 25); the blind-first contributions lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.1.3` done — the profile-driven execution (the
+  projection's steps + the index: the create seats step 0, the
+  close advances to the terminal); profiles 25; **`.1`
+  COMPLETE** — frontier → `.2`.
 - `2026-09-07`: `.1.2` done — the profile registry + the
   validation (migration 0032: the eight built-ins; the twelve-
   kind vocabulary; the three composition rules; the thread's
@@ -228,3 +247,52 @@ CLI e2e (the old wire names → the ADR-016 names) — `\.rs$` +
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
   same commit.
+
+
+## Acceptance Checklist (PHASE-5.1.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the projection's
+`workflow_steps` + `workflow_step`, the `default_workflow_steps()`,
+the `prepare_create` fifth parameter, the close's terminal-index
+advance), `crates/reasonbraid-server/src/api.rs` (the create
+boundary resolves the FULL `ResolvedProfile` into the steps — both
+create handlers; `CommandTarget::Create` carries them; the
+match-by-ref), `crates/reasonbraid-server/tests/profiles.rs` (the
+new projection test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1.2`-era projection: the
+  profile was a validated REFERENCE (the id + the registry) but
+  the thread carried NO step sequence and NO index — the profile
+  could not steer anything (the execution half was missing).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c "workflow_step"
+  c1b8cdd -- crates/ migrations/` → rc=1 (the projection had no
+  step state before this leaf). The fix point is the projection +
+  the create boundary: the steps resolve ONCE, ride the create
+  event (replay carries them), and the close seats the terminal
+  index.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_profile_steps_ride_the_projection_through_the_close` →
+  `test result: ok. 1 passed` (also inside the full live suite:
+  `running 25 tests … ok`, `target/pg513_guard.log`) — the
+  `independent_panel` create seats
+  `["blind_solicit", "adjudicate", "decide"]` at index 0, the
+  close advances to index 2 (`decide`); the auto-initiation path
+  resolves the steps too. The first offline pass caught the
+  match-by-ref partial move + the `prepare_create` arity — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg513_guard.log`; evidence
+  `target/demo/20260907-171316/evidence`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `src/api.rs`,
+  `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES heading,
+  so no promotion gate).

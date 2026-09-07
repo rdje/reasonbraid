@@ -131,6 +131,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_workflow_steps() -> Vec<String> {
+    vec![
+        "solicit".to_owned(),
+        "synthesize".to_owned(),
+        "decide".to_owned(),
+    ]
+}
+
 impl Default for ParticipantRules {
     fn default() -> Self {
         ParticipantRules {
@@ -375,6 +383,14 @@ pub struct ThreadProjection {
     pub classification: Classification,
     #[serde(default)]
     pub workflow_profile: String,
+    /// The resolved profile's step sequence (the ADR-016 composition) —
+    /// the projection records it so the inspection shows the plan.
+    #[serde(default = "default_workflow_steps")]
+    pub workflow_steps: Vec<String>,
+    /// The current step index (0 = the first; the close advances to the
+    /// terminal step).
+    #[serde(default)]
+    pub workflow_step: usize,
     #[serde(default)]
     pub participant_rules: ParticipantRules,
     #[serde(default)]
@@ -522,6 +538,7 @@ pub fn prepare_create(
     thread_id: &ThreadId,
     principal: &str,
     body: &CreateBody,
+    workflow_steps: Vec<String>,
 ) -> PreparedCommand {
     let budget = ceiling_for(body.budget.as_ref());
     let ceiling_id = format!("ceil_{thread_id}");
@@ -544,6 +561,8 @@ pub fn prepare_create(
             .workflow_profile
             .clone()
             .unwrap_or_else(|| crate::workflows::DEFAULT_PROFILE_ID.to_owned()),
+        workflow_steps,
+        workflow_step: 0,
         participant_rules: body.participant_rules.clone().unwrap_or_default(),
         cancel_reason: None,
         ceiling_id: ceiling_id.clone(),
@@ -560,6 +579,7 @@ pub fn prepare_create(
         "budget": budget,
         "classification": projection.classification,
         "workflow_profile": projection.workflow_profile,
+        "workflow_steps": projection.workflow_steps,
         "participant_rules": projection.participant_rules,
     });
     PreparedCommand {
@@ -1114,6 +1134,8 @@ where
             };
             projection.state = terminal;
             projection.close_reason = Some(body.reason.clone());
+            // The profile's terminal step (the ADR-016 sequence's last).
+            projection.workflow_step = projection.workflow_steps.len().saturating_sub(1);
             (
                 EVENT_CLOSED,
                 json!({
@@ -1239,6 +1261,7 @@ mod tests {
                 workflow_profile: None,
                 participant_rules: None,
             },
+            default_workflow_steps(),
         );
         let projection: ThreadProjection =
             serde_json::from_value(prepared.next_state).expect("projection parses");

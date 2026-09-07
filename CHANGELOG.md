@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The workflow-profile lane is complete: the steps ride the projection (`PHASE-5.1.3`)
+
+- The projection carries the resolved step sequence + the current index: the create seats step 0 with the registry's steps, the close advances to the terminal step — the lifecycle's own transitions are the only step transitions, so the authorization/budget/lifecycle invariants ride every step by construction.
+- Measured: profiles 25 (the suite grew 24→25). **`.1` COMPLETE** — frontier → `.2` (the blind-first contributions lane).
+
 ## 2026-09-07 — The profile registry ships: the validated reference replaces the stored string (`PHASE-5.1.2`)
 
 - `migrations/0032`: the eight §13.1 built-ins as versioned entries.

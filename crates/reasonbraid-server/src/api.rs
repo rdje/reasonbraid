@@ -2287,6 +2287,13 @@ async fn create_thread_auto(
     let body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let hash = request_hash(threads::OP_CREATE, &principal, &body_value);
+    let mut workflow_steps = Vec::new();
+    if let Some(profile) = body.workflow_profile.as_deref() {
+        let resolved = crate::workflows::resolve(&state.pool, Some(profile))
+            .await
+            .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+        workflow_steps = resolved.steps;
+    }
     let key = format!("auto_{}_{}", role, tenant_id);
     let response = run_thread_command(
         &state.pool,
@@ -2295,7 +2302,10 @@ async fn create_thread_auto(
         &authz,
         &key,
         &hash,
-        CommandTarget::Create { body: &body },
+        CommandTarget::Create {
+            body: &body,
+            workflow_steps,
+        },
     )
     .await?;
     Ok(response)
@@ -3687,7 +3697,12 @@ async fn inspect_breakers(
 /// One prepared command's execution target inside the shared transaction flow.
 enum CommandTarget<'a> {
     /// `thread.create` — pure preparation; the thread id is server-assigned.
-    Create { body: &'a CreateBody },
+    Create {
+        body: &'a CreateBody,
+        /// The resolved profile steps (the ADR-016 composition) — the
+        /// create boundary resolved them against the registry.
+        workflow_steps: Vec<String>,
+    },
     /// A command against an existing thread — validated against the locked
     /// projection inside the transaction.
     Existing {
@@ -3779,11 +3794,19 @@ async fn run_thread_command(
 
     // 3. Domain validation (the create path is pure; existing-thread commands read
     //    the LOCKED projection inside this transaction).
-    let (thread_id, prepared) = match target {
-        CommandTarget::Create { body } => {
+    let (thread_id, prepared) = match &target {
+        CommandTarget::Create {
+            body,
+            workflow_steps,
+        } => {
             let thread_id = ThreadId::new();
-            let prepared =
-                threads::prepare_create(tenant_id, &thread_id, &principal.id_string(), body);
+            let prepared = threads::prepare_create(
+                tenant_id,
+                &thread_id,
+                &principal.id_string(),
+                body,
+                workflow_steps.clone(),
+            );
             (thread_id, prepared)
         }
         CommandTarget::Existing {
@@ -3794,13 +3817,13 @@ async fn run_thread_command(
             let prepared = threads::prepare_thread_command(
                 &mut *tx,
                 tenant_id,
-                &thread_id,
+                thread_id,
                 operation,
                 &principal.id_string(),
                 body,
             )
             .await?;
-            (thread_id, prepared)
+            (*thread_id, prepared)
         }
     };
 
@@ -4266,12 +4289,14 @@ async fn create_thread(
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     // The ADR-016 boundary: the workflow profile is a VALIDATED reference —
     // the unknown id is the typed refusal (never a stored string), and the
-    // canonical id rides the body onward.
+    // canonical id + the resolved steps ride the create onward.
+    let mut workflow_steps = Vec::new();
     if let Some(profile) = body.workflow_profile.as_deref() {
         let resolved = crate::workflows::resolve(&state.pool, Some(profile))
             .await
             .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
         body.workflow_profile = Some(resolved.profile_id);
+        workflow_steps = resolved.steps;
     }
     let tenant_id = body.tenant_id;
     let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
@@ -4291,7 +4316,10 @@ async fn create_thread(
         &authz,
         &envelope.idempotency_key,
         &hash,
-        CommandTarget::Create { body: &body },
+        CommandTarget::Create {
+            body: &body,
+            workflow_steps,
+        },
     )
     .await
 }

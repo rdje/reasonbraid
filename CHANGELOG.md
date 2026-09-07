@@ -12,6 +12,13 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The snapshot store ships: the content-addressing is verified, the deletion is a tombstone (`PHASE-4.6.1`)
+
+- `migrations/0028`: `snapshot_objects` (the bytes under their ADR-011 digest — identical bytes, one row) + `evidence_snapshots` (the §12.6 shape; the tombstone state rides the row).
+- `src/snapshots.rs`: the typed submission, the VERIFIED digest (the bytes must hash to the declared one — never trusted), the replay, the tombstone (the reason + the time, idempotent).
+- The verbs (`POST`/`GET`/`DELETE /v1/snapshots`) + the resolve handler's R0/R2/R5 auto-submits (the acquired bytes land with the provider receipts + the disclosure policies).
+- Measured: profiles 19 — the roundtrip, the replay, the mismatch 400, the tombstone. Frontier → `.6.2` (the derivation graph).
+
 ## 2026-09-07 — The snapshots lane opens: the receipts exist, nothing persists them (`PHASE-4.6`)
 
 - The `.2`–`.5` packs produce the ADR-011 receipt shapes; NOTHING stores them — no `EvidenceSnapshot`, no `Derivation` edges, no claim-evidence assessments, no tombstone (the object store is the Phase-4 blocker's last leg, the `.1` census's named trigger).

@@ -430,6 +430,11 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/resources/{resource_id}/resolve",
             post(resolve_resource),
         )
+        .route("/v1/snapshots", post(submit_snapshot))
+        .route(
+            "/v1/snapshots/{snapshot_id}",
+            get(get_snapshot).delete(tombstone_snapshot),
+        )
         .route("/v1/resolvers", post(register_resolver))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads/auto", post(create_thread_auto))
@@ -1377,13 +1382,44 @@ async fn resolve_resource(
         Some(crate::resolvers::R0_RESOLVER_ID) => {
             match state.fetcher.fetch(&reference.original_locator).await {
                 Ok(document) => {
-                    outcome.acquisition = Some(crate::resolvers::Acquisition::Web(
-                        crate::fetcher::AcquisitionReceipt::from_document(
-                            &reference.original_locator,
-                            &document,
-                            chrono::Utc::now(),
-                        ),
-                    ));
+                    let receipt = crate::fetcher::AcquisitionReceipt::from_document(
+                        &reference.original_locator,
+                        &document,
+                        chrono::Utc::now(),
+                    );
+                    // The snapshot store (`.6.1`): the acquired bytes land
+                    // under their digest — a persistence failure leaves the
+                    // receipt returned (the acquisition succeeded).
+                    let _ = crate::snapshots::submit(
+                        &state.pool,
+                        &crate::snapshots::SnapshotSubmission {
+                            reference_id: resource_id.clone(),
+                            original_locator: reference.original_locator.clone(),
+                            final_locator: receipt.final_url.clone(),
+                            resolver_id: crate::resolvers::R0_RESOLVER_ID.to_owned(),
+                            resolver_version: "0.1.0".to_owned(),
+                            network_class: "public".to_owned(),
+                            auth_class: "none".to_owned(),
+                            provider_receipt: serde_json::json!({ "chain": receipt.chain }),
+                            immutable_source_version: None,
+                            raw_digest: receipt.digest.clone(),
+                            byte_length: receipt.byte_count as i64,
+                            media_type: receipt
+                                .content_type
+                                .clone()
+                                .unwrap_or_else(|| receipt.sniffed.to_string()),
+                            storage_class: "standard".to_owned(),
+                            retention_class: "standard".to_owned(),
+                            extraction_version: None,
+                            quarantine_status: "none".to_owned(),
+                            redactions: serde_json::json!([]),
+                            disclosure_policy: serde_json::json!({}),
+                        },
+                        &document.bytes,
+                        chrono::Utc::now(),
+                    )
+                    .await;
+                    outcome.acquisition = Some(crate::resolvers::Acquisition::Web(receipt));
                 }
                 Err(error) => {
                     outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
@@ -1422,17 +1458,47 @@ async fn resolve_resource(
                             );
                             match disclosure {
                                 Ok(disclosure) => {
+                                    let receipt = crate::fetcher::AcquisitionReceipt::from_document(
+                                        &reference.original_locator,
+                                        &document,
+                                        chrono::Utc::now(),
+                                    );
+                                    let _ = crate::snapshots::submit(
+                                        &state.pool,
+                                        &crate::snapshots::SnapshotSubmission {
+                                            reference_id: resource_id.clone(),
+                                            original_locator: reference.original_locator.clone(),
+                                            final_locator: receipt.final_url.clone(),
+                                            resolver_id: crate::resolvers::R5_RESOLVER_ID.to_owned(),
+                                            resolver_version: "0.1.0".to_owned(),
+                                            network_class: "public".to_owned(),
+                                            auth_class: disclosure.credential_class.clone(),
+                                            provider_receipt: serde_json::json!({ "chain": receipt.chain }),
+                                            immutable_source_version: None,
+                                            raw_digest: receipt.digest.clone(),
+                                            byte_length: receipt.byte_count as i64,
+                                            media_type: receipt
+                                                .content_type
+                                                .clone()
+                                                .unwrap_or_else(|| receipt.sniffed.to_string()),
+                                            storage_class: "standard".to_owned(),
+                                            retention_class: "standard".to_owned(),
+                                            extraction_version: None,
+                                            quarantine_status: "none".to_owned(),
+                                            redactions: serde_json::json!([]),
+                                            disclosure_policy: serde_json::json!({ "credential_class": disclosure.credential_class, "host": disclosure.host }),
+                                        },
+                                        &document.bytes,
+                                        chrono::Utc::now(),
+                                    )
+                                    .await;
                                     outcome.acquisition =
-                                        Some(crate::resolvers::Acquisition::Authenticated(Box::new(
-                                            crate::broker::AuthenticatedReceipt {
+                                        Some(crate::resolvers::Acquisition::Authenticated(
+                                            Box::new(crate::broker::AuthenticatedReceipt {
                                                 disclosure,
-                                                receipt: crate::fetcher::AcquisitionReceipt::from_document(
-                                                    &reference.original_locator,
-                                                    &document,
-                                                    chrono::Utc::now(),
-                                                ),
-                                            },
-                                        )));
+                                                receipt,
+                                            }),
+                                        ));
                                 }
                                 Err(error) => {
                                     outcome.acquisition_error =
@@ -1546,6 +1612,35 @@ async fn resolve_resource(
                     std::fs::remove_file(&input_path).ok();
                     match extraction {
                         Ok(response) => {
+                            let _ = crate::snapshots::submit(
+                                &state.pool,
+                                &crate::snapshots::SnapshotSubmission {
+                                    reference_id: resource_id.clone(),
+                                    original_locator: reference.original_locator.clone(),
+                                    final_locator: document.final_url.to_string(),
+                                    resolver_id: crate::resolvers::R2_RESOLVER_ID.to_owned(),
+                                    resolver_version: "0.1.0".to_owned(),
+                                    network_class: "public".to_owned(),
+                                    auth_class: "none".to_owned(),
+                                    provider_receipt: serde_json::json!({ "chain": document.chain.iter().map(|u| u.to_string()).collect::<Vec<_>>() }),
+                                    immutable_source_version: None,
+                                    raw_digest: crate::fetcher::digest_sha256_hex(&document.bytes),
+                                    byte_length: document.bytes.len() as i64,
+                                    media_type: document
+                                        .content_type
+                                        .clone()
+                                        .unwrap_or_else(|| document.sniffed.to_string()),
+                                    storage_class: "standard".to_owned(),
+                                    retention_class: "standard".to_owned(),
+                                    extraction_version: Some(response.extractor_version.clone()),
+                                    quarantine_status: "none".to_owned(),
+                                    redactions: serde_json::json!([]),
+                                    disclosure_policy: serde_json::json!({}),
+                                },
+                                &document.bytes,
+                                chrono::Utc::now(),
+                            )
+                            .await;
                             outcome.acquisition = Some(crate::resolvers::Acquisition::Extract(
                                 crate::extraction::ExtractionReceipt {
                                     parent_digest: response.parent_digest,
@@ -1651,6 +1746,95 @@ async fn resolve_resource(
         _ => {}
     }
     Ok(Json(outcome))
+}
+
+// ── The evidence snapshot store (PHASE-4.6.1; backlog 35) ───────────────────────────
+
+/// The snapshot request: the §12.6 facts + the raw bytes (base64 — the
+/// content-addressing is VERIFIED: the bytes must hash to the declared
+/// digest).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SnapshotRequest {
+    #[serde(flatten)]
+    submission: crate::snapshots::SnapshotSubmission,
+    bytes_base64: String,
+}
+
+/// `POST /v1/snapshots` — submit the snapshot (any enrolled principal; the
+/// same reference + digest is the replay).
+async fn submit_snapshot(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<SnapshotRequest>,
+) -> Result<Json<crate::snapshots::SnapshotOutcome>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal submits no snapshot",
+        ));
+    }
+    let bytes = base64_decode(&request.bytes_base64).ok_or_else(|| {
+        ControlApiError::invalid_command("the bytes_base64 field is not valid base64")
+    })?;
+    match crate::snapshots::submit(&state.pool, &request.submission, &bytes, chrono::Utc::now())
+        .await
+    {
+        Ok(outcome) => Ok(Json(outcome)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/snapshots/{id}` — the read (the tombstone state rides the row).
+async fn get_snapshot(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(snapshot_id): Path<String>,
+) -> Result<Json<crate::snapshots::StoredSnapshot>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no snapshot",
+        ));
+    }
+    match crate::snapshots::get(&state.pool, &snapshot_id).await? {
+        Some(snapshot) => Ok(Json(snapshot)),
+        None => Err(ControlApiError::not_found(format!(
+            "no snapshot `{snapshot_id}`"
+        ))),
+    }
+}
+
+/// `DELETE /v1/snapshots/{id}` — the tombstone: the deletion records the
+/// reason + the time (the row stays — never a silent disappearance).
+async fn tombstone_snapshot(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(snapshot_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal tombstones no snapshot",
+        ));
+    }
+    let reason = body
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the reason is required"))?;
+    let updated = crate::snapshots::tombstone(&state.pool, &snapshot_id, reason).await?;
+    Ok(Json(
+        json!({ "snapshot_id": snapshot_id, "tombstoned": updated }),
+    ))
+}
+
+fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(input).ok()
 }
 
 // ── The universal resource reference (PHASE-4.1.2; backlog 31) ─────────────────────

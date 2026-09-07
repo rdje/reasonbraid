@@ -19,18 +19,17 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.6.1` (packs R0 + R1 + R2
-  COMPLETE; the `.5` lane COMPLETE; `.6` decomposed at the census
-  seams — the receipts exist, nothing persists them: `.6.1` the
-  snapshot store + the tombstone → `.6.2` the derivation graph →
-  `.6.3` the claims + the validation → `.6.4` the retention +
-  the freshness; `MAINT-1` done). Then `.7`.
-- **Next action:** execute `PHASE-4.6.1` — the snapshot store +
-  the tombstone: the §12.6 `EvidenceSnapshot` table + the
-  content-addressed object store (the acquired bytes under their
-  digest) + the submission surface (the `.2`–`.5` receipts land
-  here) + the retention classes + the tombstone rule (the
-  deletion is the tombstone + the reason, never silent).
+- **Active tree:** `PHASE-4` → frontier `.6.2` (packs R0 + R1 + R2
+  COMPLETE; the `.5` lane COMPLETE; `.6.1` done: the snapshot
+  store + the tombstone (migration 0028, the verified
+  content-addressing, the R0/R2/R5 auto-submits, profiles 19);
+  `MAINT-1` done). Then `.6.3`, `.6.4`, `.7`.
+- **Next action:** execute `PHASE-4.6.2` — the derivation graph:
+  the `Derivation` edges (the snapshot → the derived chunks, the
+  extract/browse receipts' parent links, the extraction version)
+  + the persistence + the read surface (the parent/derived
+  traversal — a quote or a summary is NEVER the original, and
+  the graph says so).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

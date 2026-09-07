@@ -78,6 +78,9 @@ reqwest = { version = "0.12", default-features = false, features = [
 url = "2"
 # The body stream's `next()` for the bounded read.
 futures-util = "0.3"
+# The snapshot request's bytes_base64 (the lock's single 0.22 — the bans
+# doctrine's version).
+base64 = "0.22"
 # The manual content-encoding decode (the ratio brake measures the envelope
 # itself): gzip/deflate via flate2 (miniz_oxide, pure Rust), br via brotli.
 flate2 = "1"

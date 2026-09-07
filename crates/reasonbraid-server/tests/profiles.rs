@@ -2892,3 +2892,168 @@ async fn the_gated_packs_resolve_only_while_the_gate_is_open() {
         "the closed gate has no rows to rank: {resolved}"
     );
 }
+
+/// The evidence snapshot store (PHASE-4.6.1): the typed submission verifies
+/// the content-addressing (the bytes MUST hash to the declared digest), the
+/// same reference + digest is the REPLAY, and the deletion is the tombstone
+/// + the reason — never a silent disappearance.
+#[tokio::test]
+async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "snp-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The reference the snapshot points at.
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://example.org/evidence",
+                "scheme": "https",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let reference_id = submitted["resource_id"].as_str().unwrap().to_string();
+
+    // The bytes + their ADR-011 digest.
+    let bytes = b"the acquired evidence bytes";
+    let digest = reasonbraid_server::fetcher::digest_sha256_hex(bytes);
+    let snapshot_body = |digest: &str| {
+        json!({
+            "reference_id": reference_id,
+            "original_locator": "https://example.org/evidence",
+            "final_locator": "https://example.org/evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": digest,
+            "byte_length": bytes.len(),
+            "media_type": "text/plain",
+            "bytes_base64": base64(bytes),
+        })
+    };
+    // A tiny local base64 helper (the test's own — the API's decoder is
+    // under test, not this one).
+    fn base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = chunk.get(1).copied().map(|b| b as u32).unwrap_or(0);
+            let b2 = chunk.get(2).copied().map(|b| b as u32).unwrap_or(0);
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            out.push(TABLE[(triple >> 18) as usize & 63] as char);
+            out.push(TABLE[(triple >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 {
+                TABLE[(triple >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                TABLE[triple as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+        out
+    }
+
+    // The submit → the read-back.
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&snapshot_body(&digest))
+        .send()
+        .await
+        .expect("snapshot request");
+    let submit_status = response.status().as_u16();
+    let outcome: Value = response.json().await.unwrap();
+    assert_eq!(submit_status, 200, "the snapshot submits: {outcome}");
+    assert_eq!(outcome["replay"], json!(false));
+    let snapshot_id = outcome["snapshot_id"].as_str().unwrap().to_string();
+
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the snapshot reads back: {stored}");
+    assert_eq!(stored["raw_digest"], json!(digest));
+    assert_eq!(stored["byte_length"], json!(bytes.len()));
+    assert_eq!(stored["deleted_at"], Value::Null);
+
+    // The replay: the same reference + digest returns the SAME id.
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&snapshot_body(&digest))
+        .send()
+        .await
+        .expect("replay request");
+    let replay: Value = response.json().await.unwrap();
+    assert_eq!(replay["replay"], json!(true));
+    assert_eq!(replay["snapshot_id"], json!(snapshot_id));
+
+    // The digest mismatch: the content-addressing is verified, not trusted.
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&snapshot_body(
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        ))
+        .send()
+        .await
+        .expect("mismatch request");
+    assert_eq!(response.status().as_u16(), 400, "the mismatch refuses");
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap().contains("hash"),
+        "{refused}"
+    );
+
+    // The tombstone: the deletion records the reason + the time.
+    let response = client
+        .delete(format!("{base}/v1/snapshots/{snapshot_id}"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "reason": "the retention expired" }))
+        .send()
+        .await
+        .expect("tombstone request");
+    assert_eq!(response.status().as_u16(), 200, "the tombstone lands");
+    let tombstoned: Value = response.json().await.unwrap();
+    assert_eq!(tombstoned["tombstoned"], json!(true));
+
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the tombstoned snapshot stays readable: {stored}"
+    );
+    assert!(stored["deleted_at"].is_string(), "{stored}");
+    assert_eq!(stored["deletion_reason"], json!("the retention expired"));
+}

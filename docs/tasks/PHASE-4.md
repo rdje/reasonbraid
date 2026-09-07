@@ -848,7 +848,7 @@ of a URI is not a promise the core can resolve it.
     named). Children at those seams — frontier → `.6.1`.
 
   - ID: `PHASE-4.6.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the snapshot store + the tombstone — the §12.6
       `EvidenceSnapshot` (the original reference + the resolved
       final locator; the retrieval time, the resolver
@@ -862,6 +862,39 @@ of a URI is not a promise the core can resolve it.
       tombstone rule (the deletion creates the tombstone + the
       reason — never a silent disappearance).
     Backlog: 35 (the store half)
+    Done (`2026-09-07`): the snapshot store landed — migration
+      0028 (`snapshot_objects`: the content-addressed store — the
+      raw bytes persist UNDER their ADR-011 digest, shared:
+      identical bytes = one row; `evidence_snapshots`: the §12.6
+      shape — the reference FK rides ON DELETE CASCADE, the
+      tombstone state rides the row's `deleted_at`/
+      `deletion_reason`); `crates/reasonbraid-server/src/
+      snapshots.rs` (NEW): the typed `SnapshotSubmission` (the
+      deny-unknown-fields boundary + the ADR-011 digest
+      validation), the `submit` (the bytes MUST hash to the
+      declared digest — the content-addressing is VERIFIED, not
+      trusted; the same reference + digest is the REPLAY), the
+      `get` (the `FromRow` struct — the 22-column row exceeds
+      sqlx's tuple impls), and the `tombstone` (the deletion
+      records the reason + the time; idempotent — the first
+      reason wins); the verbs: `POST /v1/snapshots` (the base64
+      bytes — the base64 0.22 dep rides the lock's single
+      version), `GET /v1/snapshots/{id}`, `DELETE
+      /v1/snapshots/{id}` (the reason required); the resolve
+      handler's R0/R2/R5 SUCCESS paths auto-submit the acquired
+      bytes (the provider receipts + the disclosure policies ride
+      the rows; a persistence failure leaves the receipt returned
+      — the acquisition succeeded either way; the GIT/BROWSE
+      auto-submissions ride `.6.2`'s derivation layer). Measured
+      (profiles 19): the submit → the read-back, the replay (the
+      same id), the digest-mismatch 400 (the verification), the
+      tombstone (the row stays readable with the reason + the
+      time). The first live run hit the SQL-continuation
+      doubling bug (the FOURTH occurrence of the pattern — the
+      `\\\n` heredoc artifact) inside the object-upsert query —
+      fixed with the `s.replace` sweep; the live debug also
+      proved the exists-check's false-positive reading was the
+      masked DB error, not the check. Frontier → `.6.2`.
 
   - ID: `PHASE-4.6.2`
     Status: `proposed`
@@ -904,7 +937,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.6.1` | `proposed` | `.6` decomposed at the census seams — the receipts exist, NOTHING persists them (no snapshot/derivation/claim/tombstone machinery; the object store is the Phase-4 blocker's last leg); the snapshot store + the tombstone execute now |
+| 1 | `PHASE-4.6.2` | `proposed` | `.6.1` done — the snapshot store + the tombstone (migration 0028, the content-addressing verified not trusted, the replay, the tombstone rule, the R0/R2/R5 auto-submits — profiles 19); the derivation graph executes now |
 
 ## Changelog
 
@@ -937,6 +970,11 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.6.1` done — the snapshot store + the
+  tombstone (migration 0028: the content-addressed objects + the
+  §12.6 shape; the VERIFIED digest, the replay, the tombstone
+  rule; the R0/R2/R5 auto-submits); profiles 19; frontier →
+  `.6.2`.
 - `2026-09-07`: `.6` decomposed at the census seams — the
   receipts exist (the `.2`–`.5` packs), NOTHING persists them
   (no snapshot/derivation/claim/tombstone machinery — the object
@@ -1084,6 +1122,49 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.6.1)
+
+The CODE change owned by this leaf:
+`migrations/0028_evidence_snapshots.sql` (NEW — the object store +
+the snapshot table), `crates/reasonbraid-server/src/snapshots.rs`
+(NEW — the typed submission + the verified submit + the get + the
+tombstone), `src/api.rs` (the three verbs + the R0/R2/R5
+auto-submits), `src/lib.rs` (the module), `Cargo.toml` (the base64
+0.22 dep), and `tests/profiles.rs` (profiles 19).
+
+- [x] **REPRODUCE / ISSUE** — the `.6` census: the receipts exist,
+  NOTHING persists them (no snapshot/object store, no tombstone).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the store was the Phase-4
+  blocker's last leg — `git grep -c "evidence_snapshots\|SnapshotSubmission"
+  d7cfbc6 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the §12.6 shape + the content-addressed
+  store (the bytes under their digest) + the tombstone rule.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_snapshot_store` → `test result: ok. 1 passed` —
+  the submit (the base64 bytes) → the read-back (the digest, the
+  byte length, the null tombstone); the REPLAY (the same
+  reference + digest → the same id); the digest MISMATCH is the
+  400 (the bytes hash differently — the content-addressing is
+  verified, not trusted); the DELETE records the reason + the
+  time and the row stays readable (the tombstone — never a
+  silent disappearance). The first live run caught the FOURTH
+  occurrence of the SQL-continuation doubling (the `\\\n`
+  artifact in the object upsert) — fixed; the debug cluster
+  (the ephemeral 55433) proved the masked-error reading.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg461_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0028_evidence_snapshots.sql`, `src/snapshots.rs`,
+  `src/api.rs`, `src/lib.rs`, `Cargo.toml`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.5.3)
 
@@ -1629,6 +1710,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.6.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_snapshot_store` → `test result: ok. 1 passed` (the submit → the read-back, the replay, the digest-mismatch 400, the tombstone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg461_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the snapshot store + the tombstone; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-4.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the snapshot/derivation/claim census + the contract-seam decomposition (`.6.1` the store + the tombstone → `.6.2` the graph → `.6.3` the claims + the validation → `.6.4` the retention + the freshness); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-4.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_gated_packs` → `test result: ok. 1 passed` (the gate closed → the unresolvable-now; open → the R5 rank + the authenticated loopback refusal, the R3 rank + the pre-flight refusal, the RX rank + the capability call; closed again → the rows gone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg453_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the gated wiring; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-4.5.2` | `cargo test -p reasonbraid-browse` → `test result: ok. 2 passed` (the REAL-Chrome render + the network log against the local origin; the step-budget refusal before any navigation); `cargo test -p reasonbraid-server --lib broker/mediated` → 4 passed; `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg452_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R3/R5/RX machinery (compiled, unwired); frontier → `.5.3` |
@@ -1656,6 +1738,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.6.1` | `REASONBRAID-PHASE4-0023` | the snapshot store + the tombstone (the content-addressing verified, the replay, the R0/R2/R5 auto-submits) |
 | `PHASE-4.6` | `REASONBRAID-PHASE4-0022` | the snapshot/derivation/claim lane decomposed at the census seams (the receipts exist, nothing persists them) |
 | `PHASE-4.5.3` | `REASONBRAID-PHASE4-0021` | the gated receipt + the wiring (the startup sync, the authenticated/render/agent paths — the disabled pack has no row) — **`.5` COMPLETE** |
 | `PHASE-4.5.2` | `REASONBRAID-PHASE4-0020` | the R3/R5/RX machinery (the browser worker with the real render, the broker, the §12.8 vocabulary — compiled, unwired) |

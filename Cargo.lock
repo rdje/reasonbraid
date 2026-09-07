@@ -3443,6 +3443,7 @@ name = "reasonbraid-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "brotli",
  "chrono",
  "clap",

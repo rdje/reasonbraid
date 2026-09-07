@@ -703,27 +703,55 @@ where
     .await
 }
 
-/// The event BODY of one event in this thread (`.2.2`: the structured challenge
-/// validates its claim digest against the target contribution's server-computed
-/// claim records — the body, not the projection, carries them).
-async fn event_body_in_thread<'e, E>(
+/// The event BODY + version of one event in this thread (`.2.2`: the structured
+/// challenge validates its claim digest against the target contribution's
+/// server-computed claim records — the body, not the projection, carries them;
+/// `.2.3`: the blind-target guard needs the version for the commitment scan).
+async fn event_body_and_version_in_thread<'e, E>(
     mut tx: E,
     tenant_id: &TenantId,
     thread_id: &ThreadId,
     event_id: &str,
-) -> Result<Option<serde_json::Value>, sqlx::Error>
+) -> Result<Option<(serde_json::Value, i64)>, sqlx::Error>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
 {
-    sqlx::query_scalar(
-        "SELECT body FROM event_log \
+    sqlx::query_as(
+        "SELECT body, aggregate_version FROM event_log \
          WHERE event_id = $1 AND tenant_id = $2 AND aggregate_id = $3",
     )
     .bind(event_id)
     .bind(tenant_id.to_string())
     .bind(thread_id.to_string())
     .fetch_optional(&mut *tx)
+    .await
+}
+
+/// `.2.3` (ADR-029): whether a blind contribution's phase has committed — a
+/// LATER event that is either a round advance carrying `blind_committed: true`
+/// (the commitment point) or the close/cancel (which ends the phase with the
+/// thread). The version bound makes the scan replay-precise.
+async fn blind_phase_committed<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    thread_id: &ThreadId,
+    after_version: i64,
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM event_log \
+         WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_version > $3 \
+         AND (event_type IN ('thread.closed', 'thread.cancelled') \
+         OR (event_type = 'thread.round_advanced' AND body ->> 'blind_committed' = 'true')))",
+    )
+    .bind(tenant_id.to_string())
+    .bind(thread_id.to_string())
+    .bind(after_version)
+    .fetch_one(&mut *tx)
     .await
 }
 
@@ -1025,7 +1053,19 @@ where
             let _ = body;
             require_open(&projection, "advance_round")?;
             ensure_participant(&projection, principal)?;
+            // `.2.3` (ADR-029): the round advance during the blind phase IS the
+            // commitment point — it moves the step past `blind_solicit` and the
+            // event records `blind_committed` so the read surface can serve the
+            // previously blind bodies. No new verb: the existing transition.
+            let commits_blind = projection
+                .workflow_steps
+                .get(projection.workflow_step)
+                .map(|s| s.as_str())
+                == Some("blind_solicit");
             projection.current_round += 1;
+            if commits_blind {
+                projection.workflow_step += 1;
+            }
             (
                 EVENT_ROUND_ADVANCED,
                 json!({
@@ -1034,6 +1074,7 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "round": projection.current_round,
+                    "blind_committed": commits_blind,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
@@ -1064,6 +1105,14 @@ where
                 .collect();
             projection.structured_claims += claims.len() as u64;
             projection.contributions += 1;
+            // `.2.3` (ADR-029): a contribution posted while the CURRENT step is
+            // `blind_solicit` is blind — the marker rides the event; the read
+            // surface defers its content until the commitment point.
+            let blind = projection
+                .workflow_steps
+                .get(projection.workflow_step)
+                .map(|s| s.as_str())
+                == Some("blind_solicit");
             (
                 EVENT_CONTRIBUTED,
                 json!({
@@ -1077,6 +1126,7 @@ where
                     "evidence_refs": body.evidence_refs,
                     "claims": claims,
                     "round": projection.current_round,
+                    "blind": blind,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
@@ -1104,21 +1154,41 @@ where
                     )))
                 }
             }
+            // `.2.3` (ADR-029): a NON-AUTHOR cannot target a still-blind
+            // contribution — the objection would name content the challenger
+            // cannot read. The author (and the post-commitment readers) may.
+            // The commitment point: a later round-advance that committed the
+            // blind phase, or the close/cancel.
+            let (target_body, target_version) = event_body_and_version_in_thread(
+                &mut *tx,
+                tenant_id,
+                thread_id,
+                &body.target_event_id,
+            )
+            .await
+            .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+            .ok_or_else(|| {
+                ThreadError::InvalidCommand(format!(
+                    "challenge target `{}` does not exist in this thread",
+                    body.target_event_id
+                ))
+            })?;
+            if target_body.get("blind").and_then(|b| b.as_bool()) == Some(true)
+                && target_body.get("author").and_then(|a| a.as_str()) != Some(principal)
+                && !blind_phase_committed(&mut *tx, tenant_id, thread_id, target_version)
+                    .await
+                    .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+            {
+                return Err(ThreadError::InvalidCommand(format!(
+                    "challenge target `{}` is blind until the round advance",
+                    body.target_event_id
+                )));
+            }
             // `.2.2` (ADR-029): the structured objection names ONE claim inside
             // the target contribution — a digest that is not among the target's
             // server-computed claim digests is the typed refusal (the digest is
             // never matched against client-supplied text).
             if let Some(claim_digest) = body.claim_digest.clone() {
-                let target_body =
-                    event_body_in_thread(&mut *tx, tenant_id, thread_id, &body.target_event_id)
-                        .await
-                        .map_err(|e| ThreadError::CorruptState(e.to_string()))?
-                        .ok_or_else(|| {
-                            ThreadError::InvalidCommand(format!(
-                                "challenge target `{}` does not exist in this thread",
-                                body.target_event_id
-                            ))
-                        })?;
                 let claims: Vec<ClaimRecord> = target_body
                     .get("claims")
                     .and_then(|c| serde_json::from_value(c.clone()).ok())

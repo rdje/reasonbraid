@@ -4240,3 +4240,279 @@ async fn the_structured_claims_and_objections_ride_the_wire() {
         "the revision closed the register: {state}"
     );
 }
+
+#[tokio::test]
+async fn the_blind_contributions_commit_at_the_round_advance() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // A bootstraps the tenant; B enrolls as a ROLE into the SAME tenant with
+    // thread_inspect + thread_contribute (the role's default lacks inspect —
+    // the actions name it explicitly), then A invites B and B accepts: B is a
+    // participant (challenges) AND a reader (the blind rule's non-author).
+    let (status, human_a) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "bl-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_id = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role",
+            "name": "bl-b",
+            "tenant_id": tenant_id,
+            "actions": ["thread_contribute", "thread_inspect", "thread_invitation_respond"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_id = human_b["principal_id"].as_str().unwrap().to_string();
+
+    // The independent_panel profile seats step 0 = blind_solicit (the .1.3
+    // proof) — a contribution posted now is blind.
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &a_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "bl-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "bl",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the create succeeds: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    // A invites B; B accepts — B becomes a participant (challenge-eligible).
+    let invite =
+        |key: &'static str, operation: &'static str, principal: &'static str, body: Value| {
+            let client = client.clone();
+            let base = base.clone();
+            let thread_id = thread_id.clone();
+            let a_id = a_id.clone();
+            let b_id = b_id.clone();
+            async move {
+                let principal = if principal == "A" { a_id } else { b_id };
+                let response = client
+                    .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                    .header(PRINCIPAL_HEADER, &principal)
+                    .json(&json!({
+                        "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                        "operation": operation,
+                        "request_id": reasonbraid_core::RequestId::new().to_string(),
+                        "idempotency_key": key,
+                        "body": body,
+                        "client_context": {},
+                    }))
+                    .send()
+                    .await
+                    .expect("command request");
+                let status = response.status().as_u16();
+                let text = response.text().await.expect("command body");
+                let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+                (status, value)
+            }
+        };
+    let (status, invited) = invite(
+        "bl-invite",
+        "thread.invite",
+        "A",
+        json!({ "tenant_id": tenant_id, "agent_role": b_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the invite succeeds: {invited}");
+    let (status, accepted) = invite(
+        "bl-accept",
+        "thread.accept_invitation",
+        "B",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the accept succeeds: {accepted}");
+
+    let command =
+        |key: &'static str, operation: &'static str, principal: &'static str, body: Value| {
+            let client = client.clone();
+            let base = base.clone();
+            let thread_id = thread_id.clone();
+            let a_id = a_id.clone();
+            let b_id = b_id.clone();
+            async move {
+                let principal = if principal == "A" { a_id } else { b_id };
+                let response = client
+                    .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                    .header(PRINCIPAL_HEADER, &principal)
+                    .json(&json!({
+                        "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                        "operation": operation,
+                        "request_id": reasonbraid_core::RequestId::new().to_string(),
+                        "idempotency_key": key,
+                        "body": body,
+                        "client_context": {},
+                    }))
+                    .send()
+                    .await
+                    .expect("command request");
+                let status = response.status().as_u16();
+                let text = response.text().await.expect("command body");
+                let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+                (status, value)
+            }
+        };
+    let read_events = |principal: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let thread_id = thread_id.clone();
+        let tenant_id = tenant_id.clone();
+        let a_id = a_id.clone();
+        let b_id = b_id.clone();
+        async move {
+            let principal = if principal == "A" { a_id } else { b_id };
+            get(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+                &principal,
+            )
+            .await
+        }
+    };
+
+    // 1. A contributes during the blind phase — the event carries the marker.
+    let content = "A's blind initial position";
+    let (status, contributed) = command(
+        "bl-contribute",
+        "thread.contribute",
+        "A",
+        json!({
+            "tenant_id": tenant_id,
+            "content": content,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the blind contribute succeeds: {contributed}");
+
+    // 2. The AUTHOR reads the full body; the marker rides it.
+    let (status, timeline_a) = read_events("A").await;
+    assert_eq!(status, 200, "A reads the timeline: {timeline_a}");
+    let contribution = timeline_a["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .cloned()
+        .expect("the contribute event is in the timeline");
+    assert_eq!(contribution["body"]["blind"], json!(true));
+    assert_eq!(contribution["body"]["content"], json!(content));
+
+    // 3. The NON-AUTHOR reader sees the digest + the marker, NOT the content.
+    let (status, timeline_b) = read_events("B").await;
+    assert_eq!(status, 200, "B reads the timeline: {timeline_b}");
+    let redacted = timeline_b["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .cloned()
+        .expect("the contribute event is in the timeline");
+    assert_eq!(redacted["body"]["blind"], json!(true));
+    assert_eq!(redacted["body"]["blind_until"], json!("round_advance"));
+    assert_eq!(
+        redacted["body"]["content_digest"],
+        json!(reasonbraid_server::fetcher::digest_sha256_hex(
+            content.as_bytes()
+        ))
+    );
+    assert!(redacted["body"].get("content").is_none(), "{redacted}");
+    assert!(redacted["body"].get("claims").is_none(), "{redacted}");
+
+    // 4. A non-author cannot challenge a still-blind contribution.
+    let (status, refused) = command(
+        "bl-challenge-blind",
+        "thread.challenge",
+        "B",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": contributed["event_id"],
+            "content": "which position, exactly?",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the blind target refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("blind until"),
+        "{refused}"
+    );
+
+    // 5. The round advance IS the commitment point: the step moves past
+    // blind_solicit and the event records it.
+    let (status, advanced) = command(
+        "bl-advance",
+        "thread.advance_round",
+        "A",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances: {advanced}");
+    let (status, timeline_a) = read_events("A").await;
+    assert_eq!(status, 200, "A reads the timeline: {timeline_a}");
+    let advance_event = timeline_a["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.round_advanced"))
+        .cloned()
+        .expect("the round-advanced event is in the timeline");
+    assert_eq!(advance_event["body"]["blind_committed"], json!(true));
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &a_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the thread reads: {state}");
+    assert_eq!(state["state"]["workflow_step"], json!(1));
+
+    // 6. Post-commitment, the non-author reads the FULL body and may
+    // challenge it.
+    let (status, timeline_b) = read_events("B").await;
+    assert_eq!(status, 200, "B reads the timeline: {timeline_b}");
+    let revealed = timeline_b["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .cloned()
+        .expect("the contribute event is in the timeline");
+    assert_eq!(revealed["body"]["content"], json!(content));
+    let (status, challenged) = command(
+        "bl-challenge-open",
+        "thread.challenge",
+        "B",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": contributed["event_id"],
+            "content": "which position, exactly?",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the committed target accepts the challenge: {challenged}"
+    );
+}

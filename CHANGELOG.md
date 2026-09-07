@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The blind-first lane lands (`PHASE-5.2.3`)
+
+- A contribution posted during the `blind_solicit` step carries `blind: true`; the round advance is the commitment point (the step moves past `blind_solicit`, the event records `blind_committed`); the read surface serves a still-blind contribution to non-authors as `blind_until: round_advance` + the content digest — the ledger keeps the full body (a read rule, never a store rewrite); a non-author challenge of a blind contribution is the typed refusal. Measured: profiles 27.
+
 ## 2026-09-07 — The structured records land (`PHASE-5.2.2`)
 
 - The contribute body carries `claims` (content-only input; the server computes the ADR-011 digest — the wire never supplies one); claims ride a `claim`-kind contribution only; the challenge body gains `claim_digest` (the structured objection names ONE server-derived claim of the target — a foreign digest is the typed refusal); the projection carries the `structured_claims` counter; the free-text wire stays valid. Measured: profiles 26.

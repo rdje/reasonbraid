@@ -4618,6 +4618,7 @@ async fn get_events(
     let thread_id: ThreadId = thread_id_raw.parse().map_err(|_| {
         ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
     })?;
+    let reader = principal.id_string();
 
     inspect(
         &state,
@@ -4640,7 +4641,7 @@ async fn get_events(
             .bind(after)
             .fetch_all(&pool)
             .await?;
-            let events: Vec<Value> = rows
+            let mut events: Vec<Value> = rows
                 .into_iter()
                 .map(|(event_id, event_type, version, committed_at, body)| {
                     json!({
@@ -4652,6 +4653,40 @@ async fn get_events(
                     })
                 })
                 .collect();
+            // `.2.3` (ADR-029): the blind read-surface rule — a blind
+            // contribution reads as digest + marker for any reader who is NOT
+            // its author, until the commitment point (a LATER round advance
+            // carrying `blind_committed`, or the close/cancel). A read rule,
+            // never a store rewrite: the ledger keeps the full body.
+            for i in 0..events.len() {
+                let event = &events[i];
+                let is_blind = event["event_type"] == json!("thread.contribution_submitted")
+                    && event["body"]["blind"].as_bool() == Some(true);
+                if !is_blind {
+                    continue;
+                }
+                let author = event["body"]["author"].as_str();
+                if author == Some(reader.as_str()) {
+                    continue;
+                }
+                let committed = events[i + 1..].iter().any(|later| {
+                    later["event_type"] == json!("thread.closed")
+                        || later["event_type"] == json!("thread.cancelled")
+                        || (later["event_type"] == json!("thread.round_advanced")
+                            && later["body"]["blind_committed"].as_bool() == Some(true))
+                });
+                if committed {
+                    continue;
+                }
+                let content = event["body"]["content"].as_str().unwrap_or_default();
+                events[i]["body"] = json!({
+                    "blind": true,
+                    "blind_until": "round_advance",
+                    "content_digest": crate::fetcher::digest_sha256_hex(content.as_bytes()),
+                    "author": author,
+                    "round": event["body"]["round"].clone(),
+                });
+            }
             let next_cursor = events
                 .last()
                 .and_then(|e| e.get("aggregate_version"))

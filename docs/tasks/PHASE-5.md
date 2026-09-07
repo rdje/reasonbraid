@@ -249,13 +249,36 @@ and honest inconclusive outcomes.
       closes the register. Frontier → `.2.3`.
 
   - ID: `PHASE-5.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the blind-first lane — the `blind_solicit` step
       executes: the deferred visibility (a blind contribution is
       NOT readable until the commitment point), the commitment
       point (the round advance), the §13.6 no-totals-before-
       commitment rule.
     Roadmap: §13.6
+    Done (`2026-09-07`): the blind-first lane landed per
+      ADR-029 — a contribution posted while the CURRENT step is
+      `blind_solicit` carries `blind: true` (the marker rides
+      the event; the ledger keeps the full body — a read rule,
+      never a store rewrite); the commitment point is the
+      EXISTING round advance: advancing during the blind phase
+      moves the step past `blind_solicit` and the event records
+      `blind_committed` (no new verb); the read surface
+      (`get_events`) serves a blind, uncommitted contribution as
+      `blind_until: round_advance` + the server-computed content
+      digest to every reader who is NOT the author (the author
+      and the post-commitment readers see the full body); a
+      non-author challenge of a still-blind contribution is the
+      typed refusal (the challenger cannot name content they
+      cannot read); the §13.6 no-totals rule holds at the
+      surfaces that serve blind content (the events surface
+      aggregates nothing). Measured (profiles 27): the blind
+      marker rides the contribute; the author sees the full body
+      while the non-author role sees the digest + the marker;
+      the blind-target challenge refuses; the round advance
+      commits (the step → 1, `blind_committed: true`); the
+      non-author then reads the full body and challenges.
+      Frontier → `.2.4`.
 
   - ID: `PHASE-5.2.4`
     Status: `proposed`
@@ -294,10 +317,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.3` | `proposed` | `.2.2` done — the structured records (the server-computed claim digests, the digest-targeted objection, the honest registers; profiles 26); the blind-first lane executes next |
+| 1 | `PHASE-5.2.4` | `proposed` | `.2.3` done — the blind-first lane (the read-surface deferral + the round-advance commitment + the blind-target refusal; profiles 27); the evidence requests + the adjudication + the minority reports execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.3` done — the blind-first lane (the
+  `blind_solicit` marker on the contribute, the round advance as
+  the commitment point with `blind_committed`, the read-surface
+  digest+marker for non-authors, the blind-target challenge
+  refusal); profiles 27; frontier → `.2.4`.
 - `2026-09-07`: `.2.2` done — the structured records
   (the server-computed claim digests riding the contribute
   event, the digest-targeted objection, the claim-kind rule,
@@ -479,6 +507,58 @@ projection's `structured_claims` counter),
   `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
   commit.
 - [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.2.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the blind marker on
+the contribute event, the round advance as the commitment point
+with `blind_committed` + the step advance, the blind-target
+challenge refusal via `event_body_and_version_in_thread` +
+`blind_phase_committed`), `crates/reasonbraid-server/src/api.rs`
+(the `get_events` read-surface redaction — digest + marker for
+non-authors), `crates/reasonbraid-server/tests/profiles.rs` (the
+new test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: every
+  contribution was readable at post time; nothing deferred
+  visibility, no commitment point existed (the `.2` census: the
+  `blind` hits were the step NAME only).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "blind_committed\|blind_until\|content_digest" be2fd35 --
+  crates/` → rc=1 (no blind machinery before this leaf). The
+  fix point is the ADR-029 read-surface rule: the marker rides
+  the event (the store stays complete), the round advance is
+  the commitment (marked on the event), and the read surface
+  defers only for non-authors.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_blind_contributions_commit_at_the_round_advance` →
+  `test result: ok. 1 passed` (also inside the full live suite:
+  `running 27 tests … ok`) — the blind marker, the author's
+  full read vs the non-author role's digest+marker read (the
+  content and the claims absent, the digest re-derived), the
+  blind-target challenge refusal, the round-advance commitment
+  (`blind_committed: true`, the step → 1), the post-commitment
+  reveal + the accepted challenge. The first live pass caught
+  the participant gate (a challenge needs PARTICIPANT status —
+  the non-author reader is an INVITED role, not a bystander) —
+  fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg515_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `src/api.rs`,
+  `tests/profiles.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

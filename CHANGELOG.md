@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The Git-publication half is decomposed at the census seams (`PHASE-6.4.3`)
+
+- The write half is the greenfield (the Phase-4 R1 pack only ACQUIRES — no commit/ref-write path exists; the reconciler exists nowhere); the `.4.2` publication records are the matrix's DB half. Children: `.4.3.1` the publication-store contract → `.4.3.2` the Git publication half → `.4.3.3` the reconciliation matrix + the kill-point tests.
+
 ## 2026-09-07 — The publication records land (`PHASE-6.4.2`)
 
 - Migration 0042: the publication is its own aggregate row (never folded into the approval) with the chain-verified references (the proposal must be APPROVED, the decision + the approval must belong to it, the projection must exist), the manifest digest, and the typed state machine (staged → effective with the Git object ids | failed with the reason — never a skip). The verbs: `POST`/`GET /v1/policy-publications` + `/effective` + `/failed`. Measured: policy 7.

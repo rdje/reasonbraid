@@ -532,7 +532,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       newest-first list. Frontier → `.4.3`.
 
   - ID: `PHASE-6.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the Git publication + the reconciliation — the
       staging-branch write + the fetch-back verification,
       the immutable ref + the effective channel via the
@@ -541,6 +541,63 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       tests (the idempotent reconciler, the never-silent
       promote).
     Roadmap: §15.7–15.8
+    Children: `.4.3.1`–`.4.3.3` (decomposed `2026-09-07` at
+      the census seams): `.4.3.1` the publication-store
+      contract + the census (the local bare repository, the
+      ref scheme, the write path's gix surface — the
+      decision record) → `.4.3.2` the Git publication half
+      (the staging write + the fetch-back verification + the
+      ref compare-and-swap) → `.4.3.3` the reconciliation
+      matrix + the kill-point tests (the six §15.8 rules,
+      the idempotent reconciler, the never-silent promote).
+    Done (`2026-09-07`): the census at the seams. The WRITE
+      half is a greenfield: the Phase-4 R1 pack ACQUIRES
+      (the gix clone/fetch — no commit/ref-write path
+      exists: `git grep -c "write.*ref\|commit_tree" HEAD --
+      crates/reasonbraid-server/src/git.rs` → rc=1); the
+      §15.8 reconciler exists nowhere. The reusable pieces:
+      the `.4.2` publication records (the staged/effective/
+      failed states — the matrix's DB half), the gix library
+      (the object + the ref plumbing the write path needs),
+      the digest machinery (the fetch-back verification's
+      primitive). The store: a LOCAL bare repository (the
+      §15.2 "Git is a reviewable representation" — the
+      LAN-slice shape; the remote publication rides a later
+      profile). Frontier → `.4.3.1`.
+
+  - ID: `PHASE-6.4.3.1`
+    Status: `proposed`
+    Goal: the publication-store contract + the census — the
+      decision record: the local bare repository, the ref
+      scheme (the immutable `refs/rb/publications/<id>` +
+      the effective `refs/rb/effective` channel), the
+      staging-branch shape (the publication id + the digest),
+      the write path's gix surface (the commit-tree + the
+      reference update with the EXPECTED old id — the CAS).
+      No code.
+    Roadmap: §15.2, §15.7
+
+  - ID: `PHASE-6.4.3.2`
+    Status: `proposed`
+    Goal: the Git publication half — the publisher module:
+      the staging write (the bundle + the manifest into the
+      staging branch), the fetch-back verification (the
+      content digest re-derived), the immutable ref + the
+      effective channel via the compare-and-swap (the
+      expected-old-id reference updates), the §15.7 steps
+      5–8's Git half.
+    Roadmap: §15.7
+
+  - ID: `PHASE-6.4.3.3`
+    Status: `proposed`
+    Goal: the reconciliation matrix + the kill-point tests —
+      the six §15.8 rules over (the DB state, the Git
+      state) → the action, the idempotent reconciler (the
+      repeated runs converge), the kill-point tests (the
+      staged/absent retry, the staged/conflicting stop, the
+      failed/later-appearing quarantine — never a silent
+      promote).
+    Roadmap: §15.8
 
 - ID: `PHASE-6.5`
   Status: `proposed`
@@ -563,10 +620,16 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.3` | `proposed` | `.4.2` done — the publication records + the staging (the aggregate row, the chain-verified references, the typed state machine; policy 7); the Git publication + the reconciliation executes next |
+| 1 | `PHASE-6.4.3.1` | `proposed` | `.4.3` decomposed at the census seams (the write half is the greenfield — the R1 pack only acquires; the `.4.2` records are the matrix's DB half) — the publication-store contract executes first |
 
 ## Changelog
 
+- `2026-09-07`: `.4.3` decomposed at the census seams — the
+  write half is the greenfield (the R1 pack only acquires;
+  the reconciler exists nowhere); children `.4.3.1` (the
+  publication-store contract) → `.4.3.2` (the Git
+  publication half) → `.4.3.3` (the reconciliation matrix +
+  the kill-point tests); frontier → `.4.3.1`.
 - `2026-09-07`: `.4.2` done — the publication records
   (migration 0042: the aggregate row, the chain-verified
   references, the staged/effective/failed machine); policy 7;

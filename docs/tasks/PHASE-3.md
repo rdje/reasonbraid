@@ -627,10 +627,69 @@ eligibility before ranking. Dependence indicators, never an independence score.
       checklist refusals are typed; no regression.
 
 - ID: `PHASE-3.6`
-  Status: `proposed`
+  Status: `done`
   Goal: dependence indicators and controlled participant-selection strategies
   Roadmap: §10.4
   Acceptance: UI never labels these “independent probability”
+  Children: `.6.1`–`.6.3` (decomposed `2026-09-07` at the census
+    seams): `.6.1` the dependence-indicator computation (the pure
+    overlaps over the shipped lineage facts) → `.6.2` the diversity
+    feature + the panel wiring (the `.3` ranking seeks the
+    attribute variation; the `.4.2` snapshot carries the
+    indicators) → `.6.3` the label discipline (the "diversity and
+    dependence indicators" term replaces any "independent
+    probability" label everywhere).
+  Done (`2026-09-07`): the census mapped §10.4 against the shipped
+    surface: the INDICATOR INPUTS exist (the incarnation lineage —
+    provider/model/harness/config — rides the `.1.6.1` rows + the
+    profile's incarnation link; the owners/role templates ride the
+    enroll facts) but NOTHING computes the overlaps
+    (`grep -rn "dependence\|diversity" crates/…/src/` → only an
+    unrelated comment), the `.3` ranking has no diversity feature,
+    and no UI label exists to discipline. Children at those seams —
+    frontier → `.6.1`.
+  - ID: `PHASE-3.6.1`
+    Status: `proposed`
+    Goal: the dependence-indicator computation — the PURE
+      `dependence_indicators(panel_facts)` over the §10.4 observable
+      conditions the shipped facts carry: the common provider, the
+      model family/version, the harness, the declared lineage, the
+      owner/role-template overlaps — each as an `Indicator {
+      attribute, groups, explanation }` (the counts + the named
+      attribute, never a score). The similarity/timing + the
+      calibrated correlated-error estimator are NAMED with their
+      triggers (the labeled-evaluation domain — the §10.4 rule:
+      domain-specific, versioned, evaluated, uncertainty-exposing).
+    Backlog: 29 (the indicator half)
+    Acceptance: the computation is pure + tested (each attribute has
+      a named indicator); no regression.
+
+  - ID: `PHASE-3.6.2`
+    Status: `proposed`
+    Goal: the diversity feature + the panel wiring — the `.3`
+      ranking gains the `diversity` feature (the selection seeks
+      VARIATION among the dependence attributes: a panel whose
+      members share the provider scores lower than a spread panel —
+      the feature explanation names the attribute overlaps, never a
+      probability) + the `.4.2` panel snapshot carries the panel's
+      dependence indicators beside the selection explanation.
+    Backlog: 29 (the selection half)
+    Acceptance: the diversity feature + the snapshot's indicators
+      are measured; no regression.
+
+  - ID: `PHASE-3.6.3`
+    Status: `proposed`
+    Goal: the label discipline — the §10.4 acceptance as a sweep:
+      every surface (the book, the CLI output, the explanations,
+      the records) labels these "diversity and dependence
+      indicators", NEVER "independent probability" — the sweep is a
+      mechanical grep (the term never appears) + the label rides
+      the indicator's wire name. No code beyond the labels.
+    Backlog: —
+    Acceptance: the label sweep is mechanical (the forbidden term
+      appears nowhere); the indicator's wire name is the approved
+      label; no code changes. **`PHASE-3.6` and Phase 3 close.**
+
 
 - ID: `PHASE-3.7`
   Status: `proposed`
@@ -641,7 +700,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.6` | `proposed` | `.5.3` done — the node-initiated thread API (the explicit auto grant + the server-side checklist); **`.5` COMPLETE** — the dependence-indicators lane executes now (the last lane of Phase 3) |
+| 1 | `PHASE-3.6.1` | `proposed` | `.6` decomposed at the census seams (the lineage inputs exist; the overlap computation, the diversity feature, and the label discipline do not); the indicator computation executes now |
 
 ## Changelog
 
@@ -744,6 +803,12 @@ eligibility before ranking. Dependence indicators, never an independence score.
   explicit `thread_create_auto` grant + the server-side §11.5
   checklist with the typed refusals); the profiles suite grew to
   11; **`.5` COMPLETE** — frontier → `.6`.
+- `2026-09-07`: `.6` decomposed at the census seams — the lineage
+  inputs exist (the incarnation facts + the owners); the overlap
+  computation, the diversity feature, and the label discipline are
+  the gaps; children `.6.1` (the indicators) → `.6.2` (the
+  diversity + the panel wiring) → `.6.3` (the labels); frontier →
+  `.6.1`.
 
 ## Acceptance Checklist (PHASE-3.5.3)
 
@@ -1344,6 +1409,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the dependence-lane census + the contract-seam decomposition (`.6.1` indicators → `.6.2` diversity + wiring → `.6.3` labels); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-3.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_auto_initiation` → `test result: ok. 1 passed` (the no-grant 403, the landing, the topic/spend refusals, the no-inheritance rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg353_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-initiated thread API; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-3.5.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_advertises` → `test result: ok. 1 passed` + `cargo test -p reasonbraid-server --test node_channel the_zero_concurrency` → `test result: ok. 1 passed` (the offers + the hold, measured); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg352_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the subscriptions + the wake gate; frontier → `.5.3` |
 | `2026-09-07` | `PHASE-3.5.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_delivery_ladder` → `test result: ok. 1 passed` (the three-rung walk — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg351_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the delivery-state machine (the derived ladder); frontier → `.5.2` |
@@ -1368,6 +1434,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.6` | `REASONBRAID-PHASE3-0021` | the dependence-indicators lane decomposed at the census seams (the inputs exist; the computation/feature/labels are the gaps) |
 | `PHASE-3.5.3` | `REASONBRAID-PHASE3-0020` | the node-initiated thread API (the `thread_create_auto` grant + the server-side checklist) — **`.5` COMPLETE** |
 | `PHASE-3.5.2` | `REASONBRAID-PHASE3-0019` | the subscriptions + the wake gate (migration 0022's offers + the delivery-boundary hold) |
 | `PHASE-3.5.1` | `REASONBRAID-PHASE3-0018` | the delivery-state machine (migration 0021's derived view + the inspection's `delivery_state`) |

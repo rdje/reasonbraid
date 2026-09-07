@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.6: the dependence inputs exist but nothing computes them — the indicators are the difference between data and honesty
+
+- **§10.4's observable conditions ride the shipped facts already** (the incarnation lineage: the provider/model/harness/config; the owners/role templates) — but nothing overlaps them, the ranking has no diversity feature, and no label exists to discipline. The three seams: the pure indicator computation (each attribute a named `Indicator`, never a score — the similarity/timing + the calibrated estimator are named with their labeled-evaluation triggers), the selection-side diversity feature + the panel snapshot's indicators, and the mechanical label sweep (the forbidden term appears nowhere).
+- promotion: declined (the census is the leaf's recorded contract — the `.6.1`–`.6.3` children execute it). **Frontier `PHASE-3.6.1` (the indicator computation).**
+
 ## _(2026-09-07)_ — PHASE-3.5.3: the auto grant is explicit twice — the grant itself, and the boundary that permits it
 
 - **The §11.5 initiation landed as a grant + a checklist, not a new flow**: the `thread_create_auto` action needs the EXPLICIT grant AND the boundary's permitted set (the ceiling the grant's subset check rides — the test's first failure taught it), the checklist evaluates server-side with a typed refusal per gate, and the initiation rides the SAME create machinery (a server-assigned idempotency key — the auto path is not a client replay surface). The replies-do-not-inherit rule is measured: the plain create stays denied for a role holding only the auto action.

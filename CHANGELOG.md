@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.6` split at the census seams (`PHASE-3.6`)
+
+- The dependence-lane census mapped §10.4 against the shipped surface: the INDICATOR INPUTS exist (the incarnation lineage — provider/model/harness/config — rides the `.1.6.1` rows + the profile's incarnation link; the owners/role templates ride the enroll facts) but NOTHING computes the overlaps, the `.3` ranking has no diversity feature, and no UI label exists to discipline.
+- Children: `.6.1` the pure indicator computation (each attribute a named indicator, never a score; the similarity/timing + the calibrated estimator named with their triggers) → `.6.2` the diversity feature + the panel wiring (the `.4.2` snapshot carries the indicators) → `.6.3` the label discipline (the mechanical sweep — "independent probability" appears nowhere). Tree-only commit; frontier → `.6.1`.
+
 ## 2026-09-07 — The node-initiated thread API: an explicit grant, a server-side checklist — `.5` COMPLETE (`PHASE-3.5.3`)
 
 - `GrantAction::ThreadCreateAuto` (the core — never implied by membership, never inherited by replies) + `POST /v1/threads/auto`: the role's explicit grant authorizes, then the §11.5 checklist evaluates server-side — the topic gate (every initiation topic must ride the declared interests), the confidentiality match, the concurrency gate, and the spend bound (the grant's `spend_limits` cover the declared budget) — each refusal is a typed 403 naming its gate. The initiation rides the same create flow with a server-assigned idempotency key.

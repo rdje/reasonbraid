@@ -32,6 +32,7 @@ pub mod broker;
 pub mod browse;
 mod budget;
 pub mod ca;
+pub mod claims;
 mod dependence;
 pub mod derivations;
 pub mod extraction;

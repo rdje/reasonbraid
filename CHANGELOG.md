@@ -12,6 +12,12 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The claim-evidence graph ships: the citation is validated, not asserted (`PHASE-4.6.3`)
+
+- `migrations/0030`: the assessment edges — the five kinds (the CHECK constraint), the author/verifier, the excerpt + selector, the rationale, the authority/freshness/independence/uncertainty, the replay index.
+- `src/claims.rs`: the typed submission + the CITATION VALIDATION — the excerpt MUST appear in the snapshot's raw bytes (the fake excerpt is refused; citation existence alone never satisfies an evidence gate) — plus the two read surfaces.
+- Measured: profiles 21 — the true excerpt accepts + replays, the fake excerpt refuses, the unknown kind names itself. Frontier → `.6.4` (the license/retention + the freshness).
+
 ## 2026-09-07 — The derivation graph ships: every transformation is an edge (`PHASE-4.6.2`)
 
 - `migrations/0029`: the `Derivation` edges — the parent link, the derived kind, the content's OWN verified ADR-011 digest, the replay index.

@@ -3208,3 +3208,171 @@ async fn the_derivation_graph_edges_roundtrip_and_replay() {
         "{refused}"
     );
 }
+
+/// The claim-evidence graph + the citation validation (PHASE-4.6.3): the
+/// five assessments link claims to snapshots, and the citation is
+/// VALIDATED — the excerpt must appear in the snapshot's raw bytes (the
+/// fake excerpt is refused; citation existence alone never satisfies an
+/// evidence gate).
+#[tokio::test]
+async fn the_claim_assessments_validate_the_citation() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "clm-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The evidence: a reference + a snapshot whose bytes are KNOWN.
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://example.org/claim-evidence",
+                "scheme": "https",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let reference_id = submitted["resource_id"].as_str().unwrap().to_string();
+    let bytes = b"the evidence says the budget is exhausted";
+    let raw_digest = reasonbraid_server::fetcher::digest_sha256_hex(bytes);
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "reference_id": reference_id,
+            "original_locator": "https://example.org/claim-evidence",
+            "final_locator": "https://example.org/claim-evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": raw_digest,
+            "byte_length": bytes.len(),
+            "media_type": "text/plain",
+            "bytes_base64": "dGhlIGV2aWRlbmNlIHNheXMgdGhlIGJ1ZGdldCBpcyBleGhhdXN0ZWQ=",
+        }))
+        .send()
+        .await
+        .expect("snapshot request");
+    let snapshot_outcome: Value = response.json().await.unwrap();
+    let snapshot_id = snapshot_outcome["snapshot_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let body = |excerpt: &str| {
+        json!({
+            "claim_id": "clm_budget",
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "author": human_id,
+            "excerpt": excerpt,
+            "rationale": "the evidence states the exhaustion",
+            "source_authority": "primary",
+            "freshness": "current",
+            "independence": "independent",
+            "uncertainty": "low",
+        })
+    };
+
+    // The TRUE excerpt (present in the bytes) is accepted.
+    let response = client
+        .post(format!("{base}/v1/assessments"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body("the budget is exhausted"))
+        .send()
+        .await
+        .expect("assessment request");
+    assert_eq!(response.status().as_u16(), 200, "the true excerpt accepts");
+    let outcome: Value = response.json().await.unwrap();
+    let assessment_id = outcome["assessment_id"].as_str().unwrap().to_string();
+
+    // The replay: the same claim + snapshot + kind + author → the same id.
+    let response = client
+        .post(format!("{base}/v1/assessments"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body("the budget is exhausted"))
+        .send()
+        .await
+        .expect("replay request");
+    let replay: Value = response.json().await.unwrap();
+    assert_eq!(replay["assessment_id"], json!(assessment_id));
+
+    // The FAKE excerpt is refused — the citation must point at the real
+    // bytes (citation existence alone never satisfies an evidence gate).
+    let response = client
+        .post(format!("{base}/v1/assessments"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body("the budget is INCREASED"))
+        .send()
+        .await
+        .expect("fake-excerpt request");
+    assert_eq!(response.status().as_u16(), 400, "the fake excerpt refuses");
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap().contains("excerpt"),
+        "{refused}"
+    );
+
+    // The unknown assessment kind refuses with its name.
+    let response = client
+        .post(format!("{base}/v1/assessments"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "claim_id": "clm_budget",
+            "snapshot_id": snapshot_id,
+            "assessment": "proves",
+            "author": human_id,
+            "excerpt": "the budget is exhausted",
+            "rationale": "nope",
+        }))
+        .send()
+        .await
+        .expect("unknown-kind request");
+    assert_eq!(response.status().as_u16(), 400, "the unknown kind refuses");
+
+    // The read surfaces: the snapshot's + the claim's assessments.
+    let (status, snapshot_side) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}/assessments"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the snapshot assessments read: {snapshot_side}"
+    );
+    let snapshot_side = snapshot_side.as_array().expect("the array");
+    assert_eq!(snapshot_side.len(), 1, "{snapshot_side:?}");
+    assert_eq!(snapshot_side[0]["assessment"], json!("supports"));
+
+    let (status, claim_side) = get(
+        &client,
+        &base,
+        "/v1/claims/clm_budget/assessments",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the claim assessments read: {claim_side}");
+    assert_eq!(
+        claim_side.as_array().expect("the array").len(),
+        1,
+        "{claim_side:?}"
+    );
+}

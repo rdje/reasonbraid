@@ -19,19 +19,17 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.6.3` (packs R0 + R1 + R2
+- **Active tree:** `PHASE-4` → frontier `.6.4` (packs R0 + R1 + R2
   COMPLETE; the `.5` lane COMPLETE; `.6.1` done: the snapshot
-  store + the tombstone; `.6.2` done: the derivation graph (the
-  verified edges + the traversal, profiles 20); `MAINT-1` done).
-  Then `.6.4`, `.7`.
-- **Next action:** execute `PHASE-4.6.3` — the claim-evidence
-  graph + the citation validation: the five assessments
-  (supports/contradicts/contextualizes/source_only/unverifiable)
-  with the author/verifier + the excerpt/selector + the
-  rationale + the authority + the freshness + the independence +
-  the uncertainty; the validation (the digest re-verification +
-  the excerpt check — the citation must point at a REAL
-  snapshot).
+  store + the tombstone; `.6.2` done: the derivation graph;
+  `.6.3` done: the claim-evidence graph + the citation
+  validation (the excerpt-in-the-bytes check, profiles 21);
+  `MAINT-1` done). Then `.7`.
+- **Next action:** execute `PHASE-4.6.4` — the license/retention
+  + the freshness: the retention classes' enforcement (the
+  tombstone rides the class's expiry), the license metadata, the
+  freshness (the §12.9 re-fetch policy + the staleness surface
+  the assessments read).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -931,7 +931,7 @@ of a URI is not a promise the core can resolve it.
       Frontier → `.6.3`.
 
   - ID: `PHASE-4.6.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the claim-evidence graph + the citation validation —
       the five assessments (supports/contradicts/contextualizes/
       source_only/unverifiable) with the author/verifier, the
@@ -942,6 +942,28 @@ of a URI is not a promise the core can resolve it.
       — the citation must point at a REAL snapshot; citation
       existence alone never satisfies an evidence gate).
     Backlog: 35 (the claim half)
+    Done (`2026-09-07`): the claim-evidence graph landed —
+      migration 0030 (`claim_assessments`: the claim → snapshot
+      edge with the FIVE assessment kinds (the CHECK constraint),
+      the author/verifier, the excerpt + the selector, the
+      rationale, the authority/freshness/independence/
+      uncertainty, the replay unique index);
+      `crates/reasonbraid-server/src/claims.rs` (NEW): the typed
+      `AssessmentSubmission` + the CITATION VALIDATION (the
+      excerpt MUST appear in the snapshot's raw bytes — the
+      object store is consulted; a fake excerpt is the typed
+      refusal: citation existence alone never satisfies an
+      evidence gate) + the replay + the two read surfaces (the
+      snapshot's + the claim's assessments); the verbs: `POST
+      /v1/assessments` + `GET /v1/snapshots/{id}/assessments` +
+      `GET /v1/claims/{claim_id}/assessments`. Measured (profiles
+      21): the true excerpt accepts + the replay, the FAKE
+      excerpt refuses (the validation), the unknown kind refuses
+      with its name, the two read surfaces. The SQL-doubling
+      struck a SIXTH time (the write-tool continuations — rustc
+      accepts the doubled form silently, embedding the backslash
+      in the SQL) — swept at the pre-compile check. Frontier →
+      `.6.4`.
 
   - ID: `PHASE-4.6.4`
     Status: `proposed`
@@ -961,7 +983,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.6.3` | `proposed` | `.6.2` done — the derivation graph (migration 0029, the verified derived digests, the replay, the children traversal, the R2 chunk auto-derivations — profiles 20); the claim-evidence graph + the citation validation execute now |
+| 1 | `PHASE-4.6.4` | `proposed` | `.6.3` done — the claim-evidence graph + the citation validation (migration 0030, the five assessments, the excerpt-in-the-bytes check, the two read surfaces — profiles 21); the license/retention + the freshness execute now |
 
 ## Changelog
 
@@ -994,6 +1016,10 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.6.3` done — the claim-evidence graph + the
+  citation validation (migration 0030: the five assessments +
+  the excerpt-in-the-bytes check — the fake excerpt refuses;
+  profiles 21); frontier → `.6.4`.
 - `2026-09-07`: `.6.2` done — the derivation graph (migration
   0029: the `Derivation` edges with the verified digests + the
   replay + the children traversal; the R2 chunks auto-derive);
@@ -1150,6 +1176,44 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.6.3)
+
+The CODE change owned by this leaf:
+`migrations/0030_claim_assessments.sql` (NEW — the assessment
+edges), `crates/reasonbraid-server/src/claims.rs` (NEW — the
+typed submission + the citation validation + the read surfaces),
+`src/api.rs` (the three verbs), `src/lib.rs` (the module), and
+`tests/profiles.rs` (profiles 21).
+
+- [x] **REPRODUCE / ISSUE** — the `.6.2` close: the snapshots +
+  the derivations exist, but no claim links to the evidence with
+  an assessment, and nothing VALIDATES the citation.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the claim layer was the
+  lane's third third — `git grep -c "claim_assessments\|AssessmentSubmission"
+  4856aff -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the §12.7 edge + the validation: the
+  excerpt must appear in the snapshot's raw bytes.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_claim_assessments` → `test result: ok. 1 passed`
+  — the TRUE excerpt accepts (the object store's bytes contain
+  it) + the REPLAY returns the same id; the FAKE excerpt is the
+  typed 400 (the citation validation); the unknown assessment
+  kind names itself; the snapshot's + the claim's read surfaces
+  list the edge.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg463_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0030_claim_assessments.sql`, `src/claims.rs`,
+  `src/api.rs`, `src/lib.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.6.2)
 
@@ -1776,6 +1840,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.6.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_claim_assessments` → `test result: ok. 1 passed` (the true excerpt accepts + the replay, the FAKE excerpt refuses, the unknown kind names itself, the two read surfaces); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg463_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the claim-evidence graph + the citation validation; frontier → `.6.4` |
 | `2026-09-07` | `PHASE-4.6.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_derivation_graph` → `test result: ok. 1 passed` (the edge roundtrip, the replay, the traversal, the mismatch 400, the missing-parent refusal); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg462_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the derivation graph; frontier → `.6.3` |
 | `2026-09-07` | `PHASE-4.6.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_snapshot_store` → `test result: ok. 1 passed` (the submit → the read-back, the replay, the digest-mismatch 400, the tombstone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg461_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the snapshot store + the tombstone; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-4.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the snapshot/derivation/claim census + the contract-seam decomposition (`.6.1` the store + the tombstone → `.6.2` the graph → `.6.3` the claims + the validation → `.6.4` the retention + the freshness); frontier → `.6.1` |
@@ -1805,6 +1870,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.6.3` | `REASONBRAID-PHASE4-0025` | the claim-evidence graph + the citation validation (the excerpt must be in the bytes — citation existence alone never satisfies the gate) |
 | `PHASE-4.6.2` | `REASONBRAID-PHASE4-0024` | the derivation graph (the verified edges + the replay + the traversal — a quote is never the original) |
 | `PHASE-4.6.1` | `REASONBRAID-PHASE4-0023` | the snapshot store + the tombstone (the content-addressing verified, the replay, the R0/R2/R5 auto-submits) |
 | `PHASE-4.6` | `REASONBRAID-PHASE4-0022` | the snapshot/derivation/claim lane decomposed at the census seams (the receipts exist, nothing persists them) |

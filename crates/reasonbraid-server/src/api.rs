@@ -432,6 +432,15 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/derivations", post(submit_derivation))
+        .route("/v1/assessments", post(submit_assessment))
+        .route(
+            "/v1/snapshots/{snapshot_id}/assessments",
+            get(list_snapshot_assessments),
+        )
+        .route(
+            "/v1/claims/{claim_id}/assessments",
+            get(list_claim_assessments),
+        )
         .route(
             "/v1/snapshots/{snapshot_id}/derivations",
             get(list_derivations),
@@ -1772,6 +1781,65 @@ async fn resolve_resource(
         _ => {}
     }
     Ok(Json(outcome))
+}
+
+// ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────
+
+/// `POST /v1/assessments` — submit the assessment (any enrolled principal;
+/// the citation is VALIDATED: the excerpt must appear in the snapshot's
+/// raw bytes — citation existence alone never satisfies an evidence gate).
+async fn submit_assessment(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::claims::AssessmentSubmission>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal submits no assessment",
+        ));
+    }
+    match crate::claims::submit(&state.pool, &submission).await {
+        Ok(assessment_id) => Ok(Json(json!({ "assessment_id": assessment_id }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/snapshots/{id}/assessments` — the snapshot's assessments.
+async fn list_snapshot_assessments(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(snapshot_id): Path<String>,
+) -> Result<Json<Vec<crate::claims::StoredAssessment>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no assessments",
+        ));
+    }
+    Ok(Json(
+        crate::claims::assessments_for_snapshot(&state.pool, &snapshot_id).await?,
+    ))
+}
+
+/// `GET /v1/claims/{claim_id}/assessments` — the claim's assessments.
+async fn list_claim_assessments(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(claim_id): Path<String>,
+) -> Result<Json<Vec<crate::claims::StoredAssessment>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no assessments",
+        ));
+    }
+    Ok(Json(
+        crate::claims::assessments_of_claim(&state.pool, &claim_id).await?,
+    ))
 }
 
 // ── The derivation graph (PHASE-4.6.2; backlog 35) ──────────────────────────────────

@@ -19,13 +19,15 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.2.1` (`.2` decomposed at
-  the census seams: nothing fetches — the classification/fetcher/
-  receipt are the greenfield). Then `.2.2`, `.2.3`, `.3`–`.7`.
-- **Next action:** execute `PHASE-4.2.1` — the destination
-  classification + the SSRF policy: the pure `classify_destination`
-  over the §12.4 IP rules (the loopback/link-local/private/
-  multicast/reserved classes) + the policy the fetcher enforces.
+- **Active tree:** `PHASE-4` → frontier `.2.2` (`.2.1` done: the
+  SSRF classification + the public-only policy). Then `.2.3`,
+  `.3`–`.7`.
+- **Next action:** execute `PHASE-4.2.2` — the safe HTTPS fetcher:
+  the hardened URL parsing (the ambiguous/userinfo/invalid
+  refusals), the GET/HEAD with the byte + time ceilings, the
+  redirect policy at EVERY hop (the re-classification + the hop
+  cap), the TLS verification, the response-type sniffing, the
+  decompression-ratio limit, NO ambient credentials.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

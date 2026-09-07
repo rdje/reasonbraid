@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The SSRF rules become a pure classifier: public-only, with every refusal named (`PHASE-4.2.1`)
+
+- `src/ssrf.rs`: the pure `classify_destination(ip)` over the §12.4 ranges (the loopback, the link-local, the private, the multicast, the reserved, and the cloud-metadata class — its own class INSIDE the link-local range; the IPv4-mapped IPv6 form re-classifies the embedded IPv4) + the policy: ONLY the `Public` class is reachable, every refusal names its class.
+- Four unit tests: the 18-case refusal matrix, the allowed publics, the mapped-form re-classification, the metadata special case. The `.2.2` fetcher enforces this policy at every hop. Frontier → `.2.2` (the safe HTTPS fetcher).
+
 ## 2026-09-07 — `.2` split at the census seams (`PHASE-4.2`)
 
 - The R0 census mapped §12.4 against the shipped surface: NOTHING fetches — the reqwest dependency serves the wire tests only, and no destination classification, fetcher, or receipt machinery exists (the grep found only the SQL `fetch_*` calls). The safe-HTTPS pack is a greenfield with the §12.4 rules as its spec.

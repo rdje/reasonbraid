@@ -164,7 +164,7 @@ of a URI is not a promise the core can resolve it.
     calls). The R0 pack is a greenfield with the §12.4 rules as
     its spec. Children at those seams — frontier → `.2.1`.
   - ID: `PHASE-4.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the destination classification + the SSRF policy — the
       PURE `classify_destination(ip)` over the §12.4 rules (the
       loopback, the link-local, the private ranges, the multicast,
@@ -174,6 +174,19 @@ of a URI is not a promise the core can resolve it.
       (each range has a named class); the proxy configuration
       stays in the threat model (named, not built).
     Backlog: 32 (the SSRF half)
+    Done (`2026-09-07`): the SSRF policy landed —
+      `crates/reasonbraid-server/src/ssrf.rs`: the PURE
+      `classify_destination(ip)` over the §12.4 rules (the
+      loopback, the link-local, the private ranges, the multicast,
+      the reserved, the cloud-metadata class — its own class
+      INSIDE the link-local range; the IPv4-mapped IPv6 form
+      re-classifies the embedded IPv4) + the policy (`evaluate`:
+      ONLY the `Public` class is reachable; every refusal names
+      its class). Four unit tests measure the 18-case refusal
+      matrix (each reason names its class), the allowed publics,
+      the mapped-form re-classification, and the metadata
+      special case. The `.2.2` fetcher enforces this policy at
+      every hop. Frontier → `.2.2`.
     Acceptance: the classification is pure + tested (the private/
       loopback/link-local/multicast/reserved refusals); no
       regression.
@@ -242,7 +255,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.2.1` | `proposed` | `.2` decomposed at the census seams (nothing fetches — the R0 pack is a greenfield with the §12.4 spec); the destination classification + the SSRF policy executes now |
+| 1 | `PHASE-4.2.2` | `proposed` | `.2.1` done — the destination classification + the SSRF policy (the pure §12.4 rules + the public-only policy, the 18-case refusal matrix); the safe HTTPS fetcher executes now |
 
 ## Changelog
 
@@ -271,6 +284,48 @@ of a URI is not a promise the core can resolve it.
   `.2.1` (the destination classification + the SSRF policy) →
   `.2.2` (the safe HTTPS fetcher) → `.2.3` (the snapshot receipt +
   the pack wiring); frontier → `.2.1`.
+- `2026-09-07`: `.2.1` done — the destination classification + the
+  SSRF policy (the pure §12.4 rules, the public-only policy, the
+  mapped-form re-classification); four unit tests; frontier →
+  `.2.2`.
+
+## Acceptance Checklist (PHASE-4.2.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/ssrf.rs` (NEW — the pure
+classification + the policy + the four tests) and
+`crates/reasonbraid-server/src/lib.rs` (the module) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.2` census: NOTHING fetches and
+  no destination classification exists — the §12.4 SSRF rules
+  have no machinery.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the R0 pack was a greenfield —
+  `git grep -c "classify_destination\|ssrf" 7693623 -- crates/`
+  → rc=1 (nothing before this leaf). The fix point is the PURE
+  classification (the IP ranges the §12.4 rules name — testable
+  without a socket) + the public-only policy the `.2.2` fetcher
+  enforces at every hop.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib ssrf` → `test result:
+  ok. 4 passed` — the 18-case refusal matrix (every non-public
+  class names itself in the reason: the loopback, the private
+  ranges, the link-local, the cloud-metadata, the multicast, the
+  reserved), the allowed publics, the IPv4-mapped form
+  re-classifying the embedded IPv4 (the mapped metadata address
+  refuses as `cloud_metadata`), and the metadata address's own
+  class inside the link-local range.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg421_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/ssrf.rs`, `src/lib.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.1.3)
 
@@ -368,6 +423,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-4.2.1` | `cargo test -p reasonbraid-server --lib ssrf` → `test result: ok. 4 passed` (the 18-case refusal matrix, the allowed publics, the mapped-form re-classification, the metadata class); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg421_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the SSRF classification + policy; frontier → `.2.2` |
 | `2026-09-07` | `PHASE-4.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R0 census + the contract-seam decomposition (`.2.1` the SSRF classification → `.2.2` the fetcher → `.2.3` the receipt); frontier → `.2.1` |
 | `2026-09-07` | `PHASE-4.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_resolver_registry` → `test result: ok. 1 passed` (the filter + the rank, the off-ladder 400, the explicit unresolvable-now with the preserved reference); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg413_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the resolver capability registry; **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-4.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles a_reference_submits` → `test result: ok. 1 passed` (the submit, the replay, the conflict, the 422/400 refusals); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg412_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the typed reference + the submission; frontier → `.1.3` |
@@ -378,6 +434,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
+| `PHASE-4.2.1` | `REASONBRAID-PHASE4-0006` | the destination classification + the SSRF policy (the pure §12.4 rules + the public-only evaluation) |
 | `PHASE-4.2` | `REASONBRAID-PHASE4-0005` | the R0 pack decomposed at the census seams (nothing fetches — the classification/fetcher/receipt are the greenfield) |
 | `PHASE-4.1.3` | `REASONBRAID-PHASE4-0004` | the resolver capability registry (the §12.2 advertise + the filter-then-rank resolution + the explicit unresolvable-now) — **`.1` COMPLETE** |
 | `PHASE-4.1.2` | `REASONBRAID-PHASE4-0003` | the typed `ResourceReference` + the submission (migration 0023 + the replay/conflict immutability) |

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.2.1: the SSRF half is pure math — the ranges decide before any socket opens
+
+- **The §12.4 destination rules are testable without a network**: the classifier's 18-case matrix proves every non-public class refuses with its OWN name, the IPv4-mapped form re-classifies the embedded address (the mapped metadata address refuses as `cloud_metadata`), and the cloud-metadata address is its own class inside the link-local range. The `.2.2` fetcher will enforce this at every hop — the SSRF proof is the refusal, not a firewall.
+- promotion: declined (the classifier is the leaf's own contract; the `.2.2` fetcher consumes it). **Frontier `PHASE-4.2.2` (the safe HTTPS fetcher).**
+
 ## _(2026-09-07)_ — PHASE-4.2: the safe-HTTPS pack is a greenfield — the SSRF rules are its spec, the census is its boundary
 
 - **Nothing fetches, so the §12.4 rules ARE the design**: the pack splits at the classification (the pure IP rules — the SSRF half that is testable without a socket), the fetcher (the hardened parsing + the per-hop re-classification + the ceilings — the measured refusal of a loopback/private target is the SSRF proof), and the receipt (the ADR-011 digest + the resolved chain — the `.6` snapshot lane's input). The proxy configuration stays in the threat model (named, not built).

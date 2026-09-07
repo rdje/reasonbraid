@@ -39,6 +39,7 @@ mod profiles;
 mod recruitment;
 mod resolvers;
 mod resources;
+mod ssrf;
 mod telemetry;
 mod threads;
 mod tx;

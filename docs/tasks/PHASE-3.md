@@ -271,10 +271,73 @@ eligibility before ranking. Dependence indicators, never an independence score.
       allowed shapes); no regression.
 
 - ID: `PHASE-3.3`
-  Status: `proposed`
+  Status: `done`
   Goal: two-stage matching — deterministic eligibility then explainable ranking
   Backlog: 28, 29
   Roadmap: §10.3
+  Children: `.3.1`–`.3.3` (decomposed `2026-09-07` at the census
+    seams): `.3.1` the eligibility expression + the stage-1
+    evaluation (the typed §10.3 stage-1 fields, resolved
+    server-side) → `.3.2` the stage-2 explainable ranking (the
+    deterministic features, each with its source + contribution +
+    a visibility-safe explanation; the semantic slot stays EMPTY per
+    ADR-014) → `.3.3` the matching query surface (the initiator
+    submits the expression; the response is the eligible + ranked
+    list filtered per the reader's scope).
+  Done (`2026-09-07`): the census mapped §10.3 against the shipped
+    surface: the matching INPUTS exist (the `.1` profiles with the
+    provenance + the interests/scopes/ceilings, the `.2` derived
+    presence, the grants/budget facts from Phase 2) but NO matching
+    machinery — `grep -rn "eligible\|ranking" crates/…/src/` → only
+    an unrelated state-machine comment (no expression, no evaluator,
+    no scoring, no query surface). Children at those seams —
+    frontier → `.3.1`.
+  - ID: `PHASE-3.3.1`
+    Status: `proposed`
+    Goal: the eligibility expression + the stage-1 evaluation — the
+      typed expression over the §10.3 stage-1 fields (the visibility
+      scope, the capability requirements, the policy restrictions,
+      the confidentiality classes, the concurrency + budget
+      availability, the explicit exclusions) + the PURE evaluator
+      over the shipped facts (the `.1` profile, the `.2` derived
+      presence state, the grants + the budget ceilings) —
+      `eligible(expression, profile, presence, grants, budget) ->
+      verdict + reasons`. Resolved SERVER-side (§10.2: the caller
+      need not know the membership size); an ineligible role is
+      never restored by ranking (ADR-014's ordering).
+    Backlog: 29 (the policy-filter half)
+    Acceptance: the expression parses typed; the evaluator is pure +
+      tested (each stage-1 field has a named reason); no regression.
+
+  - ID: `PHASE-3.3.2`
+    Status: `proposed`
+    Goal: the stage-2 explainable ranking — the deterministic feature
+      scores (the exact capability match, the subscription/interest
+      match, the domain affinity, the latency class, the workload
+      balance) each with its source + version + contribution + a
+      visibility-safe explanation (no raw profile fields leak into
+      the explanation); the dependence-indicator slot is the `.6`
+      lane's (named, not computed); the semantic slot stays EMPTY
+      per ADR-014. The ranking never controls authorization (the
+      stage-1 verdict does).
+    Backlog: 28 (the metadata-prefilter half), 29 (the scoring half)
+    Acceptance: each feature's explanation is source-tagged; the
+      ranking is a pure function of the eligible set; no regression.
+
+  - ID: `PHASE-3.3.3`
+    Status: `proposed`
+    Goal: the matching query surface — `POST /v1/directory/match`
+      (the initiator submits the eligibility expression + the
+      preferences; the response is the eligible + ranked candidate
+      list, each with the stage-1 reasons + the stage-2
+      explanations, filtered per the reader's scope — the `.2.3`
+      directory rules: the zero-visibility profiles never appear,
+      the hidden fields never ride the explanation). The `.4` lane
+      owns the recruitment + capacity reservations that CONSUME
+      this list.
+    Backlog: 28, 29 (the surface half)
+    Acceptance: the measured query (the initiator sees only the
+      allowed candidates with the allowed fields); no regression.
 
 - ID: `PHASE-3.4`
   Status: `proposed`
@@ -304,7 +367,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.3` | `proposed` | `.2.3` done — the privacy-filtered directory views (the three measured scopes; the zero-visibility rule); **`.2` COMPLETE** — the two-stage matching lane executes now |
+| 1 | `PHASE-3.3.1` | `proposed` | `.3` decomposed at the census seams (the matching inputs exist; no expression, no evaluator, no scoring, no surface); the eligibility expression + the stage-1 evaluation executes now |
 
 ## Changelog
 
@@ -349,6 +412,13 @@ eligibility before ranking. Dependence indicators, never an independence score.
   the member's tenant-filtered view, the network pseudonyms, the
   zero-visibility rule); the profiles suite grew to 6;
   **`.2` COMPLETE** — frontier → `.3`.
+- `2026-09-07`: `.3` decomposed at the census seams — the matching
+  INPUTS exist (the profiles, the presence, the grants/budget) but
+  no expression/evaluator/scoring/surface (the grep found only an
+  unrelated comment); children `.3.1` (the eligibility expression +
+  the stage-1 evaluation) → `.3.2` (the stage-2 explainable
+  ranking) → `.3.3` (the matching query surface); frontier →
+  `.3.1`.
 
 ## Acceptance Checklist (PHASE-3.2.3)
 
@@ -598,6 +668,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the matching-lane census + the contract-seam decomposition (`.3.1` expression + stage-1 → `.3.2` ranking → `.3.3` surface); frontier → `.3.1` |
 | `2026-09-07` | `PHASE-3.2.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_directory` → `test result: ok. 1 passed` (the three scopes + the zero-visibility rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg323_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the privacy-filtered directory views; **`.2` COMPLETE** — frontier → `.3` |
 | `2026-09-07` | `PHASE-3.2.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_offline_known` → `test result: ok. 1 passed` (the three-way distinction + the enumeration); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg322_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the offline-known distinction + the operator's enumeration; frontier → `.2.3` |
 | `2026-09-07` | `PHASE-3.2.1` | `cargo test -p reasonbraid-server --lib presence` → `test result: ok. 5 passed` (the derivation precedence); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg321_guard.log`, the node_channel presence legs assert `offline`/`available`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the presence state machine (the six states derived; presence reads, never writes); frontier → `.2.2` |
@@ -610,6 +681,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.3` | `REASONBRAID-PHASE3-0009` | the matching lane decomposed at the census seams (the inputs exist; the expression/evaluator/scoring/surface are the gaps) |
 | `PHASE-3.2.3` | `REASONBRAID-PHASE3-0008` | the privacy-filtered directory views (the three measured scopes + the zero-visibility rule) — **`.2` COMPLETE** |
 | `PHASE-3.2.2` | `REASONBRAID-PHASE3-0007` | the offline-known distinction + the operator's presence enumeration (the measured three-way distinction) |
 | `PHASE-3.2.1` | `REASONBRAID-PHASE3-0006` | the presence state machine (the six-state derivation + the response's `state` field) |

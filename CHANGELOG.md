@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.3` split at the census seams (`PHASE-3.3`)
+
+- The matching-lane census mapped §10.3 (backlog 28/29) against the shipped surface: the matching INPUTS exist (the `.1` profiles with the provenance + the interests/scopes/ceilings, the `.2` derived presence states, the grants + budget facts from Phase 2) but NO matching machinery — no expression, no evaluator, no scoring, no query surface.
+- Children: `.3.1` the eligibility expression + the stage-1 evaluation (typed, resolved server-side; an ineligible role is never restored by ranking) → `.3.2` the stage-2 explainable ranking (each feature source-tagged + visibility-safe; the semantic slot stays empty per ADR-014) → `.3.3` the matching query surface (the filtered candidate list the `.4` recruitment lane consumes). Tree-only commit; frontier → `.3.1`.
+
 ## 2026-09-07 — The privacy-filtered directory: counts, pseudonyms, or nothing — `.2` COMPLETE (`PHASE-3.2.3`)
 
 - `GET /v1/directory/presence` (the reader's identity decides everything, no params): the OWNER reads their tenant's nodes with the FULL fields (the audited tenant-admin path), a tenant member the TENANT-filtered fields, every enrolled principal the network pseudonyms of the other tenants (each with the network-visible fields + the derived presence state) — and a zero-visibility profile contributes NOTHING, not even a count.

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.3: the matching lane has its inputs but no machinery — the census names the three seams before a line of evaluator ships
+
+- **Everything the matcher consumes exists; the matcher does not.** The `.1` profiles (with the provenance + the ceilings), the `.2` presence states, and the Phase-2 grants/budget facts are the inputs — but there is no eligibility expression, no evaluator, no scoring, and no query surface. The three seams: the typed stage-1 expression + the pure evaluator (an ineligible role is never restored by ranking), the stage-2 features each with a source + contribution + a visibility-safe explanation (the semantic slot stays empty per ADR-014), and the query surface whose candidate list the `.4` recruitment lane consumes.
+- promotion: declined (the census is the leaf's recorded contract — the `.3.1`–`.3.3` children execute it). **Frontier `PHASE-3.3.1` (the eligibility expression + the stage-1 evaluation).**
+
 ## _(2026-09-07)_ — PHASE-3.2.3: the directory's privacy is the reader's classification, applied to every row — and zero visibility means zero, not "count minus one"
 
 - **The §10.2 rule became one endpoint with three measured scopes**: the reader's identity (owner / tenant member / stranger) classifies the WHOLE directory — the owner's own view carries the full fields, the member's the tenant-filtered, the stranger's only the network pseudonyms — and the zero-visibility rule is strict: a profile exposing nothing to the network is ABSENT from every network view, not even a count (a count would leak the existence the policy hides). The `.1.3` filter and the `.2.1` state machine compose: neither needed a new field.

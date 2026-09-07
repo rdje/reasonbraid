@@ -12,6 +12,12 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The evidence pipeline is complete: the retention enforces, the freshness surfaces (`PHASE-4.6.4`)
+
+- `migrations/0031`: the `license`, `fresh_until`, `refreshed_at` columns.
+- `src/snapshots.rs`: the retention TTLs (the audit class never expires — binding decisions stay addressable), the `expire_due` enforcement (the tombstone rides the class's TTL), the `stale` surface, and the re-fetch policy (the replay refreshes the freshness).
+- The verbs (`POST /v1/snapshots/expire-due` with the `at` override, `GET /v1/snapshots/stale`). Measured: profiles 22. **`.6` COMPLETE** — frontier → `.7` (the G4 hostile-content suite).
+
 ## 2026-09-07 — The claim-evidence graph ships: the citation is validated, not asserted (`PHASE-4.6.3`)
 
 - `migrations/0030`: the assessment edges — the five kinds (the CHECK constraint), the author/verifier, the excerpt + selector, the rationale, the authority/freshness/independence/uncertainty, the replay index.

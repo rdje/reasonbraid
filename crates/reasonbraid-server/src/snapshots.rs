@@ -40,6 +40,12 @@ pub struct SnapshotSubmission {
     pub redactions: serde_json::Value,
     #[serde(default)]
     pub disclosure_policy: serde_json::Value,
+    /// The license metadata (the §12.6 record).
+    #[serde(default)]
+    pub license: Option<String>,
+    /// The freshness horizon (the §12.9 staleness surface).
+    #[serde(default)]
+    pub fresh_until: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 fn default_storage() -> String {
@@ -99,6 +105,9 @@ pub struct StoredSnapshot {
     pub disclosure_policy: serde_json::Value,
     pub deleted_at: Option<chrono::DateTime<chrono::Utc>>,
     pub deletion_reason: Option<String>,
+    pub license: Option<String>,
+    pub fresh_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub refreshed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// The snapshot's error — every refusal names its reason.
@@ -173,6 +182,15 @@ pub async fn submit(
     .await
     .map_err(|_| SnapshotError::ReferenceMissing)?;
     if let Some(existing) = existing {
+        // The re-fetch policy: the replay refreshes the freshness record
+        // (the re-acquisition happened — the bytes are unchanged, the
+        // horizon resets).
+        let _ = sqlx::query(
+            "UPDATE evidence_snapshots SET refreshed_at = now() WHERE snapshot_id = $1",
+        )
+        .bind(&existing)
+        .execute(pool)
+        .await;
         return Ok(SnapshotOutcome {
             snapshot_id: existing,
             replay: true,
@@ -183,8 +201,9 @@ pub async fn submit(
          (snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
           resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
           immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
-          retention_class, extraction_version, quarantine_status, redactions, disclosure_policy) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)",
+          retention_class, extraction_version, quarantine_status, redactions, disclosure_policy, \
+          license, fresh_until) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
     )
     .bind(&snapshot_id)
     .bind(&submission.reference_id)
@@ -206,6 +225,8 @@ pub async fn submit(
     .bind(&submission.quarantine_status)
     .bind(&submission.redactions)
     .bind(&submission.disclosure_policy)
+    .bind(&submission.license)
+    .bind(submission.fresh_until)
     .execute(pool)
     .await
     .map_err(|_| SnapshotError::ReferenceMissing)?;
@@ -240,6 +261,9 @@ struct SnapshotRow {
     disclosure_policy: serde_json::Value,
     deleted_at: Option<chrono::DateTime<chrono::Utc>>,
     deletion_reason: Option<String>,
+    license: Option<String>,
+    fresh_until: Option<chrono::DateTime<chrono::Utc>>,
+    refreshed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Read a snapshot (the tombstone state rides the same row).
@@ -249,7 +273,7 @@ pub async fn get(pool: &PgPool, snapshot_id: &str) -> Result<Option<StoredSnapsh
                 resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
                 immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
                 retention_class, extraction_version, quarantine_status, redactions, \
-                disclosure_policy, deleted_at, deletion_reason \
+                disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at \
          FROM evidence_snapshots WHERE snapshot_id = $1",
     )
     .bind(snapshot_id)
@@ -278,6 +302,9 @@ pub async fn get(pool: &PgPool, snapshot_id: &str) -> Result<Option<StoredSnapsh
         disclosure_policy: row.disclosure_policy,
         deleted_at: row.deleted_at,
         deletion_reason: row.deletion_reason,
+        license: row.license,
+        fresh_until: row.fresh_until,
+        refreshed_at: row.refreshed_at,
     }))
 }
 
@@ -306,4 +333,93 @@ fn uuid_like_suffix() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("{:x}{:x}", nanos, std::process::id())
+}
+
+/// The retention classes' TTLs (the §12.9 enforcement): the audit class
+/// never expires (binding decisions stay addressable for the charter's
+/// audit period); standard = 30 days; temporary = 1 day.
+pub fn retention_ttl(retention_class: &str) -> Option<chrono::Duration> {
+    match retention_class {
+        "audit" => None,
+        "temporary" => Some(chrono::Duration::days(1)),
+        _ => Some(chrono::Duration::days(30)),
+    }
+}
+
+/// The retention enforcement: every live snapshot whose class TTL has
+/// passed (measured from `created_at` against `now`) is TOMBSTONED with
+/// the reason — never silently removed. Returns the tombstoned count.
+pub async fn expire_due(
+    pool: &PgPool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE evidence_snapshots SET deleted_at = now(), deletion_reason = $1 \
+         WHERE deleted_at IS NULL AND retention_class = 'standard' AND created_at < $2",
+    )
+    .bind("the retention expired")
+    .bind(now - chrono::Duration::days(30))
+    .execute(pool)
+    .await?;
+    let standard = result.rows_affected();
+    let result = sqlx::query(
+        "UPDATE evidence_snapshots SET deleted_at = now(), deletion_reason = $1 \
+         WHERE deleted_at IS NULL AND retention_class = 'temporary' AND created_at < $2",
+    )
+    .bind("the retention expired")
+    .bind(now - chrono::Duration::days(1))
+    .execute(pool)
+    .await?;
+    Ok(standard + result.rows_affected())
+}
+
+/// The staleness surface: the LIVE snapshots whose freshness horizon has
+/// passed (the assessments read this — the re-fetch is the caller's).
+pub async fn stale(
+    pool: &PgPool,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Vec<StoredSnapshot>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, SnapshotRow>(
+        "SELECT snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
+                resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
+                immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
+                retention_class, extraction_version, quarantine_status, redactions, \
+                disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at \
+         FROM evidence_snapshots \
+         WHERE deleted_at IS NULL AND fresh_until IS NOT NULL AND fresh_until < $1 \
+         ORDER BY fresh_until",
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| StoredSnapshot {
+            snapshot_id: row.snapshot_id,
+            reference_id: row.reference_id,
+            original_locator: row.original_locator,
+            final_locator: row.final_locator,
+            retrieved_at: row.retrieved_at,
+            resolver_id: row.resolver_id,
+            resolver_version: row.resolver_version,
+            network_class: row.network_class,
+            auth_class: row.auth_class,
+            provider_receipt: row.provider_receipt,
+            immutable_source_version: row.immutable_source_version,
+            raw_digest: row.raw_digest,
+            byte_length: row.byte_length,
+            media_type: row.media_type,
+            storage_class: row.storage_class,
+            retention_class: row.retention_class,
+            extraction_version: row.extraction_version,
+            quarantine_status: row.quarantine_status,
+            redactions: row.redactions,
+            disclosure_policy: row.disclosure_policy,
+            deleted_at: row.deleted_at,
+            deletion_reason: row.deletion_reason,
+            license: row.license,
+            fresh_until: row.fresh_until,
+            refreshed_at: row.refreshed_at,
+        })
+        .collect())
 }

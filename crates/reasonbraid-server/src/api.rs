@@ -431,6 +431,8 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(resolve_resource),
         )
         .route("/v1/snapshots", post(submit_snapshot))
+        .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
+        .route("/v1/snapshots/stale", get(list_stale_snapshots))
         .route("/v1/derivations", post(submit_derivation))
         .route("/v1/assessments", post(submit_assessment))
         .route(
@@ -1428,6 +1430,8 @@ async fn resolve_resource(
                             quarantine_status: "none".to_owned(),
                             redactions: serde_json::json!([]),
                             disclosure_policy: serde_json::json!({}),
+                            license: None,
+                            fresh_until: None,
                         },
                         &document.bytes,
                         chrono::Utc::now(),
@@ -1501,6 +1505,8 @@ async fn resolve_resource(
                                             quarantine_status: "none".to_owned(),
                                             redactions: serde_json::json!([]),
                                             disclosure_policy: serde_json::json!({ "credential_class": disclosure.credential_class, "host": disclosure.host }),
+                                            license: None,
+                                            fresh_until: None,
                                         },
                                         &document.bytes,
                                         chrono::Utc::now(),
@@ -1650,6 +1656,8 @@ async fn resolve_resource(
                                     quarantine_status: "none".to_owned(),
                                     redactions: serde_json::json!([]),
                                     disclosure_policy: serde_json::json!({}),
+                                    license: None,
+                                    fresh_until: None,
                                 },
                                 &document.bytes,
                                 chrono::Utc::now(),
@@ -1881,6 +1889,52 @@ async fn list_derivations(
     }
     Ok(Json(
         crate::derivations::children_of(&state.pool, &snapshot_id).await?,
+    ))
+}
+
+/// `POST /v1/snapshots/expire-due` — the retention enforcement: the
+/// live snapshots whose class TTL passed are TOMBSTONED with the reason
+/// (the optional `at` overrides the clock — the tests drive the expiry).
+async fn expire_due_snapshots(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    body: Option<Json<serde_json::Value>>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal enforces no retention",
+        ));
+    }
+    let at = body
+        .and_then(|Json(value)| {
+            value
+                .get("at")
+                .and_then(|v| v.as_str())
+                .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .unwrap_or_else(chrono::Utc::now);
+    let tombstoned = crate::snapshots::expire_due(&state.pool, at).await?;
+    Ok(Json(json!({ "tombstoned": tombstoned })))
+}
+
+/// `GET /v1/snapshots/stale` — the staleness surface (the LIVE snapshots
+/// whose freshness horizon passed — the assessments read this).
+async fn list_stale_snapshots(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::snapshots::StoredSnapshot>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no staleness",
+        ));
+    }
+    Ok(Json(
+        crate::snapshots::stale(&state.pool, chrono::Utc::now()).await?,
     ))
 }
 

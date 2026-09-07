@@ -966,13 +966,32 @@ of a URI is not a promise the core can resolve it.
       `.6.4`.
 
   - ID: `PHASE-4.6.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the license/retention + the freshness — the retention
       classes' enforcement (the tombstone from `.6.1` rides the
       class's expiry), the license metadata, the freshness (the
       §12.9 re-fetch policy + the staleness surface the
       assessments read).
     Backlog: 35 (the retention half)
+    Done (`2026-09-07`): the license/retention + the freshness
+      landed — migration 0031 (the `license` + `fresh_until` +
+      `refreshed_at` columns); `snapshots.rs`: the submission
+      gains the fields, the retention TTL map (the audit class
+      NEVER expires — binding decisions stay addressable for the
+      charter's audit period; standard 30 days; temporary 1
+      day), the `expire_due` enforcement (the tombstone rides
+      the class's TTL with the reason — never silent), the
+      `stale` surface (the LIVE snapshots whose horizon passed),
+      and the re-fetch policy (the REPLAY refreshes
+      `refreshed_at` — the re-acquisition resets the freshness);
+      the verbs: `POST /v1/snapshots/expire-due` (the optional
+      `at` override — the tests drive the expiry) + `GET
+      /v1/snapshots/stale`. Measured (profiles 22): the license +
+      the horizon ride the row, the staleness lists ONLY the
+      passed horizon, the enforcement tombstones the temporary
+      class (the `at` override) while the standard stays, the
+      replay refreshes the freshness. **`.6` COMPLETE** —
+      frontier → `.7`.
 
 - ID: `PHASE-4.7`
   Status: `proposed`
@@ -983,7 +1002,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.6.4` | `proposed` | `.6.3` done — the claim-evidence graph + the citation validation (migration 0030, the five assessments, the excerpt-in-the-bytes check, the two read surfaces — profiles 21); the license/retention + the freshness execute now |
+| 1 | `PHASE-4.7` | `proposed` | `.6.4` done — **the `.6` lane (the evidence pipeline) is COMPLETE**: the snapshot store + the tombstone, the derivation graph, the claim-evidence graph + the citation validation, the retention enforcement + the freshness (profiles 19–22); the G4 hostile-content suite executes next |
 
 ## Changelog
 
@@ -1016,6 +1035,10 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.6.4` done — the license/retention + the
+  freshness (migration 0031, the retention TTLs + the expire-due
+  enforcement + the staleness surface + the replay-refresh);
+  profiles 22; **`.6` COMPLETE** — frontier → `.7`.
 - `2026-09-07`: `.6.3` done — the claim-evidence graph + the
   citation validation (migration 0030: the five assessments +
   the excerpt-in-the-bytes check — the fake excerpt refuses;
@@ -1176,6 +1199,45 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.6.4)
+
+The CODE change owned by this leaf:
+`migrations/0031_snapshot_license_freshness.sql` (NEW — the three
+columns), `crates/reasonbraid-server/src/snapshots.rs` (the fields
++ the TTLs + the enforcement + the staleness + the replay-refresh),
+`src/api.rs` (the two verbs + the three initializers), and
+`tests/profiles.rs` (profiles 22).
+
+- [x] **REPRODUCE / ISSUE** — the `.6.3` close: the snapshots carry
+  no license, no freshness horizon, and no retention ENFORCEMENT
+  (the tombstone exists but nothing drives it).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the retention layer was the
+  lane's last fourth — `git grep -c "expire_due\|fresh_until\|retention_ttl"
+  0429a04 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the §12.9 enforcement: the class TTLs,
+  the expire-due tombstone, the staleness surface, the
+  replay-refresh.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_retention_enforcement` → `test result: ok. 1
+  passed` — the license + the horizon ride the row; the
+  staleness lists ONLY the passed horizon; the `at`-driven
+  expiry tombstones the temporary class (the reason rides the
+  row) while the standard stays; the replay REFRESHES the
+  freshness record.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg464_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0031_snapshot_license_freshness.sql`,
+  `src/snapshots.rs`, `src/api.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.6.3)
 
@@ -1840,6 +1902,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.6.4` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_retention_enforcement` → `test result: ok. 1 passed` (the license + the horizon, the staleness, the `at`-driven expiry, the replay-refresh); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg464_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the license/retention + the freshness; **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-4.6.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_claim_assessments` → `test result: ok. 1 passed` (the true excerpt accepts + the replay, the FAKE excerpt refuses, the unknown kind names itself, the two read surfaces); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg463_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the claim-evidence graph + the citation validation; frontier → `.6.4` |
 | `2026-09-07` | `PHASE-4.6.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_derivation_graph` → `test result: ok. 1 passed` (the edge roundtrip, the replay, the traversal, the mismatch 400, the missing-parent refusal); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg462_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the derivation graph; frontier → `.6.3` |
 | `2026-09-07` | `PHASE-4.6.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_snapshot_store` → `test result: ok. 1 passed` (the submit → the read-back, the replay, the digest-mismatch 400, the tombstone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg461_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the snapshot store + the tombstone; frontier → `.6.2` |
@@ -1870,6 +1933,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.6.4` | `REASONBRAID-PHASE4-0026` | the license/retention + the freshness (the TTL enforcement + the staleness + the replay-refresh) — **`.6` COMPLETE** |
 | `PHASE-4.6.3` | `REASONBRAID-PHASE4-0025` | the claim-evidence graph + the citation validation (the excerpt must be in the bytes — citation existence alone never satisfies the gate) |
 | `PHASE-4.6.2` | `REASONBRAID-PHASE4-0024` | the derivation graph (the verified edges + the replay + the traversal — a quote is never the original) |
 | `PHASE-4.6.1` | `REASONBRAID-PHASE4-0023` | the snapshot store + the tombstone (the content-addressing verified, the replay, the R0/R2/R5 auto-submits) |

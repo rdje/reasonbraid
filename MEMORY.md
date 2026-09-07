@@ -19,17 +19,17 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.6.4` (packs R0 + R1 + R2
-  COMPLETE; the `.5` lane COMPLETE; `.6.1` done: the snapshot
-  store + the tombstone; `.6.2` done: the derivation graph;
-  `.6.3` done: the claim-evidence graph + the citation
-  validation (the excerpt-in-the-bytes check, profiles 21);
-  `MAINT-1` done). Then `.7`.
-- **Next action:** execute `PHASE-4.6.4` — the license/retention
-  + the freshness: the retention classes' enforcement (the
-  tombstone rides the class's expiry), the license metadata, the
-  freshness (the §12.9 re-fetch policy + the staleness surface
-  the assessments read).
+- **Active tree:** `PHASE-4` → frontier `.7` (packs R0 + R1 + R2
+  COMPLETE; the `.5` lane COMPLETE; the `.6` lane — the evidence
+  pipeline — COMPLETE: the snapshot store + the tombstone, the
+  derivation graph, the claim-evidence graph + the citation
+  validation, the retention + the freshness (profiles 19–22);
+  `MAINT-1` done). Then the G4 exit.
+- **Next action:** execute `PHASE-4.7` — the G4 hostile-content
+  suite: the explicit failure for unsupported references, the
+  quarantine/quality gates, the §12.9 budget attacks — the
+  phase's EXIT gate (the subtraction record required; decompose
+  at the census seams first).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -3376,3 +3376,178 @@ async fn the_claim_assessments_validate_the_citation() {
         "{claim_side:?}"
     );
 }
+
+/// The test's own base64 (the API's decoder is under test, not this one).
+mod util {
+    pub fn base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = chunk.get(1).copied().map(|b| b as u32).unwrap_or(0);
+            let b2 = chunk.get(2).copied().map(|b| b as u32).unwrap_or(0);
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            out.push(TABLE[(triple >> 18) as usize & 63] as char);
+            out.push(TABLE[(triple >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 {
+                TABLE[(triple >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                TABLE[triple as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+        out
+    }
+}
+
+/// The license/retention + the freshness (PHASE-4.6.4): the license +
+/// the freshness horizon ride the snapshot, the retention enforcement
+/// TOMBSTONES the expired classes (the `at` override drives the test),
+/// the staleness surface lists the passed horizons, and the replay
+/// REFRESHES the freshness record (the re-fetch policy).
+#[tokio::test]
+async fn the_retention_enforcement_and_the_freshness_surface() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rtn-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://example.org/retention",
+                "scheme": "https",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let reference_id = submitted["resource_id"].as_str().unwrap().to_string();
+    let submit_snapshot =
+        |bytes: &'static [u8], retention_class: String, fresh_until: Option<String>| {
+            let client = client.clone();
+            let base = base.clone();
+            let human_id = human_id.clone();
+            let reference_id = reference_id.clone();
+            async move {
+                let response = client
+                    .post(format!("{base}/v1/snapshots"))
+                    .header(PRINCIPAL_HEADER, &human_id)
+                    .json(&json!({
+                        "reference_id": reference_id,
+                        "original_locator": "https://example.org/retention",
+                        "final_locator": "https://example.org/retention",
+                        "resolver_id": "r0-https-fetcher",
+                        "resolver_version": "0.1.0",
+                        "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
+                        "byte_length": bytes.len(),
+                        "media_type": "text/plain",
+                        "retention_class": retention_class,
+                        "license": "MIT OR Apache-2.0",
+                        "fresh_until": fresh_until,
+                        "bytes_base64": util::base64(bytes),
+                    }))
+                    .send()
+                    .await
+                    .expect("snapshot request");
+                response.json::<Value>().await.unwrap()
+            }
+        };
+
+    // The temporary snapshot with a PASSED horizon.
+    let temporary = submit_snapshot(
+        b"the temporary bytes",
+        "temporary".to_owned(),
+        Some("2026-09-06T00:00:00Z".to_owned()),
+    )
+    .await;
+    let temporary_id = temporary["snapshot_id"].as_str().unwrap().to_string();
+    // The fresh one (distinct bytes — a distinct snapshot).
+    let fresh = submit_snapshot(
+        b"the fresh standard bytes",
+        "standard".to_owned(),
+        Some("2026-09-08T00:00:00Z".to_owned()),
+    )
+    .await;
+    let fresh_id = fresh["snapshot_id"].as_str().unwrap().to_string();
+
+    // The staleness surface lists ONLY the passed horizon.
+    let (status, stale) = get(&client, &base, "/v1/snapshots/stale", &human_id).await;
+    assert_eq!(status, 200, "the staleness reads: {stale}");
+    let stale = stale.as_array().expect("the array");
+    assert_eq!(stale.len(), 1, "{stale:?}");
+    assert_eq!(stale[0]["snapshot_id"], json!(temporary_id));
+
+    // The retention enforcement: the `at` override tombstones the
+    // temporary class (the TTL = 1 day) — the audit/standard stay.
+    let response = client
+        .post(format!("{base}/v1/snapshots/expire-due"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "at": "2026-09-10T00:00:00Z" }))
+        .send()
+        .await
+        .expect("expire request");
+    let outcome: Value = response.json().await.unwrap();
+    assert!(outcome["tombstoned"].as_u64().unwrap() >= 1, "{outcome}");
+
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{temporary_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the tombstoned snapshot stays readable: {stored}"
+    );
+    assert!(stored["deleted_at"].is_string(), "{stored}");
+    assert_eq!(stored["deletion_reason"], json!("the retention expired"));
+    // The license metadata rides the row.
+    assert_eq!(stored["license"], json!("MIT OR Apache-2.0"));
+
+    // The fresh standard snapshot is NOT tombstoned (30-day TTL).
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{fresh_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the fresh snapshot reads: {stored}");
+    assert_eq!(stored["deleted_at"], Value::Null);
+
+    // The re-fetch policy: the replay REFRESHES the freshness record.
+    let replayed = submit_snapshot(b"the fresh standard bytes", "standard".to_owned(), None).await;
+    assert_eq!(replayed["replay"], json!(true));
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{fresh_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the refreshed snapshot reads: {stored}");
+    assert!(stored["refreshed_at"].is_string(), "{stored}");
+}

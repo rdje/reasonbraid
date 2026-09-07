@@ -204,7 +204,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       the state; presence does not change enrollment; no regression.
 
   - ID: `PHASE-3.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the offline-known distinction + the stale handling — the
       directory's OFFLINE-KNOWN row (an enrolled node whose lease
       expired reads `offline` WITH its expiry visible — the
@@ -215,6 +215,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
       offline-delivery expiry + max age are the `.5` lane's (named,
       not built here).
     Backlog: 27 (the distinction half)
+    Done (`2026-09-07`): the distinction landed + is measured —
+      `GET /v1/admin/nodes/presence?tenant_id=` (tenant_admin-gated,
+      the `.3.2.2` enumeration): every enrolled node with its derived
+      state + the lease clock — the operator's offline-KNOWN rows
+      (an expired-lease node reads `offline` WITH its past expiry
+      visible; a never-leased node reads `offline` with null clocks);
+      the unknown id stays the typed `unknown_node` 404, never a
+      fabricated offline. The stale handling was already measured by
+      the `.2.2`-era fencing test (the expired lease's heartbeat is
+      refused; only a fresh handshake re-leases) — the leaf pins it
+      as the distinction's third leg. The test
+      (`the_offline_known_distinction_and_the_operator_enumeration`,
+      node_channel 23) runs on every guard pass. The
+      offline-delivery expiry + max age stay the `.5` lane's (named).
+      Frontier → `.2.3`.
     Acceptance: the offline-known vs unknown distinction is measured
       (the expired-lease node reads offline-with-expiry; the unknown
       id is the typed 404); no regression.
@@ -270,7 +285,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.2.2` | `proposed` | `.2.1` done — the presence state machine (the six states derived; the response names the state); the offline-known distinction + the stale handling executes now |
+| 1 | `PHASE-3.2.3` | `proposed` | `.2.2` done — the offline-known distinction + the operator's enumeration (the expired-lease node reads offline with its expiry visible; the unknown id is the typed 404); the privacy-filtered directory views execute now |
 
 ## Changelog
 
@@ -305,6 +320,56 @@ eligibility before ranking. Dependence indicators, never an independence score.
   states derived with the honesty precedence; the response names the
   state; `busy` is the named `.4` trigger); five pure tests + the
   live offline/available legs; frontier → `.2.2`.
+- `2026-09-07`: `.2.2` done — the offline-known distinction + the
+  operator's enumeration (`GET /v1/admin/nodes/presence`: the
+  offline-KNOWN rows with their expiries; the unknown id stays the
+  typed 404; the stale handling pinned as the third leg); the
+  node_channel suite grew to 23; frontier → `.2.3`.
+
+## Acceptance Checklist (PHASE-3.2.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+api.rs` (the `GET /v1/admin/nodes/presence` enumeration — the
+tenant_admin-gated offline-known rows with the derived state + the
+lease clock) and `crates/reasonbraid-server/tests/node_channel.rs`
+(the measured three-way distinction test) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.2` census: the one-node presence
+  endpoint carries the raw clock but the operator has NO tenant-wide
+  enumeration — the offline-KNOWN rows ("this node is known, just
+  quiet") cannot be listed, and the unknown-vs-offline distinction
+  is asserted nowhere as one measured surface.
+- [x] **ROOT CAUSE (WHY + WHERE)** — presence was one-node-only and
+  clock-raw — `git grep -c "admin/nodes/presence" 8db3bd3 --
+  crates/` → rc=1 (no enumeration existed before this leaf). The
+  fix point is the operator's tenant-scoped enumeration over the
+  same `node_presence` view + the `.2.1` derivation, with the
+  distinction pinned by one measured test (the never-leased node,
+  the expired-lease node, the typed unknown).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test node_channel
+  the_offline_known` → `test result: ok. 1 passed` — the
+  never-leased node reads `offline` with null clocks; the
+  expired-lease node reads `offline` WITH its past expiry visible
+  (the timestamp comparison asserts the past); the unknown id is
+  the typed `unknown_node` 404; the enumeration lists both
+  offline-KNOWN rows with their states + expiries; the non-admin is
+  403.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg322_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/api.rs` (the enumeration handler + the route),
+  `tests/node_channel.rs` (the three-way distinction test — the
+  suite grew to 23).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.2.1)
 
@@ -463,6 +528,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.2.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_offline_known` → `test result: ok. 1 passed` (the three-way distinction + the enumeration); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg322_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the offline-known distinction + the operator's enumeration; frontier → `.2.3` |
 | `2026-09-07` | `PHASE-3.2.1` | `cargo test -p reasonbraid-server --lib presence` → `test result: ok. 5 passed` (the derivation precedence); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg321_guard.log`, the node_channel presence legs assert `offline`/`available`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the presence state machine (the six states derived; presence reads, never writes); frontier → `.2.2` |
 | `2026-09-07` | `PHASE-3.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the presence-lane census + the contract-seam decomposition (`.2.1` state machine → `.2.2` offline-known → `.2.3` filtered views); frontier → `.2.1` |
 | `2026-09-07` | `PHASE-3.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 5 passed` (the four-reader measurement + the full-only history); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg313_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the per-reader visibility enforcement (the absent-not-nulled filter + the classification + the self-describing response); **`.1` COMPLETE** — frontier → `.2` |
@@ -473,6 +539,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.2.2` | `REASONBRAID-PHASE3-0007` | the offline-known distinction + the operator's presence enumeration (the measured three-way distinction) |
 | `PHASE-3.2.1` | `REASONBRAID-PHASE3-0006` | the presence state machine (the six-state derivation + the response's `state` field) |
 | `PHASE-3.2` | `REASONBRAID-PHASE3-0005` | the presence lane decomposed at the census seams (the shipped lease/presence forms vs the three gaps) |
 | `PHASE-3.1.3` | `REASONBRAID-PHASE3-0004` | the per-reader visibility enforcement (the four-reader measurement, the absent-not-nulled filter, the full-only history) — **`.1` COMPLETE** |

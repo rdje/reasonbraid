@@ -346,6 +346,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/admin/usage", get(admin_usage))
         .route("/v1/admin/metrics", get(admin_metrics))
+        .route("/v1/admin/nodes/presence", get(list_node_presence))
         .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
         .route(
             "/v1/profiles/{role_id}/versions",
@@ -1158,6 +1159,58 @@ async fn revoke_node(
         revoked_certificates: result.rows_affected() as i64,
         revoked_at: revoked_at.to_rfc3339(),
     }))
+}
+
+// ── The operator's offline-known enumeration (PHASE-3.2.2; backlog 27) ─────────
+
+/// `GET /v1/admin/nodes/presence?tenant_id=…` — the tenant's enrolled nodes
+/// with their DERIVED presence state + the lease clock: the operator's
+/// "this node is known, just quiet" rows. tenant_admin-gated (audited).
+async fn list_node_presence(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type Row = (
+        String,
+        bool,
+        bool,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<i64>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
+                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) \
+         FROM node_presence np WHERE np.tenant_id = $1 ORDER BY np.node_id",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let nodes: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(node_id, online, suspended, last_seen_at, lease_expires_at, concurrency)| {
+                json!({
+                    "node_id": node_id,
+                    "state": crate::presence::presence_state(true, suspended, online, concurrency)
+                        .as_str(),
+                    "online": online,
+                    "suspended": suspended,
+                    "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
+                    "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
+                })
+            },
+        )
+        .collect();
+    Ok(Json(json!({
+        "tenant_id": q.tenant_id.to_string(),
+        "nodes": nodes,
+    })))
 }
 
 // ── Directory profiles (PHASE-3.1.2; backlog 26) ──────────────────────────────

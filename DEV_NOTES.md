@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.2.2: "known, just quiet" is an enumeration row — the unknown id stays a typed 404
+
+- **The offline-known distinction is a data shape, not a sentence.** The operator's enumeration lists every enrolled node with its derived state + the lease clock: a never-leased node is `offline` with null clocks, an expired-lease node is `offline` WITH its past expiry visible (the "quiet since" fact), and an unenrolled id is the typed `unknown_node` 404 — never fabricated into an offline row. The stale handling (the expired lease's heartbeat refuses; the handshake re-leases) was already measured by the fencing test — this leaf pins it as the third leg instead of re-building it.
+- promotion: declined (the distinction is the leaf's own measured surface; the `.5` lane owns the offline-delivery expiry deferral). **Frontier `PHASE-3.2.3` (the privacy-filtered directory views).**
+
 ## _(2026-09-07)_ — PHASE-3.2.1: the honesty precedence IS the state machine — suspension outranks the lease, an unknown id is never fabricated
 
 - **The six §10.2 states collapse to one deterministic precedence**: unknown (never fabricated), suspended (whatever the lease says — the 0017 rule), offline (the known-but-quiet node), draining (the profile's declared zero concurrency), available (the default), and busy (the named `.4` trigger — no input feeds it yet). Presence reads only — it never changes enrollment — and the derivation is pure, so every state is a unit test away from a regression.

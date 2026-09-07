@@ -11,6 +11,7 @@ pub enum PresenceState {
     Available,
     /// The concurrency accounting says the node is at capacity — the `.4`
     /// capacity-reservations lane owns the input; nothing feeds this arm yet.
+    #[allow(dead_code)] // the `.4` lane's named trigger; no input exists today
     Busy,
     /// The profile declared no capacity (`concurrency = 0`): the role
     /// accepts no new work while enrolled and reachable.

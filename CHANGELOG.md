@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The offline-known distinction, measured: known-and-quiet, never fabricated (`PHASE-3.2.2`)
+
+- `GET /v1/admin/nodes/presence?tenant_id=…` (tenant_admin-gated): the operator's enumeration of every enrolled node with its derived presence state + the lease clock — the offline-KNOWN rows ("this node is known, just quiet").
+- The distinction is now one measured surface (node_channel 23): the never-leased node reads `offline` with null clocks; the expired-lease node reads `offline` WITH its past expiry visible; an unknown id stays the typed `unknown_node` 404 — never a fabricated offline; the non-admin is refused 403.
+- The stale handling is pinned as the distinction's third leg (the existing fencing test: an expired lease's heartbeat is refused, only a fresh handshake re-leases); the offline-delivery expiry + max age stay the `.5` lane's named deferral. Frontier → `.2.3` (the privacy-filtered directory views).
+
 ## 2026-09-07 — The presence state machine: six states, one honesty precedence (`PHASE-3.2.1`)
 
 - `crates/reasonbraid-server/src/presence.rs`: the §10.2 six states as the deterministic `presence_state(enrolled, suspended, lease_live, concurrency)` — an unknown id is never fabricated into an offline node, suspension outranks the lease (the 0017 rule), an expired lease reads `offline` (the known-but-quiet node), a profile-declared zero concurrency reads `draining`, and `busy` is the named `.4` capacity-accounting trigger (no input feeds it yet).

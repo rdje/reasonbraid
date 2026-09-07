@@ -1633,6 +1633,124 @@ async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> S
     body["principal_id"].as_str().unwrap().to_string()
 }
 
+/// THE `.3.2.2` distinction, measured: the never-leased enrolled node reads
+/// `offline` with null clocks (a known node, never active); the expired-lease
+/// node reads `offline` WITH its past expiry visible (known, just quiet); an
+/// unknown id is the typed 404 (never a fabricated offline); and the operator's
+/// enumeration lists the offline-KNOWN rows with their states + expiries.
+#[tokio::test]
+async fn the_offline_known_distinction_and_the_operator_enumeration() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+
+    let (tenant, admin_id) = bootstrap_admin(&client, &base).await;
+    let never_leased = "nod_00000000-0000-7000-8000-0000000000a1".to_string();
+    let expired = "nod_00000000-0000-7000-8000-0000000000a2".to_string();
+    seed_node_in_tenant(&pool, &tenant, &never_leased).await;
+    seed_node_in_tenant(&pool, &tenant, &expired).await;
+    // The expired-lease node: a lease whose clock ran out (the stale handling
+    // already refuses its heartbeat — the fencing test; here the PRESENCE leg).
+    let past = chrono::Utc::now() - chrono::Duration::minutes(5);
+    sqlx::query(
+        "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at) \
+         VALUES ($1, 'fnc_expired', $2, $3)",
+    )
+    .bind(&expired)
+    .bind(past)
+    .bind(past)
+    .execute(&pool)
+    .await
+    .expect("seed the expired lease");
+
+    // The one-node surface: never-leased → offline, null clocks.
+    let presence = client
+        .get(format!("{base}/v1/nodes/presence?node_id={never_leased}"))
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(presence.status().as_u16(), 200);
+    let p: Value = presence.json().await.unwrap();
+    assert_eq!(p["state"], json!("offline"), "{p}");
+    assert!(p["last_seen_at"].is_null() && p["lease_expires_at"].is_null());
+
+    // Expired-lease → offline WITH the past expiry visible.
+    let presence = client
+        .get(format!("{base}/v1/nodes/presence?node_id={expired}"))
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(presence.status().as_u16(), 200);
+    let p: Value = presence.json().await.unwrap();
+    assert_eq!(p["state"], json!("offline"), "{p}");
+    assert!(
+        p["lease_expires_at"].as_str().is_some(),
+        "the expired node's expiry is visible: {p}"
+    );
+    assert!(
+        p["lease_expires_at"].as_str().unwrap() < chrono::Utc::now().to_rfc3339().as_str(),
+        "the visible expiry is in the past: {p}"
+    );
+
+    // An unknown id is the typed 404, never a fabricated offline.
+    let unknown = client
+        .get(format!(
+            "{base}/v1/nodes/presence?node_id=nod_00000000-0000-7000-8000-0000000000ff"
+        ))
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(unknown.status().as_u16(), 404);
+    let u: Value = unknown.json().await.unwrap();
+    assert_eq!(
+        u["code"],
+        json!("unknown_node"),
+        "the typed unknown, never a fabricated offline: {u}"
+    );
+
+    // The operator's enumeration: BOTH offline-known rows with their states
+    // and expiries (the admin's tenant scope).
+    let listed = client
+        .get(format!("{base}/v1/admin/nodes/presence?tenant_id={tenant}"))
+        .header(PRINCIPAL_HEADER, &admin_id)
+        .send()
+        .await
+        .expect("enumeration request");
+    assert_eq!(listed.status().as_u16(), 200);
+    let l: Value = listed.json().await.unwrap();
+    let nodes = l["nodes"].as_array().expect("the node list");
+    assert_eq!(nodes.len(), 2, "both offline-known rows: {l}");
+    for node in nodes {
+        assert_eq!(node["state"], json!("offline"), "{node}");
+        let expiry = &node["lease_expires_at"];
+        if node["node_id"] == json!(expired) {
+            assert!(
+                expiry.as_str().is_some(),
+                "the expiry rides the row: {node}"
+            );
+        } else {
+            assert!(
+                expiry.is_null(),
+                "the never-leased row has no expiry: {node}"
+            );
+        }
+    }
+
+    // A non-admin role reads nothing of the enumeration.
+    let role = bootstrap_role(&client, &base, &tenant).await;
+    let refused = client
+        .get(format!("{base}/v1/admin/nodes/presence?tenant_id={tenant}"))
+        .header(PRINCIPAL_HEADER, &role)
+        .send()
+        .await
+        .expect("enumeration request");
+    assert_eq!(refused.status().as_u16(), 403, "the non-admin is refused");
+
+    server.crash();
+}
+
 /// THE `.1.3.1` acceptance: revoking a node refuses its NEXT handshake (the
 /// `.1.2.2` ladder sees `revoked_at`) and presence reads `suspended` — while
 /// the live lease (if any) is untouched: suspension gates re-entry, it does

@@ -926,7 +926,7 @@ slice can reuse the same control plane without rewriting it.
     the demo's kill points ARE the game day, named).
 
   - ID: `PHASE-2.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-023 — telemetry storage/redaction, accepted with the dev
       profile's answer: the four records stay separate BY DESIGN (the
       operational eprintln/structured logs, the durable audit tables, and
@@ -937,6 +937,12 @@ slice can reuse the same control plane without rewriting it.
       never decide whether a governance action remains provable — the
       audit record is the proof). No code.
     ADR: 023
+    Done (`2026-09-07`): ADR-023 accepted — the four records remain
+      separate systems (the shipped eprintln-vs-audit-tables design), the
+      §18.2 redaction rules pin the FUTURE sink, and the OpenTelemetry
+      dependency waits for the trigger (a non-loopback deployment or the
+      G7 ops gate). No code changed; the ADR INDEX gained the row (023
+      closes). Frontier → `.5.2`.
     Acceptance: ADR-023 accepted (the four-record separation is the
       shipped design; the sink trigger named); no code changes.
 
@@ -984,7 +990,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.5.1` | `proposed` | `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
+| 1 | `PHASE-2.5.2` | `proposed` | `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
+ `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
  `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
  `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
@@ -998,6 +1005,10 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.5.1` done — ADR-023 accepted: the four records are
+  separate systems (the shipped design), the §18.2 redaction rules pin the
+  future sink, the OpenTelemetry dependency waits for the trigger; no code
+  changed; frontier → `.5.2`.
 - `2026-09-07`: `.5` decomposed at the contract seams — the census found
   UNSTRUCTURED observability (16 `eprintln!` sites, no metrics/traces/SLO/
   runbook) while the four-record doctrine is structurally true; children
@@ -2046,7 +2057,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
-| `2026-09-07` | `PHASE-2.4.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
+| `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+ docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
  `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
  `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `command_api` grew to 17 with the measured reconciliation leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg233_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture); **`.3` COMPLETE** — frontier → `.4` |
@@ -2076,6 +2088,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.5.1` | `REASONBRAID-PHASE2-0032` | ADR-023 accepted (the four-record separation + the §18.2 redaction rules pinning the future sink; the OpenTelemetry trigger named — no code) |
 | `PHASE-2.5` | `REASONBRAID-PHASE2-0031` | the contract-seam split (eprintln-only observability; the four-record doctrine structurally true, nothing measures) |
 | `PHASE-2.4.3` | `REASONBRAID-PHASE2-0030` | the inventory-groundwork deferral record (the absent §17.5/§17.6 controls named with their triggers — no placeholder infrastructure) — **`.4` COMPLETE** |
 | `PHASE-2.4.2` | `REASONBRAID-PHASE2-0029` | the migration upgrade test (the N-1 → N path: the real API seeds, the remaining migrations apply over the existing data, the rows + behavior survive — measured) |

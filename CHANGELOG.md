@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-023: the four records are separate systems, the sink is a named trigger (`PHASE-2.5.1`)
+
+- ADR-023 accepted (evidence-gated): the four-record separation is the SHIPPED design (the operational `eprintln!` stream and the durable audit/event tables are separate systems by construction — no log line can become an audit record, no audit row is a log). The §18.2 redaction rules pin the FUTURE sink (never prompt text, credentials, secret-bearing URLs, private evidence, or model output in span attributes; sensitive IDs tokenized at the sink boundary).
+- The OpenTelemetry dependency waits for the trigger (a non-loopback deployment or the G7 ops gate) — no placeholder telemetry stack in the dev profile. No code changed. Frontier → `.5.2` (the structured-log + metrics slice).
+
 ## 2026-09-07 — `.5` split at the contract seams (`PHASE-2.5`)
 
 - The census found UNSTRUCTURED observability: 16 `eprintln!` sites (api 8, node_channel 2, worker 6), no metrics, no traces, no SLO record, no runbook — while the four-record doctrine (§18.1) is structurally TRUE (the operational logs and the durable audit/event tables are separate systems by construction). ADR-023 is unopened.

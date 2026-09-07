@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.5.1: the redaction rules pin a sink that does not exist yet — the ADR is the contract for the future
+
+- **The four-record separation needed no work; the FUTURE sink needed a contract.** The ADR pins the §18.2 rules NOW so the OpenTelemetry stack, when the trigger fires, lands under them — the tokenization boundary and the never-in-spans list are decided before the first export, not discovered at the first incident.
+- promotion: declined (the ADR-023 record itself holds the answer). **Frontier `PHASE-2.5.2` (the structured-log + metrics slice).**
+
 ## _(2026-09-07)_ — PHASE-2.5: the four-record doctrine is already structurally true — the logs are eprintln, the audit is tables, and nothing measures either
 
 - **§18.1 is satisfied by construction**: the operational `eprintln!` stream and the durable event/audit tables are separate systems — no log line can become an audit record, no audit row is a log. What's missing is the MEASUREMENT (no metrics, no SLO, no runbook), not the separation.

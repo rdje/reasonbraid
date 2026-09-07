@@ -1321,6 +1321,7 @@ async fn resolve_resource(
     let mut outcome = crate::resolvers::resolve(
         &state.pool,
         &reference.scheme,
+        reference.media_type_hint.as_deref(),
         &req.required_sandbox,
         &req.required_egress,
     )
@@ -1345,6 +1346,81 @@ async fn resolve_resource(
                         kind: error.kind().to_owned(),
                         message: error.to_string(),
                     });
+                }
+            }
+        }
+        Some(crate::resolvers::R2_RESOLVER_ID) => {
+            // The R2 pipeline: the R0 fetcher acquires the bytes (under the
+            // `.2.1` policy — the refusal names the class), then the worker
+            // derives the chunks (the killing budget is the quarantine's
+            // enforcement). The reference stays submitted either way.
+            let hint = reference.media_type_hint.clone().unwrap_or_default();
+            match state.fetcher.fetch(&reference.original_locator).await {
+                Err(error) => {
+                    outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                        kind: error.kind().to_owned(),
+                        message: error.to_string(),
+                    });
+                }
+                Ok(document) => {
+                    let input_path = std::env::temp_dir().join(format!(
+                        "r2-input-{}-{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.subsec_nanos())
+                            .unwrap_or(0)
+                    ));
+                    let written = std::fs::write(&input_path, &document.bytes);
+                    let extraction = match written {
+                        Err(error) => Err(crate::extraction::ExtractionError::RequestFailed(
+                            error.to_string(),
+                        )),
+                        Ok(()) => crate::extraction::run_extraction(
+                            &input_path,
+                            &hint,
+                            crate::extraction::WorkerLimits::default(),
+                            std::time::Duration::from_secs(60),
+                        ),
+                    };
+                    std::fs::remove_file(&input_path).ok();
+                    match extraction {
+                        Ok(response) => {
+                            outcome.acquisition = Some(crate::resolvers::Acquisition::Extract(
+                                crate::extraction::ExtractionReceipt {
+                                    parent_digest: response.parent_digest,
+                                    chunks: response.chunks,
+                                    excluded: response.excluded,
+                                    extractor_version: response.extractor_version,
+                                    requested_url: reference.original_locator.clone(),
+                                    acquired_at: chrono::Utc::now(),
+                                },
+                            ));
+                        }
+                        Err(error) => {
+                            let kind = match &error {
+                                crate::extraction::ExtractionError::WorkerMissing(_) => {
+                                    "worker_missing"
+                                }
+                                crate::extraction::ExtractionError::SpawnFailed(_) => {
+                                    "worker_spawn_failed"
+                                }
+                                crate::extraction::ExtractionError::RequestFailed(_) => {
+                                    "extraction_failed"
+                                }
+                                crate::extraction::ExtractionError::TimedOut => {
+                                    "extraction_timed_out"
+                                }
+                                crate::extraction::ExtractionError::WorkerRefused {
+                                    kind, ..
+                                } => kind,
+                            };
+                            outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                                kind: kind.to_owned(),
+                                message: error.to_string(),
+                            });
+                        }
+                    }
                 }
             }
         }

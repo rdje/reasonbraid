@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+> Entries older than `2026-09-06` are rotated into the git history (the
+> README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
+> carries the full record.
+
+# CHANGELOG.md
+
+## 2026-09-07 — Pack R2 is complete: the pipeline, the receipt, and the media-type routing (`PHASE-4.4.3`)
+
+- `migrations/0027`: the R2 install record (`r2-extract-worker` — the extraction media types, egress `listed` + sandbox `process` — the first ladder-up, the kill-on-budget-trip evidence).
+- `src/extraction.rs`: the `ExtractionReceipt` (the Derivation edge — the parent digest, the derived chunk digests, the extractor version, the excluded list) and the spawner (ONE request line, ONE response line, the time budget KILLS the worker).
+- `resolvers.rs` + `api.rs`: the resolve's media-type filter (hinted references rank the extraction pack; hintless ones keep the acquisition-only path) and the handler's pipeline (the R0 acquisition under the `.2.1` policy, then the killing-budget worker).
+- Measured: profiles 17 — the hinted reference pipelines, the loopback refusal names the class through the resolution path. **`.4` COMPLETE (pack R2)** — frontier → `.5` (the opt-in private/authenticated connectors — the highest-risk lane).
+
 ## 2026-09-07 — The extraction worker ships: the stdio quarantine parses the four formats (`PHASE-4.4.2`)
 
 - `crates/reasonbraid-extract` (the new workspace crate): ONE JSON request in, ONE response out, exit — the fresh process IS the quarantine. The per-format parsers (the PDF text layer, the one-level zip/tar archives, the Atom/RSS feeds) derive the chunks (each with its own ADR-011 digest + the parent digest), and the refusal list is mechanical and named (encrypted/JS PDFs, nested archives, traversal, the ratio brake over the compressed envelope, the ceilings).
@@ -511,26 +524,3 @@
 - `scripts/dev.sh` + the `make dev` target: one command boots an ephemeral on-volume PostgreSQL (§13 shape — `target/dev-ephemeral.*`, gitignored, removed on exit), starts `rb-server` in the foreground (migrations run on startup), and prints the console URL + the CLI hint. Ctrl-C stops everything with a residue census. An interactive dev loop — not the test harness.
 - `bash scripts/dev.sh --check` is the permanent self-verification beat: the console serves at `/`, a real `rb` enroll + `inspect threads --as devcheck` round-trips through the control API, and the residue census reports 0. Its first three runs caught three authoring slips (the inspect verb shape, the dev-profile `--as` requirement, census-before-teardown ordering) — all fixed, beat green (`dev-check: OK`, rc=0).
 - The book's introduction gains the Run-it section; the README quick start gains the `make dev` line (48 lines / 1,851 bytes — within the README caps). Full live guard green: all twelve server suites + CLI e2e + the two-host demo rc=0; `make gate` 13/13; `make book` builds. Frontier → `.1.7.2`.
-
-## 2026-09-06 — `.1.7` decomposed at the census seams: dev loop + packaged LAN (`PHASE-1.7`)
-
-- Gap census first: **no one-command dev environment** (`make dev`/dev script — none; the ephemeral-PG machinery is test-only inside `run_pg_tests.sh`), **no packaging** (no `deploy/` dir, no release build target, no install path — the demo builds DEBUG only), and **LAN surfaces partial + unexercised** — `rb-server --host/--port` binds any address, the node's `--server` points cross-host, migrations + UI embed at compile time (one self-contained binary), and the demo already carries a real ssh two-host mode — but nothing runs release binaries and no server-side runbook exists.
-- Decomposition: `.1.7.1` the one-command dev loop (`scripts/dev.sh` + `make dev`: ephemeral on-volume PG, foreground server, residue census) → `.1.7.2` the release packaging + LAN story (`make release`, `deploy/` runbook, the book's `deployment` chapter, the release-built demo proof). Tree-only commit; `make gate` 13/13.
-
-## 2026-09-06 — The demo proves the console without a browser; `.1.6` is complete (`PHASE-1.6.3`)
-
-- The two-host demo gains **section 10**: the console's evidence beat. The same binary that serves the API serves the embedded page at `/`; curl is the browser stand-in, so the beat asserts the shell marker, that `app.js` references ONLY the seven documented read surfaces, names no write verb, and that the page's live same-origin fetch (dev-profile header + tenant) returns the demo's thread and its budget ledger. 6 new checks, all PASS on the first run (the run also caught a cosmetic script slip — backticks in a check label execute as command substitution — fixed, re-verified).
-- The evidence bundle now carries `console-index.html`, `console-app.js`, `console-thread-a.json`, `console-budget-a.json` + a summary row; the book's two-host-demo chapter gains scenario step 11. Demo 24 PASS, `rc=0`; the full guard set green; `make gate` 13/13.
-- **`.1.6` is COMPLETE** — backlog 18 done (`.1.6.1` budget read surface, `.1.6.2` embedded static shell, `.1.6.3` demo/evidence leg). Frontier → `.1.7` (local/LAN deployment packaging).
-
-> The earlier Phase-1 histories rotated into git history on 2026-09-07 at the
-> README-STABILITY 96,000-byte threshold (`git log -- CHANGELOG.md` is the
-> query path).
-
-Changelog-style summary of completed work + its validation (internal continuity surface;
-the immutable audit trail proper is `git log` — memory layer D). Newest first.
-
-> The Phase-0 RB-SEED and WP/G0 histories rotated into git history on
-> 2026-09-07 at the
-> README-STABILITY 96,000-byte threshold (`git log -- CHANGELOG.md` is the
-> query path).

@@ -2520,3 +2520,126 @@ async fn the_r1_resolver_resolves_git_and_the_execution_names_the_refused_class(
         "the stricter requirement filters the R1 built-in out: {strict}"
     );
 }
+
+/// The built-in R2 pack (PHASE-4.4.3): a reference CARRYING an extraction
+/// media-type hint ranks the R2 worker under its own classes, and the
+/// pipeline's acquisition leg refuses the loopback literal with the class
+/// NAMED (the SSRF proof through the R2 pipeline). The hintless reference
+/// stays the acquisition-only path (the R0 built-in ranks).
+#[tokio::test]
+async fn the_r2_resolver_ranks_the_hinted_reference_and_the_pipeline_names_the_refusal() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "r2-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submit = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("submit request");
+            let parsed: Value = response.json().await.expect("submit json");
+            parsed["resource_id"].as_str().unwrap().to_string()
+        }
+    };
+
+    // The HINTED reference (the extraction media type) ranks the R2 worker
+    // under its own classes; the pipeline's acquisition leg refuses the
+    // loopback with the class named.
+    let hinted = submit(json!({
+        "original_locator": "https://127.0.0.1/feed.xml",
+        "scheme": "https",
+        "media_type_hint": "application/atom+xml",
+    }))
+    .await;
+    let response = client
+        .post(format!("{base}/v1/resources/{hinted}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "process", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    assert_eq!(response.status().as_u16(), 200, "the resolution");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r2-extract-worker"]),
+        "the R2 built-in ranks the hinted reference: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the pipeline's acquisition leg names its refusal: {resolved}"
+    );
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "the class is named: {resolved}"
+    );
+
+    // The reference is PRESERVED through the refusal.
+    let (status, still_there) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{hinted}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the reference stays submitted: {still_there}");
+
+    // The HINTLESS reference stays the acquisition-only path: the R0
+    // built-in ranks (its latency midpoint is the lowest).
+    let hintless = submit(json!({
+        "original_locator": "https://127.0.0.1/page",
+        "scheme": "https",
+    }))
+    .await;
+    let response = client
+        .post(format!("{base}/v1/resources/{hintless}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r0-https-fetcher"]),
+        "the hintless reference keeps the acquisition-only path: {resolved}"
+    );
+
+    // The stricter requirement (above the R2 worker's `process` claim) is
+    // the explicit unresolvable-now.
+    let response = client
+        .post(format!("{base}/v1/resources/{hinted}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "constrained_process", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("strict resolve request");
+    let strict: Value = response.json().await.unwrap();
+    assert_eq!(
+        strict["unresolvable_now"],
+        json!(true),
+        "the stricter requirement filters the R2 built-in out: {strict}"
+    );
+}

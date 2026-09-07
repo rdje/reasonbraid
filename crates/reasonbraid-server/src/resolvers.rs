@@ -120,6 +120,8 @@ pub async fn register(pool: &PgPool, advertise: &ResolverAdvertise) -> Result<()
 pub const R0_RESOLVER_ID: &str = "r0-https-fetcher";
 /// The built-in R1 pack's registry id (the migration 0026 install record).
 pub const R1_RESOLVER_ID: &str = "r1-git-fetcher";
+/// The built-in R2 pack's registry id (the migration 0027 install record).
+pub const R2_RESOLVER_ID: &str = "r2-extract-worker";
 
 /// The acquisition result of a built-in pack (the `.2.3`/`.3.3` receipts).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -127,6 +129,7 @@ pub const R1_RESOLVER_ID: &str = "r1-git-fetcher";
 pub enum Acquisition {
     Web(crate::fetcher::AcquisitionReceipt),
     Git(crate::git::GitReceipt),
+    Extract(crate::extraction::ExtractionReceipt),
 }
 
 /// The built-in R0's NAMED acquisition refusal (the `.2.2` fetcher's typed
@@ -157,18 +160,38 @@ pub struct ResolutionOutcome {
 pub async fn resolve(
     pool: &PgPool,
     scheme: &str,
+    media_type: Option<&str>,
     required_sandbox: &str,
     required_egress: &str,
 ) -> Result<ResolutionOutcome, sqlx::Error> {
     let sandbox_rank = SANDBOX_LEVELS.iter().position(|s| *s == required_sandbox);
     let egress_rank = EGRESS_CLASSES.iter().position(|e| *e == required_egress);
-    let rows: Vec<(String, String, String, Value)> = sqlx::query_as(
-        "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms \
-         FROM resolver_capabilities WHERE schemes @> $1::jsonb",
-    )
-    .bind(serde_json::json!([scheme]))
-    .fetch_all(pool)
-    .await?;
+    // The media-type routing (the `.4.1` contract): a reference CARRYING a
+    // media-type hint ranks only the resolvers whose advertised types
+    // include it (the extraction pack); a hintless reference keeps the
+    // acquisition-only path.
+    let rows: Vec<(String, String, String, Value)> = match media_type {
+        Some(hint) => {
+            sqlx::query_as(
+                "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms \
+             FROM resolver_capabilities \
+             WHERE schemes @> $1::jsonb AND media_types @> $2::jsonb",
+            )
+            .bind(serde_json::json!([scheme]))
+            .bind(serde_json::json!([hint]))
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_as(
+                "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms \
+             FROM resolver_capabilities WHERE schemes @> $1::jsonb AND NOT abilities @> '[\"extract\"]'::jsonb",
+            )
+            .bind(serde_json::json!([scheme]))
+            .fetch_all(pool)
+            .await?
+        }
+    };
 
     // The filters: the resolver's declared classes must MEET the required
     // ones (the ADR-018 ladder order — the claim is the maximum, so a

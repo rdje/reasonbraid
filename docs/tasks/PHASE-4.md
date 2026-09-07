@@ -619,7 +619,7 @@ of a URI is not a promise the core can resolve it.
       Frontier → `.4.3`.
 
   - ID: `PHASE-4.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the receipt + the pack wiring — the R2 receipt (the
       Derivation edge: the derived chunk digests + the parent
       digest + the extractor version), the R2 registry entry (the
@@ -630,6 +630,37 @@ of a URI is not a promise the core can resolve it.
       executes the pipeline — the acquisition then the extraction
       — when it ranks first, mirroring the `.2.3`/`.3.3` wiring).
     Backlog: 34 (the receipt half)
+    Done (`2026-09-07`): the R2 pack is WIRED — migration 0027
+      seeds the install record (resolver `r2-extract-worker`: the
+      https scheme, the extraction media types, the `extract`
+      ability, egress `listed` + sandbox `process` — the FIRST
+      ladder-up, with the worker-quarantine evidence, the
+      kill-on-budget-trip marker); `src/extraction.rs` (NEW): the
+      `ExtractionReceipt` (the Derivation edge — the parent
+      digest, the derived chunks each with their own ADR-011
+      digest, the extractor version, the excluded list) + the
+      spawner (`run_extraction`: the temp file + ONE request
+      line, the ONE response line, the time budget KILLS the
+      worker on the trip — the quarantine's enforcement; the
+      worker path = the `R2_WORKER_BIN` override or the
+      server-binary-adjacent default) + the spawner test (the
+      real binary, the skip-if-absent pattern); `resolvers.rs`:
+      `R2_RESOLVER_ID` + the resolve's MEDIA-TYPE filter (a
+      hinted reference ranks only the resolvers whose advertised
+      types include the hint; a hintless one keeps the
+      acquisition-only path) + the `Extract` acquisition variant;
+      the resolve handler EXECUTES the pipeline when the R2 pack
+      ranks first — the R0 fetcher acquires the bytes under the
+      `.2.1` policy (the refusal names the class), then the
+      worker derives the chunks (the receipt on success, the
+      NAMED refusal on failure, the reference preserved either
+      way). Measured (profiles 17): the hinted reference ranks
+      `r2-extract-worker` under its own classes; the pipeline's
+      acquisition leg refuses the loopback with the class named
+      THROUGH the resolution path (the SSRF proof end-to-end);
+      the hintless reference keeps the R0 acquisition-only path;
+      the stricter requirement is the explicit unresolvable-now.
+      **`.4` COMPLETE (pack R2)** — frontier → `.5`.
 
 - ID: `PHASE-4.5`
   Status: `proposed`
@@ -652,7 +683,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.4.3` | `proposed` | `.4.2` done — the extraction worker (`crates/reasonbraid-extract`: the stdio protocol, the four parsers, the named refusals, the Derivation chunks — nine tests including the stdio roundtrips); the receipt + the pack wiring execute now |
+| 1 | `PHASE-4.5` | `proposed` | `.4.3` done — **the `.4` lane (pack R2) is COMPLETE**: the contract + the worker + the receipt + the wiring (the hinted references pipeline acquire→extract, the refusal names the class through the resolution path); pack R5/R3 — the opt-in private connectors + the sandboxed browser acquisition (the highest-risk lane) — executes next |
 
 ## Changelog
 
@@ -685,6 +716,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.4.3` done — the R2 receipt + the pack wiring
+  (migration 0027's install record: the extraction media types +
+  the sandbox `process` claim — the first ladder-up; the
+  `ExtractionReceipt` Derivation edge; the resolve's media-type
+  filter; the handler's pipeline — the acquisition under the
+  `.2.1` policy, then the killing-budget worker); profiles 17;
+  **`.4` COMPLETE (pack R2)** — frontier → `.5`.
 - `2026-09-07`: `.4.2` done — the extraction worker
   (`crates/reasonbraid-extract`: the stdio JSON protocol, the
   per-format parsers, the named refusals — the encrypted/JS
@@ -791,6 +829,50 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.4.3)
+
+The CODE change owned by this leaf:
+`migrations/0027_r2_extract_worker_entry.sql` (NEW — the R2
+install record), `crates/reasonbraid-server/src/extraction.rs`
+(NEW — the receipt + the spawner + the test),
+`src/resolvers.rs` (the R2 id + the media-type filter + the
+`Extract` variant), `src/api.rs` (the pipeline branch),
+`src/lib.rs` (the module), and `tests/profiles.rs` (profiles 17).
+
+- [x] **REPRODUCE / ISSUE** — the `.4.2` close: the worker exists
+  but the receipt, the install record, and the pipeline do not.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the pack was built in halves
+  — `git grep -c "ExtractionReceipt\|r2-extract-worker"
+  ede2e2a -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the Derivation receipt + the seeded
+  install record + the pipeline in the resolve path (the
+  `.2.3`/`.3.3` pattern).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib extraction` → `test
+  result: ok. 1 passed` (the spawner roundtrip against the REAL
+  worker binary — the Derivation response + the surfaced
+  `{error}` refusal); the live `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles the_r2_resolver` → `test
+  result: ok. 1 passed` — the hinted reference ranks
+  `r2-extract-worker` under its own classes (`process`/`listed`);
+  the pipeline's acquisition leg refuses the loopback with the
+  class NAMED through the resolution path; the hintless reference
+  keeps the R0 acquisition-only path; the stricter requirement is
+  the explicit unresolvable-now.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 53 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg443_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0027_r2_extract_worker_entry.sql`,
+  `src/extraction.rs`, `src/resolvers.rs`, `src/api.rs`,
+  `src/lib.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.4.2)
 
@@ -1204,6 +1286,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.4.3` | `cargo test -p reasonbraid-server --lib extraction` → `test result: ok. 1 passed` (the spawner roundtrip against the REAL worker binary: the Derivation response + the surfaced refusal); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r2_resolver` → `test result: ok. 1 passed` (the hinted reference ranks the R2 built-in; the pipeline's acquisition leg names the loopback class; the hintless reference keeps the R0 path; the stricter requirement explicit); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg443_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R2 pack wired; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-4.4.2` | `cargo test -p reasonbraid-extract` → `test result: ok. 9 passed` (the per-format extractions + refusals + the two stdio roundtrips spawning the built binary); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg442_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the extraction worker; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-4.4.1` | docs-only (no code paths changed): the parser census measured (`cargo add --dry-run lopdf/pdf/zip/tar/atom_syndication` → the versions above, all pure Rust); `make gate` → 13/13 at commit | the R2 contract + the parser census; frontier → `.4.2` |
 | `2026-09-07` | `PHASE-4.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R2 census + the contract-seam decomposition (`.4.1` the contract + the parser census → `.4.2` the workers → `.4.3` the receipt + the wiring); frontier → `.4.1` |
@@ -1225,6 +1308,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.4.3` | `REASONBRAID-PHASE4-0017` | the R2 receipt + the pack wiring (the hinted references pipeline acquire→extract — the Derivation receipt) — **`.4` COMPLETE** |
 | `PHASE-4.4.2` | `REASONBRAID-PHASE4-0016` | the extraction worker (the stdio protocol + the four parsers + the named refusals — the fresh-process quarantine) |
 | `PHASE-4.4.1` | `REASONBRAID-PHASE4-0015` | the R2 contract + the parser census (the Derivation-only extraction + the worker quarantine — the decision record) |
 | `PHASE-4.4` | `REASONBRAID-PHASE4-0014` | the R2 lane decomposed at the census seams (nothing extracts — the contract/parser-census/worker/receipt are the greenfield) |

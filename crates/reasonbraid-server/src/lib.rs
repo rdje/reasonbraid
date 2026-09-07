@@ -31,6 +31,7 @@ mod authority;
 mod budget;
 pub mod ca;
 mod dependence;
+pub mod extraction;
 pub mod fetcher;
 pub mod git;
 mod matching;

@@ -19,16 +19,14 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.4.3` (packs R0 + R1
-  COMPLETE; `.4.1` done: the R2 contract (decision record);
-  `.4.2` done: the extraction worker — `crates/reasonbraid-extract`,
-  the stdio quarantine, 9 tests; `MAINT-1` done). Then `.5`–`.7`.
-- **Next action:** execute `PHASE-4.4.3` — the receipt + the R2
-  pack wiring: the Derivation receipt (the derived chunk digests +
-  the parent digest + the extractor version), the R2 registry
-  entry (the media-type routing + the sandbox `process` claim),
-  the resolve-path execution (the spawner kills the worker on the
-  budget trip — mirroring the `.2.3`/`.3.3` wiring).
+- **Active tree:** `PHASE-4` → frontier `.5` (packs R0 + R1 + R2
+  COMPLETE — the `.2`/`.3`/`.4` lanes: the contracts, the
+  machinery, the receipts, the wirings; `MAINT-1` done). Then
+  `.6`–`.7`.
+- **Next action:** execute `PHASE-4.5` — pack R5/R3: the opt-in
+  private/authenticated connectors + the sandboxed browser/
+  agent-mediated acquisition (the HIGHEST-RISK lane — do not
+  enable by default; decompose at the census seams first).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The moderator/synthesizer lane is decomposed at the census seams (`PHASE-5.3`)
+
+- The §13.5 census: the moderator is ZERO machinery (no role, no kind, no step — the step vocabulary has no `moderate`); the synthesizer is half-shipped (the `synthesize` step name + the `.2.4.1` minority-report shapes). Children: `.3.1` ADR-030 → `.3.2` the moderation kinds → `.3.3` the synthesis record.
+
 ## 2026-09-07 — The contribution-side execution lands — the `.2` lane is COMPLETE (`PHASE-5.2.4.2`)
 
 - The kind vocabulary gains `evidence_request` (targets ONE claim digest of THIS thread — the JSONB scan over the server-computed records; the request is not an acquisition) and `verdict` (the judged digest + the rule + the §13.4 outcome, canonicalized); the step gates execute the ADR-016 composition (request → `evidence_request`, verdict → `adjudicate`); the round advance generalizes to the step advance (one step per round, clamped at the terminal — the blind commitment flag is its special case); the `evidence_reference` kind refuses empty refs. Measured: profiles 29. **The `.2` lane (blind-first contributions, structured claims, evidence requests, adjudication, minority reports, the twelve terminals) is COMPLETE.**

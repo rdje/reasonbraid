@@ -381,10 +381,71 @@ and honest inconclusive outcomes.
       COMPLETE** — frontier → `.3`.
 
 - ID: `PHASE-5.3`
-  Status: `proposed`
+  Status: `done`
   Goal: moderator and synthesizer constraints with auditable transformations
   Roadmap: §13.5
   Acceptance: moderator cannot vote, suppress dissent silently, fabricate evidence, change electorate, authorize spend, or publish policy
+  Children: `.3.1`–`.3.3` (decomposed `2026-09-07` at the census
+    seams): `.3.1` ADR-030 + the census (the moderator/synthesizer
+    contract: the moderation actions are CONTRIBUTIONS — the
+    closed vocabulary IS the structural prohibition; the
+    appealable action = the existing challenge; the synthesis
+    record = the derived-content shape) → `.3.2` the moderation
+    kinds (the typed moderation contributions + the closed-
+    vocabulary refusals + the `moderate` step) → `.3.3` the
+    synthesis record (the `synthesize` step executes as the
+    derived-content contribution with the coverage report).
+  Done (`2026-09-07`): the census mapped §13.5 against the
+    shipped surface. The moderator is ZERO machinery: no role,
+    no action, no kind, no step (`git grep -n "moderator" HEAD
+    -- crates/reasonbraid-server/` → the hits are comments; the
+    STEP vocabulary has no `moderate`). The synthesizer is
+    ONE-half shipped: the `synthesize` STEP name + the `Summary`
+    contribution kind exist, and the derived-content shape (the
+    identity/input-range/sources/coverage) exists ONLY as the
+    `.2.4.1` minority report. The prohibitions have no
+    enforcement surface because nothing to enforce them on
+    exists. The reusable pieces: the contribute verb's
+    authority/budget checks (a moderation action riding it is
+    bounded by construction), the challenge verb (the appeal —
+    a moderation contribution is challengeable like any other),
+    the `.2.4.1` coverage shapes. The §23 queue has no entry
+    for this contract — the lane opens ADR-030. Frontier →
+    `.3.1`.
+
+  - ID: `PHASE-5.3.1`
+    Status: `proposed`
+    Goal: ADR-030 + the census — the moderator/synthesizer
+      contract: the moderation actions are CONTRIBUTIONS (the
+      closed kind vocabulary IS the structural prohibition — a
+      moderation kind carries no vote/verdict/evidence/
+      electorate/spend/policy by construction); the appealable
+      moderation action is the existing challenge over the
+      moderation contribution; the `moderate` step enters the
+      step vocabulary; the synthesis record generalizes the
+      `.2.4.1` derived-content shape. No code.
+    ADR: 030
+    Roadmap: §13.5
+
+  - ID: `PHASE-5.3.2`
+    Status: `proposed`
+    Goal: the moderation kinds — the typed moderation
+      contributions (the classify/request-clarification/
+      propose-close/draft-summary vocabulary), the closed-
+      vocabulary refusals (a moderation kind refuses the
+      verdict/claims/evidence_refs/target fields), the
+      `moderate` step gate.
+    Roadmap: §13.5
+
+  - ID: `PHASE-5.3.3`
+    Status: `proposed`
+    Goal: the synthesis record — the `synthesize` step executes
+      as the derived-content contribution (the synthesizer
+      identity, the input event range, the source links, the
+      coverage report — reusing the `.2.4.1` shapes), the step
+      gate, the auditable transformation (the input range is
+      the event log's, never a rewrite).
+    Roadmap: §13.5
 
 - ID: `PHASE-5.4`
   Status: `proposed`
@@ -408,10 +469,16 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.3` | `proposed` | `.2.4.2` done — the contribution-side execution (the request + verdict kinds with their step gates, the generalized step advance; profiles 29) — **the `.2` lane (the blind-first deliberation) is COMPLETE**; the moderator/synthesizer lane executes next |
+| 1 | `PHASE-5.3.1` | `proposed` | `.3` decomposed at the census seams (the moderator is zero machinery, the synthesizer half-shipped — the `.2.4.1` shapes are the seed) — ADR-030 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.3` decomposed at the census seams — the
+  moderator is zero machinery (no role/kind/step), the
+  synthesizer half-shipped (the `synthesize` step + the
+  `.2.4.1` coverage shapes); children `.3.1` (ADR-030 + the
+  census) → `.3.2` (the moderation kinds) → `.3.3` (the
+  synthesis record); frontier → `.3.1`.
 - `2026-09-07`: `.2.4.2` done — the contribution-side execution
   (the `evidence_request` + `verdict` kinds with the step
   gates, the generalized step advance, the non-empty

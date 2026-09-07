@@ -218,7 +218,7 @@ and honest inconclusive outcomes.
       `.2.2`.
 
   - ID: `PHASE-5.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the structured records — the typed claim/objection/
       revision over the contribute/challenge/revise wire: the
       contribution carries structured claims (the claim digest +
@@ -226,6 +226,27 @@ and honest inconclusive outcomes.
       the revision answers the objection; the projection carries
       the structure; the registers stay honest.
     Roadmap: §13.4
+    Done (`2026-09-07`): the structured records landed per
+      ADR-029 — the contribute body gains `claims`
+      (`ClaimInput` content-only; the server computes the
+      ADR-011 `sha256:<hex>` digest into `ClaimRecord` — the
+      wire never supplies one, so an objection can only name a
+      server-derived digest); the claims ride a `claim`-kind
+      contribution only (the typed refusal otherwise); the
+      challenge body gains `claim_digest` (the structured
+      objection names ONE claim of the target contribution —
+      the digest is checked against the target event's
+      server-computed records via the new `event_body_in_thread`
+      helper; a foreign/absent digest is the typed refusal); the
+      revision answers the objection (the register decrements —
+      unchanged); the projection carries the structure
+      (`structured_claims` counter, `#[serde(default)]`-ed);
+      the free-text wire stays valid (the fields default).
+      Measured (profiles 26): the structured contribute seats
+      two claims with the re-derived digests; the objection
+      rides its claim digest; the foreign digest + the claimless
+      target + the position-with-claims refusals; the revision
+      closes the register. Frontier → `.2.3`.
 
   - ID: `PHASE-5.2.3`
     Status: `proposed`
@@ -273,10 +294,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.2` | `proposed` | `.2.1` done — ADR-029 accepted (the records shape the wire, never a new capability; the blind commitment point is a read-surface rule; the twelve terminals); the typed claim/objection/revision records execute next |
+| 1 | `PHASE-5.2.3` | `proposed` | `.2.2` done — the structured records (the server-computed claim digests, the digest-targeted objection, the honest registers; profiles 26); the blind-first lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.2` done — the structured records
+  (the server-computed claim digests riding the contribute
+  event, the digest-targeted objection, the claim-kind rule,
+  the honest registers); profiles 26; frontier → `.2.3`.
 - `2026-09-07`: `.2.1` done — ADR-029 accepted (the
   structured-deliberation contract: the typed records, the
   read-surface blind commitment, the request-is-not-acquisition
@@ -409,3 +434,52 @@ new projection test) — `\.rs$`.
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES heading,
   so no promotion gate).
+
+
+## Acceptance Checklist (PHASE-5.2.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the `ClaimInput`/
+`ClaimRecord` shapes, the contribute body's `claims`, the
+challenge body's `claim_digest`, the claim-kind rule, the
+server-computed digests, the `event_body_in_thread` helper, the
+projection's `structured_claims` counter),
+`crates/reasonbraid-server/tests/profiles.rs` (the new test) —
+`\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf wire: the contribute
+  carried free content only; the challenge was free text against
+  an event; no claim record, no digest, no targeted objection
+  existed (the `.2` census).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "ClaimRecord\|claim_digest\|structured_claims" 7bbdb4a --
+  crates/` → rc=1 (nothing before this leaf). The fix point is
+  the ADR-029 wire shapes: the claim rides the contribute body
+  with a SERVER-computed digest (the wire never supplies one —
+  so an objection can only name a digest the server derived),
+  and the objection names one claim of the target.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_structured_claims_and_objections_ride_the_wire` →
+  `test result: ok. 1 passed` (also inside the full live suite:
+  `running 26 tests … ok`) — the two server-computed digests
+  re-derived from the claim content, the objection riding its
+  claim digest, the foreign-digest refusal, the claimless-target
+  refusal, the position-with-claims refusal, the revision
+  closing the register. The first live attempts caught the
+  relative-`-k` socket-dir trap (postgres resolves a relative
+  `-k` against the DATA dir — the ephemeral cluster needs
+  ABSOLUTE paths; `run_pg_tests.sh` already does).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg514_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).

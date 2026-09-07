@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.2.2` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.2.3` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,11 +28,11 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.2.2` — the structured
-  records: the typed claim/objection/revision over the
-  contribute/challenge/revise wire (the digest-targeted
-  structure, the projection carries it, the registers stay
-  honest) — per ADR-029.
+- **Next action:** execute `PHASE-5.2.3` — the blind-first
+  lane: the `blind_solicit` step executes (the deferred
+  visibility — a blind contribution reads as digest+marker
+  until the commitment point — the round advance commits;
+  the §13.6 no-totals rule) — per ADR-029.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

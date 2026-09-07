@@ -3991,3 +3991,252 @@ async fn the_g4_hostile_suite_names_every_refusal() {
         .expect("forged-field request");
     assert_eq!(response.status().as_u16(), 422, "the forged field refuses");
 }
+
+#[tokio::test]
+async fn the_structured_claims_and_objections_ride_the_wire() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "sc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let created = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "sc-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "sc",
+                "objective": "probe",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(created.0, 200, "the create succeeds: {created:?}");
+    let thread_id = created.1["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // 1. The contribute with two structured claims: the server computes the
+    // digests (the client supplies content only).
+    let (status, contributed) = command(
+        "sc-contribute",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the claims ride the contribution",
+            "kind": "claim",
+            "claims": [
+                { "content": "the registry ships" },
+                { "content": "the invariant is the boundary" },
+            ],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the structured contribute succeeds: {contributed}"
+    );
+    let contribution_event = contributed["event_id"].as_str().unwrap().to_string();
+
+    // 2. The projection carries the structure (the ADR-029 counter).
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the thread reads: {state}");
+    assert_eq!(state["state"]["structured_claims"], json!(2));
+
+    // 3. The event body carries the records with the SERVER-computed
+    // digests (re-derived here from the claim content).
+    let (status, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let contribution = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_id"] == json!(contribution_event))
+        .cloned()
+        .expect("the contribute event is in the timeline");
+    let claims = contribution["body"]["claims"].as_array().unwrap();
+    assert_eq!(claims.len(), 2, "two claim records: {claims:?}");
+    let digest_one =
+        reasonbraid_server::fetcher::digest_sha256_hex("the registry ships".as_bytes());
+    let digest_two =
+        reasonbraid_server::fetcher::digest_sha256_hex("the invariant is the boundary".as_bytes());
+    assert_eq!(claims[0]["digest"], json!(digest_one));
+    assert_eq!(claims[1]["digest"], json!(digest_two));
+    assert_ne!(digest_one, digest_two, "the digests differ");
+
+    // 4. The structured objection: the challenge names ONE claim of the
+    // target contribution and rides the event body.
+    let (status, challenged) = command(
+        "sc-challenge",
+        "thread.challenge",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": contribution_event,
+            "claim_digest": digest_one,
+            "content": "which registry, exactly?",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the structured challenge succeeds: {challenged}"
+    );
+    let challenge_event = challenged["event_id"].as_str().unwrap().to_string();
+    let (_, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    let challenge = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_id"] == json!(challenge_event))
+        .cloned()
+        .expect("the challenge event is in the timeline");
+    assert_eq!(challenge["body"]["claim_digest"], json!(digest_one));
+
+    // 5. A digest that is NOT a claim of the target is the typed refusal.
+    let foreign = reasonbraid_server::fetcher::digest_sha256_hex("not a claim".as_bytes());
+    let (status, refused) = command(
+        "sc-challenge-foreign",
+        "thread.challenge",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": contribution_event,
+            "claim_digest": foreign,
+            "content": "nope",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the foreign digest refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("not a claim"),
+        "{refused}"
+    );
+
+    // 6. A claimless contribution refuses any targeted digest; and a
+    // non-claim contribution refuses the claims field.
+    let (status, plain) = command(
+        "sc-plain",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "plain position",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the plain contribute succeeds: {plain}");
+    let plain_event = plain["event_id"].as_str().unwrap().to_string();
+    let (status, refused) = command(
+        "sc-challenge-claimless",
+        "thread.challenge",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": plain_event,
+            "claim_digest": digest_one,
+            "content": "nope",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the claimless target refuses: {refused}");
+    let (status, refused) = command(
+        "sc-position-claims",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "positions cannot carry claims",
+            "kind": "position",
+            "claims": [ { "content": "x" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the position+claims refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("claim"),
+        "{refused}"
+    );
+
+    // 7. The revision answers the objection — the register stays honest.
+    let (status, revised) = command(
+        "sc-revise",
+        "thread.revise",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": challenge_event,
+            "content": "the profile registry (migration 0032).",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the revision succeeds: {revised}");
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the thread reads: {state}");
+    assert_eq!(
+        state["state"]["open_challenges"],
+        json!(0),
+        "the revision closed the register: {state}"
+    );
+}

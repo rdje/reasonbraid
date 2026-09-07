@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The structured records land (`PHASE-5.2.2`)
+
+- The contribute body carries `claims` (content-only input; the server computes the ADR-011 digest — the wire never supplies one); claims ride a `claim`-kind contribution only; the challenge body gains `claim_digest` (the structured objection names ONE server-derived claim of the target — a foreign digest is the typed refusal); the projection carries the `structured_claims` counter; the free-text wire stays valid. Measured: profiles 26.
+
 ## 2026-09-07 — ADR-029: the structured-deliberation contract (`PHASE-5.2.1`)
 
 - The `.2.1` leaf accepted ADR-029 (`docs/adr/029-structured-deliberation.md`): the typed claim/objection/revision records are SHAPES over the existing verbs (never a new capability); the blind commitment point is a READ-SURFACE rule (the ledger holds the blind content from post time; the round advance commits); the evidence request is a contribution, not an acquisition; the adjudication is an attributable verdict; the minority report carries the coverage report; the close speaks §13.4's twelve terminals. No code.

@@ -278,7 +278,8 @@ pub struct EvidenceRef {
 }
 
 /// `thread.contribute` body: the scope, the contribution content, the structured
-/// kind (default `position`), and the evidence references it cites.
+/// kind (default `position`), the evidence references it cites, and (`.2.2`,
+/// ADR-029) the structured claims riding the contribution.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContributeBody {
@@ -288,16 +289,41 @@ pub struct ContributeBody {
     pub kind: ContributionKind,
     #[serde(default)]
     pub evidence_refs: Vec<EvidenceRef>,
+    /// The ADR-029 structured claims: the client submits the CONTENT only —
+    /// the digest is computed server-side and never trusted from the wire.
+    #[serde(default)]
+    pub claims: Vec<ClaimInput>,
 }
 
-/// `thread.challenge` body: the scope, the challenged contribution event, and the
-/// challenge text.
+/// One structured claim riding a contribution (`PHASE-5.2.2`, ADR-029): the
+/// content + the SERVER-COMPUTED digest (the ADR-011 `sha256:<hex>` shape).
+/// An objection names this digest; since the server derived it, a forged
+/// digest simply fails the membership check.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimRecord {
+    pub content: String,
+    pub digest: String,
+}
+
+/// The client-side claim input: content only (`PHASE-5.2.2`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimInput {
+    pub content: String,
+}
+
+/// `thread.challenge` body: the scope, the challenged contribution event, the
+/// challenge text, and (`.2.2`, ADR-029) the optional targeted claim digest —
+/// the structured objection names ONE claim inside the target contribution.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChallengeBody {
     pub tenant_id: TenantId,
     pub target_event_id: String,
     pub content: String,
+    #[serde(default)]
+    pub claim_digest: Option<String>,
 }
 
 /// `thread.revise` body: the scope, the challenge being answered, and the revision.
@@ -376,6 +402,10 @@ pub struct ThreadProjection {
     pub participants: BTreeMap<String, ParticipationState>,
     pub contributions: u64,
     pub revisions: u64,
+    /// Structured claims riding contributions (`.2.2`; the ADR-029 counter —
+    /// the records themselves live in the event log).
+    #[serde(default)]
+    pub structured_claims: u64,
     /// Challenges that no revision has answered (the unresolved register).
     pub open_challenges: u64,
     pub close_reason: Option<String>,
@@ -554,6 +584,7 @@ pub fn prepare_create(
         participants: BTreeMap::from([(principal.to_string(), ParticipationState::Accepted)]),
         contributions: 0,
         revisions: 0,
+        structured_claims: 0,
         open_challenges: 0,
         close_reason: None,
         classification: body.classification.unwrap_or_default(),
@@ -663,6 +694,30 @@ where
 {
     sqlx::query_scalar(
         "SELECT event_type FROM event_log \
+         WHERE event_id = $1 AND tenant_id = $2 AND aggregate_id = $3",
+    )
+    .bind(event_id)
+    .bind(tenant_id.to_string())
+    .bind(thread_id.to_string())
+    .fetch_optional(&mut *tx)
+    .await
+}
+
+/// The event BODY of one event in this thread (`.2.2`: the structured challenge
+/// validates its claim digest against the target contribution's server-computed
+/// claim records — the body, not the projection, carries them).
+async fn event_body_in_thread<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    thread_id: &ThreadId,
+    event_id: &str,
+) -> Result<Option<serde_json::Value>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "SELECT body FROM event_log \
          WHERE event_id = $1 AND tenant_id = $2 AND aggregate_id = $3",
     )
     .bind(event_id)
@@ -988,6 +1043,26 @@ where
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
             require_open(&projection, "contribute")?;
             ensure_participant(&projection, principal)?;
+            // `.2.2` (ADR-029): structured claims ride a `claim`-kind
+            // contribution only — the kind is part of the claim's identity
+            // (a position carrying claims would blur what is being claimed).
+            if !body.claims.is_empty() && body.kind != ContributionKind::Claim {
+                return Err(ThreadError::InvalidCommand(
+                    "structured claims ride a `claim`-kind contribution only".to_string(),
+                ));
+            }
+            // `.2.2` (ADR-029): the digest is SERVER-computed over the claim
+            // content — the client never supplies it, so an objection can
+            // only name a digest the server derived.
+            let claims: Vec<ClaimRecord> = body
+                .claims
+                .iter()
+                .map(|c| ClaimRecord {
+                    content: c.content.clone(),
+                    digest: crate::fetcher::digest_sha256_hex(c.content.as_bytes()),
+                })
+                .collect();
+            projection.structured_claims += claims.len() as u64;
             projection.contributions += 1;
             (
                 EVENT_CONTRIBUTED,
@@ -1000,6 +1075,7 @@ where
                     "content": body.content,
                     "kind": body.kind,
                     "evidence_refs": body.evidence_refs,
+                    "claims": claims,
                     "round": projection.current_round,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
@@ -1028,6 +1104,32 @@ where
                     )))
                 }
             }
+            // `.2.2` (ADR-029): the structured objection names ONE claim inside
+            // the target contribution — a digest that is not among the target's
+            // server-computed claim digests is the typed refusal (the digest is
+            // never matched against client-supplied text).
+            if let Some(claim_digest) = body.claim_digest.clone() {
+                let target_body =
+                    event_body_in_thread(&mut *tx, tenant_id, thread_id, &body.target_event_id)
+                        .await
+                        .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                        .ok_or_else(|| {
+                            ThreadError::InvalidCommand(format!(
+                                "challenge target `{}` does not exist in this thread",
+                                body.target_event_id
+                            ))
+                        })?;
+                let claims: Vec<ClaimRecord> = target_body
+                    .get("claims")
+                    .and_then(|c| serde_json::from_value(c.clone()).ok())
+                    .unwrap_or_default();
+                if !claims.iter().any(|c| c.digest == claim_digest) {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "claim digest `{claim_digest}` is not a claim of contribution `{}`",
+                        body.target_event_id
+                    )));
+                }
+            }
             projection.open_challenges += 1;
             (
                 EVENT_CHALLENGED,
@@ -1038,6 +1140,7 @@ where
                     "actor_principal_id": principal,
                     "author": principal,
                     "target_event_id": body.target_event_id,
+                    "claim_digest": body.claim_digest,
                     "content": body.content,
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),

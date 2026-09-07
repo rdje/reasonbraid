@@ -12,36 +12,28 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Phases 0–3 COMPLETE:** Phase 0's exit gate closed (ADR-002 signed);
-  Phase 1's G1–G2 **Met** + Demonstration A 30/30; Phase 2's exit line
-  measured (the adversarial suite, the replacement drill, the six-leg
-  retry inventory) + the §19.8 subtraction record + the G6–G7 feed; Phase 3's
-  six lanes shipped (the directory profiles, the presence, the two-stage
-  matching, the recruitment protocol, the subscriptions + the node-initiated
-  API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.5.1` (**PHASE 4 CLOSED**;
-  the `.1` lane COMPLETE (ADR-016 + the registry + the
-  validation + the execution — the steps ride the projection,
-  profiles 25); the `.2` lane decomposed at the census seams
-  (the blind-first visibility, the structured records, the
-  evidence requests, the adjudication + the minority reports +
-  the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
-  the blind lane → `.2.4` the requests + the adjudication);
-  `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.5.1` — ADR-031 + the
-  census: the routing-policy contract (the case-class
-  vocabulary, the rule-based policy as the deterministic
-  class→arm resolution with the explicit profile outranking
-  it, the learned routing as the shadow recommendation
-  constrained to the existing arms). No code.
+- **Phases 0–4 COMPLETE** (Phase 0's exit gate closed — ADR-002 signed;
+  Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
+  + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
+  seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
+- **Active tree:** `PHASE-5` → frontier `.5.2`. The `.1` lane (the workflow
+  profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
+  (the moderator/synthesizer constraints), and the `.4` lane (the
+  evaluation service) are COMPLETE — the `.5` lane (the routing policy)
+  runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
+- **Next action:** execute `PHASE-5.5.2` — the rule-based policy: the §13.8
+  rows as the built-in rules (the class → the profile arm), the
+  deterministic resolution, the create-boundary application (the class +
+  no explicit profile → the policy's arm; the explicit profile outranks
+  it) — per ADR-031.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).
 - **In-flight uncommitted work:** none.
 - **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
-- **Local dev deps now installed (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
-  `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude` (2.1.263,
-  Claude Code) for env-gated real runs.
+- **Local dev deps (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
+  `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude`
+  (2.1.263, Claude Code) for env-gated real runs.
 - **Blockers:** none. Director-owned open items: license choice (`Cargo.toml` says
   `MIT OR Apache-2.0`, no `LICENSE` file); ADR-001 name clearance (repo stays private).
 - **Dating anomaly (flagged):** the machine clock crossed midnight mid-session

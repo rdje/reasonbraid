@@ -711,7 +711,7 @@ and honest inconclusive outcomes.
     ADR-031. Frontier → `.5.1`.
 
   - ID: `PHASE-5.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-031 + the census — the routing-policy contract:
       the case-class vocabulary (the §13.8 rows), the
       rule-based policy (the deterministic class→arm
@@ -723,6 +723,19 @@ and honest inconclusive outcomes.
       selection recorded + auditable. No code.
     ADR: 031
     Roadmap: §13.8
+    Done (`2026-09-07`): ADR-031 accepted (evidence-gated) —
+      `docs/adr/031-routing-policy.md` (top-level `answers:`):
+      the case class is a SUBMITTED input (the §13.8 rows —
+      never a derived judgment); the rule-based policy is a
+      deterministic table (the built-in class→arm rules); the
+      human authority outranks the rule (the policy applies
+      at the create boundary ONLY when no explicit profile is
+      named — the explicit choice always wins); the learned
+      routing is the SHADOW RECOMMENDATION (an arm from the
+      EXISTING registered set — never a raise of
+      authority/spend/access/side-effects — recorded with its
+      `.4` evidence reference, never applied); every selection
+      is recorded. No code changed. Frontier → `.5.2`.
 
   - ID: `PHASE-5.5.2`
     Status: `proposed`
@@ -754,10 +767,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.5.1` | `proposed` | `.5` decomposed at the census seams (the routing decision is the client's choice today — no rule, no class vocabulary, no policy; the §13.1 profiles map §13.8's rows) — ADR-031 opens the lane |
+| 1 | `PHASE-5.5.2` | `proposed` | `.5.1` done — ADR-031 accepted (the class is a submitted input, the rule table is deterministic, the explicit profile outranks it, the learned routing is the shadow recommendation); the rule-based policy executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.1` done — ADR-031 accepted (the
+  routing-policy contract: the submitted class, the
+  deterministic table, the explicit profile outranks the
+  rule, the shadow-only recommendation); no code; frontier →
+  `.5.2`.
 - `2026-09-07`: `.5` decomposed at the census seams — the
   routing decision is the client's choice today (no rule, no
   class vocabulary, no policy; the §13.1 built-ins map §13.8's

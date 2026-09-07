@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-031: the routing-policy contract (`PHASE-5.5.1`)
+
+- ADR-031 accepted (`docs/adr/031-routing-policy.md`): the case class is a submitted input (never a derived judgment); the rule-based policy is a deterministic table; the human authority outranks the rule (the explicit profile always wins); the learned routing is the shadow recommendation — an existing arm, recorded with its evidence, never applied, never a raise. No code.
+
 ## 2026-09-07 — The routing-policy lane is decomposed at the census seams (`PHASE-5.5`)
 
 - The §13.8 census: the routing decision is the CLIENT's choice today (the create carries the explicit profile; the bare thread defaults to the hardcoded `quick_advice`) — no rule, no case-class vocabulary, no policy; the §13.1 built-ins map §13.8's rows. Children: `.5.1` ADR-031 → `.5.2` the rule-based policy → `.5.3` the shadow recommendation.

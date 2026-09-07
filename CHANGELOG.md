@@ -12,6 +12,12 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — Phase 5 opens: the census found the workflow profile is an unvalidated string (`PHASE-5.1`)
+
+- The CLI passes `workflow_profile` through to the thread body; `threads.rs` stores it verbatim — no DSL, no validation, no step composition, and ADR-016 is unopened.
+- Reusable: the Phase-1 state machines, the typed contributions, the Phase-2 budgets, the Phase-4 evidence pipeline (the `evidence_review` profile's substrate).
+- Decomposed: `.1.1` ADR-016 + the census → `.1.2` the profile registry + the validation → `.1.3` the profile-driven execution. Frontier → `.1.1`.
+
 ## 2026-09-07 — Phase 4 is closed: the G4 gate is Met (`PHASE-4.7.2`)
 
 - The gate package: the evidence manifest (every G4 clause → a re-runnable artifact), the gate record (**Met**, five named deferrals, top-level `answers:`), the subtraction record (the §20.6 rows 31–35 shipped + the deferrals — no empty lists).

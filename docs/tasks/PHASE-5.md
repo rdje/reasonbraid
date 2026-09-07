@@ -24,11 +24,68 @@ and honest inconclusive outcomes.
 ## Task Tree
 
 - ID: `PHASE-5.1`
-  Status: `proposed`
+  Status: `done`
   Goal: workflow profile DSL/state machines for consult, parallel review, rigorous deliberation, incident, and policy modes
   Backlog: 36
   ADR: 016
   Roadmap: §13.1–13.2
+  Children: `.1.1`–`.1.3` (decomposed `2026-09-07` at the census
+    seams): `.1.1` ADR-016 + the census (the workflow-profile
+    contract: the profile = versioned configuration over the
+    thread aggregates; the composition invariants — no step
+    bypasses authorization/budget/lifecycle; the eight §13.1
+    built-ins) → `.1.2` the profile registry + the validation
+    (the typed shape + the built-ins + the custom-profile
+    validation) → `.1.3` the profile-driven execution (the step
+    composition over the state machine).
+  Done (`2026-09-07`): the census mapped §13.1 against the
+    shipped surface: the profile is an UNVALIDATED STRING today
+    — the CLI passes `workflow_profile` through to the thread
+    body (the Phase-1 wire's opaque field), and `threads.rs`
+    stores it verbatim; no DSL, no state machines, no
+    validation, no step composition exists
+    (`git grep -c "workflow" 01da603 -- crates/reasonbraid-server/src/`
+    → the 8 hits are the stored string). ADR-016 is UNOPENED
+    (`docs/adr/` has no 016). The pieces the lane reuses exist:
+    the thread lifecycle's deterministic state machines (Phase
+    1), the typed contributions (§8.5), the budget envelopes
+    (Phase 2), the evidence pipeline (Phase 4 — the
+    `evidence_review` profile's claims/assessments). Children at
+    those seams — frontier → `.1.1`.
+
+  - ID: `PHASE-5.1.1`
+    Status: `proposed`
+    Goal: ADR-016 + the census — the workflow-profile contract:
+      the profile is VERSIONED CONFIGURATION over the same
+      thread aggregates (the §13.1 table's eight built-ins as
+      the initial set), the step vocabulary (the composition
+      over the existing verbs), and the INVARIANTS (a profile
+      cannot bypass authorization, budget, or the lifecycle
+      invariants — the composition is the configuration, never a
+      new capability). No code.
+    Backlog: 36 (the ADR half)
+    ADR: 016
+
+  - ID: `PHASE-5.1.2`
+    Status: `proposed`
+    Goal: the profile registry + the validation — the typed
+      profile shape (the steps + the version), the eight §13.1
+      built-ins shipped as the versioned registry entries, the
+      custom-profile validation (the composition rules + the
+      invariant checks), and the thread's `workflow_profile`
+      becoming a VALIDATED reference (the unknown profile is the
+      typed refusal, never a stored string).
+    Backlog: 36 (the registry half)
+
+  - ID: `PHASE-5.1.3`
+    Status: `proposed`
+    Goal: the profile-driven execution — the step composition
+      over the state machine: the profile selects the
+      contribution/terminal sequence, the invariants enforced at
+      the transition level (the authorization, the budget, the
+      lifecycle checks ride every step), the explicit per-step
+      failures (the profile never fabricates progress).
+    Backlog: 36 (the execution half)
 
 - ID: `PHASE-5.2`
   Status: `proposed`
@@ -63,8 +120,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | `PHASE-5.1` | `proposed` | blocked on evidence provenance and stable workflows |
+| 1 | `PHASE-5.1.1` | `proposed` | `.1` decomposed at the census seams — the profile is an unvalidated string today (no DSL, no validation, ADR-016 unopened); the ADR + the census execute now |
 
 ## Changelog
+
+- `2026-09-07`: `.1` decomposed at the census seams — the profile
+  is an unvalidated string today (the CLI passes it through, no
+  DSL/validation/execution exists, ADR-016 unopened); children
+  `.1.1` (ADR-016 + the census) → `.1.2` (the registry + the
+  validation) → `.1.3` (the execution); frontier → `.1.1`.
+
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.7, §13, backlog 36–37.

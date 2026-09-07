@@ -19,13 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.1` (**PHASE 4 CLOSED** —
-  the G4 gate Met: the gate record + the subtraction record +
-  the evidence manifest; the five pack lanes + the evidence
-  pipeline shipped; the supply-chain re-run green; `MAINT-1`
-  done).
-- **Next action:** execute `PHASE-5.1` — the workflow profiles
-  (the §13.1 shapes; decompose at the census seams first).
+- **Active tree:** `PHASE-5` → frontier `.1.1` (**PHASE 4 CLOSED**;
+  `.1` decomposed at the census seams — the profile is an
+  unvalidated string today: `.1.1` ADR-016 + the census → `.1.2`
+  the registry + the validation → `.1.3` the execution;
+  `MAINT-1` done).
+- **Next action:** execute `PHASE-5.1.1` — ADR-016 + the census:
+  the workflow-profile contract (the versioned configuration
+  over the thread aggregates, the step vocabulary, the
+  invariants — a profile cannot bypass authorization/budget/
+  lifecycle). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

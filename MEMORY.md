@@ -16,15 +16,15 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.1` (**PHASE 5 CLOSED**: the G5 gate Met as a subtraction gate — the lift claim withdrawn per §25.1; the `.1`–`.5` lanes + the gate package complete).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.1.1` (**PHASE 5 CLOSED**; the `.1` block LIFTED — the schema is the greenfield).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.1` — the semantic policy lane
-  (`docs/tasks/PHASE-6.md`, proposed): decompose at the census seams
-  first; §25.1's pre-Phase-6 gate applies (no binding policy governance
-  unless real owners accept the authority/correction model).
+- **Next action:** execute `PHASE-6.1.1` — ADR-019 + the census: the
+  semantic-policy contract (the `PolicyVersion`/`PolicySetVersion`
+  shapes, the seven-step layered resolution with the fail-closed rule,
+  the ownership = the authority binding). No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The semantic-policy lane is decomposed at the census seams (`PHASE-6.1`)
+
+- The `.1` block is LIFTED: the authority (Phase 2), the deliberation (Phase 5 — now closed), the Git/object consistency (Phase 4), and the correction model all ship; the policy schema itself is the greenfield. Children: `.1.1` ADR-019 (the queue's canonical-policy-schema item) → `.1.2` the typed `PolicyVersion` + the registry → `.1.3` the seven-step layering/precedence + the impact maps.
+
 ## 2026-09-07 — The G5 gate package — PHASE 5 IS CLOSED (`PHASE-5.6.2`)
 
 - **G5 Met as a subtraction gate**: the "deliberation improves answers" claim is withdrawn per §25.1 (the first controlled evaluation reads H1 null on the 4-case sample); the honest-inconclusive machinery ships and tests; the benchmark thresholds ship as the instrument; the §19.8 subtraction record + the evidence manifest + the gate record land; the README's stale status line is fixed. The frontier moves to `PHASE-6.1` (the semantic policy lane).

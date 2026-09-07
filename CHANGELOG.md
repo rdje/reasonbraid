@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.6` split at the contract seams (`PHASE-2.6`)
+
+- The census mapped §19.4's ten conformance items against the shipped adapter surface. EXISTS: the capability declaration + unsupported-operation behavior (`AdapterCapabilities` + `StatusLookupOutcome::Unsupported`), the honest ambiguous-outcome reporting (the `outcome_unknown` contract + the lose-response fixtures), the usage accounting with confidence (`NormalizedUsage` + `UsageConfidence`), the sanitized 10-fixture corpus (credential-scan + coverage tests), the cancellation/streaming semantics, and four per-adapter test files.
+- ABSENT/partial, named: the conformance suite is FOUR separate files (no single contract harness); the corpus is not pinned as a replay oracle with a §19.4 coverage map; rate-limit/backoff normalization, output-size limits, tool-call validation, the provider error taxonomy, and prompt/policy projection fidelity have no machinery (projection fidelity is Phase 6's surface); the manual qualification checklist is not one artifact.
+- Children: `.6.1` the conformance harness → `.6.2` the permanent failure-fixture corpus → `.6.3` the qualification checklist + the named deferrals. Tree-only commit; frontier → `.6.1`.
+
 ## 2026-09-07 — The guard IS the population: the SLO hypotheses + the first runbook — `.5` COMPLETE (`PHASE-2.5.3`)
 
 - `docs/decisions/2026-09-07_phase2-slo-hypotheses.md` (`answers:`) instantiates the §18.4 SLO shape from the measurements that EXIST: SLO-1…SLO-4 (the guard's live assertions, the demo's 34 checks, the restore exercise, the reconcile-after-kill beats) target 100 % with a ZERO error budget — a red pass halts the frontier (the CI policy's shape); SLO-5 records the one measured latency baseline (issuance p50 63 µs/p95 69 µs).

@@ -1004,9 +1004,96 @@ slice can reuse the same control plane without rewriting it.
       closure test names the existing exercise; no code changes.
 
 - ID: `PHASE-2.6`
-  Status: `proposed`
+  Status: `done`
   Goal: adapter conformance kit and permanent failure fixture corpus
   Roadmap: §19.4
+  Children: `.6.1`–`.6.3` (decomposed `2026-09-07` at the contract
+    seams): `.6.1` the conformance harness (the one mechanical suite
+    every adapter passes against the contract) → `.6.2` the permanent
+    failure-fixture corpus (the pinned replay oracle + the §19.4
+    coverage map) → `.6.3` the qualification checklist + the named
+    deferrals (the §19.4 items with nothing to build against in the
+    dev profile).
+  Done (`2026-09-07`): the census mapped §19.4's ten items against
+    the shipped adapter surface: EXISTS — the capability declaration
+    + unsupported-operation behavior (`AdapterCapabilities` +
+    `StatusLookupOutcome::Unsupported`, `contract.rs`), the honest
+    ambiguous-outcome reporting (the `outcome_unknown` contract + the
+    lose-response fixtures), the usage accounting with confidence
+    (`NormalizedUsage` + `UsageConfidence`), the sanitized fixture
+    corpus (10 fixtures, the credential-scan + coverage tests in
+    `fixtures.rs`), the cancellation/streaming semantics
+    (`CancellationStrength` + `AttemptHandle`), the four per-adapter
+    test files. ABSENT/partial — the conformance suite is FOUR
+    SEPARATE files (no single contract harness); the corpus is not
+    pinned as a replay oracle with a §19.4 coverage map; rate-limit/
+    backoff normalization, output-size limits, tool-call validation,
+    the provider error taxonomy, and prompt/policy projection
+    fidelity have no machinery (or no surface to bind — projection
+    fidelity is Phase 6's); the manual qualification checklist is
+    not named as one artifact. Children at those seams — frontier →
+    `.6.1`.
+
+  - ID: `PHASE-2.6.1`
+    Status: `proposed`
+    Goal: the conformance harness — ONE mechanical suite every adapter
+      (fake + codex + claude) passes against the CONTRACT (§19.4's
+      checkable items): the capability-manifest agreement (the declared
+      `AdapterCapabilities` match the adapter's behavior — e.g. a
+      non-streaming declaration refuses the streaming path, an
+      unsupported status lookup is declared as such), the
+      unsupported-operation honesty (never a retry recommendation), the
+      secret-containment invariant (the adapter struct carries no
+      credential field; credentials arrive via env at the process
+      boundary), the cancellation semantics (the `CancellationStrength`
+      table), the ambiguous-outcome honesty (`outcome_unknown` — never a
+      silent terminal), and the usage-accounting invariant
+      (`NormalizedUsage.confidence` is never a lie: unknown dimensions
+      are unknown, not zero). The existing four per-adapter test files
+      fold under this harness (the census found them separate).
+    Backlog: —
+    Acceptance: the one harness runs against all three adapters; each
+      §19.4-checkable item above has a named test; no regression.
+
+  - ID: `PHASE-2.6.2`
+    Status: `proposed`
+    Goal: the permanent failure-fixture corpus — pin the ten fixtures
+      (`fixtures/*.json`) as the REPLAY oracle: a versioned corpus
+      manifest (the fixture set is permanent: no fixture is silently
+      edited or dropped — changes are additive with a recorded reason),
+      the §19.4-item → fixture coverage map (which fixture proves which
+      conformance item), and the sanitized-replay guarantee as a test
+      (the corpus replays through the fake adapter AND through every
+      real adapter's fixture-mapping path — the credential scan stays
+      the mechanical gate).
+    Backlog: —
+    Acceptance: the manifest + the coverage map land; the replay
+      guarantee holds for every adapter that maps the corpus; no
+      regression.
+
+  - ID: `PHASE-2.6.3`
+    Status: `proposed`
+    Goal: the manual qualification checklist + the named deferrals —
+      the §19.4 last item (the sanitized replay fixture + the manual
+      qualification checklist) becomes ONE artifact (the book's
+      adapter-boundary chapter gains the checklist the env-gated live
+      qualification already follows: `RB_LIVE_CODEX=1`/`RB_LIVE_CLAUDE=1`
+      runs, the money-cost gate, the credential env handling); and the
+      §19.4 items with no machinery or no surface to bind in the dev
+      profile are NAMED with their triggers as a decisions record:
+      rate-limit/backoff normalization (no provider rate-limit signal
+      is parsed — trigger: the first real 429), output-size limits
+      (no bound on streamed output — trigger: the first streamed run
+      over the limit the policy sets), tool-call validation (the
+      capability flag exists, the validator doesn't — trigger: the
+      first tool-capable adapter), the provider error taxonomy (the
+      adapters map exit/stderr to the honest outcomes — trigger: the
+      first provider-specific error that needs a typed reason code),
+      prompt/policy projection fidelity (Phase 6's projection
+      machinery — trigger: the first policy projection).
+    Backlog: —
+    Acceptance: the checklist artifact + the deferrals record land;
+      each deferral names its trigger; no code changes.
 
 - ID: `PHASE-2.7`
   Status: `proposed`
@@ -1018,7 +1105,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.6` | `proposed` | `.5.3` done — the SLO record + the runbook (the guard is the population; the zero-error-budget halt rule); the adapter conformance lane executes now |
+| 1 | `PHASE-2.6.1` | `proposed` | `.6` decomposed at the contract seams (the census: the contract carries capabilities/unsupported/ambiguity/usage-confidence but the conformance suite is four separate files, the corpus is unpinned, and five §19.4 items have no machinery — named); the conformance harness executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1034,6 +1121,14 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.6` decomposed at the contract seams — the census
+  mapped §19.4's ten items against the shipped surface (capabilities,
+  unsupported behavior, ambiguity, usage-confidence, the sanitized
+  corpus exist; the harness is four separate files, the corpus is
+  unpinned as a replay oracle, five items have no machinery — named);
+  children `.6.1` (the conformance harness) → `.6.2` (the permanent
+  corpus) → `.6.3` (the qualification checklist + the deferrals);
+  frontier → `.6.1`.
 - `2026-09-07`: `.5.3` done — the SLO record (the guard IS the dev
   profile's population: SLO-1…SLO-4 target 100 % with a zero error
   budget; SLO-5 is the one measured latency baseline; the unmeasured
@@ -2157,6 +2252,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the §19.4 census + the contract-seam decomposition (`.6.1` harness → `.6.2` corpus → `.6.3` checklist + deferrals); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-2.5.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the SLO record + the node lost/replaced runbook (the guard is the population; the closure tests name the existing exercises); frontier → `.6` |
 | `2026-09-07` | `PHASE-2.5.2` | `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 18 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — `command_api` grew to 18 with the measured metrics leg: the denied authorization's counter DELTA matches the denied record for the actor handle AND the `/v1/admin/metrics` surface agrees) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg252d_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the structured-log + metrics slice (the seven counters on the real paths, the `log_event!` JSON lines, the admin metrics surface); frontier → `.5.3` |
  docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
@@ -2189,6 +2285,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.6` | `REASONBRAID-PHASE2-0035` | the contract-seam decomposition (the §19.4 census: what the adapter surface already carries vs the five absent items — named) |
 | `PHASE-2.5.3` | `REASONBRAID-PHASE2-0034` | the SLO record + the node lost/replaced runbook (docs-only: the guard is the population, the zero-error-budget halt rule, the §18.6 runbook shape) |
 | `PHASE-2.5.2` | `REASONBRAID-PHASE2-0033` | the structured-log + metrics slice (the seven counters on the real paths + `GET /v1/admin/metrics` + the measured denial-vs-record test) |
 | `PHASE-2.5.1` | `REASONBRAID-PHASE2-0032` | ADR-023 accepted (the four-record separation + the §18.2 redaction rules pinning the future sink; the OpenTelemetry trigger named — no code) |

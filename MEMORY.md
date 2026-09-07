@@ -23,11 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.6` (`.5` COMPLETE: ADR-023,
-  the structured-log + metrics slice, the SLO record + the runbook).
-  Then `.7`.
-- **Next action:** execute `PHASE-2.6` — the adapter conformance kit
-  and the permanent failure-fixture corpus (§19.4).
+- **Active tree:** `PHASE-2` → frontier `.6.1` (`.6` decomposed at the
+  contract seams: the conformance harness → the permanent corpus → the
+  checklist + deferrals; `.5` COMPLETE). Then `.6.2`, `.6.3`, `.7`.
+- **Next action:** execute `PHASE-2.6.1` — the adapter conformance
+  harness: ONE mechanical suite every adapter (fake + codex + claude)
+  passes against the contract (§19.4's checkable items), folding the
+  four per-adapter test files under it.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.6: the conformance suite was four files, the corpus was an oracle nobody replayed — the seams are the artifact shapes
+
+- **The census found the parts but not the kit.** §19.4's checkable items mostly EXIST in the shipped surface (capabilities, unsupported-honesty, ambiguity, usage-confidence, the credential-scanned corpus) — but the conformance tests are four separate per-adapter files with no single contract harness, the fixture corpus is never REPLAYED as a permanent oracle (no manifest, no §19.4 coverage map, no pin discipline), and five items (rate-limit/backoff normalization, output-size limits, tool-call validation, provider error taxonomy, projection fidelity) have no machinery — or no surface to bind (projection fidelity is Phase 6's).
+- promotion: declined (the census is the leaf's recorded contract — the `.6.1`–`.6.3` children execute it). **Frontier `PHASE-2.6.1` (the conformance harness).**
+
 ## _(2026-09-07)_ — PHASE-2.5.3: an unmeasured latency is named with a trigger, never given a number — the guard is the SLO population
 
 - **The SLO record instantiates ONLY what is measured.** The dev profile's repeatable signal is the guard (15 live suites, the demo's 34 checks, the restore exercise, the kill beats) — so SLO-1…SLO-4 are hypotheses over THAT population with a zero error budget (a red pass halts the frontier, which is already the CI policy's shape). The one measured latency (cert issuance p50 63 µs/p95 69 µs, the `.1.1` spike) is recorded as a BASELINE, not a target — and the control-plane ingress→commit latency, notification promptness, and the rest of the §5 catalogue are named with their triggers instead of receiving invented numbers (§18.4's "hypotheses established by experiments" + the subtraction doctrine agree).

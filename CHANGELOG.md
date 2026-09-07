@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The matching query resolves server-side — and the provenance gate closes a self-declared-upgrade gap — `.3` COMPLETE (`PHASE-3.3.3`)
+
+- `POST /v1/directory/match`: the initiator submits the expression + the preferences; the server resolves the eligibility + the ranking over the shipped facts (§10.2 — the caller never enumerates the network). The expression's scope is CLAMPED to the reader's classification (a non-owner demanding the full scope is a typed 403), the candidates' profiles ride the response filtered at the reader's class, the zero-visibility profiles never appear, and every candidate carries its stage-1 reasons + the stage-2 explanations.
+- The test design exposed and closed a provenance gap: a role's own write could self-declare `owner_attested`/`certified` claims — the write gate now refuses anything beyond `self_asserted` (the upgrades ride the audited attest verb; the forged upgrade is a typed 400). The budget wire stays honest: no per-role budget facts exist, so a budget requirement cannot be proven (unknown, never zero).
+- Measured (`tests/profiles.rs` grew to 7): the ranked resolution, the affinity separation, the clamp, the gate. **`.3` COMPLETE**; frontier → `.4` (the recruitment protocol lane).
+
 ## 2026-09-07 — The stage-2 explainable ranking: weighted, eligible-only, visibility-safe (`PHASE-3.3.2`)
 
 - `matching.rs` gains the ranking machinery: `RankingPreferences` (the five weights), five deterministic features each as a `FeatureScore` with its score + contribution + a VISIBILITY-SAFE explanation (the counts, the initiator's own inputs, and the matched facts visible at the expression's scope — a hidden profile field never leaks into an explanation), and the pure `rank(...)`: the weighted total over the ELIGIBLE set only (the ranking never restores an ineligible role), ties broken by the role id.

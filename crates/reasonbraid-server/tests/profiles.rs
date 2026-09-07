@@ -1020,3 +1020,247 @@ async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
         "the zero-visibility profile is invisible to the stranger too: {stranger_ids:?}"
     );
 }
+
+/// THE `.3.3.3` acceptance: the match query resolves server-side — the
+/// tenant-scope expression returns the ranked eligible candidates with the
+/// reader-visible fields + the reasons; the zero-visibility profile never
+/// appears; and the scope clamp refuses a wider-than-classified expression.
+/// The provenance gate rides along: a role's own write may declare only
+/// self_asserted claims (the owner attests the upgrade).
+#[tokio::test]
+async fn the_match_query_resolves_the_expression_and_clamps_the_scope() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Tenant A: the owner + two role nodes.
+    let (status, owner_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "match-owner-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "owner A enrolls: {owner_a}");
+    let tenant_a = owner_a["tenant_id"].as_str().unwrap().to_string();
+    let owner_a_id = owner_a["principal_id"].as_str().unwrap().to_string();
+    let (status, role_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "match-agent-a", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "role A enrolls: {role_a}");
+    let role_a_id = role_a["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_a_id, &tenant_a, &role_a_id).await;
+    let mut profile_a = visibility_profile();
+    profile_a["scopes"] = json!(["repo:example/parser"]);
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}"),
+        &role_a_id,
+        &profile_a,
+    )
+    .await;
+    assert_eq!(status, 200, "role A writes");
+    // The provenance gate: the role's OWN write cannot self-declare the
+    // upgrade — the owner attests it (the audited path).
+    let mut forged_upgrade = visibility_profile();
+    forged_upgrade["capabilities"][0]["confidence"] = json!("certified");
+    let (status, refused) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}"),
+        &role_a_id,
+        &forged_upgrade,
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a self-declared provenance upgrade is refused: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("self_asserted"),
+        "the refusal names the gate: {refused}"
+    );
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}/attest"),
+        &owner_a_id,
+        &json!({
+            "taxonomy_id": "code_review",
+            "evidence_ref": "evt_match/20260907",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner attests A's claim");
+
+    // Role B: the same capability + interest, no domain scope.
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "match-agent-b", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "role B enrolls: {role_b}");
+    let role_b_id = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_a_id, &tenant_a, &role_b_id).await;
+    let mut profile_b = visibility_profile();
+    profile_b["scopes"] = json!([]);
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b_id}"),
+        &role_b_id,
+        &profile_b,
+    )
+    .await;
+    assert_eq!(status, 200, "role B writes");
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b_id}/attest"),
+        &owner_a_id,
+        &json!({
+            "taxonomy_id": "code_review",
+            "evidence_ref": "evt_match/20260907",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner attests B's claim");
+
+    // Tenant B: the zero-visibility profile.
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "match-owner-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "owner B enrolls: {owner_b}");
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let (status, role_c) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "match-agent-c", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "role C enrolls: {role_c}");
+    let role_c_id = role_c["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_c_id).await;
+    let mut hidden_profile = visibility_profile();
+    hidden_profile["visibility"] = json!({
+        "display_label": "self_only",
+        "purpose": "self_only",
+        "conversation_modes": "self_only",
+        "capabilities": "self_only",
+        "interests": "self_only",
+        "languages": "self_only",
+        "structured_output_formats": "self_only",
+        "scopes": "self_only",
+        "confidentiality_classes": "self_only",
+        "availability": "self_only",
+        "resolver_tool_capabilities": "self_only",
+        "cost_latency_class": "self_only",
+        "resource_ceilings": "self_only",
+        "grants_by_reference": "self_only",
+    });
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_c_id}"),
+        &role_c_id,
+        &hidden_profile,
+    )
+    .await;
+    assert_eq!(status, 200, "role C writes the zero-visibility profile");
+
+    // THE match: the owner's tenant-scope expression.
+    let expression = json!({
+        "scope": "tenant",
+        "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+        "interests": ["parser trivia"],
+        "domains": ["repo:example/parser"],
+        // The drill's nodes hold no leases: the initiator WIDENS the presence
+        // gate explicitly (the default is available-only).
+        "presence_states": ["available", "offline"],
+    });
+    let response = client
+        .post(format!("{base}/v1/directory/match"))
+        .header(PRINCIPAL_HEADER, &owner_a_id)
+        .json(&json!({ "expression": expression }))
+        .send()
+        .await
+        .expect("match request");
+    assert_eq!(response.status().as_u16(), 200, "the match resolves");
+    let matched: Value = response.json().await.unwrap();
+    let candidates = matched["candidates"].as_array().unwrap();
+    assert_eq!(
+        candidates.len(),
+        2,
+        "only the eligible candidates: {matched}"
+    );
+    assert_eq!(
+        candidates[0]["role_id"],
+        json!(role_a_id),
+        "the full match ranks first"
+    );
+    assert_eq!(candidates[1]["role_id"], json!(role_b_id));
+    assert!(
+        candidates[0]["total"].as_f64().unwrap() > candidates[1]["total"].as_f64().unwrap(),
+        "the affinity separates the ranking: {matched}"
+    );
+    // The candidate profiles carry only the reader-class-visible fields.
+    let a_fields = candidates[0]["profile"].as_object().unwrap();
+    assert!(
+        a_fields.contains_key("capabilities"),
+        "the owner sees the capabilities"
+    );
+    // The zero-visibility profile never appears (no candidate, no count).
+    for candidate in candidates {
+        assert_ne!(candidate["role_id"], json!(role_c_id));
+    }
+    // The stage-1 reasons ride every candidate.
+    assert!(
+        candidates[0]["stage1_reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r.as_str().unwrap().contains("code_review")),
+        "the reasons ride: {matched}"
+    );
+
+    // THE scope clamp: a NON-owner (a plain member of B) demanding the FULL
+    // scope — refused with the typed reason (an owner's own class IS full).
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "match-stranger", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    let forged = json!({
+        "scope": "full",
+        "capabilities": [],
+    });
+    let response = client
+        .post(format!("{base}/v1/directory/match"))
+        .header(PRINCIPAL_HEADER, &stranger_id)
+        .json(&json!({ "expression": forged }))
+        .send()
+        .await
+        .expect("match request");
+    assert_eq!(response.status().as_u16(), 403, "the scope clamp refuses");
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap_or("").contains("scope"),
+        "the refusal names the clamp: {refused}"
+    );
+}

@@ -354,7 +354,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       ranking is a pure function of the eligible set; no regression.
 
   - ID: `PHASE-3.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the matching query surface — `POST /v1/directory/match`
       (the initiator submits the eligibility expression + the
       preferences; the response is the eligible + ranked candidate
@@ -365,6 +365,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
       owns the recruitment + capacity reservations that CONSUME
       this list.
     Backlog: 28, 29 (the surface half)
+    Done (`2026-09-07`): the query surface landed — `POST
+      /v1/directory/match` (the expression + the preferences; the
+      server resolves the eligibility + the ranking over the shipped
+      facts — the caller never enumerates the network): the
+      expression's scope is CLAMPED to the reader's classification
+      (a non-owner demanding the full scope is the typed 403), the
+      candidates' profiles ride the response filtered at the
+      reader's class, the zero-visibility profiles never appear, and
+      the stage-1 reasons + the stage-2 explanations ride every
+      candidate. The leaf also closed a provenance gap the test
+      exposed: a role's own write may declare only SELF-ASSERTED
+      claims (the upgrades ride the audited attest verb — the forged
+      upgrade is the typed 400). Measured (`the_match_query_…`,
+      profiles 7): the ranked candidates, the affinity separation,
+      the clamp, the gate. **`.3` COMPLETE** — frontier → `.4`.
     Acceptance: the measured query (the initiator sees only the
       allowed candidates with the allowed fields); no regression.
 
@@ -396,7 +411,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.3.3` | `proposed` | `.3.2` done — the stage-2 explainable ranking (the five weighted features, the visibility-safe explanations, the eligible-only ordering, the deterministic ties); the matching query surface executes now |
+| 1 | `PHASE-3.4` | `proposed` | `.3.3` done — the matching query surface (the scope clamp, the filtered candidates, the provenance gate); **`.3` COMPLETE** — the recruitment protocol lane executes now |
 
 ## Changelog
 
@@ -456,6 +471,60 @@ eligibility before ranking. Dependence indicators, never an independence score.
   five weighted features with the visibility-safe explanations, the
   eligible-only ordering, the deterministic tie-break); the module's
   tests grew to 10; frontier → `.3.3`.
+- `2026-09-07`: `.3.3` done — the matching query surface (`POST
+  /v1/directory/match`: the scope clamp, the reader-filtered
+  candidates, the reasons + explanations) + the provenance gate (a
+  role's own write is self-asserted-only — the upgrades ride the
+  attest verb); the profiles suite grew to 7; **`.3` COMPLETE** —
+  frontier → `.4`.
+
+## Acceptance Checklist (PHASE-3.3.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+api.rs` (the `POST /v1/directory/match` handler + the route + the
+scope clamp + the self-asserted-only write gate in `put_profile`),
+`crates/reasonbraid-server/src/matching.rs` (the unknown-budget
+honesty + the `RankingPreferences` serde), and
+`crates/reasonbraid-server/tests/profiles.rs` (the measured match
+query) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.3` census: the evaluator + the
+  ranking exist as pure functions but no SURFACE resolves them
+  server-side, and the test design exposed a provenance gap: a
+  role's own write could self-declare `owner_attested`/`certified`
+  claims (the §10.1 provenance is shown, never self-granted).
+- [x] **ROOT CAUSE (WHY + WHERE)** — no route wired the evaluator —
+  `git grep -c "directory/match" 56a38d3 -- crates/` → rc=1 (no
+  surface before this leaf); and the `.1.2` write accepted any
+  confidence value (the gate lived only in the attest verb). The
+  fix points: the POST surface with the scope clamp (an
+  expression's scope may not exceed the reader's classification),
+  and the write gate (a role's own write is self-asserted-only —
+  the upgrades ride the audited attest).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above + the un-gated write. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles the_match` →
+  `test result: ok. 1 passed` — the owner's tenant-scope expression
+  returns the two eligible candidates ranked (the affinity
+  separates them), the zero-visibility profile never appears, the
+  stage-1 reasons ride, the stranger's `full`-scope demand is the
+  typed 403, and the forged `certified` self-declaration is the
+  typed 400 naming the gate. The first run caught the offline
+  default (the drill's lease-less nodes needed the explicit
+  presence widening) — the test now exercises the gate's widening.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg333_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/api.rs` (the handler + the clamp + the write
+  gate), `src/matching.rs` (the unknown-budget honesty + the serde),
+  `tests/profiles.rs` (the measurement).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.3.2)
 
@@ -787,6 +856,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.3.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_match` → `test result: ok. 1 passed` (the ranked resolution + the clamp + the gate); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg333_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the matching query surface; **`.3` COMPLETE** — frontier → `.4` |
 | `2026-09-07` | `PHASE-3.3.2` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 10 passed` (the stage-1 gates + the ordering, the zero weight, the eligible-only rule, the deterministic tie); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg332_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-2 explainable ranking; frontier → `.3.3` |
 | `2026-09-07` | `PHASE-3.3.1` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 6 passed` (the provenance/visibility/presence/exclusion/concurrency/budget gates + the happy path); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg331_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the stage-1 evaluation (pure, visibility-scoped, named reasons); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-3.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the matching-lane census + the contract-seam decomposition (`.3.1` expression + stage-1 → `.3.2` ranking → `.3.3` surface); frontier → `.3.1` |
@@ -802,6 +872,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.3.3` | `REASONBRAID-PHASE3-0012` | the matching query surface (the scope clamp + the filtered candidates + the provenance gate) — **`.3` COMPLETE** |
 | `PHASE-3.3.2` | `REASONBRAID-PHASE3-0011` | the stage-2 explainable ranking (the five weighted features, the visibility-safe explanations, the eligible-only ordering) |
 | `PHASE-3.3.1` | `REASONBRAID-PHASE3-0010` | the eligibility expression + the stage-1 evaluation (the typed expression, the pure visibility-scoped evaluator, six measured gates) |
 | `PHASE-3.3` | `REASONBRAID-PHASE3-0009` | the matching lane decomposed at the census seams (the inputs exist; the expression/evaluator/scoring/surface are the gaps) |

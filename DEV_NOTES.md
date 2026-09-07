@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.3.3: the match surface exposed the provenance gap — a self-declared "certified" is the lie the §10.1 rule forbids
+
+- **The query surface's own test found a gap the schema never caught**: the `.1.2` write accepted ANY confidence value, so a role could self-declare `certified` claims — the exact "high self-declared score" the §10.1 rule forbids. The fix rides this leaf: a role's own write is `self_asserted`-only, the upgrades ride the audited attest verb (the forged upgrade is a typed 400 naming the gate). The surface also pins the scope clamp (an expression cannot exceed the reader's classification) and the honest budget wire (no per-role budget facts → a budget requirement cannot be proven; unknown, never zero).
+- promotion: declined (the gate + the clamp are the leaf's own measured contracts). **`.3` COMPLETE. Frontier `PHASE-3.4` (the recruitment protocol lane).**
+
 ## _(2026-09-07)_ — PHASE-3.3.2: an explanation that leaks a hidden field is a disclosure — the feature strings name only what the initiator can see
 
 - **The ranking's explanations are part of the privacy surface, not a footnote.** Each `FeatureScore` explanation carries the counts, the initiator's own inputs, and the matched facts VISIBLE at the expression's scope — so the no-leak property is a test assertion, not a convention. The ranking itself is a pure weighted sum over the ELIGIBLE set only (an ineligible role never appears, whatever its score would be), and the tie-break is the role id — determinism, not luck.

@@ -270,11 +270,19 @@ pub fn eligible(
                 Some(available) if available >= min => {
                     reasons.push(format!("available budget {available} meets {min}"));
                 }
-                _ => {
+                Some(available) => {
                     return EligibilityVerdict {
                         eligible: false,
                         reasons: vec![format!(
-                            "available budget does not meet the requirement of {min}"
+                            "available budget {available} does not meet the requirement of {min}"
+                        )],
+                    };
+                }
+                None => {
+                    return EligibilityVerdict {
+                        eligible: false,
+                        reasons: vec![format!(
+                            "available budget is UNKNOWN (the requirement of {min} cannot be proven)"
                         )],
                     };
                 }
@@ -290,7 +298,8 @@ pub fn eligible(
 
 /// The stage-2 feature weights (the initiator's preferences). Zero-weight
 /// features contribute nothing; the ranking is the weighted sum.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct RankingPreferences {
     pub capability: f64,
     pub interest: f64,

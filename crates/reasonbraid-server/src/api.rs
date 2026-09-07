@@ -348,6 +348,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
         .route("/v1/directory/presence", get(directory_presence))
+        .route("/v1/directory/match", post(directory_match))
         .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
         .route(
             "/v1/profiles/{role_id}/versions",
@@ -1214,6 +1215,140 @@ async fn list_node_presence(
     })))
 }
 
+// ── The matching query surface (PHASE-3.3.3; backlog 28/29) ─────────────────────
+
+/// The match request: the initiator's eligibility expression + the stage-2
+/// preferences (the defaults apply when absent).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchRequest {
+    expression: crate::matching::EligibilityExpression,
+    #[serde(default)]
+    preferences: crate::matching::RankingPreferences,
+}
+
+fn scope_rank(class: crate::profiles::ReaderClass) -> u8 {
+    match class {
+        crate::profiles::ReaderClass::Full => 2,
+        crate::profiles::ReaderClass::Tenant => 1,
+        crate::profiles::ReaderClass::Network => 0,
+    }
+}
+
+/// `POST /v1/directory/match` — the initiator's expression resolves
+/// SERVER-side (§10.2: the caller never enumerates the network). The
+/// expression's scope must not exceed the reader's classification (a network
+/// reader cannot demand the tenant view — the typed 403). The response carries
+/// ONLY the eligible candidates, ranked, each with the stage-1 reasons + the
+/// stage-2 explanations + the profile fields VISIBLE to the reader.
+async fn directory_match(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<MatchRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(reader_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal matches nothing",
+        ));
+    };
+    let owner = if let Ok(tenant) = reader_tenant.parse() {
+        authorize_tenant_admin(&state.pool, &principal, tenant)
+            .await
+            .is_ok()
+    } else {
+        false
+    };
+    let reader_class = if owner {
+        crate::profiles::ReaderClass::Full
+    } else if crate::profiles::ReaderClass::Tenant == req.expression.scope
+        || crate::profiles::ReaderClass::Network == req.expression.scope
+    {
+        // A same-tenant member may search at most the tenant scope; anyone
+        // else at most the network scope.
+        crate::profiles::ReaderClass::Tenant
+    } else {
+        crate::profiles::ReaderClass::Network
+    };
+    // The scope clamp: the expression must not exceed the reader's class.
+    if scope_rank(req.expression.scope) > scope_rank(reader_class) {
+        return Err(ControlApiError::unauthorized(format!(
+            "the expression's scope exceeds the reader's classification"
+        )));
+    }
+
+    type Row = (
+        String,
+        bool,
+        bool,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<i64>,
+        Option<Value>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
+                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
+                (SELECT v.profile \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+         FROM node_presence np ORDER BY np.node_id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut candidates: Vec<(
+        crate::matching::EligibilityCandidate,
+        crate::matching::EligibilityVerdict,
+    )> = Vec::new();
+    for (node_id, online, suspended, _last_seen, _lease_expiry, concurrency, profile) in rows {
+        let Some(stored) = profile else {
+            continue; // a role node without a profile declares nothing
+        };
+        let Ok(parsed) = serde_json::from_value::<crate::profiles::AgentProfile>(stored) else {
+            continue;
+        };
+        let state = crate::presence::presence_state(true, suspended, online, concurrency);
+        let candidate = crate::matching::EligibilityCandidate {
+            role_id: node_id.clone(),
+            profile: Some(parsed),
+            presence_state: state,
+            concurrency,
+            // The dev profile has no per-role budget facts: UNKNOWN, never
+            // zero (§14.5) — a budget requirement therefore cannot be proven.
+            available_budget: None,
+        };
+        let verdict = crate::matching::eligible(&req.expression, &candidate);
+        candidates.push((candidate, verdict));
+    }
+
+    let ranked = crate::matching::rank(&req.expression, &candidates, &req.preferences);
+    let out: Vec<Value> = ranked
+        .into_iter()
+        .map(|r| {
+            let profile = candidates
+                .iter()
+                .find(|(c, _)| c.role_id == r.role_id)
+                .and_then(|(c, _)| c.profile.as_ref())
+                .map(|p| crate::profiles::filter_profile(p, reader_class))
+                .unwrap_or_else(|| json!({}));
+            json!({
+                "role_id": r.role_id,
+                "stage1_reasons": r.stage1_reasons,
+                "features": r.features,
+                "total": r.total,
+                "profile": profile,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "scope": format!("{:?}", reader_class).to_lowercase(),
+        "candidates": out,
+    })))
+}
+
 // ── The privacy-filtered directory views (PHASE-3.2.3; backlog 27) ──────────────
 
 /// The reader's directory scope: the OWNER (tenant_admin) reads the FULL fields
@@ -1421,6 +1556,21 @@ async fn put_profile(
         }
     }
     let _ = tenant;
+    // The provenance gate: a role's own write may declare only SELF-ASSERTED
+    // claims — the owner_attested/benchmarked/certified upgrades ride the
+    // audited attest verb (§10.1: the provenance is shown, never self-granted).
+    if let Some(claim) = profile
+        .capabilities
+        .iter()
+        .find(|c| c.confidence != crate::profiles::ClaimConfidence::SelfAsserted)
+    {
+        return Err(ControlApiError::invalid_command(format!(
+            "capability `{}` declares {} — a role's own write may declare only \
+             self_asserted (the owner attests the upgrade via /attest)",
+            claim.taxonomy_id,
+            claim.confidence.rank_name()
+        )));
+    }
     let writer = actor_handle_for_subject(&principal).to_string();
     let written = crate::profiles::write_profile(&state.pool, &role_id, &writer, &profile)
         .await

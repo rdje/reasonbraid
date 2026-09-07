@@ -1356,6 +1356,52 @@ pub async fn run_breaker_reset(
     ))
 }
 
+/// The tenant's usage reconciliation (`.3.3`; tenant_admin read): the
+/// held/settled/overrun/denied picture summed over the ledger rows.
+pub async fn run_inspect_usage(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/usage", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let aggregate = &response["aggregate"];
+    let mut out = format!(
+        "tenant {tenant}'s usage — held {:?}, settled {:?}, overrun {:?}, denied {}",
+        aggregate["held"],
+        aggregate["settled"],
+        aggregate["overrun"],
+        aggregate["denied"].as_u64().unwrap_or(0),
+    );
+    for reason in aggregate["denial_reasons"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
+        out.push_str(&format!("\n  denied: {reason}"));
+    }
+    for thread in response["threads"].as_array().cloned().unwrap_or_default() {
+        out.push_str(&format!(
+            "\n  {} — held {:?}, settled {:?}, overrun {:?}, denied {}",
+            thread["thread_id"].as_str().unwrap_or("?"),
+            thread["held"],
+            thread["settled"],
+            thread["overrun"],
+            thread["denied"].as_u64().unwrap_or(0),
+        ));
+    }
+    Ok(out)
+}
+
 /// The tenant's spend circuit breaker state (`.3.2`; tenant_admin read).
 pub async fn run_inspect_breakers(
     cfg: &Config,

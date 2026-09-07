@@ -266,6 +266,14 @@ refused with the typed reason until the operator resets:
  inspect breakers --as alice
 ```
 
+The usage reconciliation (`.3.3`): the estimates-vs-receipts picture summed
+over the ledger rows — held vs settled vs overrun vs denied, per tenant and
+per thread:
+
+```text
+ inspect usage --as alice
+```
+
 The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
 principal whose grant is the authority source:
 

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The usage reconciliation: the estimates-vs-receipts picture, summed over the ledger (`PHASE-2.3.3`)
+
+- `GET /v1/admin/usage` + `rb inspect usage` land: the tenant's held (active unexpired reservations) vs settled (actual usage) vs overrun (used minus reserved per dimension, floored) vs denied (with the reasons) picture — SUMMED over the same ledger rows the budget engine enforces against, plus the per-thread breakdown. Expired holds count nowhere. tenant_admin-gated, read-only.
+- The live test is MEASURED: the seeded rows' arithmetic is recomputed in the test and must match the wire (held 2 / settled 8 / overrun 3 calls / denied 1, the expired hold excluded). command_api grew to 17; demo 34/34. **`.3` COMPLETE** — frontier → `.4` (backup/PITR + migrations).
+
 ## 2026-09-07 — The spend circuit breaker: a tripped latch refuses everything new, in the denial's own transaction (`PHASE-2.3.2`)
 
 - Migration 0016 lands the per-tenant `spend_breakers` latch (threshold + tripped state + reason). The reservation path checks it FIRST, before any ceiling math: a tripped breaker refuses every new reservation with the typed reason; an armed breaker trips the moment the tenant's recorded spend (settled usage + active holds across ALL its ceilings) plus the request crosses the declared threshold — the trip and the refusal commit with the denial's own transaction, so the latch never lags the ledger it guards.

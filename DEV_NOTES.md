@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.3.3: the reconciliation surface sums the ledger it trusts — aggregation, never a second truth
+
+- **The budget engine's rows ARE the reconciliation data.** The surface sums the same rows the engine enforces against (held = active unexpired, settled = actuals, overrun = used minus reserved floored, expired counts nowhere) — the measured test recomputes the seeded arithmetic and demands the wire match. A reconciliation that kept its own ledger would be the second truth the doctrine forbids.
+- promotion: declined (the aggregation-not-a-second-truth rule is the leaf's recorded contract — no new cross-cutting decision). **`.3` COMPLETE. Frontier `PHASE-2.4` (backup/PITR + migrations).**
+
 ## _(2026-09-07)_ — PHASE-2.3.2: the breaker trips inside the denial's transaction — the latch never lags the ledger
 
 - **The check belongs BEFORE the ceiling math, and the trip rides the same transaction as the refusal.** A breaker that trips in a separate write would leave a window where the crossing reservation issued anyway; `check_spend_breaker_in_tx` runs first in `create_reservation_in_tx`, so the trip, the refusal, and the (absent) reservation are one atomic fact.

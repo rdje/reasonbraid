@@ -2205,3 +2205,137 @@ async fn delegation_succeeds_within_the_subjects_grant_and_refuses_widening() {
         "a revoked subject grant refuses the delegation: {after_revoke}"
     );
 }
+
+fn dims(calls: Option<u64>, tokens: Option<u64>) -> reasonbraid_core::BudgetDimensions {
+    reasonbraid_core::BudgetDimensions {
+        calls,
+        input_tokens: tokens,
+        output_tokens: tokens,
+        wall_clock_seconds: None,
+    }
+}
+
+/// THE `.3.3` acceptance: the usage-reconciliation surface sums the LEDGER
+/// rows (held vs settled vs overrun vs denied, per dimension) — measured:
+/// the seeded rows' arithmetic is recomputed in the test and must match the
+/// wire. tenant_admin-gated.
+#[tokio::test]
+async fn the_usage_surface_reconciles_the_ledger_rows() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, alice) = enroll(
+        &client,
+        &server.base(),
+        json!({ "kind": "human", "name": "usage-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    // Seed the ledger directly (the budget engine's own rows): a thread with
+    // a ceiling, one ACTIVE hold, one SETTLED with an overrun, one DENIED.
+    let thread = "thr_00000000-0000-7000-8000-000000000900";
+    sqlx::query(
+        "INSERT INTO budget_ceilings (ceiling_id, tenant_id, thread_id, dimensions, policy_version) \
+         VALUES ('ceil_recon', $1, $2, $3, 'dev-budget-1')",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(100), Some(100_000))).unwrap())
+    .execute(&pool)
+    .await
+    .expect("ceiling");
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, expires_at, created_at) \
+         VALUES ('res_recon_hold', 'ceil_recon', $1, $2, $3, 'active', now() + interval '10 minutes', now())",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(2), Some(200))).unwrap())
+    .execute(&pool)
+    .await
+    .expect("hold");
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, usage, status, created_at, settled_at) \
+         VALUES ('res_recon_settled', 'ceil_recon', $1, $2, $3, $4, 'settled', now(), now())",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(5), Some(500))).unwrap())
+    .bind(serde_json::to_value(dims(Some(8), Some(500))).unwrap()) // 3 calls over the hold
+    .execute(&pool)
+    .await
+    .expect("settled");
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, reason, created_at) \
+         VALUES ('res_recon_denied', 'ceil_recon', $1, $2, $3, 'denied', 'beyond the ceiling', now())",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(50), Some(50_000))).unwrap())
+    .execute(&pool)
+    .await
+    .expect("denied");
+    // An EXPIRED hold stops holding (the reconciliation counts it nowhere).
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, expires_at, created_at) \
+         VALUES ('res_recon_expired', 'ceil_recon', $1, $2, $3, 'active', now() - interval '1 minute', now())",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(9), Some(900))).unwrap())
+    .execute(&pool)
+    .await
+    .expect("expired");
+
+    let (status, usage) = get(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/usage?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the usage surface answers: {usage}");
+    let aggregate = &usage["aggregate"];
+    // Measured: held 2 calls (the expired 9 stops holding), settled 8 (the
+    // overrun's actuals), overrun 3 calls (8 - 5), denied 1.
+    assert_eq!(aggregate["held"]["calls"], json!(2), "held calls: {usage}");
+    assert_eq!(
+        aggregate["settled"]["calls"],
+        json!(8),
+        "settled calls: {usage}"
+    );
+    assert_eq!(aggregate["settled"]["output_tokens"], json!(500));
+    assert_eq!(
+        aggregate["overrun"]["calls"],
+        json!(3),
+        "overrun calls: {usage}"
+    );
+    assert_eq!(
+        aggregate["overrun"]["output_tokens"],
+        json!(0),
+        "no token overrun"
+    );
+    assert_eq!(aggregate["denied"], json!(1));
+    assert!(
+        aggregate["denial_reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "beyond the ceiling"),
+        "the denial reason rides the surface: {usage}"
+    );
+    let threads = usage["threads"].as_array().unwrap();
+    assert_eq!(threads.len(), 1, "one thread in the breakdown: {usage}");
+    assert_eq!(threads[0]["held"]["calls"], json!(2));
+    assert_eq!(threads[0]["settled"]["calls"], json!(8));
+    assert_eq!(threads[0]["overrun"]["calls"], json!(3));
+    assert_eq!(threads[0]["denied"], json!(1));
+}

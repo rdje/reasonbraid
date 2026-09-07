@@ -344,6 +344,7 @@ pub fn api_router(pool: PgPool) -> Router {
             post(arm_breaker).get(inspect_breakers),
         )
         .route("/v1/admin/breakers/reset", post(reset_breaker))
+        .route("/v1/admin/usage", get(admin_usage))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -2475,6 +2476,138 @@ async fn get_events(
         },
     )
     .await
+}
+
+/// `GET /v1/admin/usage?tenant_id=…` — the usage-reconciliation surface
+/// (`.3.3`, backlog 25's dev slice): the estimates-vs-receipts picture per
+/// tenant, SUMMED over the ledger rows (the same rows the budget engine
+/// enforces against — nothing computed or invented here): held (active
+/// unexpired reservations), settled (actual usage), overrun (settled minus
+/// reserved, per dimension, floored), and the denials with their reasons —
+/// plus the per-thread breakdown. tenant_admin-gated (the read carve-out's
+/// surface), read-only.
+async fn admin_usage(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+
+    type Row = (
+        String,
+        Value,
+        Option<Value>,
+        String,
+        Option<String>,
+        Option<DateTime<Utc>>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT thread_id, dimensions, usage, status, reason, expires_at \
+         FROM budget_reservations WHERE tenant_id = $1 ORDER BY created_at",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut tenant_held = BudgetDimensions::default();
+    let mut tenant_settled = BudgetDimensions::default();
+    let mut tenant_overrun = BudgetDimensions::default();
+    let mut tenant_denied = 0usize;
+    let mut denial_reasons: Vec<&str> = Vec::new();
+    let mut threads: std::collections::BTreeMap<
+        String,
+        (BudgetDimensions, BudgetDimensions, BudgetDimensions, usize),
+    > = std::collections::BTreeMap::new();
+
+    for (thread_id, dimensions, usage, status, reason, expires_at) in &rows {
+        let reserved: BudgetDimensions =
+            serde_json::from_value(dimensions.clone()).expect("stored dims parse");
+        let (held, settled, overrun, denied) =
+            threads.entry(thread_id.clone()).or_insert_with(|| {
+                (
+                    BudgetDimensions::default(),
+                    BudgetDimensions::default(),
+                    BudgetDimensions::default(),
+                    0,
+                )
+            });
+        match status.as_str() {
+            "active" if expires_at.is_some_and(|e| e > Utc::now()) => {
+                *held = held.add(&reserved);
+                tenant_held = tenant_held.add(&reserved);
+            }
+            "settled" => {
+                let used: BudgetDimensions = usage
+                    .as_ref()
+                    .map(|u| serde_json::from_value(u.clone()).expect("stored usage parses"))
+                    .unwrap_or_default();
+                *settled = settled.add(&used);
+                tenant_settled = tenant_settled.add(&used);
+                // The overrun per dimension = used minus reserved, floored at
+                // None (an unused remainder is NOT a negative overrun).
+                let over = BudgetDimensions {
+                    calls: used
+                        .calls
+                        .zip(reserved.calls)
+                        .map(|(u, r)| u.saturating_sub(r)),
+                    input_tokens: used
+                        .input_tokens
+                        .zip(reserved.input_tokens)
+                        .map(|(u, r)| u.saturating_sub(r)),
+                    output_tokens: used
+                        .output_tokens
+                        .zip(reserved.output_tokens)
+                        .map(|(u, r)| u.saturating_sub(r)),
+                    wall_clock_seconds: used
+                        .wall_clock_seconds
+                        .zip(reserved.wall_clock_seconds)
+                        .map(|(u, r)| u.saturating_sub(r)),
+                };
+                *overrun = overrun.add(&over);
+                tenant_overrun = tenant_overrun.add(&over);
+            }
+            "denied" => {
+                *denied += 1;
+                tenant_denied += 1;
+                if let Some(reason) = reason.as_deref() {
+                    denial_reasons.push(reason);
+                }
+            }
+            _ => {} // released/expired: nothing held, nothing settled
+        }
+    }
+
+    let dims_to_json = |d: BudgetDimensions| {
+        json!({
+            "calls": d.calls,
+            "input_tokens": d.input_tokens,
+            "output_tokens": d.output_tokens,
+            "wall_clock_seconds": d.wall_clock_seconds,
+        })
+    };
+    Ok(Json(json!({
+        "tenant_id": q.tenant_id.to_string(),
+        "aggregate": {
+            "held": dims_to_json(tenant_held),
+            "settled": dims_to_json(tenant_settled),
+            "overrun": dims_to_json(tenant_overrun),
+            "denied": tenant_denied,
+            "denial_reasons": denial_reasons,
+        },
+        "threads": threads
+            .into_iter()
+            .map(|(thread_id, (held, settled, overrun, denied))| {
+                json!({
+                    "thread_id": thread_id,
+                    "held": dims_to_json(held),
+                    "settled": dims_to_json(settled),
+                    "overrun": dims_to_json(overrun),
+                    "denied": denied,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })))
 }
 
 /// `GET /v1/threads/{thread_id}/budget` — the budget read surface (`PHASE-1.6.1`,

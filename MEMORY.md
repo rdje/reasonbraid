@@ -23,13 +23,12 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.3.3` (`.3.2` done: the spend
-  circuit breakers — migration 0016's per-tenant latch + the
-  arm/reset/inspect verbs). Then `.3` closes.
-- **Next action:** execute `PHASE-2.3.3` — the usage-reconciliation
-  surface: the held-vs-settled-vs-overrun-vs-denied picture per thread/
-  tenant (per-dimension sums), tenant_admin-gated read-only (backlog 25's
-  dev slice; pricing snapshots stay Phase 4+).
+- **Active tree:** `PHASE-2` → frontier `.4` (**`.3` is COMPLETE** —
+  ADR-012/013, the spend circuit breakers, the usage-reconciliation
+  surface).
+- **Next action:** execute `PHASE-2.4` — backup, PITR, object/Git
+  inventory groundwork, migrations, upgrade/rollback testing (Roadmap
+  §17.5–17.6) — pick it up with a census like the previous lanes'.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

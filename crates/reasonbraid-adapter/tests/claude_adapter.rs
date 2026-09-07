@@ -1,77 +1,30 @@
 //! Offline tests for the Claude CLI adapter (`PHASE-1.4.1`): the supervision mechanics
-//! are exercised against a STUB binary that mimics `claude -p --output-format
-//! stream-json`'s event stream — no provider spend, fully deterministic. The real
-//! dispatch is the env-gated live test in `crates/reasonbraid-node/tests/claude_live.rs`.
+//! are exercised against a STUB binary that mimics `claude -p --json`'s event stream
+//! — no provider spend, fully deterministic. The real dispatch is the env-gated live
+//! test in `crates/reasonbraid-node/tests/claude_live.rs`.
 //!
 //! The stub is a POSIX shell script written under the build dir, so the tests cover
 //! the REAL subprocess boundary (spawn, JSONL parsing, exit-status verdicts, kill) —
-//! only the provider behind the binary is fake.
+//! only the provider behind the binary is fake. The cross-adapter invariants (the
+//! capability manifest, the unsupported-operation honesty, the dispatch boundary, the
+//! lost-response honesty, the cancellation ceiling, the usage-accounting floor) run in
+//! the shared conformance harness (`tests/conformance/`); this file owns the
+//! CLAUDE-specific mechanics.
 
-use std::path::PathBuf;
+#[path = "conformance/stubs.rs"]
+#[allow(dead_code)] // this binary uses only ITS provider's stub; the sibling serves the other adapter's tests
+mod stubs;
+
 use std::time::Duration;
 
 use reasonbraid_adapter::{
     Adapter, AttemptEvent, CancellationOutcome, ClaudeCliAdapter, InvokeOutcome, RunRequest,
-    StatusLookupOutcome, UsageConfidence,
+    UsageConfidence,
 };
 use serde_json::json;
 
-/// Write the stub `claude` script (branches on the prompt argument) and return its path.
-fn stub_binary(name: &str) -> PathBuf {
-    let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
-    let dir = base.join("claude-stubs").join(format!("{name}-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("claude");
-    let script = r#"#!/bin/sh
-# The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
-for last in "$@"; do :; done
-case "$last" in
-  *fail*)
-    echo '{"type":"system","subtype":"init","session_id":"stub_fail","model":"stub"}'
-    echo "boom: simulated provider error" >&2
-    exit 2
-    ;;
-  *refuse*)
-    echo '{"type":"system","subtype":"init","session_id":"stub_refuse","model":"stub"}'
-    echo '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"simulated provider refusal","session_id":"stub_refuse"}'
-    exit 1
-    ;;
-  *lose*)
-    echo '{"type":"system","subtype":"init","session_id":"stub_lose","model":"stub"}'
-    exit 0
-    ;;
-  *sleep*)
-    echo '{"type":"system","subtype":"init","session_id":"stub_sleep","model":"stub"}'
-    # Busy-loop with NO child process: the killed script IS the pipe holder, so
-    # start_kill ends the stream immediately (a `sleep` child would inherit the
-    # stdout pipe and delay EOF past the test's bound).
-    while :; do :; done
-    ;;
-  *)
-    echo '{"type":"system","subtype":"init","session_id":"stub_ok","model":"stub"}'
-    echo '{"type":"assistant","session_id":"stub_ok","message":{"content":[{"type":"thinking","thinking":"internal reasoning is not the reply"},{"type":"text","text":"hello '"$last"'"},{"type":"text","text":"world"}]}}'
-    echo '{"type":"result","subtype":"success","is_error":false,"result":"hello '"$last"' world","session_id":"stub_ok","usage":{"input_tokens":10,"output_tokens":3,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"total_cost_usd":0.001234,"duration_ms":42,"num_turns":1}'
-    exit 0
-    ;;
-esac
-"#;
-    std::fs::write(&path, script).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    path
-}
-
 fn adapter_with_stub(name: &str) -> ClaudeCliAdapter {
-    ClaudeCliAdapter::with_binary(stub_binary(name))
+    ClaudeCliAdapter::with_binary(stubs::claude_binary(name))
 }
 
 fn request_with(prompt: &str) -> RunRequest {
@@ -266,18 +219,7 @@ async fn cancel_kills_the_child_and_reports_best_effort() {
 }
 
 /// The real honesty leg: status lookup is Unsupported on this boundary.
-#[tokio::test]
-async fn query_status_is_unsupported() {
-    let adapter = adapter_with_stub("lookup");
-    assert!(matches!(
-        adapter.query_status("op_whatever").await,
-        StatusLookupOutcome::Unsupported
-    ));
-}
 
-/// The Claude receipt shape: usage + money from the FULL result event; Anthropic's
-/// token counts already include caches/thinking (no folding); absent fields stay
-/// unknown rather than zero.
 #[tokio::test]
 async fn normalize_usage_maps_claude_receipt_shapes() {
     let adapter = adapter_with_stub("usage");
@@ -316,18 +258,4 @@ async fn normalize_usage_maps_claude_receipt_shapes() {
     assert_eq!(unknown.output_tokens, None);
     assert_eq!(unknown.cost, None);
     assert_eq!(unknown.confidence, UsageConfidence::Unknown);
-}
-
-/// The declared capabilities match the verified boundary: streaming yes, lookup no,
-/// idempotency no, cancellation best-effort.
-#[tokio::test]
-async fn capabilities_match_the_verified_boundary() {
-    let caps = adapter_with_stub("caps").capabilities();
-    assert!(caps.streaming);
-    assert!(!caps.status_lookup);
-    assert!(!caps.provider_idempotency);
-    assert_eq!(
-        caps.cancellation,
-        reasonbraid_adapter::CancellationStrength::BestEffort
-    );
 }

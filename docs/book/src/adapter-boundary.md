@@ -36,6 +36,19 @@ Four properties make the boundary safe:
    idempotency, status lookup, tool support, and the policy-injection mode —
    callers branch on these, never on a provider name.
 
+## The conformance harness (`.6.1`)
+
+§19.4: a "works once" demo does not qualify an adapter. One suite
+(`crates/reasonbraid-adapter/tests/adapter_conformance.rs`) runs every adapter —
+the fake and both real CLI adapters (behind stub binaries) — through the same six
+invariants: the capability manifest agrees with the verified boundary; a
+never-dispatched lookup is honestly `Unsupported`; a refusal happens BEFORE any
+provider contact; a lost response never invents a terminal event; a cancel never
+exceeds the declared strength; an empty usage receipt is `Unknown`, never zero.
+Each adapter registers scenarios (name + trigger + declared capabilities + the
+tripping request) — a new adapter conforms by registering, not by re-proving the
+contract in its own file.
+
 ## The fake adapter
 
 `FakeAdapter` (`§11.6`'s conformance oracle) plays a per-operation script:

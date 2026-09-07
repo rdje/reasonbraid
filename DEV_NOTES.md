@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.6.1: the conformance invariants live ONCE — the scenario shape is the registration surface
+
+- **The contract carried the declarations but nothing asserted them uniformly** — the capability boundary and the unsupported-lookup honesty were re-tested per adapter file (4 `capabilities()` asserts, 8 `query_status` asserts, the stub copied twice across three files). The harness's scenario shape (name + trigger + declared capabilities + the tripping request) means a NEW adapter conforms by REGISTERING scenarios, not by re-proving the contract in its own file — the six §19.4 invariants exist exactly once.
+- promotion: declined (the harness is the `.6.1` leaf's own artifact; the `.6.2` corpus child will record the fixture-permanence decision). **Frontier `PHASE-2.6.2` (the permanent failure-fixture corpus).**
+
 ## _(2026-09-07)_ — PHASE-2.6: the conformance suite was four files, the corpus was an oracle nobody replayed — the seams are the artifact shapes
 
 - **The census found the parts but not the kit.** §19.4's checkable items mostly EXIST in the shipped surface (capabilities, unsupported-honesty, ambiguity, usage-confidence, the credential-scanned corpus) — but the conformance tests are four separate per-adapter files with no single contract harness, the fixture corpus is never REPLAYED as a permanent oracle (no manifest, no §19.4 coverage map, no pin discipline), and five items (rate-limit/backoff normalization, output-size limits, tool-call validation, provider error taxonomy, projection fidelity) have no machinery — or no surface to bind (projection fidelity is Phase 6's).

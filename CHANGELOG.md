@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — One suite, three adapters: the conformance harness lands (`PHASE-2.6.1`)
+
+- `crates/reasonbraid-adapter/tests/conformance/` (the harness) + `tests/adapter_conformance.rs` (the registrations): every adapter — the deterministic fake and both real CLI adapters — passes the SAME six §19.4 invariants: the capability manifest agrees with the scenario's verified boundary, a never-dispatched lookup is honestly `Unsupported`, a refusal happens before any provider contact, a lost response never invents a terminal event, a cancel never exceeds the declared strength, and an empty usage receipt is `Unknown`, never zero.
+- The scenario shape (name + trigger + declared capabilities + the tripping request) is the registration surface: the fake registers from its fixture corpus's OWN declarations; Codex and Claude register behind the shared provider stubs (now in `tests/conformance/stubs.rs`, one copy instead of two) plus the missing-binary refusal.
+- The duplicated cross-adapter tests (the capability-boundary and unsupported-lookup copies) left the per-adapter files — those keep their provider-specific mechanics (prompt travel, stderr tails, the child kill, the receipt shapes).
+- Measured: `test result: ok. 3 passed` for the harness; the adapter crate's 8 suites green; 48 offline suites; the guard 15 live suites + demo 34/34. Frontier → `.6.2` (the permanent failure-fixture corpus).
+
 ## 2026-09-07 — `.6` split at the contract seams (`PHASE-2.6`)
 
 - The census mapped §19.4's ten conformance items against the shipped adapter surface. EXISTS: the capability declaration + unsupported-operation behavior (`AdapterCapabilities` + `StatusLookupOutcome::Unsupported`), the honest ambiguous-outcome reporting (the `outcome_unknown` contract + the lose-response fixtures), the usage accounting with confidence (`NormalizedUsage` + `UsageConfidence`), the sanitized 10-fixture corpus (credential-scan + coverage tests), the cancellation/streaming semantics, and four per-adapter test files.

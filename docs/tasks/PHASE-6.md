@@ -334,7 +334,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     ADR-033. Frontier → `.3.1`.
 
   - ID: `PHASE-6.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-033 + the census — the compiler contract: the
       deterministic rendering (the byte-identical guarantee),
       the target vocabulary (the generic bundle, the
@@ -345,6 +345,25 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       the clean-worker doctrine). No code.
     ADR: 033
     Roadmap: §15.5
+    Done (`2026-09-07`): ADR-033 accepted (evidence-gated) —
+      `docs/adr/033-projection-compiler.md` (top-level
+      `answers:`): the compiler renders the RESOLVED set,
+      never re-resolves (a re-resolving compiler would be a
+      second judge — the ADR-017 trap); the rendering is
+      byte-identical by construction (the pure function of
+      the ordered clause list — no clock, no ambient state;
+      the projection's ADR-011 digest is the §15.7
+      publication's verification primitive); the target
+      vocabulary is the initial §15.5 set (the generic
+      bundle, the AGENTS.md, the CLAUDE.md, the policy.lock —
+      the MCP/host/checklist targets are named deferrals: a
+      target without an adapter is the typed refusal); the
+      unrepresentable clause is a DECLARED refusal (the
+      `unrepresentable` list with the reason — never a
+      silent omission); the compiler is a separate HERMETIC
+      crate (no database/network/ambient state — the
+      clean-worker doctrine, the extraction precedent). No
+      code changed. Frontier → `.3.2`.
 
   - ID: `PHASE-6.3.2`
     Status: `proposed`
@@ -394,10 +413,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.3.1` | `proposed` | `.3` decomposed at the census seams (the compiler is the greenfield; the `.1` resolution is its input) — ADR-033 opens the lane |
+| 1 | `PHASE-6.3.2` | `proposed` | `.3.1` done — ADR-033 accepted (the byte-identical renderer, the declared unrepresentable, the hermetic crate); the compiler core executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.1` done — ADR-033 accepted (the
+  compiler contract: the byte-identical renderer, the
+  declared unrepresentable, the hermetic crate, the
+  projection digest); no code; frontier → `.3.2`.
 - `2026-09-07`: `.3` decomposed at the census seams — the
   compiler is the greenfield (no projection exists; the `.1`
   resolution is its input); children `.3.1` (ADR-033 + the

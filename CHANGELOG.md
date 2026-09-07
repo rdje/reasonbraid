@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-033: the projection-compiler contract (`PHASE-6.3.1`)
+
+- ADR-033 accepted (`docs/adr/033-projection-compiler.md`): the compiler renders the resolved set, never re-resolves; the rendering is byte-identical by construction; the unrepresentable clause is the DECLARED refusal (never a silent omission); the compiler is a separate hermetic crate; the projection digest is the publication's verification primitive. No code.
+
 ## 2026-09-07 — The compiler lane is decomposed at the census seams (`PHASE-6.3`)
 
 - The projection compiler is the greenfield (no projection, no target vocabulary, no unrepresentable declaration exists); the `.1` resolution's clause set is its input. Children: `.3.1` ADR-033 → `.3.2` the compiler core → `.3.3` the Codex + the Claude projections.

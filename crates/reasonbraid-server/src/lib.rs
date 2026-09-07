@@ -37,6 +37,7 @@ mod outbox;
 mod presence;
 mod profiles;
 mod recruitment;
+mod resolvers;
 mod resources;
 mod telemetry;
 mod threads;

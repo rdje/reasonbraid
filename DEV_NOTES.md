@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.1.3: the registry's honesty is the explicit failure — unresolvable-now preserves the reference, never fabricates it
+
+- **The §12.2 order landed as data semantics**: the scheme + the ADR-018 isolation filters run FIRST (a resolver declaring less than the required class is ineligible — the silent downgrade ADR-018 forbade), then the latency rank; and the empty result is the explicit `resource_unresolvable_now` with the reference LEFT SUBMITTED — the measured test proves the unsupported scheme fails explicitly while the inspection still reads the reference. The first live run caught the SQL-continuation doubling a third time (the heredoc pattern) — the test is the reason it surfaced before the commit.
+- promotion: declined (the filter-then-rank order is the leaf's own contract). **`.1` COMPLETE. Frontier `PHASE-4.2` (the R0 safe-HTTPS pack).**
+
 ## _(2026-09-07)_ — PHASE-4.1.2: the locator's immutability is the replay and the conflict — a reference cannot be silently re-bound
 
 - **The immutability rule became data semantics, not a comment**: the UNIQUE (locator, digest) plus the pre-check turn the re-submission into the idempotent replay (the same binding) or the typed `locator_digest_conflict` (a different digest for the same locator) — there is no update path at all. The first live run caught two of my own bugs (the doubled SQL continuations + the digest validator's `?` early-return — the "malformed digest" was passing through) — the measured test is the reason they surfaced before the commit.

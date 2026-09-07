@@ -109,7 +109,7 @@ of a URI is not a promise the core can resolve it.
       regression.
 
   - ID: `PHASE-4.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the resolver capability registry — the §12.2 advertises
       (the schemes + the locator patterns, the media types + the
       max bytes, the abilities, the auth classes, the egress class,
@@ -123,6 +123,23 @@ of a URI is not a promise the core can resolve it.
       packs (`.2`–`.4`): the registry ships the SHAPE with the
       explicit-unsupported results measured.
     Backlog: 31 (the registry half)
+    Done (`2026-09-07`): the resolver capability registry landed —
+      migration 0024 (`resolver_capabilities`: the §12.2 advertise
+      with the ADR-018 classes) + `crates/reasonbraid-server/src/
+      resolvers.rs` (the typed `ResolverAdvertise` + the isolation
+      validation + the `resolve` order: the scheme + the
+      sandbox/egress filters FIRST — a resolver declaring LESS
+      than the required class is ineligible — then the latency
+      rank) + the verbs: `POST /v1/resolvers` (the tenant_admin
+      registration — the future packs' install verb) and `POST
+      /v1/resources/{id}/resolve` (any enrolled principal). The
+      explicit `resource_unresolvable_now` result leaves the
+      reference SUBMITTED (still readable — never fabricated).
+      Measured (`the_resolver_registry_resolves_and_fails_explicitly`,
+      profiles 14): the filter + the rank (the weaker sandbox is
+      ineligible; the fast resolver ranks first), the off-ladder
+      claim's 400, the unsupported scheme's explicit failure with
+      the preserved reference. **`.1` COMPLETE** — frontier → `.2`.
     Acceptance: the registry + the resolution order land; the
       unresolvable-now result preserves the reference, measured; no
       regression.
@@ -166,7 +183,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.1.3` | `proposed` | `.1.2` done — the typed `ResourceReference` + the submission (the replay + the immutability conflict, measured); the resolver capability registry executes now |
+| 1 | `PHASE-4.2` | `proposed` | `.1.3` done — the resolver capability registry (the §12.2 advertise + the filter-then-rank order + the explicit unresolvable-now); **`.1` COMPLETE** — the R0 safe-HTTPS pack executes now |
 
 ## Changelog
 
@@ -185,6 +202,56 @@ of a URI is not a promise the core can resolve it.
   submission (migration 0023 + the verbs; the locator's
   immutability is the replay + the typed conflict); the profiles
   suite grew to 13; frontier → `.1.3`.
+- `2026-09-07`: `.1.3` done — the resolver capability registry
+  (migration 0024 + the register/resolve verbs; the filter-then-
+  rank order + the explicit unresolvable-now); the profiles suite
+  grew to 14; **`.1` COMPLETE** — frontier → `.2`.
+
+## Acceptance Checklist (PHASE-4.1.3)
+
+The CODE change owned by this leaf:
+`migrations/0024_resolver_capabilities.sql` (NEW),
+`crates/reasonbraid-server/src/resolvers.rs` (NEW — the typed
+advertise + the isolation validation + the filter-then-rank
+resolution), `crates/reasonbraid-server/src/api.rs` + `src/lib.rs`
+(the two verbs + the module), and
+`crates/reasonbraid-server/tests/profiles.rs` (the measured
+resolution) — `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1` census: no resolver registry
+  exists — the §12.2 advertise + the resolution order + the
+  explicit-failure result have no surface.
+- [x] **ROOT CAUSE (WHY + WHERE)** — nothing registered the
+  resolvers — `git grep -c "resolver_capabilities\|ResolverAdvertise"
+  02d28ae -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the durable registry + the resolution
+  order the §12.2 contract names (the authz + the risk filters
+  FIRST — the scheme + the ADR-018 classes — then the rank), with
+  the empty result as the explicit `resource_unresolvable_now`.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  the_resolver_registry` → `test result: ok. 1 passed` — the
+  constrained-process requirement filters the weaker resolver out;
+  the latency rank orders the eligible; the off-ladder egress
+  claim is the typed 400; the unsupported scheme is the explicit
+  `resource_unresolvable_now` AND the reference stays submitted
+  (the inspection still reads it — preserved, never fabricated).
+  The first live run caught the SQL-continuation doubling (the
+  third occurrence of the pattern — fixed).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg413_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0024_resolver_capabilities.sql`,
+  `src/resolvers.rs`, `src/api.rs`, `src/lib.rs`,
+  `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.1.2)
 
@@ -236,6 +303,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-4.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_resolver_registry` → `test result: ok. 1 passed` (the filter + the rank, the off-ladder 400, the explicit unresolvable-now with the preserved reference); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg413_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the resolver capability registry; **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-4.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles a_reference_submits` → `test result: ok. 1 passed` (the submit, the replay, the conflict, the 422/400 refusals); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg412_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the typed reference + the submission; frontier → `.1.3` |
 | `2026-09-07` | `PHASE-4.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); frontier → `.1.2` |
 
@@ -244,5 +312,6 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
+| `PHASE-4.1.3` | `REASONBRAID-PHASE4-0004` | the resolver capability registry (the §12.2 advertise + the filter-then-rank resolution + the explicit unresolvable-now) — **`.1` COMPLETE** |
 | `PHASE-4.1.2` | `REASONBRAID-PHASE4-0003` | the typed `ResourceReference` + the submission (migration 0023 + the replay/conflict immutability) |
 | `PHASE-4.1.1` | `REASONBRAID-PHASE4-0002` | ADR-011 + ADR-018 accepted (the `sha256:<hex>` format + the isolation-class vocabulary — no code) |

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The resolver registry: filter first, rank second, fail explicitly — `.1` COMPLETE (`PHASE-4.1.3`)
+
+- Migration 0024 (`resolver_capabilities`) + `src/resolvers.rs`: the typed §12.2 advertise with the ADR-018 classes + the resolution order — the scheme + the sandbox/egress filters FIRST (a resolver declaring LESS than the required class is ineligible), then the latency rank.
+- `POST /v1/resolvers` (the tenant_admin registration — the future packs' install verb) and `POST /v1/resources/{id}/resolve` (any enrolled principal). The unsupported/unmatched case is the explicit `resource_unresolvable_now` — the reference stays SUBMITTED (still readable, never fabricated into evidence).
+- Measured (`tests/profiles.rs` grew to 14): the filter + the rank, the off-ladder claim's 400, the explicit failure with the preserved reference. **`.1` COMPLETE**; frontier → `.2` (the R0 safe-HTTPS pack).
+
 ## 2026-09-07 — The universal reference submits typed; the locator's immutability is mechanical (`PHASE-4.1.2`)
 
 - Migration 0023 (`resource_references` with the UNIQUE (original_locator, expected_digest)) + `src/resources.rs`: the typed §12.1 `ResourceReference` (deny-unknown-fields, the ADR-011 `sha256:<hex>` digest validation) + the verbs: `POST /v1/resources` (any enrolled principal — the reference is declarative, the resolution is `.1.3`'s) and `GET /v1/resources/{id}`.

@@ -368,6 +368,11 @@ pub fn api_router(pool: PgPool) -> Router {
         )
         .route("/v1/resources", post(submit_resource))
         .route("/v1/resources/{resource_id}", get(get_resource))
+        .route(
+            "/v1/resources/{resource_id}/resolve",
+            post(resolve_resource),
+        )
+        .route("/v1/resolvers", post(register_resolver))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads/auto", post(create_thread_auto))
         .route("/v1/threads", get(list_threads))
@@ -1225,6 +1230,87 @@ async fn list_node_presence(
         "tenant_id": q.tenant_id.to_string(),
         "nodes": nodes,
     })))
+}
+
+// ── The resolver capability registry (PHASE-4.1.3; backlog 31) ──────────────────────
+
+/// `POST /v1/resolvers` — the operator registers (or replaces) one resolver's
+/// §12.2 advertise (the tenant_admin gate; the future packs call it at their
+/// install).
+async fn register_resolver(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(advertise): Json<crate::resolvers::ResolverAdvertise>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no resolver",
+        ));
+    };
+    authorize_tenant_admin(
+        &state.pool,
+        &principal,
+        tenant.parse().map_err(|_| ControlApiError::internal())?,
+    )
+    .await?;
+    if let Some(error) = advertise.isolation_error() {
+        return Err(ControlApiError::invalid_command(error));
+    }
+    crate::resolvers::register(&state.pool, &advertise).await?;
+    Ok(Json(json!({
+        "resolver_id": advertise.resolver_id,
+        "registered": true,
+    })))
+}
+
+/// The resolution request: the caller's required ADR-018 classes.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResolveRequest {
+    #[serde(default = "default_sandbox")]
+    required_sandbox: String,
+    #[serde(default = "default_egress")]
+    required_egress: String,
+}
+
+fn default_sandbox() -> String {
+    "process".to_string()
+}
+fn default_egress() -> String {
+    "loopback".to_string()
+}
+
+/// `POST /v1/resources/{id}/resolve` — the §12.2 resolution order: the
+/// scheme + the ADR-018 isolation filters FIRST, then the latency rank. No
+/// eligible resolver → the explicit `resource_unresolvable_now` — the
+/// reference is PRESERVED (still submitted, never fabricated).
+async fn resolve_resource(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(resource_id): Path<String>,
+    Json(req): Json<ResolveRequest>,
+) -> Result<Json<crate::resolvers::ResolutionOutcome>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal resolves no reference",
+        ));
+    }
+    let Some((_, reference, _, _)) = crate::resources::get(&state.pool, &resource_id).await? else {
+        return Err(ControlApiError::not_found(format!(
+            "no reference `{resource_id}`"
+        )));
+    };
+    let outcome = crate::resolvers::resolve(
+        &state.pool,
+        &reference.scheme,
+        &req.required_sandbox,
+        &req.required_egress,
+    )
+    .await?;
+    Ok(Json(outcome))
 }
 
 // ── The universal resource reference (PHASE-4.1.2; backlog 31) ─────────────────────

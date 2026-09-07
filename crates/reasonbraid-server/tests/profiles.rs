@@ -2114,3 +2114,176 @@ async fn a_reference_submits_typed_and_the_locator_is_immutable() {
     );
     assert_eq!(inspected["reference"]["expected_digest"], json!(digest));
 }
+
+/// THE `.4.1.3` acceptance: the registry ships the §12.2 shape — the
+/// operator registers two resolvers (https + git), the resolution applies
+/// the scheme + the ADR-018 isolation filters FIRST (the weaker sandbox is
+/// ineligible), then the latency rank; an unsupported scheme is the
+/// explicit `resource_unresolvable_now` — the reference stays submitted.
+#[tokio::test]
+async fn the_resolver_registry_resolves_and_fails_explicitly() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rsv-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The operator registers two resolvers.
+    let register = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resolvers"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("register request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("register body");
+            let parsed = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, parsed)
+        }
+    };
+    let (status, _) = register(json!({
+        "resolver_id": "rsv-https-fast",
+        "schemes": ["https"],
+        "media_types": ["text/html"],
+        "egress_class": "listed",
+        "sandbox_level": "constrained_process",
+        "latency_range_ms": { "min": 100, "max": 200 },
+        "version": "0.1.0",
+    }))
+    .await;
+    assert_eq!(status, 200, "the first resolver registers");
+    let (status, _) = register(json!({
+        "resolver_id": "rsv-https-slow",
+        "schemes": ["https"],
+        "media_types": ["text/html"],
+        "egress_class": "any",
+        "sandbox_level": "process",
+        "latency_range_ms": { "min": 5000, "max": 10000 },
+        "version": "0.1.0",
+    }))
+    .await;
+    assert_eq!(status, 200, "the second resolver registers");
+    let (status, _) = register(json!({
+        "resolver_id": "rsv-git",
+        "schemes": ["git"],
+        "egress_class": "listed",
+        "sandbox_level": "constrained_process",
+        "version": "0.1.0",
+    }))
+    .await;
+    assert_eq!(status, 200, "the git resolver registers");
+
+    // The ADR-018 vocabulary refuses the off-ladder claim.
+    let (status, refused) = register(json!({
+        "resolver_id": "rsv-bad",
+        "schemes": ["https"],
+        "egress_class": "mars",
+        "sandbox_level": "constrained_process",
+        "version": "0.1.0",
+    }))
+    .await;
+    assert_eq!(status, 400, "the off-ladder egress is refused: {refused}");
+
+    // Submit an https reference.
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://example.org/guidance-2",
+                "scheme": "https",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+
+    // The resolution: the required constrained_process filters the SLOW
+    // resolver out (it declares `process` — below the requirement); the
+    // fast one ranks first anyway (the latency order).
+    let response = client
+        .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "constrained_process" }))
+        .send()
+        .await
+        .expect("resolve request");
+    assert_eq!(response.status().as_u16(), 200, "the resolution");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["rsv-https-fast"]),
+        "the filter + the rank: {resolved}"
+    );
+    assert_eq!(resolved["unresolvable_now"], json!(false));
+
+    // The unsupported scheme: the explicit unresolvable-now (the reference
+    // stays submitted — the inspection still reads it).
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "ftp://example.org/archive",
+                "scheme": "ftp",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the ftp reference submits: {submitted}");
+    let ftp_id = submitted["resource_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/resources/{ftp_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("resolve request");
+    assert_eq!(response.status().as_u16(), 200, "the explicit failure");
+    let unresolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        unresolved["unresolvable_now"],
+        json!(true),
+        "the unsupported scheme fails explicitly: {unresolved}"
+    );
+    assert!(unresolved["resolvers"].as_array().unwrap().is_empty());
+    // The reference is PRESERVED (still submitted, never fabricated).
+    let (status, still_there) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{ftp_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the reference stays submitted: {still_there}");
+    assert_eq!(
+        still_there["reference"]["original_locator"],
+        json!("ftp://example.org/archive")
+    );
+}

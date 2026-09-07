@@ -143,11 +143,42 @@ impl fmt::Display for FetchError {
     }
 }
 
+impl FetchError {
+    /// The variant's stable name — the resolution result's `kind`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::UrlTooLong(_) => "url_too_long",
+            Self::UrlHasControlCharacters => "url_control_characters",
+            Self::UrlUnparseable => "url_unparseable",
+            Self::SchemeNotAllowed(_) => "scheme_not_allowed",
+            Self::UserinfoForbidden => "userinfo_forbidden",
+            Self::AmbiguousNumericHost(_) => "ambiguous_numeric_host",
+            Self::PortNotAllowed(_) => "port_not_allowed",
+            Self::NoHost => "no_host",
+            Self::DnsLookupFailed => "dns_lookup_failed",
+            Self::NoAddresses => "no_addresses",
+            Self::DestinationRefused { .. } => "destination_refused",
+            Self::HopLimitExceeded(_) => "hop_limit_exceeded",
+            Self::MissingRedirectLocation => "missing_redirect_location",
+            Self::UnexpectedStatus(_) => "unexpected_status",
+            Self::MediaTypeRefused(_) => "media_type_refused",
+            Self::EmptyBody => "empty_body",
+            Self::ByteCeilingExceeded(_) => "byte_ceiling_exceeded",
+            Self::DecompressionRatioExceeded { .. } => "decompression_ratio_exceeded",
+            Self::ReadFailed => "read_failed",
+            Self::ConnectFailed => "connect_failed",
+            Self::TimedOut => "timed_out",
+            Self::ClientBuildFailed => "client_build_failed",
+        }
+    }
+}
+
 impl std::error::Error for FetchError {}
 
 /// What the response-type sniff settled on. R0 is text/HTML (§12.3): these are
 /// the ONLY accepted kinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SniffedKind {
     Html,
     Text,
@@ -179,6 +210,50 @@ pub struct FetchedDocument {
     pub content_type: Option<String>,
     pub sniffed: SniffedKind,
     pub bytes: Vec<u8>,
+}
+
+/// The ADR-011 acquisition receipt — the `.6` snapshot lane's input shape
+/// (PHASE-4.2.3). The digest is `sha256:<hex>` over the ACQUIRED bytes
+/// (never a server-claimed hash); the chain records the requested locator
+/// verbatim plus every hop the fetcher visited.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct AcquisitionReceipt {
+    pub digest: String,
+    pub byte_count: usize,
+    pub content_type: Option<String>,
+    pub sniffed: SniffedKind,
+    pub final_url: String,
+    pub chain: Vec<String>,
+    pub acquired_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl AcquisitionReceipt {
+    /// Build the receipt from an acquired document: the digest over the
+    /// acquired bytes, the byte count, the type, and the hop chain (the raw
+    /// requested locator first, then every hop first-to-last).
+    pub fn from_document(
+        original_locator: &str,
+        document: &FetchedDocument,
+        acquired_at: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        let mut chain = vec![original_locator.to_owned()];
+        chain.extend(document.chain.iter().map(|url| url.to_string()));
+        Self {
+            digest: digest_sha256_hex(&document.bytes),
+            byte_count: document.bytes.len(),
+            content_type: document.content_type.clone(),
+            sniffed: document.sniffed,
+            final_url: document.final_url.to_string(),
+            chain,
+            acquired_at,
+        }
+    }
+}
+
+/// The ADR-011 digest over the acquired bytes: `sha256:<64 hex>`.
+pub fn digest_sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 /// The DNS seam. The production resolver is the system one; the tests inject
@@ -850,6 +925,68 @@ mod tests {
             })
         );
         assert!(check_ratio(Some(0), 1000, 10.0).is_ok()); // the lie is bounded by the ceiling
+    }
+
+    // ---- pure: the ADR-011 receipt ---------------------------------------
+
+    #[test]
+    fn the_receipt_carries_the_digest_and_the_chain() {
+        let document = FetchedDocument {
+            final_url: Url::parse("https://example.org/final").unwrap(),
+            chain: vec![
+                Url::parse("https://example.org/start").unwrap(),
+                Url::parse("https://example.org/final").unwrap(),
+            ],
+            status: 200,
+            content_type: Some("text/html".to_owned()),
+            sniffed: SniffedKind::Html,
+            bytes: b"<!doctype html><title>hi</title>".to_vec(),
+        };
+        let acquired_at = chrono::DateTime::parse_from_rfc3339("2026-09-07T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let receipt =
+            AcquisitionReceipt::from_document("https://example.org/start", &document, acquired_at);
+        // The digest is the ADR-011 shape over the ACQUIRED bytes.
+        assert_eq!(
+            receipt.digest,
+            digest_sha256_hex(b"<!doctype html><title>hi</title>")
+        );
+        assert!(receipt.digest.starts_with("sha256:"));
+        assert_eq!(receipt.digest.len(), 7 + 64, "sha256: + 64 hex");
+        // The chain: the raw requested locator first, then every hop.
+        assert_eq!(
+            receipt.chain,
+            vec![
+                "https://example.org/start".to_owned(),
+                "https://example.org/start".to_owned(),
+                "https://example.org/final".to_owned(),
+            ]
+        );
+        assert_eq!(receipt.byte_count, 32);
+        assert_eq!(receipt.content_type.as_deref(), Some("text/html"));
+        assert_eq!(receipt.sniffed, SniffedKind::Html);
+        assert_eq!(receipt.final_url, "https://example.org/final");
+        assert_eq!(receipt.acquired_at, acquired_at);
+        // The digest the receipt carries passes the §12.1 validator's shape
+        // (the resources layer accepts the same scheme the receipt produces).
+        let reference = crate::resources::ResourceReference {
+            original_locator: "https://example.org/start".to_owned(),
+            scheme: "https".to_owned(),
+            media_type_hint: None,
+            expected_digest: Some(receipt.digest.clone()),
+            fragment_or_selector: None,
+            credential_binding_ref: None,
+            owning_node_or_capability: None,
+            visibility_scope: "tenant".to_owned(),
+            purpose: None,
+            retention_class: None,
+            risk_class: "standard".to_owned(),
+        };
+        assert!(
+            reference.digest_error().is_none(),
+            "the receipt digest is a valid §12.1 digest"
+        );
     }
 
     // ---- wire: the measured refusals (all offline) ----------------------

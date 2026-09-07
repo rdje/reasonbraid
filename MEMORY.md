@@ -19,18 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.2.3` (`.2.1` done: the
-  SSRF classification + the public-only policy; `.2.2` done: the
-  safe HTTPS fetcher — 16 OFFLINE tests, the SSRF proof measured;
-  `PHASE-4-MAINT-1` done: the clippy evidence debt repaired — the
-  workspace `-D warnings` run is green again, twelve pre-existing
-  findings fixed). Then `.3`–`.7`.
-- **Next action:** execute `PHASE-4.2.3` — the snapshot receipt +
-  the pack wiring: the ADR-011 `sha256:<hex>` receipt over the
-  ACQUIRED bytes (the resolved URL chain, the byte count, the
-  content type, the acquisition time — the `.6` lane's input
-  shape), the R0 resolver's registry entry (the https scheme +
-  the egress/sandbox claims), and the resolve path's consumption.
+- **Active tree:** `PHASE-4` → frontier `.3` (the `.2` lane — pack
+  R0 — is COMPLETE: `.2.1` the SSRF classification, `.2.2` the
+  safe HTTPS fetcher (17 OFFLINE tests, the SSRF proof), `.2.3`
+  the receipt + the pack wiring (the built-in executes through
+  the resolve path — the refusal names the class); `PHASE-4-MAINT-1`
+  done: the clippy evidence debt repaired). Then `.4`–`.7`.
+- **Next action:** execute `PHASE-4.3` — pack R1: the public Git
+  acquisition (the pinned commit/tag retrieval, the shallow/
+  filter clone, the archive policy, the submodule/LFS controls —
+  the §12.5 attack + size model).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

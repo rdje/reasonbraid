@@ -311,11 +311,20 @@ fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> Stri
 
 pub struct ApiState {
     pool: PgPool,
+    /// The built-in R0 fetcher (the `.2.3` pack wiring): the production
+    /// shape — https-only, the system roots, the `.2.1` public-only policy.
+    fetcher: std::sync::Arc<crate::fetcher::Fetcher>,
 }
 
 impl ApiState {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            fetcher: std::sync::Arc::new(
+                crate::fetcher::Fetcher::new(crate::fetcher::FetchLimits::default())
+                    .expect("the built-in R0 fetcher builds (the system roots are present)"),
+            ),
+        }
     }
 }
 
@@ -1303,13 +1312,33 @@ async fn resolve_resource(
             "no reference `{resource_id}`"
         )));
     };
-    let outcome = crate::resolvers::resolve(
+    let mut outcome = crate::resolvers::resolve(
         &state.pool,
         &reference.scheme,
         &req.required_sandbox,
         &req.required_egress,
     )
     .await?;
+    // The built-in R0 pack executes when IT ranks first: the acquisition
+    // runs under the fetcher's own ceilings + the `.2.1` policy; a refusal
+    // is the NAMED error, and the reference stays submitted either way.
+    if outcome.resolvers.first().map(String::as_str) == Some(crate::resolvers::R0_RESOLVER_ID) {
+        match state.fetcher.fetch(&reference.original_locator).await {
+            Ok(document) => {
+                outcome.acquisition = Some(crate::fetcher::AcquisitionReceipt::from_document(
+                    &reference.original_locator,
+                    &document,
+                    chrono::Utc::now(),
+                ));
+            }
+            Err(error) => {
+                outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                    kind: error.kind().to_owned(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
     Ok(Json(outcome))
 }
 

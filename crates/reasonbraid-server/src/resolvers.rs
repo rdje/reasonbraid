@@ -116,12 +116,29 @@ pub async fn register(pool: &PgPool, advertise: &ResolverAdvertise) -> Result<()
     Ok(())
 }
 
+/// The built-in R0 pack's registry id (the migration 0025 install record).
+pub const R0_RESOLVER_ID: &str = "r0-https-fetcher";
+
+/// The built-in R0's NAMED acquisition refusal (the `.2.2` fetcher's typed
+/// error) — the reference stays submitted, never fabricated.
+#[derive(Debug, Clone, Serialize)]
+pub struct AcquisitionError {
+    pub kind: String,
+    pub message: String,
+}
+
 /// The resolution outcome: the ranked eligible resolvers, or the explicit
 /// unresolvable-now (the reference stays submitted — never fabricated).
+/// When the built-in R0 resolver ranks FIRST, the resolution path executes
+/// the acquisition and carries either the receipt or the named refusal.
 #[derive(Debug, Clone, Serialize)]
 pub struct ResolutionOutcome {
     pub resolvers: Vec<String>,
     pub unresolvable_now: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acquisition: Option<crate::fetcher::AcquisitionReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acquisition_error: Option<AcquisitionError>,
 }
 
 /// Resolve a reference: the scheme + the ADR-018 isolation filters FIRST
@@ -179,5 +196,7 @@ pub async fn resolve(
     Ok(ResolutionOutcome {
         resolvers: eligible.into_iter().map(|(id, _)| id).collect(),
         unresolvable_now,
+        acquisition: None,
+        acquisition_error: None,
     })
 }

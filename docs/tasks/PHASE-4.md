@@ -295,7 +295,7 @@ of a URI is not a promise the core can resolve it.
       error list. Frontier → `.2.3`.
 
   - ID: `PHASE-4.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the snapshot receipt + the pack wiring — the acquisition
       receipt (the ADR-011 `sha256:<hex>` over the ACQUIRED bytes,
       the resolved URL chain, the byte count, the content type,
@@ -305,6 +305,35 @@ of a URI is not a promise the core can resolve it.
       path's consumption (the `.1.3` resolve returns the R0
       resolver for the https references).
     Backlog: 32 (the receipt half)
+    Done (`2026-09-07`): the R0 pack is WIRED — migration 0025
+      seeds the built-in's install record (resolver
+      `r0-https-fetcher`: the https scheme, the text/HTML media
+      types, the GET/HEAD abilities, the `none` authentication
+      class, the ADR-018 claims — egress `listed` (the §12.4
+      public-only destination classes are the list), sandbox
+      `none` (the fetcher executes NO content — the honest
+      ladder-bottom claim, and a stricter requirement is the
+      explicit unresolvable-now, never a silent downgrade), the
+      `follow-classified` redirect policy, the ADR-011 snapshot
+      digest format, the security evidence the `.2.2` tests
+      measure); `fetcher.rs` gains the `AcquisitionReceipt` (the
+      digest over the ACQUIRED bytes, the byte count, the sniffed
+      type, the chain — the raw requested locator + every hop —
+      the RFC3339 acquisition time) + `digest_sha256_hex` +
+      `FetchError::kind`; `resolvers.rs` gains `R0_RESOLVER_ID` +
+      the outcome's optional `acquisition`/`acquisition_error`;
+      the resolve handler carries the built-in fetcher in
+      `ApiState` and EXECUTES it when the R0 entry ranks first —
+      the receipt on success, the NAMED refusal on failure (the
+      reference stays submitted either way). Measured (profiles
+      15): the https reference resolves to the built-in under its
+      own classes; the loopback AND the private literals refuse
+      with the class named THROUGH the resolution path (the SSRF
+      proof end-to-end); the reference stays readable; the
+      stricter requirement is the explicit unresolvable-now. The
+      receipt shape is pure-tested (17 fetcher tests now: the
+      digest matches the §12.1 validator's scheme). **`.2`
+      COMPLETE** — frontier → `.3`.
     Acceptance: the receipt carries the digest + the chain; the R0
       registry entry resolves the https references, measured; no
       regression.
@@ -342,7 +371,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.2.3` | `proposed` | `PHASE-4-MAINT-1` done — the clippy evidence debt repaired (`cargo clippy --all --all-targets -- -D warnings` → rc=0, twelve findings fixed: the routed nine + the three the lib failure had shadowed); the snapshot receipt + the R0 pack wiring execute now |
+| 1 | `PHASE-4.3` | `proposed` | `.2.3` done — **the `.2` lane (pack R0) is COMPLETE**: the SSRF classification + the safe HTTPS fetcher + the receipt + the pack wiring (the https references resolve to the built-in, the refusal names the class through the resolution path); pack R1 — the public Git acquisition — executes now |
 
 ## Changelog
 
@@ -375,6 +404,18 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.2.3` done — the snapshot receipt + the R0 pack
+  wiring (migration 0025's install record: the https scheme, the
+  ADR-018 honest claims — egress `listed`, sandbox `none` — the
+  `follow-classified` redirect policy, the ADR-011 digest format;
+  the `AcquisitionReceipt` + the digest-over-acquired-bytes + the
+  `FetchError::kind`; the resolve handler executes the built-in
+  when it ranks first — the receipt on success, the NAMED refusal
+  on failure, the reference preserved); profiles 15 (the https
+  reference resolves; the loopback + private literals refuse with
+  the class named through the resolution path; the stricter
+  requirement is the explicit unresolvable-now); **`.2` COMPLETE
+  (pack R0)** — frontier → `.3`.
 - `2026-09-07`: `PHASE-4-MAINT-1` done — the clippy evidence debt
   repaired: `cargo clippy --all --all-targets -- -D warnings` →
   rc=0 — TWELVE pre-existing findings fixed (the nine the `.2.2`
@@ -418,6 +459,55 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.2.3)
+
+The CODE change owned by this leaf:
+`migrations/0025_r0_resolver_entry.sql` (NEW — the built-in R0
+install record), `crates/reasonbraid-server/src/fetcher.rs` (the
+receipt + the digest + `kind` + the pure receipt test),
+`src/resolvers.rs` (the R0 id + the outcome extension),
+`src/api.rs` (the built-in fetcher in `ApiState` + the execution),
+`crates/reasonbraid-server/tests/profiles.rs` (the measured
+resolution — profiles 15), and `Cargo.toml` (chrono gains serde).
+
+- [x] **REPRODUCE / ISSUE** — the `.2` census: the R0 pack ships
+  nothing — no receipt machinery, no registry entry, the resolve
+  path returns no built-in.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the pack was built in halves:
+  the classification (`.2.1`) + the fetcher (`.2.2`) exist, but
+  the receipt shape, the install record, and the resolution
+  consumption do not — `git grep -c "AcquisitionReceipt\|r0-https-fetcher"
+  4b15310 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the receipt over the ACQUIRED bytes +
+  the seeded install record + the execution in the resolve path.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib fetcher` → `test result:
+  ok. 17 passed` (the new receipt test: the digest is the
+  `sha256:` + 64-hex over the acquired bytes AND passes the §12.1
+  `digest_error` validator; the chain carries the raw locator +
+  every hop); the live
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles
+  the_r0_resolver` → `test result: ok. 1 passed` — the https
+  reference resolves to `r0-https-fetcher` under its own classes
+  (`none`/`listed`); the loopback + private literals refuse with
+  the class NAMED through the resolution path (the SSRF proof
+  end-to-end); the reference stays submitted; the stricter
+  requirement is the explicit unresolvable-now (never a silent
+  downgrade).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 51 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg423b_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0025_r0_resolver_entry.sql`, `src/fetcher.rs`,
+  `src/resolvers.rs`, `src/api.rs`, `tests/profiles.rs`,
+  `Cargo.toml`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4-MAINT-1)
 
@@ -650,6 +740,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.2.3` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 17 passed` (the receipt's digest + chain, pure); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r0_resolver` → `test result: ok. 1 passed` (the https reference resolves to the built-in; the loopback + private refusals name their classes through the resolution path; the reference preserved; the stricter requirement is the explicit unresolvable-now); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg423b_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R0 pack wired; **`.2` COMPLETE** — frontier → `.3` |
 | `2026-09-07` | `PHASE-4-MAINT-1` | `cargo clippy --all --all-targets -- -D warnings` → rc=0 (twelve findings fixed: the routed nine + the three profiles findings the lib failure shadowed); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pgm1_guard.log`); `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the clippy evidence debt repaired; frontier → `.2.3` |
 | `2026-09-07` | `PHASE-4.2.2` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 16 passed` (the pure refusals + the OFFLINE wire refusals — the SSRF proof with the zero-request counter, the private hop, the hop cap, the ceilings, the REAL gzip bomb); `cargo test --all` → rc=0, 51 suites, 327 tests (the cert-spike rustls-provider ambiguity the sweep caught is fixed — the spike pinned to ring; `b26f529` verified green before the leaf); `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg422_guard.log`); clippy/fmt clean for the leaf's files (the crate-wide `-D warnings` run fails on 9 PRE-EXISTING findings — ROUTING EVIDENCE → `PHASE-4-MAINT-1`); `make gate` → 13/13 | the safe HTTPS fetcher; frontier → `PHASE-4-MAINT-1` → `.2.3` |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
@@ -663,6 +754,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.2.3` | `REASONBRAID-PHASE4-0009` | the snapshot receipt + the R0 pack wiring (the built-in executes through the resolve path — the refusal names the class) — **`.2` COMPLETE** |
 | `PHASE-4-MAINT-1` | `REASONBRAID-PHASE4-0008` | the clippy evidence debt repaired (twelve pre-existing findings — the `-D warnings` run is green again) |
 | `PHASE-4.2.2` | `REASONBRAID-PHASE4-0007` | the safe HTTPS fetcher (the hardened parse + the two-layer destination enforcement + the manual decode + the ratio brake) — the SSRF proof measured offline |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |

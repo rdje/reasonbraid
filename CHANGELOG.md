@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Pack R0 is complete: the receipt, the install record, and the execution (`PHASE-4.2.3`)
+
+- `migrations/0025`: the built-in R0 install record (`r0-https-fetcher` — https, text/HTML, GET/HEAD, the `none` auth class, egress `listed`, sandbox `none` honestly claimed, `follow-classified` redirects, the ADR-011 digest format, the security evidence).
+- `fetcher.rs`: the `AcquisitionReceipt` (the `sha256:<hex>` over the ACQUIRED bytes, the byte count, the sniffed type, the chain — the raw locator + every hop — the RFC3339 time), `digest_sha256_hex`, `FetchError::kind`.
+- `api.rs`: the resolve handler carries the built-in fetcher and EXECUTES it when the R0 entry ranks first — the receipt on success, the NAMED refusal on failure, the reference preserved.
+- Measured: profiles 15 — the https reference resolves to the built-in; the loopback + private literals refuse with the class named through the resolution path; the stricter requirement is the explicit unresolvable-now. **`.2` COMPLETE (pack R0)** — frontier → `.3` (pack R1: public Git).
+
 ## 2026-09-07 — The clippy evidence debt is repaired: the `-D warnings` run is green again (`PHASE-4-MAINT-1`)
 
 - Twelve pre-existing lint findings fixed across `api.rs`, `dependence.rs`, `matching.rs` (+ its tests), `recruitment.rs`, `resources.rs`, and `tests/profiles.rs` — the `useless_format`, the three `type_complexity` sites (the `AttributePicker`/`CallTuple`/`ResourceRow` aliases), the `collapsible_if` (the match guard), the `unnecessary if let` (the `.flatten()` form), the four `field_reassign` test sites (the struct-update form), the `too_many_arguments` (the `OpenCallParams` struct), and the three profiles findings the lib failure had shadowed in the original census.

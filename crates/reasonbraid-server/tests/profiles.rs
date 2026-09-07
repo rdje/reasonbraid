@@ -2281,3 +2281,140 @@ async fn the_resolver_registry_resolves_and_fails_explicitly() {
         json!("ftp://example.org/archive")
     );
 }
+
+/// The built-in R0 pack (PHASE-4.2.3): the seeded registry entry resolves
+/// the https references under its OWN claimed classes, the acquisition runs
+/// under the fetcher's real policy — the loopback/private literals refuse
+/// with the class NAMED (the SSRF proof through the resolution path) — and
+/// the reference stays submitted either way. Requiring MORE isolation than
+/// the built-in honestly declares is the explicit unresolvable-now, never a
+/// silent downgrade.
+#[tokio::test]
+async fn the_r0_resolver_resolves_https_and_the_execution_names_the_refused_class() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "r0-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submit = |locator: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "original_locator": locator,
+                    "scheme": "https",
+                }))
+                .send()
+                .await
+                .expect("submit request");
+            let parsed: Value = response.json().await.expect("submit json");
+            parsed["resource_id"].as_str().unwrap().to_string()
+        }
+    };
+    let resolve = |resource_id: String, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("resolve request");
+            let status = response.status().as_u16();
+            let parsed: Value = response.json().await.expect("resolve json");
+            (status, parsed)
+        }
+    };
+
+    // The https reference under the built-in's OWN classes: the R0 entry is
+    // the ranked resolver, and the acquisition refuses the loopback literal
+    // with the class NAMED — before any socket opens (the `.2.2` proof,
+    // now through the resolution path).
+    let resource_id = submit("https://127.0.0.1/guidance".to_string()).await;
+    let (status, resolved) = resolve(
+        resource_id.clone(),
+        json!({ "required_sandbox": "none", "required_egress": "listed" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the resolution");
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r0-https-fetcher"]),
+        "the built-in ranks: {resolved}"
+    );
+    assert_eq!(resolved["unresolvable_now"], json!(false));
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the refusal names its kind: {resolved}"
+    );
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "the refusal names the class: {resolved}"
+    );
+
+    // The private literal names its class too.
+    let private_id = submit("https://10.0.0.1/escape".to_string()).await;
+    let (_, refused) = resolve(
+        private_id,
+        json!({ "required_sandbox": "none", "required_egress": "listed" }),
+    )
+    .await;
+    assert!(
+        refused["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("private"),
+        "the private class is named: {refused}"
+    );
+
+    // The reference is PRESERVED through the refusal (submitted, never
+    // fabricated).
+    let (status, still_there) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the reference stays submitted: {still_there}");
+    assert_eq!(
+        still_there["reference"]["original_locator"],
+        json!("https://127.0.0.1/guidance")
+    );
+
+    // Requiring MORE isolation than the built-in declares (sandbox `none`)
+    // is the explicit unresolvable-now — the ADR-018 filter holds on the
+    // real entry, never a silent downgrade.
+    let (_, strict) = resolve(
+        resource_id,
+        json!({ "required_sandbox": "constrained_process", "required_egress": "listed" }),
+    )
+    .await;
+    assert_eq!(
+        strict["unresolvable_now"],
+        json!(true),
+        "the stricter requirement filters the built-in out: {strict}"
+    );
+    assert!(strict["resolvers"].as_array().unwrap().is_empty());
+}

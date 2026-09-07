@@ -34,7 +34,7 @@ x509-parser = "0.18"
 axum = "0.8"
 # Minimal chrono for the outbox worker's caller-supplied lease clock (`chrono::DateTime<Utc>`
 # binds to TIMESTAMPTZ via sqlx's `chrono` feature). default-features=false keeps it small.
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 # The rb-server binary's argument surface (.6.1); `env` lets --database-url read
 # $DATABASE_URL.
 clap = { version = "4", features = ["derive", "env"] }

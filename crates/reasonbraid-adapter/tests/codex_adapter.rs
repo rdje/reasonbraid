@@ -12,7 +12,8 @@
 //! CODEX-specific mechanics.
 
 #[path = "conformance/stubs.rs"]
-#[allow(dead_code)] // this binary uses only ITS provider's stub; the sibling serves the other adapter's tests
+#[allow(dead_code)]
+// this binary uses only ITS provider's stub; the sibling serves the other adapter's tests
 mod stubs;
 
 use std::time::Duration;

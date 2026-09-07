@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.6.2: permanence that is only documented shrinks silently — the manifest and the corpus drift-check each other
+
+- **A replay oracle without a pin is a promise.** The corpus was the conformance oracle but nothing stopped a fixture from being silently edited or dropped — the coverage and credential tests would simply shrink with it. The manifest (version 1, one entry per fixture with its §19.4-item keys, the adding leaf, and the reason) and the corpus now drift-check each other EXACTLY: additions are the only legal change, and each one must record its reason in the same commit.
+- promotion: declined (the manifest + the two guarantee tests are the leaf's own artifacts — the `.6.3` deferral record will hold the cross-cutting answers for the unmapped §19.4 items). **Frontier `PHASE-2.6.3` (the qualification checklist + the named deferrals).**
+
 ## _(2026-09-07)_ — PHASE-2.6.1: the conformance invariants live ONCE — the scenario shape is the registration surface
 
 - **The contract carried the declarations but nothing asserted them uniformly** — the capability boundary and the unsupported-lookup honesty were re-tested per adapter file (4 `capabilities()` asserts, 8 `query_status` asserts, the stub copied twice across three files). The harness's scenario shape (name + trigger + declared capabilities + the tripping request) means a NEW adapter conforms by REGISTERING scenarios, not by re-proving the contract in its own file — the six §19.4 invariants exist exactly once.

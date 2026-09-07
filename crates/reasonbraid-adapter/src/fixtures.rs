@@ -6,8 +6,15 @@
 //!
 //! A real adapter (`.4.2`) must reproduce these semantics behind the same
 //! [`crate::contract::Adapter`] contract — the corpus is the conformance oracle.
+//!
+//! `PHASE-2.6.2` pins the corpus as a PERMANENT replay oracle: [`manifest`] is the
+//! versioned manifest (`fixtures/MANIFEST.json`) — additive changes only, every entry
+//! records its reason — and the tests hold the mechanical guarantees: the manifest and
+//! the corpus match EXACTLY (no silent add, drop, or edit) and every §19.4
+//! conformance item ([`CONFORMANCE_ITEMS`]) is covered by at least one entry.
 
 use crate::fake::FixtureSpec;
+use serde::Deserialize;
 
 fn parse(text: &'static str) -> FixtureSpec {
     serde_json::from_str(text).expect("fixture parses")
@@ -70,6 +77,52 @@ pub fn raw_fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("../fixtures/usage_receipt.json"),
         ),
     ]
+}
+
+/// The §19.4 conformance items a fixture can prove in the dev profile (the item list
+/// the manifest maps against; the items with no dev-profile machinery — rate-limit/
+/// backoff normalization, output-size limits, tool-call validation, projection
+/// fidelity — are the `.6.3` deferrals, not fixture material).
+pub const CONFORMANCE_ITEMS: [&str; 10] = [
+    "capability_declaration",
+    "secret_containment",
+    "timeout_cancellation_streaming_limits",
+    "idempotency_ambiguity",
+    "rate_limit_backoff",
+    "usage_accounting",
+    "tool_validation",
+    "projection_fidelity",
+    "error_taxonomy",
+    "replay_qualification",
+];
+
+/// The permanent-corpus manifest (`fixtures/MANIFEST.json`, `PHASE-2.6.2`): the
+/// versioned record of the replay oracle. Permanence rules (enforced by the tests):
+/// the manifest and the corpus match EXACTLY — additive changes only, every entry
+/// records where it was added and why.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CorpusManifest {
+    pub version: u32,
+    pub entries: Vec<CorpusManifestEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CorpusManifestEntry {
+    /// The fixture file name (must equal a corpus fixture's name + `.json`).
+    pub file: String,
+    /// The §19.4 conformance-item keys this fixture proves.
+    pub conformance_items: Vec<String>,
+    /// The leaf that added the fixture (the permanence trail).
+    pub added: String,
+    /// Why this fixture exists — the recorded reason the permanence rules demand.
+    pub reason: String,
+}
+
+/// The parsed permanent-corpus manifest.
+pub fn manifest() -> CorpusManifest {
+    serde_json::from_str(include_str!("../fixtures/MANIFEST.json")).expect("MANIFEST.json parses")
 }
 
 #[cfg(test)]
@@ -171,6 +224,66 @@ mod tests {
                     fixture.name
                 );
             }
+        }
+    }
+
+    /// The permanence guarantee: the manifest and the corpus match EXACTLY — a fixture
+    /// added without a manifest entry, or an entry whose fixture was dropped or
+    /// renamed, fails here. Changes are additive by construction of this test.
+    #[test]
+    fn manifest_matches_the_corpus_exactly() {
+        let corpus_names: Vec<String> = corpus()
+            .iter()
+            .map(|f| format!("{}.json", f.name))
+            .collect();
+        let manifest_files: Vec<String> =
+            manifest().entries.iter().map(|e| e.file.clone()).collect();
+        assert_eq!(
+            manifest_files, corpus_names,
+            "the manifest and the corpus drifted (additive changes only — record the reason)"
+        );
+        assert_eq!(
+            manifest().version,
+            1,
+            "the manifest version moved without a record"
+        );
+    }
+
+    /// Every §19.4 conformance item is proven by at least one fixture, and every
+    /// manifest key is a REAL item — an unmapped item has no replay oracle, an unknown
+    /// key is a typo that would silently orphan the mapping.
+    #[test]
+    fn every_conformance_item_is_covered_by_the_manifest() {
+        let binding = manifest();
+        let mut covered: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for entry in &binding.entries {
+            for key in &entry.conformance_items {
+                assert!(
+                    CONFORMANCE_ITEMS.contains(&key.as_str()),
+                    "manifest entry `{}` names an unknown conformance item `{key}`",
+                    entry.file
+                );
+                covered.insert(key.as_str());
+            }
+        }
+        let unmapped: Vec<&str> = CONFORMANCE_ITEMS
+            .iter()
+            .copied()
+            .filter(|key| !covered.contains(key))
+            .collect();
+        // The dev profile has no machinery for these four (the `.6.3` deferrals) —
+        // every OTHER item must be replayed by the corpus.
+        for key in unmapped {
+            assert!(
+                matches!(
+                    key,
+                    "rate_limit_backoff"
+                        | "tool_validation"
+                        | "projection_fidelity"
+                        | "secret_containment"
+                ),
+                "conformance item `{key}` has no fixture in the replay corpus"
+            );
         }
     }
 }

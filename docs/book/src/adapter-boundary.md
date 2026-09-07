@@ -49,6 +49,11 @@ Each adapter registers scenarios (name + trigger + declared capabilities + the
 tripping request) — a new adapter conforms by registering, not by re-proving the
 contract in its own file.
 
+The fixture corpus behind the fake is a PERMANENT replay oracle: a versioned
+manifest (`fixtures/MANIFEST.json`) records one entry per fixture — the §19.4
+items it proves, the adding leaf, the reason — and the corpus drift-checks
+against it, so the oracle can only change additively with a recorded reason.
+
 ## The fake adapter
 
 `FakeAdapter` (`§11.6`'s conformance oracle) plays a per-operation script:

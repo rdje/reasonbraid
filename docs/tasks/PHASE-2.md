@@ -1072,7 +1072,7 @@ slice can reuse the same control plane without rewriting it.
       §19.4-checkable item above has a named test; no regression.
 
   - ID: `PHASE-2.6.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the permanent failure-fixture corpus — pin the ten fixtures
       (`fixtures/*.json`) as the REPLAY oracle: a versioned corpus
       manifest (the fixture set is permanent: no fixture is silently
@@ -1083,6 +1083,19 @@ slice can reuse the same control plane without rewriting it.
       real adapter's fixture-mapping path — the credential scan stays
       the mechanical gate).
     Backlog: —
+    Done (`2026-09-07`): `fixtures/MANIFEST.json` (version 1: one entry
+      per fixture — file, the §19.4-item keys it proves, the adding
+      leaf, the recorded reason) + the manifest machinery in
+      `fixtures.rs` (`CorpusManifest`, `manifest()`, the
+      `CONFORMANCE_ITEMS` key list) + the two mechanical guarantees:
+      `manifest_matches_the_corpus_exactly` (the manifest and the
+      corpus drift-check each other — additive changes only) and
+      `every_conformance_item_is_covered_by_the_manifest` (every
+      mapped item has a replay fixture; the four dev-profile deferrals
+      are the ONLY unmapped keys). The real adapters replay the corpus
+      semantics through the `.6.1` harness scenarios (their
+      fixture-mapping path); the credential scan stays the mechanical
+      gate. Frontier → `.6.3`.
     Acceptance: the manifest + the coverage map land; the replay
       guarantee holds for every adapter that maps the corpus; no
       regression.
@@ -1121,7 +1134,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.6.2` | `proposed` | `.6.1` done — the conformance harness (one suite, three adapters, the six invariant checks); the permanent failure-fixture corpus executes now |
+| 1 | `PHASE-2.6.3` | `proposed` | `.6.2` done — the permanent failure-fixture corpus (the versioned manifest + the exact-match + coverage guarantees); the qualification checklist + the named deferrals execute now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1137,6 +1150,12 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.6.2` done — the permanent failure-fixture corpus:
+  `fixtures/MANIFEST.json` (version 1, one entry per fixture with the
+  §19.4-item keys + the adding leaf + the reason) + the manifest
+  machinery + the two mechanical guarantees (the exact-match
+  drift check, the item-coverage check); no fixture can be silently
+  added, dropped, or edited; frontier → `.6.3`.
 - `2026-09-07`: `.6.1` done — the conformance harness: one suite
   (`tests/conformance/` + `adapter_conformance.rs`) runs the six §19.4
   invariant checks against all three adapters (the fake via its
@@ -1394,6 +1413,46 @@ slice can reuse the same control plane without rewriting it.
   has no suspended state; children `.1.3.1` (node/cert revocation + the
   suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
   verbs); frontier → `.1.3.1`.
+
+## Acceptance Checklist (PHASE-2.6.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-adapter/
+fixtures/MANIFEST.json` (NEW — the versioned corpus manifest) and
+`crates/reasonbraid-adapter/src/fixtures.rs` (the `CorpusManifest`
+machinery + the two guarantee tests) — `(^|/)crates/` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.6` census: the corpus is the
+  conformance oracle (§11.6) but NOTHING pins it — no manifest, no
+  permanence rule, nothing stops a fixture from being silently edited
+  or dropped (the coverage + credential tests would shrink with it).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the corpus lives as raw JSON +
+  an include-list only; permanence is a DOCUMENTED property, not a
+  mechanical one — `git grep -c "manifest" ad0468e --
+  crates/reasonbraid-adapter/src/` → rc=1 (no manifest machinery
+  existed). The fix point is a versioned manifest that the corpus
+  drift-checks against: the two must match EXACTLY, so a silent
+  add/drop/edit fails a test instead of shrinking the oracle.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: zero
+  manifest machinery (the grep above). After:
+  `cargo test -p reasonbraid-adapter --lib` → `test result: ok. 9
+  passed` — the two new guarantees: `manifest_matches_the_corpus_exactly`
+  (the manifest's entry files equal the corpus's fixtures in order;
+  version pinned) and `every_conformance_item_is_covered_by_the_manifest`
+  (every §19.4 item key is proven by a fixture, except the four named
+  dev-profile deferrals; unknown keys are typos and fail).
+- [x] **NO REGRESSION** — `cargo test --all` → 48 offline suites
+  green; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo
+  `ALL acceptance checks passed` 34/34 (`target/pg262_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `fixtures/MANIFEST.json` (version 1, one entry per
+  fixture: file, the §19.4-item keys, the adding leaf, the reason);
+  `src/fixtures.rs` (`CorpusManifest`/`CorpusManifestEntry`,
+  `manifest()`, `CONFORMANCE_ITEMS`, the two tests).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  adapter-boundary chapter, KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.6.1)
 
@@ -2331,6 +2390,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.6.2` | `cargo test -p reasonbraid-adapter --lib` → `test result: ok. 9 passed` (the two manifest guarantees); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg262_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the permanent failure-fixture corpus (the versioned manifest + the exact-match drift check + the item-coverage check); frontier → `.6.3` |
 | `2026-09-07` | `PHASE-2.6.1` | `cargo test -p reasonbraid-adapter --test adapter_conformance` → `test result: ok. 3 passed` (the fake + codex + claude all pass the ONE harness); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg261_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the conformance harness (the six cross-adapter invariant checks over the scenario shape); frontier → `.6.2` |
 | `2026-09-07` | `PHASE-2.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the §19.4 census + the contract-seam decomposition (`.6.1` harness → `.6.2` corpus → `.6.3` checklist + deferrals); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-2.5.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the SLO record + the node lost/replaced runbook (the guard is the population; the closure tests name the existing exercises); frontier → `.6` |
@@ -2365,6 +2425,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.6.2` | `REASONBRAID-PHASE2-0037` | the permanent failure-fixture corpus (the versioned manifest + the exact-match + item-coverage guarantees) |
 | `PHASE-2.6.1` | `REASONBRAID-PHASE2-0036` | the conformance harness (one suite, three adapters, the six §19.4 invariant checks; the shared provider stubs) |
 | `PHASE-2.6` | `REASONBRAID-PHASE2-0035` | the contract-seam decomposition (the §19.4 census: what the adapter surface already carries vs the five absent items — named) |
 | `PHASE-2.5.3` | `REASONBRAID-PHASE2-0034` | the SLO record + the node lost/replaced runbook (docs-only: the guard is the population, the zero-error-budget halt rule, the §18.6 runbook shape) |

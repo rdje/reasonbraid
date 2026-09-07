@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "complete_single.json",
+      "conformance_items": ["capability_declaration", "usage_accounting"],
+      "added": "PHASE-0.4.1",
+      "reason": "the non-streaming completion oracle (single chunk, terminal completed, no usage)"
+    },
+    {
+      "file": "complete_streaming.json",
+      "conformance_items": ["capability_declaration", "timeout_cancellation_streaming_limits", "usage_accounting"],
+      "added": "PHASE-0.4.1",
+      "reason": "the streaming completion oracle (chunks then a terminal completed with usage)"
+    },
+    {
+      "file": "fail_before_dispatch.json",
+      "conformance_items": ["capability_declaration", "idempotency_ambiguity"],
+      "added": "PHASE-0.4.1",
+      "reason": "the deterministic pre-dispatch refusal (the boundary no handle may cross)"
+    },
+    {
+      "file": "fail_known.json",
+      "conformance_items": ["idempotency_ambiguity", "error_taxonomy"],
+      "added": "PHASE-0.4.1",
+      "reason": "the definitive, PROVEN failure (a terminal fact, never a guess)"
+    },
+    {
+      "file": "hang_forever.json",
+      "conformance_items": ["timeout_cancellation_streaming_limits"],
+      "added": "PHASE-0.4.1",
+      "reason": "the hang + confirmed-cancellation oracle (no sleeps: the Notify resolves it)"
+    },
+    {
+      "file": "ignore_cancellation.json",
+      "conformance_items": ["timeout_cancellation_streaming_limits"],
+      "added": "PHASE-0.4.1",
+      "reason": "the ignored-cancellation oracle (the provider goes on working)"
+    },
+    {
+      "file": "lose_response_no_lookup.json",
+      "conformance_items": ["capability_declaration", "idempotency_ambiguity"],
+      "added": "PHASE-0.4.1",
+      "reason": "the lost response with NO lookup possible: ambiguity is the only honest exit"
+    },
+    {
+      "file": "lose_response_with_lookup.json",
+      "conformance_items": ["capability_declaration", "idempotency_ambiguity"],
+      "added": "PHASE-0.4.1",
+      "reason": "the lost response PROVEN by a status lookup (the ambiguity has an exit)"
+    },
+    {
+      "file": "malformed_output.json",
+      "conformance_items": ["timeout_cancellation_streaming_limits", "replay_qualification"],
+      "added": "PHASE-0.4.1",
+      "reason": "the malformed-chunk oracle (opaque untrusted content passes through verbatim)"
+    },
+    {
+      "file": "usage_receipt.json",
+      "conformance_items": ["usage_accounting"],
+      "added": "PHASE-0.4.1",
+      "reason": "the usage-receipt oracle (what is observable; unknown dimensions stay unknown)"
+    }
+  ]
+}

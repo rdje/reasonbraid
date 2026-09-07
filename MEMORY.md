@@ -23,14 +23,16 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.6.2` (`.6.1` done: the
-  adapter conformance harness — one suite, three adapters, the six
-  §19.4 invariant checks). Then `.6.3`, `.7`.
-- **Next action:** execute `PHASE-2.6.2` — the permanent
-  failure-fixture corpus: pin the ten fixtures as the replay oracle
-  (a versioned corpus manifest — additive changes only), the
-  §19.4-item → fixture coverage map, and the sanitized-replay
-  guarantee as a test.
+- **Active tree:** `PHASE-2` → frontier `.6.3` (`.6.2` done: the
+  permanent failure-fixture corpus — the versioned manifest + the
+  exact-match and item-coverage guarantees). Then `.7`.
+- **Next action:** execute `PHASE-2.6.3` — the manual qualification
+  checklist + the named deferrals: the book's adapter-boundary chapter
+  gains the checklist the env-gated live qualification follows, and a
+  decisions record names the §19.4 items with no dev-profile machinery
+  (rate-limit/backoff normalization, output-size limits, tool-call
+  validation, the provider error taxonomy, prompt/policy projection
+  fidelity) each with its trigger.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

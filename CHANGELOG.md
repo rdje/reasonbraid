@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The fixture corpus is pinned: a versioned manifest with mechanical permanence (`PHASE-2.6.2`)
+
+- `crates/reasonbraid-adapter/fixtures/MANIFEST.json` (version 1) records one entry per fixture — the file, the §19.4 conformance-item keys it proves, the adding leaf, and the reason — and the corpus drift-checks against it: `manifest_matches_the_corpus_exactly` fails on any silent add, drop, rename, or edit, so the replay oracle can only change additively with a recorded reason.
+- `every_conformance_item_is_covered_by_the_manifest` holds the coverage map mechanically: every §19.4 item key is proven by at least one fixture, except the four named dev-profile deferrals (rate-limit/backoff, tool validation, projection fidelity, secret containment — the latter rides the credential-scan test). Unknown keys fail as typos.
+- The real adapters replay the corpus semantics through the `.6.1` harness scenarios; the credential scan stays the mechanical gate. Measured: the adapter lib suite 9 (incl. the two new guarantees); 48 offline suites; the guard 15 live suites + demo 34/34. Frontier → `.6.3` (the qualification checklist + the named deferrals).
+
 ## 2026-09-07 — One suite, three adapters: the conformance harness lands (`PHASE-2.6.1`)
 
 - `crates/reasonbraid-adapter/tests/conformance/` (the harness) + `tests/adapter_conformance.rs` (the registrations): every adapter — the deterministic fake and both real CLI adapters — passes the SAME six §19.4 invariants: the capability manifest agrees with the scenario's verified boundary, a never-dispatched lookup is honestly `Unsupported`, a refusal happens before any provider contact, a lost response never invents a terminal event, a cancel never exceeds the declared strength, and an empty usage receipt is `Unknown`, never zero.

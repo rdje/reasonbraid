@@ -23,15 +23,11 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.5.3` (`.5.2` done: the
-  structured-log + metrics slice — the seven counters on the real
-  refusal paths + `GET /v1/admin/metrics` + the measured record-vs-
-  surface test, command_api 18). Then `.6`.
-- **Next action:** execute `PHASE-2.5.3` — the SLO record + the runbook
-  slice (docs-only): the initial SLO hypotheses (the §18.4 shape)
-  instantiated from the guard/demo measurements as a decisions record,
-  and ONE runbook (node lost/replaced — the demo's SIGKILL beat is the
-  exercise) with the §18.6 shape.
+- **Active tree:** `PHASE-2` → frontier `.6` (`.5` COMPLETE: ADR-023,
+  the structured-log + metrics slice, the SLO record + the runbook).
+  Then `.7`.
+- **Next action:** execute `PHASE-2.6` — the adapter conformance kit
+  and the permanent failure-fixture corpus (§19.4).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

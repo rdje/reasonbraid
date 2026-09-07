@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.5.3: an unmeasured latency is named with a trigger, never given a number — the guard is the SLO population
+
+- **The SLO record instantiates ONLY what is measured.** The dev profile's repeatable signal is the guard (15 live suites, the demo's 34 checks, the restore exercise, the kill beats) — so SLO-1…SLO-4 are hypotheses over THAT population with a zero error budget (a red pass halts the frontier, which is already the CI policy's shape). The one measured latency (cert issuance p50 63 µs/p95 69 µs, the `.1.1` spike) is recorded as a BASELINE, not a target — and the control-plane ingress→commit latency, notification promptness, and the rest of the §5 catalogue are named with their triggers instead of receiving invented numbers (§18.4's "hypotheses established by experiments" + the subtraction doctrine agree).
+- The node lost/replaced runbook's closure tests name the exercises that ALREADY run (the demo's SIGKILL beat, the revoke beat, the replay suites, the restore) — a runbook that cannot be exercised is a story, not a control.
+- promotion: promoted → `docs/decisions/2026-09-07_phase2-slo-hypotheses.md` (`answers:` present). **`.5` COMPLETE. Frontier `PHASE-2.6` (the adapter conformance kit).**
+
 ## _(2026-09-07)_ — PHASE-2.5.2: a counter's truth anchor is the RECORD it counts — the measured test asserts the delta against the denied row
 
 - **The metrics surface is verified against the ledger, not against itself.** The live test denies an authorization through the REAL API and asserts the `authorization_denials` DELTA equals the denied authorization row — and that row's principal is bound to the `actor` column (the UUIDv5 handle `agt_…`), NOT `subject_id` (that's the delegation split — the first test revision counted `subject_id` and read 0; the fact is already recorded in `docs/decisions/2026-09-06_control-api-cli.md`). Because every counter is incremented at the same boundary that writes its record, the surface can never drift from the ledger — a property the future OpenTelemetry sink inherits.

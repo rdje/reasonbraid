@@ -82,3 +82,23 @@ named in the `.4.3` record), and the guard runs the restore EXERCISE on every
 pass: the `backup_restore` suite seeds rows, takes a real `pg_dump`, mutates
 the live database, restores into an isolated database, and asserts the
 pre-mutation state came back.
+
+## Observability, SLOs, and the runbook (`.5`)
+
+- **Metrics:** `GET /v1/admin/metrics` exposes the seven process-wide
+  counters (`authorization_denials`, `idempotency_replays`,
+  `handshake_refusals`, `lease_refusals`, `dead_letters`, `results_folded`,
+  `results_rejected`). The gate: the caller HOLDS `tenant_admin` in any active
+  grant. Every counter is incremented at the same boundary that writes its
+  record, and the live test asserts the denial delta against the denied row —
+  the surface cannot drift from the ledger. Structured `log_event!` JSON lines
+  carry the correlation fields under ADR-023's redaction rules.
+- **SLOs:** the dev profile's hypotheses are the guard's own measurements
+  (`docs/decisions/2026-09-07_phase2-slo-hypotheses.md`): acceptance, the
+  demo's 34 checks, the restore exercise, and the reconcile-after-kill beats
+  all target 100 % with a ZERO error budget — a red pass halts the frontier.
+  Unmeasured latency families are named with their triggers, not numbers.
+- **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
+  covers detection through closure tests; its closure tests are the demo's
+  SIGKILL beat, the revoke beat, the replay suites, and the restore exercise.
+

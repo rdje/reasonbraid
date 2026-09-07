@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The guard IS the population: the SLO hypotheses + the first runbook — `.5` COMPLETE (`PHASE-2.5.3`)
+
+- `docs/decisions/2026-09-07_phase2-slo-hypotheses.md` (`answers:`) instantiates the §18.4 SLO shape from the measurements that EXIST: SLO-1…SLO-4 (the guard's live assertions, the demo's 34 checks, the restore exercise, the reconcile-after-kill beats) target 100 % with a ZERO error budget — a red pass halts the frontier (the CI policy's shape); SLO-5 records the one measured latency baseline (issuance p50 63 µs/p95 69 µs).
+- Every unmeasured latency family (control-plane ingress→commit, notification promptness, model/provider, human-wait, publication, deployment convergence) is NAMED with its trigger — never given an invented number; the SLO catalogue stays separated (§5's last line).
+- `docs/runbooks/node-lost-replaced.md` lands with the full §18.6 shape (detection, authority, safe first actions, diagnostic queries, containment, recovery, evidence preservation, communication, closure tests) — the closure tests name the EXISTING exercises: the demo's SIGKILL beat, the revoke beat, the replay suites, and the `.4.1` restore.
+- **`.5` COMPLETE** (ADR-023 → structured logs + metrics → SLO record + runbook). No code changed. Frontier → `.6` (the adapter conformance kit).
+
 ## 2026-09-07 — The refusal paths now measure themselves: structured logs + the admin metrics surface (`PHASE-2.5.2`)
 
 - The observability slice lands (the §18.3 minimums that apply to the dev profile): `crates/reasonbraid-server/src/telemetry.rs` (NEW) holds the process-wide in-memory registry — seven counters (`authorization_denials`, `idempotency_replays`, `handshake_refusals`, `lease_refusals`, `dead_letters`, `results_folded`, `results_rejected`) — and the `log_event!` macro (JSON lines on stderr: `level`, `event`, the correlation fields; ADR-023's redaction rules hold — no prompt text, no credentials, no secret URLs).

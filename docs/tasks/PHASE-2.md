@@ -976,7 +976,7 @@ slice can reuse the same control plane without rewriting it.
       logs carry the correlation fields; no regression.
 
   - ID: `PHASE-2.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the SLO record + the runbook slice — the initial SLO
       HYPOTHESES (the §18.4 shape: population, window, statistic,
       target, error budget, owner) instantiated from the existing
@@ -986,6 +986,20 @@ slice can reuse the same control plane without rewriting it.
       with the §18.6 shape (detection, authority, safe first actions,
       diagnostics, containment, recovery, evidence). No code (docs).
     Backlog: —
+    Done (`2026-09-07`): the SLO record
+      (`docs/decisions/2026-09-07_phase2-slo-hypotheses.md`,
+      `answers:` present) instantiates the §18.4 shape from the
+      measurements that EXIST: SLO-1…SLO-4 (the guard's live
+      assertions, the demo's 34 checks, the restore exercise, the
+      reconcile-after-kill beats) target 100 % with a ZERO error
+      budget (a red pass halts the frontier), SLO-5 records the one
+      measured latency baseline (issuance p50 63 µs/p95 69 µs), and
+      every unmeasured latency family is named with its trigger —
+      never given a number. The runbook
+      (`docs/runbooks/node-lost-replaced.md`) carries the full §18.6
+      shape and its closure tests name the EXISTING exercises (the
+      demo's SIGKILL beat + the revoke beat + the replay suites + the
+      `.4.1` restore). No code changed. Frontier → `.6`.
     Acceptance: the SLO record + the runbook land; the runbook's
       closure test names the existing exercise; no code changes.
 
@@ -1004,7 +1018,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.5.3` | `proposed` | `.5.2` done — the structured-log + metrics slice (the seven counters + the measured surface); the SLO record + the runbook slice executes now |
+| 1 | `PHASE-2.6` | `proposed` | `.5.3` done — the SLO record + the runbook (the guard is the population; the zero-error-budget halt rule); the adapter conformance lane executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1020,6 +1034,13 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.5.3` done — the SLO record (the guard IS the dev
+  profile's population: SLO-1…SLO-4 target 100 % with a zero error
+  budget; SLO-5 is the one measured latency baseline; the unmeasured
+  families are named with triggers) + the node lost/replaced runbook
+  (the full §18.6 shape; the closure tests name the demo's SIGKILL
+  beat, the revoke beat, the replay suites, the restore exercise); no
+  code changed; frontier → `.6`.
 - `2026-09-07`: `.5.2` done — the structured-log + metrics slice: the
   process-wide registry (seven counters on the real paths), the `log_event!`
   JSON lines, `GET /v1/admin/metrics` (the caller-holds-tenant_admin gate),
@@ -2136,6 +2157,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.5.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the SLO record + the node lost/replaced runbook (the guard is the population; the closure tests name the existing exercises); frontier → `.6` |
 | `2026-09-07` | `PHASE-2.5.2` | `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 18 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — `command_api` grew to 18 with the measured metrics leg: the denied authorization's counter DELTA matches the denied record for the actor handle AND the `/v1/admin/metrics` surface agrees) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg252d_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the structured-log + metrics slice (the seven counters on the real paths, the `log_event!` JSON lines, the admin metrics surface); frontier → `.5.3` |
  docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
  `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
@@ -2167,6 +2189,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.5.3` | `REASONBRAID-PHASE2-0034` | the SLO record + the node lost/replaced runbook (docs-only: the guard is the population, the zero-error-budget halt rule, the §18.6 runbook shape) |
 | `PHASE-2.5.2` | `REASONBRAID-PHASE2-0033` | the structured-log + metrics slice (the seven counters on the real paths + `GET /v1/admin/metrics` + the measured denial-vs-record test) |
 | `PHASE-2.5.1` | `REASONBRAID-PHASE2-0032` | ADR-023 accepted (the four-record separation + the §18.2 redaction rules pinning the future sink; the OpenTelemetry trigger named — no code) |
 | `PHASE-2.5` | `REASONBRAID-PHASE2-0031` | the contract-seam split (eprintln-only observability; the four-record doctrine structurally true, nothing measures) |

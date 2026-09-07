@@ -1,0 +1,39 @@
+[package]
+name = "reasonbraid-extract"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# The R2 extraction worker (PHASE-4.4.2, ROADMAP §12.3's R2 row + the
+# `2026-09-07_r2-extraction-contract.md` decision): a dedicated worker
+# process the resolve path spawns per extraction. It reads ONE JSON request
+# (a temp path + the media type + the ceilings) on stdin, answers ONE JSON
+# response (the Derivation chunks + the parent digest, or a named refusal),
+# and exits — the fresh process IS the quarantine boundary, and nothing
+# persists between extractions.
+#
+# The parser crates are the `.4.1` census's measured set, all pure Rust:
+# lopdf (the PDF text layer), zip + tar (one level deep), atom_syndication
+# (the Atom/RSS feeds). No rendering, no fonts, no images — R4's media lane
+# owns those.
+
+[lints]
+workspace = true
+
+[dependencies]
+# The PDF text extractor (the `.4.1` census: lopdf chosen over the
+# lower-level pdf crate).
+lopdf = "0.44"
+# The archives: zip (deflate only — flate2's miniz_oxide stays the
+# workspace's compression family), tar (plain; the gzip of a tar is outside
+# the initial set — named unsupported).
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+tar = "0.4"
+# The structured feeds.
+atom_syndication = "0.12"
+# The wire protocol + the Derivation digests (the ADR-011 sha256:<hex>
+# scheme the receipts share).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

@@ -19,16 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.4.2` (packs R0 + R1
-  COMPLETE; `.4.1` done: the R2 contract — the Derivation-only
-  extraction + the `process`-class worker quarantine, decision
-  `2026-09-07_r2-extraction-contract.md`; `MAINT-1` done). Then
-  `.4.3`, `.5`–`.7`.
-- **Next action:** execute `PHASE-4.4.2` — the extraction workers:
-  the worker process under the `.4.1` contract (the stdio JSON
-  protocol, the per-format parsers — lopdf/zip/tar/
-  atom_syndication, the mechanical refusals, the killing
-  per-extraction budgets, the fresh-process quarantine).
+- **Active tree:** `PHASE-4` → frontier `.4.3` (packs R0 + R1
+  COMPLETE; `.4.1` done: the R2 contract (decision record);
+  `.4.2` done: the extraction worker — `crates/reasonbraid-extract`,
+  the stdio quarantine, 9 tests; `MAINT-1` done). Then `.5`–`.7`.
+- **Next action:** execute `PHASE-4.4.3` — the receipt + the R2
+  pack wiring: the Derivation receipt (the derived chunk digests +
+  the parent digest + the extractor version), the R2 registry
+  entry (the media-type routing + the sandbox `process` claim),
+  the resolve-path execution (the spawner kills the worker on the
+  budget trip — mirroring the `.2.3`/`.3.3` wiring).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

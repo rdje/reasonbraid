@@ -580,7 +580,7 @@ of a URI is not a promise the core can resolve it.
       pure Rust, no C). No code changed. Frontier → `.4.2`.
 
   - ID: `PHASE-4.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the extraction workers — the worker process under the
       `.4.1` contract: the stdio JSON protocol (the acquired bytes
       or a temp path in, the derived text + the chunk digests +
@@ -591,6 +591,32 @@ of a URI is not a promise the core can resolve it.
       quarantine boundary (the worker is a fresh process per
       extraction — nothing persists).
     Backlog: 34 (the worker half)
+    Done (`2026-09-07`): the extraction worker landed —
+      `crates/reasonbraid-extract` (the new workspace crate, the
+      `.4.1` census's pure-Rust set: lopdf/zip(deflate)/tar/
+      atom_syndication): the stdio JSON protocol (ONE request —
+      the temp path + the media type + the ceilings — in, ONE
+      response out, exit; the refusal envelope is ALWAYS
+      `{error: {kind, message}}`), the per-format parsers (the
+      PDF text layer per page, the one-level archives with the
+      text-entry chunks + the excluded list, the feed titles +
+      entries), the mechanical refusals each named (the
+      encrypted + JS-bearing PDFs — the catalog walk, the nested
+      archives, the path traversal, the decompression-ratio brake
+      over the COMPRESSED envelope vs the decoded bytes, the
+      entry/input/output/chunk ceilings), the Derivation shape
+      (the parent digest over the input + every chunk's own
+      ADR-011 digest + the extractor version), and the
+      quarantine boundary (a fresh process per extraction —
+      nothing persists). Nine tests: the per-format extractions +
+      refusals (the PDF fixture built with lopdf's own writer),
+      the zip/tar/feed fixtures, the output ceiling, and the two
+      stdio roundtrips spawning the BUILT binary (the Derivation
+      response + the named refusal). The first runs caught three
+      real bugs (the PDF fixture's missing xref, the page-number
+      vs page-id argument, the ratio brake comparing the declared
+      size instead of the compressed envelope) — all fixed.
+      Frontier → `.4.3`.
 
   - ID: `PHASE-4.4.3`
     Status: `proposed`
@@ -626,7 +652,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.4.2` | `proposed` | `.4.1` done — the R2 contract decided (`docs/decisions/2026-09-07_r2-extraction-contract.md`: the Derivation-only extraction, the `process`-class worker quarantine, the named refusals, the media-type routing, lopdf/zip/tar/atom_syndication measured); the extraction workers execute now |
+| 1 | `PHASE-4.4.3` | `proposed` | `.4.2` done — the extraction worker (`crates/reasonbraid-extract`: the stdio protocol, the four parsers, the named refusals, the Derivation chunks — nine tests including the stdio roundtrips); the receipt + the pack wiring execute now |
 
 ## Changelog
 
@@ -659,6 +685,12 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.4.2` done — the extraction worker
+  (`crates/reasonbraid-extract`: the stdio JSON protocol, the
+  per-format parsers, the named refusals — the encrypted/JS
+  PDFs, the nested archives, the traversal, the ratio brake over
+  the compressed envelope — the Derivation chunks); nine tests
+  (the fixtures + the stdio roundtrips); frontier → `.4.3`.
 - `2026-09-07`: `.4.1` done — the R2 contract + the parser
   census: the Derivation-only extraction, the `process`-class
   worker quarantine (the stdio protocol + the killing budgets),
@@ -759,6 +791,45 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.4.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-extract/Cargo.toml` + `src/main.rs` (NEW — the
+worker crate: the stdio protocol, the parsers, the refusals, the
+nine unit tests) + `tests/worker_roundtrip.rs` (the stdio
+roundtrips) — `\.rs$` + `Cargo.toml`.
+
+- [x] **REPRODUCE / ISSUE** — the `.4` census: NOTHING extracts
+  (no parser crate, no worker).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the R2 worker was a
+  greenfield — `git grep -c "lopdf\|atom_syndication\|ZipArchive"
+  53c62a4 -- crates/` → rc=1 (nothing before this leaf). The fix
+  point is the `.4.1` contract's worker: the stdio protocol, the
+  four parsers, the named refusals, the fresh-process quarantine.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-extract` → `test result: ok. 9
+  passed` — the PDF text extraction (the fixture built with
+  lopdf's writer), the JS-bearing + unsupported-type refusals,
+  the zip text extraction + the excluded binaries, the nested/
+  traversal/bomb refusals (the ratio brake over the COMPRESSED
+  envelope), the tar + feed extractions, the output ceiling, and
+  the two stdio roundtrips SPAWNING the built binary (the
+  Derivation response + the `{error: {kind, message}}` refusal).
+  The first runs caught three real bugs (the fixture's missing
+  xref, the page-number vs page-id argument, the ratio brake's
+  wrong size) — all fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 53 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg442_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `crates/reasonbraid-extract/` (the whole crate).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.3.3)
 
@@ -1133,6 +1204,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.4.2` | `cargo test -p reasonbraid-extract` → `test result: ok. 9 passed` (the per-format extractions + refusals + the two stdio roundtrips spawning the built binary); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg442_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the extraction worker; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-4.4.1` | docs-only (no code paths changed): the parser census measured (`cargo add --dry-run lopdf/pdf/zip/tar/atom_syndication` → the versions above, all pure Rust); `make gate` → 13/13 at commit | the R2 contract + the parser census; frontier → `.4.2` |
 | `2026-09-07` | `PHASE-4.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R2 census + the contract-seam decomposition (`.4.1` the contract + the parser census → `.4.2` the workers → `.4.3` the receipt + the wiring); frontier → `.4.1` |
 | `2026-09-07` | `PHASE-4.3.3` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 6 passed` (the new receipt test: the resolved commit + the ADR-011 digest over the odb + the included manifest); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r1_resolver` → `test result: ok. 1 passed` (the git reference resolves to the built-in; the loopback refusal names the class through the resolution path; the reference preserved; the stricter requirement explicit); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg433_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R1 pack wired; **`.3` COMPLETE** — frontier → `.4` |
@@ -1153,6 +1225,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.4.2` | `REASONBRAID-PHASE4-0016` | the extraction worker (the stdio protocol + the four parsers + the named refusals — the fresh-process quarantine) |
 | `PHASE-4.4.1` | `REASONBRAID-PHASE4-0015` | the R2 contract + the parser census (the Derivation-only extraction + the worker quarantine — the decision record) |
 | `PHASE-4.4` | `REASONBRAID-PHASE4-0014` | the R2 lane decomposed at the census seams (nothing extracts — the contract/parser-census/worker/receipt are the greenfield) |
 | `PHASE-4.3.3` | `REASONBRAID-PHASE4-0013` | the R1 receipt + the pack wiring (the git references resolve to the built-in — the refusal names the class) — **`.3` COMPLETE** |

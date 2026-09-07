@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The issuance model is measured, not guessed: ADR-006/007 land (`PHASE-2.1.1`)
+
+- **The spike made the refusal cases real before any product code existed.** `crates/reasonbraid-cert-spike` (a test-only experiment — no bin, so `make release` stays four binaries) drives a REAL rustls TLS 1.3 client-cert handshake and passed 6/6 verdicts: the trusted allowlisted leaf completes; foreign-CA, expired, and unregistered-fingerprint certificates are refused on BOTH sides; rotation is additive. Issuance latency N=200: **p50 63 µs / p95 69 µs** — cert issuance is effectively free at LAN scale.
+- **ADR-007 adopts the project-local CA**: 10-minute workload leaves from a control-plane CA, gated by chain-to-the-CA + the node id → fingerprint binding; revocation = server-side status + short expiry (no OCSP/CRL at the LAN profile). step-ca/SPIRE were evaluated on their published operational model, not installed (recorded asymmetry).
+- **ADR-006 is accepted-with-evidence**: the shipped outbound channel (WP3 + `.1.2.2`) is the transport decision — promoted to the ADR before `.1.2` changes the wire again.
+- **The supply-chain gate chose the dependency shape**: `make deny`'s first run failed the bans check on two base64 versions (rcgen's optional `pem` feature pulled 0.23 against hyper-util's 0.22) — fixed by dropping the unused feature (`default-features = false`, DER-only), not by adding a skip entry. The dependency ledger gains the identity-stack row (rcgen 0.14.10, rustls 0.23.43 pinned). Frontier → `.1.2` (the certificate lifecycle + channel v3).
+
 ## 2026-09-07 — `.1` decomposed at the census seams: six gaps own the identity lane (`PHASE-2.1`)
 
 - The pickup census (tool-backed greps over the authority engine, api.rs, the node, migrations, Cargo.tomls, and the ADR index) found the scoped-grant core + one-time enrollment tokens EXIST (Phase 1 carry) while six gaps own the lane: **no workload certificate machinery at all** (ADR-006/007/008/009 unopened), **no revocation write path** (`Revoked` statuses are types + tests only), **no delegated authority context** (§16.3's chain is refused), **no cached-decision semantics**, **no incarnation/run writers** (the Phase-1 gate-record deferral #4), and **no dependency-ledger identity-issuer row**.

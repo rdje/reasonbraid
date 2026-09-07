@@ -75,3 +75,4 @@
 - [`2026-09-07_phase0-subtraction-record.md`](docs/decisions/2026-09-07_phase0-subtraction-record.md)
 - [`2026-09-07_phase1-gate-record.md`](docs/decisions/2026-09-07_phase1-gate-record.md)
 - [`2026-09-07_phase1-subtraction-record.md`](docs/decisions/2026-09-07_phase1-subtraction-record.md)
+- [`2026-09-07_workload-identity-issuance.md`](docs/decisions/2026-09-07_workload-identity-issuance.md)

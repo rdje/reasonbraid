@@ -55,7 +55,7 @@ slice can reuse the same control plane without rewriting it.
     incarnations).
 
   - ID: `PHASE-2.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the ADR-006/007 spike + records — reconcile ADR-006 (node
       transport/reconnect — the existing channel decisions
       `docs/decisions/2026-09-06_node-channel*.md` are the evidence; the
@@ -80,6 +80,11 @@ slice can reuse the same control plane without rewriting it.
       proves the need — short expiry + server-side status is the default
       candidate); ADR-006 is accepted-with-evidence; the ledger row is
       filled; the guard set stays green.
+    Done (`2026-09-07`): the spike passed 6/6 verdicts on a real TLS 1.3
+      handshake (issuance p50 63 µs / p95 69 µs, N=200); ADR-006 +
+      ADR-007 accepted (evidence-gated), the ledger identity row filled;
+      the acceptance checklist below records the evidence — frontier →
+      `.1.2`.
 
   - ID: `PHASE-2.1.2`
     Status: `proposed`
@@ -191,7 +196,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.1` | `proposed` | `.1` decomposed at the census seams (six tool-backed gaps); the ADR-006/007 spike decides the identity issuance model the certificate lifecycle rides |
+| 1 | `PHASE-2.1.2` | `proposed` | `.1.1` done (the ADR-007 model is measured: project-local CA, 10-minute leaves, chain + fingerprint gates); the certificate lifecycle + the channel v3 upgrade execute now |
 
 ## Changelog
 
@@ -208,3 +213,85 @@ slice can reuse the same control plane without rewriting it.
   `.1.2` (the cert lifecycle + channel v3) → `.1.3` (revocation surfaces) →
   `.1.4` (delegation context) → `.1.5` (cached decisions) → `.1.6`
   (incarnation/run writers); frontier → `.1.1`.
+- `2026-09-07`: `.1.1` done — the ADR-006/007 spike: the experiment crate
+  `crates/reasonbraid-cert-spike` (test-only — no bin, so `make release`
+  stays four binaries) drove a real rustls TLS 1.3 client-cert handshake and
+  passed 6/6 verdicts (trusted completes; foreign-CA, expired, and
+  unregistered-fingerprint certificates refused on BOTH sides; rotation
+  additive; issuance latency N=200 p50 63 µs / p95 69 µs); ADR-006
+  (accepted-with-evidence) + ADR-007 (the project-local CA model) land; the
+  `make deny` first run caught a real dependency split (two base64 versions
+  via rcgen's optional `pem` feature) — fixed by dropping the unused feature,
+  not a skip entry; the ledger gains the identity-stack row; frontier →
+  `.1.2`.
+
+## Acceptance Checklist (PHASE-2.1.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-cert-spike/` (new —
+matches `(^|/)crates/` in `.doctrine/code_paths.txt`). ADR-006/ADR-007 +
+the ledger row are the record deliverables.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's identity sliver is open and the
+  §16.2 issuance contract has no implementation: `grep -rn
+  'rustls|rcgen|x509|Certificate' Cargo.toml crates/*/Cargo.toml
+  crates/*/src` → zero matches; the channel defers mTLS to ADR-006/007
+  (`crates/reasonbraid-node/src/channel.rs` line 10); ADR-006/007/008/009
+  are unopened (`grep -c '006\|007' docs/adr/INDEX.md` → 0 rows).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the roadmap forbids choosing the
+  issuance technology by name, and nothing had measured any candidate, so
+  the decision was un-makeable. Tool-backed census: `git show HEAD:crates/reasonbraid-node/src/channel.rs | sed -n '10p'` →
+  `//! mTLS workload identity) arrives with ADR-006/ADR-007's formal
+  records; the` (the channel's own deferral comment — the smoking gun);
+  `grep -rn 'rcgen\|rustls' Cargo.toml crates/*/Cargo.toml` → no matches
+  (no candidate even present); `grep -c '006\|007' docs/adr/INDEX.md` →
+  `0` (both ADRs unopened). The fix point is a measured spike (the
+  `rcgen` + `rustls` project-local-CA candidate — the only model that
+  runs inside the monolith) + the ADR records the other candidates'
+  operational comparison from published docs (recorded asymmetry).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no cert
+  machinery, no ADRs, no ledger row. After: `cargo test -p
+  reasonbraid-cert-spike -- --nocapture` → `test result: ok. 1 passed`
+  with the verdicts — trusted allowlisted leaf completes (ping/pong),
+  foreign-CA/expired/unregistered-fingerprint refused on BOTH sides,
+  rotation additive, `issuance latency N=200 p50=63µs p95=69.042µs`
+  (`target/spike81.log`); ADR-006 + ADR-007 accepted; the ledger's
+  identity-stack row records the pinned versions (rcgen 0.14.10, rustls
+  0.23.43, rustls-pki-types 1.15.1).
+- [x] **NO REGRESSION** — `cargo test -p reasonbraid-cert-spike` → green;
+  `cargo test --all` → all 39 offline suites + the spike green (rc=0,
+  `target/spike81_all.log`); `cargo clippy -p reasonbraid-cert-spike
+  --all-targets -- -D warnings` → clean (`target/spike81_clippy.log`);
+  `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0
+  (advisories/bans/licenses/sources ok — the FIRST run failed on the
+  two-base64 ban: rcgen's optional `pem` feature pulled base64 0.23; the
+  fix is `default-features = false, features = ["crypto", "ring"]`, the
+  spike consumes DER only — no skip entry added,
+  `target/spike81_deny.log`); `make gate` → 13/13 at commit. No product
+  code changed — the spike suite + the offline workspace + the gates are
+  the selected set (§16).
+- [x] **FIX** — `crates/reasonbraid-cert-spike/{Cargo.toml,src/lib.rs,
+  tests/issuance_model.rs}` (the experiment: CA + leaf issuance, the
+  composed chain+validity+allowlist verifier, the five handshake verdicts,
+  the latency sweep); `docs/adr/006-node-transport-reconnect.md` +
+  `007-workload-identity-issuance.md` + INDEX rows;
+  `docs/decisions/2026-09-07_workload-identity-issuance.md` (the mirror
+  with `answers:`); the ledger identity-stack row.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted →
+  `docs/decisions/2026-09-07_workload-identity-issuance.md` gained
+  `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, `docs/adr/INDEX.md`,
+  `docs/decisions/INDEX.md`, the dependency ledger, KNOWLEDGE_MAP — same
+  commit.
+
+## Verification Log
+
+| Date | Leaf | Checks | Result |
+| --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-2.1.1` | `cargo test -p reasonbraid-cert-spike -- --nocapture` → `test result: ok. 1 passed` (6/6 verdicts incl. the three refusal pairs + additive rotation; issuance N=200 p50=63µs p95=69µs, `target/spike81.log`); `cargo test --all` → 39 offline suites + the spike green (rc=0, `target/spike81_all.log`); `cargo clippy -p reasonbraid-cert-spike --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (the first run caught the base64 split → rcgen ships without `pem`); `make gate` → 13/13 | the ADR-006/007 spike: the project-local CA model measured and adopted (ADR-007), the transport decision recorded (ADR-006), the ledger row filled — frontier → `.1.2` |
+
+## Commit Log
+
+| Leaf | Commit subject or reference | Notes |
+| --- | --- | --- |
+| `PHASE-2.1` | `REASONBRAID-PHASE2-0001` | the census-seam decomposition (six tool-backed gaps → `.1.1`–`.1.6`) |
+| `PHASE-2.1.1` | `REASONBRAID-PHASE2-0002` | the ADR-006/007 spike + records: the test-only experiment crate, the two accepted ADRs, the ledger row; `make deny`'s ban caught the base64 split — fixed by dropping rcgen's unused `pem` feature |

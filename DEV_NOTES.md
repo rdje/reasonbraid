@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.1: decide the issuer from a measured spike, not from the roadmap's candidate list
+
+- **A spike's job is to make the refusal cases real.** The experiment drives a REAL TLS 1.3 client-cert handshake (rustls) and asserts the §16.2 contract: the trusted allowlisted leaf completes; foreign-CA, expired, and unregistered-fingerprint certificates are refused on BOTH sides; rotation is additive. Issuance latency N=200: p50 63 µs / p95 69 µs — cert issuance is effectively free at LAN scale, so rotation can be aggressive.
+- **The bans doctrine caught a real dependency split.** `make deny` failed on two base64 versions (0.22 via hyper-util, 0.23 via rcgen's optional `pem` feature). The fix was dropping the UNUSED feature (the spike consumes DER only), not skip-listing — a skip entry would have hidden a choice the spike never needed to make.
+- **rustls's blocking reader yields WouldBlock until `complete_io` decrypts.** The spike's first iteration passed the whole handshake and then failed the ping read — the fix is the drive-IO-until-readable loop; `.1.2`'s channel upgrade must carry the same pattern or reproduce the failure in product code.
+- Promoted to `docs/decisions/2026-09-07_workload-identity-issuance.md` (`answers:` present). **Frontier `PHASE-2.1.2` (the certificate lifecycle + channel v3).**
+
 ## _(2026-09-07)_ — PHASE-1.8.2: a phase closes on evidence, not on a checklist
 
 - **The gate package is a census, not a victory lap.** The `.1.8` pickup census mapped every §26.1 acceptance point to an EXISTING demo beat (real SIGKILL kill points) before any new work; the only gap was the audit-reconstruction claim (closed in `.1.8.1`), and the gate record cites per-row evidence — bundle files, guard logs, suites — never prose.

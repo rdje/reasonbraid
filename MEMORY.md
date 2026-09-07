@@ -23,12 +23,11 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.1` (`.1` decomposed at the census
-  seams: six tool-backed gaps — no cert machinery, no revocation write path,
-  no delegation, no decision cache, no incarnation writers, no ledger row).
-- **Next action:** execute `PHASE-2.1.1` — the ADR-006/007 spike: reconcile
-  ADR-006 with the existing channel decisions + choose the workload identity
-  issuance model (rcgen vs step-ca vs SPIFFE/SPIRE) with a measured spike.
+- **Active tree:** `PHASE-2` → frontier `.1.2` (`.1.1` done: ADR-006/007
+  accepted — the project-local CA model, spike-measured p50 63 µs/p95 69 µs).
+- **Next action:** execute `PHASE-2.1.2` — the certificate lifecycle: enroll
+  issues a short-lived cert, rotation rides the authenticated channel, the
+  handshake upgrades to the cert proof (CHANNEL_VERSION 3; the demo moves).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

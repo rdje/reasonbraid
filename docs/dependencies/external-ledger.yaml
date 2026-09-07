@@ -184,3 +184,41 @@ entries:
       Revalidated 2026-09-06 at the second real adapter (PHASE-1.4): claude 2.1.263, the
       stream-json print interface pinned by three bounded live probes (evidence on-volume in
       target/claude-probes/), live-qualified by the env-gated claude_live suite.
+
+  - name: "Workload-identity issuance stack (rcgen + rustls)"
+    kind: "sdk"
+    owner: "rcgen (RustCrypto-adjacent ecosystem) + Rustls project"
+    source_url: "https://github.com/rustls/rcgen ; https://github.com/rustls/rustls"
+    checked_at: "2026-09-07"
+    tested_versions:
+      - "rcgen 0.14.10 (Cargo.lock)"
+      - "rustls 0.23.43 (Cargo.lock)"
+      - "rustls-pki-types 1.15.1 (Cargo.lock)"
+      - "sha2 0.10.9, time 0.3.55 (spike auxiliaries)"
+    protocol_versions:
+      - "TLS 1.3 (the handshake the spike drives)"
+    license: "Apache-2.0 OR MIT (rcgen, rustls, sha2, time) — verified by `make deny` (rc=0)"
+    supported_features:
+      - "project-local CA issuance; short-lived leaves with SAN; chain + validity verification; fingerprint gating"
+    transports:
+      - "in-memory spike: rustls over a loopback TCP socket (the .1.2 product use rides the axum HTTP channel)"
+    auth_modes:
+      - "mutual TLS with client-cert authentication (the spike's allowlist verifier models the node-id -> fingerprint status table)"
+    known_semantic_losses: []
+    conformance_results:
+      - "PHASE-2.1.1 spike: cargo test -p reasonbraid-cert-spike -- --nocapture — 6/6 verdicts (trusted completes; foreign-CA, expired, and unregistered-fingerprint refused on both sides; rotation additive), issuance latency N=200 p50=63us p95=69us"
+    security_notes:
+      - "the CA key is held by the control plane at the Trusted LAN profile — re-evaluated before any non-LAN exposure (ADR-007's revisit trigger)"
+      - "no OCSP/CRL distribution: revocation is the server-side status table + short expiry (10-minute leaves)"
+      - "rcgen configured without its `pem` feature (DER only) — keeps base64 at a single version under the bans doctrine"
+    upgrade_policy: >-
+      pin by Cargo.lock; re-run the spike suite on any minor/major bump of rcgen or rustls
+      and before the .1.2 channel upgrade lands.
+    revalidation_trigger: >-
+      rcgen/rustls release; before PHASE-2.1.2's CHANNEL_VERSION 3 lands; at each release
+      gate that claims the certificate lifecycle.
+    baseline: >-
+      2026-09-07 (PHASE-2.1.1, ADR-007): the spike measured the project-local CA candidate
+      against the §16.2 contract over a real TLS 1.3 client-cert handshake; step-ca and
+      SPIFFE/SPIRE were evaluated on their published operational model, not installed
+      (recorded asymmetry). The stack passes `make deny` (advisories/bans/licenses/sources ok).

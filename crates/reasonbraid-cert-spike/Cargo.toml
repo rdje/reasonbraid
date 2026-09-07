@@ -1,0 +1,24 @@
+[package]
+name = "reasonbraid-cert-spike"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# The PHASE-2.1.1 identity-issuance spike (ROADMAP §16.2, ADR-007): a dev-only
+# experiment crate — NOT product code, NOT wired into any binary. The experiment
+# lives in tests/issuance_model.rs (an integration test, so `cargo build --bins`
+# / `make release` never ships it). Run it with:
+#   cargo test -p reasonbraid-cert-spike -- --nocapture
+
+[dependencies]
+# `pem` (and its base64 0.23) is dropped — the spike consumes DER only, and the
+# `bans.multiple-versions` doctrine forces a single base64 version.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+rustls = "0.23"
+rustls-pki-types = "1"
+sha2 = "0.10"
+time = "0.3"
+
+[lints]
+workspace = true

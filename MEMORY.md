@@ -19,14 +19,16 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.5` (`.4` COMPLETE: ADR-015,
-  the call artifact + the typed responses, the storm controls'
-  dev-scale core + the six named deferrals). Then `.5.1`-ish
-  children, `.6`.
-- **Next action:** execute `PHASE-3.5` — the subscriptions /
-  durable-notifications / wake-policies lane (backlog 30, §10.6/
-  §11.5): decompose at the census seams (the shipped inbox/lease
-  machinery vs the subscription + wake surfaces).
+- **Active tree:** `PHASE-3` → frontier `.5.1` (`.5` decomposed at
+  the census seams: the delivery-state ladder → the subscriptions +
+  the wake gate → the node-initiated thread API). Then `.5.2`,
+  `.5.3`, `.6`.
+- **Next action:** execute `PHASE-3.5.1` — the delivery-state
+  machine: the §10.6 ladder (`queued → offered → transport_received
+  → acknowledged → consumed`, with the `expired`/`revoked`/
+  `dead_lettered` terminals) as one derived state column over the
+  shipped inbox (no parallel truth), the inspection shows the state
+  per row.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.5: the inbox works but nobody can SEE its states — the ladder is observability, not new machinery
+
+- **The delivery-state ladder is the shipped inbox, made legible.** The §10.6 states (queued → offered → transport_received → acknowledged → consumed, with the expired/revoked/dead_lettered terminals) map onto the columns that ALREADY exist (the cursor, the ack, the quarantine) — the `.5.1` child derives one state column from the same transitions, never a parallel truth. The wake gate and the auto-initiation are the genuinely new halves: the stored `wake_policy` becomes an enforced check, and the `thread:create:auto` grant is the bounded initiation the §11.5 checklist gates.
+- promotion: declined (the census is the leaf's recorded contract — the `.5.1`–`.5.3` children execute it). **Frontier `PHASE-3.5.1` (the delivery-state machine).**
+
 ## _(2026-09-07)_ — PHASE-3.4.3: a storm control built for a scale the profile cannot produce is placeholder machinery — the caps bind, the rest is named
 
 - **The dev-scale core is the caps + the expiry**: the fan-out limits (the typed 429 naming the limit) and the expiry binding (the stored `expires_at` now refuses the responses) are measurable with the shipped identities — the fifth open IS the test. Everything else (the depth/cycle chains, the storm-grade breakers, the quiet hours, the emergency authority) is NAMED with the trigger that produces the threat — a control built before its scale exists is exactly the subtraction doctrine's placeholder lie.

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.5` split at the census seams (`PHASE-3.5`)
+
+- The subscriptions-lane census mapped §10.6/§11.5 (backlog 30) against the shipped surface: the inbox's cursor/resume/dedupe + the lease fencing exist (the Phase-1/2 forms), but the EXPLICIT delivery ladder does not (the rows carry only `acknowledged_at`/`quarantined_at`), the profile's `wake_policy` is stored-but-unenforced, and the node-initiated thread API does not exist (no `thread:create:auto` grant).
+- Children: `.5.1` the delivery-state machine (the §10.6 ladder over the shipped inbox — one source of truth) → `.5.2` the subscriptions + the wake gate (the interests become actionable; the wake checklist's first half) → `.5.3` the node-initiated thread API (the bounded `thread:create:auto` grant + the full §11.5 checklist). Tree-only commit; frontier → `.5.1`.
+
 ## 2026-09-07 — The storm controls' dev-scale core: fan-out caps + expiry binding — `.4` COMPLETE (`PHASE-3.4.3`)
 
 - BUILT + measured: the per-tenant + per-initiator open-call fan-out caps (the typed 429 `storm_control` naming the limit) and the call-expiry enforcement (the `.4.2` spec's `expires_at` now binds the responses — an expired call refuses with the typed reason). The test's fifth open is refused 429; the rewind-the-expiry call refuses the response.

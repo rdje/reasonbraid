@@ -506,10 +506,75 @@ eligibility before ranking. Dependence indicators, never an independence score.
       its trigger; no regression.
 
 - ID: `PHASE-3.5`
-  Status: `proposed`
+  Status: `done`
   Goal: subscriptions, durable notifications, wake policies, node-initiated thread API
   Backlog: 30
   Roadmap: §10.6, §11.5
+  Children: `.5.1`–`.5.3` (decomposed `2026-09-07` at the census
+    seams): `.5.1` the delivery-state machine (the §10.6 ladder over
+    the shipped inbox) → `.5.2` the subscriptions + the wake
+    policies (the interests become actionable subscriptions; the
+    wake-policy field becomes an enforced gate) → `.5.3` the
+    node-initiated thread API (the `thread:create:auto` grant + the
+    §11.5 wake checklist).
+  Done (`2026-09-07`): the census mapped §10.6/§11.5 against the
+    shipped surface: the inbox's cursor/resume/dedupe + the lease
+    fencing exist (the Phase-1/2 forms) but the EXPLICIT delivery
+    ladder does not (`grep -rn "transport_received\|thread:create:
+    auto" crates/` → nothing — the inbox rows carry only
+    `acknowledged_at`/`quarantined_at`), the profile's
+    `wake_policy` is stored-but-unenforced, and the
+    node-initiated thread API does not exist (no
+    `thread:create:auto` grant). Children at those seams — frontier
+    → `.5.1`.
+  - ID: `PHASE-3.5.1`
+    Status: `proposed`
+    Goal: the delivery-state machine — the §10.6 ladder
+      (`queued → offered → transport_received → acknowledged →
+      consumed`, with the `expired`/`revoked`/`dead_lettered`
+      terminals) over the SHIPPED inbox: the existing
+      `acknowledged_at` + `quarantined_at` become the NAMED states
+      (migration: a `delivery_state` column derived by the same
+      transitions that write the existing columns — no parallel
+      truth), the inspection surface shows the state per row, and
+      the measured test walks a row through every reachable state.
+      Transport receipt ≠ read (the ack is explicit per the event
+      type — the existing contract's rule, now VISIBLE).
+    Backlog: 30 (the delivery half)
+    Acceptance: the ladder is one source of truth (the state column
+      and the existing columns agree, measured); no regression.
+
+  - ID: `PHASE-3.5.2`
+    Status: `proposed`
+    Goal: the subscriptions + the wake policies — the profile's
+      `interests` become ACTIONABLE subscriptions (the `.4` call's
+      topic tags match the role's declared interests — the open
+      call advertises to the subscribers; the server records the
+      offer) and the stored `wake_policy` becomes an ENFORCED gate
+      (the node evaluates the profile's wake rules — the
+      auto-wake-for-mode/topic + the operating-hours + the
+      concurrency checks — BEFORE the dispatch; the §11.5
+      checklist's first half).
+    Backlog: 30 (the subscription + wake half)
+    Acceptance: the offer-to-subscribers + the wake-gate refusal are
+      measured; no regression.
+
+  - ID: `PHASE-3.5.3`
+    Status: `proposed`
+    Goal: the node-initiated thread API — the `thread:create:auto`
+      grant (a role initiates a NEW thread under the bounded grant:
+      the topic + the audience + the rate + the depth + the spend +
+      the side-effect bounds) + the full §11.5 wake checklist (the
+      auto-wake for the mode/topic, the visible advertisement, the
+      confidentiality match, the concurrency + the operating hours,
+      the valid central + local reservation, the recursion/duplicate/
+      notification controls, the allowed tools, the healthy adapter +
+      the valid billing route) evaluated server-side before the
+      initiation lands. Replies do NOT inherit the child-thread
+      permission (the grant is explicit per the mode).
+    Backlog: 30 (the initiation half)
+    Acceptance: the auto-initiation lands under the grant + the
+      checklist refusals are typed; no regression.
 
 - ID: `PHASE-3.6`
   Status: `proposed`
@@ -526,7 +591,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.5` | `proposed` | `.4.3` done — the storm controls (the fan-out caps + the expiry enforcement built; the six named deferrals with their triggers); **`.4` COMPLETE** — the subscriptions/notifications lane executes now |
+| 1 | `PHASE-3.5.1` | `proposed` | `.5` decomposed at the census seams (the inbox machinery exists; the explicit delivery ladder, the enforced wake gate, and the auto-initiation grant do not); the delivery-state machine executes now |
 
 ## Changelog
 
@@ -611,6 +676,12 @@ eligibility before ranking. Dependence indicators, never an independence score.
   + the expiry enforcement measured; the six §10.7 deferrals named
   with their triggers); the profiles suite grew to 9;
   **`.4` COMPLETE** — frontier → `.5`.
+- `2026-09-07`: `.5` decomposed at the census seams — the inbox's
+  cursor/resume/dedupe + the lease fencing exist; the explicit
+  §10.6 delivery ladder, the enforced wake gate, and the
+  `thread:create:auto` grant are the gaps; children `.5.1` (the
+  state machine) → `.5.2` (the subscriptions + the wake gate) →
+  `.5.3` (the node-initiated thread API); frontier → `.5.1`.
 
 ## Acceptance Checklist (PHASE-3.4.3)
 
@@ -1079,6 +1150,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the subscriptions-lane census + the contract-seam decomposition (`.5.1` ladder → `.5.2` subscriptions + wake → `.5.3` auto-initiation); frontier → `.5.1` |
 | `2026-09-07` | `PHASE-3.4.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_storm` → `test result: ok. 1 passed` (the 5th open's typed 429 + the expired call's refusal — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg343_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the storm controls' buildable core + the named deferrals; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-3.4.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_call` → `test result: ok. 1 passed` (the open/join/refuse/decline/close chain — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg342_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the call artifact + the typed responses; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-3.4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-015 accepted (the baseline + the dependence-indicator trigger); frontier → `.4.2` |
@@ -1099,6 +1171,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.5` | `REASONBRAID-PHASE3-0017` | the subscriptions lane decomposed at the census seams (the inbox machinery exists; the ladder/wake/auto-initiation are the gaps) |
 | `PHASE-3.4.3` | `REASONBRAID-PHASE3-0016` | the storm controls' buildable core (the fan-out caps + the expiry enforcement) + the six named deferrals — **`.4` COMPLETE** |
 | `PHASE-3.4.2` | `REASONBRAID-PHASE3-0015` | the call artifact + the typed recruitment responses (migration 0020 + the four verbs + the panel snapshot with the explanation) |
 | `PHASE-3.4.1` | `REASONBRAID-PHASE3-0014` | ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane — no code) |

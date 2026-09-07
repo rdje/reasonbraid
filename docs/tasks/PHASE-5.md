@@ -645,13 +645,37 @@ and honest inconclusive outcomes.
       `.4.4`.
 
   - ID: `PHASE-5.4.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the calibration + the regression gates — the
       calibration record (the Brier + the confidence
       accumulated across the runs), the regression gate (the
       per-case threshold — a score below the baseline is the
       typed failure, the CI manifest's G5 row).
     Roadmap: §13.7, §19.5, §19.6 (G5)
+    Done (`2026-09-07`): the calibration + the gates landed per
+      ADR-017 — migration 0035 (`evaluation_calibrations`: the
+      NAMED runs + the brier + the confidence;
+      `evaluation_gates`: the baseline + the threshold;
+      `evaluation_gate_results`: APPEND-ONLY evaluations);
+      `evaluation.rs` gains the `record_calibration` (the run
+      ids must be REGISTERED runs — the accumulation is over
+      real measurements; the brier in [0, 1]), the
+      `record_gate` (the threshold + the baseline scores in
+      [0, 1], the non-empty case→score object), the
+      `evaluate_gate` (each measured case against the baseline
+      − the threshold; a drop below it is the typed FAILURE
+      with the delta; the result APPENDS — the gate never
+      rewrites a result); the api: `POST`/`GET
+      /v1/evaluations/calibrations`, `POST`/`GET
+      /v1/evaluations/gates`, `POST`/`GET
+      /v1/evaluations/gates/{id}/evaluations`. Measured
+      (evaluation 3): the calibration over the two runs, the
+      ghost-run + the out-of-range refusals, the gate's
+      failing evaluation (the failing case + the baseline +
+      the measured + the delta), the second all-passing
+      evaluation appending (both rows survive), the threshold/
+      baseline/ghost refusals, the lists. **`.4` COMPLETE** —
+      frontier → `.5`.
 
 - ID: `PHASE-5.5`
   Status: `proposed`
@@ -668,10 +692,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.4.4` | `proposed` | `.4.3` done — the shadow trials (the server-computed seeded assignment, the recorded cohorts, the append-only results; evaluation 2); the calibration + the regression gates execute next |
+| 1 | `PHASE-5.5` | `proposed` | `.4.4` done — the calibration + the regression gates (the named-run accumulation, the baseline-minus-threshold gate, the append-only evaluations; evaluation 3) — **the `.4` lane (the evaluation service) is COMPLETE**; the routing-policy lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.4` done — the calibration + the regression
+  gates (migration 0035: the named-run accumulation, the
+  baseline/threshold gate, the append-only evaluations);
+  evaluation 3; **`.4` COMPLETE** — frontier → `.5`.
 - `2026-09-07`: `.4.3` done — the shadow trials (migration
   0034: the server-computed seeded assignment via the
   dependency-free splitmix64, the recorded cohorts, the
@@ -1255,6 +1283,55 @@ src/evaluation.rs` (the `TrialSubmission`/`CohortRecord`/
   `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
   commit.
 - [x] **FIX** — `0034_evaluation_trials.sql`, `src/evaluation.rs`,
+  `src/api.rs`, `tests/evaluation.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.4.4)
+
+The CODE change owned by this leaf:
+`migrations/0035_evaluation_gates.sql` (NEW — the calibration
++ the gate + the append-only results tables),
+`crates/reasonbraid-server/src/evaluation.rs` (the
+`CalibrationSubmission`/`GateSubmission` shapes, the
+`record_calibration`/`record_gate`/`evaluate_gate` + the
+lists), `crates/reasonbraid-server/src/api.rs` (the six verbs),
+`crates/reasonbraid-server/tests/evaluation.rs` (the new test)
+— `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  calibration record (the harness's Brier computed per-run,
+  nothing accumulated), no gate (nothing failed when a score
+  dropped — the G5 threshold had no home).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "evaluation_calibrations\|evaluation_gates\|evaluate_gate"
+  fa64621 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the ADR-017 gate contract: the
+  calibration accumulates the NAMED runs; the gate records the
+  baseline + the threshold and only BLOCKS.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test evaluation
+  the_calibration_accumulates_and_the_gate_only_blocks` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 3 tests … ok`) — the calibration over the
+  two runs, the ghost-run + the out-of-range refusals, the
+  failing evaluation (the case + the baseline + the measured +
+  the delta), the all-passing second evaluation appending
+  (both rows survive), the threshold/baseline/ghost refusals,
+  the lists. The first live pass caught the f64 delta epsilon
+  (0.8 − 0.5 ≠ 0.3 exactly) — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 56 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 19 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg522_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0035_evaluation_gates.sql`, `src/evaluation.rs`,
   `src/api.rs`, `tests/evaluation.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the

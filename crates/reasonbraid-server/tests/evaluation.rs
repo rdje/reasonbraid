@@ -618,3 +618,238 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
     assert_eq!(trials.len(), 3, "{trials:?}");
     assert_eq!(trials[0]["trial_id"], json!("tri-2"), "newest first");
 }
+
+#[tokio::test]
+async fn the_calibration_accumulates_and_the_gate_only_blocks() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cal-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &human_id,
+        &json!({
+            "corpus_id": "cal-corpus",
+            "version": 1,
+            "cases_digest": DIGEST_A,
+            "prompts_digest": DIGEST_B,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the corpus registers");
+    for (run_id, seed) in [("cal-run-1", Some(1)), ("cal-run-2", Some(2))] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/evaluations/runs",
+            &human_id,
+            &json!({
+                "run_id": run_id,
+                "workflow": "blind",
+                "corpus_id": "cal-corpus",
+                "corpus_version": 1,
+                "seed": seed,
+                "trial_count": 5,
+                "results": { "cases": [] },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the run records: {run_id}");
+    }
+
+    // 1. The calibration accumulates over the NAMED runs.
+    let (status, calibration) = post(
+        &client,
+        &base,
+        "/v1/evaluations/calibrations",
+        &human_id,
+        &json!({
+            "calibration_id": "cal-1",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "run_ids": ["cal-run-1", "cal-run-2"],
+            "brier": 0.21,
+            "confidence": { "c1": { "declared": 0.9, "actual": 0.8 } },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the calibration records: {calibration}");
+    assert_eq!(calibration["brier"], json!(0.21));
+
+    // 2. A calibration over a GHOST run refuses (the accumulation is over
+    // real measurements, never a fabrication); an out-of-range brier too.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/calibrations",
+        &human_id,
+        &json!({
+            "calibration_id": "cal-ghost",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "run_ids": ["ghost-run"],
+            "brier": 0.5,
+            "confidence": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost run refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("REGISTERED runs"),
+        "{refused}"
+    );
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/calibrations",
+        &human_id,
+        &json!({
+            "calibration_id": "cal-brier",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "run_ids": ["cal-run-1"],
+            "brier": 1.5,
+            "confidence": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the out-of-range brier refuses: {refused}");
+
+    // 3. The gate records the baseline + the threshold.
+    let (status, gate) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &human_id,
+        &json!({
+            "gate_id": "g5-blind",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": { "c1": 0.9, "c2": 0.8 },
+            "threshold": 0.1,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the gate records: {gate}");
+
+    // 4. The evaluation: a case below (the baseline − the threshold) FAILS;
+    // the result carries the delta; the failures name the case.
+    let (status, evaluated) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 0.85, "c2": 0.5 }),
+    )
+    .await;
+    assert_eq!(status, 200, "the evaluation appends: {evaluated}");
+    assert_eq!(evaluated["passed"], json!(false));
+    let failures = evaluated["failures"].as_array().unwrap();
+    assert_eq!(failures.len(), 1, "{evaluated}");
+    assert_eq!(failures[0]["case_id"], json!("c2"));
+    assert_eq!(failures[0]["baseline"], json!(0.8));
+    assert_eq!(failures[0]["measured"], json!(0.5));
+    // The float subtraction's epsilon (0.8 - 0.5 in f64).
+    let delta = failures[0]["delta"].as_f64().unwrap();
+    assert!((delta - 0.3).abs() < 1e-9, "the delta is 0.3: {evaluated}");
+
+    // 5. A second evaluation appends (the gate never rewrites a result).
+    let (status, evaluated) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 0.95, "c2": 0.85 }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second evaluation appends: {evaluated}");
+    assert_eq!(evaluated["passed"], json!(true));
+    let (status, results) = get(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the gate results read: {results}");
+    assert_eq!(
+        results.as_array().unwrap().len(),
+        2,
+        "both rows survive: {results}"
+    );
+
+    // 6. The refusals: the out-of-range threshold, the empty baseline, the
+    // ghost gate.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &human_id,
+        &json!({
+            "gate_id": "g5-bad",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": { "c1": 0.9 },
+            "threshold": 2.0,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the out-of-range threshold refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &human_id,
+        &json!({
+            "gate_id": "g5-empty",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": {},
+            "threshold": 0.1,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the empty baseline refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/ghost/evaluations",
+        &human_id,
+        &json!({ "c1": 0.9 }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost gate refuses: {refused}");
+
+    // 7. The lists.
+    let (status, calibrations) =
+        get(&client, &base, "/v1/evaluations/calibrations", &human_id).await;
+    assert_eq!(status, 200, "the calibrations list: {calibrations}");
+    assert_eq!(calibrations.as_array().unwrap().len(), 1);
+    let (status, gates) = get(&client, &base, "/v1/evaluations/gates", &human_id).await;
+    assert_eq!(status, 200, "the gates list: {gates}");
+    assert_eq!(gates.as_array().unwrap().len(), 1);
+    assert_eq!(gates[0]["gate_id"], json!("g5-blind"));
+}

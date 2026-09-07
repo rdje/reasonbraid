@@ -56,7 +56,7 @@ on the same commit. One commit per completed leaf.
 | [`PHASE-2`](tasks/PHASE-2.md) | `done` | tree complete — the exit line's properties measured (non-escalation, restore + replacement, no false safe-retry) + the subtraction record; next executable work is `PHASE-3.1` | repo-local |
 | [`PHASE-3`](tasks/PHASE-3.md) | `done` | tree complete — the directory, the presence, the matching, the recruitment, the subscriptions, the dependence indicators; next executable work is `PHASE-4.1` | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `done` | tree complete — the five pack lanes + the evidence pipeline; the G4 gate Met (the record + the subtraction + the manifest) | repo-local |
-| [`PHASE-5`](tasks/PHASE-5.md) | `active` | `.4.4` — the calibration + the regression gates (`.4.3` done: the shadow trials — the seeded assignment + the cohorts) | repo-local |
+| [`PHASE-5`](tasks/PHASE-5.md) | `active` | `.5` — the routing-policy lane (the `.4` lane COMPLETE: the evaluation service — the registry, the runs, the trials, the calibration, the gates) | repo-local |
 | [`PHASE-6`](tasks/PHASE-6.md) | `proposed` | `.1` — semantic policy | repo-local |
 | [`PHASE-7`](tasks/PHASE-7.md) | `proposed` | `.1` — Internet hardening | repo-local |
 | [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |

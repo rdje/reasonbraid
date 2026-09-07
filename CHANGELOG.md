@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The calibration and the regression gates land — the `.4` lane is COMPLETE (`PHASE-5.4.4`)
+
+- Migration 0035: the calibration accumulates the Brier + the confidence over the NAMED runs (each must be registered — never a fabrication); the gate records the baseline + the threshold; the evaluation compares each measured case against the baseline minus the threshold and APPENDS its result (a drop below is the typed failure with the delta — the gate never rewrites a result, it only blocks). Measured: evaluation 3. **The `.4` lane (the versioned evaluation service) is COMPLETE.**
+
 ## 2026-09-07 — The shadow routing trials land (`PHASE-5.4.3`)
 
 - Migration 0034: the trial records the declared seed + the arms + the cohorts + the case ids, and the SERVER computes the seeded assignment (a dependency-free splitmix64 — the `std` hasher is not stable across releases, the draw must be): the same seed + cases re-draw the same assignment. The per-arm results append (never overwrite); the trial never changes production routing (the `.5` lane's decision consumes the records). Measured: evaluation 2.

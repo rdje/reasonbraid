@@ -450,6 +450,18 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/evaluations/trials/{trial_id}/results",
             post(record_trial_results).get(list_trial_results),
         )
+        .route(
+            "/v1/evaluations/calibrations",
+            post(record_evaluation_calibration).get(list_evaluation_calibrations),
+        )
+        .route(
+            "/v1/evaluations/gates",
+            post(record_evaluation_gate).get(list_evaluation_gates),
+        )
+        .route(
+            "/v1/evaluations/gates/{gate_id}/evaluations",
+            post(evaluate_gate_endpoint).get(list_gate_results),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -2004,6 +2016,118 @@ async fn list_trial_results(
     }
     Ok(Json(
         crate::evaluation::list_trial_results(&state.pool, &trial_id).await?,
+    ))
+}
+
+/// `POST /v1/evaluations/calibrations` — record one calibration (`.4.4`):
+/// the accumulation over the NAMED runs (each must be registered).
+async fn record_evaluation_calibration(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::evaluation::CalibrationSubmission>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no calibration",
+        ));
+    }
+    match crate::evaluation::record_calibration(&state.pool, &submission).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/calibrations` — the calibration rows, newest first.
+async fn list_evaluation_calibrations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no calibrations",
+        ));
+    }
+    Ok(Json(
+        crate::evaluation::list_calibrations(&state.pool).await?,
+    ))
+}
+
+/// `POST /v1/evaluations/gates` — record the gate (the baseline + the
+/// threshold). The gate only BLOCKS.
+async fn record_evaluation_gate(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::evaluation::GateSubmission>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no gate",
+        ));
+    }
+    match crate::evaluation::record_gate(&state.pool, &submission).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/gates` — the gate rows, newest first.
+async fn list_evaluation_gates(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no gates",
+        ));
+    }
+    Ok(Json(crate::evaluation::list_gates(&state.pool).await?))
+}
+
+/// `POST /v1/evaluations/gates/{id}/evaluations` — evaluate the gate (`.4.4`):
+/// the measured scores against the baseline minus the threshold; the result
+/// APPENDS (the gate never rewrites a result).
+async fn evaluate_gate_endpoint(
+    State(state): State<Arc<ApiState>>,
+    Path(gate_id): Path<String>,
+    headers: HeaderMap,
+    Json(scores): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal evaluates no gate",
+        ));
+    }
+    match crate::evaluation::evaluate_gate(&state.pool, &gate_id, &scores).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/gates/{id}/evaluations` — the gate's results.
+async fn list_gate_results(
+    State(state): State<Arc<ApiState>>,
+    Path(gate_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no gate results",
+        ));
+    }
+    Ok(Json(
+        crate::evaluation::list_gate_results(&state.pool, &gate_id).await?,
     ))
 }
 

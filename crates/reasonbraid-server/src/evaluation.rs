@@ -13,7 +13,7 @@
 //!   overwrite (the record's identity is its content).
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 
 /// The registry-row shape a client submits (`.4.2`): the corpus id + version,
@@ -483,6 +483,266 @@ pub async fn list_trial_results(pool: &PgPool, trial_id: &str) -> Result<Vec<Val
          ORDER BY recorded_at",
     )
     .bind(trial_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+// ── The calibration + the regression gates (`.4.4`, ADR-017) ──────────────────────
+
+/// The calibration submission (`.4.4`): the accumulation over the NAMED runs
+/// (each must exist — the record accumulates real measurements, never a
+/// fabrication).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationSubmission {
+    pub calibration_id: String,
+    pub corpus_id: String,
+    pub corpus_version: i64,
+    pub workflow: String,
+    pub run_ids: Vec<String>,
+    pub brier: Option<f64>,
+    pub confidence: Value,
+}
+
+/// The gate submission (`.4.4`): the recorded baseline (case → score) + the
+/// tolerance threshold. The gate only BLOCKS — it never mutates a result.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GateSubmission {
+    pub gate_id: String,
+    pub corpus_id: String,
+    pub corpus_version: i64,
+    pub workflow: String,
+    pub baseline: Value,
+    pub threshold: f64,
+}
+
+impl EvaluationError {
+    fn ghost_run(run_id: &str) -> Self {
+        EvaluationError::Duplicate(format!(
+            "run `{run_id}` (the calibration accumulates REGISTERED runs only)"
+        ))
+    }
+    fn out_of_range(field: &str, value: f64) -> Self {
+        EvaluationError::MalformedDigest(format!("{field} {value} is outside [0, 1]"))
+    }
+    fn ghost_gate(gate_id: &str) -> Self {
+        EvaluationError::Duplicate(format!(
+            "gate `{gate_id}` (the evaluation targets a REGISTERED gate)"
+        ))
+    }
+}
+
+/// Record one calibration (the accumulation over the named runs).
+pub async fn record_calibration(
+    pool: &PgPool,
+    submission: &CalibrationSubmission,
+) -> Result<Value, EvaluationError> {
+    if submission.run_ids.is_empty() {
+        return Err(EvaluationError::MalformedDigest(
+            "the calibration names at least one run".to_string(),
+        ));
+    }
+    if let Some(brier) = submission.brier {
+        if !(0.0..=1.0).contains(&brier) {
+            return Err(EvaluationError::out_of_range("brier", brier));
+        }
+    }
+    for run_id in &submission.run_ids {
+        let exists: Option<bool> =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM evaluation_runs WHERE run_id = $1)")
+                .bind(run_id)
+                .fetch_one(pool)
+                .await
+                .map_err(|_| EvaluationError::ghost_run(run_id))?;
+        if !exists.unwrap_or(false) {
+            return Err(EvaluationError::ghost_run(run_id));
+        }
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO evaluation_calibrations \
+         (calibration_id, corpus_id, corpus_version, workflow, run_ids, brier, confidence) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&submission.calibration_id)
+    .bind(&submission.corpus_id)
+    .bind(submission.corpus_version)
+    .bind(&submission.workflow)
+    .bind(serde_json::to_value(&submission.run_ids).expect("the run ids serialize"))
+    .bind(submission.brier)
+    .bind(&submission.confidence)
+    .execute(pool)
+    .await;
+    match inserted {
+        Ok(_) => Ok(json!({
+            "calibration_id": submission.calibration_id,
+            "corpus_id": submission.corpus_id,
+            "corpus_version": submission.corpus_version,
+            "workflow": submission.workflow,
+            "run_ids": submission.run_ids,
+            "brier": submission.brier,
+            "confidence": submission.confidence,
+        })),
+        Err(_) => Err(EvaluationError::Duplicate(format!(
+            "calibration `{}`",
+            submission.calibration_id
+        ))),
+    }
+}
+
+/// Record the gate (the baseline + the threshold).
+pub async fn record_gate(
+    pool: &PgPool,
+    submission: &GateSubmission,
+) -> Result<Value, EvaluationError> {
+    if !(0.0..=1.0).contains(&submission.threshold) {
+        return Err(EvaluationError::out_of_range(
+            "threshold",
+            submission.threshold,
+        ));
+    }
+    let baseline = submission.baseline.as_object().ok_or_else(|| {
+        EvaluationError::MalformedDigest("the baseline is a case→score object".to_string())
+    })?;
+    if baseline.is_empty() {
+        return Err(EvaluationError::MalformedDigest(
+            "the baseline names at least one case".to_string(),
+        ));
+    }
+    for (case_id, score) in baseline {
+        let score = score.as_f64().ok_or_else(|| {
+            EvaluationError::MalformedDigest(format!(
+                "the baseline score for `{case_id}` is not a number"
+            ))
+        })?;
+        if !(0.0..=1.0).contains(&score) {
+            return Err(EvaluationError::out_of_range(
+                &format!("the baseline score for `{case_id}`"),
+                score,
+            ));
+        }
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO evaluation_gates \
+         (gate_id, corpus_id, corpus_version, workflow, baseline, threshold) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&submission.gate_id)
+    .bind(&submission.corpus_id)
+    .bind(submission.corpus_version)
+    .bind(&submission.workflow)
+    .bind(&submission.baseline)
+    .bind(submission.threshold)
+    .execute(pool)
+    .await;
+    match inserted {
+        Ok(_) => Ok(json!({
+            "gate_id": submission.gate_id,
+            "corpus_id": submission.corpus_id,
+            "corpus_version": submission.corpus_version,
+            "workflow": submission.workflow,
+            "baseline": submission.baseline,
+            "threshold": submission.threshold,
+        })),
+        Err(_) => Err(EvaluationError::Duplicate(format!(
+            "gate `{}`",
+            submission.gate_id
+        ))),
+    }
+}
+
+/// The gate evaluation (`.4.4`): each measured case score is compared against
+/// the baseline minus the threshold — a drop below it is the typed FAILURE.
+/// The result APPENDS (the gate never rewrites a result).
+pub async fn evaluate_gate(
+    pool: &PgPool,
+    gate_id: &str,
+    scores: &Value,
+) -> Result<Value, EvaluationError> {
+    let row: Option<(Value, f64)> =
+        sqlx::query_as("SELECT baseline, threshold FROM evaluation_gates WHERE gate_id = $1")
+            .bind(gate_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| EvaluationError::ghost_gate(gate_id))?;
+    let Some((baseline, threshold)) = row else {
+        return Err(EvaluationError::ghost_gate(gate_id));
+    };
+    let baseline = baseline.as_object().ok_or_else(|| {
+        EvaluationError::MalformedDigest("the stored baseline is corrupt".to_string())
+    })?;
+    let scores = scores.as_object().ok_or_else(|| {
+        EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
+    })?;
+    let mut failures = Vec::new();
+    for (case_id, expected) in baseline {
+        let Some(expected) = expected.as_f64() else {
+            continue;
+        };
+        let Some(measured) = scores.get(case_id).and_then(|v| v.as_f64()) else {
+            continue; // an unmeasured case is not compared (the caller owns the coverage)
+        };
+        let floor = expected - threshold;
+        if measured < floor {
+            failures.push(json!({
+                "case_id": case_id,
+                "baseline": expected,
+                "measured": measured,
+                "delta": expected - measured,
+            }));
+        }
+    }
+    let passed = failures.is_empty();
+    let appended = sqlx::query(
+        "INSERT INTO evaluation_gate_results (gate_id, passed, failures) VALUES ($1, $2, $3)",
+    )
+    .bind(gate_id)
+    .bind(passed)
+    .bind(serde_json::to_value(&failures).expect("the failures serialize"))
+    .execute(pool)
+    .await;
+    if appended.is_err() {
+        return Err(EvaluationError::Duplicate(format!(
+            "gate result for `{gate_id}`"
+        )));
+    }
+    Ok(json!({ "gate_id": gate_id, "passed": passed, "failures": failures }))
+}
+
+/// The calibrations + the gates, newest first.
+pub async fn list_calibrations(pool: &PgPool) -> Result<Vec<Value>, sqlx::Error> {
+    let rows: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('calibration_id', calibration_id, 'corpus_id', corpus_id, \
+         'corpus_version', corpus_version, 'workflow', workflow, 'run_ids', run_ids, \
+         'brier', brier, 'confidence', confidence) \
+         FROM evaluation_calibrations ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// The gate rows, newest first.
+pub async fn list_gates(pool: &PgPool) -> Result<Vec<Value>, sqlx::Error> {
+    let rows: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('gate_id', gate_id, 'corpus_id', corpus_id, \
+         'corpus_version', corpus_version, 'workflow', workflow, 'baseline', baseline, \
+         'threshold', threshold) \
+         FROM evaluation_gates ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// The gate's evaluation results, oldest first.
+pub async fn list_gate_results(pool: &PgPool, gate_id: &str) -> Result<Vec<Value>, sqlx::Error> {
+    let rows: Vec<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('gate_id', gate_id, 'passed', passed, 'failures', failures) \
+         FROM evaluation_gate_results WHERE gate_id = $1 ORDER BY evaluated_at",
+    )
+    .bind(gate_id)
     .fetch_all(pool)
     .await?;
     Ok(rows)

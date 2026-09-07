@@ -582,7 +582,7 @@ conversation without binding-governance claims.
     gate-package seam).
 
   - ID: `PHASE-1.8.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the audit-reconstruction demo leg — THREAD_A's contribution gains
       an evidence ref (`--evidence-uri`; asserted to ride the event), and a
       new section 11 beat fetches the AUDIT views of both threads +
@@ -598,6 +598,9 @@ conversation without binding-governance claims.
     Backlog: —
     Acceptance: the demo passes with the new beats (`rc=0`; the count grows
       from 24); the book chapter names the leg; the lockstep docs land.
+    Done (`2026-09-07`): the evidence-referenced contribution + the section-11
+      reconstruction beats landed (30 PASS / 0 FAIL, `rc=0`); the acceptance
+      checklist below records the evidence.
 
   - ID: `PHASE-1.8.2`
     Status: `proposed`
@@ -625,7 +628,7 @@ conversation without binding-governance claims.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.8.1` | `proposed` | `.1.8` decomposed at the census seams — the §26.1 evidence is already demo-proven end-to-end (real SIGKILL kill points); the audit-reconstruction beat is the last demo gap; the G1–G2 gate package + the Phase 1 close follow |
+| 1 | `PHASE-1.8.2` | `proposed` | `.1.8.1` done — the demo's 30 PASS carry the audit-reconstruction leg, so the §26.1 evidence is complete end-to-end; the G1–G2 gate package + the Phase 1 close execute now |
 
 ## Changelog
 
@@ -661,6 +664,7 @@ conversation without binding-governance claims.
 - `2026-09-07`: `.1.7.1` done — `make dev` is the one-command development environment: `scripts/dev.sh` boots an ephemeral on-volume PostgreSQL (§13 shape), `rb-server` in the foreground (migrations on startup), console URL + CLI hint, Ctrl-C teardown with a residue census; `dev.sh --check` is the permanent self-verification beat (console at `/` + a real CLI enroll/inspect round-trip + residue 0 — `dev-check: OK`, rc=0); the full live guard green (12 suites + e2e + demo rc=0, `target/dev1_guard.log`); the book's Run-it section + the README quick start carry the path; frontier → `.1.7.2`.
 - `2026-09-07`: `.1.7.2` done — the packaged LAN story: `make release` builds the four self-contained binaries (migrations + console embed at compile time); `deploy/README.md` is the operator runbook (the two §6.6 profiles, the subtraction record); the book gains the `deployment` chapter; the packaging claim is VERIFIED by the demo passing 24/24 on the RELEASE binaries (`--release` build-root switch; `target/release_demo.log`; the bundle's `env.txt` records the release root; `make demo` stays debug); the standard guard green (12 suites + e2e + demo rc=0, `target/dev2_guard.log`); decision record `docs/decisions/2026-09-07_deployment-packaging.md`; **`.1.7` is COMPLETE** — frontier → `.1.8`.
 - `2026-09-07`: `.1.8` decomposed at the census seams — the tool-backed §26.1 census (`grep -n` over the demo + `crates/` + `.github/` + `migrations/`) shows the acceptance is ALREADY demo-proven end-to-end (real SIGKILL kill points: server-restart survival, kill-after-dispatch → exactly one `outcome_unknown`, duplicate transport → one domain effect, budget denial + `inconclusive` + register, CLI/API/console-only inspection); the LAST demo gap is the audit-reconstruction claim (the header makes it, no beat proves it, and no demo contribution carries an evidence ref); named deferrals (capability advertisement → Phase 3, expected-artifact/decision-rule + synthesis → Phase 5, incarnation/run writers → Phase 2, fuzz → Phase 4) ride the gate record; children `.1.8.1` (the audit leg) → `.1.8.2` (the G1–G2 gate package + the Phase 1 close); frontier → `.1.8.1`.
+- `2026-09-07`: `.1.8.1` done — the audit-reconstruction demo leg: the human contributes a position with `--evidence-uri` (`.1.5.1`'s surface exercised end-to-end) and section 11's six checks rebuild the story through the supported read surfaces only (A's audit authority rows + 64-hex digests, the ordered event timeline, the ref on the event, B's denied reservation row + close authority) — 30 PASS / 0 FAIL, `rc=0`; the first run caught a beat mis-read (the thread-scoped audit view starts at the invite — `thread.create` authorizes at tenant scope, the `.6.1` shape `command_api` asserts) — fixed, rerun green; the two psql reads gained comments naming the credential-oracle distinction; the book's two-host-demo chapter gains steps 10–12; frontier → `.1.8.2`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1663,6 +1667,59 @@ chapter + the decision record are the doc deliverables.
   the book (chapter + SUMMARY), `docs/decisions/INDEX.md`, KNOWLEDGE_MAP —
   same commit.
 
+## Acceptance Checklist (PHASE-1.8.1)
+
+The CODE change owned by this leaf: `scripts/demo_two_host.sh` (matches `\.sh$`
+in `.doctrine/code_paths.txt`). `docs/book/src/two-host-demo.md` is the doc
+deliverable.
+
+- [x] **REPRODUCE / ISSUE** — §26.1 step 7 claims "the audit view reconstructs
+  commands, participants, revisions, costs, evidence references, stop reason,
+  and authority" and the demo's header (line 31) repeats it, but NO beat
+  asserts it — `grep -n "audit" scripts/demo_two_host.sh` (before this leaf) →
+  only the console-beat's `/audit?` path reference; and no demo contribution
+  carries an evidence ref — `grep -n "evidence-uri" scripts/demo_two_host.sh`
+  → no matches (the `.1.5.1` surface is never exercised end-to-end).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the demo predates both surfaces (`.1.5.1`
+  and `.1.6.1` landed after the demo's sections 8–10) and the header's
+  step-9 line was aspirational prose. The fix point is the demo's tail (a new
+  section 11 reusing the console's own read-surface pattern — curl + the dev
+  header, no psql) + one CLI contribution carrying the ref.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: 24 PASS, no
+  audit beat, no evidence ref. After: the human contributes a position with
+  `--evidence-uri` (the event carries it) and section 11 adds 6 checks —
+  `bash scripts/run_pg_tests.sh` → the two-host demo
+  `ALL acceptance checks passed` (30 PASS / 0 FAIL, `rc=0`,
+  `target/demo81b_guard.log`; bundle `20260907-021253`): A's audit records
+  (invite → accept → contribute → close, each with a 64-hex policy digest),
+  the ordered event timeline (create → accept → contribute → close), the ref
+  riding the human contribution's event, B's denied reservation row with the
+  engine's reason, B's close authority. The FIRST run caught a real
+  beat-authoring mis-read (`target/demo81_guard.log` → `FAIL: A's audit
+  records reconstruct the authority (create → accept → …)`): the
+  thread-scoped audit view STARTS at the invite because `thread.create`
+  authorizes against the TENANT scope (`api.rs` line 1420:
+  `ResourceTarget::Tenant` — the thread does not exist yet) — the same shape
+  the `command_api` suite's own asserted list adjudicates (it begins at
+  `thread_invite`); the beat now asserts the honest contract and the
+  timeline check carries the create.
+- [x] **NO REGRESSION** — `bash -n scripts/demo_two_host.sh` → clean;
+  `bash scripts/run_pg_tests.sh` → all twelve live server suites green
+  (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7
+  `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo
+  `ALL acceptance checks passed` (`rc=0`, `target/demo81b_guard.log`);
+  `make gate` → 13/13 at commit; `make book` builds. (The script + book are
+  the only changes — the live guard + gate + book are the selected set,
+  §16.)
+- [x] **FIX** — `scripts/demo_two_host.sh` (the header's step 6/9 lines, the
+  credential-oracle comments on the two psql reads, the evidence-referenced
+  human contribution, section 11's four fetches + six checks, the summary
+  rows); `docs/book/src/two-host-demo.md` (scenario steps 10–12, the
+  evidence-file list).
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book chapter — same commit. DEV_NOTES: no
+  new durable lesson — `promotion: declined (the thread-scoped audit view starting at the invite is the .6.1 shape the command_api suite already asserts; this leaf adds no cross-cutting fact)`.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1688,6 +1745,7 @@ chapter + the decision record are the doc deliverables.
 | `2026-09-06` | `PHASE-1.6.3` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` × 2 → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (24 PASS — 18 + the 6 console checks, `rc=0` both runs; the first run caught a cosmetic label slip: backticks in a check label execute as command substitution, fixed); `make gate` → 13/13; `make book` builds | the demo's section-10 console beat landed (shell served at `/`, `app.js` = the documented surfaces only, no write verb, the live same-origin fetches return the demo's thread + budget); **`.1.6` complete** (backlog 18) — frontier → `.1.7` |
 | `2026-09-07` | `PHASE-1.7.1` | `bash -n scripts/dev.sh` → clean; `bash scripts/dev.sh --check` → `dev-check: OK` rc=0 (console at `/`, real `rb enroll` + `inspect threads --as devcheck`, residue census 0 — the beat's first three runs caught the verb shape, the `--as` requirement, and the census-before-teardown ordering); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (`rc=0`, `target/dev1_guard.log`); `make gate` → 13/13; `make book` builds | `make dev` is the one-command development environment (ephemeral on-volume PG, foreground server, residue census); the book's Run-it section + the README quick start carry the path — frontier → `.1.7.2` |
 | `2026-09-07` | `PHASE-1.7.2` | `bash -n scripts/demo_two_host.sh` → clean; `make release` → rc=0 (the four binaries); the release-built demo — ephemeral PG + `bash scripts/demo_two_host.sh --database-url … --release` → `ALL acceptance checks passed` (24 PASS / 0 FAIL, `rc=0`, `target/release_demo.log`, `env.txt` → `bin_root: …/target/release (release)`) + PG teardown residue 0; `bash scripts/run_pg_tests.sh` → all twelve live suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + demo rc=0 (`target/dev2_guard.log`); `make gate` → 13/13; `make book` builds | the packaged LAN story landed (`make release`, `deploy/` runbook, the book's `deployment` chapter, the subtraction record, the decision record); the packaging claim verified by the release-built demo — **`.1.7` complete** — frontier → `.1.8` |
+| `2026-09-07` | `PHASE-1.8.1` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS / 0 FAIL, `rc=0`, `target/demo81b_guard.log`; the first run `target/demo81_guard.log` caught the beat's audit-scope mis-read — the thread-scoped audit view starts at the invite, the `.6.1` shape `command_api` already asserts — fixed, rerun green); `make gate` → 13/13; `make book` builds | the audit-reconstruction demo leg landed (the evidence-referenced human contribution + section 11's six checks: A's authority rows + digest proofs, the ordered timeline, the ref on the event, B's denied reservation row + close authority) — the §26.1 demo evidence is complete end-to-end; frontier → `.1.8.2` |
 
 ## Commit Log
 
@@ -1715,3 +1773,4 @@ chapter + the decision record are the doc deliverables.
 | `PHASE-1.7` | `REASONBRAID-PHASE1-0028` | decomposition at the census seams: `.1.7.1` the one-command dev loop → `.1.7.2` release packaging + the LAN runbook; tree + lockstep docs only |
 | `PHASE-1.7.1` | `REASONBRAID-PHASE1-0029` | `scripts/dev.sh` + the `make dev` target (ephemeral on-volume PG, foreground server, `--check` beat) + the book's Run-it section + the README quick-start line |
 | `PHASE-1.7.2` | `REASONBRAID-PHASE1-0030` | `make release` + `deploy/README.md` (the LAN runbook + subtraction record) + the book's `deployment` chapter + the demo's `--release` build-root switch; the release-built demo passed 24/24 — **`.1.7` complete** |
+| `PHASE-1.8.1` | `REASONBRAID-PHASE1-0032` | the audit-reconstruction demo leg: the evidence-referenced human contribution + section 11's six checks (A's audit authority rows + digest proofs, the ordered timeline, the ref on the event, B's denied reservation row + close authority); the demo passes 30/30; the first run caught the beat's audit-scope mis-read (the thread-scoped view starts at the invite — the `.6.1` shape `command_api` asserts), fixed |

@@ -19,7 +19,9 @@ workers (one per agent role) through the real channel. It prints `PASS`/`FAIL`
 per acceptance point and exits nonzero on any failure. Evidence lands under
 `target/demo/<run-id>/evidence/`: the step `timeline.txt`, the thread
 inspections, both node-journal dumps, the ambiguous-attempt record, the
-duplicate-delivery receipt, the presence probes, `channel-auth.txt` (the run's
+duplicate-delivery receipt, the presence probes, the audit/event/budget
+fetches (`audit-a.json`, `events-a.json`, `audit-b.json`, `budget-b.json`),
+`channel-auth.txt` (the run's
 node ids + dev secrets), and a `summary.md` mapping every acceptance point to
 its evidence.
 
@@ -50,9 +52,17 @@ its evidence.
 9. **Budget exhaustion**: a second thread budgets exactly one call; the second
    dispatch is denied at the server (a recorded denial row) and the node's
    budget gate refuses it `failed_before_dispatch` before any provider contact.
-10. The human closes thread A: closure preserves the contribution AND the
-    unresolved challenge; the audit view reconstructs the whole story.
-11. **The inspection console** (`.1.6.3`): the same binary that serves the API
+10. The human contributes a position carrying an **evidence reference**
+    (`.1.5.1`) and closes thread A: closure preserves the contribution AND the
+    unresolved challenge.
+11. **The audit reconstruction** (`.1.8.1`): the supported read surfaces
+    rebuild the story without database surgery — A's audit records (invite →
+    accept → contribute → close, each with its 64-hex policy digest; the
+    create's authority is tenant-scoped), the ordered event timeline (the
+    evidence reference rides the human contribution's event), B's audit (the
+    close authority), and B's budget ledger (the denied reservation row with
+    the engine's reason).
+12. **The inspection console** (`.1.6.3`): the same binary that serves the API
     serves the embedded page at `/`; the beat asserts the shell, that `app.js`
     references ONLY the documented read surfaces and no write verb, and that
     the page's live same-origin fetch (the dev-profile header, the exact

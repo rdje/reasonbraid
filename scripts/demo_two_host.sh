@@ -21,6 +21,7 @@
 #   5. the SERVER is killed and restarted — every accepted command survives; the
 #      durable lease + presence survive with them;
 #   6. the human challenges A's contribution — revise work reaches A's inbox;
+#      the human contributes a position carrying an EVIDENCE reference (`.1.5.1`);
 #   7. A's revise attempt hangs after dispatch; the node is KILLED (SIGKILL);
 #      on restart the attempt recovers `outcome_unknown` — bounded and visible,
 #      NEVER silently retried; the challenge stays unresolved;
@@ -28,7 +29,9 @@
 #      DENIED at the server (denial row) and refused by the node's budget gate
 #      (`failed_before_dispatch`, no provider contact);
 #   9. the human closes thread A — closure preserves the contribution AND the
-#      unresolved challenge; the audit view reconstructs the whole story.
+#      unresolved challenge; the audit view reconstructs the whole story
+#      (commands, participants, authority, costs, stop reasons) through the
+#      supported read surfaces only (`.1.8.1`).
 #
 # Exit status: 0 only when EVERY acceptance point above is verified by grep-able
 # evidence; nonzero otherwise. No human copies messages: the agent content comes
@@ -281,6 +284,11 @@ SECRET_B="dev-secret-b-$RUN_ID"
 export ROLE_A ROLE_B DATABASE_URL
 probe_poll() {
     local tok
+    # The fencing token is the node's channel CREDENTIAL. The demo reads it via
+    # psql ONLY to drive the authenticated probes as the node itself — no
+    # supported surface should expose a live credential (least privilege), and
+    # every STATE assertion elsewhere runs through the CLI/API/rb-journal
+    # (the `.1.8` census note — this read is an oracle, not an inspection).
     tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
     [ -n "$tok" ] || return 1
     curl -s -o /dev/null -X POST -H 'content-type: application/json' \
@@ -346,7 +354,10 @@ check "node A's presence is observable ONLINE through the channel API" \
 # ── 4. duplicate transport → one domain effect ─────────────────────────────────
 
 # The duplicate rides the node's LIVE fencing token (the lease the handshake
-# issued): it re-sends the exact authenticated event, verbatim.
+# issued): it re-sends the exact authenticated event, verbatim. The token is a
+# CREDENTIAL — psql is the demo's oracle for it (no supported surface should
+# expose a live credential); every STATE assertion runs through the CLI/API/
+# rb-journal (the `.1.8` census note).
 FENCE_A="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
 [ -n "$FENCE_A" ] || { fail "node A holds a live lease (fencing token present)"; exit 1; }
 EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
@@ -398,6 +409,17 @@ node_wait "$NODE_A_DIR"
 log "the human challenges A's contribution"
 cli thread challenge --thread "$THREAD_A" --target "$CONTRIBUTION_ID" \
     --text "your bound check only covers x<1 — justify x>=1" --as organizer >/dev/null
+
+# The `.1.5.1` evidence-reference surface: the human contributes a position that
+# CITES a source (references only — no acquisition, §3.7). The reconstruction
+# beat (section 11) asserts the reference rides the event.
+log "the human contributes a position with an evidence reference (.1.5.1)"
+EVID_CONTRIB_OUT="$(cli thread contribute --thread "$THREAD_A" --kind position \
+    --text "the bound is a modeling assumption, not a theorem — see the cited derivation" \
+    --evidence-uri "https://example.org/bound-derivation" \
+    --as organizer --tenant "$TENANT" --json)"
+echo "$EVID_CONTRIB_OUT" | grep -q thread.contribution_submitted \
+    || { fail "the evidence-referenced contribution"; exit 1; }
 
 # ── 7. kill AFTER dispatch → honest ambiguity, never a silent retry ─────────────
 
@@ -526,6 +548,37 @@ curl -s -H "x-reasonbraid-principal: $HUMAN" \
 check "the page's budget view returns the ledger facts (.1.6.1)" bash -c \
     "grep -q '\"ceiling\"' '$EVIDENCE/console-budget-a.json'"
 
+# ── 11. the audit view reconstructs the story (`.1.8.1` — the §26.1 step-7 claim) ──
+
+# The supported read surfaces — the same GETs the console page makes — rebuild the
+# whole demonstration without database surgery: the commands from the event
+# timeline, the authority from the audit records, the costs from the budget ledger.
+# The thread-scoped audit view starts at the invite: `thread.create` is
+# authorized against the TENANT scope (the thread does not exist yet — its
+# audit row is tenant-scoped, the `.6.1` shape the command_api suite asserts);
+# the create command is still visible in the timeline check above.
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/audit?tenant_id=$TENANT" > "$EVIDENCE/audit-a.json"
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/events?tenant_id=$TENANT" > "$EVIDENCE/events-a.json"
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_B/audit?tenant_id=$TENANT" > "$EVIDENCE/audit-b.json"
+curl -s -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_B/budget?tenant_id=$TENANT" > "$EVIDENCE/budget-b.json"
+
+check "A's audit records reconstruct the thread-scoped authority (invite → accept → contribute → close)" bash -c \
+    "jq -e '[.records[].action] | contains([\"thread_invite\",\"thread_invitation_respond\",\"thread_contribute\",\"thread_close\"])' '$EVIDENCE/audit-a.json' >/dev/null"
+check "every A audit record carries its proof (allowed/denied + a 64-hex policy digest)" bash -c \
+    "jq -e 'all(.records[]; ((.policy_digest | length) == 64) and (.decision == \"allowed\" or .decision == \"denied\"))' '$EVIDENCE/audit-a.json' >/dev/null"
+check "the event timeline reconstructs A's story in order (create → accept → contribute → close)" bash -c \
+    "jq -e '(([.events[].event_type] | index(\"thread.created\")) < ([.events[].event_type] | index(\"thread.invitation_accepted\"))) and (([.events[].event_type] | index(\"thread.invitation_accepted\")) < ([.events[].event_type] | index(\"thread.contribution_submitted\"))) and (([.events[].event_type] | index(\"thread.contribution_submitted\")) < ([.events[].event_type] | index(\"thread.closed\")))' '$EVIDENCE/events-a.json' >/dev/null"
+check "the evidence reference rides the human contribution's event (.1.5.1)" bash -c \
+    "jq -er '.events[] | select(.event_type == \"thread.contribution_submitted\") | .body.evidence_refs? | select(. != null) | .[0].uri' '$EVIDENCE/events-a.json' | grep -q '^https://example.org/bound-derivation$'"
+check "B's budget ledger reconstructs the denial (a denied reservation row with the engine's reason)" bash -c \
+    "jq -e '[.reservations[] | select(.status == \"denied\") | .reason] | any(startswith(\"the ceiling\"))' '$EVIDENCE/budget-b.json' >/dev/null"
+check "B's audit records the close authority (the stop reason rides the thread state)" bash -c \
+    "jq -e '[.records[].action] | index(\"thread_close\") != null' '$EVIDENCE/audit-b.json' >/dev/null"
+
 # ── evidence bundle ─────────────────────────────────────────────────────────────
 
 cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json > "$EVIDENCE/thread-a.json"
@@ -549,6 +602,8 @@ node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
     echo "| closure preserves contributions + objections | thread-a.json: closed, contribution + open_challenges=1 |"
     echo "| honest inconclusive outcome | thread-b.json: state inconclusive, the unresolved item rides the close event |"
     echo "| inspection console (.1.6.3) | console-index.html (the embedded shell served at /) + console-app.js (the documented surfaces only, no write verb) + console-thread-a.json / console-budget-a.json (the live same-origin fetches) |"
+    echo "| evidence reference rides the contribution (.1.5.1) | events-a.json: the human contribution's event body carries the cited uri |"
+    echo "| the audit view reconstructs the story (.1.8.1) | audit-a.json (invite→accept→contribute→close authority rows, each with a 64-hex policy digest — the create's authority is tenant-scoped) + events-a.json (the ordered timeline) + audit-b.json (the close authority) + budget-b.json (the denied reservation row with the engine's reason) |"
     echo "| reproducible evidence bundle | this directory — rerun with the commands in timeline.txt |"
 } > "$EVIDENCE/summary.md"
 

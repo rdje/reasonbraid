@@ -16,8 +16,8 @@
   `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
   `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
   `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Active tree:** `PHASE-1` → frontier `.1.8.1` (`.1.8` decomposed at the
-  census seams; `.1.8.2` closes Phase 1). **`.1.7` COMPLETE** — `.1.7.1` `make dev` (the
+- **Active tree:** `PHASE-1` → frontier `.1.8.2` (`.1.8.1` done — the
+  audit-reconstruction leg; `.1.8.2` closes Phase 1). **`.1.7` COMPLETE** — `.1.7.1` `make dev` (the
   one-command dev loop, `--check` beat) + `.1.7.2` the packaged LAN story
   (`make release` → four self-contained binaries, `deploy/` runbook, the
   book's `deployment` chapter, the release-built demo proof 24/24;
@@ -31,9 +31,9 @@
   `1.98.0` (`PHASE-1-MAINT-3`). `.1.5` COMPLETE (backlogs 9–17 done); all
   three Phase-1 defect leaves closed (`MAINT-1` §13, `MAINT-2` drain race,
   `MAINT-3` toolchain pin); `.1.4` live-qualified.
-- **Next action:** execute `.1.8.1` (the audit-reconstruction demo leg —
-  evidence ref + the audit-view beat), then `.1.8.2` (the G1–G2 gate package
-  + the Phase 1 close), then the frontier moves to `PHASE-2.1`.
+- **Next action:** execute `.1.8.2` (the G1–G2 gate package: `make deny` +
+  `make secret-scan`, the evidence manifest + gate record + subtraction
+  record, the full guard re-run, the Phase 1 close), then `PHASE-2.1`.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

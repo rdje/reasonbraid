@@ -19,15 +19,15 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.2.3` (`.2.2` done: the
-  offline-known distinction + the operator's presence enumeration —
-  the measured three-way distinction). Then `.3`–`.6`.
-- **Next action:** execute `PHASE-3.2.3` — the privacy-filtered
-  directory views: `GET /v1/directory/presence` returns per the
-  initiator's scope + each profile's visibility policy (the tenant
-  view, the network view with pseudonyms or counts, a
-  zero-visibility profile contributes nothing), reusing the `.1.3`
-  field filter.
+- **Active tree:** `PHASE-3` → frontier `.3` (`.2` COMPLETE: the
+  presence state machine, the offline-known distinction, the
+  privacy-filtered directory views). Then `.3.1`-ish children,
+  `.4`–`.6`.
+- **Next action:** execute `PHASE-3.3` — the two-stage matching
+  lane (backlog 28, 29, §10.3): decompose at the census seams (the
+  deterministic stage-1 eligibility expression vs the explainable
+  stage-2 ranking; the `.1` profiles + the `.2` presence feed
+  both).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -171,7 +171,11 @@ eligibility before ranking. Dependence indicators, never an independence score.
     lease expired) is indistinguishable from an unknown node at the
     directory level, and the privacy-filtered views (counts /
     pseudonyms / no roster per the initiator's scope) do not exist.
-    Children at those seams — frontier → `.2.1`.
+    Children at those seams — frontier → `.2.1`. **`.2` is COMPLETE** —
+    the six-state derivation, the offline-known distinction + the
+    operator's enumeration, and the per-scope privacy-filtered
+    directory views ship; the `.3` two-stage matching consumes the
+    presence + the filtered profile views.
   - ID: `PHASE-3.2.1`
     Status: `done`
     Goal: the presence state machine — the six §10.2 states as a
@@ -235,7 +239,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       id is the typed 404); no regression.
 
   - ID: `PHASE-3.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the privacy-filtered directory views — the §10.2 rule
       "counts, pseudonyms, or no roster at all according to the
       initiator's scope": `GET /v1/directory/presence` returns per
@@ -247,6 +251,21 @@ eligibility before ranking. Dependence indicators, never an independence score.
       (not even a count). The `.1.3` filter is the field-level
       engine.
     Backlog: 27 (the views half)
+    Done (`2026-09-07`): the privacy-filtered directory views landed
+      — `GET /v1/directory/presence` (the reader's identity decides
+      everything, no params): the OWNER reads their tenant's nodes
+      with the FULL fields (the audited tenant-admin path), a tenant
+      member the TENANT-filtered fields, every enrolled principal
+      the network pseudonyms of the other tenants (each with the
+      network-visible fields + the derived state), and a
+      zero-visibility profile contributes NOTHING — not even a
+      count. The `.1.3` filter is the field-level engine. Measured
+      (`the_directory_reads_yield_the_allowed_shapes_per_reader`,
+      profiles 6): the three scopes yield exactly the allowed shapes
+      — the owner's own view carries the self-only fields, the
+      member's view absents them, the stranger sees only the
+      network pseudonyms, and the zero-visibility profile is absent
+      everywhere. **`.2` COMPLETE** — frontier → `.3`.
     Acceptance: the three scopes are measured (the same directory
       read by a tenant member, a stranger, and the owner yields the
       allowed shapes); no regression.
@@ -285,7 +304,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.2.3` | `proposed` | `.2.2` done — the offline-known distinction + the operator's enumeration (the expired-lease node reads offline with its expiry visible; the unknown id is the typed 404); the privacy-filtered directory views execute now |
+| 1 | `PHASE-3.3` | `proposed` | `.2.3` done — the privacy-filtered directory views (the three measured scopes; the zero-visibility rule); **`.2` COMPLETE** — the two-stage matching lane executes now |
 
 ## Changelog
 
@@ -325,6 +344,57 @@ eligibility before ranking. Dependence indicators, never an independence score.
   offline-KNOWN rows with their expiries; the unknown id stays the
   typed 404; the stale handling pinned as the third leg); the
   node_channel suite grew to 23; frontier → `.2.3`.
+- `2026-09-07`: `.2.3` done — the privacy-filtered directory views
+  (`GET /v1/directory/presence`: the owner's full own-tenant view,
+  the member's tenant-filtered view, the network pseudonyms, the
+  zero-visibility rule); the profiles suite grew to 6;
+  **`.2` COMPLETE** — frontier → `.3`.
+
+## Acceptance Checklist (PHASE-3.2.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+api.rs` (the `GET /v1/directory/presence` handler + the route — the
+per-reader scopes over the presence view + the `.1.3` filter) and
+`crates/reasonbraid-server/tests/profiles.rs` (the three-scope
+measurement + the node-enrollment helper; the suite's TestServer
+merges the node router) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the §10.2 rule ("counts, pseudonyms,
+  or no roster at all according to the initiator's scope") has no
+  surface: the one-node presence + the admin enumeration exist, but
+  no per-scope directory view consumes the `.1.3` visibility
+  policies.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the visibility filter (`.1.3`)
+  evaluated single profiles only — `git grep -c
+  "directory/presence" 463566e -- crates/` → rc=1 (no directory
+  surface existed before this leaf). The fix point is the READER's
+  classification applied to the whole directory: the owner's scope
+  (FULL own-tenant fields via the audited admin path), the member's
+  scope (TENANT-filtered), the network pseudonyms (NETWORK-filtered,
+  and a zero-visibility profile contributes NOTHING).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles the_directory`
+  → `test result: ok. 1 passed` — the owner's own view carries the
+  self-only fields; the member's view absents them while keeping
+  the tenant-scoped capabilities; the stranger sees only the
+  network pseudonyms (the tenant-scoped fields absent); and the
+  zero-visibility profile is absent from EVERY network view (not
+  even a count). The first run caught the suite's missing node
+  router (the enroll route lives there) — merged.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg323_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/api.rs` (the handler + the route),
+  `tests/profiles.rs` (the measurement + the helper + the merged
+  router).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.2.2)
 
@@ -528,6 +598,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.2.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_directory` → `test result: ok. 1 passed` (the three scopes + the zero-visibility rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg323_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the privacy-filtered directory views; **`.2` COMPLETE** — frontier → `.3` |
 | `2026-09-07` | `PHASE-3.2.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_offline_known` → `test result: ok. 1 passed` (the three-way distinction + the enumeration); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg322_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the offline-known distinction + the operator's enumeration; frontier → `.2.3` |
 | `2026-09-07` | `PHASE-3.2.1` | `cargo test -p reasonbraid-server --lib presence` → `test result: ok. 5 passed` (the derivation precedence); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg321_guard.log`, the node_channel presence legs assert `offline`/`available`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the presence state machine (the six states derived; presence reads, never writes); frontier → `.2.2` |
 | `2026-09-07` | `PHASE-3.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the presence-lane census + the contract-seam decomposition (`.2.1` state machine → `.2.2` offline-known → `.2.3` filtered views); frontier → `.2.1` |
@@ -539,6 +610,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.2.3` | `REASONBRAID-PHASE3-0008` | the privacy-filtered directory views (the three measured scopes + the zero-visibility rule) — **`.2` COMPLETE** |
 | `PHASE-3.2.2` | `REASONBRAID-PHASE3-0007` | the offline-known distinction + the operator's presence enumeration (the measured three-way distinction) |
 | `PHASE-3.2.1` | `REASONBRAID-PHASE3-0006` | the presence state machine (the six-state derivation + the response's `state` field) |
 | `PHASE-3.2` | `REASONBRAID-PHASE3-0005` | the presence lane decomposed at the census seams (the shipped lease/presence forms vs the three gaps) |

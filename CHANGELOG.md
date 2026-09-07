@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The privacy-filtered directory: counts, pseudonyms, or nothing — `.2` COMPLETE (`PHASE-3.2.3`)
+
+- `GET /v1/directory/presence` (the reader's identity decides everything, no params): the OWNER reads their tenant's nodes with the FULL fields (the audited tenant-admin path), a tenant member the TENANT-filtered fields, every enrolled principal the network pseudonyms of the other tenants (each with the network-visible fields + the derived presence state) — and a zero-visibility profile contributes NOTHING, not even a count.
+- The `.1.3` filter is the field-level engine; the `.2.1` derivation supplies every row's state.
+- Measured (`tests/profiles.rs` grew to 6): the three scopes yield exactly the allowed shapes — the owner's own view carries the self-only fields, the member's view absents them, the stranger sees only the pseudonyms, and the zero-visibility profile is absent everywhere. **`.2` COMPLETE**; frontier → `.3` (the two-stage matching lane).
+
 ## 2026-09-07 — The offline-known distinction, measured: known-and-quiet, never fabricated (`PHASE-3.2.2`)
 
 - `GET /v1/admin/nodes/presence?tenant_id=…` (tenant_admin-gated): the operator's enumeration of every enrolled node with its derived presence state + the lease clock — the offline-KNOWN rows ("this node is known, just quiet").

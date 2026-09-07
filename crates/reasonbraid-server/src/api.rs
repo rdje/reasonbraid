@@ -347,6 +347,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/usage", get(admin_usage))
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
+        .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
         .route(
             "/v1/profiles/{role_id}/versions",
@@ -1210,6 +1211,143 @@ async fn list_node_presence(
     Ok(Json(json!({
         "tenant_id": q.tenant_id.to_string(),
         "nodes": nodes,
+    })))
+}
+
+// ── The privacy-filtered directory views (PHASE-3.2.3; backlog 27) ──────────────
+
+/// The reader's directory scope: the OWNER (tenant_admin) reads the FULL fields
+/// of their own tenant's nodes; a tenant member reads the TENANT-filtered
+/// fields; every enrolled principal reads the network pseudonyms of the other
+/// tenants (a profile whose network view is empty contributes NOTHING — not
+/// even a count). The `.1.3` filter is the field-level engine.
+async fn directory_presence(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(reader_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no directory",
+        ));
+    };
+    let owner = if let Ok(tenant) = reader_tenant.parse() {
+        authorize_tenant_admin(&state.pool, &principal, tenant)
+            .await
+            .is_ok()
+    } else {
+        false
+    };
+    let own_class = if owner {
+        crate::profiles::ReaderClass::Full
+    } else {
+        crate::profiles::ReaderClass::Tenant
+    };
+
+    type Row = (
+        String,
+        String,
+        bool,
+        bool,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<i64>,
+        Option<Value>,
+    );
+    // Every enrolled node with its derived presence + its CURRENT profile
+    // (when the node id is the role wire id it serves — the dev wiring).
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT np.node_id, np.tenant_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
+                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
+                (SELECT v.profile \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+         FROM node_presence np ORDER BY np.tenant_id, np.node_id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut own_nodes = Vec::new();
+    let mut network_nodes = Vec::new();
+    for (
+        node_id,
+        tenant,
+        online,
+        suspended,
+        last_seen_at,
+        lease_expires_at,
+        concurrency,
+        profile,
+    ) in rows
+    {
+        let state = crate::presence::presence_state(true, suspended, online, concurrency)
+            .as_str()
+            .to_string();
+        let (target, fields) = if tenant == reader_tenant {
+            (true, profile)
+        } else {
+            (false, profile)
+        };
+        let entry = match (target, fields) {
+            (true, Some(stored)) => {
+                let parsed: crate::profiles::AgentProfile = match serde_json::from_value(stored) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let filtered = crate::profiles::filter_profile(&parsed, own_class);
+                Some(json!({
+                    "node_id": node_id,
+                    "state": state,
+                    "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
+                    "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
+                    "profile": filtered,
+                }))
+            }
+            (true, None) => Some(json!({
+                "node_id": node_id,
+                "state": state,
+                "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
+                "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
+            })),
+            (false, Some(stored)) => {
+                let parsed: crate::profiles::AgentProfile = match serde_json::from_value(stored) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let filtered =
+                    crate::profiles::filter_profile(&parsed, crate::profiles::ReaderClass::Network);
+                // The zero-visibility rule: a profile whose network view is
+                // EMPTY contributes nothing — not even a count.
+                if filtered.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                    continue;
+                }
+                Some(json!({
+                    "node_id": node_id,
+                    "state": state,
+                    "profile": filtered,
+                }))
+            }
+            (false, None) => continue,
+        };
+        if let Some(entry) = entry {
+            if target {
+                own_nodes.push(entry);
+            } else {
+                network_nodes.push(entry);
+            }
+        }
+    }
+
+    Ok(Json(json!({
+        "own_tenant": {
+            "tenant_id": reader_tenant,
+            "nodes": own_nodes,
+        },
+        "network": {
+            "nodes": network_nodes,
+        },
     })))
 }
 

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.2.3: the directory's privacy is the reader's classification, applied to every row — and zero visibility means zero, not "count minus one"
+
+- **The §10.2 rule became one endpoint with three measured scopes**: the reader's identity (owner / tenant member / stranger) classifies the WHOLE directory — the owner's own view carries the full fields, the member's the tenant-filtered, the stranger's only the network pseudonyms — and the zero-visibility rule is strict: a profile exposing nothing to the network is ABSENT from every network view, not even a count (a count would leak the existence the policy hides). The `.1.3` filter and the `.2.1` state machine compose: neither needed a new field.
+- promotion: declined (the three scopes are the leaf's own measured contract; the composition reuses `.1.3`/`.2.1`). **`.2` COMPLETE. Frontier `PHASE-3.3` (the two-stage matching lane).**
+
 ## _(2026-09-07)_ — PHASE-3.2.2: "known, just quiet" is an enumeration row — the unknown id stays a typed 404
 
 - **The offline-known distinction is a data shape, not a sentence.** The operator's enumeration lists every enrolled node with its derived state + the lease clock: a never-leased node is `offline` with null clocks, an expired-lease node is `offline` WITH its past expiry visible (the "quiet since" fact), and an unenrolled id is the typed `unknown_node` 404 — never fabricated into an offline row. The stale handling (the expired lease's heartbeat refuses; the handshake re-leases) was already measured by the fencing test — this leaf pins it as the third leg instead of re-building it.

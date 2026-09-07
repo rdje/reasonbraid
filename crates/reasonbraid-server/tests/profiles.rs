@@ -12,7 +12,7 @@
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
-use reasonbraid_server::{api_router, PRINCIPAL_HEADER};
+use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -92,7 +92,8 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let router = api_router(pool.clone());
+        let ca = std::sync::Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -165,6 +166,48 @@ async fn post(
         .expect("post request");
     let status = response.status().as_u16();
     (status, response.json().await.expect("post json"))
+}
+
+/// Enroll a node through the PUBLIC surface (`.1.2.1`; the dev wiring
+/// collapses node==role — the node id IS the role wire id).
+async fn enroll_node(
+    client: &reqwest::Client,
+    base: &str,
+    human: &str,
+    tenant: &str,
+    node_id: &str,
+) -> (String, String) {
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll-tokens"))
+        .header(PRINCIPAL_HEADER, human)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "host_claim": "dir-host",
+        }))
+        .send()
+        .await
+        .expect("issue-token request");
+    assert_eq!(response.status().as_u16(), 200, "the token issues");
+    let issued: Value = response.json().await.expect("issue-token json");
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll"))
+        .json(&json!({
+            "token_id": issued["token_id"],
+            "node_id": node_id,
+            "host_claim": "dir-host",
+            "nonce": issued["nonce"],
+            "key_secret": "dir-secret",
+        }))
+        .send()
+        .await
+        .expect("enroll request");
+    assert_eq!(response.status().as_u16(), 200, "the node enrolls");
+    let body: Value = response.json().await.expect("enroll json");
+    (
+        body["cert_der"].as_str().unwrap().to_string(),
+        body["key_der"].as_str().unwrap().to_string(),
+    )
 }
 
 /// A minimal §10.1 profile (the typed boundary accepts the full shape; the
@@ -765,4 +808,215 @@ async fn the_version_history_stays_full_only() {
     )
     .await;
     assert_eq!(status, 200, "the owner reads the history: {versions}");
+}
+
+/// THE `.3.2.3` acceptance, measured: the SAME directory read by the owner, a
+/// tenant member, and a stranger yields the allowed shapes — the owner sees
+/// the FULL own-tenant fields, the member the TENANT-filtered fields, every
+/// enrolled principal the network pseudonyms, and a zero-visibility profile
+/// contributes nothing at all (not even a count).
+#[tokio::test]
+async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Tenant A: the owner, the role+node, and a plain member (no node).
+    let (status, owner_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "dir-owner-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "owner A enrolls: {owner_a}");
+    let tenant_a = owner_a["tenant_id"].as_str().unwrap().to_string();
+    let owner_a_id = owner_a["principal_id"].as_str().unwrap().to_string();
+    let (status, role_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dir-agent-a", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "role A enrolls: {role_a}");
+    let role_a_id = role_a["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_a_id, &tenant_a, &role_a_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}"),
+        &role_a_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "role A writes its profile");
+    let (status, member_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dir-member-a", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the member enrolls: {member_a}");
+    let member_a_id = member_a["principal_id"].as_str().unwrap().to_string();
+
+    // Tenant B: the owner + a role+node with the same profile shape.
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "dir-owner-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "owner B enrolls: {owner_b}");
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dir-agent-b", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "role B enrolls: {role_b}");
+    let role_b_id = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b_id}"),
+        &role_b_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "role B writes its profile");
+
+    // Tenant C: a role+node whose profile exposes NOTHING to the network
+    // (every field self_only or tenant) — the zero-visibility rule.
+    let (status, owner_c) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "dir-owner-c" }),
+    )
+    .await;
+    assert_eq!(status, 200, "owner C enrolls: {owner_c}");
+    let tenant_c = owner_c["tenant_id"].as_str().unwrap().to_string();
+    let owner_c_id = owner_c["principal_id"].as_str().unwrap().to_string();
+    let (status, role_c) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dir-agent-c", "tenant_id": tenant_c }),
+    )
+    .await;
+    assert_eq!(status, 200, "role C enrolls: {role_c}");
+    let role_c_id = role_c["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_c_id, &tenant_c, &role_c_id).await;
+    let mut hidden_profile = visibility_profile();
+    hidden_profile["visibility"] = json!({
+        "display_label": "self_only",
+        "purpose": "self_only",
+        "conversation_modes": "self_only",
+        "capabilities": "self_only",
+        "interests": "self_only",
+        "languages": "self_only",
+        "structured_output_formats": "self_only",
+        "scopes": "self_only",
+        "confidentiality_classes": "self_only",
+        "availability": "self_only",
+        "resolver_tool_capabilities": "self_only",
+        "cost_latency_class": "self_only",
+        "resource_ceilings": "self_only",
+        "grants_by_reference": "self_only",
+    });
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_c_id}"),
+        &role_c_id,
+        &hidden_profile,
+    )
+    .await;
+    assert_eq!(status, 200, "role C writes the zero-visibility profile");
+
+    let read_directory = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, body) = get(&client, &base, "/v1/directory/presence", &principal).await;
+            assert_eq!(status, 200, "the directory read succeeds: {body}");
+            body
+        }
+    };
+
+    // THE OWNER: the FULL own-tenant fields (the self-only resource_ceilings
+    // ride the owner's view) + the network pseudonyms.
+    let owners = read_directory(owner_a_id.clone()).await;
+    assert_eq!(owners["own_tenant"]["tenant_id"], json!(tenant_a));
+    let own_nodes = owners["own_tenant"]["nodes"].as_array().unwrap();
+    assert_eq!(own_nodes.len(), 1, "the owner's own view: {owners}");
+    let node_a = &own_nodes[0];
+    assert_eq!(node_a["node_id"], json!(role_a_id));
+    assert!(
+        node_a["profile"]
+            .as_object()
+            .unwrap()
+            .contains_key("resource_ceilings"),
+        "the owner's own-tenant view is FULL: {node_a}"
+    );
+    let network = owners["network"]["nodes"].as_array().unwrap();
+    let network_ids: Vec<&str> = network
+        .iter()
+        .map(|n| n["node_id"].as_str().unwrap())
+        .collect();
+    assert!(
+        network_ids.contains(&role_b_id.as_str()),
+        "the network carries B: {network_ids:?}"
+    );
+    assert!(
+        !network_ids.contains(&role_c_id.as_str()),
+        "the zero-visibility profile contributes nothing: {network_ids:?}"
+    );
+    let node_b = network
+        .iter()
+        .find(|n| n["node_id"] == json!(role_b_id))
+        .unwrap();
+    let b_fields = node_b["profile"].as_object().unwrap();
+    assert!(
+        b_fields.contains_key("display_label"),
+        "the network view carries B's public label"
+    );
+    assert!(
+        !b_fields.contains_key("capabilities"),
+        "B's tenant-scoped capabilities are absent from the network view: {b_fields:?}"
+    );
+
+    // THE TENANT MEMBER: the own-tenant view is TENANT-filtered (the self-only
+    // fields absent), the network view identical.
+    let members = read_directory(member_a_id.clone()).await;
+    let own_nodes = members["own_tenant"]["nodes"].as_array().unwrap();
+    assert_eq!(own_nodes.len(), 1, "the member's own view: {members}");
+    let member_fields = own_nodes[0]["profile"].as_object().unwrap();
+    assert!(
+        member_fields.contains_key("capabilities"),
+        "the member sees the tenant-scoped capabilities: {member_fields:?}"
+    );
+    assert!(
+        !member_fields.contains_key("resource_ceilings"),
+        "the member's view ABSENTS the self-only fields: {member_fields:?}"
+    );
+
+    // THE STRANGER: their own tenant's view + A's network pseudonyms.
+    let strangers = read_directory(owner_b_id.clone()).await;
+    assert_eq!(strangers["own_tenant"]["tenant_id"], json!(tenant_b));
+    let stranger_network = strangers["network"]["nodes"].as_array().unwrap();
+    let stranger_ids: Vec<&str> = stranger_network
+        .iter()
+        .map(|n| n["node_id"].as_str().unwrap())
+        .collect();
+    assert!(
+        stranger_ids.contains(&role_a_id.as_str()),
+        "the stranger sees A's network pseudonym: {stranger_ids:?}"
+    );
+    assert!(
+        !stranger_ids.contains(&role_c_id.as_str()),
+        "the zero-visibility profile is invisible to the stranger too: {stranger_ids:?}"
+    );
 }

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.6.3: the conformance kit's manual half is a human gate, and its absent half is named — not built
+
+- **§19.4's ten items split into three honest halves**: five are mechanical (the `.6.1` harness + the `.6.2` pinned corpus prove them every run), the manual qualification checklist is ONE artifact (the book's six boxes over the env-gated live runs — the human gate), and five items (rate-limit/backoff normalization, output-size limits, tool-call validation, the provider error taxonomy, projection fidelity) have no machinery or no surface to bind — each is named with the exact trigger that re-opens it, in the subtraction doctrine's shape.
+- promotion: promoted → `docs/decisions/2026-09-07_phase2-adapter-conformance-deferrals.md` (`answers:` present). **`.6` COMPLETE. Frontier `PHASE-2.7` (the exit lane).**
+
 ## _(2026-09-07)_ — PHASE-2.6.2: permanence that is only documented shrinks silently — the manifest and the corpus drift-check each other
 
 - **A replay oracle without a pin is a promise.** The corpus was the conformance oracle but nothing stopped a fixture from being silently edited or dropped — the coverage and credential tests would simply shrink with it. The manifest (version 1, one entry per fixture with its §19.4-item keys, the adding leaf, and the reason) and the corpus now drift-check each other EXACTLY: additions are the only legal change, and each one must record its reason in the same commit.

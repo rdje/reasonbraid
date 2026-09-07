@@ -23,16 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.6.3` (`.6.2` done: the
-  permanent failure-fixture corpus — the versioned manifest + the
-  exact-match and item-coverage guarantees). Then `.7`.
-- **Next action:** execute `PHASE-2.6.3` — the manual qualification
-  checklist + the named deferrals: the book's adapter-boundary chapter
-  gains the checklist the env-gated live qualification follows, and a
-  decisions record names the §19.4 items with no dev-profile machinery
-  (rate-limit/backoff normalization, output-size limits, tool-call
-  validation, the provider error taxonomy, prompt/policy projection
-  fidelity) each with its trigger.
+- **Active tree:** `PHASE-2` → frontier `.7` (`.6` COMPLETE: the
+  conformance harness, the pinned corpus, the qualification checklist
+  + the deferrals). Then Phase 2 exits.
+- **Next action:** execute `PHASE-2.7` — the exit lane: the
+  non-escalation properties, restore + node replacement, no false
+  safe-retry of unknown attempts (feeds G6–G7; a subtraction record
+  required; ADR-022 the audit hash-chain groundwork).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

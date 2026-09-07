@@ -152,6 +152,31 @@ to the real harness and spends a few tokens:
 RB_LIVE_CLAUDE=1 cargo test -p reasonbraid-node --test claude_live -- --ignored
 ```
 
+## Qualifying a new adapter (the §19.4 manual checklist)
+
+A new adapter qualifies when every box below is ticked with evidence — the
+conformance half is mechanical, this half is the human gate over the live runs:
+
+- [ ] The adapter passes the conformance harness (register scenarios — the
+  capability manifest, the unsupported-operation honesty, the dispatch
+  boundary, the lost-response honesty, the cancellation ceiling, the
+  usage-accounting floor).
+- [ ] The adapter-specific mechanics are tested offline against a stub binary
+  (prompt travel, stderr tails, the child kill, the provider receipt shapes).
+- [ ] One bounded REAL dispatch passes env-gated:
+  `RB_LIVE_<ADAPTER>=1 cargo test -p reasonbraid-node --test <adapter>_live
+  -- --ignored --nocapture` — a tiny prompt, sandbox read-only, no files
+  touched, a generous reservation + local budget gating the dispatch, and the
+  exact usage + money cost recorded with confidence.
+- [ ] Credentials never cross the contract: the adapter resolves its own
+  credentials out of band (env/process boundary), the struct carries no
+  credential field, and the new fixtures (if any) pass the mechanical
+  credential scan.
+- [ ] The corpus manifest gains an entry for any new fixture (additive, with
+  the recorded reason) — the exact-match guarantee fails otherwise.
+- [ ] The dependency ledger records the CLI version qualified (its
+  revalidation trigger rides provider releases).
+
 ## Honest limits
 
 - The fake is the deterministic oracle; the Codex and Claude adapters are the

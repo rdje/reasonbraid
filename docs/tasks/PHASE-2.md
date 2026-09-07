@@ -1013,7 +1013,10 @@ slice can reuse the same control plane without rewriting it.
     failure-fixture corpus (the pinned replay oracle + the §19.4
     coverage map) → `.6.3` the qualification checklist + the named
     deferrals (the §19.4 items with nothing to build against in the
-    dev profile).
+    dev profile). **`.6` is COMPLETE** — the five checkable §19.4
+    items are mechanical (the harness + the pinned corpus), the manual
+    half is the book's checklist, and the five absent-surface items
+    are named deferrals with triggers.
   Done (`2026-09-07`): the census mapped §19.4's ten items against
     the shipped adapter surface: EXISTS — the capability declaration
     + unsupported-operation behavior (`AdapterCapabilities` +
@@ -1101,7 +1104,7 @@ slice can reuse the same control plane without rewriting it.
       regression.
 
   - ID: `PHASE-2.6.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the manual qualification checklist + the named deferrals —
       the §19.4 last item (the sanitized replay fixture + the manual
       qualification checklist) becomes ONE artifact (the book's
@@ -1121,6 +1124,15 @@ slice can reuse the same control plane without rewriting it.
       prompt/policy projection fidelity (Phase 6's projection
       machinery — trigger: the first policy projection).
     Backlog: —
+    Done (`2026-09-07`): the book's adapter-boundary chapter gains the
+      six-box qualification checklist (the conformance harness pass,
+      the stub-mechanics pass, the env-gated bounded live dispatch,
+      the credential containment, the manifest entry, the dependency-
+      ledger row); the deferrals record
+      (`docs/decisions/2026-09-07_phase2-adapter-conformance-deferrals.md`,
+      `answers:`) names the five §19.4 items with the exact trigger
+      that re-opens each. No code changed. **`.6` COMPLETE** — frontier
+      → `.7`.
     Acceptance: the checklist artifact + the deferrals record land;
       each deferral names its trigger; no code changes.
 
@@ -1134,7 +1146,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.6.3` | `proposed` | `.6.2` done — the permanent failure-fixture corpus (the versioned manifest + the exact-match + coverage guarantees); the qualification checklist + the named deferrals execute now |
+| 1 | `PHASE-2.7` | `proposed` | `.6.3` done — the qualification checklist + the named deferrals (**`.6` COMPLETE**: the harness, the pinned corpus, the checklist); the exit lane (non-escalation, restore + node replacement) executes now |
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1150,6 +1162,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.6.3` done — the manual qualification checklist
+  (the book's six-box gate over the env-gated live runs) + the
+  deferrals record (the five §19.4 items with no dev-profile
+  machinery, each named with its trigger); **`.6` COMPLETE** —
+  frontier → `.7`.
 - `2026-09-07`: `.6.2` done — the permanent failure-fixture corpus:
   `fixtures/MANIFEST.json` (version 1, one entry per fixture with the
   §19.4-item keys + the adding leaf + the reason) + the manifest
@@ -2390,6 +2407,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.6.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the qualification checklist + the deferrals record (each of the five §19.4 items names its trigger); **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-2.6.2` | `cargo test -p reasonbraid-adapter --lib` → `test result: ok. 9 passed` (the two manifest guarantees); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg262_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the permanent failure-fixture corpus (the versioned manifest + the exact-match drift check + the item-coverage check); frontier → `.6.3` |
 | `2026-09-07` | `PHASE-2.6.1` | `cargo test -p reasonbraid-adapter --test adapter_conformance` → `test result: ok. 3 passed` (the fake + codex + claude all pass the ONE harness); `cargo test --all` → 48 offline suites; `bash scripts/run_pg_tests.sh` → 15 live suites + the demo 34/34 (`target/pg261_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the conformance harness (the six cross-adapter invariant checks over the scenario shape); frontier → `.6.2` |
 | `2026-09-07` | `PHASE-2.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the §19.4 census + the contract-seam decomposition (`.6.1` harness → `.6.2` corpus → `.6.3` checklist + deferrals); frontier → `.6.1` |
@@ -2425,6 +2443,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.6.3` | `REASONBRAID-PHASE2-0038` | the qualification checklist + the named deferrals (docs-only: the book's six-box gate, the five triggers) — **`.6` COMPLETE** |
 | `PHASE-2.6.2` | `REASONBRAID-PHASE2-0037` | the permanent failure-fixture corpus (the versioned manifest + the exact-match + item-coverage guarantees) |
 | `PHASE-2.6.1` | `REASONBRAID-PHASE2-0036` | the conformance harness (one suite, three adapters, the six §19.4 invariant checks; the shared provider stubs) |
 | `PHASE-2.6` | `REASONBRAID-PHASE2-0035` | the contract-seam decomposition (the §19.4 census: what the adapter surface already carries vs the five absent items — named) |

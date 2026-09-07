@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The qualification checklist is one artifact and the absent surfaces are named deferrals — `.6` COMPLETE (`PHASE-2.6.3`)
+
+- The book's adapter-boundary chapter gains the six-box qualification checklist (the conformance-harness pass, the stub-mechanics pass, the env-gated bounded live dispatch, the credential containment, the corpus-manifest entry, the dependency-ledger row) — the §19.4 last item as ONE artifact over the live runs the qualification already follows (`RB_LIVE_CODEX=1` / `RB_LIVE_CLAUDE=1`).
+- `docs/decisions/2026-09-07_phase2-adapter-conformance-deferrals.md` (`answers:`): the five §19.4 items with no machinery or no surface to bind in the dev profile — rate-limit/backoff normalization, output-size limits, tool-call validation, the provider error taxonomy, prompt/policy projection fidelity — each named with the exact trigger that re-opens it.
+- **`.6` COMPLETE**: the checkable half of §19.4 is mechanical (the harness + the pinned corpus), the manual half is the book's checklist, the absent half is named. No code changed. Frontier → `.7` (the exit lane).
+
 ## 2026-09-07 — The fixture corpus is pinned: a versioned manifest with mechanical permanence (`PHASE-2.6.2`)
 
 - `crates/reasonbraid-adapter/fixtures/MANIFEST.json` (version 1) records one entry per fixture — the file, the §19.4 conformance-item keys it proves, the adding leaf, and the reason — and the corpus drift-checks against it: `manifest_matches_the_corpus_exactly` fails on any silent add, drop, rename, or edit, so the replay oracle can only change additively with a recorded reason.

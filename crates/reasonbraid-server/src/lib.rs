@@ -48,6 +48,7 @@ mod profiles;
 mod recruitment;
 mod resolvers;
 mod resources;
+pub mod routing;
 pub mod snapshots;
 pub mod ssrf;
 mod telemetry;

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The rule-based routing policy lands (`PHASE-5.5.2`)
+
+- Migration 0036: the seven §13.8 rows as the built-in rules (one deterministic arm per case class); the resolution is a lookup with an append-only audit row; the create boundary applies the policy ONLY when no explicit profile is named (the explicit profile always wins; the bare thread keeps the `quick_advice` default); the arm must be a registered profile (a phantom arm fails closed). The verbs: `GET /v1/routing/rules`, `POST /v1/routing/resolve`, `GET /v1/routing/resolutions`. Measured: routing 1.
+
 ## 2026-09-07 — ADR-031: the routing-policy contract (`PHASE-5.5.1`)
 
 - ADR-031 accepted (`docs/adr/031-routing-policy.md`): the case class is a submitted input (never a derived judgment); the rule-based policy is a deterministic table; the human authority outranks the rule (the explicit profile always wins); the learned routing is the shadow recommendation — an existing arm, recorded with its evidence, never applied, never a raise. No code.

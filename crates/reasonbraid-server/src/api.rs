@@ -462,6 +462,9 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/evaluations/gates/{gate_id}/evaluations",
             post(evaluate_gate_endpoint).get(list_gate_results),
         )
+        .route("/v1/routing/rules", get(list_routing_rules))
+        .route("/v1/routing/resolve", post(resolve_routing_class))
+        .route("/v1/routing/resolutions", get(list_routing_resolutions))
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -2131,6 +2134,71 @@ async fn list_gate_results(
     ))
 }
 
+// ── The routing policy (PHASE-5.5.2; ADR-031) ───────────────────────────────────────
+
+/// `GET /v1/routing/rules` — the deterministic rule table.
+async fn list_routing_rules(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no routing rules",
+        ));
+    }
+    Ok(Json(crate::routing::list_rules(&state.pool).await?))
+}
+
+/// `POST /v1/routing/resolve` — the deterministic lookup: the submitted
+/// class → the arm + the rule id (the resolution rides the audit table).
+async fn resolve_routing_class(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::routing::ResolvedRoute>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal resolves no route",
+        ));
+    }
+    let case_class = body
+        .get("case_class")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the case_class is required"))?;
+    match crate::routing::resolve(&state.pool, case_class).await {
+        Ok(route) => {
+            crate::routing::record_resolution(
+                &state.pool,
+                &route,
+                &principal.id_string(),
+                "resolve_verb",
+            )
+            .await?;
+            Ok(Json(route))
+        }
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/routing/resolutions` — the audit rows, newest first.
+async fn list_routing_resolutions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no resolutions",
+        ));
+    }
+    Ok(Json(crate::routing::list_resolutions(&state.pool).await?))
+}
+
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────
 
 /// `POST /v1/assessments` — submit the assessment (any enrolled principal;
@@ -2572,15 +2640,38 @@ async fn create_thread_auto(
         "subject": req.subject,
         "objective": req.objective,
     });
-    let body: threads::CreateBody = serde_json::from_value(body_value.clone())
+    let mut body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let hash = request_hash(threads::OP_CREATE, &principal, &body_value);
+    // `.5.2` (ADR-031): the explicit profile always wins; the routing class
+    // resolves through the rule table ONLY when no profile is named (the
+    // human authority outranks the rule).
+    let profile_id = match body.workflow_profile.as_deref() {
+        Some(explicit) => Some(explicit.to_owned()),
+        None => match body.routing_class.as_deref() {
+            Some(class) => {
+                let route = crate::routing::resolve(&state.pool, class)
+                    .await
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                crate::routing::record_resolution(
+                    &state.pool,
+                    &route,
+                    &principal.id_string(),
+                    "create_boundary",
+                )
+                .await?;
+                Some(route.arm)
+            }
+            None => None,
+        },
+    };
     // The same `.3.3` catch as `create_thread`: the resolve ALWAYS runs —
     // the bare thread defaults to `quick_advice` (never empty steps).
-    let resolved = crate::workflows::resolve(&state.pool, body.workflow_profile.as_deref())
+    let resolved = crate::workflows::resolve(&state.pool, profile_id.as_deref())
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let workflow_steps = resolved.steps;
+    body.workflow_profile = Some(resolved.profile_id);
     let key = format!("auto_{}_{}", role, tenant_id);
     let response = run_thread_command(
         &state.pool,
@@ -4574,13 +4665,35 @@ async fn create_thread(
     }
     let mut body: CreateBody = serde_json::from_value(envelope.body.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    // `.5.2` (ADR-031): the explicit profile always wins; the routing class
+    // resolves through the rule table ONLY when no profile is named (the
+    // human authority outranks the rule).
+    let profile_id = match body.workflow_profile.as_deref() {
+        Some(explicit) => Some(explicit.to_owned()),
+        None => match body.routing_class.as_deref() {
+            Some(class) => {
+                let route = crate::routing::resolve(&state.pool, class)
+                    .await
+                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                crate::routing::record_resolution(
+                    &state.pool,
+                    &route,
+                    &principal.id_string(),
+                    "create_boundary",
+                )
+                .await?;
+                Some(route.arm)
+            }
+            None => None,
+        },
+    };
     // The ADR-016 boundary: the workflow profile is a VALIDATED reference —
     // the unknown id is the typed refusal (never a stored string), and the
     // canonical id + the resolved steps ride the create onward. The resolve
     // ALWAYS runs: a bare thread defaults to `quick_advice` (the `.3.3`
     // catch — the earlier Some-only call left the bare thread's steps
     // EMPTY, so its step gates read `none`).
-    let resolved = crate::workflows::resolve(&state.pool, body.workflow_profile.as_deref())
+    let resolved = crate::workflows::resolve(&state.pool, profile_id.as_deref())
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let workflow_steps = resolved.steps;

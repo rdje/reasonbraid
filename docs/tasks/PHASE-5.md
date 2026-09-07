@@ -738,7 +738,7 @@ and honest inconclusive outcomes.
       is recorded. No code changed. Frontier → `.5.2`.
 
   - ID: `PHASE-5.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the rule-based policy — the §13.8 rows as the
       built-in rules (the class → the profile arm), the
       deterministic resolution (the class → the arm + the
@@ -746,6 +746,29 @@ and honest inconclusive outcomes.
       application (the class submitted + no explicit profile
       → the policy's arm; the explicit profile outranks it).
     Roadmap: §13.8
+    Done (`2026-09-07`): the rule-based policy landed per
+      ADR-031 — migration 0036 (`routing_rules`: the seven
+      §13.8 rows as the built-in rules — one arm per class;
+      `routing_resolutions`: the append-only audit);
+      `crates/reasonbraid-server/src/routing.rs` (NEW): the
+      `CASE_CLASSES` vocabulary, the `resolve` (the
+      deterministic lookup; the arm must be a REGISTERED
+      profile — a phantom arm fails closed), the
+      `record_resolution` (the class + the arm + the rule id
+      + the caller + the surface), the list verbs; the
+      create body gains `routing_class` and BOTH create
+      handlers apply the policy ONLY when no explicit profile
+      is named (the explicit profile always wins; the bare
+      thread stays the `quick_advice` default); the api:
+      `GET /v1/routing/rules`, `POST /v1/routing/resolve`,
+      `GET /v1/routing/resolutions`; the pg script gained the
+      `routing` suite. Measured (routing 1): the seven rules,
+      the deterministic repeat, the unknown-class refusal,
+      the routed create (the class → the independent_panel
+      projection with its steps), the explicit profile
+      outranking the rule, the bare default unchanged, the
+      create-boundary unknown-class refusal, the three audit
+      rows with both surfaces. Frontier → `.5.3`.
 
   - ID: `PHASE-5.5.3`
     Status: `proposed`
@@ -767,10 +790,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.5.2` | `proposed` | `.5.1` done — ADR-031 accepted (the class is a submitted input, the rule table is deterministic, the explicit profile outranks it, the learned routing is the shadow recommendation); the rule-based policy executes next |
+| 1 | `PHASE-5.5.3` | `proposed` | `.5.2` done — the rule-based policy (the seven built-in rules, the deterministic resolution, the create-boundary application, the audit; routing 1); the shadow recommendation executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.2` done — the rule-based policy (migration
+  0036: the seven §13.8 rules, the deterministic resolution,
+  the append-only audit; the create-boundary application with
+  the explicit profile outranking the rule); routing 1;
+  frontier → `.5.3`.
 - `2026-09-07`: `.5.1` done — ADR-031 accepted (the
   routing-policy contract: the submitted class, the
   deterministic table, the explicit profile outranks the
@@ -1419,6 +1447,57 @@ lists), `crates/reasonbraid-server/src/api.rs` (the six verbs),
   commit.
 - [x] **FIX** — `0035_evaluation_gates.sql`, `src/evaluation.rs`,
   `src/api.rs`, `tests/evaluation.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.5.2)
+
+The CODE change owned by this leaf:
+`migrations/0036_routing_policy.sql` (NEW — the rule table +
+the seven built-ins + the audit table),
+`crates/reasonbraid-server/src/routing.rs` (NEW — the
+`CASE_CLASSES` vocabulary, the `resolve`, the
+`record_resolution`, the lists), `crates/reasonbraid-server/
+src/threads.rs` (the create body's `routing_class`),
+`crates/reasonbraid-server/src/api.rs` (both create handlers'
+policy application + the three verbs),
+`crates/reasonbraid-server/tests/routing.rs` (NEW — the
+suite), `scripts/run_pg_tests.sh` (the routing suite joins
+the guard) — `\.rs$` + `(^|/)migrations/` + `scripts/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  routing decision was the CLIENT's choice (the explicit
+  profile or the hardcoded `quick_advice`); no rule table, no
+  class vocabulary, no audit (the `.5` census).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "routing_rules\|routing_class\|ResolvedRoute" 5d667d1 --
+  crates/ migrations/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-031 policy: the deterministic table +
+  the create-boundary application with the explicit profile
+  outranking the rule.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test routing
+  the_rule_based_policy_routes_deterministically` →
+  `test result: ok. 1 passed` — the seven rules, the
+  deterministic repeat, the unknown-class refusal, the routed
+  create (the class → the independent_panel projection with
+  its steps), the explicit profile outranking the rule, the
+  bare default unchanged, the create-boundary unknown-class
+  refusal, the three audit rows with both surfaces.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 57 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 20 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg523_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0036_routing_policy.sql`, `src/routing.rs`,
+  `src/threads.rs`, `src/api.rs`, `tests/routing.rs`,
+  `scripts/run_pg_tests.sh`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

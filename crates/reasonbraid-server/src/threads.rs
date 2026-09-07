@@ -166,6 +166,11 @@ pub struct CreateBody {
     /// create boundary).
     #[serde(default)]
     pub workflow_profile: Option<String>,
+    /// The routing case class (`.5.2`, ADR-031): a submitted input the
+    /// create boundary routes through the rule table ONLY when no explicit
+    /// profile is named — the explicit profile always outranks the rule.
+    #[serde(default)]
+    pub routing_class: Option<String>,
     #[serde(default)]
     pub participant_rules: Option<ParticipantRules>,
 }
@@ -1798,6 +1803,7 @@ mod tests {
                 budget: None,
                 classification: None,
                 workflow_profile: None,
+                routing_class: None,
                 participant_rules: None,
             },
             default_workflow_steps(),

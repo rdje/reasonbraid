@@ -16,16 +16,16 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-5` → frontier `.5.2`. The `.1` lane (the workflow
+- **Active tree:** `PHASE-5` → frontier `.5.3`. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-5.5.2` — the rule-based policy: the §13.8
-  rows as the built-in rules (the class → the profile arm), the
-  deterministic resolution, the create-boundary application (the class +
-  no explicit profile → the policy's arm; the explicit profile outranks
-  it) — per ADR-031.
+- **Next action:** execute `PHASE-5.5.3` — the shadow recommendation:
+  the learned-routing surface (the class → the arm recommendation with
+  the `.4` evidence reference; the arm must be an EXISTING registered
+  profile — never a raise; the recommendation is recorded, never
+  applied) — per ADR-031.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

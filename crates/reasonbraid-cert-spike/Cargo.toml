@@ -15,7 +15,14 @@ publish = false
 # `pem` (and its base64 0.23) is dropped — the spike consumes DER only, and the
 # `bans.multiple-versions` doctrine forces a single base64 version.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
-rustls = "0.23"
+# rustls WITHOUT default features: the provider is pinned to `ring` EXPLICITLY.
+# Workspace-wide builds (`cargo test --all`) unify dependency features across
+# members (documented cargo behavior, resolver 2 included) — the default
+# aws-lc-rs provider would join the server's ring stack into an AMBIGUOUS
+# two-provider rustls, and rustls panics when both are compiled in. The
+# workspace's crypto family is ring (the channel proof, the R0 fetcher); the
+# spike names it too, so the union stays unambiguous.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pki-types = "1"
 sha2 = "0.10"
 time = "0.3"

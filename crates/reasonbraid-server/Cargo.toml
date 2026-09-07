@@ -57,8 +57,30 @@ sqlx = { version = "0.8", default-features = false, features = [
     "json",
     "chrono", # TIMESTAMPTZ <-> chrono DateTime<Utc> for the worker lease clock
 ] }
-# The rb-server binary's runtime (.6.1): multi-threaded tokio + shutdown signals.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+# The rb-server binary's runtime (.6.1): multi-threaded tokio + shutdown signals;
+# `time` is the `.2.2` fetcher's time ceiling (tokio::time::timeout over the
+# whole acquisition).
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+# The `.2.2` R0 fetcher's client (ROADMAP.md §12.3–12.4). default-features=false
+# keeps it HTTP/1.1-only. rustls (the ring provider, the same family as the
+# channel proof) verifies TLS against the SYSTEM roots. NO auto-decompression
+# features: the fetcher decodes gzip/deflate/br ITSELF so the decompression-
+# ratio brake can measure the envelope against the decoded payload (reqwest's
+# auto-decode hides the encoded size). No json feature: the fetcher never
+# parses JSON.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls-native-roots",
+    "stream", # Response::bytes_stream — the byte-ceiling reads the body bounded
+] }
+# The hardened URL parse the §12.4 rules demand (one library, everywhere the
+# fetcher sees a URL — the redirect joins included).
+url = "2"
+# The body stream's `next()` for the bounded read.
+futures-util = "0.3"
+# The manual content-encoding decode (the ratio brake measures the envelope
+# itself): gzip/deflate via flate2 (miniz_oxide, pure Rust), br via brotli.
+flate2 = "1"
+brotli = "7"
 
 [dev-dependencies]
 # The node channel integration tests drive BOTH sides over real localhost sockets: the

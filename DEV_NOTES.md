@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.2.2: `cargo test --all` unifies dependency features across members — mutually exclusive provider features must be pinned IDENTICALLY everywhere
+
+- **A workspace-wide build is ONE feature resolution**: the cargo book documents that `--workspace`/`--all` unifies dependency features across ALL members (resolver 2 included). The fetcher's rustls/ring (reqwest's system-roots stack) joined cert-spike's default rustls/aws-lc-rs into an AMBIGUOUS two-provider build — rustls panics when both provider features are compiled in, and only the `cargo test --all` run (not `-p`) saw it. The fix: the spike pins `ring` explicitly (the workspace's crypto family). ANY future rustls consumer must name the same provider, explicitly, with default-features=false — the ambiguity reproduces silently otherwise.
+- **reqwest's auto-decompress hides the enemy**: with the gzip feature, reqwest strips `Content-Length` after decoding, so a ratio brake built on the header sees nothing. Decode by hand (flate2/brotli) and measure the envelope against the decoded payload — the zip-bomb test then proves itself with a REAL gzip bomb.
+- promotion: promoted → `docs/decisions/2026-09-07_workspace-single-rustls-provider.md` (gains top-level `answers:`). **Frontier `PHASE-4-MAINT-1` (the clippy evidence debt), then `PHASE-4.2.3`.**
+
 ## _(2026-09-07)_ — PHASE-4.2.1: the SSRF half is pure math — the ranges decide before any socket opens
 
 - **The §12.4 destination rules are testable without a network**: the classifier's 18-case matrix proves every non-public class refuses with its OWN name, the IPv4-mapped form re-classifies the embedded address (the mapped metadata address refuses as `cloud_metadata`), and the cloud-metadata address is its own class inside the link-local range. The `.2.2` fetcher will enforce this at every hop — the SSRF proof is the refusal, not a firewall.

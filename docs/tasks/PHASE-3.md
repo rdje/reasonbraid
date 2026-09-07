@@ -765,6 +765,15 @@ the exit line holds at the dev scale. The next executable work is
 
 ## Changelog
 
+- `2026-09-07` (routed in from `PHASE-4.2.2` — the ROUTING EVIDENCE there):
+  the recorded `cargo clippy --all --all-targets -- -D warnings → clean`
+  evidence of the Phase-3 leaves (matching/recruitment/dependence/api) does
+  NOT reproduce under the pinned clippy 0.1.98: 6 of the 9 pre-existing
+  findings (api.rs:2011, dependence.rs:48, matching.rs:436/470/706/707/
+  878/879, recruitment.rs:108/204) fail the crate-wide run — identical at
+  `b26f529` (rc=101). The repair rides `PHASE-4-MAINT-1` (docs/tasks/
+  PHASE-4.md).
+
 - `2026-09-05`: Created from `ROADMAP.md` §20.5, §10, backlog 26–30.
 - `2026-09-07`: Opened by the Phase-2 close (stable identity, inbox,
   and grants — the tree's blocker — shipped); `.1` decomposed at the

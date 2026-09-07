@@ -192,7 +192,7 @@ of a URI is not a promise the core can resolve it.
       regression.
 
   - ID: `PHASE-4.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the safe HTTPS fetcher — the hardened URL parsing (the
       ambiguous/userinfo/invalid-encoding refusals), the GET/HEAD
       with the byte + time ceilings, the redirect policy at EVERY
@@ -203,9 +203,77 @@ of a URI is not a promise the core can resolve it.
       classes the `.2.1` policy allows (the measured refusal of a
       loopback/private target is the SSRF proof).
     Backlog: 32 (the fetcher half)
+    Done (`2026-09-07`): the safe HTTPS fetcher landed —
+      `crates/reasonbraid-server/src/fetcher.rs`: the hardened URL
+      parse (the length cap, the control-character/backslash
+      refusals, the userinfo refusal, the alternative-numeric-
+      literal refusal, the scheme/port allowlists), the GET/HEAD
+      with the byte + time ceilings (the WHOLE acquisition is
+      bounded; the body is read bounded), the manual redirect
+      policy at EVERY hop (the full re-parse + re-classification +
+      the hop cap — the escape dies at the classification, never at
+      the socket), the destination policy at TWO layers (the
+      pre-flight resolve+classify that names the refusing class
+      BEFORE any socket opens, and the classified DNS belt inside
+      reqwest's resolver hook — a dial can never touch a refused
+      address even when the DNS answer changed between the
+      pre-flight and the connect), the TLS verification (rustls,
+      the ring provider, the SYSTEM roots), the manual
+      content-encoding decode (gzip/deflate/br — reqwest's
+      auto-decode would hide the encoded size the ratio brake
+      measures), the decompression-ratio limit + the byte ceiling
+      over the DECODED bytes, the response-type sniff (the header
+      first, then the HTML magic, the JSON-shaped refusal, the
+      UTF-8 fallback), NO ambient credentials (one static user
+      agent, no cookie state, no proxy environment). Sixteen tests
+      measure it all OFFLINE (the injected resolver pins test
+      domains to a local origin — no real DNS): the loopback
+      literal refuses with the class NAMED before any request
+      reaches the origin (the SSRF proof), the mapped-form loopback
+      refuses, the private redirect hop refuses after exactly one
+      dial, the hop cap names itself, the byte ceiling, the REAL
+      gzip bomb trips the ratio brake while a small gzip page
+      passes, the JSON body refuses, the HEAD returns the empty
+      document, the userinfo/dns-failure refusals, the https-only
+      public-only defaults. The first runs caught three real bugs
+      (the IPv6 bracket form of `host_str`, reqwest's auto-decode
+      hiding `Content-Length` from the ratio brake, the WHATWG
+      parser normalizing numeric hosts to IPv4 literals) — all
+      fixed. A FOURTH, workspace-wide one surfaced at the offline
+      sweep: the new rustls/ring feature joined cert-spike's
+      default aws-lc-rs under `cargo test --all`'s documented
+      cross-member feature unification into an AMBIGUOUS
+      two-provider rustls (the spike's issuance test panicked;
+      `b26f529` verified green before this leaf) — fixed by pinning
+      the spike's rustls provider explicitly to ring (the
+      workspace's crypto family; the Cargo.toml comment records
+      why). Frontier → `.2.3`; the clippy evidence debt the sweep
+      also measured is ROUTED to `PHASE-4-MAINT-1` below.
     Acceptance: the fetcher refuses the ambiguous URL + the
       private/loopback target + the redirect-chain escapes,
       measured; no regression.
+
+  - ID: `PHASE-4-MAINT-1`
+    Status: `proposed`
+    Goal: the clippy evidence debt — the recorded
+      `cargo clippy --all --all-targets -- -D warnings → clean`
+      evidence of the Phase-3 leaves (the matching/recruitment/
+      dependence/api modules) and of `.1.2` (resources) does NOT
+      reproduce under the pinned clippy 0.1.98: NINE pre-existing
+      findings fail the crate-wide run (7 lib: `useless_format`
+      api.rs:2011, `type_complexity` dependence.rs:48, the
+      `collapsible_if` + the `unnecessary if let` matching.rs:436/
+      470, `too_many_arguments` recruitment.rs:108,
+      `type_complexity` recruitment.rs:204 + resources.rs:138; 2
+      test: the `field_reassign` pairs matching.rs:706/707 +
+      878/879). ROUTED by `.2.2` (the ROUTING EVIDENCE section
+      below). The fixes are the mechanical lint repairs + the one
+      signature refactor (recruitment's 10-arg `open_call` takes a
+      params struct); the gate's clippy run is green again at the
+      close.
+    Defect (tracked `2026-09-07`, discovered during the `.2.2`
+      verification): the acceptance checklist is written when the
+      leaf executes.
 
   - ID: `PHASE-4.2.3`
     Status: `proposed`
@@ -255,7 +323,8 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.2.2` | `proposed` | `.2.1` done — the destination classification + the SSRF policy (the pure §12.4 rules + the public-only policy, the 18-case refusal matrix); the safe HTTPS fetcher executes now |
+| 1 | `PHASE-4-MAINT-1` | `proposed` | `.2.2` done — its verification measured the pre-existing clippy evidence debt (9 findings fail the recorded `-D warnings` command under the pinned clippy; `b26f529` reproduces them); the mechanical repair + the one signature refactor execute next, then `.2.3` |
+| 2 | `PHASE-4.2.3` | `proposed` | `.2.2` done — the safe HTTPS fetcher (the hardened parse, the ceilings, the per-hop redirect policy, the two-layer destination enforcement, the manual decode + the ratio brake); the snapshot receipt + the R0 pack wiring execute now |
 
 ## Changelog
 
@@ -288,6 +357,100 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.2.2` done — the safe HTTPS fetcher (the hardened
+  URL parse, the byte/time ceilings, the manual per-hop redirect
+  policy, the two-layer destination enforcement — the pre-flight
+  classification + the classified DNS belt, the manual
+  content-encoding decode + the ratio brake, the response-type
+  sniff, no ambient credentials); sixteen OFFLINE tests including
+  the SSRF proof (the loopback literal refuses with the class named
+  before any request reaches the origin); the offline sweep caught
+  the workspace-wide rustls provider ambiguity (the new ring
+  feature + cert-spike's default aws-lc-rs under `cargo test
+  --all`'s cross-member unification) — fixed by pinning the spike
+  to ring; the sweep ALSO measured the pre-existing clippy evidence
+  debt (9 findings) — ROUTED to `PHASE-4-MAINT-1`; frontier →
+  `PHASE-4-MAINT-1` → `.2.3`.
+
+## Routing Evidence (PHASE-4.2.2 → PHASE-4-MAINT-1)
+
+Finding: the recorded `cargo clippy --all --all-targets -- -D
+warnings → clean` evidence of the Phase-3 leaves (the
+matching/recruitment/dependence/api modules) and of `.1.2`
+(resources) does NOT reproduce under the pinned clippy 0.1.98 —
+NINE pre-existing findings fail the crate-wide run (7 lib:
+`useless_format` api.rs:2011, `type_complexity` dependence.rs:48,
+`collapsible_if` + `unnecessary if let` matching.rs:436/470,
+`too_many_arguments` recruitment.rs:108, `type_complexity`
+recruitment.rs:204 + resources.rs:138; 2 test: the
+`field_reassign` pairs matching.rs:706/707 + 878/879). Measured:
+`cargo clippy --all --all-targets -- -D warnings` → rc=101 at THIS
+leaf's HEAD (its own files contribute zero findings), and the SAME
+command at `b26f529` (the gate-verified `.2.1` commit) fails
+IDENTICALLY (rc=101) — the findings pre-exist this leaf and
+reproduce outside the family they are sent to. Routed to
+`PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
+modules' share rides it, and `docs/tasks/PHASE-3.md` references
+the route).
+
+## Acceptance Checklist (PHASE-4.2.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/fetcher.rs` (NEW — the hardened
+parse, the two-layer destination enforcement, the manual redirect
+policy, the bounded read + the ratio brake + the sniff, the
+sixteen tests), `crates/reasonbraid-server/src/lib.rs` (the
+module), `crates/reasonbraid-server/Cargo.toml` (reqwest with the
+rustls/system-roots + stream features, url, futures-util, flate2,
+brotli; tokio gains `time`), and
+`crates/reasonbraid-cert-spike/Cargo.toml` (the rustls provider
+pin the offline sweep's regression demanded) — `\.rs$` +
+`Cargo.toml`.
+
+- [x] **REPRODUCE / ISSUE** — the `.2` census: NOTHING fetches and
+  no destination classification exists — the §12.4 acquisition
+  rules have no machinery.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the R0 fetcher was a
+  greenfield — `git grep -c "bytes_stream\|dns_resolver\|no_proxy\|harden_url" b26f529 -- crates/`
+  → rc=1 (nothing before this leaf). The fix point is the
+  hardened fetcher with the `.2.1` policy enforced at TWO layers
+  (the pre-flight that names the class, the classified belt that
+  guards the dial) — the measured refusal is the SSRF proof.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib fetcher` → `test result:
+  ok. 16 passed` — the pure refusals (the userinfo, the numeric
+  literals, the scheme/port/control-char forms), the OFFLINE wire
+  refusals: the loopback literal refuses with the class NAMED
+  before any request reaches the origin (the counter stays 0 — the
+  SSRF proof), the mapped-form loopback refuses, the private
+  redirect hop dies at the re-classification after exactly one
+  dial, the hop cap names itself, the byte ceiling, the REAL gzip
+  bomb trips the ratio brake while a small gzip page passes, the
+  JSON body refuses, the HEAD returns the empty document, the
+  https-only public-only defaults. The first runs caught three
+  real bugs (the IPv6 bracket form, the auto-decode hiding
+  `Content-Length`, the WHATWG numeric-host normalization) — all
+  fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 51 suites,
+  327 tests (the sweep CAUGHT a real workspace-wide regression the
+  leaf introduced: the new rustls/ring feature + cert-spike's
+  default aws-lc-rs unified under `cargo test --all` into an
+  ambiguous two-provider rustls — the spike's issuance test
+  panicked at `b26f529` it was green — fixed by pinning the
+  spike's rustls to ring, the workspace's crypto family);
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo
+  `ALL acceptance checks passed` (`target/pg422_guard.log`);
+  `cargo fmt --all -- --check` → rc=0; clippy: this leaf's files
+  are clean — the crate-wide `-D warnings` run fails on 9
+  PRE-EXISTING findings (identical at `b26f529`, rc=101), ROUTED
+  above to `PHASE-4-MAINT-1`; `make gate` → 13/13 at commit.
+- [x] **FIX** — `src/fetcher.rs`, `src/lib.rs`,
+  `crates/reasonbraid-server/Cargo.toml`,
+  `crates/reasonbraid-cert-spike/Cargo.toml`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.2.1)
 
@@ -422,6 +585,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.2.2` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 16 passed` (the pure refusals + the OFFLINE wire refusals — the SSRF proof with the zero-request counter, the private hop, the hop cap, the ceilings, the REAL gzip bomb); `cargo test --all` → rc=0, 51 suites, 327 tests (the cert-spike rustls-provider ambiguity the sweep caught is fixed — the spike pinned to ring; `b26f529` verified green before the leaf); `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg422_guard.log`); clippy/fmt clean for the leaf's files (the crate-wide `-D warnings` run fails on 9 PRE-EXISTING findings — ROUTING EVIDENCE → `PHASE-4-MAINT-1`); `make gate` → 13/13 | the safe HTTPS fetcher; frontier → `PHASE-4-MAINT-1` → `.2.3` |
 | `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-4.2.1` | `cargo test -p reasonbraid-server --lib ssrf` → `test result: ok. 4 passed` (the 18-case refusal matrix, the allowed publics, the mapped-form re-classification, the metadata class); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg421_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the SSRF classification + policy; frontier → `.2.2` |
 | `2026-09-07` | `PHASE-4.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R0 census + the contract-seam decomposition (`.2.1` the SSRF classification → `.2.2` the fetcher → `.2.3` the receipt); frontier → `.2.1` |
@@ -433,6 +597,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.2.2` | `REASONBRAID-PHASE4-0007` | the safe HTTPS fetcher (the hardened parse + the two-layer destination enforcement + the manual decode + the ratio brake) — the SSRF proof measured offline |
 | `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
 | `PHASE-4.2.1` | `REASONBRAID-PHASE4-0006` | the destination classification + the SSRF policy (the pure §12.4 rules + the public-only evaluation) |
 | `PHASE-4.2` | `REASONBRAID-PHASE4-0005` | the R0 pack decomposed at the census seams (nothing fetches — the classification/fetcher/receipt are the greenfield) |

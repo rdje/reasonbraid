@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The safe HTTPS fetcher: the refusal is the proof, measured before any socket opens (`PHASE-4.2.2`)
+
+- `src/fetcher.rs`: the hardened URL parse (the length cap, the control-char/backslash + userinfo + alternative-numeric-literal refusals, the scheme/port allowlists); the GET/HEAD with byte + time ceilings; the manual redirect policy at EVERY hop (full re-parse + re-classification + the hop cap); the `.2.1` policy enforced at TWO layers — the pre-flight resolve+classify that names the refusing class BEFORE any socket opens, and the classified DNS belt inside reqwest's resolver hook so a dial can never touch a refused address; the manual gzip/deflate/br decode so the ratio brake can measure the envelope (the REAL gzip bomb trips it; a small gzip page passes); the response-type sniff (header → HTML magic → JSON refusal → UTF-8 fallback); no proxy env, no cookies, no ambient credentials.
+- Sixteen OFFLINE tests: the loopback literal refuses with the class named while the origin's request counter stays 0 — the SSRF proof; the mapped-form, the private redirect hop, the hop cap, the byte ceiling, the gzip bomb, the JSON refusal, the HEAD, the userinfo/dns failures, the https-only public-only defaults.
+- The offline sweep caught a workspace-wide regression the leaf introduced: the new rustls/ring feature + cert-spike's default aws-lc-rs unified under `cargo test --all`'s cross-member feature unification into an ambiguous two-provider rustls (the spike's issuance test panicked; `b26f529` verified green) — fixed by pinning the spike's rustls to ring. The sweep also measured 9 pre-existing clippy `-D warnings` findings — ROUTED to `PHASE-4-MAINT-1` (the evidence debt repair). Frontier → `PHASE-4-MAINT-1` → `.2.3`.
+
 ## 2026-09-07 — The SSRF rules become a pure classifier: public-only, with every refusal named (`PHASE-4.2.1`)
 
 - `src/ssrf.rs`: the pure `classify_destination(ip)` over the §12.4 ranges (the loopback, the link-local, the private, the multicast, the reserved, and the cloud-metadata class — its own class INSIDE the link-local range; the IPv4-mapped IPv6 form re-classifies the embedded IPv4) + the policy: ONLY the `Public` class is reachable, every refusal names its class.

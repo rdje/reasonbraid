@@ -19,15 +19,18 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.2.2` (`.2.1` done: the
-  SSRF classification + the public-only policy). Then `.2.3`,
-  `.3`–`.7`.
-- **Next action:** execute `PHASE-4.2.2` — the safe HTTPS fetcher:
-  the hardened URL parsing (the ambiguous/userinfo/invalid
-  refusals), the GET/HEAD with the byte + time ceilings, the
-  redirect policy at EVERY hop (the re-classification + the hop
-  cap), the TLS verification, the response-type sniffing, the
-  decompression-ratio limit, NO ambient credentials.
+- **Active tree:** `PHASE-4` → frontier `PHASE-4-MAINT-1` (`.2.1`
+  done: the SSRF classification + the public-only policy; `.2.2`
+  done: the safe HTTPS fetcher — 16 OFFLINE tests, the SSRF proof
+  measured; the offline sweep caught + fixed the workspace-wide
+  rustls provider ambiguity, and measured 9 pre-existing clippy
+  findings — ROUTED to `PHASE-4-MAINT-1`). Then `.2.3`, `.3`–`.7`.
+- **Next action:** execute `PHASE-4-MAINT-1` — the clippy evidence
+  debt: the 9 pre-existing `-D warnings` findings (api/dependence/
+  matching/recruitment/resources — the mechanical repairs + the
+  one signature refactor), then the gate's clippy run is green
+  again; next PNT frontier `.2.3` (the snapshot receipt + the R0
+  pack wiring).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

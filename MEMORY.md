@@ -19,19 +19,15 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.3.1` (the `.2` lane —
-  pack R0 — is COMPLETE; `.3` decomposed at the census seams:
-  nothing fetches Git — children `.3.1` the R1 contract + the
-  library census → `.3.2` the acquisition → `.3.3` the receipt +
-  the wiring; `PHASE-4-MAINT-1` done: the clippy evidence debt
-  repaired). Then `.4`–`.7`.
-- **Next action:** execute `PHASE-4.3.1` — the R1 contract + the
-  library census: the §12.5 rules as the TYPED contract (the
-  transport under the `.2.1` policy, the immutable-commit pin,
-  the budget vocabulary, the default-deny refusal list, the
-  no-checkout-execution rule, the manifest shape) + the measured
-  gitoxide-vs-git2 choice against the lean supply-chain doctrine.
-  No code.
+- **Active tree:** `PHASE-4` → frontier `.3.2` (`.2` — pack R0 —
+  COMPLETE; `.3.1` done: the R1 contract — gix over the classified
+  transport, decision `2026-09-07_r1-git-acquisition-contract.md`;
+  `MAINT-1` done: the clippy debt repaired). Then `.3.3`, `.4`–`.7`.
+- **Next action:** execute `PHASE-4.3.2` — the R1 acquisition:
+  gix clone/fetch under the `.3.1` contract (verify the gix reqwest
+  client-injection seam FIRST), the named budget refusals, the
+  default-deny list (submodules/hooks/filters/alternates/drivers/
+  LFS), NO checkout execution, the resolved commit recorded.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).
@@ -43,6 +39,6 @@
 - **Blockers:** none. Director-owned open items: license choice (`Cargo.toml` says
   `MIT OR Apache-2.0`, no `LICENSE` file); ADR-001 name clearance (repo stays private).
 - **Dating anomaly (flagged):** the machine clock crossed midnight mid-session
-  (`2026-09-06` → `2026-09-07`); new records use the machine date. The earlier
-  anomaly stands historically: some previous-session records are dated
-  2026-09-07 inside 2026-09-06 commits.
+  (2026-09-06 → 2026-09-07); new records use the machine date — the historical
+  anomaly stands (some prior-session records dated 2026-09-07 inside
+  2026-09-06 commits).

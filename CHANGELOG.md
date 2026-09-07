@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The R1 contract is decided: gix over the classified transport (`PHASE-4.3.1`)
+
+- The library census, measured: `gix` v0.87.1 (pure Rust, 32 features, no C) vs `git2` v0.21.0 (whose features name `openssl-sys`, `vendored-libgit2`, `vendored-openssl`) — the lean supply-chain doctrine picks gix.
+- The contract (`docs/decisions/2026-09-07_r1-git-acquisition-contract.md`, top-level `answers:`): every git dial passes the `.2.1` classification at both layers via gix's reqwest backend; the ref is the fragment-carried selector and the receipt records the resolved immutable commit; the budget vocabulary and the default-deny refusal list (submodules/hooks/filters/alternates/external drivers/LFS) are named; no checkout execution; the `.2.2` test seams carry over.
+- No code. Frontier → `.3.2` (the acquisition machinery).
+
 ## 2026-09-07 — The R1 lane opens: the census found NOTHING fetches Git (`PHASE-4.3`)
 
 - The §12.5 surface is a greenfield: no git library in the lock or the registry cache; the codebase's only "clone" hits are `.cloned()`/`Arc::clone`.

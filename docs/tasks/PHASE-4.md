@@ -369,7 +369,7 @@ of a URI is not a promise the core can resolve it.
     frontier → `.3.1`.
 
   - ID: `PHASE-4.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the R1 contract + the library census — the §12.5 rules
       as the TYPED contract: the URL/ref grammar (the https
       transport, the branch/tag/pinned-commit refs, the host
@@ -386,6 +386,30 @@ of a URI is not a promise the core can resolve it.
       libgit2 C build, against the lean supply-chain doctrine; the
       crate footprint each pulls). No code.
     Backlog: 33 (the contract half)
+    Done (`2026-09-07`): the contract is decided + durable —
+      `docs/decisions/2026-09-07_r1-git-acquisition-contract.md`
+      (top-level `answers:`): the library is **gix** (measured:
+      `cargo add --dry-run gix` → v0.87.1, a pure-Rust family, 32
+      features, no C; `cargo add --dry-run git2` → v0.21.0 whose
+      features name `openssl-sys`/`vendored-libgit2`/`vendored-
+      openssl` — the C surface the lean doctrine rejects); the
+      transport MUST ride the classified reqwest stack (the gix
+      `http-client-reqwest` backend — every git dial passes the
+      `.2.1` policy at both layers, and `.3.2` verifies the
+      client-injection seam mechanically); the ref grammar is the
+      fragment-carried selector (`https://<host>/<path>[#<ref>]`,
+      the bare URL resolves the default tip, and the receipt
+      records BOTH the requested ref AND the resolved immutable
+      commit); the budget vocabulary (object/file/path/depth/
+      decompressed/total-byte ceilings, each refusal named); the
+      default-deny refusal list (submodules, hooks, filters,
+      alternates, external diff/clean drivers, Git LFS — named,
+      never a prompt, never a silent skip); NO checkout execution
+      (the worktree is never materialized); the `.2.2` test seams
+      (the injectable resolver + policy) carry over so the R1
+      wire tests stay OFFLINE. No code changed. Frontier → `.3.2`.
+    Acceptance: the contract + the library census land durably (a
+      decision record with top-level answers); no code changes.
 
   - ID: `PHASE-4.3.2`
     Status: `proposed`
@@ -440,7 +464,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.3.1` | `proposed` | `.3` decomposed at the census seams — NOTHING fetches Git (no library in the lock or the cache; the §12.5 rules have no machinery); the R1 contract + the measured library census execute now |
+| 1 | `PHASE-4.3.2` | `proposed` | `.3.1` done — the R1 contract decided (`docs/decisions/2026-09-07_r1-git-acquisition-contract.md`: gix over the classified reqwest transport, the fragment-carried ref, the budget + default-deny vocabularies, no checkout execution); the acquisition machinery executes now |
 
 ## Changelog
 
@@ -473,6 +497,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.3.1` done — the R1 contract + the library
+  census: gix v0.87.1 (the pure-Rust family, measured against
+  git2's `openssl-sys`/`vendored-libgit2` C surface); the
+  classified reqwest transport requirement, the fragment-carried
+  ref, the budget + default-deny vocabularies, no checkout
+  execution — durable in `docs/decisions/2026-09-07_r1-git-
+  acquisition-contract.md`; no code; frontier → `.3.2`.
 - `2026-09-07`: `.3` decomposed at the census seams — NOTHING
   fetches Git (no git library in the lock or the registry cache;
   the R0 pieces exist to reuse: the destination policy, the `git`
@@ -815,6 +846,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.3.1` | docs-only (no code paths changed): the library census measured (`cargo add --dry-run gix` → v0.87.1 pure Rust; `cargo add --dry-run git2` → v0.21.0 with the `openssl-sys`/`vendored-libgit2` C features); `make gate` → 13/13 at commit | the R1 contract + the library census; frontier → `.3.2` |
 | `2026-09-07` | `PHASE-4.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R1 census + the contract-seam decomposition (`.3.1` the contract + the library census → `.3.2` the acquisition → `.3.3` the receipt + the wiring); frontier → `.3.1` |
 | `2026-09-07` | `PHASE-4.2.3` | `cargo test -p reasonbraid-server --lib fetcher` → `test result: ok. 17 passed` (the receipt's digest + chain, pure); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r0_resolver` → `test result: ok. 1 passed` (the https reference resolves to the built-in; the loopback + private refusals name their classes through the resolution path; the reference preserved; the stricter requirement is the explicit unresolvable-now); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo `ALL acceptance checks passed` (`target/pg423b_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R0 pack wired; **`.2` COMPLETE** — frontier → `.3` |
 | `2026-09-07` | `PHASE-4-MAINT-1` | `cargo clippy --all --all-targets -- -D warnings` → rc=0 (twelve findings fixed: the routed nine + the three profiles findings the lib failure shadowed); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pgm1_guard.log`); `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the clippy evidence debt repaired; frontier → `.2.3` |
@@ -830,6 +862,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.3.1` | `REASONBRAID-PHASE4-0011` | the R1 contract + the library census (gix over the classified transport — the decision record) |
 | `PHASE-4.3` | `REASONBRAID-PHASE4-0010` | the R1 lane decomposed at the census seams (nothing fetches Git — the contract/library-census/acquisition/receipt are the greenfield) |
 | `PHASE-4.2.3` | `REASONBRAID-PHASE4-0009` | the snapshot receipt + the R0 pack wiring (the built-in executes through the resolve path — the refusal names the class) — **`.2` COMPLETE** |
 | `PHASE-4-MAINT-1` | `REASONBRAID-PHASE4-0008` | the clippy evidence debt repaired (twelve pre-existing findings — the `-D warnings` run is green again) |

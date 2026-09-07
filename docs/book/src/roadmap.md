@@ -51,10 +51,35 @@ ships (`docs/decisions/2026-09-07_phase1-subtraction-record.md`), and the
 evidence manifest is `docs/evidence/2026-09-07_phase1-evidence-manifest.md`.
 Execution is recorded in `docs/tasks/PHASE-1.md` (`done`).
 
-## Phase 2 (current)
+## Phase 2 — complete
 
-Phase 2 hardens delivery, identity, and recovery (`ROADMAP.md` §20.4) so a
-later Internet slice can reuse the same control plane. The frontier is
-`PHASE-2.1` — workload certificate lifecycle, scoped grants, delegated
-authority context, revocation, and cached-decision rules (tracked in
-`docs/tasks/PHASE-2.md`).
+Phase 2 hardened delivery, identity, and recovery (`ROADMAP.md` §20.4):
+the workload certificate lifecycle, the scoped grants, the delegated
+authority context, the revocation, and the cached-decision rules — with the
+exit line's properties measured (tracked in `docs/tasks/PHASE-2.md`,
+`done`).
+
+## Phase 3 — complete
+
+Phase 3 shipped the directory, the presence, the two-stage matching, the
+recruitment protocol, the subscriptions, and the dependence indicators
+(tracked in `docs/tasks/PHASE-3.md`, `done`).
+
+## Phase 4 — complete (G4 Met)
+
+The universal resource + evidence pipeline (`ROADMAP.md` §20.6) is
+**complete**: the packs R0 (safe HTTPS) + R1 (public Git) + R2 (the
+sandboxed extraction worker) ship wired through the resolution path, the
+gated R3/R5/RX lane ships off by default, and the evidence pipeline lands
+(the content-addressed snapshot store + the tombstone, the derivation
+graph, the claim-evidence graph + the citation validation, the retention +
+the freshness). The G4 gate record is **Met** with five named deferrals
+(`docs/decisions/2026-09-07_phase4-gate-record.md`), the subtraction record
+ships (`docs/decisions/2026-09-07_phase4-subtraction-record.md`), and the
+evidence manifest is
+`docs/evidence/2026-09-07_phase4-evidence-manifest.md`. Execution is
+recorded in `docs/tasks/PHASE-4.md` (`done`).
+
+## Phase 5 (current)
+
+The frontier is `PHASE-5.1` (tracked in `docs/tasks/PHASE-5.md`).

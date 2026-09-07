@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-5`
-- Status: `proposed`
+- Status: `active`
 - Roadmap lane: Phase 5 (`ROADMAP.md` §20.7); Quality track
 - Created: `2026-09-05`
 - Estimate: 15–26 engineer-weeks plus domain-evaluator effort

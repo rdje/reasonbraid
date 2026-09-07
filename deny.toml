@@ -43,6 +43,23 @@ skip = [
     { name = "getrandom" }, # 0.2 (via rand 0.8) vs 0.4 (via uuid v7)
     { name = "hashbrown" }, # 0.15 vs 0.17 (indexmap/ahash majors)
     { name = "syn" },       # 2.x vs 3.x (proc-macro derive majors)
+    # The R2/R3 pack crates (2026-09-07, the .7.2 supply-chain re-run):
+    # each pair is a low-level crate whose two majors coexist inside ONE
+    # third-party's tree without crossing a boundary — re-review if a
+    # THIRD version appears or one gains a security advisory.
+    { name = "block-buffer" },   # 0.10 vs 0.12 — lopdf's sha2 0.11 family
+    { name = "cpufeatures" },    # 0.2 vs 0.3 — the same digest-family split
+    { name = "crypto-common" },  # 0.1 vs 0.2 — ditto
+    { name = "digest" },         # 0.10 vs 0.11 — ditto (the trait split)
+    { name = "md-5" },           # 0.10 vs 0.11 — ditto
+    { name = "sha2" },           # 0.10 (the workspace's) vs 0.11 (lopdf's)
+    { name = "foldhash" },       # 0.1 vs 0.2 — the hashbrown-indexmap pair
+    { name = "nom" },            # 7 vs 8 — lopdf's parser upgrade
+    { name = "rand" },           # 0.8/0.9 + the chromiumoxide tree's — no crossing
+    { name = "rand_chacha" },    # the rand-family split
+    { name = "rand_core" },      # ditto
+    { name = "reqwest" },        # 0.12 (the server's) vs 0.13 (chromiumoxide's
+                                 # own fetcher) — SEPARATE binaries, no types cross
 ]
 skip-tree = []
 
@@ -65,4 +82,10 @@ allow = [
     "BSD-3-Clause",   # `subtle` (constant-time crypto primitive, via sqlx SCRAM auth)
     "Zlib",
 ]
-exceptions = []
+exceptions = [
+    # uluru (MPL-2.0, a file-level copyleft): lopdf's tiny arena dependency.
+    # The crate is never modified (the copyleft's file scope stays inside
+    # it) and no alternative exists in lopdf's tree — the narrowest
+    # exception the policy's exceptions list exists for.
+    { name = "uluru", allow = ["MPL-2.0"] },
+]

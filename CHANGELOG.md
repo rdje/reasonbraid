@@ -12,6 +12,12 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — Phase 4 is closed: the G4 gate is Met (`PHASE-4.7.2`)
+
+- The gate package: the evidence manifest (every G4 clause → a re-runnable artifact), the gate record (**Met**, five named deferrals, top-level `answers:`), the subtraction record (the §20.6 rows 31–35 shipped + the deferrals — no empty lists).
+- The supply-chain re-run: `make deny` rc=0 (the R2/R3 duplicate families reviewed + skipped with the rationale; the uluru MPL-2.0 exception narrowed) + `make secret-scan` rc=0 (163 commits, no leaks).
+- The tree flips `done`; the frontier moves to `PHASE-5.1`; the book's roadmap chapter reflects the completion.
+
 ## 2026-09-07 — The G4 hostile suite ships: eight refusal scenarios, one gate-citable test (`PHASE-4.7.1`)
 
 - `profiles 23` (`the_g4_hostile_suite_names_every_refusal`): the loopback/private/mapped-form refusals through the resolution path, the userinfo refusal, the unsupported scheme's unresolvable-now, the fake digest 400, the unknown assessment kind, the forged-field 422 — each names its reason.

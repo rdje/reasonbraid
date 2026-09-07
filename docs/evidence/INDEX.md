@@ -8,4 +8,5 @@ for an ADR. Numbers published here follow `docs/CLAIM_VERIFICATION.md`.
 | [2026-09-06_codex-adapter-qualification.md](2026-09-06_codex-adapter-qualification.md) | `PHASE-0.4.2` | `reported` |
 | [2026-09-07_benchmark-codex-run.md](2026-09-07_benchmark-codex-run.md) | `PHASE-0.7` | `reported` |
 | [2026-09-07_phase0-evidence-manifest.md](2026-09-07_phase0-evidence-manifest.md) | `PHASE-0.8.1` | `reported` |
+| [2026-09-07_phase4-evidence-manifest.md](2026-09-07_phase4-evidence-manifest.md) | manifest | the G4 evidence map (every clause → a re-runnable artifact) + the supply-chain re-run |
 | [2026-09-07_phase1-evidence-manifest.md](2026-09-07_phase1-evidence-manifest.md) | `PHASE-1.8.2` | `reported` |

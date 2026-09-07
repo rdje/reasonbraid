@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-4`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 4 (`ROADMAP.md` §20.6); Evidence track
 - Created: `2026-09-05`
 - Estimate: 16–27 engineer-weeks
@@ -1023,7 +1023,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.7.2` | `proposed` | `.7.1` done — the hostile suite (profiles 23: eight refusal scenarios in one gate-citable test + the worker's nine offline refusals); the G4 gate record + the subtraction record execute now |
+| 1 | `PHASE-5.1` | `proposed` | **PHASE-4 CLOSED** — the G4 gate Met (the record + the subtraction + the manifest; the hostile suite profiles 23; the supply-chain re-run green); the workflow-profiles tree executes next |
 
   - ID: `PHASE-4.7.1`
     Status: `done`
@@ -1050,7 +1050,7 @@ of a URI is not a promise the core can resolve it.
       refusals — the gate cites both. Frontier → `.7.2`.
 
   - ID: `PHASE-4.7.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the G4 gate record + the subtraction record — the
       gate package (the Phase-1 `.1.8.2` pattern): the G4 record
       (Met, with the named deferrals — the R3 container gate
@@ -1061,6 +1061,24 @@ of a URI is not a promise the core can resolve it.
       the roadmap's §12 backlog) + the Phase-4 evidence
       manifest.
     Gate: G4; subtraction record required
+    Done (`2026-09-07`): the gate package landed and **PHASE 4 IS
+      CLOSED** — the evidence manifest
+      (`docs/evidence/2026-09-07_phase4-evidence-manifest.md`:
+      every G4 clause mapped to a re-runnable artifact), the
+      gate record (`docs/decisions/2026-09-07_phase4-gate-record.md`:
+      gate_id `PHASE-4-G4`, the outcome **Met**, five named
+      deferrals, top-level `answers:`), and the subtraction
+      record (`docs/decisions/2026-09-07_phase4-subtraction-record.md`:
+      the shipped §20.6 rows 31–35 + the five deferrals + the
+      never-promised list — no empty lists); the supply-chain
+      re-run (the `.7.2` close's): `make deny` → rc=0 (the R2/R3
+      pack crates' duplicate families reviewed + skipped with
+      the rationale in `deny.toml`; the uluru MPL-2.0 exception
+      narrowed to the one crate) + `make secret-scan` → rc=0
+      (163 commits, no leaks); the full guard green at the
+      close; the tree flips `done`, the frontier moves to
+      `PHASE-5.1`, the book's roadmap chapter reflects the
+      completion.
 
 ## Changelog
 
@@ -1093,6 +1111,10 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.7.2` done — the G4 gate package (the record
+  **Met** with five named deferrals, the subtraction record, the
+  evidence manifest, the supply-chain re-run green) — **PHASE 4
+  IS CLOSED**; the frontier moves to `PHASE-5.1`.
 - `2026-09-07`: `.7.1` done — the hostile-content suite
   (profiles 23: the eight refusal scenarios in one
   gate-citable test + the worker's nine offline refusals);
@@ -2003,6 +2025,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.7.2` | docs-only (no code paths changed): `make deny` → rc=0 (`advisories ok, bans ok, licenses ok, sources ok`), `make secret-scan` → rc=0; `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo; `make gate` → 13/13 at commit | the G4 gate package — **PHASE 4 IS CLOSED**; frontier → `PHASE-5.1` |
 | `2026-09-07` | `PHASE-4.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_g4_hostile_suite` → `test result: ok. 1 passed` (the eight refusal scenarios); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg471_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the hostile-content suite; frontier → `.7.2` |
 | `2026-09-07` | `PHASE-4.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the G4 census + the suite/record decomposition (`.7.1` the hostile-content suite → `.7.2` the gate record + the subtraction record); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-4.6.4` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_retention_enforcement` → `test result: ok. 1 passed` (the license + the horizon, the staleness, the `at`-driven expiry, the replay-refresh); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg464_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the license/retention + the freshness; **`.6` COMPLETE** — frontier → `.7` |
@@ -2036,6 +2059,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.7.2` | `REASONBRAID-PHASE4-0029` | the G4 gate package (Met + the subtraction + the manifest + the supply-chain re-run) — **PHASE 4 IS CLOSED** |
 | `PHASE-4.7.1` | `REASONBRAID-PHASE4-0028` | the G4 hostile-content suite (eight refusal scenarios in one gate-citable test) |
 | `PHASE-4.7` | `REASONBRAID-PHASE4-0027` | the G4 exit decomposed at the census seams (the suite + the gate record) |
 | `PHASE-4.6.4` | `REASONBRAID-PHASE4-0026` | the license/retention + the freshness (the TTL enforcement + the staleness + the replay-refresh) — **`.6` COMPLETE** |

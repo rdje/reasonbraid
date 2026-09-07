@@ -808,9 +808,66 @@ slice can reuse the same control plane without rewriting it.
       (measured); no regression.
 
 - ID: `PHASE-2.4`
-  Status: `proposed`
+  Status: `active`
   Goal: backup, PITR, object/Git inventory groundwork, migrations, upgrade/rollback testing
   Roadmap: §17.5–17.6
+  Note: gap census (`2026-09-07`, on pickup): NOTHING exists —
+    `ls scripts/` has no backup/restore tooling (`grep -rn 'pg_dump|
+    pg_basebackup|restore' scripts/ Makefile` → no matches); the
+    migrations (0001–0016, sqlx) are applied to a FRESH database by every
+    suite, but the upgrade-an-EXISTING-database path is never exercised
+    (the guard re-creates the cluster each run); the demo's SIGKILL+
+    restart beat proves durability, not restoration. The object/Git
+    inventory + the signing-key recovery + the reconciliation have
+    NOTHING to bind in the dev profile (no object store — Phase 4 — and
+    no canonical Git mirror) — those are named deferrals, not build
+    targets.
+  Children: `.4.1`–`.4.3` (decomposed `2026-09-07` at the contract
+    seams): `.4.1` the backup + restore automation with the measured
+    restore exercise (a backup that has never been restored is not a
+    recovery control) → `.4.2` the migration upgrade test (an existing
+    database upgrades, its data survives) → `.4.3` the
+    inventory-groundwork deferral record (object/Git inventory + key
+    recovery + the reconciliation — named triggers).
+
+  - ID: `PHASE-2.4.1`
+    Status: `proposed`
+    Goal: backup + restore automation — `scripts/backup.sh` (pg_dump
+      custom-format to a dated file, the dev profile's plaintext stance
+      — encryption is the §17.5 note, deferred with the key story) +
+      `scripts/restore.sh` (into an isolated database) + a guard leg: a
+      live test backs up the seeded database, MUTATES it, restores into a
+      fresh database, and asserts the state returned — the restore is the
+      proof (§17.5's last line), run in CI.
+    Roadmap: §17.5
+    Acceptance: the backup file restores into an isolated database and
+      the restored state matches the pre-mutation state (measured); the
+      guard leg is green.
+
+  - ID: `PHASE-2.4.2`
+    Status: `proposed`
+    Goal: the migration upgrade test — a live suite applies migrations
+      up to N-1 on a fresh database, SEEDS data through the real API,
+      applies the remaining migrations, and asserts the seeded data +
+      behavior survive (the expand/migrate/contract reality: the ALTERs
+      are additive; the `.1.2.2` view lesson — Postgres view replacement
+      appends columns — is the recorded caveat). Destructive contraction
+      stays deferred (no rollback point exists in the dev profile — the
+      §17.6 note).
+    Roadmap: §17.6
+    Acceptance: the N-1 → N upgrade preserves the seeded rows + the API
+      behavior (measured); no regression.
+
+  - ID: `PHASE-2.4.3`
+    Status: `proposed`
+    Goal: the inventory-groundwork deferral record — the object/Git
+      inventory, the signing-key recovery design, the post-restore
+      reconciliation, and the backup encryption have nothing to bind in
+      the dev profile (no object store, no canonical Git, no release
+      signing); a decisions record names each with its trigger. No code.
+    Roadmap: §17.5–§17.6
+    Acceptance: the record lands with `answers:` naming each deferral's
+      trigger; no code changes.
 
 - ID: `PHASE-2.5`
   Status: `proposed`
@@ -834,7 +891,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.4` | `proposed` | `.3` is COMPLETE (ADR-012/013, the spend latch, the reconciliation surface); the backup/PITR + migrations lane executes now |
+| 1 | `PHASE-2.4.1` | `proposed` | `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
+ `.3` is COMPLETE (ADR-012/013, the spend latch, the reconciliation surface); the backup/PITR + migrations lane executes now |
  `.3.2` done — the spend circuit breakers (the in-tx latch + the arm/reset/inspect verbs); the usage-reconciliation surface executes now |
  `.3.1` done — ADR-012/013 accepted (the shipped ambiguity + budget machinery promotes; no code); the spend circuit breakers execute now |
  `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
@@ -843,6 +901,12 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.4` decomposed at the contract seams — the census found
+  NOTHING: no backup/restore tooling, the upgrade-an-existing-database path
+  unexercised, and the object/Git inventory with nothing to bind in the dev
+  profile (named deferrals); children `.4.1` (backup + restore with the
+  measured exercise) → `.4.2` (the migration upgrade test) → `.4.3` (the
+  inventory-groundwork deferral record); frontier → `.4.1`.
 - `2026-09-07`: `.3.3` done — the usage-reconciliation surface:
   `GET /v1/admin/usage` + `rb inspect usage` (held vs settled vs overrun
   vs denied, summed over the ledger rows the engine enforces against; the
@@ -1826,6 +1890,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.4` | `REASONBRAID-PHASE2-0027` | the contract-seam split (no backup tooling, the upgrade path unexercised, the inventory has nothing to bind) |
 | `PHASE-2.3.3` | `REASONBRAID-PHASE2-0026` | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture, measured against the ledger rows) — **`.3` COMPLETE** |
 | `PHASE-2.3.2` | `REASONBRAID-PHASE2-0025` | the spend circuit breakers: migration 0016 + the in-tx latch (tripped refuses everything new, the crossing trips with the denial's transaction) + the arm/reset/inspect verbs + the CLI |
 | `PHASE-2.3.1` | `REASONBRAID-PHASE2-0024` | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes — no code; the pricing-snapshot trigger named) |

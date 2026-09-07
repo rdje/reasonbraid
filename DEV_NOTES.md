@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.4: the lane's census found NOTHING — every §17.5 control starts from zero
+
+- **Not one backup exists.** The demo's SIGKILL+restart beat proves durability (the DB survives a crash), not restoration — and §17.5's last line is the acceptance: a backup that has never been restored is not a recovery control. `.4.1`'s whole point is the restore exercise, not the dump.
+- **The upgrade path is unexercised.** Every suite migrates a FRESH database; the upgrade-an-EXISTING-database path — the one §17.6 is about — has never run. `.4.2` closes exactly that gap.
+- promotion: declined (the seam facts are the leaf's census note — the deferral record lands with `.4.3`). **Frontier `PHASE-2.4.1` (the backup + restore automation).**
+
 ## _(2026-09-07)_ — PHASE-2.3.3: the reconciliation surface sums the ledger it trusts — aggregation, never a second truth
 
 - **The budget engine's rows ARE the reconciliation data.** The surface sums the same rows the engine enforces against (held = active unexpired, settled = actuals, overrun = used minus reserved floored, expired counts nowhere) — the measured test recomputes the seeded arithmetic and demands the wire match. A reconciliation that kept its own ledger would be the second truth the doctrine forbids.

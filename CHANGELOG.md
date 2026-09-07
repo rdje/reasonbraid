@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.4` split at the contract seams (`PHASE-2.4`)
+
+- The census found NOTHING: no backup/restore tooling (`grep -rn 'pg_dump|pg_basebackup|restore' scripts/ Makefile` → no matches), the migrations are applied to a fresh database by every suite but the upgrade-an-EXISTING-database path is never exercised, and the object/Git inventory + the key recovery + the reconciliation have nothing to bind in the dev profile (no object store, no canonical Git) — named deferrals, not build targets.
+- Children: `.4.1` the backup + restore automation with the measured restore exercise → `.4.2` the migration upgrade test → `.4.3` the inventory-groundwork deferral record. Tree-only commit.
+
 ## 2026-09-07 — The usage reconciliation: the estimates-vs-receipts picture, summed over the ledger (`PHASE-2.3.3`)
 
 - `GET /v1/admin/usage` + `rb inspect usage` land: the tenant's held (active unexpired reservations) vs settled (actual usage) vs overrun (used minus reserved per dimension, floored) vs denied (with the reasons) picture — SUMMED over the same ledger rows the budget engine enforces against, plus the per-thread breakdown. Expired holds count nowhere. tenant_admin-gated, read-only.

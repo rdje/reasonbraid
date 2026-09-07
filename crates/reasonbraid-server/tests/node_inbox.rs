@@ -9,11 +9,12 @@
 //! `DATABASE_URL`.
 
 use std::net::SocketAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use reasonbraid_server::{
-    api_router, node_router, NodeChannelState, CHANNEL_VERSION, PRINCIPAL_HEADER,
+    api_router, ca::ensure_server_ca, node_router, NodeChannelState, CHANNEL_VERSION,
+    PRINCIPAL_HEADER,
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -62,6 +63,8 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
+        "server_ca",
         "node_enrollment_tokens",
         "runs",
         "incarnations",
@@ -102,7 +105,8 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let router = api_router(pool.clone()).merge(node_router(pool.clone()));
+        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -204,7 +208,8 @@ async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value
 async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
     let _g = guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let base = server.base();
     let client = reqwest::Client::new();
@@ -314,7 +319,8 @@ async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
 async fn quarantine_and_prune_refusals_are_typed() {
     let _g = guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let base = server.base();
     let client = reqwest::Client::new();
@@ -460,7 +466,8 @@ async fn quarantine_and_prune_refusals_are_typed() {
 async fn prune_deletes_only_delivered_rows_older_than_the_window() {
     let _g = guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let base = server.base();
     let client = reqwest::Client::new();

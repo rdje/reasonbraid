@@ -5,9 +5,10 @@
 //! `--database-url` (or `DATABASE_URL`) points at the control plane's PostgreSQL.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use clap::Parser;
-use reasonbraid_server::{api_router, node_router, ui_router};
+use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, ui_router};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,8 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = sqlx::PgPool::connect(&args.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
+    // The workload-identity CA (`.1.2.1`, ADR-007): loaded from `server_ca` or
+    // generated on first boot — it must survive restarts so issued leaves chain.
+    let ca = Arc::new(ensure_server_ca(&pool).await?);
+
     let app = api_router(pool.clone())
-        .merge(node_router(pool))
+        .merge(node_router(pool, ca))
         .merge(ui_router());
     let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

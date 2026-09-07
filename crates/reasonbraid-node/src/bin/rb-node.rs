@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         let channel =
             NodeChannel::new(&args.server, args.node_id.clone(), args.node_secret.clone());
-        channel
+        let enroll_resp = channel
             .enroll(
                 token,
                 &args.node_id,
@@ -124,9 +124,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await
             .map_err(|e| format!("rb-node: enrollment failed: {e}"))?;
+        // Persist the workload certificate beside the journal (`.1.2.1`,
+        // ADR-007): the `.1.2.2` handshake signs its proof with this key.
+        save_workload_identity(&args.journal, &enroll_resp)
+            .map_err(|e| format!("rb-node: could not store the workload certificate: {e}"))?;
         eprintln!(
-            "rb-node: {} enrolled on host claim `{}`",
-            args.node_id, args.host_claim
+            "rb-node: {} enrolled on host claim `{}` (cert fingerprint {})",
+            args.node_id,
+            args.host_claim,
+            enroll_resp
+                .get("cert_fingerprint")
+                .and_then(|v| v.as_str())
+                .unwrap_or("<unknown>")
         );
     }
 
@@ -186,4 +195,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+}
+
+/// Decode a hex string (the server ships DER as hex — the codebase hand-rolls
+/// hex rather than taking a dependency).
+fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
+    if !s.len().is_multiple_of(2) {
+        return Err("odd-length hex".to_string());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}
+
+/// Persist the workload certificate beside the journal (`PHASE-2.1.2.1`,
+/// ADR-007): `cert.der` + `key.der` in the journal's directory. The files are
+/// node-local state (the journal's own volume — §13); the `.1.2.2` handshake
+/// loads them to sign its proof.
+fn save_workload_identity(
+    journal_path: &std::path::Path,
+    enroll: &serde_json::Value,
+) -> Result<(), String> {
+    let dir = journal_path
+        .parent()
+        .ok_or_else(|| "the journal path has no parent directory".to_string())?;
+    let cert = enroll
+        .get("cert_der")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "the enroll response lacks cert_der".to_string())?;
+    let key = enroll
+        .get("key_der")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "the enroll response lacks key_der".to_string())?;
+    std::fs::write(dir.join("cert.der"), hex_decode(cert)?).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("key.der"), hex_decode(key)?).map_err(|e| e.to_string())?;
+    Ok(())
 }

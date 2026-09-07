@@ -57,6 +57,8 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
+        "server_ca",
         "node_leases",
         "node_enrollment_tokens",
         "runs",

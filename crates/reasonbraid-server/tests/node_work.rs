@@ -15,10 +15,12 @@
 //! `DATABASE_URL` these skip, so `make check` stays green offline.
 
 use std::net::SocketAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use reasonbraid_core::{CommandEnvelope, RequestId, PROTOCOL_VERSION};
-use reasonbraid_server::{api_router, node_router, CHANNEL_VERSION, PRINCIPAL_HEADER};
+use reasonbraid_server::{
+    api_router, ca::ensure_server_ca, node_router, CHANNEL_VERSION, PRINCIPAL_HEADER,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -69,6 +71,8 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
+        "server_ca",
         "node_enrollment_tokens",
         "runs",
         "incarnations",
@@ -101,7 +105,8 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let router = api_router(pool.clone()).merge(node_router(pool.clone()));
+        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });

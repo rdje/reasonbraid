@@ -15,6 +15,14 @@ workspace = true
 # The domain authority types the .5.1 engine evaluates and persists (boundary ceiling,
 # grants, decisions, the policy digest). The first direct core dependency of the server.
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+# The workload-identity CA (PHASE-2.1.2.1, ADR-007): the project-local issuer the
+# enrollment path signs node leaves with. DER only (no `pem` feature — the bans
+# doctrine's base64-split fix from the .1.1 spike stays).
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "x509-parser"] }
+# The DER key type rcgen's from_der_and_sign_algo takes (same family as rustls).
+rustls-pki-types = "1"
+# rcgen's validity-window type (OffsetDateTime) — the same `time` family it links.
+time = "0.3"
 # The node channel's HTTP surface (ROADMAP.md §9.3): JSON over HTTP/1 for Phase 0 — the
 # authenticated streaming profile is a later phase (WP5 identity, ADR-006's formal record).
 axum = "0.8"

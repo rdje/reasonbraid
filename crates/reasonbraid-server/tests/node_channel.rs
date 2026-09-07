@@ -18,11 +18,11 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use reasonbraid_node::{Journal, Node, NodeState};
-use reasonbraid_server::{node_router, NodeChannelState};
+use reasonbraid_server::{ca::ensure_server_ca, node_router, NodeChannelState};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -75,6 +75,8 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
+        "server_ca",
         "node_enrollment_tokens",
         "runs",
         "incarnations",
@@ -147,7 +149,8 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let router = node_router(pool.clone());
+        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let router = node_router(pool.clone(), ca);
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -207,7 +210,8 @@ async fn acked_rows(pool: &PgPool, node_id: &str) -> i64 {
 async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000001".to_string();
     seed_node(&pool, &node_id).await;
@@ -247,7 +251,8 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
 async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000002".to_string();
     seed_node(&pool, &node_id).await;
@@ -290,7 +295,8 @@ async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
 async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000003".to_string();
     seed_node(&pool, &node_id).await;
@@ -334,7 +340,8 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
 async fn node_is_not_schedulable_until_reconciliation_completes() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let node_id = "nod_00000000-0000-7000-8000-000000000004".to_string();
     seed_node(&pool, &node_id).await;
 
@@ -459,7 +466,8 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
 async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000006".to_string();
     seed_node(&pool, &node_id).await;
@@ -629,7 +637,8 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
 async fn server_restart_preserves_the_inbox_and_resume() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let node_id = "nod_00000000-0000-7000-8000-000000000008".to_string();
     seed_node(&pool, &node_id).await;
 
@@ -698,7 +707,8 @@ async fn server_restart_preserves_the_inbox_and_resume() {
 async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000009".to_string();
     seed_node(&pool, &node_id).await;
@@ -735,7 +745,8 @@ async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
 async fn poll_returns_the_tail_after_a_cursor() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000010".to_string();
     seed_node(&pool, &node_id).await;
@@ -840,7 +851,8 @@ async fn handshake_rejects_version_mismatch_and_unknown_fields() {
 async fn server_known_events_skip_reemission_of_already_delivered_results() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000011".to_string();
     seed_node(&pool, &node_id).await;
@@ -951,7 +963,8 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
 async fn duplicate_event_emission_dedupes_server_side() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
-    let state = NodeChannelState::new(pool.clone());
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000012".to_string();
     seed_node(&pool, &node_id).await;

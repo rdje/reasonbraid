@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.2.1: a CA that must survive restarts belongs in the control plane's own store
+
+- **The demo's kill point chose the storage.** The server is SIGKILLed and restarted mid-demo, so the CA cannot live in memory: `server_ca` is ONE row (id 1) the boot loads or generates — and the enrollment suite's rebuild test asserts two `ensure_server_ca` passes return the SAME key + cert (previously issued leaves keep chaining).
+- **The token row is the issuance serialization point for free.** Enrollment was already exactly-once (token `FOR UPDATE` + `used_at`); issuing the leaf INSIDE that transaction inherits the guarantee — the replay refusal issues no second certificate, asserted in the suite.
+- **rcgen 0.14's CA reloaders live on `Issuer`, not `CertifiedIssuer`** — `Issuer::from_ca_cert_der` (behind the `x509-parser` feature) rebuilds the signing issuer from the stored DER; the compiler's "no associated function" note (not the error) carried the answer.
+- **The coherent interim is load-bearing**: the node now stores `cert.der`/`key.der` while the HMAC channel stays live — the demo passes with the files unused, so the v3 swap (`.1.2.2`) has a clean, green base.
+- promotion: declined (the server-generated dev-escrowed node key is the .1.2.1 trust-store stance recorded in the leaf + ADR-007's honest limits — the Internet profile re-evaluates; no new cross-cutting decision). **Frontier `PHASE-2.1.2.2` (the channel v3 cert-proof swap).**
+
 ## _(2026-09-07)_ — PHASE-2.1.1: decide the issuer from a measured spike, not from the roadmap's candidate list
 
 - **A spike's job is to make the refusal cases real.** The experiment drives a REAL TLS 1.3 client-cert handshake (rustls) and asserts the §16.2 contract: the trusted allowlisted leaf completes; foreign-CA, expired, and unregistered-fingerprint certificates are refused on BOTH sides; rotation is additive. Issuance latency N=200: p50 63 µs / p95 69 µs — cert issuance is effectively free at LAN scale, so rotation can be aggressive.

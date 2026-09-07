@@ -109,7 +109,7 @@ slice can reuse the same control plane without rewriting it.
     Children: `.1.2.1`–`.1.2.2`.
 
   - ID: `PHASE-2.1.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: cert issuance at enrollment — migration 0011 (`server_ca` +
       `node_certificates`), the server generates/loads its CA at startup
       and persists it (the demo kills and restarts the server — the CA
@@ -126,6 +126,13 @@ slice can reuse the same control plane without rewriting it.
       rebuild/restart (same CA key — previously issued certs still chain);
       replay is still refused; the existing suites + demo stay green
       (the demo stores the files but does not use them yet).
+    Done (`2026-09-07`): migration 0011 + `ca.rs` (the persisted CA:
+      generated on first boot, loaded thereafter — the rebuild test
+      proves the same key/cert) + the enroll response carries the leaf +
+      dev-escrowed key + fingerprint; `rb-node` persists `cert.der`/
+      `key.der` beside the journal; the HMAC channel untouched (the demo
+      passes with the files stored, unused); the acceptance checklist
+      below records the evidence — frontier → `.1.2.2`.
 
   - ID: `PHASE-2.1.2.2`
     Status: `proposed`
@@ -243,7 +250,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.2.1` | `proposed` | `.1.2` decomposed at the issuance-vs-channel seam (the `.1.2.1`-first Phase-1 precedent — a coherent interim exists); cert issuance at enrollment executes now, the v3 proof swap follows |
+| 1 | `PHASE-2.1.2.2` | `proposed` | `.1.2.1` done (enroll issues + the node stores the leaf; the CA survives restarts — the rebuild test proves it); the channel v3 cert-proof handshake + rotation execute now |
 
 ## Changelog
 
@@ -278,6 +285,72 @@ slice can reuse the same control plane without rewriting it.
   `cert.der`/`key.der`; the HMAC channel UNTOUCHED) → `.1.2.2` the channel v3
   cert-proof handshake + rotation (the 17 channel suites move, the demo
   enrolls → stores → handshakes with the cert); frontier → `.1.2.1`.
+- `2026-09-07`: `.1.2.1` done — cert issuance at enrollment: migration 0011
+  (`server_ca` + `node_certificates`), `ca.rs` (the CA is generated on first
+  boot and LOADED thereafter — the rebuild test proves the same key + cert
+  survive), the enroll response carries the leaf + dev-escrowed key +
+  fingerprint, `rb-node` persists `cert.der`/`key.der` beside the journal;
+  the HMAC channel untouched (the demo passes with the files stored, unused —
+  the coherent interim); all guards green; frontier → `.1.2.2`.
+
+## Acceptance Checklist (PHASE-2.1.2.1)
+
+The CODE change owned by this leaf: `migrations/0011_workload_certificates.sql`
+(schema), `crates/reasonbraid-server/src/ca.rs` (new), `src/node_channel.rs`
+(state + router + enroll), `src/bin/rb-server.rs` (the boot), the test files,
+and `crates/reasonbraid-node/src/bin/rb-node.rs` — all match `(^|/)crates/`,
+`\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's cert-issuance portion is open:
+  `grep -rn 'rcgen\|node_certificates\|server_ca' crates/reasonbraid-server/src
+  migrations/` → no matches before this leaf (the `.1.1` spike is a separate
+  crate, wired into nothing); the enroll response is `{node_id, host_id}`
+  only (`grep -n 'pub struct NodeEnrollResponse'
+  crates/reasonbraid-server/src/node_channel.rs` → 2 fields).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the issuance model was decided by
+  ADR-007 but nothing consumes it: the server has no CA handle and the
+  enroll path signs nothing. The fix point is the enroll transaction (the
+  token-row serialization already guarantees exactly-one issuance) + a
+  persisted CA the server can reload — the demo kills and restarts the
+  server, so an in-memory CA would orphan every issued leaf.
+  `git show HEAD:scripts/demo_two_host.sh | sed -n '385p'` →
+  `kill -9 "$SERVER_PID" >/dev/null 2>&1 || true` (the restart kill point
+  the CA must survive).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no CA, no
+  cert rows, a 2-field enroll response. After: `bash
+  scripts/run_pg_tests.sh` → `test result: ok. 4 passed; 0 failed`
+  (`node_enrollment`, +1: the CA-persistence test — two `ensure_server_ca`
+  passes return the SAME `cert_der` + `key_der`) and the happy-path test
+  asserts the response's `cert_der`/`key_der`/`cert_fingerprint` (64 hex) +
+  the `node_certificates` row + the `server_ca` row + the replay refusal
+  issues no second cert (`target/pg121b_guard.log`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve live
+  server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17
+  + 4 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the
+  two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`,
+  `target/pg121b_guard.log` — the demo's `rb-node` now stores the cert
+  files but the v2 channel does not use them: the coherent interim);
+  `cargo test --all` → 42 offline suites green (rc=0,
+  `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean (rc=0); `cargo fmt --all -- --check` → rc=0; `make
+  deny` → rc=0 (advisories/bans/licenses/sources ok — rcgen's
+  `x509-parser` feature entered the server graph without a ban);
+  `make gate` → 13/13 at commit.
+- [x] **FIX** — `migrations/0011_workload_certificates.sql`;
+  `crates/reasonbraid-server/src/ca.rs` (the `ServerCa` handle:
+  generate-on-first-boot / load-from-the-row, `issue_node_leaf` with
+  CN = node id + SAN = host claim, `cert_fingerprint`, hex helpers) +
+  `src/lib.rs` (`pub mod ca`) + `Cargo.toml` (rcgen crypto+ring+
+  x509-parser, rustls-pki-types, time); `node_channel.rs`
+  (`NodeChannelState` gains the CA; `node_router(pool, ca)`; the enroll
+  transaction issues + persists the leaf and the response carries it);
+  `src/bin/rb-server.rs` (the CA boot step); `crates/reasonbraid-node/src/bin/rb-node.rs`
+  (persist `cert.der`/`key.der` beside the journal, log the fingerprint);
+  the test files (router signatures, purge lists, the two enrollment
+  assertions).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (`promotion: declined (the server-generated dev-escrowed node key is the .1.2.1 trust-store stance recorded here + in ADR-007's honest limits — the Internet profile re-evaluates; no new cross-cutting decision)`),
+  MEMORY, LIVE_STATUS, this tree's logs below, `docs/TASK_TREE.md`
+  frontier — same commit.
 
 ## Acceptance Checklist (PHASE-2.1.1)
 
@@ -342,6 +415,7 @@ the ledger row are the record deliverables.
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-2.1.1` | `cargo test -p reasonbraid-cert-spike -- --nocapture` → `test result: ok. 1 passed` (6/6 verdicts incl. the three refusal pairs + additive rotation; issuance N=200 p50=63µs p95=69µs, `target/spike81.log`); `cargo test --all` → 39 offline suites + the spike green (rc=0, `target/spike81_all.log`); `cargo clippy -p reasonbraid-cert-spike --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (the first run caught the base64 split → rcgen ships without `pem`); `make gate` → 13/13 | the ADR-006/007 spike: the project-local CA model measured and adopted (ADR-007), the transport decision recorded (ADR-006), the ledger row filled — frontier → `.1.2` |
+| `2026-09-07` | `PHASE-2.1.2.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 4 + 3 + 6 + 7 `passed` — `node_enrollment` grew to 4 with the CA-persistence test) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`, `target/pg121b_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (rcgen's `x509-parser` feature entered the server graph without a ban); `make gate` → 13/13 | cert issuance at enrollment: the persisted `ServerCa` (generated on first boot, loaded thereafter — the rebuild test proves the same key + cert), the enroll response carries the leaf + dev-escrowed key + fingerprint, `rb-node` stores `cert.der`/`key.der`; the HMAC channel untouched (the coherent interim) — frontier → `.1.2.2` |
 
 ## Commit Log
 
@@ -349,3 +423,5 @@ the ledger row are the record deliverables.
 | --- | --- | --- |
 | `PHASE-2.1` | `REASONBRAID-PHASE2-0001` | the census-seam decomposition (six tool-backed gaps → `.1.1`–`.1.6`) |
 | `PHASE-2.1.1` | `REASONBRAID-PHASE2-0002` | the ADR-006/007 spike + records: the test-only experiment crate, the two accepted ADRs, the ledger row; `make deny`'s ban caught the base64 split — fixed by dropping rcgen's unused `pem` feature |
+| `PHASE-2.1.2` | `REASONBRAID-PHASE2-0003` | the issuance-vs-channel split (the `.1.2.1`-first precedent): `.1.2.1` cert issuance at enrollment → `.1.2.2` the channel v3 swap |
+| `PHASE-2.1.2.1` | `REASONBRAID-PHASE2-0004` | cert issuance at enrollment: migration 0011 + `ca.rs` (the persisted CA) + the enroll response's cert + escrowed key + the node's `cert.der`/`key.der` persistence; the HMAC channel untouched |

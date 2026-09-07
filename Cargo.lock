@@ -1465,13 +1465,16 @@ dependencies = [
  "chrono",
  "clap",
  "hmac",
+ "rcgen",
  "reasonbraid-core",
  "reasonbraid-node",
  "reqwest",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "sha2",
  "sqlx",
+ "time",
  "tokio",
 ]
 

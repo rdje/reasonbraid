@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Enroll now issues a workload certificate (`PHASE-2.1.2.1`)
+
+- **The CA that survives the demo's kill point.** Migration 0011 adds `server_ca` (ONE row per deployment) + `node_certificates`; the server generates its CA on first boot and LOADS it thereafter — the enrollment suite's rebuild test asserts two `ensure_server_ca` passes return the same key + cert, so a server SIGKILL + restart never orphans an issued leaf.
+- **Enrollment issues the leaf inside the exactly-once transaction.** The token row was already the serialization point; the leaf (CN = the durable node id, SAN = the token's host claim, 10-minute validity) rides the same transaction — the replay refusal issues no second certificate (asserted).
+- **The node stores `cert.der`/`key.der` beside its journal** (dev-escrowed key — the `.1.2.1` trust-store stance, ADR-007's honest limit) and logs the fingerprint. The HMAC channel is untouched: the demo passes with the files stored, unused — the coherent interim before the v3 swap.
+- Full guard green: 12 live suites (node_enrollment now 4) + e2e + demo 30/30 rc=0, 42 offline suites, clippy/fmt clean, `make deny` rc=0 (rcgen's `x509-parser` feature entered the server graph without a ban), gate 13/13. Frontier → `.1.2.2` (the channel v3 cert-proof handshake + rotation).
+
 ## 2026-09-07 — `.1.2` split at the issuance-vs-channel seam (`PHASE-2.1.2`)
 
 - The Phase-1 `.1.2.1`-first precedent applies again: cert issuance at enrollment and the channel v3 proof swap separate cleanly because a coherent interim exists (the cert is issued and stored while the HMAC channel stays live). Children: `.1.2.1` (migration 0011 `server_ca` + `node_certificates`, the persisted CA, the enroll response gains cert + dev-escrowed key, the node stores `cert.der`/`key.der`) → `.1.2.2` (CHANNEL_VERSION 3: the cert signature replaces the HMAC proof; rotation at ≤50% lifetime; the 17 channel suites + the demo move). Tree-only commit.

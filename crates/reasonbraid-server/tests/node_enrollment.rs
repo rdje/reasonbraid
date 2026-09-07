@@ -8,9 +8,9 @@
 //! Like the other PostgreSQL suites, these tests skip without `DATABASE_URL`.
 
 use std::net::SocketAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-use reasonbraid_server::{api_router, node_router, PRINCIPAL_HEADER};
+use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -53,6 +53,8 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
+        "server_ca",
         "node_leases",
         "node_enrollment_tokens",
         "runs",
@@ -85,7 +87,8 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let router = api_router(pool.clone()).merge(node_router(pool.clone()));
+        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -247,6 +250,32 @@ async fn a_token_enrolls_exactly_once_and_lands_identity_rows() {
     );
     assert_eq!(fingerprint.len(), 64, "sha256 hex");
 
+    // The workload certificate (`.1.2.1`, ADR-007): the response carries the
+    // leaf + the dev-escrowed key, and the cert row lands with the same
+    // fingerprint the server computed.
+    let cert_hex = enrolled["cert_der"].as_str().expect("cert_der").to_string();
+    let key_hex = enrolled["key_der"].as_str().expect("key_der").to_string();
+    assert!(!cert_hex.is_empty(), "the response carries the leaf");
+    assert!(!key_hex.is_empty(), "the response carries the escrowed key");
+    assert_eq!(
+        enrolled["cert_fingerprint"].as_str().unwrap().len(),
+        64,
+        "sha256 hex"
+    );
+    assert!(enrolled["cert_expires_at"].is_string());
+    let (stored_fp,): (String,) =
+        sqlx::query_as("SELECT cert_fingerprint FROM node_certificates WHERE node_id = $1")
+            .bind(node_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read cert row");
+    assert_eq!(stored_fp, enrolled["cert_fingerprint"].as_str().unwrap());
+    let (n_ca,): (i64,) = sqlx::query_as("SELECT count(*) FROM server_ca WHERE ca_id = 1")
+        .fetch_one(&pool)
+        .await
+        .expect("count ca");
+    assert_eq!(n_ca, 1, "the CA row exists (one per deployment)");
+
     let (used,): (bool,) = sqlx::query_as(
         "SELECT (used_at IS NOT NULL) FROM node_enrollment_tokens WHERE token_id = $1",
     )
@@ -292,6 +321,38 @@ async fn a_token_enrolls_exactly_once_and_lands_identity_rows() {
         .await
         .expect("count keys");
     assert_eq!(n_keys, 1, "the second use wrote no key row");
+    let (n_certs,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM node_certificates WHERE node_id = $1")
+            .bind(node_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count certs");
+    assert_eq!(n_certs, 1, "the second use issued no second certificate");
+}
+
+/// The CA survives a server rebuild: two `ensure_server_ca` passes over the same
+/// store return the SAME CA (the demo kills and restarts the server — previously
+/// issued leaves must keep chaining to the same anchor).
+#[tokio::test]
+async fn the_ca_survives_a_server_rebuild() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let first = ensure_server_ca(&pool).await.expect("first pass");
+    let second = ensure_server_ca(&pool)
+        .await
+        .expect("second pass (the rebuild)");
+    assert_eq!(first.cert_der, second.cert_der, "the same CA certificate");
+    assert_eq!(first.key_der, second.key_der, "the same CA key");
+
+    // A leaf issued by the FIRST handle (pre-rebuild material) is a well-formed
+    // DER artifact; the chain verification itself lands with `.1.2.2`.
+    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(
+        &first,
+        "nod_00000000-0000-7000-8000-000000000999",
+        "host-persist",
+    );
+    assert!(!cert_der.is_empty() && !key_der.is_empty());
 }
 
 /// Every refusal class is audited and effect-free: unknown token, expired token,

@@ -406,11 +406,14 @@ impl From<sqlx::Error> for ApiError {
 #[derive(Debug, Clone)]
 pub struct NodeChannelState {
     pool: PgPool,
+    /// The workload-identity CA (ADR-007): the enrollment path signs the node's
+    /// short-lived leaf with it; the `.1.2.2` handshake chains to it.
+    ca: Arc<crate::ca::ServerCa>,
 }
 
 impl NodeChannelState {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, ca: Arc<crate::ca::ServerCa>) -> Self {
+        Self { pool, ca }
     }
 
     /// Append a command to a node's inbox ledger; returns its assigned per-node cursor
@@ -769,8 +772,8 @@ where
 /// renewal), `/v1/nodes/presence` (observable online/offline state), and
 /// `/v1/nodes/enroll` (the `.1.2.1` one-time-token enrollment — the token IS the
 /// credential there, so that surface carries no principal header).
-pub fn node_router(pool: PgPool) -> Router {
-    let state = Arc::new(NodeChannelState::new(pool));
+pub fn node_router(pool: PgPool, ca: Arc<crate::ca::ServerCa>) -> Router {
+    let state = Arc::new(NodeChannelState::new(pool, ca));
     Router::new()
         .route("/v1/nodes/handshake", post(handshake))
         .route("/v1/nodes/events", post(events))
@@ -993,6 +996,16 @@ pub struct NodeEnrollRequest {
 pub struct NodeEnrollResponse {
     pub node_id: String,
     pub host_id: String,
+    /// The issued workload leaf (hex DER): CN `node:<node_id>`, SAN = the
+    /// token's host claim, 10-minute validity (`.1.2.1`, ADR-007).
+    pub cert_der: String,
+    /// The leaf's private key (hex DER) — server-generated, dev-escrowed
+    /// (the `.1.2.1` trust-store stance; the Internet profile re-evaluates).
+    pub key_der: String,
+    /// sha256 over the cert DER — the node-id → current-fingerprint binding
+    /// the `.1.2.2` handshake gates on.
+    pub cert_fingerprint: String,
+    pub cert_expires_at: DateTime<Utc>,
 }
 
 /// A token refusal (unknown / used / expired / bound elsewhere / nonce mismatch) —
@@ -1161,6 +1174,25 @@ async fn enroll(
         .execute(&mut *tx)
         .await?;
 
+    // The workload certificate (`.1.2.1`, ADR-007): issue the short-lived leaf,
+    // persist it, and return it (with the dev-escrowed key) to the node.
+    let (cert_der, key_der) = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &req.host_claim);
+    let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
+    let cert_expires_at = now + ChronoDuration::seconds(crate::ca::LEAF_TTL_SECS);
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&cert_fingerprint)
+    .bind(&req.node_id)
+    .bind(&cert_der)
+    .bind(&key_der)
+    .bind(now)
+    .bind(cert_expires_at)
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query("UPDATE node_enrollment_tokens SET used_at = $2 WHERE token_id = $1")
         .bind(&req.token_id)
         .bind(now)
@@ -1181,5 +1213,9 @@ async fn enroll(
     Ok(Json(NodeEnrollResponse {
         node_id: req.node_id,
         host_id,
+        cert_der: crate::ca::to_hex(&cert_der),
+        key_der: crate::ca::to_hex(&key_der),
+        cert_fingerprint,
+        cert_expires_at,
     }))
 }

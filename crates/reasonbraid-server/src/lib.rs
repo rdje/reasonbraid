@@ -29,6 +29,7 @@ pub mod agg;
 mod api;
 mod authority;
 mod budget;
+pub mod ca;
 mod node_channel;
 mod outbox;
 mod threads;

@@ -697,10 +697,73 @@ slice can reuse the same control plane without rewriting it.
       shows the dead-letter state; no regression.
 
 - ID: `PHASE-2.3`
-  Status: `proposed`
+  Status: `active`
   Goal: provider-attempt state machine, usage reconciliation, spend circuit breakers, ambiguous-outcome workflows
   Backlog: 23, 25
   ADR: 012, 013
+  Note: gap census (`2026-09-07`, on pickup): EXISTS — the
+    provider-attempt state machine (core: prepared/dispatched/completed/
+    failed_before_dispatch/outcome_unknown/reconciled/failed_known with
+    deterministic `apply`), the budget settlement (`.6.2`/
+    `.1.5`-adjacent: `settle_reservation` records ACTUAL usage, overruns
+    reported never clamped — `grep -n settle_reservation budget.rs`),
+    and the ambiguous-outcome basics (outcome_unknown → proof or
+    adjudication; the `.2.3` retry gate's `retry_requires_authorization`
+    is the per-adapter retry policy's core). MISSING — spend CIRCUIT
+    breakers (backlog 23; `grep -rn circuit crates/ migrations/` → no
+    matches; the budget ceiling refuses per-reservation, but nothing
+    stops NEW dispatches once a tenant's spend crosses a declared
+    threshold), usage RECONCILIATION (backlog 25: the held-vs-settled
+    picture, estimates vs receipts, uncertainty, pricing snapshots — the
+    settlement records usage but no surface reconciles it), and
+    ADR-012/013 are UNOPENED (the machinery they describe largely
+    shipped — the promotion precedent, ADR-005/006).
+  Children: `.3.1`–`.3.3` (decomposed `2026-09-07` at the contract
+    seams): `.3.1` ADR-012/013 accepted-with-evidence (the shipped
+    ambiguity machinery + budget invariants promote) → `.3.2` the spend
+    circuit breakers (a declared per-tenant spend threshold refuses NEW
+    dispatches at the reservation boundary) → `.3.3` the usage
+    reconciliation surface (held vs settled vs overrun, the estimates vs
+    receipts picture).
+
+  - ID: `PHASE-2.3.1`
+    Status: `proposed`
+    Goal: ADR-012 + ADR-013, accepted with evidence: the ambiguity
+      machinery (outcome_unknown → proof/adjudication, the §14.6
+      no-silent-retry rule, the `.2.3` retry classes) promotes to
+      ADR-012; the budget invariants (reserve before dispatch at both
+      boundaries, settle with actual usage, overruns reported never
+      clamped, denials recorded) promote to ADR-013 (the pricing-
+      snapshot machinery is named as the Phase-4+ trigger). No code.
+    ADR: 012, 013
+    Acceptance: both ADRs accepted (evidence-gated), the revisit
+      triggers named; no code changes.
+
+  - ID: `PHASE-2.3.2`
+    Status: `proposed`
+    Goal: the spend circuit breakers — a declared per-tenant spend
+      threshold (a budget-ceiling extension or a sibling row): once the
+      tenant's recorded spend (settled usage + held reservations) crosses
+      it, NEW dispatch reservations are refused with a typed reason and
+      the breaker state is inspectable + resettable (the operator verb);
+      the refusal is audited (the denial-row pattern). Backlog 23's core.
+    Backlog: 23
+    Acceptance: a tenant over the threshold refuses NEW dispatches with
+      the typed reason while existing reservations settle; the breaker
+      resets; no regression.
+
+  - ID: `PHASE-2.3.3`
+    Status: `proposed`
+    Goal: the usage reconciliation surface — the estimates-vs-receipts
+      picture per thread/tenant: held (active reservations) vs settled
+      vs overrun vs denied, with the per-dimension sums; the inspection
+      is tenant_admin-gated and read-only (the budget engine's records,
+      never a rewrite). Backlog 25's honest dev slice (pricing snapshots
+      stay Phase 4+ — ADR-013's trigger).
+    Backlog: 25
+    Acceptance: the surface shows held/settled/overrun/denied per
+      dimension for a thread + tenant; it matches the ledger rows
+      (measured); no regression.
 
 - ID: `PHASE-2.4`
   Status: `proposed`
@@ -729,13 +792,19 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.3` | `proposed` | `.2` is COMPLETE (ADR-005, the lease epoch, the retry policy, the two-way quarantine); the provider-attempt state machine + usage reconciliation lane executes now |
+| 1 | `PHASE-2.3.1` | `proposed` | `.3` decomposed at the contract seams (the census: the state machine + settlement + ambiguity basics exist; circuit breakers + the reconciliation surface + ADR-012/013 are open); the ADR-012/013 records execute now |
  `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
  `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.3` decomposed at the contract seams — the census found
+  the state machine + the settlement + the ambiguity basics EXIST while
+  the circuit breakers (backlog 23), the usage-reconciliation surface
+  (backlog 25), and ADR-012/013 are open; children `.3.1` (ADR-012/013
+  accepted-with-evidence) → `.3.2` (the spend circuit breakers) → `.3.3`
+  (the reconciliation surface); frontier → `.3.1`.
 - `2026-09-07`: `.2.4` done — the two-way quarantine: the terminal refusal
   reports the dead letter ONCE (best-effort, journaled first), the server
   auto-quarantines in the receipt transaction, `POST /v1/nodes/replay` +
@@ -1618,6 +1687,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.3` | `REASONBRAID-PHASE2-0023` | the contract-seam split (the state machine + settlement exist; circuit breakers, the reconciliation surface, ADR-012/013 open) |
 | `PHASE-2.2.4` | `REASONBRAID-PHASE2-0022` | the two-way quarantine: the once-only best-effort dead-letter report, the server's auto-quarantine in the receipt transaction, `POST /v1/nodes/replay` + `rb node replay` (the decision refreshes + the row re-sequences), the replayed-decision refresh + the decision-scoped retry count — **`.2` COMPLETE** |
 | `PHASE-2.2.3` | `REASONBRAID-PHASE2-0021` | the retry policy: the pure `retry_decision` (§14.6 classes) + the `allow_possible_duplicate` wire flag + the worker's retry gate (attempt-counted, budget-denials terminal, ambiguity authorization-required) |
 | `PHASE-2.2.2` | `REASONBRAID-PHASE2-0020` | the lease epoch: migration 0015 + CHANNEL_VERSION 5 — every fenced write carries the epoch it saw, a stale-epoch renewal loses the race, the events transaction re-verifies FOR UPDATE |

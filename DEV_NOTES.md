@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.3: the lane's census found the machinery shipped and the records unwritten — again
+
+- **Third promotion lane in a row** (ADR-005, ADR-006 before it): the state machine, the settlement, and the ambiguity paths all exist and are green — ADR-012/013's job is to promote the evidence and name the triggers, not to build. The genuinely open contracts are the circuit breakers (backlog 23) and the reconciliation surface (backlog 25).
+- promotion: declined (the promotion-by-evidence pattern is ADR-005/006's recorded precedent; the ADR records themselves hold the answers). **Frontier `PHASE-2.3.1` (ADR-012/013).**
+
 ## _(2026-09-07)_ — PHASE-2.2.4: the dead letter rides the channel it refused on — the event path already knew how
 
 - **The terminal refusal is a node fact, the quarantine is a server row — the existing event channel is the bridge.** No new transport, no polling the node's journal: the report is an outgoing event (deduped + best-effort like every event), and the server's result path auto-quarantines in the SAME transaction as the receipt.

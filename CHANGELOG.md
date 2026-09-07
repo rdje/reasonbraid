@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.3` split at the contract seams (`PHASE-2.3`)
+
+- The census found the machinery largely shipped: the provider-attempt state machine (core, deterministic `apply`), the budget settlement (actual usage recorded, overruns reported never clamped), and the ambiguity basics (`outcome_unknown` → proof/adjudication; the `.2.3` retry gate's `retry_requires_authorization`). What's open: spend CIRCUIT breakers (backlog 23 — nothing stops NEW dispatches once a tenant's spend crosses a declared threshold; the ceiling only refuses per-reservation), the usage RECONCILIATION surface (backlog 25 — the settlement records usage but nothing reconciles held vs settled vs overrun), and ADR-012/013 (unopened, though their machinery shipped — the promotion precedent).
+- Children: `.3.1` ADR-012/013 accepted-with-evidence → `.3.2` the spend circuit breakers → `.3.3` the reconciliation surface. Tree-only commit.
+
 ## 2026-09-07 — The two-way quarantine: a dead letter auto-quarantines, the operator replays it (`PHASE-2.2.4`)
 
 - The terminal refusal (the `.2.3` retry gate's `Refuse`) reports a `work_dead_lettered` event — ONCE per operation (the outgoing-events dedup), best-effort (journaled first; a failed send defers to the reconcile's re-emit). The server auto-quarantines the inbox row with the reason IN the same transaction as the receipt.

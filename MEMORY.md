@@ -23,13 +23,14 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.3` (**`.2` is COMPLETE** — ADR-005
-  (the PG queue), the lease epoch, the retry policy, the two-way
-  quarantine: dead-letter auto-quarantine + `rb node replay`).
-- **Next action:** execute `PHASE-2.3` — the provider-attempt state
-  machine, usage reconciliation, spend circuit breakers,
-  ambiguous-outcome workflows (backlog 23/25, ADR-012/013) — pick it up
-  with a census like `.1`'s/`.2`'s.
+- **Active tree:** `PHASE-2` → frontier `.3.1` (`.3` split at the contract
+  seams: the state machine + settlement + ambiguity basics exist; circuit
+  breakers, the reconciliation surface, ADR-012/013 open). Then `.3.2`,
+  `.3.3`.
+- **Next action:** execute `PHASE-2.3.1` — ADR-012 + ADR-013
+  accepted-with-evidence (the shipped ambiguity machinery + budget
+  invariants promote; the pricing-snapshot trigger named — ADR-005/006's
+  precedent; no code changes).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

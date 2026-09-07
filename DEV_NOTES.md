@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.2: the lane's census found one-way machinery — quarantine refuses, nothing replays
+
+- **Quarantine is one-way today**: the `.1.2.3` verbs mark + prune, but nothing re-delivers a quarantined command and nothing auto-quarantines after N dispatch refusals (the `.1.5.2` gate refuses, the row just sits). Dead-letter/replay is a REVERSAL contract, not a new bucket.
+- **The fencing is per-request, not per-transaction**: `verify_fencing` runs at admission; the result's fold transaction applies after — and a stale heartbeat's `renew_lease` only updates `lease_expires_at`/`last_seen_at` (it can extend the lease of the session its own handshake just fenced). The `.2.2` hardening is the epoch column + the renewal race test, not a rewrite.
+- promotion: declined (the seam facts are the leaf's census note — the ADR-005 answer lands with `.2.1`). **Frontier `PHASE-2.2.1` (ADR-005 accepted-with-evidence).**
+
 ## _(2026-09-07)_ — PHASE-2.1.6.2: the run's uniqueness is the idempotency claim's job — the writer just stands behind it
 
 - **One result = one run, structurally, not policed.** The run row writes AFTER `claim_idempotency_in_tx` in the result fold: a redelivered result hits `Replay` and returns before the writer, so duplicates can never reach it. The test proves it by counting (two duplicate transports, one run) — the same stance as `.1.6.1`'s no-duplication.

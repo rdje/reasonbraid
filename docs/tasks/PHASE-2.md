@@ -557,9 +557,81 @@ slice can reuse the same control plane without rewriting it.
       incarnation; inspection shows the chain; no regression.
 
 - ID: `PHASE-2.2`
-  Status: `proposed`
+  Status: `active`
   Goal: production-grade leases/fencing, retry policy, dead-letter/quarantine/replay
   ADR: 005 (transport choice if Phase 0 left it open)
+  Note: gap census (`2026-09-07`, on pickup): EXISTS — the `.1.2.2`
+    lease/fencing (60s TTL, token rotation per handshake, heartbeats
+    renew, stale tokens refused; `grep -n LEASE_TTL node_channel.rs` →
+    line 77) + the `.1.2.3` quarantine/prune (manual, operator verbs,
+    reason-stored) + the no-silent-retry rule (outcome_unknown → proof or
+    adjudication). MISSING — a capability-aware RETRY policy (§14.6: the
+    provider-accepted-but-unproven class; `grep -rn 'retry' server/node
+    src` → the reason code only), an automatic dead-letter surface (the
+    quarantine is operator-driven, nothing auto-quarantines after N
+    refusals), and replay (re-delivering a quarantined/dead-lettered
+    command is impossible today — quarantine is one-way). ADR-005 is
+    UNOPENED (`docs/adr/INDEX.md` has no 005); the Phase-0 `.2.2` outbox
+    worker + the channel decisions are its evidence.
+  Children: `.2.1`–`.2.4` (decomposed `2026-09-07` at the contract
+    seams): `.2.1` ADR-005 (transport: the existing PG-queue evidence,
+    accepted-with-evidence — the ADR-006 precedent) → `.2.2` lease/
+    fencing hardening (renewal races, lease epochs, fencing on the
+    dispatch path) → `.2.3` the retry policy (the §14.6 classes +
+    `retry_requires_authorization` + the supervisor's retry gate) →
+    `.2.4` dead-letter/replay (auto-quarantine after refusals + an
+    operator replay verb).
+
+  - ID: `PHASE-2.2.1`
+    Status: `proposed`
+    Goal: ADR-005 — the transport choice, accepted with evidence: the
+      Phase-0 `.2.2` leased outbox worker IS the PostgreSQL-queue choice
+      (ADR-004's machinery), the node channel is the pull surface, and
+      the `.1` lane proved the delivery/replay/resume semantics over it;
+      no broker experiment (the dev profile has no measured need — the
+      NATS/JetStream trigger is named, ADR-006's precedent).
+    ADR: 005
+    Acceptance: ADR-005 accepted (evidence-gated), the revisit trigger
+      named; no code changes.
+
+  - ID: `PHASE-2.2.2`
+    Status: `proposed`
+    Goal: lease/fencing hardening — the renewal race (a heartbeat
+      concurrent with a handshake must not resurrect a fenced token:
+      both write the lease row today, so the LAST writer wins — a stale
+      heartbeat can extend a lease its own handshake just fenced), a
+      lease EPOCH (every handshake bumps it; renewals/events carry the
+      epoch they saw, and a renewal from a fenced epoch is refused), and
+      the check-vs-commit window (the fencing check runs at request
+      admission, then the transaction applies — a lease that lapses
+      mid-transaction is not re-checked; the epoch column closes it).
+    Acceptance: the renewal race test (concurrent heartbeat + handshake
+      → the old token stays fenced); a stale-epoch renewal is refused;
+      no regression.
+
+  - ID: `PHASE-2.2.3`
+    Status: `proposed`
+    Goal: the retry policy — the §14.6 classes as a pure decision (the
+      provider-accepted-but-unproven class retries only with an explicit
+      possible-duplicate authorization; the refused/failed_known classes
+      never auto-retry; the transient pre-dispatch class retries
+      bounded), the `retry_requires_authorization` reason code wired, and
+      the supervisor's retry gate honoring it (a node-side journal fact,
+      no silent retry).
+    Acceptance: the pure retry decision's tests (per-class allow/refuse);
+      a would-be retry without the authorization is refused and visible;
+      no regression.
+
+  - ID: `PHASE-2.2.4`
+    Status: `proposed`
+    Goal: dead-letter/replay — auto-quarantine after N dispatch
+      refusals (the `.1.5.2` gate's refusals count toward it) with the
+      reason + the count, and the operator replay verb (a dead-lettered
+      command re-enters the delivery tail with a fresh admission
+      decision — quarantine becomes two-way).
+    Acceptance: a repeatedly-refused command auto-quarantines with the
+      refusal evidence; replay re-delivers it exactly once; inspection
+      shows the dead-letter state; no regression.
 
 - ID: `PHASE-2.3`
   Status: `proposed`
@@ -594,11 +666,17 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.2` | `proposed` | `.1` is COMPLETE (all six gaps closed: cert lifecycle, revocation, delegation, cached decisions, incarnation/run writers — deferral #4 closes); the production-grade leases/fencing + retry + dead-letter lane executes now |
+| 1 | `PHASE-2.2.1` | `proposed` | `.2` decomposed at the contract seams (the census: leases/fencing + quarantine exist in their Phase-1 forms; retry policy, dead-letter/replay, and ADR-005 are open); the ADR-005 record executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.2` decomposed at the contract seams — the census found
+  the `.1.2.2` lease/fencing + the `.1.2.3` quarantine/prune EXIST in
+  their Phase-1 forms while the retry policy, the dead-letter/replay
+  surface, and ADR-005 are open; children `.2.1` (ADR-005
+  accepted-with-evidence) → `.2.2` (lease/fencing hardening) → `.2.3`
+  (the retry policy) → `.2.4` (dead-letter/replay); frontier → `.2.1`.
 - `2026-09-07`: Unblocked — the Phase-1 G2 close (`PHASE-1.8.2`, gate record
   **Met**) releases the frontier; `.1` (workload certificate lifecycle,
   scoped grants, delegated authority context, revocation, cached-decision
@@ -1314,6 +1392,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.2` | `REASONBRAID-PHASE2-0018` | the contract-seam split (the Phase-1 lease/fencing + quarantine exist; retry policy, dead-letter/replay, ADR-005 open) |
 | `PHASE-2.1.6.2` | `REASONBRAID-PHASE2-0017` | the run writer: migration 0014 + the result fold's run row (after the idempotency claim — one result = one run) + `GET /v1/admin/runs` + `rb inspect runs` + the demo beat — **`.1.6` complete, deferral #4 closes, `.1` COMPLETE** |
 | `PHASE-2.1.6.1` | `REASONBRAID-PHASE2-0016` | the incarnation writer: the enroll request's §8.1 facts → the `incarnations` row (role nodes only) + `GET /v1/admin/incarnations` + `rb inspect incarnations` + `rb-node`'s four flags + the demo beat |
 | `PHASE-2.1.6` | `REASONBRAID-PHASE2-0015` | the incarnation-vs-run split (the 0007 hierarchy is schema-only — deferral #4; the enroll request carries no §8.1 facts) |

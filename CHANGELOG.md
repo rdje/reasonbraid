@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.2` split at the contract seams (`PHASE-2.2`)
+
+- The census found the Phase-1 machinery in place (the `.1.2.2` lease/fencing: 60s TTL, per-handshake token rotation, refused stale tokens; the `.1.2.3` quarantine/prune: operator-driven, reason-stored) while three contracts are open: a capability-aware RETRY policy (§14.6's provider-accepted-but-unproven class — only the reason code exists), a dead-letter/replay surface (quarantine is one-way today: nothing auto-quarantines after N refusals, nothing re-delivers), and ADR-005 (unopened — the Phase-0 `.2.2` outbox worker + the channel decisions are its evidence).
+- Children: `.2.1` ADR-005 accepted-with-evidence → `.2.2` lease/fencing hardening (the renewal race, the lease epoch, the check-vs-commit window) → `.2.3` the retry policy → `.2.4` dead-letter/replay. Tree-only commit.
+
 ## 2026-09-07 — The run writer: the result receipt closes deferral #4 — `.1` is COMPLETE (`PHASE-2.1.6.2`)
 
 - Migration 0014 adds `runs.attempt_id`; the result fold writes the run row **after the idempotency claim** — one result = one run, ever: a redelivered result replays the original application and writes no second run (the live test's two duplicate transports prove the count stays 1).

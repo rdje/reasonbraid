@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.6` split at the incarnation-vs-run seam (`PHASE-2.1.6`)
+
+- The census found the 0007 hierarchy SCHEMA-ONLY: `grep -rn 'INSERT INTO incarnations\|INSERT INTO runs' crates/` → no matches — deferral #4 ("the incarnation/run row writers are deferred to Phase 2 identity") is still open. The enroll request carries none of the §8.1 facts the node knows at start (`provider`/`model`/`harness`/`config`), and the dispatch boundary is node-local (the run row needs a server-side write keyed on the result receipt).
+- Children: `.1.6.1` the incarnation writer at enrollment (the request gains the §8.1 facts, the transaction writes the row, `rb-node` gains the flags, re-enroll does not duplicate) → `.1.6.2` the run writer (a result receipt records the run linked to the incarnation + attempt). Tree-only commit.
+
 ## 2026-09-07 — The cache refuses at the dispatch boundary: a revocation stops the next dispatch, measured (`PHASE-2.1.5.2`)
 
 - The `.1.5.1` semantics got wired to the real surfaces: migration 0013 (the per-tenant `revocation_epoch` + the inbox's decision columns), the three `.1.3` revocation writes bump the epoch **in their own transaction** (the status change and the invalidation commit together — no window where one is durable without the other), and the delivered work item carries the admission decision (`authz_ref` + `policy_digest` + `decided_at` + the epoch at decision time). The handshake/poll responses carry the tenant's CURRENT epoch; the wire growth is CHANNEL_VERSION 4.

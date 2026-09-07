@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.6: the incarnation writer has no facts to write — the enroll request never asked
+
+- **The hierarchy is schema-only because the boundary never captured the facts.** `incarnations` has the §8.1 columns (provider/model/harness/config) since 0007, but the enroll request carries only the token + secret + host claim — the node KNOWS its harness at start (it builds the adapter from its flags) and throws the knowledge away. The writer's job is to stop discarding it: the request gains the fields, the transaction writes the row.
+- **The run row needs the server's receipt, not the node's dispatch.** The dispatch boundary is node-local (the attempt row lives in SQLite); the server only sees the attempt when the result lands. `.1.6.2`'s write must key on the result receipt — the run links the incarnation + attempt the receipt names.
+- promotion: declined (the seam facts are the leaf's census note — no new cross-cutting decision). **Frontier `PHASE-2.1.6.1` (the incarnation writer).**
+
 ## _(2026-09-07)_ — PHASE-2.1.5.2: the cache's only job is to refuse — and the boundary where it refuses IS the feature
 
 - **The dispatch boundary, not the poll, is where revocation bites.** A command authorized at admission and delivered before a revocation was previously dispatched anyway. Now the admission decision rides the delivery, the revocation bumps the tenant epoch IN the revocation's transaction, and the node evaluates the cached decision before any provider contact — the measured live leg proves a fresh allow completes, then a revocation makes the NEXT dispatch refuse without a re-ask (`failed_before_dispatch`, staleness in the evidence, adapter never invoked).

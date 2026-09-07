@@ -469,7 +469,7 @@ slice can reuse the same control plane without rewriting it.
       closed for irreversible writes; the suites stay green.
 
   - ID: `PHASE-2.1.6`
-    Status: `proposed`
+    Status: `active`
     Goal: incarnation/run writers — enroll records the incarnation row
       (harness + model/provider facts known at node start; the 0007
       hierarchy gets its writers), dispatches record run rows linked to
@@ -478,6 +478,46 @@ slice can reuse the same control plane without rewriting it.
     Acceptance: an enrolled node's incarnation row exists and is
       inspectable; a dispatch links its run + attempt; re-enroll/rotation
       do not duplicate incarnations; no regression.
+    Note: gap census (`2026-09-07`, on pickup): the 0007 hierarchy is
+      SCHEMA-ONLY — `grep -rn 'INSERT INTO incarnations\|INSERT INTO runs'
+      crates/` → no matches (deferral #4: "the incarnation/run row writers
+      are deferred to Phase 2 identity"); `incarnations` (role, provider/
+      model/harness/config, validity window) + `runs` (→ incarnation)
+      both exist. The node knows its harness at start (`rb-node` builds
+      the adapter from its flags) but the ENROLL request carries none of
+      the §8.1 facts (`provider`/`model`/`harness`/`config`); the dispatch
+      boundary is node-local (the attempt row is journaled there, the
+      server folds the result) — the run row needs a server-side write
+      keyed on the result receipt.
+    Children: `.1.6.1`–`.1.6.2` (decomposed `2026-09-07` at the
+      incarnation-vs-run seam — the `.1.2.1`-first precedent: a coherent
+      interim exists, incarnations without runs).
+
+  - ID: `PHASE-2.1.6.1`
+    Status: `proposed`
+    Goal: the incarnation writer — the enroll request gains the §8.1
+      facts the node knows at start (`provider`/`model`/`harness`/
+      `config`; the dev profile's fake harness is one honest value), the
+      enroll transaction writes the `incarnations` row (role, tenant, the
+      facts, `valid_from` = now), `rb-node` gains the flags, and the row
+      is inspectable (`rb inspect` or the enrollment surface); re-enroll/
+      rotation do NOT duplicate incarnations (one ACTIVE incarnation per
+      role — a re-enroll refreshes it or adds a new valid window, the
+      decided contract below).
+    Backlog: —
+    Acceptance: an enrolled node's incarnation row exists with its §8.1
+      facts and is inspectable; re-enroll/rotation do not duplicate
+      incarnations; no regression.
+
+  - ID: `PHASE-2.1.6.2`
+    Status: `proposed`
+    Goal: the run writer — a node-emitted result receipt records a `runs`
+      row linked to the CURRENT incarnation + the attempt (the attempt id
+      rides the result payload); the run is inspectable beside its
+      attempt; deferral #4 closes.
+    Backlog: —
+    Acceptance: a dispatched attempt's result links its run + attempt +
+      incarnation; inspection shows the chain; no regression.
 
 - ID: `PHASE-2.2`
   Status: `proposed`
@@ -517,7 +557,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.6` | `proposed` | `.1.5` is COMPLETE (ADR-008 + the delivery-carried decision + the tenant epoch + the node-side dispatch gate — the measured revocation invalidation); the incarnation/run writers execute now |
+| 1 | `PHASE-2.1.6.1` | `proposed` | `.1.6` decomposed at the incarnation-vs-run seam (the census: the 0007 hierarchy is schema-only — no writers, deferral #4; the enroll request carries no §8.1 facts); the incarnation writer executes now |
 
 ## Changelog
 
@@ -578,6 +618,12 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.6` decomposed at the incarnation-vs-run seam — the
+  census found the 0007 hierarchy SCHEMA-ONLY (`grep -rn 'INSERT INTO
+  incarnations\|INSERT INTO runs' crates/` → no matches; deferral #4) and
+  the enroll request carries none of the §8.1 facts; children `.1.6.1`
+  (the incarnation writer at enrollment) → `.1.6.2` (the run writer keyed
+  on the result receipt); frontier → `.1.6.1`.
 - `2026-09-07`: `.1.5.2` done — the cached-decision machinery: migration
   0013 (the per-tenant revocation epoch + the inbox's decision columns), the
   `.1.3` revocation writes bump the epoch IN their transaction, the delivery
@@ -1129,4 +1175,5 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.1.6` | `REASONBRAID-PHASE2-0015` | the incarnation-vs-run split (the 0007 hierarchy is schema-only — deferral #4; the enroll request carries no §8.1 facts) |
 | `PHASE-2.1.5.2` | `REASONBRAID-PHASE2-0014` | the cached-decision machinery: migration 0013 (the tenant epoch + the inbox decision columns), the revocation writes bump the epoch in-transaction, the delivery-carried admission decision + CHANNEL_VERSION 4, the node journal's cached decision + the dispatch gate (refuses stale/denied/absent — journaled, adapter never invoked); the measured live revocation-invalidation leg — **`.1.5` complete** |

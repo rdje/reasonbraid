@@ -4804,3 +4804,362 @@ async fn the_twelve_terminals_and_the_minority_report_ride_the_close() {
     assert_eq!(report["coverage"][1]["included"], json!(false));
     assert_eq!(report["coverage"][1]["reason"], json!("uncited"));
 }
+
+#[tokio::test]
+async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "ev-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let create = |profile: &'static str, subject: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let tenant_id = tenant_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/threads",
+                &human_id,
+                &json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": "thread.create",
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": format!("ev-create-{subject}"),
+                    "body": {
+                        "tenant_id": tenant_id,
+                        "subject": subject,
+                        "objective": "probe",
+                        "workflow_profile": profile,
+                    },
+                    "client_context": {},
+                }),
+            )
+            .await
+        }
+    };
+
+    // ── the evidence_review profile: solicit → evidence_request → assess ──
+    let (status, created) = create("evidence_review", "ev-request").await;
+    assert_eq!(status, 200, "the evidence_review create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let read_events = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        let tenant_id = tenant_id.clone();
+        async move {
+            get(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+                &human_id,
+            )
+            .await
+        }
+    };
+
+    // 1. The claim (step 0: solicit) — the request will target its digest.
+    let claim_content = "the citation validation holds";
+    let claim_digest = reasonbraid_server::fetcher::digest_sha256_hex(claim_content.as_bytes());
+    let (status, claimed) = command(
+        "ev-claim",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the claim",
+            "kind": "claim",
+            "claims": [ { "content": claim_content } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the claim contributes: {claimed}");
+
+    // 2. The step gate: a request during `solicit` is the typed refusal.
+    let (status, refused) = command(
+        "ev-request-early",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "show the evidence",
+            "kind": "evidence_request",
+            "target_claim_digest": claim_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the early request refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("evidence_request"),
+        "{refused}"
+    );
+
+    // 3. The round advance moves the step: solicit → evidence_request.
+    let (status, advanced) = command(
+        "ev-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances: {advanced}");
+
+    // 4. The request on its step: accepted, the target rides the event.
+    let (status, requested) = command(
+        "ev-request",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "show the evidence",
+            "kind": "evidence_request",
+            "target_claim_digest": claim_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the request succeeds: {requested}");
+    let (status, timeline) = read_events().await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let request_event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| {
+            e["event_type"] == json!("thread.contribution_submitted")
+                && e["body"]["kind"] == json!("evidence_request")
+        })
+        .cloned()
+        .expect("the request event exists");
+    assert_eq!(
+        request_event["body"]["target_claim_digest"],
+        json!(claim_digest)
+    );
+
+    // 5. A digest that is not a claim of THIS thread is the typed refusal.
+    let foreign = reasonbraid_server::fetcher::digest_sha256_hex("never claimed".as_bytes());
+    let (status, refused) = command(
+        "ev-request-foreign",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "show the evidence",
+            "kind": "evidence_request",
+            "target_claim_digest": foreign,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the foreign target refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("not a claim"),
+        "{refused}"
+    );
+
+    // 6. The evidence_reference kind carries evidence — empty refs refuse.
+    let (status, refused) = command(
+        "ev-ref-empty",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "empty",
+            "kind": "evidence_reference",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the empty reference refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("at least one"),
+        "{refused}"
+    );
+    let (status, referenced) = command(
+        "ev-ref",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the evidence",
+            "kind": "evidence_reference",
+            "evidence_refs": [ { "uri": "https://example.org/evidence" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference contributes: {referenced}");
+
+    // 7. The kind-specific field rides its kind: a claim cannot carry the target.
+    let (status, refused) = command(
+        "ev-claim-target",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "misplaced",
+            "kind": "claim",
+            "target_claim_digest": claim_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the misplaced target refuses: {refused}");
+
+    // ── the independent_panel profile: blind_solicit → adjudicate → decide ──
+    let (status, created) = create("independent_panel", "ev-verdict").await;
+    assert_eq!(status, 200, "the panel create: {created}");
+    let thread2_id = created["thread_id"].as_str().unwrap().to_string();
+    let command2 = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread2_id = thread2_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread2_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // 8. A verdict during `blind_solicit` refuses (the adjudicate step gate).
+    let (status, refused) = command2(
+        "ev-verdict-early",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "too early",
+            "kind": "verdict",
+            "verdict": {
+                "target_digest": "sha256:00",
+                "rule": "majority",
+                "outcome": "accepted_with_recorded_objections",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the early verdict refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("adjudicate"),
+        "{refused}"
+    );
+
+    // 9. The round advance commits the blind phase AND seats `adjudicate`.
+    let (status, advanced) = command2(
+        "ev-advance-2",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the panel advances: {advanced}");
+
+    // 10. The verdict on its step: the attributable record rides the event
+    // with the CANONICAL outcome (the alias never persists).
+    let (status, verdict) = command2(
+        "ev-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel judged",
+            "kind": "verdict",
+            "verdict": {
+                "target_digest": "sha256:00",
+                "rule": "majority",
+                "outcome": "decided",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the verdict succeeds: {verdict}");
+    let (status, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread2_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let verdict_event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| {
+            e["event_type"] == json!("thread.contribution_submitted")
+                && e["body"]["kind"] == json!("verdict")
+        })
+        .cloned()
+        .expect("the verdict event exists");
+    assert_eq!(
+        verdict_event["body"]["verdict"]["outcome"],
+        json!("accepted_by_rule")
+    );
+    assert_eq!(verdict_event["body"]["verdict"]["rule"], json!("majority"));
+
+    // 11. The verdict field rides its kind only.
+    let (status, refused) = command2(
+        "ev-verdict-misplaced",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "misplaced",
+            "kind": "position",
+            "verdict": {
+                "target_digest": "sha256:00",
+                "rule": "majority",
+                "outcome": "accepted_by_rule",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the misplaced verdict refuses: {refused}");
+}

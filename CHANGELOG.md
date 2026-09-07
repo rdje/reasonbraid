@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The contribution-side execution lands — the `.2` lane is COMPLETE (`PHASE-5.2.4.2`)
+
+- The kind vocabulary gains `evidence_request` (targets ONE claim digest of THIS thread — the JSONB scan over the server-computed records; the request is not an acquisition) and `verdict` (the judged digest + the rule + the §13.4 outcome, canonicalized); the step gates execute the ADR-016 composition (request → `evidence_request`, verdict → `adjudicate`); the round advance generalizes to the step advance (one step per round, clamped at the terminal — the blind commitment flag is its special case); the `evidence_reference` kind refuses empty refs. Measured: profiles 29. **The `.2` lane (blind-first contributions, structured claims, evidence requests, adjudication, minority reports, the twelve terminals) is COMPLETE.**
+
 ## 2026-09-07 — The close vocabulary lands (`PHASE-5.2.4.1`)
 
 - The close outcome speaks §13.4's twelve terminals: `decided`/`inconclusive` stay accepted aliases but never persist — the event and the projection's `close_outcome` carry the canonical name; the family rule replaces the `.1.5.3` check (a decision terminal with an unresolved register is the typed refusal); the minority report rides the close event (synthesizer, input range, sources, coverage). Measured: profiles 28.

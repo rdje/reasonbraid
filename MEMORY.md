@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.2.4.2` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.3` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,12 +28,12 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.2.4.2` — the
-  contribution-side execution: the `evidence_request` kind
-  (targets ONE claim digest of this thread; the step gate) +
-  the `verdict` kind (the judged digest + the rule + the
-  §13.4 outcome; the `adjudicate` step gate) + the
-  `evidence_reference` kind's non-empty refs.
+- **Next action:** execute `PHASE-5.3` — the moderator and
+  synthesizer constraints (§13.5): the moderator cannot vote,
+  suppress dissent silently, fabricate evidence, change the
+  electorate, authorize spend, or publish policy; the
+  synthesizer's auditable transformations. Decompose at the
+  census seams first (the `.2` lane COMPLETE).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

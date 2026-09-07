@@ -257,8 +257,16 @@ pub enum ContributionKind {
     Claim,
     Assumption,
     EvidenceReference,
+    /// `.2.4.2` (ADR-029): the evidence request — targets ONE claim digest of
+    /// THIS thread (the `target_claim_digest` body field) and is NOT an
+    /// acquisition (no budget, no resolver authority).
+    EvidenceRequest,
     Question,
     Summary,
+    /// `.2.4.2` (ADR-029): the adjudication verdict — the attributable record
+    /// (`verdict` body field: the judged digest + the rule + the §13.4
+    /// outcome), legal on the `adjudicate` step only.
+    Verdict,
 }
 
 /// One evidence reference attached to a contribution (`PHASE-1.5.1`): a URI, an
@@ -293,6 +301,26 @@ pub struct ContributeBody {
     /// the digest is computed server-side and never trusted from the wire.
     #[serde(default)]
     pub claims: Vec<ClaimInput>,
+    /// `.2.4.2`: the evidence request's target — ONE claim digest of THIS
+    /// thread. Legal only on an `evidence_request`-kind contribution.
+    #[serde(default)]
+    pub target_claim_digest: Option<String>,
+    /// `.2.4.2`: the adjudication verdict — legal only on a `verdict`-kind
+    /// contribution.
+    #[serde(default)]
+    pub verdict: Option<VerdictInput>,
+}
+
+/// The adjudication verdict input (`.2.4.2`, ADR-029): the judged digest, the
+/// decision rule applied, and the §13.4 outcome declared. The record is
+/// attributable (the contribution's author rides the event) — never a silent
+/// rewrite; the canonical outcome persists (the legacy aliases never do).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerdictInput {
+    pub target_digest: String,
+    pub rule: String,
+    pub outcome: CloseOutcome,
 }
 
 /// One structured claim riding a contribution (`PHASE-5.2.2`, ADR-029): the
@@ -816,6 +844,31 @@ where
     .await
 }
 
+/// `.2.4.2` (ADR-029): whether ONE claim digest is a claim of ANY contribution
+/// of this thread — the evidence request targets a claim that exists HERE (the
+/// request is not an acquisition, and it cannot demand evidence for a claim
+/// that was never made). The JSONB containment matches the server-computed
+/// `claims[].digest` records.
+async fn claim_exists_in_thread<'e, E>(
+    mut tx: E,
+    tenant_id: &TenantId,
+    thread_id: &ThreadId,
+    claim_digest: &str,
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM event_log          WHERE tenant_id = $1 AND aggregate_id = $2          AND body -> 'claims' @> jsonb_build_array(jsonb_build_object('digest', $3::text)))",
+    )
+    .bind(tenant_id.to_string())
+    .bind(thread_id.to_string())
+    .bind(claim_digest)
+    .fetch_one(&mut *tx)
+    .await
+}
+
 /// `.2.3` (ADR-029): whether a blind contribution's phase has committed — a
 /// LATER event that is either a round advance carrying `blind_committed: true`
 /// (the commitment point) or the close/cancel (which ends the phase with the
@@ -1141,19 +1194,21 @@ where
             let _ = body;
             require_open(&projection, "advance_round")?;
             ensure_participant(&projection, principal)?;
-            // `.2.3` (ADR-029): the round advance during the blind phase IS the
-            // commitment point — it moves the step past `blind_solicit` and the
-            // event records `blind_committed` so the read surface can serve the
-            // previously blind bodies. No new verb: the existing transition.
+            // `.2.3`/`.2.4.2` (ADR-016/029): the round advance IS the step
+            // advance — the composition executes one step per round (clamped
+            // at the terminal step; the close still seats it). The
+            // `blind_committed` flag rides the event when the advance moved
+            // PAST `blind_solicit` (the blind phase's commitment point — the
+            // read surface's redaction scan keys on it). No new verb: the
+            // existing transition.
             let commits_blind = projection
                 .workflow_steps
                 .get(projection.workflow_step)
                 .map(|s| s.as_str())
                 == Some("blind_solicit");
             projection.current_round += 1;
-            if commits_blind {
-                projection.workflow_step += 1;
-            }
+            projection.workflow_step = (projection.workflow_step + 1)
+                .min(projection.workflow_steps.len().saturating_sub(1));
             (
                 EVENT_ROUND_ADVANCED,
                 json!({
@@ -1179,6 +1234,64 @@ where
                 return Err(ThreadError::InvalidCommand(
                     "structured claims ride a `claim`-kind contribution only".to_string(),
                 ));
+            }
+            // `.2.4.2` (ADR-029): the kind-specific fields ride their kind —
+            // the target names a claim only for an evidence request, the
+            // verdict only for a verdict.
+            if body.target_claim_digest.is_some() && body.kind != ContributionKind::EvidenceRequest
+            {
+                return Err(ThreadError::InvalidCommand(
+                    "the claim target rides an `evidence_request`-kind contribution only"
+                        .to_string(),
+                ));
+            }
+            if body.verdict.is_some() && body.kind != ContributionKind::Verdict {
+                return Err(ThreadError::InvalidCommand(
+                    "the verdict rides a `verdict`-kind contribution only".to_string(),
+                ));
+            }
+            // The evidence_reference kind CARRIES evidence — an empty refs
+            // list would claim support it does not show.
+            if body.kind == ContributionKind::EvidenceReference && body.evidence_refs.is_empty() {
+                return Err(ThreadError::InvalidCommand(
+                    "an `evidence_reference` contribution requires at least one evidence reference"
+                        .to_string(),
+                ));
+            }
+            // The step gates (the ADR-016 composition executing): the request
+            // belongs to the `evidence_request` step, the verdict to the
+            // `adjudicate` step.
+            let step = projection
+                .workflow_steps
+                .get(projection.workflow_step)
+                .map(|s| s.as_str());
+            if body.kind == ContributionKind::EvidenceRequest {
+                let Some(target) = body.target_claim_digest.clone() else {
+                    return Err(ThreadError::InvalidCommand(
+                        "an `evidence_request` contribution requires `target_claim_digest`"
+                            .to_string(),
+                    ));
+                };
+                if step != Some("evidence_request") {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the `evidence_request` contribution requires the current step to be                          `evidence_request` (it is `{}`)",
+                        step.unwrap_or("none")
+                    )));
+                }
+                if !claim_exists_in_thread(&mut *tx, tenant_id, thread_id, &target)
+                    .await
+                    .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "claim digest `{target}` is not a claim of this thread"
+                    )));
+                }
+            }
+            if body.kind == ContributionKind::Verdict && step != Some("adjudicate") {
+                return Err(ThreadError::InvalidCommand(format!(
+                    "the `verdict` contribution requires the current step to be `adjudicate`                      (it is `{}`)",
+                    step.unwrap_or("none")
+                )));
             }
             // `.2.2` (ADR-029): the digest is SERVER-computed over the claim
             // content — the client never supplies it, so an objection can
@@ -1213,6 +1326,12 @@ where
                     "kind": body.kind,
                     "evidence_refs": body.evidence_refs,
                     "claims": claims,
+                    "target_claim_digest": body.target_claim_digest,
+                    "verdict": body.verdict.as_ref().map(|v| json!({
+                        "target_digest": v.target_digest,
+                        "rule": v.rule,
+                        "outcome": v.outcome.canonical(),
+                    })),
                     "round": projection.current_round,
                     "blind": blind,
                 }),

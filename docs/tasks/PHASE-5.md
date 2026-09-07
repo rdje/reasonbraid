@@ -348,7 +348,7 @@ and honest inconclusive outcomes.
       the close verbatim. Frontier → `.2.4.2`.
 
   - ID: `PHASE-5.2.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the contribution-side execution — the
       `evidence_request` kind (targets ONE claim digest of this
       thread; the step gate) and the `verdict` kind (the
@@ -357,6 +357,28 @@ and honest inconclusive outcomes.
       `evidence_reference` kind requires non-empty refs (the
       response carries evidence, never an empty claim of it).
     Roadmap: §13.4
+    Done (`2026-09-07`): the contribution-side execution landed
+      per ADR-029 — the kind vocabulary gains
+      `evidence_request` + `verdict`; the contribute body gains
+      `target_claim_digest` (legal only on the request kind,
+      REQUIRED there, and it must be a claim of THIS thread —
+      the JSONB-containment scan over the server-computed
+      `claims[].digest` records; the request is NOT an
+      acquisition) and `verdict` (legal only on the verdict
+      kind; the judged digest + the rule + the §13.4 outcome —
+      the canonical outcome persists, the aliases never do);
+      the STEP gates execute the ADR-016 composition (the
+      request requires the current step `evidence_request`, the
+      verdict requires `adjudicate`); the round advance
+      GENERALIZES to the step advance (one step per round,
+      clamped at the terminal — the blind commitment flag is
+      its special case); the `evidence_reference` kind refuses
+      empty refs. Measured (profiles 29): the claim→advance→
+      request roundtrip with the target riding the event, the
+      foreign-digest + the early-step + the empty-refs + the
+      misplaced-field refusals, the panel's blind→advance→
+      verdict roundtrip with the canonical outcome. **`.2`
+      COMPLETE** — frontier → `.3`.
 
 - ID: `PHASE-5.3`
   Status: `proposed`
@@ -386,10 +408,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.4.2` | `proposed` | `.2.4.1` done — the close vocabulary (the twelve terminals with the legacy aliases never persisting, the family rule, the minority report; profiles 28); the contribution-side kinds execute next |
+| 1 | `PHASE-5.3` | `proposed` | `.2.4.2` done — the contribution-side execution (the request + verdict kinds with their step gates, the generalized step advance; profiles 29) — **the `.2` lane (the blind-first deliberation) is COMPLETE**; the moderator/synthesizer lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.4.2` done — the contribution-side execution
+  (the `evidence_request` + `verdict` kinds with the step
+  gates, the generalized step advance, the non-empty
+  evidence_reference rule); profiles 29; **`.2` COMPLETE** —
+  frontier → `.3`.
 - `2026-09-07`: `.2.4.1` done — the close vocabulary (the §13.4
   twelve terminals, the legacy aliases never persisting, the
   family rule, the minority report riding the close); profiles
@@ -687,6 +714,52 @@ the twelve) — `\.rs$`.
   commit.
 - [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`,
   `tests/command_api.rs`, `crates/reasonbraid-cli/src/main.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.2.4.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/threads.rs` (the
+`EvidenceRequest`/`Verdict` kinds, the `VerdictInput` shape, the
+contribute body's `target_claim_digest`/`verdict`, the
+kind-specific-field + empty-refs + step-gate validations, the
+`claim_exists_in_thread` scan, the generalized step advance, the
+event's new fields), `crates/reasonbraid-server/tests/profiles.rs`
+(the new test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf wire: the kind
+  vocabulary had no `evidence_request`/`verdict`; the
+  `evidence_reference` kind accepted empty refs; the steps
+  advanced only past `blind_solicit` (the other profiles'
+  steps were unreachable).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "EvidenceRequest\|VerdictInput\|claim_exists_in_thread"
+  d6fc732 -- crates/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-029 contribution contract: the kinds
+  ride the contribute verb with the step gates + the
+  thread-scoped claim-target membership.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_evidence_requests_and_verdicts_execute_on_their_steps` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 29 tests … ok`) — the claim→advance→request
+  roundtrip (the target rides the event), the foreign-digest
+  + the early-step + the empty-refs + the misplaced-field
+  refusals, the panel's blind→advance→verdict roundtrip with
+  the canonical outcome (the alias never persists).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg517_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

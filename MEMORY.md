@@ -23,14 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.2.4` (`.2.3` done: the retry
-  policy — the pure §14.6 decision + the typed wire flag + the worker's
-  retry gate). Then `.2` closes.
-- **Next action:** execute `PHASE-2.2.4` — dead-letter/replay:
-  auto-quarantine after N dispatch refusals (the `.1.5.2` gate's refusals
-  count toward it) with the reason + the count, and the operator replay
-  verb (a dead-lettered command re-enters the delivery tail with a fresh
-  admission decision — quarantine becomes two-way).
+- **Active tree:** `PHASE-2` → frontier `.3` (**`.2` is COMPLETE** — ADR-005
+  (the PG queue), the lease epoch, the retry policy, the two-way
+  quarantine: dead-letter auto-quarantine + `rb node replay`).
+- **Next action:** execute `PHASE-2.3` — the provider-attempt state
+  machine, usage reconciliation, spend circuit breakers,
+  ambiguous-outcome workflows (backlog 23/25, ADR-012/013) — pick it up
+  with a census like `.1`'s/`.2`'s.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

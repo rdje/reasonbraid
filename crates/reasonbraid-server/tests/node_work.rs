@@ -1354,3 +1354,187 @@ fn from_hex(s: &str) -> Result<Vec<u8>, String> {
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
         .collect()
 }
+
+/// THE `.2.4` acceptance leg, measured end-to-end: a node whose adapter keeps
+/// refusing re-dispatches bounded, then reports the DEAD LETTER — the server
+/// auto-quarantines the inbox row with the reason. The operator REPLAYS the
+/// command (the quarantine clears, the admission decision refreshes, the row
+/// re-sequences), and the node's NEXT tick re-delivers it under the fresh
+/// decision — the re-dispatch completes and the contribution lands.
+#[tokio::test]
+async fn a_dead_lettered_command_replays_and_redispatches() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
+
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.invite",
+            "key-dl-inv",
+            json!({ "tenant_id": tenant, "agent_role": role }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-dl-acc",
+    )
+    .await;
+
+    let cert_der = from_hex(&cert_hex).expect("cert hex");
+    let journal = journal_path("dead-letter-live");
+
+    // Phase 1: a worker whose adapter ALWAYS refuses before dispatch. Three
+    // bounded attempts (`.2.3`), then the retry gate's terminal refusal
+    // reports the dead letter — the server auto-quarantines the inbox row.
+    let command_id = {
+        let key_der = from_hex(&key_hex).expect("key hex");
+        let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+        let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+            .expect("key parses");
+        let node = reasonbraid_node::Node::open(
+            journal.clone(),
+            server.base(),
+            role.clone(),
+            cert_der.clone(),
+            key,
+        )
+        .await
+        .expect("open node");
+        node.reconcile().await.expect("reconcile");
+        let work = node.journal().work_items().await.expect("work items");
+        let command_id = work[0].command_id.clone();
+        let worker = reasonbraid_node::Worker::new(
+            node.clone(),
+            reasonbraid_adapter::FakeAdapter::new(
+                vec![reasonbraid_adapter::ScriptStep::FailBeforeDispatch {
+                    reason: "provider unavailable".to_string(),
+                }],
+                reasonbraid_adapter::StatusLookupSpec::Unsupported,
+                reasonbraid_adapter::AdapterCapabilities {
+                    streaming: false,
+                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                    provider_idempotency: false,
+                    status_lookup: false,
+                    tool_support: false,
+                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+                },
+            ),
+            reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+                calls: Some(100),
+                input_tokens: Some(100_000),
+                output_tokens: Some(100_000),
+                wall_clock_seconds: Some(10_000),
+            }),
+            std::time::Duration::from_millis(50),
+        );
+        // Four ticks: 3 bounded attempts + the terminal refusal (the report).
+        for _ in 0..4 {
+            worker.tick().await.expect("tick");
+        }
+        command_id
+    };
+
+    // The server auto-quarantined the row with the refusal reason.
+    let quarantine: (Option<chrono::DateTime<chrono::Utc>>, Option<String>) = sqlx::query_as(
+        "SELECT quarantined_at, quarantine_reason FROM node_inbox \
+             WHERE node_id = $1 AND command_id = $2",
+    )
+    .bind(&role)
+    .bind(&command_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the row");
+    assert!(
+        quarantine.0.is_some(),
+        "the dead letter auto-quarantined the inbox row"
+    );
+    assert!(
+        quarantine
+            .1
+            .as_deref()
+            .is_some_and(|r| r.contains("bounded retry budget is exhausted")),
+        "the quarantine carries the terminal reason (why re-dispatch stopped): {:?}",
+        quarantine.1
+    );
+
+    // THE operator replay: the quarantine clears, the admission decision
+    // refreshes, the row re-sequences to the delivery tail.
+    let response = client
+        .post(format!("{}/v1/nodes/replay", server.base()))
+        .header(PRINCIPAL_HEADER, &human)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": role,
+            "command_id": command_id,
+        }))
+        .send()
+        .await
+        .expect("replay request");
+    assert_eq!(response.status().as_u16(), 200, "the replay succeeds");
+
+    // Phase 2: a worker over the SAME journal with a COMPLETING adapter —
+    // the re-delivered command refreshes its cached decision, the retry gate
+    // re-arms (the old refusals precede the fresh decision), and the
+    // re-dispatch completes: the contribution lands.
+    {
+        let key_der = from_hex(&key_hex).expect("key hex");
+        let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+        let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+            .expect("key parses");
+        let node = reasonbraid_node::Node::open(
+            journal,
+            server.base(),
+            role.clone(),
+            cert_der.clone(),
+            key,
+        )
+        .await
+        .expect("open node");
+        node.reconcile().await.expect("reconcile");
+        let worker = reasonbraid_node::Worker::new(
+            node.clone(),
+            reasonbraid_adapter::FakeAdapter::new(
+                vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+                reasonbraid_adapter::StatusLookupSpec::Unsupported,
+                reasonbraid_adapter::AdapterCapabilities {
+                    streaming: false,
+                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                    provider_idempotency: false,
+                    status_lookup: false,
+                    tool_support: false,
+                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+                },
+            ),
+            reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+                calls: Some(100),
+                input_tokens: Some(100_000),
+                output_tokens: Some(100_000),
+                wall_clock_seconds: Some(10_000),
+            }),
+            std::time::Duration::from_millis(50),
+        );
+        worker.tick().await.expect("the replayed dispatch");
+    }
+
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "thread.contribution_submitted")
+            .count(),
+        1,
+        "the replayed command dispatched exactly once — one contribution landed"
+    );
+}

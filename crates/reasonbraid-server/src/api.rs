@@ -326,6 +326,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/enrollments", post(enroll))
         .route("/v1/nodes/enroll-tokens", post(issue_node_enroll_token))
         .route("/v1/nodes/quarantine", post(quarantine_command))
+        .route("/v1/nodes/replay", post(replay_command))
         .route("/v1/nodes/inbox", get(inspect_node_inbox))
         .route("/v1/nodes/inbox/prune", post(prune_node_inbox))
         .route("/v1/nodes/revoke", post(revoke_node))
@@ -756,6 +757,94 @@ async fn authorize_tenant_admin(
         )),
         AuthorizationOutcome::Allowed { .. } => Ok(()),
     }
+}
+
+/// The `POST /v1/nodes/replay` body (`.2.4`): the operator re-delivers ONE
+/// dead-lettered command — the quarantine clears, the admission decision
+/// refreshes (a fresh `decided_at` + the CURRENT revocation epoch — the old
+/// decision's facts stay bound), and the row re-sequences to the node's tail
+/// so the next poll delivers it again.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub command_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReplayResponse {
+    pub node_id: String,
+    pub command_id: String,
+    pub replayed_at: String,
+}
+
+async fn replay_command(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<ReplayRequest>,
+) -> Result<Json<ReplayResponse>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+
+    let mut tx = state.pool.begin().await?;
+    // Only a DEAD-LETTERED command replays: quarantine is the terminal the
+    // replay reverses; a live command re-delivered twice would double-dispatch.
+    let quarantined: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
+        "SELECT quarantined_at FROM node_inbox WHERE node_id = $1 AND command_id = $2",
+    )
+    .bind(&req.node_id)
+    .bind(&req.command_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(existing) = quarantined else {
+        return Err(ControlApiError::not_found(format!(
+            "no command `{}` in node `{}`'s inbox",
+            req.command_id, req.node_id
+        )));
+    };
+    if existing.is_none() {
+        return Err(ControlApiError::invalid_transition(
+            "the command is not dead-lettered — replay only reverses a quarantine",
+        ));
+    }
+
+    // The fresh admission decision (`.1.5.2` shape): the CURRENT revocation
+    // epoch at replay time, the decision clock restarted. The record + digest
+    // stay bound to the original admission.
+    let revocation_epoch: i64 =
+        sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+            .bind(req.tenant_id.to_string())
+            .fetch_one(&mut *tx)
+            .await?;
+
+    let affected = sqlx::query(
+        "UPDATE node_inbox SET \
+           quarantined_at = NULL, \
+           quarantine_reason = NULL, \
+           decided_at = $3, \
+           revocation_epoch = $4, \
+           cursor = (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1) \
+         WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NOT NULL",
+    )
+    .bind(&req.node_id)
+    .bind(&req.command_id)
+    .bind(Utc::now())
+    .bind(revocation_epoch)
+    .execute(&mut *tx)
+    .await?;
+    if affected.rows_affected() != 1 {
+        return Err(ControlApiError::invalid_transition(
+            "the command is already replayed (a concurrent replay won)",
+        ));
+    }
+
+    tx.commit().await?;
+    Ok(Json(ReplayResponse {
+        node_id: req.node_id,
+        command_id: req.command_id,
+        replayed_at: Utc::now().to_rfc3339(),
+    }))
 }
 
 /// The `POST /v1/nodes/quarantine` body: an operator quarantines one inbox
@@ -1695,6 +1784,27 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
+    // A node's dead-letter report (`.2.4`): auto-quarantine the inbox row WITH
+    // the refusal reason — the terminal fact the operator later replays.
+    if payload.get("kind").and_then(|v| v.as_str()) == Some("work_dead_lettered") {
+        let (Some(command_id), Some(reason)) = (
+            payload.get("command_id").and_then(|v| v.as_str()),
+            payload.get("reason").and_then(|v| v.as_str()),
+        ) else {
+            return Ok(()); // malformed report — the receipt stands, no domain effect
+        };
+        sqlx::query(
+            "UPDATE node_inbox SET quarantined_at = $3, quarantine_reason = $4 \
+             WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NULL",
+        )
+        .bind(node_id)
+        .bind(command_id)
+        .bind(Utc::now())
+        .bind(format!("dead-lettered: {reason}"))
+        .execute(&mut *tx)
+        .await?;
+        return Ok(());
+    }
     // Ordinary channel events (WP3) are receipts only — nothing to fold.
     if payload.get("kind").and_then(|v| v.as_str()) != Some("work_result") {
         return Ok(());

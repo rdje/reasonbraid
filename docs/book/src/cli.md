@@ -247,6 +247,15 @@ one result = one run, ever (the idempotency claim dedupes redelivery first):
  inspect runs --as alice
 ```
 
+The dead-letter surface (`.2.4`): a terminal refusal auto-quarantines the
+inbox row with the reason, and the operator REPLAYS it — the quarantine
+clears, the admission decision refreshes, and the command re-enters the
+delivery tail:
+
+```text
+ node replay --node rol_… --command work_evt_… --as alice
+```
+
 The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
 principal whose grant is the authority source:
 

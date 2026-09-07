@@ -458,9 +458,25 @@ impl Journal {
         .bind(at.to_rfc3339())
         .execute(&self.pool)
         .await?;
-        Ok(CommandRecorded {
-            already_known: res.rows_affected() == 0,
-        })
+        let already_known = res.rows_affected() == 0;
+        // A REPLAY re-delivery (`.2.4`) carries a FRESH admission decision over
+        // a command the journal already holds: refresh the decision facts so the
+        // dispatch gate evaluates the replayed admission, not the dead one. A
+        // plain redelivery (no decision) keeps the original row untouched.
+        if already_known && cmd.decided_at.is_some() {
+            sqlx::query(
+                "UPDATE commands SET authz_ref = ?, policy_digest = ?, decided_at = ?, \
+                 revocation_epoch = ? WHERE command_id = ?",
+            )
+            .bind(cmd.authz_ref)
+            .bind(cmd.policy_digest)
+            .bind(cmd.decided_at)
+            .bind(cmd.revocation_epoch)
+            .bind(cmd.command_id)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(CommandRecorded { already_known })
     }
 
     /// The local operation for a command, created exactly once: `command_id` is UNIQUE
@@ -1205,6 +1221,21 @@ impl Journal {
                 },
             )
             .collect())
+    }
+
+    /// Has the operation already reported a dead letter (`.2.4`)? The dedup
+    /// rides the durable outgoing-event journal: the report is emitted ONCE
+    /// per operation, and a transport failure re-emits with the original id.
+    pub async fn has_dead_letter(&self, operation_id: &str) -> Result<bool, JournalError> {
+        let found: Option<String> = sqlx::query_scalar(
+            "SELECT event_id FROM outgoing_events \
+             WHERE operation_id = ? AND json_extract(payload, '$.kind') = 'work_dead_lettered' \
+             LIMIT 1",
+        )
+        .bind(operation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(found.is_some())
     }
 
     /// Inspectable health: the recorded durability profile, live connection settings,

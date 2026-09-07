@@ -9,9 +9,9 @@ use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_boundary_revoke, run_enroll, run_grant_revoke,
     run_inspect_boundaries, run_inspect_budget, run_inspect_grants, run_inspect_incarnations,
     run_inspect_node_inbox, run_inspect_runs, run_inspect_thread, run_inspect_threads,
-    run_issue_node_token, run_prune_node_inbox, run_quarantine_command, run_revoke_node,
-    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
-    StateFile, ThreadVerbArgs,
+    run_issue_node_token, run_prune_node_inbox, run_quarantine_command, run_replay_command,
+    run_revoke_node, run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs,
+    PrincipalRef, StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -129,6 +129,24 @@ enum NodeCommand {
         /// WHY it is quarantined (required — a quarantine without a reason is a silent skip).
         #[arg(long)]
         reason: String,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Replay one DEAD-LETTERED inbox command (`.2.4`): the quarantine clears
+    /// and the command re-enters the delivery tail with a fresh admission
+    /// decision.
+    Replay {
+        /// The node whose inbox holds the dead-lettered command.
+        #[arg(long)]
+        node: String,
+        /// The dead-lettered command id to replay.
+        #[arg(long)]
+        command: String,
         /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
         #[arg(long)]
         as_: Option<String>,
@@ -1043,6 +1061,21 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 )
             })?;
             run_quarantine_command(cfg, &principal, &tenant, &node, &command, &reason, json).await
+        }
+        Command::Node(NodeCommand::Replay {
+            node,
+            command,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_replay_command(cfg, &principal, &tenant, &node, &command, json).await
         }
         Command::Node(NodeCommand::Inbox {
             node,

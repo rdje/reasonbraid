@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.2.4: the dead letter rides the channel it refused on — the event path already knew how
+
+- **The terminal refusal is a node fact, the quarantine is a server row — the existing event channel is the bridge.** No new transport, no polling the node's journal: the report is an outgoing event (deduped + best-effort like every event), and the server's result path auto-quarantines in the SAME transaction as the receipt.
+- **Replay is a decision refresh, not a history reset.** The replayed redelivery carries a fresh `decided_at` + the current epoch; the node's `record_command` refreshes the cached decision, and the retry count measures attempts under the CURRENT decision — the old refusals stay in the journal and stop counting. Honest reversal without erasing the past.
+- promotion: declined (the report-rides-the-event-channel and the decision-scoped-count rules are the leaf's recorded contract — no new cross-cutting decision). **`.2` COMPLETE. Frontier `PHASE-2.3` (provider-attempt state machine + usage reconciliation).**
+
 ## _(2026-09-07)_ — PHASE-2.2.3: the retry classes were already distinguishable — the reservation's presence and the delivery's flag
 
 - **The budget denial and the transient refusal share one journal status** (`failed_before_dispatch`), but the worker already holds the distinguishing fact: the delivery's reservation. The server denied the reservation = retrying can never help (terminal); a valid reservation = the refusal was node-side, before any provider contact (bounded retry). No new state machine — the pure decision reads what exists.

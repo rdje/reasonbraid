@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The two-way quarantine: a dead letter auto-quarantines, the operator replays it (`PHASE-2.2.4`)
+
+- The terminal refusal (the `.2.3` retry gate's `Refuse`) reports a `work_dead_lettered` event — ONCE per operation (the outgoing-events dedup), best-effort (journaled first; a failed send defers to the reconcile's re-emit). The server auto-quarantines the inbox row with the reason IN the same transaction as the receipt.
+- `POST /v1/nodes/replay` + `rb node replay` reverse it: the quarantine clears, the admission decision REFRESHES (`decided_at` now + the CURRENT revocation epoch), the row re-sequences to the delivery tail, and the node's replayed redelivery refreshes the cached decision — the retry count is DECISION-scoped, so the old refusals stop counting and the replay re-arms the dispatch.
+- The live end-to-end leg proves the whole loop: the always-refusing worker dead-letters after the bounded retries, the server quarantines with the terminal reason, the operator replays, the completing worker re-dispatches — exactly one contribution. node_work grew to 8; demo 34/34. **`.2` COMPLETE** — frontier → `.3` (provider-attempt state machine + usage reconciliation).
+
 ## 2026-09-07 — The retry policy: classes over facts the worker already holds (`PHASE-2.2.3`)
 
 - The pure `retry_decision` lands in the core crate (§14.6): `None`/`prepared` re-dispatch unconditionally (the boundary was never crossed); a `failed_before_dispatch` WITHOUT a reservation is terminal (the SERVER denied the budget — a retry cannot change it); WITH a reservation it retries bounded (3 attempts); `outcome_unknown` retries only with the delivery's explicit `allow_possible_duplicate` flag — without it the refusal names §9.8's `retry_requires_authorization`; a dispatched attempt belongs to proof/adjudication; terminal states never. Five tests; the core suite is 49.

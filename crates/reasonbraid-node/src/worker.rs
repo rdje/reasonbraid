@@ -198,8 +198,32 @@ impl<A: Adapter> Worker<A> {
             .get("allow_possible_duplicate")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+
+        // The cached ADMISSION decision (`.1.5.2`) — read FIRST: the retry
+        // count measures attempts made under the CURRENT decision (a `.2.4`
+        // replay refreshes it, so pre-replay refusals stop counting — the
+        // replayed admission starts a fresh bounded window).
+        let cached = self
+            .node
+            .journal()
+            .cached_decision(&item.command_id)
+            .await?;
+        let decision_time = cached.as_ref().map(|d| d.decided_at);
         let attempt_count = match &item.operation_id {
-            Some(op) => self.node.journal().attempts_for_operation(op).await?.len(),
+            Some(op) => self
+                .node
+                .journal()
+                .attempts_for_operation(op)
+                .await?
+                .into_iter()
+                .filter(|a| {
+                    decision_time.is_none_or(|t| {
+                        chrono::DateTime::parse_from_rfc3339(&a.updated_at)
+                            .map(|u| u.with_timezone(&chrono::Utc) >= t)
+                            .unwrap_or(true)
+                    })
+                })
+                .count(),
             None => 0,
         };
 
@@ -209,8 +233,8 @@ impl<A: Adapter> Worker<A> {
         // an outcome_unknown retries only with the explicit possible-duplicate
         // authorization; a budget-denied item (no reservation) and every
         // terminal state are refused — the refusal is logged with the reason
-        // (the §9.8 code), and the item's journal status stays the visible fact
-        // (never silently retried).
+        // (the §9.8 code) and reported to the server as the DEAD LETTER (`.2.4`:
+        // the auto-quarantine rides the refusal, once).
         match reasonbraid_core::retry_decision(
             item.latest_attempt_status.as_deref(),
             attempt_count,
@@ -224,6 +248,7 @@ impl<A: Adapter> Worker<A> {
                     self.node.node_id(),
                     item.command_id
                 );
+                self.report_dead_letter(item, reason).await?;
                 return Ok(());
             }
         }
@@ -236,12 +261,7 @@ impl<A: Adapter> Worker<A> {
         // The refusal is journaled as `failed_before_dispatch` — visible,
         // bounded, never a silent skip.
         let now = Utc::now();
-        match self
-            .node
-            .journal()
-            .cached_decision(&item.command_id)
-            .await?
-        {
+        match cached {
             None => {
                 self.refuse_dispatch(
                     item,
@@ -410,6 +430,58 @@ impl<A: Adapter> Worker<A> {
             self.node.node_id(),
             item.command_id
         );
+        Ok(())
+    }
+
+    /// Report the terminal refusal to the server (`.2.4`): the dead letter
+    /// auto-quarantines the inbox row with the reason, ONCE per operation (the
+    /// outgoing-events check dedupes). BEST-EFFORT: the event is journaled
+    /// FIRST (durable — a reconcile re-emits it with the original id), and a
+    /// failed send (offline channel) defers the report instead of failing the
+    /// tick — the refusal itself is already a journal fact.
+    async fn report_dead_letter(&self, item: &WorkItem, reason: &str) -> Result<(), WorkerError> {
+        let operation_id = match &item.operation_id {
+            Some(op) => op.clone(),
+            None => {
+                self.node
+                    .journal()
+                    .ensure_operation(&item.command_id, Utc::now())
+                    .await?
+                    .operation_id
+            }
+        };
+        if self.node.journal().has_dead_letter(&operation_id).await? {
+            return Ok(());
+        }
+        let payload = json!({
+            "kind": "work_dead_lettered",
+            "command_id": item.command_id,
+            "reason": reason,
+        });
+        let event_id = EventId::new().to_string();
+        self.node
+            .journal()
+            .record_outgoing_event(&event_id, &operation_id, &payload, Utc::now())
+            .await?;
+        if let Err(e) = self
+            .node
+            .channel()
+            .send_event(&event_id, &operation_id, &payload)
+            .await
+        {
+            eprintln!(
+                "worker: {} deferred the dead-letter report for {} ({e}) — \
+                 the next reconcile re-emits it",
+                self.node.node_id(),
+                item.command_id
+            );
+        } else {
+            eprintln!(
+                "worker: {} dead-lettered {} (reason: {reason})",
+                self.node.node_id(),
+                item.command_id
+            );
+        }
         Ok(())
     }
 }

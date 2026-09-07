@@ -413,6 +413,19 @@ impl ApiClient {
         self.parse(response).await
     }
 
+    /// Replay one DEAD-LETTERED inbox command (`.2.4`): the quarantine clears,
+    /// the admission decision refreshes, the row re-sequences to the tail.
+    pub async fn replay_command(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/nodes/replay", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
     /// Inspect one node's inbox: delivery + quarantine facts per row (`.1.2.3`).
     pub async fn inspect_node_inbox(
         &self,
@@ -1005,6 +1018,39 @@ pub async fn run_quarantine_command(
         response["command_id"].as_str().unwrap_or("?"),
         response["node_id"].as_str().unwrap_or("?"),
         response["quarantined_at"].as_str().unwrap_or("?"),
+    ))
+}
+
+/// Replay one dead-lettered inbox command (`.2.4`; tenant_admin): the
+/// quarantine clears and the command re-enters the delivery tail with a
+/// fresh admission decision.
+pub async fn run_replay_command(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    command_id: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .replay_command(
+            &principal.id,
+            json!({
+                "tenant_id": tenant,
+                "node_id": node_id,
+                "command_id": command_id,
+            }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "replayed command {} in node {}'s inbox ({})",
+        response["command_id"].as_str().unwrap_or("?"),
+        response["node_id"].as_str().unwrap_or("?"),
+        response["replayed_at"].as_str().unwrap_or("?"),
     ))
 }
 

@@ -271,7 +271,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       lists. Frontier → `.2.3`.
 
   - ID: `PHASE-6.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the approval records + the authority proofs — the
       approval row (the proposal + the approver + the
       AUTHORITY PROOF: the grant check at the approval
@@ -281,6 +281,29 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       enforcement (the discussion/decision/approval are
       distinct rows, never folded).
     Roadmap: §4.5, §15.6
+    Done (`2026-09-07`): the approval records landed per
+      ADR-032 — migration 0040 (`policy_approvals`: the
+      approval is its OWN row — never folded into the
+      decision — with the approver, the grant id, and the
+      quorum snapshot); `lifecycle.rs` gains the
+      `record_approval` (the proposal must be at `decided` —
+      the stage gate; the decision must BELONG to the
+      proposal — a foreign decision refuses; the AUTHORITY
+      PROOF: the grant must be ACTIVE, unexpired, and HELD
+      BY the approver (the §4.5 identity/authority at the
+      action time) — a mismatched or unknown grant refuses;
+      the non-empty quorum; the approval advances the
+      proposal to `approved`) + the list; the api: `POST`/
+      `GET /v1/policy-approvals`. Measured (policy 4): the
+      full chain (the proposal → the decision → the
+      approval with the matching grant), the stage advance,
+      the second-approval refusal, the mismatched-proof
+      refusal, the foreign-decision refusal, the draft-stage
+      refusal, the empty-quorum refusal, the list. The first
+      live pass caught the suite's purge gap (the lifecycle
+      tables leaked between the tests) + the shared
+      WrongStage message shape — fixed. **`.2` COMPLETE** —
+      frontier → `.3`.
 
 - ID: `PHASE-6.3`
   Status: `proposed`
@@ -315,10 +338,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.2.3` | `proposed` | `.2.2` done — the proposal + the decision records (the reference-shaped proposal, the frozen snapshot, the stage machine; policy 3); the approval records + the authority proofs execute next |
+| 1 | `PHASE-6.3` | `proposed` | `.2.3` done — the approval records + the authority proofs (the grant re-check at the approval boundary, the quorum snapshot; policy 4) — **the `.2` lane (the policy lifecycle) is COMPLETE**; the deterministic compiler lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.3` done — the approval records (migration
+  0040: the authority proof — the grant re-check at the
+  approval boundary, the quorum snapshot, the separate row);
+  policy 4; **`.2` COMPLETE** — frontier → `.3`.
 - `2026-09-07`: `.2.2` done — the proposal + the decision
   records (migration 0039: the reference-shaped proposal,
   the frozen electorate snapshot, the verdict reference, the
@@ -491,6 +518,52 @@ the record_decision + the lists),
   commit.
 - [x] **FIX** — `0039_policy_lifecycle.sql`, `src/lifecycle.rs`,
   `src/lib.rs`, `src/api.rs`, `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.2.3)
+
+The CODE change owned by this leaf:
+`migrations/0040_policy_approvals.sql` (NEW — the approval
+table), `crates/reasonbraid-server/src/lifecycle.rs` (the
+`ApprovalInput`/`StoredApproval` shapes, the
+`record_approval`, the list), `crates/reasonbraid-server/src/
+api.rs` (the two verbs), `crates/reasonbraid-server/tests/
+policy.rs` (the new test + the purge-gap fix) — `\.rs$` +
+`(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  approval row existed (the `.2` census — the lifecycle
+  stopped at the decision).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_approvals\|ApprovalInput\|record_approval" 232047f
+  -- crates/ migrations/` → rc=1 (nothing before this leaf).
+  The fix point is the ADR-032 approval contract: the
+  authority proof at the action time + the separate row.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_approval_carries_its_authority_proof` → `test result:
+  ok. 1 passed` (also inside the full live suite: `running 4
+  tests … ok`) — the full chain with the matching grant, the
+  stage advance, the second-approval refusal, the
+  mismatched-proof refusal, the foreign-decision refusal,
+  the draft-stage refusal, the empty-quorum refusal, the
+  list. The first live pass caught the suite's purge gap
+  (the lifecycle tables leaked across the tests) + the
+  shared WrongStage message shape — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 58 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg528_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0040_policy_approvals.sql`, `src/lifecycle.rs`,
+  `src/api.rs`, `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

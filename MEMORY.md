@@ -16,15 +16,15 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.2.3` (**PHASE 5 CLOSED**; the proposal + the decision records ship — the reference-shaped proposal, the frozen snapshot; policy 3).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.3` (**PHASE 5 CLOSED**; the `.2` lane COMPLETE — the lifecycle records + the authority proofs; policy 4).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.2.3` — the approval records +
-  the authority proofs: the approval row (the proposal + the approver
-  + the AUTHORITY PROOF — the grant re-check at the approval boundary),
-  the quorum snapshot, the separate-record enforcement — per ADR-032.
+- **Next action:** execute `PHASE-6.3` — the deterministic compiler:
+  the Codex + the Claude-family projections, the unrepresentable
+  clauses fail closed (§15.5). Decompose at the census seams first
+  (the `.2` lane COMPLETE).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

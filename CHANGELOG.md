@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The approval records land — the `.2` lane is COMPLETE (`PHASE-6.2.3`)
+
+- Migration 0040: the approval is its OWN row with the AUTHORITY PROOF — the grant re-checked at the approval boundary (active, unexpired, held by the approver — the §4.5 identity/authority at the action time); the quorum snapshot rides the row; the approval advances the proposal (`decided` → `approved`). The verbs: `POST`/`GET /v1/policy-approvals`. Measured: policy 4. **The `.2` lane (the policy lifecycle) is COMPLETE.**
+
 ## 2026-09-07 — The proposal and the decision records land (`PHASE-6.2.2`)
 
 - Migration 0039: the proposal is a REFERENCE (the policy version + the deliberation thread — never a copy) with the typed stage machine; the decision freezes the electorate snapshot at the action time and references a verdict of the PROPOSAL's thread (a foreign verdict refuses); one proposal, one decision (the stage gate). The verbs: `POST`/`GET /v1/policy-proposals` + `POST`/`GET /v1/policy-decisions`. Measured: policy 3.

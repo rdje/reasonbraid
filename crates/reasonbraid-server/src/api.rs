@@ -480,6 +480,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(record_policy_decision).get(list_policy_decisions),
         )
         .route(
+            "/v1/policy-approvals",
+            post(record_policy_approval).get(list_policy_approvals),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2406,6 +2410,42 @@ async fn list_policy_decisions(
         ));
     }
     Ok(Json(crate::lifecycle::list_decisions(&state.pool).await?))
+}
+
+/// `POST /v1/policy-approvals` — record one approval (`.2.3`): the decided →
+/// approved transition with the AUTHORITY PROOF (the grant re-check at the
+/// approval boundary).
+async fn record_policy_approval(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::lifecycle::ApprovalInput>,
+) -> Result<Json<crate::lifecycle::StoredApproval>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no approval",
+        ));
+    }
+    match crate::lifecycle::record_approval(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-approvals` — the approvals, newest first.
+async fn list_policy_approvals(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::lifecycle::StoredApproval>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no approvals",
+        ));
+    }
+    Ok(Json(crate::lifecycle::list_approvals(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

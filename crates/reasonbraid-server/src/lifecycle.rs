@@ -286,3 +286,173 @@ pub async fn list_decisions(pool: &PgPool) -> Result<Vec<StoredDecision>, sqlx::
         )
         .collect())
 }
+
+// ── The approval records + the authority proofs (`.2.3`, ADR-032) ──────────────────
+
+/// The approval submission (`.2.3`): the proposal + the decision it approves,
+/// the approver, the AUTHORITY PROOF (the grant id — re-checked at the
+/// approval boundary: the status, the expiry, and the subject match), and
+/// the quorum snapshot.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalInput {
+    pub approval_id: String,
+    pub proposal_id: String,
+    pub decision_id: String,
+    pub approver: String,
+    pub grant_id: String,
+    pub quorum: Value,
+}
+
+/// The stored approval row.
+#[derive(Debug, Clone, Serialize)]
+pub struct StoredApproval {
+    pub approval_id: String,
+    pub proposal_id: String,
+    pub decision_id: String,
+    pub approver: String,
+    pub grant_id: String,
+    pub quorum: Value,
+}
+
+impl LifecycleError {
+    fn unknown_decision(decision_id: &str) -> Self {
+        LifecycleError::UnknownProposal(format!("decision `{decision_id}`"))
+    }
+    fn foreign_decision(decision_id: &str, proposal_id: &str) -> Self {
+        LifecycleError::UnknownVerdict(format!(
+            "decision `{decision_id}` does not belong to proposal `{proposal_id}`"
+        ))
+    }
+    fn invalid_proof(grant_id: &str, approver: &str) -> Self {
+        LifecycleError::UnknownVerdict(format!(
+            "the authority proof fails: grant `{grant_id}` is not an active, unexpired \
+             grant held by `{approver}`"
+        ))
+    }
+    fn empty_quorum() -> Self {
+        LifecycleError::EmptyElectorate
+    }
+}
+
+/// Record one approval (the decided → approved transition). The authority
+/// proof is the grant RE-CHECK at the approval boundary — the identity +
+/// the authority at the action time (§4.5), never the proposal time's
+/// memory.
+pub async fn record_approval(
+    pool: &PgPool,
+    input: &ApprovalInput,
+) -> Result<StoredApproval, LifecycleError> {
+    let proposal: Option<String> =
+        sqlx::query_scalar("SELECT status FROM policy_proposals WHERE proposal_id = $1")
+            .bind(&input.proposal_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    let Some(status) = proposal else {
+        return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
+    };
+    if status != "decided" {
+        return Err(LifecycleError::WrongStage {
+            proposal_id: input.proposal_id.clone(),
+            status,
+        });
+    }
+    let decision: Option<String> =
+        sqlx::query_scalar("SELECT proposal_id FROM policy_decisions WHERE decision_id = $1")
+            .bind(&input.decision_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| LifecycleError::unknown_decision(&input.decision_id))?;
+    let Some(decision_proposal) = decision else {
+        return Err(LifecycleError::unknown_decision(&input.decision_id));
+    };
+    if decision_proposal != input.proposal_id {
+        return Err(LifecycleError::foreign_decision(
+            &input.decision_id,
+            &input.proposal_id,
+        ));
+    }
+    let quorum_participants = input
+        .quorum
+        .get("participants")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    if quorum_participants == 0 {
+        return Err(LifecycleError::empty_quorum());
+    }
+    // The authority proof: the grant must be ACTIVE, unexpired, and HELD BY
+    // the approver (the subject match — a mismatched grant refuses).
+    let proof: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM authority_grants \
+         WHERE grant_id = $1 AND status = 'active' \
+         AND (expires_at IS NULL OR expires_at > now()) AND subject_id = $2)",
+    )
+    .bind(&input.grant_id)
+    .bind(&input.approver)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
+    if !proof.unwrap_or(false) {
+        return Err(LifecycleError::invalid_proof(
+            &input.grant_id,
+            &input.approver,
+        ));
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO policy_approvals \
+         (approval_id, proposal_id, decision_id, approver, grant_id, quorum) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&input.approval_id)
+    .bind(&input.proposal_id)
+    .bind(&input.decision_id)
+    .bind(&input.approver)
+    .bind(&input.grant_id)
+    .bind(&input.quorum)
+    .execute(pool)
+    .await;
+    if inserted.is_err() {
+        return Err(LifecycleError::Duplicate(format!(
+            "approval `{}`",
+            input.approval_id
+        )));
+    }
+    sqlx::query("UPDATE policy_proposals SET status = 'approved' WHERE proposal_id = $1")
+        .bind(&input.proposal_id)
+        .execute(pool)
+        .await
+        .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    Ok(StoredApproval {
+        approval_id: input.approval_id.clone(),
+        proposal_id: input.proposal_id.clone(),
+        decision_id: input.decision_id.clone(),
+        approver: input.approver.clone(),
+        grant_id: input.grant_id.clone(),
+        quorum: input.quorum.clone(),
+    })
+}
+
+/// The approvals, newest first.
+pub async fn list_approvals(pool: &PgPool) -> Result<Vec<StoredApproval>, sqlx::Error> {
+    let rows: Vec<(String, String, String, String, String, Value)> = sqlx::query_as(
+        "SELECT approval_id, proposal_id, decision_id, approver, grant_id, quorum \
+         FROM policy_approvals ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(approval_id, proposal_id, decision_id, approver, grant_id, quorum)| StoredApproval {
+                approval_id,
+                proposal_id,
+                decision_id,
+                approver,
+                grant_id,
+                quorum,
+            },
+        )
+        .collect())
+}

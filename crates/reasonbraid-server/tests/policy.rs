@@ -42,6 +42,9 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "policy_approvals",
+        "policy_decisions",
+        "policy_proposals",
         "policy_versions",
         "routing_resolutions",
         "evaluation_runs",
@@ -970,4 +973,311 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     let decisions = decisions.as_array().unwrap();
     assert_eq!(decisions.len(), 1, "{decisions:?}");
     assert_eq!(decisions[0]["decision_id"], json!("lc-dec-1"));
+}
+
+#[tokio::test]
+async fn the_approval_carries_its_authority_proof() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "ap-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain: the policy → the thread + the verdict → the proposal →
+    // the decision.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "ap-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "ap",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the approval clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "ap-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "ap",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "ap-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "ap-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    let register_proposal = |proposal_id: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-proposals",
+                &human_id,
+                &json!({
+                    "proposal_id": proposal_id,
+                    "policy_id": "ap-policy",
+                    "policy_version": "1.0.0",
+                    "thread_id": thread_id,
+                }),
+            )
+            .await
+        }
+    };
+    let decide = |decision_id: &'static str, proposal_id: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let verdict_event = verdict_event.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-decisions",
+                &human_id,
+                &json!({
+                    "decision_id": decision_id,
+                    "proposal_id": proposal_id,
+                    "rule": "majority",
+                    "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                    "verdict_event_id": verdict_event,
+                }),
+            )
+            .await
+        }
+    };
+
+    let (status, _) = register_proposal("ap-prop-1").await;
+    assert_eq!(status, 200, "the proposal registers");
+    let (status, _) = decide("ap-dec-1", "ap-prop-1").await;
+    assert_eq!(status, 200, "the decision records");
+
+    // 1. The approval: the matching grant (the approver IS the holder) →
+    // the proof passes, the proposal advances to `approved`.
+    let (status, approval) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-1",
+            "proposal_id": "ap-prop-1",
+            "decision_id": "ap-dec-1",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the approval records: {approval}");
+    assert_eq!(approval["grant_id"], json!(grant_id));
+    let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &human_id).await;
+    assert_eq!(status, 200, "the proposals read: {proposals}");
+    assert_eq!(
+        proposals[0]["status"],
+        json!("approved"),
+        "the stage advanced"
+    );
+
+    // 2. A second approval on the approved proposal refuses (the stage gate).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-2",
+            "proposal_id": "ap-prop-1",
+            "decision_id": "ap-dec-1",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the second approval refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("approved"),
+        "the refusal names the stage: {refused}"
+    );
+
+    // 3. The authority proof: a grant NOT held by the approver refuses (the
+    // §4.5 identity check at the action time).
+    let (status, _) = register_proposal("ap-prop-2").await;
+    assert_eq!(status, 200, "the second proposal registers");
+    let (status, _) = decide("ap-dec-2", "ap-prop-2").await;
+    assert_eq!(status, 200, "the second decision records");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-3",
+            "proposal_id": "ap-prop-2",
+            "decision_id": "ap-dec-2",
+            "approver": human_id,
+            "grant_id": "grt_hpr_ghost",
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the mismatched proof refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("authority proof"),
+        "{refused}"
+    );
+
+    // 4. The FOREIGN decision refuses (the decision must belong to the
+    // proposal).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-4",
+            "proposal_id": "ap-prop-2",
+            "decision_id": "ap-dec-1",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the foreign decision refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not belong"),
+        "{refused}"
+    );
+
+    // 5. The approval on a DRAFT proposal refuses (no decision yet).
+    let (status, _) = register_proposal("ap-prop-3").await;
+    assert_eq!(status, 200, "the third proposal registers");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-5",
+            "proposal_id": "ap-prop-3",
+            "decision_id": "ap-dec-1",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the draft-stage approval refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("draft"),
+        "{refused}"
+    );
+
+    // 6. The empty quorum refuses; the list carries the one approval.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "ap-app-6",
+            "proposal_id": "ap-prop-2",
+            "decision_id": "ap-dec-2",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [], "denominator": 0, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the empty quorum refuses: {refused}");
+    let (status, approvals) = get(&client, &base, "/v1/policy-approvals", &human_id).await;
+    assert_eq!(status, 200, "the approvals read: {approvals}");
+    let approvals = approvals.as_array().unwrap();
+    assert_eq!(approvals.len(), 1, "{approvals:?}");
+    assert_eq!(approvals[0]["approval_id"], json!("ap-app-1"));
 }

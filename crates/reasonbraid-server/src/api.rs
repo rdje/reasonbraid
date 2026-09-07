@@ -349,6 +349,10 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/admin/nodes/presence", get(list_node_presence))
         .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/directory/match", post(directory_match))
+        .route("/v1/calls", post(open_recruitment_call))
+        .route("/v1/calls/{call_id}/respond", post(respond_to_call))
+        .route("/v1/calls/{call_id}/close", post(close_call))
+        .route("/v1/calls/{call_id}", get(inspect_call))
         .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
         .route(
             "/v1/profiles/{role_id}/versions",
@@ -1212,6 +1216,322 @@ async fn list_node_presence(
     Ok(Json(json!({
         "tenant_id": q.tenant_id.to_string(),
         "nodes": nodes,
+    })))
+}
+
+// ── The open-call artifact + the typed responses (PHASE-3.4.2) ────────────────────
+
+/// The call-open body (the §10.5 spec; the expression rides typed).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenCallRequest {
+    tenant_id: String,
+    thread_id: String,
+    expression: crate::matching::EligibilityExpression,
+    #[serde(default = "default_min_participants")]
+    min_participants: i32,
+    #[serde(default = "default_max_participants")]
+    max_participants: i32,
+    #[serde(default)]
+    recommendations_allowed: bool,
+    join_deadline: chrono::DateTime<chrono::Utc>,
+    expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn default_min_participants() -> i32 {
+    1
+}
+fn default_max_participants() -> i32 {
+    4
+}
+
+/// `POST /v1/calls` — the initiator opens a call on a thread (the gate: the
+/// caller holds `ThreadInvite` for the thread — the call rides the SAME
+/// invitation machinery per ADR-015).
+async fn open_recruitment_call(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<OpenCallRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let tenant_id: TenantId = req
+        .tenant_id
+        .parse()
+        .map_err(|_| ControlApiError::invalid_command("tenant_id is malformed"))?;
+    let authz = CommandAuthz {
+        delegation_scope: None,
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::ThreadInvite,
+        target: ResourceTarget::Thread {
+            tenant_id,
+            thread_id: req
+                .thread_id
+                .parse()
+                .map_err(|_| ControlApiError::invalid_command("thread_id is malformed"))?,
+        },
+    };
+    match authorize(&state.pool, &authz, Utc::now()).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            return Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )));
+        }
+        AuthorizationOutcome::Allowed { .. } => {}
+    }
+    if req.min_participants < 1 || req.max_participants < req.min_participants {
+        return Err(ControlApiError::invalid_command(
+            "min_participants must be ≥ 1 and max_participants ≥ min_participants",
+        ));
+    }
+    let expression = serde_json::to_value(&req.expression)
+        .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;
+    let call_id = crate::recruitment::open_call(
+        &state.pool,
+        &req.tenant_id,
+        &req.thread_id,
+        &actor_handle_for_subject(&principal).to_string(),
+        &expression,
+        req.min_participants,
+        req.max_participants,
+        req.recommendations_allowed,
+        req.join_deadline,
+        req.expires_at,
+    )
+    .await?;
+    Ok(Json(json!({
+        "call_id": call_id,
+        "thread_id": req.thread_id,
+        "status": "open",
+    })))
+}
+
+/// The respondent's current facts for the eligibility gate (the same shape
+/// the match surface loads).
+async fn respondent_candidate(
+    pool: &PgPool,
+    role_id: &str,
+) -> Option<(
+    crate::matching::EligibilityCandidate,
+    crate::presence::PresenceState,
+)> {
+    let row: Option<(bool, bool, Option<i64>, Option<Value>)> = sqlx::query_as(
+        "SELECT np.online, np.suspended, \
+                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
+                (SELECT v.profile \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+         FROM node_presence np WHERE np.node_id = $1",
+    )
+    .bind(role_id)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+    let (online, suspended, concurrency, profile) = row?;
+    let state = crate::presence::presence_state(true, suspended, online, concurrency);
+    let parsed =
+        profile.and_then(|p| serde_json::from_value::<crate::profiles::AgentProfile>(p).ok());
+    Some((
+        crate::matching::EligibilityCandidate {
+            role_id: role_id.to_string(),
+            profile: parsed,
+            presence_state: state,
+            concurrency,
+            available_budget: None,
+        },
+        state,
+    ))
+}
+
+/// `POST /v1/calls/{call_id}/respond` — the respondent submits a TYPED §10.5
+/// response. The gate: the call is open, the deadline has not passed, the
+/// respondent is an enrolled role, and the server re-resolves the call's
+/// eligibility expression against the respondent's CURRENT facts — an
+/// ineligible response refuses with the stage-1 reasons.
+async fn respond_to_call(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(call_id): Path<String>,
+    Json(response): Json<crate::recruitment::RecruitmentResponse>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let GrantSubject::Role(role) = &principal else {
+        return Err(ControlApiError::unauthorized(
+            "only an enrolled role responds to a call",
+        ));
+    };
+    let respondent = role.to_string();
+    let Some(call) = crate::recruitment::call(&state.pool, &call_id).await? else {
+        return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
+    };
+    if call.status != "open" {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the call is {}",
+            call.status
+        )));
+    }
+    if Utc::now() > call.join_deadline {
+        return Err(ControlApiError::invalid_transition(
+            "the join deadline has passed",
+        ));
+    }
+    let expression: crate::matching::EligibilityExpression =
+        serde_json::from_value(call.expression).map_err(|e| {
+            ControlApiError::internal_with_log(format!("stored expression unreadable: {e}"))
+        })?;
+    // The eligibility gate applies to the PARTICIPATION claims (join /
+    // conditional_join) — a decline/recommend/recuse is exactly the
+    // ineligible (or unwilling) declaring why, and must not be refused.
+    let participation = matches!(response.kind(), "join" | "conditional_join");
+    if participation {
+        let Some((candidate, _state)) = respondent_candidate(&state.pool, &respondent).await else {
+            return Err(ControlApiError::unauthorized(
+                "the respondent has no enrolled node/profile",
+            ));
+        };
+        let verdict = crate::matching::eligible(&expression, &candidate);
+        if !verdict.eligible {
+            return Err(ControlApiError::unauthorized(format!(
+                "the respondent is ineligible: {}",
+                verdict.reasons.join("; ")
+            )));
+        }
+    }
+    crate::recruitment::record_response(&state.pool, &call_id, &respondent, &response).await?;
+    Ok(Json(json!({
+        "call_id": call_id,
+        "respondent": respondent,
+        "response": response.kind(),
+    })))
+}
+
+/// `POST /v1/calls/{call_id}/close` — the initiator (or the tenant owner)
+/// closes the call: the server snapshots the SELECTED panel (the joiners,
+/// ranked, capped at the max) + the selection explanation (each panelist's
+/// stage-1 reasons + the stage-2 features).
+async fn close_call(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(call_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(call) = crate::recruitment::call(&state.pool, &call_id).await? else {
+        return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
+    };
+    if call.status != "open" {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the call is {}",
+            call.status
+        )));
+    }
+    // The gate: the initiator or the tenant owner (audited).
+    let is_initiator = call.initiator == actor_handle_for_subject(&principal).to_string();
+    let is_owner = if let Ok(tenant) = call.tenant_id.parse() {
+        authorize_tenant_admin(&state.pool, &principal, tenant)
+            .await
+            .is_ok()
+    } else {
+        false
+    };
+    if !is_initiator && !is_owner {
+        return Err(ControlApiError::unauthorized(
+            "only the initiator or the tenant owner closes the call",
+        ));
+    }
+
+    let expression: crate::matching::EligibilityExpression =
+        serde_json::from_value(call.expression.clone()).map_err(|e| {
+            ControlApiError::internal_with_log(format!("stored expression unreadable: {e}"))
+        })?;
+    let responses = crate::recruitment::responses(&state.pool, &call_id).await?;
+    let joiners: Vec<String> = responses
+        .iter()
+        .filter(|(_, kind, _, _)| kind == "join")
+        .map(|(respondent, _, _, _)| respondent.clone())
+        .collect();
+    if (joiners.len() as i32) < call.min_participants {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the panel needs at least {} joiners, {} responded",
+            call.min_participants,
+            joiners.len()
+        )));
+    }
+    // Rank the joiners (the default preferences) and cap at the max.
+    let mut candidates: Vec<(
+        crate::matching::EligibilityCandidate,
+        crate::matching::EligibilityVerdict,
+    )> = Vec::new();
+    for joiner in &joiners {
+        if let Some((candidate, _)) = respondent_candidate(&state.pool, joiner).await {
+            let verdict = crate::matching::eligible(&expression, &candidate);
+            candidates.push((candidate, verdict));
+        }
+    }
+    let mut ranked = crate::matching::rank(&expression, &candidates, &Default::default());
+    ranked.truncate(call.max_participants as usize);
+    crate::recruitment::snapshot_panel(&state.pool, &call_id, &ranked).await?;
+    Ok(Json(json!({
+        "call_id": call_id,
+        "status": "closed",
+        "panel": ranked
+            .iter()
+            .map(|r| r.role_id.clone())
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// `GET /v1/calls/{call_id}` — the inspection: the spec + the responses + the
+/// snapshot (the initiator/owner view; the `.5` lane adds the wider views).
+async fn inspect_call(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(call_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(call) = crate::recruitment::call(&state.pool, &call_id).await? else {
+        return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
+    };
+    let is_initiator = call.initiator == actor_handle_for_subject(&principal).to_string();
+    let is_owner = if let Ok(tenant) = call.tenant_id.parse() {
+        authorize_tenant_admin(&state.pool, &principal, tenant)
+            .await
+            .is_ok()
+    } else {
+        false
+    };
+    if !is_initiator && !is_owner {
+        return Err(ControlApiError::unauthorized(
+            "only the initiator or the tenant owner inspects the call",
+        ));
+    }
+    let responses = crate::recruitment::responses(&state.pool, &call_id).await?;
+    let snapshot: Option<(Value, Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT panel, explanation, snapshotted_at FROM recruitment_panels WHERE call_id = $1",
+    )
+    .bind(&call_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(Json(json!({
+        "call_id": call.call_id,
+        "thread_id": call.thread_id,
+        "status": call.status,
+        "min_participants": call.min_participants,
+        "max_participants": call.max_participants,
+        "responses": responses
+            .into_iter()
+            .map(|(respondent, kind, payload, at)| json!({
+                "respondent": respondent,
+                "kind": kind,
+                "payload": payload,
+                "at": at.to_rfc3339(),
+            }))
+            .collect::<Vec<_>>(),
+        "panel": snapshot.as_ref().map(|(panel, _, _)| panel.clone()),
+        "explanation": snapshot.as_ref().map(|(_, explanation, _)| explanation.clone()),
     })))
 }
 

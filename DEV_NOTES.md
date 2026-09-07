@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.4.2: a decline is a declaration, not a refusal — the eligibility gate applies to the participation claims only
+
+- **The response vocabulary carries its own gate semantics**: `join`/`conditional_join` claim participation, so the server re-resolves the eligibility expression against the respondent's CURRENT facts and refuses the ineligible (the typed 403 with the stage-1 reasons); `decline`/`recuse`/`recommend`/`request_context` are exactly the ineligible (or unwilling) declaring WHY — refusing them would silence the very signal the protocol exists to collect. The panel snapshot then ranks the joiners and stores the selection explanation (the reasons + the features) — the audit of what was chosen and why.
+- promotion: declined (the gate semantics are the leaf's own contract; the `.4.3` storm controls gate both paths). **Frontier `PHASE-3.4.3` (the storm controls).**
+
 ## _(2026-09-07)_ — PHASE-3.4.1: the baseline is the promotion, not the parallel — the open call rides the invitation that already works
 
 - **ADR-015 settles the lane's shape before the machinery lands**: the shipped explicit invitation (the human names the participants, the invitation IS the capability, dispatch-on-accept) promotes as the recruitment baseline, and the open call is the matching lane's consumer riding the SAME machinery — the failure mode the ADR rules out is a second, parallel invitation system. The dependence indicators stay with their owning lane (`.6`) behind a named early trigger.

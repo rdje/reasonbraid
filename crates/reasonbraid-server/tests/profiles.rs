@@ -68,6 +68,9 @@ async fn pool() -> Option<PgPool> {
         "hosts",
         "agent_roles",
         "human_principals",
+        "recruitment_panels",
+        "recruitment_responses",
+        "recruitment_calls",
         "tenants",
         "idempotency",
         "event_log",
@@ -1262,5 +1265,213 @@ async fn the_match_query_resolves_the_expression_and_clamps_the_scope() {
     assert!(
         refused["message"].as_str().unwrap_or("").contains("scope"),
         "the refusal names the clamp: {refused}"
+    );
+}
+
+/// THE `.3.4.2` acceptance: the call rides the thread's invitation machinery —
+/// the human opens a call with the eligibility expression, the eligible role
+/// joins, the ineligible role's join refuses with the stage-1 reasons, the
+/// decline carries its reason, and the close snapshots the ranked panel with
+/// the selection explanation.
+#[tokio::test]
+async fn the_call_artifact_rides_the_invitation_machinery() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "call-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // A thread the call rides (the human holds the invite authority).
+    let envelope = |operation: &str, key: &str, body: Value| {
+        let env = reasonbraid_core::CommandEnvelope {
+            protocol_version: reasonbraid_core::PROTOCOL_VERSION.to_string(),
+            operation: operation.to_string(),
+            request_id: reasonbraid_core::RequestId::new(),
+            idempotency_key: key.to_string(),
+            expected_aggregate_version: None,
+            body,
+            authority_context: None,
+            client_context: Default::default(),
+        };
+        env
+    };
+    let command = |path: String, principal: String, env: reasonbraid_core::CommandEnvelope| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}{path}"))
+                .header(PRINCIPAL_HEADER, principal)
+                .json(&env)
+                .send()
+                .await
+                .expect("command");
+            let status = response.status().as_u16();
+            let body: Value = response.json().await.expect("command json");
+            (status, body)
+        }
+    };
+    let (status, created) = command(
+        "/v1/threads".to_string(),
+        human_id.clone(),
+        envelope(
+            "thread.create",
+            "key-call-t1",
+            json!({ "tenant_id": tenant, "subject": "open call probe", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    // Role A (eligible) + Role B (no profile → ineligible).
+    let (status, role_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "call-agent-a", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role A enrolls: {role_a}");
+    let role_a_id = role_a["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_a_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}"),
+        &role_a_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "role A writes its profile");
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}/attest"),
+        &human_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_call/20260907" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner attests A");
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "call-agent-b", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role B enrolls: {role_b}");
+    let role_b_id = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_b_id).await;
+
+    // The call: the human's invite authority gates the open.
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let response = client
+        .post(format!("{base}/v1/calls"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "tenant_id": tenant,
+            "thread_id": thread_id,
+            "expression": {
+                "scope": "tenant",
+                "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                "presence_states": ["available", "offline"],
+            },
+            "min_participants": 1,
+            "max_participants": 2,
+            "join_deadline": deadline,
+            "expires_at": expiry,
+        }))
+        .send()
+        .await
+        .expect("open request");
+    assert_eq!(response.status().as_u16(), 200, "the call opens");
+    let opened: Value = response.json().await.unwrap();
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+
+    // Role A joins (the eligible participation claim).
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/respond"))
+        .header(PRINCIPAL_HEADER, &role_a_id)
+        .json(&json!({ "kind": "join" }))
+        .send()
+        .await
+        .expect("respond request");
+    assert_eq!(response.status().as_u16(), 200, "the eligible role joins");
+    let joined: Value = response.json().await.unwrap();
+    assert_eq!(joined["response"], json!("join"));
+
+    // Role B's JOIN refuses with the stage-1 reasons (the eligibility gate).
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/respond"))
+        .header(PRINCIPAL_HEADER, &role_b_id)
+        .json(&json!({ "kind": "join" }))
+        .send()
+        .await
+        .expect("respond request");
+    assert_eq!(
+        response.status().as_u16(),
+        403,
+        "the ineligible join refuses"
+    );
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("ineligible"),
+        "the refusal names the gate: {refused}"
+    );
+
+    // Role B's DECLINE carries its reason (the informational responses are
+    // NOT refused — a decline is exactly the ineligible declaring why).
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/respond"))
+        .header(PRINCIPAL_HEADER, &role_b_id)
+        .json(&json!({ "kind": "decline", "reason": "no code-review capability" }))
+        .send()
+        .await
+        .expect("respond request");
+    assert_eq!(response.status().as_u16(), 200, "the decline rides");
+    let declined: Value = response.json().await.unwrap();
+    assert_eq!(declined["response"], json!("decline"));
+
+    // The close: the panel snapshots the joiners + the explanation.
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/close"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(response.status().as_u16(), 200, "the close snapshots");
+    let closed: Value = response.json().await.unwrap();
+    assert_eq!(
+        closed["panel"],
+        json!([role_a_id]),
+        "the panel is the joiner"
+    );
+    assert_eq!(closed["status"], json!("closed"));
+
+    // The inspection: the responses + the panel + the explanation.
+    let (status, inspected) = get(&client, &base, &format!("/v1/calls/{call_id}"), &human_id).await;
+    assert_eq!(status, 200, "the inspection: {inspected}");
+    assert_eq!(inspected["responses"].as_array().unwrap().len(), 2);
+    let explanation = inspected["explanation"].as_array().unwrap();
+    assert!(
+        explanation[0]["stage1_reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r.as_str().unwrap().contains("code_review")),
+        "the selection explanation rides: {inspected}"
     );
 }

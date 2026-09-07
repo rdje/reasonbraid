@@ -35,6 +35,7 @@ mod node_channel;
 mod outbox;
 mod presence;
 mod profiles;
+mod recruitment;
 mod telemetry;
 mod threads;
 mod tx;

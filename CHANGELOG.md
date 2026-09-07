@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The open call rides the invitation machinery: typed responses, a ranked panel, the explanation (`PHASE-3.4.2`)
+
+- Migration 0020 (`recruitment_calls` + `recruitment_responses` + `recruitment_panels`) + `src/recruitment.rs`: the §10.5 call spec (the expression + the audience + the min/max + the slots + the window + the deadline + the expiry + the recommendations flag) and the typed response vocabulary (join/observe/decline/defer/conditional_join/recommend/request_context/recuse).
+- The verbs: `POST /v1/calls` (the initiator's ThreadInvite authority gates the open — ADR-015's ride-the-same-machinery), `POST /v1/calls/{id}/respond` (the eligibility re-resolves server-side at every PARTICIPATION response — a decline/recuse is exactly the ineligible declaring why, never refused), `POST /v1/calls/{id}/close` (the joiners ≥ min; the panel snapshots ranked, capped at max, with the selection explanation = each panelist's stage-1 reasons + the stage-2 features), `GET /v1/calls/{id}` (the inspection).
+- Measured (`tests/profiles.rs` grew to 8, the first live run passed): the eligible join, the ineligible join's typed 403, the decline's reason, the ranked panel + the explanation. Frontier → `.4.3` (the storm controls).
+
 ## 2026-09-07 — ADR-015: the explicit invitation promotes, the open call consumes the matching lane (`PHASE-3.4.1`)
 
 - ADR-015 accepted (evidence-gated): the shipped `.1.3` explicit-invitation contract (the human names the participants, the invitation is the real capability, dispatch-on-accept) is the recruitment baseline; the open call rides the SAME invitation machinery (never a parallel system) and consumes the matching lane's candidates.

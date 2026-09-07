@@ -435,7 +435,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       dependence-indicator trigger named); no code changes.
 
   - ID: `PHASE-3.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the call artifact + the typed recruitment responses — the
       §10.5 call spec (the eligibility expression + the audience +
       the min/max participants + the role slots + the advertisement
@@ -447,6 +447,27 @@ eligibility before ranking. Dependence indicators, never an independence score.
       snapshot + the selection explanation (the server records what
       it chose + why — the `.3` explanations ride).
     Backlog: 29, 30 (the protocol half)
+    Done (`2026-09-07`): the call artifact landed — migration 0020
+      (`recruitment_calls` + `recruitment_responses` +
+      `recruitment_panels`) + `crates/reasonbraid-server/src/
+      recruitment.rs` (the typed §10.5 response vocabulary: join/
+      observe/decline/defer/conditional_join/recommend/
+      request_context/recuse) + the verbs: `POST /v1/calls` (the
+      initiator's ThreadInvite authority gates the open — ADR-015's
+      ride-the-same-machinery), `POST /v1/calls/{id}/respond` (the
+      eligibility gate applies to the PARTICIPATION claims only — a
+      decline/recuse is exactly the ineligible declaring why, never
+      refused; the server re-resolves the expression against the
+      respondent's CURRENT facts), `POST /v1/calls/{id}/close` (the
+      joiners ≥ min; the panel snapshot ranks the joiners and caps
+      at max; the selection explanation = each panelist's stage-1
+      reasons + the stage-2 features), `GET /v1/calls/{id}` (the
+      initiator/owner inspection). Measured
+      (`the_call_artifact_rides_the_invitation_machinery`, profiles
+      8 — the first live run passed): the eligible join, the
+      ineligible join's typed 403 with the reasons, the decline's
+      reason riding, the ranked panel + the explanation. The 0020 FK
+      ripple updated eleven purge lists. Frontier → `.4.3`.
     Acceptance: the call artifact + the responses land typed; the
       panel snapshot carries the explanation; measured; no
       regression.
@@ -487,7 +508,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.4.2` | `proposed` | `.4.1` done — ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane); the call artifact + the typed responses execute now |
+| 1 | `PHASE-3.4.3` | `proposed` | `.4.2` done — the call artifact + the typed responses (the participation-only eligibility gate, the ranked panel + the explanation); the storm controls execute now |
 
 ## Changelog
 
@@ -563,6 +584,57 @@ eligibility before ranking. Dependence indicators, never an independence score.
   invitation promotes; the open call is the matching lane's
   consumer; the dependence indicators land with `.6`); no code
   changed; frontier → `.4.2`.
+- `2026-09-07`: `.4.2` done — the call artifact + the typed
+  responses (migration 0020 + the four verbs + the participation-
+  only eligibility gate + the ranked panel with the explanation);
+  the profiles suite grew to 8; the eleven purge lists gained the
+  0020 tables; frontier → `.4.3`.
+
+## Acceptance Checklist (PHASE-3.4.2)
+
+The CODE change owned by this leaf:
+`migrations/0020_recruitment_calls.sql` (NEW — the call + the
+responses + the panels), `crates/reasonbraid-server/src/
+recruitment.rs` (NEW — the typed vocabulary + the call/response/
+snapshot functions), `crates/reasonbraid-server/src/api.rs` (the
+four verbs + the routes), `crates/reasonbraid-server/src/lib.rs`
+(the module), `crates/reasonbraid-server/tests/profiles.rs` (the
+measured call chain), and the eleven tenant-purging purge lists (the
+0020 FK ripple) — `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.4` census: the `.1.3` invitation
+  + the `.3` match surface are the inputs but the §10.5 protocol
+  between them (the call spec, the response vocabulary, the panel
+  snapshot) has no typed shape.
+- [x] **ROOT CAUSE (WHY + WHERE)** — no call artifact existed —
+  `git grep -c "recruitment_calls\|conditional_join" cb90732 --
+  crates/ migrations/` → rc=1 (nothing before this leaf). The fix
+  point is the call as a DURABLE artifact riding the thread's
+  invitation machinery (ADR-015), with the eligibility re-resolved
+  server-side at every PARTICIPATION response.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles the_call` →
+  `test result: ok. 1 passed` (the FIRST live run passed) — the
+  human's ThreadInvite authority opens the call; the eligible role
+  joins; the ineligible join is the typed 403 with the stage-1
+  reasons; the decline rides its reason (the informational
+  responses are never refused); the close snapshots the ranked
+  panel + the selection explanation (the reasons + the features
+  ride the inspection).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg342_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0020_recruitment_calls.sql`, `src/recruitment.rs`,
+  `src/api.rs`, `src/lib.rs`, `tests/profiles.rs`, the eleven purge
+  lists.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.3.3)
 
@@ -942,6 +1014,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.4.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_call` → `test result: ok. 1 passed` (the open/join/refuse/decline/close chain — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg342_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the call artifact + the typed responses; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-3.4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-015 accepted (the baseline + the dependence-indicator trigger); frontier → `.4.2` |
 | `2026-09-07` | `PHASE-3.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the recruitment-lane census + the contract-seam decomposition (`.4.1` ADR-015 → `.4.2` the call + responses → `.4.3` the storm controls); frontier → `.4.1` |
 | `2026-09-07` | `PHASE-3.3.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_match` → `test result: ok. 1 passed` (the ranked resolution + the clamp + the gate); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg333_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the matching query surface; **`.3` COMPLETE** — frontier → `.4` |
@@ -960,6 +1033,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.4.2` | `REASONBRAID-PHASE3-0015` | the call artifact + the typed recruitment responses (migration 0020 + the four verbs + the panel snapshot with the explanation) |
 | `PHASE-3.4.1` | `REASONBRAID-PHASE3-0014` | ADR-015 accepted (the explicit invitation promotes as the baseline; the open call consumes the matching lane — no code) |
 | `PHASE-3.4` | `REASONBRAID-PHASE3-0013` | the recruitment lane decomposed at the census seams (the baseline + the candidates exist; the vocabulary/call/storm machinery are the gaps) |
 | `PHASE-3.3.3` | `REASONBRAID-PHASE3-0012` | the matching query surface (the scope clamp + the filtered candidates + the provenance gate) — **`.3` COMPLETE** |

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.5.1: the cached decision is a server fact the node borrows — and the golden caught a one-leaf-old drift
+
+- **§17.1 settled the cache's shape before any code**: the node journal is explicitly NOT authoritative for "global grants or final decisions", so the node can never locally re-evaluate a grant — the only cacheable thing is the server's ADMISSION decision riding the delivery. The spike's pure types (`CachedDecision` + `CacheVerdict` + the `ActionClass` fail table) encode exactly that: a 60s freshness TTL from `decided_at`, a revocation epoch a bump invalidates however fresh the entry looks, a deny never widened by time.
+- **The engine question closed with evidence, not preference**: OPA/Cedar would be a rewrite of a shipped evaluator that already covers the dev profile's §16.4 criteria — the comparison parks behind a measured trigger (multi-operator policy or an expressiveness gap), ADR-006's precedent.
+- **The verification found a REAL drift from one leaf ago**: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json`, and its NO REGRESSION set (live suites + demo) never re-ran the core crate's own offline suite where the golden-drift test lives. Regenerated here; the core suite is 44/44.
+- Promoted to `docs/decisions/2026-09-07_verification-set-coverage.md` (`answers:` present — a NO REGRESSION set must include the suites of every crate the leaf changed). **Frontier `PHASE-2.1.5.2` (the delivery-carried decision + the tenant epoch + the node-side cache).**
+
 ## _(2026-09-07)_ — PHASE-2.1.5: the census found a rule with no machinery — and plumbing that's already waiting for it
 
 - **The journal's `authz_ref` column is pre-shaped but every writer binds `None`.** The delivery path was built with a place for the admitting authorization record's id before any decision metadata existed. `.1.5.2`'s job is to make the delivery carry the decision (authz_ref + policy_digest + decided_at + the epoch at decision time) so the pre-shaped column finally gains a value.

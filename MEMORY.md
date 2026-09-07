@@ -23,16 +23,17 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.5.1` (`.1.5` split at the
-  ADR-vs-implementation seam: the census found no cache machinery + no
-  revocation epoch, but the journal's `authz_ref` is pre-shaped). Then
-  `.1.5.2`, then `.1.6`.
-- **Next action:** execute `PHASE-2.1.5.1` — ADR-008 + the pure cached-
-  decision semantics spike (core-crate `CachedDecision` type: freshness/
-  expiry, the revocation-epoch invalidation, the fail-closed classifier;
-  the engine half recorded accepted-with-evidence). The `.1.3`/`.1.4`
-  revocation freshness is the model: a cache must never outlive a
-  revocation.
+- **Active tree:** `PHASE-2` → frontier `.1.5.2` (`.1.5.1` done: ADR-008
+  accepted — the shipped evaluator stays, the node caches ONLY the
+  admission decisions riding its delivery; the pure cache semantics + 5
+  tests landed, core suite 44). Then `.1.6`.
+- **Next action:** execute `PHASE-2.1.5.2` — the implementation: the poll
+  payload's commands gain the admission-decision metadata (authz_ref +
+  digest + decided_at + the epoch at decision time), migration 0013 adds
+  the tenant revocation epoch bumped by every `.1.3` revocation write,
+  the journal's pre-shaped `authz_ref` finally gains a value, and the
+  dispatch boundary honors the `.1.5.1` rules (fresh + epoch-current
+  allow dispatches; stale → re-ask; unreachable → fail closed).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

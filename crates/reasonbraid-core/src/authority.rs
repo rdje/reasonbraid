@@ -890,6 +890,133 @@ pub fn delegation_scope_is_subset(requested: &TargetSelector, granted: &TargetSe
     }
 }
 
+// ── Cached decisions (`.1.5.1`; the ADR-008 spike) ─────────────────────────
+
+/// The freshness TTL of a cached ADMISSION allow (the rule the `.1.5.1` spike
+/// declares): `decided_at + TTL` bounds the window a cached allow may stand
+/// without a re-ask. Short on purpose — the node's poll cadence is seconds,
+/// so a stale allow refreshes at the next poll.
+pub const CACHED_ALLOW_TTL_SECONDS: i64 = 60;
+
+/// The server's admission decision, as the node caches it (ROADMAP §16.4 —
+/// only explicitly cacheable decisions; §11.1 — the minimum state). The node
+/// caches ONLY the decisions riding its delivery: the allowing admission for
+/// a dispatched command, or a re-ask's denial. `revocation_epoch` is the
+/// tenant's epoch AT DECISION TIME — a later bump invalidates the entry,
+/// however fresh it still looks (the `.1.3`/`.1.4` freshness model: a cache
+/// must never outlive a revocation).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CachedDecision {
+    pub kind: CachedDecisionKind,
+    pub decided_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub revocation_epoch: u64,
+    pub policy_digest: String,
+}
+
+/// What a cached decision says.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CachedDecisionKind {
+    Allow,
+    Deny { reason: String },
+}
+
+/// The verdict of evaluating a cached decision at the dispatch boundary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CacheVerdict {
+    /// The cached allow stands — fresh AND epoch-current: dispatch may
+    /// proceed without a round trip.
+    Allow,
+    /// The cached deny stands — a deny is never widened by time; the
+    /// dispatch is refused (cheaply fail-closed).
+    Deny { reason: String },
+    /// Expired or epoch-invalidated: RE-ASK the authority store. If the
+    /// store is unreachable, the action class's fail rule (§16.4) applies.
+    Stale,
+}
+
+impl CachedDecision {
+    /// An allow built from the admission decision (the `.1.5.1` declared
+    /// freshness rule: the TTL runs from the decision time).
+    pub fn allow(decided_at: DateTime<Utc>, revocation_epoch: u64, policy_digest: String) -> Self {
+        Self {
+            kind: CachedDecisionKind::Allow,
+            decided_at,
+            expires_at: decided_at + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+            revocation_epoch,
+            policy_digest,
+        }
+    }
+
+    /// Still inside the declared freshness window?
+    pub fn is_fresh(&self, now: DateTime<Utc>) -> bool {
+        now < self.expires_at
+    }
+
+    /// Has the tenant's revocation epoch moved since this decision? A bump
+    /// invalidates the cache — a revocation must never be outlived.
+    pub fn is_invalidated(&self, current_epoch: u64) -> bool {
+        self.revocation_epoch != current_epoch
+    }
+
+    /// The dispatch-boundary evaluation: a cached allow stands only while it
+    /// is fresh AND the epoch is unchanged; a cached deny always stands (it
+    /// is never widened by time — refusing is safe); everything else is a
+    /// re-ask.
+    pub fn evaluate(&self, now: DateTime<Utc>, current_epoch: u64) -> CacheVerdict {
+        match &self.kind {
+            CachedDecisionKind::Deny { reason } => CacheVerdict::Deny {
+                reason: reason.clone(),
+            },
+            CachedDecisionKind::Allow => {
+                if self.is_fresh(now) && !self.is_invalidated(current_epoch) {
+                    CacheVerdict::Allow
+                } else {
+                    CacheVerdict::Stale
+                }
+            }
+        }
+    }
+}
+
+/// An action class for the §16.4 fail rule. The dev profile's classes are
+/// declared HERE so the rule is a table lookup, not prose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionClass {
+    /// Dispatch of a delivered command — the provider contact, §16.4's
+    /// irreversible write (a silent retry could duplicate a provider effect).
+    IrreversibleWrite,
+    /// Administrative writes (grants, boundaries, revocation).
+    AdministrativeWrite,
+    /// Read-only inspection (the node's local journal surfaces; authority-
+    /// gated reads are server-side — unreachable means nothing to serve).
+    Read,
+}
+
+/// The declared fail mode when the authority store is unreachable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailMode {
+    FailClosed,
+    FailOpen,
+}
+
+impl ActionClass {
+    /// §16.4's rule: publication, secret access, grant changes, and
+    /// irreversible writes FAIL CLOSED; the dev profile's reads (local
+    /// journal inspection) fail open.
+    pub fn fail_mode_when_unreachable(self) -> FailMode {
+        match self {
+            ActionClass::IrreversibleWrite | ActionClass::AdministrativeWrite => {
+                FailMode::FailClosed
+            }
+            ActionClass::Read => FailMode::FailOpen,
+        }
+    }
+}
+
 #[cfg(test)]
 mod delegation_tests {
     use super::*;
@@ -973,6 +1100,103 @@ mod delegation_tests {
             envelope_bytes < token_bytes,
             "chain-in-envelope ({envelope_bytes} B) stays smaller than the token form \
              ({token_bytes} B) for the same facts"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cached_decision_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn t(s: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(s, 0).unwrap()
+    }
+
+    #[test]
+    fn a_fresh_epoch_current_cached_allow_dispatches() {
+        let decided = t(1_000);
+        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        // Inside the TTL AND the epoch unchanged → the cached allow stands.
+        assert_eq!(allow.evaluate(decided, 7), CacheVerdict::Allow);
+        assert_eq!(
+            allow.evaluate(
+                decided + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS - 1),
+                7
+            ),
+            CacheVerdict::Allow
+        );
+    }
+
+    #[test]
+    fn an_expired_cached_allow_is_stale() {
+        let decided = t(1_000);
+        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        // The TTL boundary is exclusive: AT expires_at the allow is stale.
+        assert_eq!(
+            allow.evaluate(
+                decided + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+                7
+            ),
+            CacheVerdict::Stale
+        );
+        assert_eq!(
+            allow.evaluate(
+                decided + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS * 10),
+                7
+            ),
+            CacheVerdict::Stale
+        );
+    }
+
+    #[test]
+    fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
+        let decided = t(1_000);
+        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        // Still fresh — but a revocation bumped the epoch: the cache must
+        // NOT outlive the revocation, so the entry is stale.
+        assert_eq!(allow.evaluate(decided, 8), CacheVerdict::Stale);
+        // A bump in either direction invalidates (the stored epoch is an
+        // exact-generation marker, not an ordering).
+        assert_eq!(allow.evaluate(decided, 6), CacheVerdict::Stale);
+    }
+
+    #[test]
+    fn a_cached_deny_is_never_widened_by_time() {
+        let decided = t(1_000);
+        let deny = CachedDecision {
+            kind: CachedDecisionKind::Deny {
+                reason: "boundary frozen".to_string(),
+            },
+            decided_at: decided,
+            expires_at: decided,
+            revocation_epoch: 7,
+            policy_digest: "digest-a".to_string(),
+        };
+        // A deny stands at ANY age and ANY epoch — refusing is always safe.
+        assert_eq!(
+            deny.evaluate(t(2_000_000), 99),
+            CacheVerdict::Deny {
+                reason: "boundary frozen".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn irreversible_and_admin_writes_fail_closed_reads_fail_open() {
+        // The §16.4 table: the irreversible dispatch + admin writes refuse
+        // when the store is unreachable; the local-journal reads don't.
+        assert_eq!(
+            ActionClass::IrreversibleWrite.fail_mode_when_unreachable(),
+            FailMode::FailClosed
+        );
+        assert_eq!(
+            ActionClass::AdministrativeWrite.fail_mode_when_unreachable(),
+            FailMode::FailClosed
+        );
+        assert_eq!(
+            ActionClass::Read.fail_mode_when_unreachable(),
+            FailMode::FailOpen
         );
     }
 }

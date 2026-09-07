@@ -4,6 +4,17 @@
   "description": "A command submission from a client (`ROADMAP.md` §9.1).\n\nThe client supplies only intent: an operation, an idempotency key, an optional\nexpected aggregate version for optimistic concurrency, an opaque `body`, and a\ncorrelation context. Authoritative fields — actor, tenant, sequence, timestamps,\nauthority — are absent from this type and are rejected by `deny_unknown_fields` if a\nclient tries to send them.",
   "type": "object",
   "properties": {
+    "authority_context": {
+      "description": "The delegation context (`.1.4.2`, ADR-009 — chain-in-envelope): present\nwhen the authenticated actor acts ON BEHALF OF another principal whose\ngrant is the authority source.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AuthorityContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "body": {
       "description": "Operation-specific payload, interpreted by the owning aggregate (§8.6)."
     },
@@ -45,6 +56,32 @@
     "client_context"
   ],
   "$defs": {
+    "AuthorityContext": {
+      "description": "The delegation context a command may carry (`.1.4.2`, ADR-009). The subject\nrides a STRING field (`rol_…`/`hpr_…`): `GrantSubject` is a serde tagged\nnewtype and is not a wire field.",
+      "type": "object",
+      "properties": {
+        "on_behalf_of": {
+          "description": "The principal the actor acts on behalf of (the grant holder).",
+          "type": "string"
+        },
+        "purpose": {
+          "description": "Why (audit context; the authorization record carries it).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "description": "The scope the delegation may touch — the request's target must be\nwithin it (the §16.3 widening invariant measures against it).",
+          "$ref": "#/$defs/TargetSelector"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "on_behalf_of",
+        "scope"
+      ]
+    },
     "ClientContext": {
       "description": "Correlation context a client may attach to a command (`ROADMAP.md` §9.1).",
       "type": "object",
@@ -83,6 +120,50 @@
       "description": "Request identifier; wire form `req_{uuid}` (UUIDv7).",
       "type": "string",
       "pattern": "^req_"
+    },
+    "TargetSelector": {
+      "description": "Which resources a grant's actions reach: everything in the tenant, or a named\nthread set.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "tenant_wide"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "(Struct-like on purpose: serde's tagged representation cannot carry a\nnewtype variant wrapping a sequence.)",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "threads"
+            },
+            "threads": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ThreadId"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "threads"
+          ]
+        }
+      ]
+    },
+    "ThreadId": {
+      "description": "Thread identifier; wire form `thr_{uuid}` (UUIDv7).",
+      "type": "string",
+      "pattern": "^thr_"
     }
   }
 }

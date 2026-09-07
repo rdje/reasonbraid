@@ -380,7 +380,7 @@ slice can reuse the same control plane without rewriting it.
       ADR-vs-implementation seam — the `.1.4` precedent).
 
   - ID: `PHASE-2.1.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-008 + the semantics spike — which decisions are cacheable
       (the dev profile's answer: the server's ADMISSION decision rides
       the delivery and the node caches ONLY that — §11.1's minimum
@@ -399,6 +399,24 @@ slice can reuse the same control plane without rewriting it.
       the dev profile; ADR-006's precedent).
     Backlog: 11
     ADR: 008
+    Done (`2026-09-07`): ADR-008 accepted — the shipped in-tx evaluator
+      stays (accepted with evidence; the OPA/Cedar comparison parks
+      behind a measured trigger) and the node caches ONLY the admission
+      decisions riding its delivery (the §17.1 store-authority table:
+      the journal can never locally re-evaluate a grant). The spike
+      landed the pure `CachedDecision` + `CacheVerdict` + the
+      `ActionClass` fail table in the core crate with the five offline
+      tests (fresh + epoch-current allow dispatches; expired → stale;
+      an epoch bump invalidates a fresh entry; a deny is never widened;
+      irreversible/admin writes fail closed, reads fail open) —
+      `cargo test -p reasonbraid-core` → `test result: ok. 44 passed`.
+      Verification found a REAL drift: the checked-in
+      `command-envelope.schema.json` golden predated `.1.4.2`'s envelope
+      change (its NO REGRESSION set ran the live suites only — the
+      core crate's own offline suite, home of the golden-drift test, was
+      not re-run). The golden is regenerated here (`write_schema_goldens`)
+      and the core suite is green again; the acceptance checklist below
+      records the evidence — frontier → `.1.5.2`.
     Acceptance: the spike's offline tests are green (a fresh, unexpired,
       epoch-current cached allow passes; an expired or epoch-stale one
       fails; the irreversible classes fail closed); ADR-008 names the
@@ -475,7 +493,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.5.1` | `proposed` | `.1.5` decomposed at the ADR-vs-implementation seam (the census: no cache machinery, no revocation epoch, the poll payload carries no decision metadata — but the journal's `authz_ref` is pre-shaped); the ADR-008 semantics spike executes now |
+| 1 | `PHASE-2.1.5.2` | `proposed` | `.1.5.1` done — ADR-008 accepted + the pure cache semantics landed (44 core tests); the implementation (the delivery-carried decision + the tenant epoch + the node-side cache) executes now |
 
 ## Changelog
 
@@ -536,6 +554,19 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.5.1` done — ADR-008 accepted: the shipped in-tx
+  evaluator stays (accepted with evidence — the OPA/Cedar comparison parks
+  behind a measured trigger) and the node caches ONLY the admission
+  decisions riding its delivery (§17.1: the journal can never locally
+  re-evaluate a grant); the spike landed the pure `CachedDecision` +
+  `CacheVerdict` + the `ActionClass` fail table (five offline tests:
+  fresh+epoch-current allow, expiry, the epoch bump, the deny-is-never-
+  widened rule, the §16.4 fail table); `cargo test -p reasonbraid-core` →
+  44 passed. The verification found a REAL drift — the checked-in
+  command-envelope schema golden predated `.1.4.2` (its NO REGRESSION set
+  was live-suites-only; the core crate's own offline suite, home of the
+  golden-drift test, was not re-run) — the golden is regenerated here and
+  the discipline lesson recorded; frontier → `.1.5.2`.
 - `2026-09-07`: `.1.5` decomposed at the ADR-vs-implementation seam — the
   census found the ROADMAP rule (§16.4) with NO machinery: no decision
   cache in the node or server (`grep -rn 'cache'` → 0 matches), no
@@ -582,6 +613,57 @@ slice can reuse the same control plane without rewriting it.
   has no suspended state; children `.1.3.1` (node/cert revocation + the
   suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
   verbs); frontier → `.1.3.1`.
+
+## Acceptance Checklist (PHASE-2.1.5.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/authority.rs`
+(the `CachedDecision` + `CacheVerdict` + `ActionClass`/`FailMode` types, the
+`CACHED_ALLOW_TTL_SECONDS` rule, and the five tests),
+`crates/reasonbraid-core/src/lib.rs` (the re-exports), and
+`crates/reasonbraid-core/schema/command-envelope.schema.json` (the
+regenerated golden — a drift fix; see below) — `\.rs$` + `(^|/)crates/` in
+`.doctrine/code_paths.txt`. ADR-008 is the record.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's cached-decision sliver: the
+  §16.4 rule has no machinery — `grep -rn 'cache'
+  crates/reasonbraid-node/src/ crates/reasonbraid-server/src/` → 0 matches
+  before this leaf; the poll payload carries no decision metadata and no
+  revocation epoch exists (the `.1.3` writes bump none).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the dev profile evaluates every
+  decision fresh in-transaction at admission; the node then dispatches at
+  an irreversible boundary with no re-check (a revocation between
+  admission and dispatch would NOT refuse). The fix point is the
+  SEMANTICS first (pure, tested functions) so the `.1.5.2` wiring has a
+  decided contract; the engine question is settled with evidence (the
+  shipped evaluator covers the profile — a re-platform has no measured
+  trigger).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no cache
+  types, no ADR. After: `cargo test -p reasonbraid-core` → `test result:
+  ok. 44 passed` (the five new tests: a fresh, epoch-current cached allow
+  dispatches; an expired one is stale; an epoch bump invalidates a fresh
+  entry; a cached deny is never widened by time; irreversible/admin
+  writes fail closed, reads fail open); ADR-008 accepted
+  (evidence-gated).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green
+  (the core suite is the changed surface; the full offline re-run is the
+  selected set, §16); `cargo clippy --all --all-targets -- -D warnings`
+  → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `crates/reasonbraid-core/src/authority.rs` (the cache
+  semantics + the five tests); `src/lib.rs` (the exports);
+  `crates/reasonbraid-core/schema/command-envelope.schema.json` (the
+  regenerated golden — the `.1.4.2` envelope change had NOT regenerated
+  it and its NO REGRESSION set never re-ran the core crate's own offline
+  suite, so the drift sat undetected for one leaf;
+  `cargo test -p reasonbraid-core -- --ignored write_schema_goldens`
+  regenerates it); `docs/adr/008-authorization-engine-and-cached-decisions.md`
+  + the INDEX row.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, `docs/adr/INDEX.md`,
+  `docs/decisions/INDEX.md` (the drift-lesson record), KNOWLEDGE_MAP —
+  same commit. DEV_NOTES: promoted →
+  `docs/decisions/2026-09-07_verification-set-coverage.md` gained
+  `answers:`.
 
 ## Acceptance Checklist (PHASE-2.1.2.2)
 
@@ -937,6 +1019,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.3.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 15 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 15 with the revocation pair) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg132c_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the grant/boundary revocation write paths + the admin inspection lists + the freeze carve-out; **`.1.3` complete** — frontier → `.1.4` |
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
+| `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 
 ## Commit Log
 
@@ -954,3 +1037,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.1` | `REASONBRAID-PHASE2-0010` | ADR-009 (chain-in-envelope) + the pure `DelegationConstraints`/`delegation_scope_is_subset` prototype with the offline tests |
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
+| `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |

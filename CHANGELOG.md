@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-008: the cache is the admission decision, borrowed — never re-evaluated (`PHASE-2.1.5.1`)
+
+- ADR-008 accepted (evidence-gated): the shipped in-tx evaluator stays the engine (an OPA/Cedar re-platform has no measured trigger — the comparison parks behind one), and the node caches ONLY the server's admission decisions riding its delivery — §17.1 settles the shape (the journal is explicitly not authoritative for "global grants or final decisions", so the node can never locally re-evaluate a grant).
+- The spike landed the pure semantics in the core crate: `CachedDecision` + `CacheVerdict` + the `ActionClass`/`FailMode` table — a 60-second freshness TTL from `decided_at`, a per-tenant revocation epoch whose bump invalidates a fresh-looking entry, a deny that is never widened by time, and the §16.4 fail rule (irreversible + admin writes fail closed, reads fail open). Five offline tests; the core suite grew to 44.
+- The verification caught a REAL drift from one leaf ago: `.1.4.2`'s envelope change never regenerated `command-envelope.schema.json` and its NO REGRESSION set never re-ran the core crate's own offline suite (where the golden-drift test lives). Regenerated here; the lesson is recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`. Frontier → `.1.5.2` (the implementation).
+
 ## 2026-09-07 — `.1.5` split at the ADR-vs-implementation seam (`PHASE-2.1.5`)
 
 - The census found the ROADMAP rule (§16.4 — cache only explicitly cacheable decisions, honor expiry + revocation freshness, per-action-class fail-open/fail-closed) with NO machinery: no decision cache in the node or server, no revocation epoch (the `.1.3` write paths bump none), and the poll payload carries no decision metadata — while the plumbing is PRE-SHAPED: the journal's `authz_ref` column exists with every writer binding `None`, and the authorization record already holds the digest/version/decided_at.

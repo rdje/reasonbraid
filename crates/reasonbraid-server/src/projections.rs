@@ -104,6 +104,31 @@ pub async fn project(
     })
 }
 
+/// Load one projection row (the `.4.3.2` publish verb reads the bundle +
+/// the digest it publishes).
+pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection, ProjectionError> {
+    let row: Option<(String, String, String, String, serde_json::Value)> = sqlx::query_as(
+        "SELECT projection_id, target, digest, bytes, unrepresentable          FROM policy_projections WHERE projection_id = $1",
+    )
+    .bind(projection_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| ProjectionError::Duplicate(projection_id.to_string()))?;
+    let Some((projection_id, target, digest, bytes, unrepresentable)) = row else {
+        return Err(ProjectionError::Duplicate(format!(
+            "projection `{projection_id}` (the publish references a REGISTERED projection)"
+        )));
+    };
+    Ok(StoredProjection {
+        projection_id,
+        target,
+        digest,
+        bytes,
+        unrepresentable: serde_json::from_value(unrepresentable)
+            .expect("the unrepresentables parse"),
+    })
+}
+
 /// The projections, newest first.
 pub async fn list(pool: &PgPool) -> Result<Vec<StoredProjection>, sqlx::Error> {
     let rows: Vec<(String, String, String, String, serde_json::Value)> = sqlx::query_as(

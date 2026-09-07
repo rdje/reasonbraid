@@ -591,7 +591,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       doctrine). No code changed. Frontier → `.4.3.2`.
 
   - ID: `PHASE-6.4.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the Git publication half — the publisher module:
       the staging write (the bundle + the manifest into the
       staging branch), the fetch-back verification (the
@@ -600,6 +600,31 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       expected-old-id reference updates), the §15.7 steps
       5–8's Git half.
     Roadmap: §15.7
+    Done (`2026-09-07`): the Git publication half landed per
+      ADR-020 + the store contract —
+      `crates/reasonbraid-server/src/publisher.rs` (NEW):
+      the `publish` (the gix plumbing — no CLI: the blobs +
+      the FILENAME-SORTED tree + the raw-signature root
+      commit, the staging branch via the `Any` previous, the
+      FETCH-BACK verification (the re-derived digest), the
+      IMMUTABLE ref via the `MustNotExist` (the
+      written-once — the re-publish is the typed refusal),
+      the EFFECTIVE channel via the
+      `MustExistAndMatch`/`MustNotExist` compare-and-swap
+      (the stale expectation is the typed CasMismatch));
+      the api: `POST /v1/policy-publications/{id}/publish`
+      (the declared repo path — the dev-trusted operator
+      surface; the manifest composed from the records; the
+      record marks effective with the ref ids); the
+      `load` exposures on the publications + the
+      projections. Measured (publisher 2 offline + policy
+      8 live): the ref writes + the fetch-back equality, the
+      second publication's CAS onto the first's effective,
+      the stale-expectation refusal, the immutable
+      written-once refusal; the live verb drives the Git
+      half to the effective record with the two object ids,
+      the terminal re-publish + the non-repository
+      refusals. Frontier → `.4.3.3`.
 
   - ID: `PHASE-6.4.3.3`
     Status: `proposed`
@@ -633,10 +658,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.3.2` | `proposed` | `.4.3.1` done — the publication-store contract (the local bare repo, the three-ref scheme, the CAS write path); the Git publication half executes next |
+| 1 | `PHASE-6.4.3.3` | `proposed` | `.4.3.2` done — the Git publication half (the gix publisher: the sorted tree, the fetch-back, the written-once immutable, the CAS effective; publisher 2 + policy 8); the reconciliation matrix + the kill-point tests execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.3.2` done — the Git publication half
+  (the gix publisher: the ref writes + the fetch-back + the
+  written-once immutable + the CAS effective channel; the
+  publish verb); publisher 2 + policy 8; frontier → `.4.3.3`.
 - `2026-09-07`: `.4.3.1` done — the publication-store
   contract (the local bare repository, the staging/
   immutable/effective ref scheme, the CAS write path); no
@@ -1051,6 +1080,59 @@ mark_effective + mark_failed + the list),
 - [x] **FIX** — `0042_policy_publications.sql`,
   `src/publications.rs`, `src/lib.rs`, `src/api.rs`,
   `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.4.3.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/publisher.rs` (NEW — the
+`publish` over the gix plumbing), `crates/reasonbraid-server/
+src/publications.rs` + `src/projections.rs` (the `load`
+exposures), `crates/reasonbraid-server/src/lib.rs` (the
+module), `crates/reasonbraid-server/src/api.rs` (the publish
+verb), `crates/reasonbraid-server/tests/publisher.rs` (NEW —
+the offline suite), `crates/reasonbraid-server/tests/
+policy.rs` (the live test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  write half was the greenfield (the R1 pack only acquires;
+  no commit/ref-write path — `git grep -c
+  "pub fn publish\|PublishedRefs\|refs/rb/effective" 7f572cd
+  -- crates/reasonbraid-server/src/publisher.rs
+  crates/reasonbraid-server/tests/publisher.rs` → rc=1).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the fix point is the
+  ADR-020 + the store contract's Git half: the staging
+  branch, the fetch-back, the immutable ref, the CAS
+  effective channel — over the gix plumbing.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `cargo test -p reasonbraid-server
+  --test publisher` → `test result: ok. 2 passed` — the ref
+  writes + the fetch-back equality, the CAS onto the first
+  effective, the stale-expectation refusal, the immutable
+  written-once refusal; `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy the_publish_verb_drives_the_git_half`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 8 tests … ok`) — the publish verb → the
+  effective record with the two object ids, the terminal
+  re-publish + the non-repository refusals. The first
+  passes caught the gix API shapes (the `RefEdit`/`Target`
+  form, the filename-sorted tree requirement, the error
+  message detection) — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 62 suites
+  (the publisher suite added one);
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg532_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/publisher.rs`, `src/publications.rs`,
+  `src/projections.rs`, `src/lib.rs`, `src/api.rs`,
+  `tests/publisher.rs`, `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

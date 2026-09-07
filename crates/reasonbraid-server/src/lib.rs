@@ -49,6 +49,7 @@ mod presence;
 mod profiles;
 pub mod projections;
 pub mod publications;
+pub mod publisher;
 mod recruitment;
 mod resolvers;
 mod resources;

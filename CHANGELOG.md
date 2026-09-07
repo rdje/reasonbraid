@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The Git publication half lands (`PHASE-6.4.3.2`)
+
+- The `publisher` module (the gix plumbing — no CLI): the blobs + the filename-sorted tree + the root commit, the staging branch, the fetch-back verification (the re-derived digest), the IMMUTABLE publication ref (the written-once — the re-publish is the typed refusal), and the EFFECTIVE channel via the compare-and-swap (the stale expectation is the typed `CasMismatch`). The `POST /v1/policy-publications/{id}/publish` verb drives the half and marks the record effective with the ref ids. Measured: publisher 2 + policy 8.
+
 ## 2026-09-07 — The publication-store contract (`PHASE-6.4.3.1`)
 
 - The decision record (`docs/decisions/2026-09-07_publication-store-contract.md`): the LOCAL bare repository (the remote-publication profile is a named deferral), the three-ref scheme (the staging branch, the immutable publication ref — written once, the effective channel via the compare-and-swap with the expected old id), and the gix write path (no git CLI). No code.

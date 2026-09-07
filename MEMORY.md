@@ -16,15 +16,17 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.4.3.2` (**PHASE 5 CLOSED**; the publication-store contract ships — the local bare repo + the three-ref CAS scheme).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.4.3.3` (**PHASE 5 CLOSED**; the Git publication half ships — the gix publisher + the publish verb; publisher 2 + policy 8).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.4.3.2` — the Git publication
-  half: the publisher module (the staging write, the fetch-back
-  verification, the immutable ref + the effective channel via the
-  compare-and-swap) — per the store contract + ADR-020.
+- **Next action:** execute `PHASE-6.4.3.3` — the reconciliation
+  matrix + the kill-point tests: the six §15.8 rules over (the DB
+  state, the Git state) → the action, the idempotent reconciler, the
+  kill-point tests (the staged/absent retry, the staged/conflicting
+  stop, the failed/later-appearing quarantine — never a silent
+  promote) — per ADR-020.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

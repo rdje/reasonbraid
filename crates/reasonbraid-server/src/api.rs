@@ -500,6 +500,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(mark_publication_failed),
         )
         .route(
+            "/v1/policy-publications/{publication_id}/publish",
+            post(publish_publication),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2587,6 +2591,76 @@ async fn mark_publication_failed(
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
+}
+
+/// `POST /v1/policy-publications/{id}/publish` — the Git publication half
+/// (`.4.3.2`): the staged publication's bundle + the composed manifest
+/// ride the publisher (the staging branch, the fetch-back verification,
+/// the immutable ref, the effective channel via the CAS), then the record
+/// marks effective. The repo path is the DECLARED store (the dev-trusted
+/// operator surface — the `.5` deployment lane tightens it).
+async fn publish_publication(
+    State(state): State<Arc<ApiState>>,
+    Path(publication_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal publishes nothing",
+        ));
+    }
+    let repo_path = body
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the repo_path is required"))?;
+    let expected_effective = body
+        .get("expected_effective")
+        .and_then(|v| v.as_str())
+        .map(|hex| {
+            hex.parse::<gix::ObjectId>().map_err(|_| {
+                ControlApiError::invalid_command(format!(
+                    "the expected_effective `{hex}` is malformed"
+                ))
+            })
+        })
+        .transpose()?;
+    let publication = crate::publications::load(&state.pool, &publication_id)
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    if publication.state != "staged" {
+        return Err(ControlApiError::invalid_command(format!(
+            "publication `{publication_id}` is at stage `{}` — the publish rides a staged publication",
+            publication.state
+        )));
+    }
+    let projection = crate::projections::load(&state.pool, &publication.projection_id)
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let manifest = serde_json::to_string(&serde_json::json!({
+        "publication_id": publication.publication_id,
+        "proposal_id": publication.proposal_id,
+        "decision_id": publication.decision_id,
+        "approval_id": publication.approval_id,
+        "projection_id": publication.projection_id,
+        "projection_digest": projection.digest,
+    }))
+    .expect("the manifest serializes");
+    let refs = crate::publisher::publish(
+        std::path::Path::new(repo_path),
+        &publication_id,
+        &manifest,
+        &projection.bytes,
+        expected_effective,
+    )
+    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let git_object_ids = vec![refs.publication_ref_id, refs.effective_ref_id];
+    let row = crate::publications::mark_effective(&state.pool, &publication_id, git_object_ids)
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    Ok(Json(row))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

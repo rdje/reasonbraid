@@ -1900,3 +1900,239 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     assert_eq!(publications.len(), 2, "{publications:?}");
     assert_eq!(publications[0]["publication_id"], json!("pb-pub-2"));
 }
+
+#[tokio::test]
+async fn the_publish_verb_drives_the_git_half() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pu-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain: the policy → the thread + the verdict → the proposal →
+    // the decision → the approval → the projection → the staged publication.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "pu-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "pu",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the published clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "pu-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "pu",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "pu-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "pu-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    for (proposal_id, decision_id, approval_id, publication_id) in
+        [("pu-prop", "pu-dec", "pu-app", "pu-pub")]
+    {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-proposals",
+            &human_id,
+            &json!({
+                "proposal_id": proposal_id,
+                "policy_id": "pu-policy",
+                "policy_version": "1.0.0",
+                "thread_id": thread_id,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the proposal registers");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-decisions",
+            &human_id,
+            &json!({
+                "decision_id": decision_id,
+                "proposal_id": proposal_id,
+                "rule": "majority",
+                "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                "verdict_event_id": verdict_event,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the decision records");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-approvals",
+            &human_id,
+            &json!({
+                "approval_id": approval_id,
+                "proposal_id": proposal_id,
+                "decision_id": decision_id,
+                "approver": human_id,
+                "grant_id": grant_id,
+                "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the approval records");
+        let (status, projection) = post(
+            &client,
+            &base,
+            "/v1/policy-projections",
+            &human_id,
+            &json!({
+                "projection_id": format!("{proposal_id}-proj"),
+                "target": "generic",
+                "resolution": {
+                    "policies": [ { "policy_id": "pu-policy", "version": "1.0.0" } ],
+                    "target": { "layer": "organization", "target": "*" },
+                },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the projection records");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-publications",
+            &human_id,
+            &json!({
+                "publication_id": publication_id,
+                "proposal_id": proposal_id,
+                "decision_id": decision_id,
+                "approval_id": approval_id,
+                "projection_id": format!("{proposal_id}-proj"),
+                "manifest_digest": projection["digest"],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the publication stages");
+    }
+
+    // 1. The publish drives the Git half: the bare repo + the verb → the
+    // record marks effective with the ref ids.
+    let repo_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/policy-publish-tests/live");
+    let _ = std::fs::remove_dir_all(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("the dir creates");
+    gix::init_bare(&repo_dir).expect("the bare repo inits");
+    let (status, published) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": repo_dir.to_string_lossy() }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publish drives the git half: {published}");
+    assert_eq!(published["state"], json!("effective"));
+    let object_ids = published["git_object_ids"].as_array().unwrap();
+    assert_eq!(object_ids.len(), 2, "{published}");
+
+    // 2. A publish on a NON-staged publication refuses (the effective is
+    // terminal).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": repo_dir.to_string_lossy() }),
+    )
+    .await;
+    assert_eq!(status, 400, "the terminal re-publish refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("staged"),
+        "{refused}"
+    );
+
+    // 3. A publish into a NON-repository path refuses (the store contract's
+    // open failure).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "/nonexistent/repo" }),
+    )
+    .await;
+    assert_eq!(status, 400, "the non-repository refuses: {refused}");
+    let _ = std::fs::remove_dir_all(&repo_dir);
+}

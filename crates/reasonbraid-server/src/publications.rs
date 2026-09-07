@@ -309,8 +309,11 @@ pub async fn mark_failed(
     load(pool, publication_id).await
 }
 
-/// Load one publication row.
-async fn load(pool: &PgPool, publication_id: &str) -> Result<StoredPublication, PublicationError> {
+/// Load one publication row (pub — the `.4.3.2` publish verb reads it).
+pub async fn load(
+    pool: &PgPool,
+    publication_id: &str,
+) -> Result<StoredPublication, PublicationError> {
     let row: Option<PublicationRow> = sqlx::query_as(
         "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
              manifest_digest, git_object_ids, failed_reason \

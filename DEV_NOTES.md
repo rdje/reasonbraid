@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.5.1: the delivery ladder is observability, not machinery — the view names what the transitions already write
+
+- **No new column, no new writes**: the §10.6 states derive from the shipped facts (the ack, the quarantine, the work-result receipt) through one VIEW — the alternative (a `delivery_state` column maintained by the same code paths) would be a parallel truth waiting to drift. The inspection now shows each row's rung, and the measured walk proves the derivation agrees with the columns at three rungs simultaneously.
+- promotion: declined (the view is the leaf's own contract; the `expired`/`revoked` terminals ride the named triggers). **Frontier `PHASE-3.5.2` (the subscriptions + the wake gate).**
+
 ## _(2026-09-07)_ — PHASE-3.5: the inbox works but nobody can SEE its states — the ladder is observability, not new machinery
 
 - **The delivery-state ladder is the shipped inbox, made legible.** The §10.6 states (queued → offered → transport_received → acknowledged → consumed, with the expired/revoked/dead_lettered terminals) map onto the columns that ALREADY exist (the cursor, the ack, the quarantine) — the `.5.1` child derives one state column from the same transitions, never a parallel truth. The wake gate and the auto-initiation are the genuinely new halves: the stored `wake_policy` becomes an enforced check, and the `thread:create:auto` grant is the bounded initiation the §11.5 checklist gates.

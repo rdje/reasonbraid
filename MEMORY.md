@@ -19,16 +19,15 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.5.1` (`.5` decomposed at
-  the census seams: the delivery-state ladder → the subscriptions +
-  the wake gate → the node-initiated thread API). Then `.5.2`,
-  `.5.3`, `.6`.
-- **Next action:** execute `PHASE-3.5.1` — the delivery-state
-  machine: the §10.6 ladder (`queued → offered → transport_received
-  → acknowledged → consumed`, with the `expired`/`revoked`/
-  `dead_lettered` terminals) as one derived state column over the
-  shipped inbox (no parallel truth), the inspection shows the state
-  per row.
+- **Active tree:** `PHASE-3` → frontier `.5.2` (`.5.1` done: the
+  delivery-state machine — the derived view + the inspection's
+  state). Then `.5.3`, `.6`.
+- **Next action:** execute `PHASE-3.5.2` — the subscriptions + the
+  wake gate: the profile's `interests` become actionable
+  subscriptions (the open call advertises to the subscribers; the
+  server records the offer) and the stored `wake_policy` becomes an
+  enforced gate (the node evaluates the wake rules before the
+  dispatch — the §11.5 checklist's first half).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

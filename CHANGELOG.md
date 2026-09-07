@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The delivery ladder is a view, not a column: the states are the shipped transitions, named (`PHASE-3.5.1`)
+
+- Migration 0021's `node_inbox_state` view derives the §10.6 ladder from the columns the transitions ALREADY write: `queued` → `acknowledged` → `consumed` (the ack + the work-result receipt) and `dead_lettered` (the quarantine IS the dead letter) — one truth, never a parallel column. The `expired`/`revoked` terminals ride the retention/prune + the revocation re-delivery semantics (named).
+- The inbox inspection surface gains the `delivery_state` per row — transport receipt ≠ read, now visible.
+- Measured (node_channel 24, the first live run passed): three rows at three rungs read `queued`/`consumed`/`dead_lettered` through the same inspection. Frontier → `.5.2` (the subscriptions + the wake gate).
+
 ## 2026-09-07 — `.5` split at the census seams (`PHASE-3.5`)
 
 - The subscriptions-lane census mapped §10.6/§11.5 (backlog 30) against the shipped surface: the inbox's cursor/resume/dedupe + the lease fencing exist (the Phase-1/2 forms), but the EXPLICIT delivery ladder does not (the rows carry only `acknowledged_at`/`quarantined_at`), the profile's `wake_policy` is stored-but-unenforced, and the node-initiated thread API does not exist (no `thread:create:auto` grant).

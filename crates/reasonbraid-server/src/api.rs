@@ -969,6 +969,9 @@ pub struct InboxRow {
     pub acknowledged_at: Option<DateTime<Utc>>,
     pub quarantined_at: Option<DateTime<Utc>>,
     pub quarantine_reason: Option<String>,
+    /// The derived §10.6 delivery state (`.5.1`): `queued` |
+    /// `acknowledged` | `consumed` | `dead_lettered`.
+    pub delivery_state: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1001,10 +1004,11 @@ async fn inspect_node_inbox(
         acknowledged_at: Option<DateTime<Utc>>,
         quarantined_at: Option<DateTime<Utc>>,
         quarantine_reason: Option<String>,
+        delivery_state: String,
     }
     let rows: Vec<InboxRowRow> = sqlx::query_as(
-        "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason \
-         FROM node_inbox WHERE node_id = $1 ORDER BY cursor",
+        "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason, delivery_state \
+         FROM node_inbox_state WHERE node_id = $1 ORDER BY cursor",
     )
     .bind(&params.node_id)
     .fetch_all(&state.pool)
@@ -1021,6 +1025,7 @@ async fn inspect_node_inbox(
                 acknowledged_at: r.acknowledged_at,
                 quarantined_at: r.quarantined_at,
                 quarantine_reason: r.quarantine_reason,
+                delivery_state: r.delivery_state,
             })
             .collect(),
     }))

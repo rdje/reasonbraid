@@ -528,7 +528,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     `thread:create:auto` grant). Children at those seams — frontier
     → `.5.1`.
   - ID: `PHASE-3.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the delivery-state machine — the §10.6 ladder
       (`queued → offered → transport_received → acknowledged →
       consumed`, with the `expired`/`revoked`/`dead_lettered`
@@ -541,6 +541,20 @@ eligibility before ranking. Dependence indicators, never an independence score.
       Transport receipt ≠ read (the ack is explicit per the event
       type — the existing contract's rule, now VISIBLE).
     Backlog: 30 (the delivery half)
+    Done (`2026-09-07`): the delivery ladder landed as ONE DERIVED
+      truth — migration 0021's `node_inbox_state` VIEW names the
+      §10.6 states from the shipped columns (never a parallel
+      column): `queued` → `acknowledged` → `consumed` (the ack +
+      the work-result receipt) and `dead_lettered` (the quarantine
+      IS the dead letter); the `expired`/`revoked` terminals ride
+      the retention/prune + the revocation re-delivery semantics
+      (named). The inbox inspection surface gains the
+      `delivery_state` per row (transport receipt ≠ read — the ack
+      is the explicit per-event-type contract, now VISIBLE).
+      Measured (`the_delivery_ladder_reads_through_the_inbox_state_
+      view`, node_channel 24 — the first live run passed): three
+      rows at three rungs read `queued`/`consumed`/`dead_lettered`
+      through the same inspection. Frontier → `.5.2`.
     Acceptance: the ladder is one source of truth (the state column
       and the existing columns agree, measured); no regression.
 
@@ -591,7 +605,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.5.1` | `proposed` | `.5` decomposed at the census seams (the inbox machinery exists; the explicit delivery ladder, the enforced wake gate, and the auto-initiation grant do not); the delivery-state machine executes now |
+| 1 | `PHASE-3.5.2` | `proposed` | `.5.1` done — the delivery-state machine (the derived ladder, one truth, the inspection shows the state); the subscriptions + the wake gate execute now |
 
 ## Changelog
 
@@ -682,6 +696,50 @@ eligibility before ranking. Dependence indicators, never an independence score.
   `thread:create:auto` grant are the gaps; children `.5.1` (the
   state machine) → `.5.2` (the subscriptions + the wake gate) →
   `.5.3` (the node-initiated thread API); frontier → `.5.1`.
+- `2026-09-07`: `.5.1` done — the delivery-state machine (migration
+  0021's view names the ladder from the shipped columns; the
+  inspection shows the state per row); node_channel 24; frontier →
+  `.5.2`.
+
+## Acceptance Checklist (PHASE-3.5.1)
+
+The CODE change owned by this leaf:
+`migrations/0021_node_inbox_delivery_state.sql` (NEW — the derived
+view), `crates/reasonbraid-server/src/api.rs` (the `InboxRow` +
+the inspection query gain `delivery_state`), and
+`crates/reasonbraid-server/tests/node_channel.rs` (the three-rung
+walk) — `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.5` census: the inbox's
+  cursor/resume/dedupe + the ack + the quarantine exist but the
+  §10.6 delivery ladder has no named shape — the states are
+  invisible through the inspection.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the shipped columns carry the
+  transitions but nothing NAMES them — `git grep -c
+  "delivery_state\|node_inbox_state" ae565f7 -- crates/
+  migrations/` → rc=1 (no ladder before this leaf). The fix point
+  is a VIEW deriving the states from the SAME columns the
+  transitions write — one truth, never a parallel column.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test node_channel
+  the_delivery_ladder` → `test result: ok. 1 passed` (the FIRST
+  live run passed) — three rows at three rungs (the fresh row, the
+  acked row with the work-result receipt, the quarantined row)
+  read `queued`/`consumed`/`dead_lettered` through the same
+  inspection surface.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg351_guard.log`; the node_channel suite grew to 24);
+  `cargo test --all` → 51 offline suites green; `cargo clippy
+  --all --all-targets -- -D warnings` → clean; `cargo fmt --all
+  -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `0021_node_inbox_delivery_state.sql`, `src/api.rs`
+  (the inspection), `tests/node_channel.rs` (the walk).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.4.3)
 
@@ -1150,6 +1208,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.5.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_delivery_ladder` → `test result: ok. 1 passed` (the three-rung walk — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg351_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the delivery-state machine (the derived ladder); frontier → `.5.2` |
 | `2026-09-07` | `PHASE-3.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the subscriptions-lane census + the contract-seam decomposition (`.5.1` ladder → `.5.2` subscriptions + wake → `.5.3` auto-initiation); frontier → `.5.1` |
 | `2026-09-07` | `PHASE-3.4.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_storm` → `test result: ok. 1 passed` (the 5th open's typed 429 + the expired call's refusal — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg343_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the storm controls' buildable core + the named deferrals; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-3.4.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_call` → `test result: ok. 1 passed` (the open/join/refuse/decline/close chain — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg342_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the call artifact + the typed responses; frontier → `.4.3` |
@@ -1171,6 +1230,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.5.1` | `REASONBRAID-PHASE3-0018` | the delivery-state machine (migration 0021's derived view + the inspection's `delivery_state`) |
 | `PHASE-3.5` | `REASONBRAID-PHASE3-0017` | the subscriptions lane decomposed at the census seams (the inbox machinery exists; the ladder/wake/auto-initiation are the gaps) |
 | `PHASE-3.4.3` | `REASONBRAID-PHASE3-0016` | the storm controls' buildable core (the fan-out caps + the expiry enforcement) + the six named deferrals — **`.4` COMPLETE** |
 | `PHASE-3.4.2` | `REASONBRAID-PHASE3-0015` | the call artifact + the typed recruitment responses (migration 0020 + the four verbs + the panel snapshot with the explanation) |

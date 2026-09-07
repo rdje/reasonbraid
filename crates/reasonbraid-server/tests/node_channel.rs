@@ -1636,6 +1636,89 @@ async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> S
     body["principal_id"].as_str().unwrap().to_string()
 }
 
+/// THE `.3.5.1` acceptance: the §10.6 ladder is ONE derived truth — the
+/// shipped columns (the ack, the quarantine, the work-result receipt) name
+/// the states through the view: `queued` → `acknowledged` → `consumed`, and
+/// the quarantine reads `dead_lettered`.
+#[tokio::test]
+async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+
+    let (tenant, admin_id) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000000b1".to_string();
+    seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    // Three rows at three rungs of the ladder.
+    sqlx::query(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+         VALUES ($1, 1, 'cmd_queued', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}'), \
+                ($1, 2, 'cmd_consumed', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}'), \
+                ($1, 3, 'cmd_dead', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}')",
+    )
+    .bind(&node_id)
+    .bind(&tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the rows");
+
+    // The consumed rung: the ack + the work-result receipt.
+    sqlx::query(
+        "UPDATE node_inbox SET acknowledged_at = now() \
+         WHERE node_id = $1 AND command_id = 'cmd_consumed'",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("ack");
+    sqlx::query(
+        "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
+         VALUES ('evt_walk_1', $1, 'cmd_consumed', '{\"kind\":\"work_result\",\"command_id\":\"cmd_consumed\"}')",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("the receipt");
+
+    // The dead-letter rung: the quarantine IS the dead letter.
+    sqlx::query(
+        "UPDATE node_inbox SET quarantined_at = now(), quarantine_reason = 'the retry budget is exhausted' \
+         WHERE node_id = $1 AND command_id = 'cmd_dead'",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("quarantine");
+
+    // The inspection reads the derived states through the view.
+    let response = client
+        .get(format!(
+            "{base}/v1/nodes/inbox?tenant_id={tenant}&node_id={node_id}"
+        ))
+        .header(PRINCIPAL_HEADER, &admin_id)
+        .send()
+        .await
+        .expect("inspection request");
+    assert_eq!(response.status().as_u16(), 200, "the inspection reads");
+    let body: Value = response.json().await.unwrap();
+    let rows = body["rows"].as_array().expect("the rows");
+    assert_eq!(rows.len(), 3, "{body}");
+    let state_of = |command: &str| {
+        rows.iter()
+            .find(|r| r["command_id"] == json!(command))
+            .map(|r| r["delivery_state"].as_str().unwrap().to_string())
+            .expect("the row")
+    };
+    assert_eq!(state_of("cmd_queued"), "queued", "{body}");
+    assert_eq!(state_of("cmd_consumed"), "consumed", "{body}");
+    assert_eq!(state_of("cmd_dead"), "dead_lettered", "{body}");
+
+    server.crash();
+}
+
 /// THE `.3.2.2` distinction, measured: the never-leased enrolled node reads
 /// `offline` with null clocks (a known node, never active); the expired-lease
 /// node reads `offline` WITH its past expiry visible (known, just quiet); an

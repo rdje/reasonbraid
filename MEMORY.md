@@ -23,11 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.2` (`.1.1` done: ADR-006/007
-  accepted — the project-local CA model, spike-measured p50 63 µs/p95 69 µs).
-- **Next action:** execute `PHASE-2.1.2` — the certificate lifecycle: enroll
-  issues a short-lived cert, rotation rides the authenticated channel, the
-  handshake upgrades to the cert proof (CHANNEL_VERSION 3; the demo moves).
+- **Active tree:** `PHASE-2` → frontier `.1.2.1` (`.1.2` split at the
+  issuance-vs-channel seam; `.1.1` done: ADR-006/007 accepted — the
+  project-local CA model, spike-measured p50 63 µs/p95 69 µs).
+- **Next action:** execute `PHASE-2.1.2.1` — cert issuance at enrollment
+  (migration 0011: `server_ca` + `node_certificates`; the persisted CA; the
+  enroll response carries cert + dev-escrowed key; the node stores the DER
+  files; the HMAC channel untouched), then `.1.2.2` the v3 proof swap.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

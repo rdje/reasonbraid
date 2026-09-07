@@ -87,7 +87,7 @@ slice can reuse the same control plane without rewriting it.
       `.1.2`.
 
   - ID: `PHASE-2.1.2`
-    Status: `proposed`
+    Status: `active`
     Goal: the certificate lifecycle core — the server issues a short-lived
       X.509 workload cert at enrollment (project-local CA key held by the
       server, per the `.1.1` model), the node stores its key + cert
@@ -103,6 +103,53 @@ slice can reuse the same control plane without rewriting it.
       channel refuses an expired/unknown cert with a typed error; rotation
       heals the channel without a re-enroll; the two-host demo passes on
       the new contract; the existing channel suites move and stay green.
+    Note: decomposed further (`2026-09-07`, the `.1.2.1`-first precedent —
+      a coherent interim exists: the cert is issued and stored while the
+      HMAC channel stays live until the v3 swap):
+    Children: `.1.2.1`–`.1.2.2`.
+
+  - ID: `PHASE-2.1.2.1`
+    Status: `proposed`
+    Goal: cert issuance at enrollment — migration 0011 (`server_ca` +
+      `node_certificates`), the server generates/loads its CA at startup
+      and persists it (the demo kills and restarts the server — the CA
+      must survive), `POST /v1/nodes/enroll` issues a short-lived leaf
+      (CN = the node id, SAN = the token's host claim — the cert rides
+      the durable identity) and returns it WITH the (server-generated,
+      dev-escrowed) key; the node persists `cert.der`/`key.der` beside its
+      journal; the one-time token path keeps the replay refusal. The HMAC
+      channel is UNTOUCHED (coherent interim — the cert exists, unused,
+      until `.1.2.2`).
+    Backlog: 11
+    Acceptance: the enroll response carries the cert + key; the
+      `node_certificates` row lands; the CA row survives a server
+      rebuild/restart (same CA key — previously issued certs still chain);
+      replay is still refused; the existing suites + demo stay green
+      (the demo stores the files but does not use them yet).
+
+  - ID: `PHASE-2.1.2.2`
+    Status: `proposed`
+    Goal: the channel v3 cert-proof handshake + rotation —
+      `CHANNEL_VERSION` 3: the handshake body carries the cert DER + a
+      signature over the SAME canonical coverage JSON (the private key's
+      proof replaces the HMAC dev secret), and the server verifies
+      chain-to-the-CA + validity window + fingerprint ∈
+      `node_certificates` + the signature before ANY ledger read; the
+      lease/fencing machinery rides it unchanged. Rotation: a
+      cert-proof-authenticated rotate endpoint issues a fresh key + cert
+      (additive fingerprint), and the node rotates at ≤50% remaining
+      lifetime — no re-enroll. The channel suites (17) move to the new
+      contract; the two-host demo enrolls → stores → handshakes with the
+      cert (its psql fencing-token oracle stays — fencing is unchanged);
+      the book's node-channel + two-host-demo chapters carry the new
+      auth; the deployment chapter's honest limits stay true (transport
+      TLS is not claimed — the proof rides the HTTP/1 channel per
+      ADR-006/007).
+    Backlog: 11
+    Acceptance: a handshake with a foreign/expired/unregistered cert is a
+      typed 401; a rotated cert heals the channel without re-enrollment;
+      the demo passes on v3; all channel suites green; the book names the
+      new contract.
 
   - ID: `PHASE-2.1.3`
     Status: `proposed`
@@ -196,7 +243,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.2` | `proposed` | `.1.1` done (the ADR-007 model is measured: project-local CA, 10-minute leaves, chain + fingerprint gates); the certificate lifecycle + the channel v3 upgrade execute now |
+| 1 | `PHASE-2.1.2.1` | `proposed` | `.1.2` decomposed at the issuance-vs-channel seam (the `.1.2.1`-first Phase-1 precedent — a coherent interim exists); cert issuance at enrollment executes now, the v3 proof swap follows |
 
 ## Changelog
 
@@ -224,6 +271,13 @@ slice can reuse the same control plane without rewriting it.
   via rcgen's optional `pem` feature) — fixed by dropping the unused feature,
   not a skip entry; the ledger gains the identity-stack row; frontier →
   `.1.2`.
+- `2026-09-07`: `.1.2` decomposed further at the issuance-vs-channel seam
+  (the Phase-1 `.1.2.1`-first precedent — a coherent interim exists): `.1.2.1`
+  cert issuance at enrollment (migration 0011, the persisted server CA, the
+  enroll response gains cert + dev-escrowed key, the node stores
+  `cert.der`/`key.der`; the HMAC channel UNTOUCHED) → `.1.2.2` the channel v3
+  cert-proof handshake + rotation (the 17 channel suites move, the demo
+  enrolls → stores → handshakes with the cert); frontier → `.1.2.1`.
 
 ## Acceptance Checklist (PHASE-2.1.1)
 

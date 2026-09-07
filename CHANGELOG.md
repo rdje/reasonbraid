@@ -1,5 +1,9 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.2` split at the issuance-vs-channel seam (`PHASE-2.1.2`)
+
+- The Phase-1 `.1.2.1`-first precedent applies again: cert issuance at enrollment and the channel v3 proof swap separate cleanly because a coherent interim exists (the cert is issued and stored while the HMAC channel stays live). Children: `.1.2.1` (migration 0011 `server_ca` + `node_certificates`, the persisted CA, the enroll response gains cert + dev-escrowed key, the node stores `cert.der`/`key.der`) → `.1.2.2` (CHANNEL_VERSION 3: the cert signature replaces the HMAC proof; rotation at ≤50% lifetime; the 17 channel suites + the demo move). Tree-only commit.
+
 ## 2026-09-07 — The issuance model is measured, not guessed: ADR-006/007 land (`PHASE-2.1.1`)
 
 - **The spike made the refusal cases real before any product code existed.** `crates/reasonbraid-cert-spike` (a test-only experiment — no bin, so `make release` stays four binaries) drives a REAL rustls TLS 1.3 client-cert handshake and passed 6/6 verdicts: the trusted allowlisted leaf completes; foreign-CA, expired, and unregistered-fingerprint certificates are refused on BOTH sides; rotation is additive. Issuance latency N=200: **p50 63 µs / p95 69 µs** — cert issuance is effectively free at LAN scale.

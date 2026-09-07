@@ -195,6 +195,20 @@ A quarantined command is never re-delivered (the reason rides the row);
 pruning deletes only DELIVERED rows older than the window and reports a
 measured before/after — an explicit operator action, never a background sweep.
 
+The revocation verb (`.1.3.1`) completes the node-admin surface — also
+`tenant_admin`-authorized and audited:
+
+```text
+$ rb node revoke --node rol_… --reason "compromised adapter output" --as alice
+node rol_… revoked (1 certificate(s), at 2026-09-07T…Z)
+```
+
+Revocation marks the node's ACTIVE workload certificates revoked: its next
+handshake is refused (the certificate-proof ladder sees the revoked row) and
+presence reads `suspended` — the live lease, if any, is not cut. An unknown
+node is a typed 404; a second revocation (no active certificate left) is a
+typed 409.
+
 ## Honest limits (Phase 1)
 
 - **Development credentials**: the CLI presents a trusted principal header, and

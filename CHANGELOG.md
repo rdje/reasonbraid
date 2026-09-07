@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The operator can now revoke a node (`PHASE-2.1.3.1`)
+
+- `POST /v1/nodes/revoke` (tenant_admin-audited — the authorization record IS the audit) marks the node's active workload certificates revoked; the `.1.2.2` handshake ladder refuses them at the next crossing (typed 401) — the refusal path already existed, this leaf wired the operator verb.
+- Migration 0012 appends `suspended` to the presence view: a revoked node reads `suspended` whatever its lease says — the live lease is NOT cut (suspension gates re-entry, it does not rewrite the running session). A real Postgres gotcha: `CREATE OR REPLACE VIEW` appends columns at the END only — the first attempt inserted mid-list and the migrate step refused it.
+- The typed refusals: an unknown node is a 404, a non-admin caller is the 403 + audited denial, a second revocation (no active certificate left) is a 409. `rb node revoke --node … --reason …`; the demo gains the revoke beat (32 checks, node B after its thread closes).
+- The channel suite grew to 21; the full guard green (12 suites + e2e + demo 32/32 rc=0); clippy/fmt clean; gate 13/13. Frontier → `.1.3.2` (the grant/boundary revoke verbs).
+
 ## 2026-09-07 — `.1.3` split at the cert-vs-grant seam (`PHASE-2.1.3`)
 
 - The census found the REFUSAL paths already exist — the `.1.2.2` handshake ladder checks `revoked_at`, and the grant/boundary evaluation filters `status = 'active'` — while NO write path exists (`grep -n 'revoke'` over api.rs + the CLI → no verbs) and the presence view derives online/offline only (no suspended state).

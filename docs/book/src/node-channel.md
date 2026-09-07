@@ -145,6 +145,11 @@ Two operator actions harden the per-node inbox (both on the control API,
   (the response reports `before`/`deleted`/`after`), never a background sweep.
 - **Inspection** (`rb node inbox --node …`): every row's delivery +
   quarantine facts, in cursor order.
+- **Revocation** (`rb node revoke --node … --reason …`, `.1.3.1`): marks the
+  node's ACTIVE workload certificates revoked — the certificate-proof
+  handshake refuses them at the next crossing (401) and presence reads
+  `suspended` whatever the lease says. The live lease is not cut: suspension
+  gates re-entry, it does not rewrite the running session.
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 

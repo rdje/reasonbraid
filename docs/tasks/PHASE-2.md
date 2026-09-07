@@ -199,7 +199,7 @@ slice can reuse the same control plane without rewriting it.
       cert-vs-grant seam — two independent contracts).
 
   - ID: `PHASE-2.1.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: node/cert revocation — `POST /v1/nodes/revoke` (the
       tenant_admin surface, the issue-token pattern): sets `revoked_at`
       on the node's ACTIVE certificates (zero rows = 404; the refusal is
@@ -212,6 +212,14 @@ slice can reuse the same control plane without rewriting it.
       after its thread closes — presence `suspended:true`). The book's
       node-channel + cli chapters carry the surface.
     Backlog: 11
+    Done (`2026-09-07`): `POST /v1/nodes/revoke` (tenant_admin-audited)
+      sets `revoked_at` on the node's active certificates; migration 0012
+      extends the presence view with `suspended` (Postgres view-replacement
+      appends columns only — the column sits LAST); `rb node revoke`; the
+      suite proves the next handshake is 401 + presence suspended + the
+      typed refusals (404 unknown, 403 non-admin + audit, 409 re-revoke);
+      the demo gains the beat (32 checks) — the acceptance checklist below
+      records the evidence — frontier → `.1.3.2`.
     Acceptance: revoking a node refuses its next handshake (401) and
       flips presence to `suspended`; an unknown node is 404; a non-admin
       caller is the typed 403 + audit row; the demo passes with the new
@@ -312,7 +320,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.3.1` | `proposed` | `.1.3` decomposed at the cert-vs-grant seam (the refusal paths exist; the write paths don't); node/cert revocation executes first, then the grant/boundary verbs |
+| 1 | `PHASE-2.1.3.2` | `proposed` | `.1.3.1` done (node/cert revocation + the suspended presence + the demo beat); the grant/boundary revoke verbs execute now |
 
 ## Changelog
 
@@ -365,6 +373,14 @@ slice can reuse the same control plane without rewriting it.
   `docs/decisions/2026-09-07_cert-proof-verification.md`; the book's
   node-channel + two-host-demo chapters carry the new contract; **`.1.2` is
   COMPLETE**; frontier → `.1.3`.
+- `2026-09-07`: `.1.3.1` done — node/cert revocation: `POST /v1/nodes/revoke`
+  (tenant_admin-audited: the unknown-node 404, the role 403 + audited denial,
+  the re-revoke 409) sets `revoked_at` on the active certificates; migration
+  0012 appends `suspended` to the presence view (Postgres view-replacement
+  appends columns at the END only — the first attempt proved it); the next
+  handshake is refused and presence reads suspended while the live lease is
+  untouched; `rb node revoke`; the demo gains the beat (32 checks); the
+  channel suite grew to 21; frontier → `.1.3.2`.
 - `2026-09-07`: `.1.3` decomposed at the cert-vs-grant seam — the census
   found the REFUSAL paths already exist (the `.1.2.2` handshake checks
   `revoked_at`, the evaluation filters `status = 'active'`) while NO write
@@ -426,6 +442,50 @@ files, and `scripts/demo_two_host.sh` — all code paths.
   `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
   `docs/TASK_TREE.md` frontier, the book (node-channel + two-host-demo),
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.3.1)
+
+The CODE change owned by this leaf: `migrations/0012_node_presence_suspended.sql`
+(schema), `crates/reasonbraid-server/src/api.rs` (the revoke endpoint + the
+not_found constructor + the route), `src/node_channel.rs` (the presence
+response + query), `crates/reasonbraid-cli/src/{lib,main}.rs` (the verb),
+the test files, and `scripts/demo_two_host.sh` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's revocation sliver: NO revoke
+  surface exists — `grep -n .revoke. crates/reasonbraid-server/src/api.rs
+  crates/reasonbraid-cli/src/main.rs` → no matches before this leaf —
+  while the REFUSAL paths already exist (the `.1.2.2` handshake ladder
+  checks `revoked_at IS NOT NULL`; the presence view derives online only).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the `.1.2.2` row check was built with
+  the `.1.3` write path in mind (`revoked_at` on the cert row), but the
+  operator verb was never wired; the fix point is the tenant_admin
+  surface (the issue-token/quarantine pattern — the authorization record
+  IS the audit) + the presence view (0012).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no verb,
+  no suspended state. After: `bash scripts/run_pg_tests.sh` → `test
+  result: ok. 21 passed` (`node_channel`: the revocation pair — the next
+  handshake after revoke is the typed 401; presence reads
+  `"suspended":true` while the live lease stays `"online":true`; the
+  unknown-node 404, the role 403 + the audited denial, the 409
+  re-revoke) + the demo `ALL acceptance checks passed` (32 checks incl.
+  the revoke beat, `rc=0`, `target/pg131f_guard.log`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve live
+  server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 21
+  + 4 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the
+  demo `ALL acceptance checks passed` (32 PASS, `rc=0`,
+  `target/pg131f_guard.log`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` →
+  13/13 at commit; `make book` builds.
+- [x] **FIX** — migration 0012 (`suspended` APPENDED — Postgres
+  view-replacement adds columns at the end only, the first attempt
+  inserted mid-list and the migrate step refused it: the suite caught
+  it); `api.rs` (`RevokeNodeRequest`/`revoke_node` — the existence 404,
+  the zero-active-cert 409, the `not_found` constructor, the route); the
+  presence DTO + query; the CLI verb + runner; the two tests; the demo
+  beat + summary row.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree.s logs
+  below, `docs/TASK_TREE.md` frontier, the book (node-channel + cli),
+  KNOWLEDGE_MAP — same commit. DEV_NOTES: `promotion: declined (the Postgres view-replacement append-only column rule is a per-slice SQL fact recorded here — no new cross-cutting decision)`.
 
 ## Acceptance Checklist (PHASE-2.1.2.1)
 
@@ -550,7 +610,8 @@ the ledger row are the record deliverables.
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-2.1.1` | `cargo test -p reasonbraid-cert-spike -- --nocapture` → `test result: ok. 1 passed` (6/6 verdicts incl. the three refusal pairs + additive rotation; issuance N=200 p50=63µs p95=69µs, `target/spike81.log`); `cargo test --all` → 39 offline suites + the spike green (rc=0, `target/spike81_all.log`); `cargo clippy -p reasonbraid-cert-spike --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (the first run caught the base64 split → rcgen ships without `pem`); `make gate` → 13/13 | the ADR-006/007 spike: the project-local CA model measured and adopted (ADR-007), the transport decision recorded (ADR-006), the ledger row filled — frontier → `.1.2` |
 | `2026-09-07` | `PHASE-2.1.2.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 4 + 3 + 6 + 7 `passed` — `node_enrollment` grew to 4 with the CA-persistence test) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`, `target/pg121b_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0; `make gate` → 13/13 | cert issuance at enrollment: the persisted `ServerCa` (generated on first boot, loaded thereafter — the rebuild test proves the same key + cert), the enroll response carries the leaf + dev-escrowed key + fingerprint, `rb-node` stores `cert.der`/`key.der`; the HMAC channel untouched (the coherent interim) — frontier → `.1.2.2` |
-| `2026-09-07` | `PHASE-2.1.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 19 with the rotation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (31 PASS, `rc=0`, `target/pg122e_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg122c_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0; `make gate` → 13/13 | the channel v3 cert-proof handshake + rotation landed (chain + validity + fingerprint + signature before any ledger read; the additive rotate endpoint; the node's ≤50%-lifetime rotation); the ring-SPKI interop discovery recorded; **`.1.2` complete** — frontier → `.1.3` |
+| `2026-09-07` | `PHASE-2.1.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19 + 4 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + the demo 31 PASS rc=0 (`target/pg122e_guard.log`); 42 offline suites; clippy/fmt clean; `make deny` rc=0; `make gate` 13/13 | the channel v3 cert-proof handshake + rotation landed; the ring-SPKI interop discovery recorded; **`.1.2` complete** — frontier → `.1.3` |
+| `2026-09-07` | `PHASE-2.1.3.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 21 with the revocation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg131f_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | node/cert revocation: `POST /v1/nodes/revoke` (tenant_admin-audited, the typed refusals), the suspended presence (migration 0012), `rb node revoke`, the demo beat — frontier → `.1.3.2` |
 
 ## Commit Log
 
@@ -560,4 +621,6 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.1` | `REASONBRAID-PHASE2-0002` | the ADR-006/007 spike + records: the test-only experiment crate, the two accepted ADRs, the ledger row; `make deny`'s ban caught the base64 split — fixed by dropping rcgen's unused `pem` feature |
 | `PHASE-2.1.2` | `REASONBRAID-PHASE2-0003` | the issuance-vs-channel split (the `.1.2.1`-first precedent): `.1.2.1` cert issuance at enrollment → `.1.2.2` the channel v3 swap |
 | `PHASE-2.1.2.1` | `REASONBRAID-PHASE2-0004` | cert issuance at enrollment: migration 0011 + `ca.rs` (the persisted CA) + the enroll response's cert + escrowed key + the node's `cert.der`/`key.der` persistence; the HMAC channel untouched |
-| `PHASE-2.1.2.2` | `REASONBRAID-PHASE2-0005` | the channel v3 cert-proof handshake + rotation: the signature replaces the HMAC (chain + validity + fingerprint + signature before any ledger read), the additive rotate endpoint, the node's ≤50%-lifetime rotation; the ring-SPKI interop fix; the 19 channel tests + the demo 31/31 |
+| `PHASE-2.1.2.2` | `REASONBRAID-PHASE2-0005` | the channel v3 cert-proof handshake + rotation (as recorded — see the leaf's checklist); the 19 channel tests + the demo 31/31 |
+| `PHASE-2.1.3` | `REASONBRAID-PHASE2-0006` | the cert-vs-grant split (the refusal paths exist; the write paths don't) |
+| `PHASE-2.1.3.1` | `REASONBRAID-PHASE2-0007` | node/cert revocation: `POST /v1/nodes/revoke` + the suspended presence (migration 0012) + `rb node revoke` + the demo beat; the channel suite grew to 21 |

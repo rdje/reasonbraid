@@ -8,8 +8,8 @@ use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_enroll, run_inspect_budget, run_inspect_node_inbox,
     run_inspect_thread, run_inspect_threads, run_issue_node_token, run_prune_node_inbox,
-    run_quarantine_command, run_thread_create, run_thread_verb, BudgetArgs, Config,
-    CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
+    run_quarantine_command, run_revoke_node, run_thread_create, run_thread_verb, BudgetArgs,
+    Config, CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -94,7 +94,24 @@ enum NodeCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Inspect one node's inbox: delivery + quarantine facts per row (`.1.2.3`).
+    /// Revoke a node.s workload certificates (`.1.3.1`): the next handshake
+    /// is refused and presence reads suspended.
+    Revoke {
+        /// The node whose active certificates are revoked.
+        #[arg(long)]
+        node: String,
+        /// WHY it is revoked (required).
+        #[arg(long)]
+        reason: String,
+        /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect one node.s inbox: delivery + quarantine facts per row (`.1.2.3`).
     Inbox {
         /// The node whose inbox to list.
         #[arg(long)]
@@ -750,6 +767,21 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 json,
             )
             .await
+        }
+        Command::Node(NodeCommand::Revoke {
+            node,
+            reason,
+            as_,
+            tenant,
+            json,
+        }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            let tenant = tenant.or(principal.tenant.clone()).ok_or_else(|| {
+                reasonbraid_cli::CliError::usage(
+                    "cannot determine the tenant — pass --tenant".to_string(),
+                )
+            })?;
+            run_revoke_node(cfg, &principal, &tenant, &node, &reason, json).await
         }
         Command::Node(NodeCommand::Quarantine {
             node,

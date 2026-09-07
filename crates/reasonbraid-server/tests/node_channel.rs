@@ -22,7 +22,7 @@ use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use reasonbraid_node::{Journal, Node, NodeState};
-use reasonbraid_server::{ca::ensure_server_ca, node_router, NodeChannelState};
+use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, NodeChannelState, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -115,6 +115,12 @@ async fn pool() -> Option<PgPool> {
 /// identity rows directly so each channel test starts from a known enrolled
 /// state.
 async fn seed_node(pool: &PgPool, node_id: &str) -> (Vec<u8>, Vec<u8>) {
+    seed_node_in_tenant(pool, "ten_00000000-0000-7000-8000-000000000000", node_id).await
+}
+
+/// Seed an enrolled node into a SPECIFIC tenant (the revocation tests enroll
+/// their admin first, so the node must live in the admin's tenant).
+async fn seed_node_in_tenant(pool: &PgPool, tenant: &str, node_id: &str) -> (Vec<u8>, Vec<u8>) {
     let host_id = format!("hst_seed_{}", &node_id[4..]);
     let host_name = format!("seed-{node_id}");
     sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ($1, $2, $3)")
@@ -127,7 +133,7 @@ async fn seed_node(pool: &PgPool, node_id: &str) -> (Vec<u8>, Vec<u8>) {
     sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
         .bind(node_id)
         .bind(&host_id)
-        .bind("ten_00000000-0000-7000-8000-000000000000")
+        .bind(tenant)
         .execute(pool)
         .await
         .expect("seed node");
@@ -180,7 +186,7 @@ impl TestServer {
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
         let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
-        let router = node_router(pool.clone(), ca);
+        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -1546,6 +1552,221 @@ async fn rotation_without_a_valid_certificate_proof_is_refused() {
     );
     let body: Value = forged.json().await.unwrap();
     assert_eq!(body["code"], "unauthorized");
+
+    server.crash();
+}
+
+/// Bootstrap a human admin INTO THE SEED TENANT (the seeded nodes live there).
+/// The revoke verbs are tenant_admin-audited — the same gate as token issuance.
+async fn bootstrap_admin(client: &reqwest::Client, base: &str) -> (String, String) {
+    let response = client
+        .post(format!("{base}/v1/enrollments"))
+        .json(&json!({
+            "kind": "human",
+            "name": "revoker",
+        }))
+        .send()
+        .await
+        .expect("enroll human");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.expect("enroll json");
+    assert_eq!(status, 200, "the human enrolls: {body}");
+    (
+        body["tenant_id"].as_str().unwrap().to_string(),
+        body["principal_id"].as_str().unwrap().to_string(),
+    )
+}
+
+/// Bootstrap a ROLE into the seed tenant — a role never carries tenant_admin,
+/// so it is the suite.s non-admin caller (a typed 403, audited).
+async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> String {
+    let response = client
+        .post(format!("{base}/v1/enrollments"))
+        .json(&json!({
+            "kind": "role",
+            "name": "agent-r",
+            "tenant_id": tenant,
+        }))
+        .send()
+        .await
+        .expect("enroll role");
+    assert_eq!(response.status().as_u16(), 200, "the role enrolls");
+    let body: Value = response.json().await.expect("enroll json");
+    body["principal_id"].as_str().unwrap().to_string()
+}
+
+/// THE `.1.3.1` acceptance: revoking a node refuses its NEXT handshake (the
+/// `.1.2.2` ladder sees `revoked_at`) and presence reads `suspended` — while
+/// the live lease (if any) is untouched: suspension gates re-entry, it does
+/// not pretend the running session never existed.
+#[tokio::test]
+async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000300".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    // A live handshake works first (and issues a live lease).
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: 3,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await
+        .expect("pre-revocation handshake");
+
+    let response = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "compromised adapter output",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200, "the revocation succeeds");
+    let body: Value = response.json().await.unwrap();
+    assert!(body["revoked_certificates"].as_i64().unwrap() >= 1);
+
+    // The NEXT handshake is refused: the ladder sees the revoked row.
+    let refused = channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: 3,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await;
+    assert!(
+        matches!(
+            refused,
+            Err(reasonbraid_node::ChannelError::Server { status: 401, .. })
+        ),
+        "the revoked certificate is refused at the next crossing: {refused:?}"
+    );
+
+    // Presence reads suspended; the live lease (from the earlier handshake)
+    // is untouched — suspension gates re-entry, it does not rewrite history.
+    let presence: Value = client
+        .get(format!(
+            "{}/v1/nodes/presence?node_id={node_id}",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(presence["suspended"], json!(true));
+    assert_eq!(
+        presence["online"],
+        json!(true),
+        "the live lease was not cut"
+    );
+
+    server.crash();
+}
+
+/// The revocation refusals are typed and audited: an unknown node is a 404, a
+/// non-admin caller is the 403 + audit row, and revoking twice is the 409
+/// (no active certificate remains).
+#[tokio::test]
+async fn revocation_refusals_are_typed_and_audited() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let role = bootstrap_role(&client, &server.base_url(), &tenant).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000301".to_string();
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    let unknown = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": "nod_00000000-0000-7000-8000-0000000003ff",
+            "reason": "nope",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status().as_u16(), 404, "an unknown node is a 404");
+
+    let non_admin = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &role) // a role never carries tenant_admin
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "self-serve",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        non_admin.status().as_u16(),
+        403,
+        "a non-admin caller is a 403"
+    );
+    let (n_denied,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1 AND decision = 'denied'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("count denials");
+    assert!(n_denied >= 1, "the refusal is audited");
+
+    let revoked = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "legitimate",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked.status().as_u16(), 200);
+    let again = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "again",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        again.status().as_u16(),
+        409,
+        "a second revocation finds no active certificate"
+    );
 
     server.crash();
 }

@@ -304,6 +304,10 @@ pub struct HeartbeatResponse {
 pub struct PresenceResponse {
     pub node_id: String,
     pub online: bool,
+    /// The node.s workload certificate was revoked (`.1.3.1`): presence
+    /// reads `suspended` whatever the lease says — a revoked node cannot
+    /// re-handshake.
+    pub suspended: bool,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub lease_expires_at: Option<DateTime<Utc>>,
 }
@@ -716,11 +720,12 @@ impl NodeChannelState {
         #[derive(sqlx::FromRow)]
         struct PresenceRow {
             online: bool,
+            suspended: bool,
             last_seen_at: Option<DateTime<Utc>>,
             lease_expires_at: Option<DateTime<Utc>>,
         }
         let row: Option<PresenceRow> = sqlx::query_as(
-            "SELECT online, last_seen_at, lease_expires_at FROM node_presence WHERE node_id = $1",
+            "SELECT online, suspended, last_seen_at, lease_expires_at FROM node_presence WHERE node_id = $1",
         )
         .bind(node_id)
         .fetch_optional(&self.pool)
@@ -728,6 +733,7 @@ impl NodeChannelState {
         Ok(row.map(|r| PresenceResponse {
             node_id: node_id.to_string(),
             online: r.online,
+            suspended: r.suspended,
             last_seen_at: r.last_seen_at,
             lease_expires_at: r.lease_expires_at,
         }))

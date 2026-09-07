@@ -336,6 +336,17 @@ impl ApiClient {
     }
 
     /// Quarantine one inbox command with a reason (`.1.2.3`).
+    pub async fn revoke_node(&self, principal: &str, body: Value) -> Result<Value, CliError> {
+        let response = self
+            .http
+            .post(format!("{}/v1/nodes/revoke", self.base))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await?;
+        self.parse(response).await
+    }
+
     pub async fn quarantine_command(
         &self,
         principal: &str,
@@ -851,6 +862,36 @@ pub async fn run_issue_node_token(
 
 /// Quarantine one inbox command (`.1.2.3`): the replay/poll paths skip it from
 /// then on — the reason is stored WITH the row, so the skip is explainable.
+pub async fn run_revoke_node(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: &str,
+    node_id: &str,
+    reason: &str,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .revoke_node(
+            &principal.id,
+            json!({
+                "tenant_id": tenant,
+                "node_id": node_id,
+                "reason": reason,
+            }),
+        )
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format!(
+        "node {} revoked ({} certificate(s), at {})\n",
+        response["node_id"].as_str().unwrap_or("?"),
+        response["revoked_certificates"].as_i64().unwrap_or(0),
+        response["revoked_at"].as_str().unwrap_or("?"),
+    ))
+}
+
 pub async fn run_quarantine_command(
     cfg: &Config,
     principal: &PrincipalRef,

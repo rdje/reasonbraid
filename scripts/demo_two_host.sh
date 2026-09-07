@@ -585,6 +585,16 @@ check "B's budget ledger reconstructs the denial (a denied reservation row with 
 check "B's audit records the close authority (the stop reason rides the thread state)" bash -c \
     "jq -e '[.records[].action] | index(\"thread_close\") != null' '$EVIDENCE/audit-b.json' >/dev/null"
 
+# ── 11b. revocation (`.1.3.1`): the operator revokes node B ────────────
+
+# Node B's thread is closed; the revocation lands AFTER the demonstration so the
+# acceptance facts above are untouched. The next handshake would be refused (the
+# suite proves it); presence reads suspended (the live lease, if any, is not cut).
+cli node revoke --node "$ROLE_B" --reason "demonstration complete" --as organizer --tenant "$TENANT" >/dev/null
+curl -s "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_B" > "$EVIDENCE/presence-b-suspended.json"
+check "the revoked node reads suspended through the channel API (.1.3.1)" bash -c \
+    "grep -q '\"suspended\":true' '$EVIDENCE/presence-b-suspended.json'"
+
 # ── evidence bundle ─────────────────────────────────────────────────────────────
 
 cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json > "$EVIDENCE/thread-a.json"
@@ -610,6 +620,7 @@ node_journal "$NODE_B_DIR" inspect node.db > "$EVIDENCE/journal-b-inspect.txt"
     echo "| inspection console (.1.6.3) | console-index.html (the embedded shell served at /) + console-app.js (the documented surfaces only, no write verb) + console-thread-a.json / console-budget-a.json (the live same-origin fetches) |"
     echo "| evidence reference rides the contribution (.1.5.1) | events-a.json: the human contribution's event body carries the cited uri |"
     echo "| the audit view reconstructs the story (.1.8.1) | audit-a.json (invite→accept→contribute→close authority rows, each with a 64-hex policy digest — the create's authority is tenant-scoped) + events-a.json (the ordered timeline) + audit-b.json (the close authority) + budget-b.json (the denied reservation row with the engine's reason) |"
+    echo "| the revoked node reads suspended (.1.3.1) | presence-b-suspended.json: suspended=true after `rb node revoke` (the suite proves the next handshake is refused) |"
     echo "| reproducible evidence bundle | this directory — rerun with the commands in timeline.txt |"
 } > "$EVIDENCE/summary.md"
 

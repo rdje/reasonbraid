@@ -102,6 +102,14 @@ impl ControlApiError {
         }
     }
 
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            code: "not_found",
+            message: message.into(),
+        }
+    }
+
     pub fn scope_hidden() -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
@@ -298,6 +306,7 @@ pub fn api_router(pool: PgPool) -> Router {
         .route("/v1/nodes/quarantine", post(quarantine_command))
         .route("/v1/nodes/inbox", get(inspect_node_inbox))
         .route("/v1/nodes/inbox/prune", post(prune_node_inbox))
+        .route("/v1/nodes/revoke", post(revoke_node))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -924,6 +933,77 @@ async fn prune_node_inbox(
         before,
         after,
         cutoff_at: cutoff.to_rfc3339(),
+    }))
+}
+
+// ── Node revocation (`.1.3.1`) ──────────────────────────────────────────────
+
+/// The `POST /v1/nodes/revoke` body: an authorized human revokes the node's
+/// ACTIVE workload certificates. The `.1.2.2` handshake ladder refuses a
+/// revoked leaf at the next crossing (the row check is already live), and the
+/// presence view (0012) reads `suspended`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RevokeNodeRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RevokeNodeResponse {
+    pub node_id: String,
+    pub revoked_certificates: i64,
+    pub revoked_at: String,
+}
+
+async fn revoke_node(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<RevokeNodeRequest>,
+) -> Result<Json<RevokeNodeResponse>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    if req.reason.trim().is_empty() {
+        return Err(ControlApiError::invalid_command(
+            "the revocation reason is required (a revocation without a reason is a silent skip)",
+        ));
+    }
+
+    let exists: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM nodes WHERE node_id = $1 AND tenant_id = $2)",
+    )
+    .bind(&req.node_id)
+    .bind(req.tenant_id.to_string())
+    .fetch_optional(&state.pool)
+    .await?;
+    if !exists.unwrap_or(false) {
+        return Err(ControlApiError::not_found(format!(
+            "no enrolled node `{}` in this tenant",
+            req.node_id
+        )));
+    }
+
+    let revoked_at = Utc::now();
+    let result = sqlx::query(
+        "UPDATE node_certificates SET revoked_at = $2 \
+         WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&req.node_id)
+    .bind(revoked_at)
+    .execute(&state.pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(ControlApiError::invalid_transition(format!(
+            "node `{}` has no active certificate to revoke",
+            req.node_id
+        )));
+    }
+
+    Ok(Json(RevokeNodeResponse {
+        node_id: req.node_id,
+        revoked_certificates: result.rows_affected() as i64,
+        revoked_at: revoked_at.to_rfc3339(),
     }))
 }
 

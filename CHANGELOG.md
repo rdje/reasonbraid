@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The publication records land (`PHASE-6.4.2`)
+
+- Migration 0042: the publication is its own aggregate row (never folded into the approval) with the chain-verified references (the proposal must be APPROVED, the decision + the approval must belong to it, the projection must exist), the manifest digest, and the typed state machine (staged → effective with the Git object ids | failed with the reason — never a skip). The verbs: `POST`/`GET /v1/policy-publications` + `/effective` + `/failed`. Measured: policy 7.
+
 ## 2026-09-07 — ADR-020: the canonical-publication contract (`PHASE-6.4.1`)
 
 - ADR-020 accepted (`docs/adr/020-canonical-publication.md`): the publication is the nine-step §15.7 state machine over the staged record; the Git refs are the publication truth with the compare-and-swap idempotency; the reconciliation is the six §15.8 rules (the never-silent-promote); the signatures ride the manifest digest. No code.

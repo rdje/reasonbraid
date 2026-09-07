@@ -1546,3 +1546,357 @@ async fn the_codex_and_claude_projections_ride_the_verb() {
         assert!(projected["digest"].as_str().unwrap().starts_with("sha256:"));
     }
 }
+
+#[tokio::test]
+async fn the_publication_stages_and_marks_its_typed_state() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pb-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain: the policy → the thread + the verdict → the proposal →
+    // the decision → the approval → the projection.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "pb-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "pb",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the publication clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "pb-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "pb",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "pb-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "pb-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "pb-prop",
+            "policy_id": "pb-policy",
+            "policy_version": "1.0.0",
+            "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the proposal registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "pb-dec",
+            "proposal_id": "pb-prop",
+            "rule": "majority",
+            "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the decision records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "pb-app",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the approval records");
+    let (status, projection) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pb-proj",
+            "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "pb-policy", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the projection records: {projection}");
+    let manifest_digest = projection["digest"].as_str().unwrap().to_string();
+
+    // 1. The publication stages (the references verified, the staged
+    // state).
+    let (status, publication) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-pub",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "manifest_digest": manifest_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publication stages: {publication}");
+    assert_eq!(publication["state"], json!("staged"));
+
+    // 2. The effective transition records the Git object ids.
+    let (status, effective) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pb-pub/effective",
+        &human_id,
+        &json!({ "git_object_ids": ["abc123", "def456"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publication marks effective: {effective}");
+    assert_eq!(effective["state"], json!("effective"));
+    assert_eq!(effective["git_object_ids"], json!(["abc123", "def456"]));
+
+    // 3. The refusals: the bad manifest digest, the ghost projection, the
+    // foreign decision, the non-approved proposal, the wrong-stage
+    // transitions, the empty object ids, the duplicate.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-bad-digest",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "manifest_digest": "not-a-digest",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the bad digest refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-ghost-proj",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "ghost",
+            "manifest_digest": manifest_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost projection refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-foreign",
+            "proposal_id": "pb-prop",
+            "decision_id": "ghost-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "manifest_digest": manifest_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost decision refuses: {refused}");
+    // The effective → effective again refuses (the terminal state).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pb-pub/effective",
+        &human_id,
+        &json!({ "git_object_ids": ["zzz"] }),
+    )
+    .await;
+    assert_eq!(status, 400, "the terminal re-transition refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("effective"),
+        "{refused}"
+    );
+
+    // 4. The typed failure: a second publication on a NEW proposal chain
+    // (the same thread + a new proposal) stages, then marks FAILED with
+    // the reason.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": "pb-prop-2",
+            "policy_id": "pb-policy",
+            "policy_version": "1.0.0",
+            "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second proposal registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "pb-dec-2",
+            "proposal_id": "pb-prop-2",
+            "rule": "majority",
+            "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second decision records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "pb-app-2",
+            "proposal_id": "pb-prop-2",
+            "decision_id": "pb-dec-2",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second approval records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-pub-2",
+            "proposal_id": "pb-prop-2",
+            "decision_id": "pb-dec-2",
+            "approval_id": "pb-app-2",
+            "projection_id": "pb-proj",
+            "manifest_digest": manifest_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second publication stages");
+    let (status, failed) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pb-pub-2/failed",
+        &human_id,
+        &json!({ "reason": "the fetch-back verification failed" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publication marks failed: {failed}");
+    assert_eq!(failed["state"], json!("failed"));
+    assert_eq!(
+        failed["failed_reason"],
+        json!("the fetch-back verification failed")
+    );
+
+    // 5. The list: the two publications, newest first.
+    let (status, publications) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert_eq!(status, 200, "the publications read: {publications}");
+    let publications = publications.as_array().unwrap();
+    assert_eq!(publications.len(), 2, "{publications:?}");
+    assert_eq!(publications[0]["publication_id"], json!("pb-pub-2"));
+}

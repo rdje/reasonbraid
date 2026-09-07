@@ -488,6 +488,18 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(project_policies).get(list_policy_projections),
         )
         .route(
+            "/v1/policy-publications",
+            post(stage_publication).get(list_publications),
+        )
+        .route(
+            "/v1/policy-publications/{publication_id}/effective",
+            post(mark_publication_effective),
+        )
+        .route(
+            "/v1/policy-publications/{publication_id}/failed",
+            post(mark_publication_failed),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2486,6 +2498,95 @@ async fn list_policy_projections(
         ));
     }
     Ok(Json(crate::projections::list(&state.pool).await?))
+}
+
+/// `POST /v1/policy-publications` — stage one publication (`.4.2`): the
+/// §15.7 steps 1–4's record half (the references verified, the manifest
+/// digest, the staged state).
+async fn stage_publication(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::publications::PublicationInput>,
+) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal stages no publication",
+        ));
+    }
+    match crate::publications::stage(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-publications` — the publications, newest first.
+async fn list_publications(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::publications::StoredPublication>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no publications",
+        ));
+    }
+    Ok(Json(crate::publications::list(&state.pool).await?))
+}
+
+/// `POST /v1/policy-publications/{id}/effective` — the staged → effective
+/// transition with the Git object ids (the §15.7 step 8's record half).
+async fn mark_publication_effective(
+    State(state): State<Arc<ApiState>>,
+    Path(publication_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal marks nothing effective",
+        ));
+    }
+    let git_object_ids: Vec<String> = body
+        .get("git_object_ids")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ControlApiError::invalid_command("the git_object_ids are required"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    match crate::publications::mark_effective(&state.pool, &publication_id, git_object_ids).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `POST /v1/policy-publications/{id}/failed` — the typed failure (never a
+/// skip) with the reason.
+async fn mark_publication_failed(
+    State(state): State<Arc<ApiState>>,
+    Path(publication_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal marks nothing failed",
+        ));
+    }
+    let reason = body
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the reason is required"))?;
+    match crate::publications::mark_failed(&state.pool, &publication_id, reason).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

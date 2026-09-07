@@ -497,7 +497,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       `.4.2`.
 
   - ID: `PHASE-6.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the publication records + the staging — the
       publication aggregate (the decision + the approval +
       the projection references), the staged state, the
@@ -505,6 +505,31 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       stage machine (the staged → effective → failed
       transitions).
     Roadmap: §15.7
+    Done (`2026-09-07`): the publication records landed per
+      ADR-020 — migration 0042 (`policy_publications`: the
+      aggregate row — the decision/approval/projection
+      references + the manifest digest + the typed state +
+      the Git object ids + the failure reason);
+      `crates/reasonbraid-server/src/publications.rs`
+      (NEW): the `stage` (the §15.7 steps 1–4's record
+      half: the proposal must be APPROVED — the chain gate;
+      the decision + the approval must BELONG to the
+      proposal; the projection must exist; the manifest
+      digest rides the ADR-011 shape), the `mark_effective`
+      (the staged → effective with the NON-EMPTY Git object
+      ids — the §15.7 step 8), the `mark_failed` (the typed
+      failure with the reason — never a skip), the list; the
+      api: `POST`/`GET /v1/policy-publications` + `POST
+      /v1/policy-publications/{id}/effective` + `POST
+      /v1/policy-publications/{id}/failed`. Measured (policy
+      7): the full chain (the policy → the thread + the
+      verdict → the proposal → the decision → the approval →
+      the projection → the staged publication), the
+      effective transition with the object ids, the bad-
+      digest + the ghost-projection + the ghost-decision
+      refusals, the terminal re-transition refusal, the
+      second chain's typed FAILURE with the reason, the
+      newest-first list. Frontier → `.4.3`.
 
   - ID: `PHASE-6.4.3`
     Status: `proposed`
@@ -538,10 +563,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.2` | `proposed` | `.4.1` done — ADR-020 accepted (the nine-step machine, the aggregate record, the CAS idempotency, the six reconciliation rules); the publication records + the staging execute next |
+| 1 | `PHASE-6.4.3` | `proposed` | `.4.2` done — the publication records + the staging (the aggregate row, the chain-verified references, the typed state machine; policy 7); the Git publication + the reconciliation executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.2` done — the publication records
+  (migration 0042: the aggregate row, the chain-verified
+  references, the staged/effective/failed machine); policy 7;
+  frontier → `.4.3`.
 - `2026-09-07`: `.4.1` done — ADR-020 accepted (the
   publication contract: the nine-step machine, the
   compare-and-swap idempotency, the six §15.8 reconciliation
@@ -895,6 +924,53 @@ three new tests), `crates/reasonbraid-server/tests/policy.rs`
 - [x] **FIX** — `crates/reasonbraid-policy-compiler/src/lib.rs`,
   `crates/reasonbraid-policy-compiler/tests/compiler.rs`,
   `crates/reasonbraid-server/tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.4.2)
+
+The CODE change owned by this leaf:
+`migrations/0042_policy_publications.sql` (NEW — the
+publication table), `crates/reasonbraid-server/src/
+publications.rs` (NEW — the shapes + the stage +
+mark_effective + mark_failed + the list),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the four verbs),
+`crates/reasonbraid-server/tests/policy.rs` (the new test) —
+`\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  publication row existed (the `.4` census — the chain
+  stopped at the approval; the Git truth had no record).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_publications\|PublicationInput\|mark_effective"
+  177bb19 -- crates/ migrations/` → rc=1 (nothing before
+  this leaf). The fix point is the ADR-020 record half: the
+  aggregate row + the typed state machine.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_publication_stages_and_marks_its_typed_state` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 7 tests … ok`) — the full chain to the
+  staged publication, the effective transition with the
+  object ids, the bad-digest + the ghost-projection + the
+  ghost-decision refusals, the terminal re-transition
+  refusal, the second chain's typed FAILURE with the reason,
+  the newest-first list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 61 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg531_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0042_policy_publications.sql`,
+  `src/publications.rs`, `src/lib.rs`, `src/api.rs`,
+  `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

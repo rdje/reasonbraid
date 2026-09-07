@@ -16,16 +16,16 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.4.2` (**PHASE 5 CLOSED**; ADR-020 accepted — the nine-step machine, the CAS idempotency, the six reconciliation rules).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.4.3` (**PHASE 5 CLOSED**; the publication records ship — the aggregate row + the typed state machine; policy 7).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.4.2` — the publication records +
-  the staging: the publication aggregate (the decision + the approval +
-  the projection references), the staged state, the manifest (the
-  digests + the authority basis), the stage machine (the staged →
-  effective → failed transitions) — per ADR-020.
+- **Next action:** execute `PHASE-6.4.3` — the Git publication + the
+  reconciliation: the staging-branch write + the fetch-back
+  verification, the immutable ref + the effective channel via the
+  compare-and-swap, the §15.8 reconciliation matrix (the six state
+  pairs → the actions), the kill-point tests — per ADR-020.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

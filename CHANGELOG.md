@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The close/contribute seam splits the `.2.4` leaf (`PHASE-5.2.4`)
+
+- The `.2.4` census: the CLOSE side (a two-valued outcome vs §13.4's twelve; no minority report) and the CONTRIBUTION side (no `evidence_request`/`verdict` kinds; the `evidence_reference` kind accepts empty refs). Children: `.2.4.1` the close vocabulary → `.2.4.2` the contribution-side execution.
+
 ## 2026-09-07 — The blind-first lane lands (`PHASE-5.2.3`)
 
 - A contribution posted during the `blind_solicit` step carries `blind: true`; the round advance is the commitment point (the step moves past `blind_solicit`, the event records `blind_committed`); the read surface serves a still-blind contribution to non-authors as `blind_until: round_advance` + the content digest — the ledger keeps the full body (a read rule, never a store rewrite); a non-author challenge of a blind contribution is the typed refusal. Measured: profiles 27.

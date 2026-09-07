@@ -281,13 +281,61 @@ and honest inconclusive outcomes.
       Frontier → `.2.4`.
 
   - ID: `PHASE-5.2.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the evidence requests + the adjudication + the
       minority reports — the `evidence_request` verb (riding the
       Phase-4 claim-evidence pipeline), the `adjudicate`
       execution (the attributable verdict record), the minority
       report on the close, the §13.4 terminal vocabulary.
     Roadmap: §13.4, §13.6
+    Children: `.2.4.1`–`.2.4.2` (decomposed `2026-09-07` at the
+      close/contribute seam): `.2.4.1` the close vocabulary —
+      the §13.4 twelve terminals (the legacy `decided`/
+      `inconclusive` words stay accepted aliases but never
+      persist; the decision-family/failure-family rule — a
+      decision terminal with a non-empty unresolved register is
+      the typed refusal) + the minority report riding the close
+      (the coverage report) → `.2.4.2` the contribution-side
+      execution — the `evidence_request` kind (targets ONE claim
+      digest of this thread; the step gate) and the `verdict`
+      kind (the attributable record: the judged digest + the
+      rule + the §13.4 outcome; the `adjudicate` step gate; the
+      `evidence_reference` kind's non-empty refs).
+    Done (`2026-09-07`): the census found the two halves of the
+      leaf sit on different surfaces: the CLOSE side (the
+      outcome is a two-variant enum today — `decided`/
+      `inconclusive` — vs §13.4's twelve; no minority report
+      exists; the `.1.5.3` decided-with-unresolved refusal is
+      the two-valued ancestor of the family rule) and the
+      CONTRIBUTION side (the kind vocabulary has no
+      `evidence_request` or `verdict`; the `evidence_reference`
+      kind accepts empty refs). Children at that seam — frontier
+      → `.2.4.1`.
+
+  - ID: `PHASE-5.2.4.1`
+    Status: `proposed`
+    Goal: the close vocabulary — the §13.4 twelve terminals on
+      the close outcome (the legacy words stay accepted aliases
+      mapping to `accepted_by_rule`/`deadlocked`; the canonical
+      name persists on the event + the projection; the
+      decision-family/failure-family rule replaces the
+      `.1.5.3` two-valued check — a decision terminal with a
+      non-empty unresolved register is the typed refusal) + the
+      minority report riding the close (the synthesizer
+      identity, the input event range, the source links, the
+      coverage report of included/excluded items).
+    Roadmap: §13.4, §13.5
+
+  - ID: `PHASE-5.2.4.2`
+    Status: `proposed`
+    Goal: the contribution-side execution — the
+      `evidence_request` kind (targets ONE claim digest of this
+      thread; the step gate) and the `verdict` kind (the
+      attributable record: the judged digest + the rule + the
+      §13.4 outcome; the `adjudicate` step gate); the
+      `evidence_reference` kind requires non-empty refs (the
+      response carries evidence, never an empty claim of it).
+    Roadmap: §13.4
 
 - ID: `PHASE-5.3`
   Status: `proposed`
@@ -317,10 +365,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.4` | `proposed` | `.2.3` done — the blind-first lane (the read-surface deferral + the round-advance commitment + the blind-target refusal; profiles 27); the evidence requests + the adjudication + the minority reports execute next |
+| 1 | `PHASE-5.2.4.1` | `proposed` | `.2.4` decomposed at the close/contribute seam — the close vocabulary (the twelve terminals + the minority report) executes first, then the contribution-side kinds |
 
 ## Changelog
 
+- `2026-09-07`: `.2.4` decomposed at the close/contribute seam
+  — `.2.4.1` the close vocabulary (the twelve terminals + the
+  minority report) → `.2.4.2` the contribution-side execution
+  (the `evidence_request` + `verdict` kinds); frontier →
+  `.2.4.1`.
 - `2026-09-07`: `.2.3` done — the blind-first lane (the
   `blind_solicit` marker on the contribute, the round advance as
   the commitment point with `blind_committed`, the read-surface

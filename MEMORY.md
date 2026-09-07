@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.2.4` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.2.4.1` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,12 +28,11 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.2.4` — the evidence
-  requests + the adjudication + the minority reports: the
-  `evidence_request` verb (riding the Phase-4 pipeline), the
-  `adjudicate` execution (the attributable verdict record),
-  the minority report on the close, the §13.4 twelve
-  terminals — per ADR-029.
+- **Next action:** execute `PHASE-5.2.4.1` — the close
+  vocabulary: the §13.4 twelve terminals (the legacy aliases
+  never persist; the decision/failure family rule) + the
+  minority report on the close (the coverage report); then
+  `.2.4.2` the contribution-side execution.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

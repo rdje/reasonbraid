@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.3.2` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.3.3` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,12 +28,12 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.3.2` — the moderation
-  kinds: the typed moderation contributions (classify/
-  request_clarification/propose_close/draft_summary/
-  identify_unanswered), the capability-field refusals, the
-  `ref_event_id` check, the `moderate` step gate — per
-  ADR-030.
+- **Next action:** execute `PHASE-5.3.3` — the synthesis
+  record: the `synthesize` step executes as the derived-content
+  contribution (the synthesizer identity, the input event
+  range, the source links, the coverage report — reusing the
+  `.2.4.1` shapes), the step gate, the auditable
+  transformation — per ADR-030.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

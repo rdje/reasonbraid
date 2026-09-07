@@ -5163,3 +5163,250 @@ async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
     .await;
     assert_eq!(status, 400, "the misplaced verdict refuses: {refused}");
 }
+
+#[tokio::test]
+async fn the_moderation_actions_are_bounded_contributions() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "md-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // The custom profile composes the `moderate` step (the built-ins don't).
+    let (status, registered) = post(
+        &client,
+        &base,
+        "/v1/workflow-profiles",
+        &human_id,
+        &json!({
+            "profile_id": "moderated_panel",
+            "steps": ["solicit", "moderate", "decide"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile registers: {registered}");
+
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "md-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "md",
+                "objective": "probe",
+                "workflow_profile": "moderated_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the create succeeds: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // 1. The to-be-moderated contribution (step 0: solicit).
+    let (status, posted) = command(
+        "md-position",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel's position",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the position contributes: {posted}");
+    let position_event = posted["event_id"].as_str().unwrap().to_string();
+
+    // 2. The step gate: a moderation action during `solicit` refuses.
+    let (status, refused) = command(
+        "md-early",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "classified",
+            "kind": "classify",
+            "ref_event_id": position_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the early moderation refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("moderate"),
+        "{refused}"
+    );
+
+    // 3. The round advance seats `moderate`.
+    let (status, advanced) = command(
+        "md-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances: {advanced}");
+
+    // 4. The moderation action on its step: accepted, the reference rides it.
+    let (status, classified) = command(
+        "md-classify",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "this is the proposal",
+            "kind": "classify",
+            "ref_event_id": position_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the classify succeeds: {classified}");
+    let classify_event = classified["event_id"].as_str().unwrap().to_string();
+
+    // 5. A forged reference refuses.
+    let (status, refused) = command(
+        "md-forged-ref",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "nothing",
+            "kind": "classify",
+            "ref_event_id": "evt_does_not_exist",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the forged reference refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not exist"),
+        "{refused}"
+    );
+
+    // 6. The capability-shaped fields refuse on the moderation kinds — the
+    // prohibition is the vocabulary's negative space.
+    let (status, refused) = command(
+        "md-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "not a verdict",
+            "kind": "classify",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the verdict field refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("negative space"),
+        "{refused}"
+    );
+    let (status, refused) = command(
+        "md-evidence",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "no evidence",
+            "kind": "classify",
+            "evidence_refs": [ { "uri": "https://example.org/x" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the evidence field refuses: {refused}");
+
+    // 7. The reference rides the moderation kinds only.
+    let (status, refused) = command(
+        "md-misplaced-ref",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "misplaced",
+            "kind": "position",
+            "ref_event_id": position_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the misplaced reference refuses: {refused}");
+
+    // 8. Another moderation kind (no reference needed) succeeds.
+    let (status, clarified) = command(
+        "md-clarify",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "what does the panel mean by this?",
+            "kind": "request_clarification",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the clarification succeeds: {clarified}");
+
+    // 9. The moderation action is challengeable — the appeal IS the
+    // existing challenge verb (the action is a contribution).
+    let (status, appealed) = command(
+        "md-appeal",
+        "thread.challenge",
+        json!({
+            "tenant_id": tenant_id,
+            "target_event_id": classify_event,
+            "content": "the classification mislabels the position",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the moderation action is challengeable: {appealed}"
+    );
+
+    // 10. The custom profile is THIS test's row — the registry is global
+    // (no tenant scoping) and the `.1.2` built-in count must stay 8, so
+    // the test removes its own registration.
+    sqlx::query(
+        "DELETE FROM workflow_profiles WHERE profile_id = 'moderated_panel' AND NOT built_in",
+    )
+    .execute(&pool)
+    .await
+    .expect("the custom profile row deletes");
+}

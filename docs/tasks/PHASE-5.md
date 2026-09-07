@@ -445,7 +445,7 @@ and honest inconclusive outcomes.
       `.3.2`.
 
   - ID: `PHASE-5.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the moderation kinds — the typed moderation
       contributions (the classify/request-clarification/
       propose-close/draft-summary vocabulary), the closed-
@@ -453,6 +453,27 @@ and honest inconclusive outcomes.
       verdict/claims/evidence_refs/target fields), the
       `moderate` step gate.
     Roadmap: §13.5
+    Done (`2026-09-07`): the moderation kinds landed per
+      ADR-030 — the kind vocabulary gains the closed set
+      (`classify`, `request_clarification`, `propose_close`,
+      `draft_summary`, `identify_unanswered`;
+      `is_moderation_kind`); a moderation-kind contribution
+      REFUSES the capability-shaped fields (the verdict, the
+      claims, the evidence_refs, the target — the §13.5
+      prohibitions hold by construction); the action may
+      reference its target via `ref_event_id` (the ref must
+      exist in the thread; it rides the moderation kinds
+      only); the `moderate` step gate (the moderation kinds
+      execute on it); the `moderate` step joined the STEP
+      vocabulary (twelve → thirteen; the built-ins unchanged);
+      the action can never erase (it is a contribution — an
+      event). Measured (profiles 30): the custom
+      `moderated_panel` profile composes the step; the
+      solicit-step refusal; the classify + the clarification
+      with the reference riding the event; the forged-ref +
+      the capability-field + the misplaced-ref refusals; the
+      challenge over the moderation action (the appeal IS the
+      challenge). Frontier → `.3.3`.
 
   - ID: `PHASE-5.3.3`
     Status: `proposed`
@@ -486,10 +507,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.3.2` | `proposed` | `.3.1` done — ADR-030 accepted (the moderation actions are contributions, the closed vocabulary is the prohibition, the appeal is the challenge, the `moderate` step joins the vocabulary); the moderation kinds execute next |
+| 1 | `PHASE-5.3.3` | `proposed` | `.3.2` done — the moderation kinds (the closed vocabulary's negative space, the ref_event_id, the moderate step gate; profiles 30); the synthesis record executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.2` done — the moderation kinds (the closed
+  vocabulary's negative space: the capability-shaped fields
+  refuse, the `ref_event_id` check, the `moderate` step gate,
+  the appealable action = the challenge); profiles 30;
+  frontier → `.3.3`.
 - `2026-09-07`: `.3.1` done — ADR-030 accepted (the
   moderator/synthesizer contract: the prohibition is the
   vocabulary's negative space, the appeal is the challenge, the
@@ -848,6 +874,57 @@ event's new fields), `crates/reasonbraid-server/tests/profiles.rs`
   `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
   commit.
 - [x] **FIX** — `src/threads.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.3.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/workflows.rs` (the `moderate`
+step joining the vocabulary), `crates/reasonbraid-server/src/
+threads.rs` (the five moderation kinds + `is_moderation_kind`,
+the `ref_event_id` field, the capability-field + step-gate +
+ref-exists validations, the event's `ref_event_id`),
+`crates/reasonbraid-server/tests/profiles.rs` (the new test) —
+`\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  moderation kind/step/ref existed (the `.3` census: the
+  moderator was zero machinery); nothing enforced the §13.5
+  prohibitions.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "is_moderation_kind\|ref_event_id\|RequestClarification"
+  297e2e6 -- crates/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-030 contract: the closed kind set rides
+  the contribute verb; the prohibition is the vocabulary's
+  negative space (the capability-shaped fields refuse).
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test profiles
+  the_moderation_actions_are_bounded_contributions` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 30 tests … ok`) — the custom moderated_panel
+  profile composes the step; the solicit-step refusal; the
+  classify + the clarification (the reference rides the
+  event); the forged-ref + the capability-field (the verdict +
+  the evidence) + the misplaced-ref refusals; the challenge
+  over the moderation action. The first live pass caught the
+  SHARED-registry pollution (the custom profile row broke the
+  `.1.2` built-in count) + the validation ORDER (the
+  kind-field check pre-empted the moderation refusal) — both
+  fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg518_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/workflows.rs`, `src/threads.rs`,
+  `tests/profiles.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

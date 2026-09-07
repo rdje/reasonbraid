@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The moderation kinds land (`PHASE-5.3.2`)
+
+- The closed moderation vocabulary (`classify`, `request_clarification`, `propose_close`, `draft_summary`, `identify_unanswered`) rides the contribute verb: the capability-shaped fields refuse on it (the §13.5 prohibitions by construction), the action references its target via `ref_event_id` (must exist in the thread), the `moderate` step joins the step vocabulary and gates the kinds, and the action is challengeable — the appeal IS the challenge. Measured: profiles 30.
+
 ## 2026-09-07 — ADR-030: the moderation/synthesis contract (`PHASE-5.3.1`)
 
 - ADR-030 accepted (`docs/adr/030-moderation-and-synthesis.md`): the moderation action is a contribution (never a new authority); the closed kind set refuses the capability-shaped fields — the §13.5 prohibitions hold by construction; the appealable action IS the existing challenge; the `moderate` step joins the vocabulary; the synthesis record is re-derivable derived content. No code.

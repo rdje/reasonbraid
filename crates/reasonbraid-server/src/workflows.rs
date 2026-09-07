@@ -12,10 +12,13 @@ use sqlx::PgPool;
 /// The step vocabulary (the composition over the existing verbs): each
 /// kind names an existing contribution/terminal/budget surface — nothing
 /// else is expressible, by construction.
-pub const STEP_KINDS: [&str; 12] = [
+/// `.3.2` (ADR-030): the vocabulary is thirteen — `moderate` joined (the
+/// moderation kinds execute on it; the built-ins stay unchanged).
+pub const STEP_KINDS: [&str; 13] = [
     "solicit",
     "blind_solicit",
     "synthesize",
+    "moderate",
     "critique",
     "revise",
     "adjudicate",

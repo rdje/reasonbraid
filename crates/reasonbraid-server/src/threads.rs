@@ -267,6 +267,31 @@ pub enum ContributionKind {
     /// (`verdict` body field: the judged digest + the rule + the §13.4
     /// outcome), legal on the `adjudicate` step only.
     Verdict,
+    /// `.3.2` (ADR-030): the moderation kinds — the CLOSED vocabulary. A
+    /// moderation action is a contribution, never a new authority: the
+    /// capability-shaped fields (verdict/claims/evidence_refs/target) are
+    /// refused on these kinds, so the §13.5 prohibitions hold by
+    /// construction.
+    Classify,
+    RequestClarification,
+    ProposeClose,
+    DraftSummary,
+    IdentifyUnanswered,
+}
+
+impl ContributionKind {
+    /// Whether this kind is one of the ADR-030 moderation kinds (the closed
+    /// set — the capability-shaped fields refuse on them).
+    pub fn is_moderation_kind(&self) -> bool {
+        matches!(
+            self,
+            ContributionKind::Classify
+                | ContributionKind::RequestClarification
+                | ContributionKind::ProposeClose
+                | ContributionKind::DraftSummary
+                | ContributionKind::IdentifyUnanswered
+        )
+    }
 }
 
 /// One evidence reference attached to a contribution (`PHASE-1.5.1`): a URI, an
@@ -309,6 +334,10 @@ pub struct ContributeBody {
     /// contribution.
     #[serde(default)]
     pub verdict: Option<VerdictInput>,
+    /// `.3.2` (ADR-030): the moderated event's id — legal only on a
+    /// moderation-kind contribution; the reference must exist in the thread.
+    #[serde(default)]
+    pub ref_event_id: Option<String>,
 }
 
 /// The adjudication verdict input (`.2.4.2`, ADR-029): the judged digest, the
@@ -1235,6 +1264,54 @@ where
                     "structured claims ride a `claim`-kind contribution only".to_string(),
                 ));
             }
+            // The current step name (the `.2.4.2`/`.3.2` gates).
+            let step = projection
+                .workflow_steps
+                .get(projection.workflow_step)
+                .map(|s| s.as_str());
+            // `.3.2` (ADR-030): the moderation kinds FIRST — the CLOSED
+            // vocabulary IS the structural prohibition. The capability-shaped
+            // fields refuse on them (no vote/verdict, no evidence fabrication,
+            // no claim targeting); the `ref_event_id` rides only moderation
+            // kinds and must exist in the thread (the action can never erase —
+            // it references, never rewrites).
+            if body.kind.is_moderation_kind() {
+                if body.verdict.is_some()
+                    || !body.claims.is_empty()
+                    || !body.evidence_refs.is_empty()
+                    || body.target_claim_digest.is_some()
+                {
+                    return Err(ThreadError::InvalidCommand(
+                        "a moderation action carries no verdict, claims, evidence references, \
+                         or claim target — the prohibition is the vocabulary's negative space"
+                            .to_string(),
+                    ));
+                }
+                if step != Some("moderate") {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the moderation action requires the current step to be `moderate` \
+                         (it is `{}`)",
+                        step.unwrap_or("none")
+                    )));
+                }
+                if let Some(ref_event_id) = body.ref_event_id.clone() {
+                    match event_type_in_thread(&mut *tx, tenant_id, thread_id, &ref_event_id)
+                        .await
+                        .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                    {
+                        Some(_) => {}
+                        None => {
+                            return Err(ThreadError::InvalidCommand(format!(
+                                "the moderated event `{ref_event_id}` does not exist in this thread"
+                            )))
+                        }
+                    }
+                }
+            } else if body.ref_event_id.is_some() {
+                return Err(ThreadError::InvalidCommand(
+                    "the moderated-event reference rides a moderation kind only".to_string(),
+                ));
+            }
             // `.2.4.2` (ADR-029): the kind-specific fields ride their kind —
             // the target names a claim only for an evidence request, the
             // verdict only for a verdict.
@@ -1261,10 +1338,6 @@ where
             // The step gates (the ADR-016 composition executing): the request
             // belongs to the `evidence_request` step, the verdict to the
             // `adjudicate` step.
-            let step = projection
-                .workflow_steps
-                .get(projection.workflow_step)
-                .map(|s| s.as_str());
             if body.kind == ContributionKind::EvidenceRequest {
                 let Some(target) = body.target_claim_digest.clone() else {
                     return Err(ThreadError::InvalidCommand(
@@ -1289,7 +1362,8 @@ where
             }
             if body.kind == ContributionKind::Verdict && step != Some("adjudicate") {
                 return Err(ThreadError::InvalidCommand(format!(
-                    "the `verdict` contribution requires the current step to be `adjudicate`                      (it is `{}`)",
+                    "the `verdict` contribution requires the current step to be `adjudicate` \
+                     (it is `{}`)",
                     step.unwrap_or("none")
                 )));
             }
@@ -1327,6 +1401,7 @@ where
                     "evidence_refs": body.evidence_refs,
                     "claims": claims,
                     "target_claim_digest": body.target_claim_digest,
+                    "ref_event_id": body.ref_event_id,
                     "verdict": body.verdict.as_ref().map(|v| json!({
                         "target_digest": v.target_digest,
                         "rule": v.rule,

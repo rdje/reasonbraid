@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.6.3: the label discipline is a grep, not a convention — every hit is the roadmap's own rule or a negation
+
+- **The §10.4 acceptance is mechanically provable**: the sweep shows every occurrence of "independence score/probability" is either the ROADMAP's normative text or a NEGATION ("no independence score" — the discipline itself), so no surface CLAIMS the forbidden term. The approved label rides the wire (`dependence_indicators`). Phase 3 closes with the exit line held at the dev scale: the match surface recruits without enumeration, and the recuse/visibility/concurrency/spend controls + the storm caps all have their measured tests.
+- promotion: declined (the sweep's result is the leaf's own record; the phase-close summary is the changelog's). **Phase 3 is CLOSED. Frontier `PHASE-4.1` (the `PHASE-4` tree).**
+
 ## _(2026-09-07)_ — PHASE-3.6.2: the diversity feature is the inverse of the heaviest overlap — and absent facts contribute nothing, never a guess
 
 - **The selection-side half of §10.4 landed as the ranking's sixth feature**: the candidate's diversity score inverts their heaviest attribute overlap with the OTHER eligible candidates (a unique provider scores 1.0; two sharers score lower), the explanation names the overlap fraction, and — the honest edge — when no dependence facts are loaded the feature contributes exactly zero (an unknown is never scored into a guess). The panel snapshot now carries the computed indicators beside the per-panelist explanation: the selection's audit shows both what was chosen and what the chosen share.

@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The label sweep proves the discipline — Phase 3 CLOSED (`PHASE-3.6.3`)
+
+- The §10.4 acceptance ran mechanically: `grep -rni "independent probability\|independence score" docs/ crates/ scripts/` — every hit is either the ROADMAP's own §10.4 rule (the normative source) or a "no independence score" NEGATION (the discipline itself: the benchmark's report hygiene, the deliberation record, the tree's own goal). No UI surface — the book, the CLI output, an explanation, a record — claims the forbidden term anywhere. The approved label "diversity and dependence indicators" rides the indicator's wire name (the snapshot's `dependence_indicators` key).
+- **Phase 3 is CLOSED** — the directory profile, the presence, the two-stage matching, the recruitment protocol, the subscriptions + the node-initiated API, and the dependence indicators ship; the exit line (recruit without enumerating the network, with the opt-out/visibility/capacity/budget enforceable) holds at the dev scale. The next executable work is `PHASE-4.1`.
+
 ## 2026-09-07 — The selection seeks variation: the diversity feature + the panel's indicators (`PHASE-3.6.2`)
 
 - The ranking gains its sixth feature, `diversity`: the inverse of the candidate's heaviest attribute overlap with the OTHER eligible candidates — a unique provider scores 1.0, two sharers score lower, and the explanation names the overlap fraction (never a probability). No dependence facts → the feature contributes nothing (unknown is never a guess).

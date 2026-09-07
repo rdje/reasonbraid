@@ -19,14 +19,20 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.6.3` (`.6.2` done: the
-  diversity feature + the panel wiring). Phase 3 closes after
-  `.6.3`.
-- **Next action:** execute `PHASE-3.6.3` — the label discipline:
-  the §10.4 acceptance as a mechanical sweep (the term "independent
-  probability" appears nowhere; the indicator's wire name is the
-  approved "diversity and dependence indicators" label). No code
-  beyond the labels. **Phase 3 closes after this leaf.**
+- **Phase 3 COMPLETE (2026-09-07):** the directory profile lane
+  (ADR-014, the content-addressed profiles, the per-reader
+  visibility), the presence lane (the six-state derivation, the
+  offline-known distinction, the filtered views), the two-stage
+  matching (the eligibility + the explainable ranking + the match
+  surface), the recruitment protocol (ADR-015, the call artifact,
+  the storm controls), the subscriptions lane (the delivery
+  ladder, the wake gate, the node-initiated API), and the
+  dependence indicators (the named overlaps + the diversity
+  feature + the label sweep); the tree is `done`.
+- **Active tree:** `PHASE-4` → frontier `.1` (the resource-registry
+  lane).
+- **Next action:** execute `PHASE-4.1` — the `PHASE-4` tree's
+  frontier (the resource registry).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

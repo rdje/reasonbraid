@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-3`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 3 (`ROADMAP.md` §20.5); Network track
 - Created: `2026-09-05`
 - Estimate: 12–19 engineer-weeks
@@ -647,7 +647,10 @@ eligibility before ranking. Dependence indicators, never an independence score.
     (`grep -rn "dependence\|diversity" crates/…/src/` → only an
     unrelated comment), the `.3` ranking has no diversity feature,
     and no UI label exists to discipline. Children at those seams —
-    frontier → `.6.1`.
+    frontier → `.6.1`. **`.6` is COMPLETE — Phase 3 is CLOSED**: the
+    indicators are named overlaps (never a score), the selection
+    seeks the variation (the sixth feature), and the label sweep
+    proves the discipline holds on every surface.
   - ID: `PHASE-3.6.1`
     Status: `done`
     Goal: the dependence-indicator computation — the PURE
@@ -707,7 +710,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       are measured; no regression.
 
   - ID: `PHASE-3.6.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the label discipline — the §10.4 acceptance as a sweep:
       every surface (the book, the CLI output, the explanations,
       the records) labels these "diversity and dependence
@@ -715,6 +718,25 @@ eligibility before ranking. Dependence indicators, never an independence score.
       mechanical grep (the term never appears) + the label rides
       the indicator's wire name. No code beyond the labels.
     Backlog: —
+    Done (`2026-09-07`): the label sweep ran mechanically —
+      `grep -rni "independent probability\|independence score"
+      docs/ crates/ scripts/` → every hit is either the ROADMAP's
+      own §10.4 rule (the normative source) or a "no independence
+      score" NEGATION (the discipline itself: the benchmark's
+      report hygiene, the deliberation record, the tree's own
+      goal) — no UI surface (the book, the CLI output, an
+      explanation, a record) CLAIMS the forbidden term anywhere.
+      The approved label "diversity and dependence indicators"
+      rides the indicator's wire name (the snapshot's
+      `dependence_indicators` key). No code changed.
+      **`PHASE-3.6` COMPLETE — Phase 3 is CLOSED** (the exit line
+      at the dev scale: an authorized agent recruits without
+      enumerating the network — the `.3` match surface; the
+      opt-out/visibility/capacity/budget remain enforceable — the
+      recuse/decline responses, the `.1.3` visibility, the `.5.2`
+      concurrency gate, the `.5.3` spend bound; the storm caps
+      hold — the `.4.3` fan-out + the expiry). The next executable
+      work is `PHASE-4.1` (the `PHASE-4` tree).
     Acceptance: the label sweep is mechanical (the forbidden term
       appears nowhere); the indicator's wire name is the approved
       label; no code changes. **`PHASE-3.6` and Phase 3 close.**
@@ -729,7 +751,17 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.6.3` | `proposed` | `.6.2` done — the diversity feature + the panel wiring (the sixth feature + the snapshot's indicators, measured); the label discipline sweep executes now — and Phase 3 closes |
+**Tree complete.** Phase 3 is CLOSED — the directory profile lane
+(ADR-014, the typed + content-addressed profiles, the per-reader
+visibility), the presence lane (the six-state derivation, the
+offline-known distinction, the filtered views), the two-stage
+matching (the eligibility + the explainable ranking + the match
+surface), the recruitment protocol (ADR-015, the call artifact, the
+storm controls), the subscriptions lane (the delivery ladder, the
+wake gate, the node-initiated API), and the dependence indicators
+(the named overlaps + the diversity feature + the label sweep) —
+the exit line holds at the dev scale. The next executable work is
+`PHASE-4.1` (the `PHASE-4` tree, now `active`).
 
 ## Changelog
 
@@ -845,6 +877,11 @@ eligibility before ranking. Dependence indicators, never an independence score.
   wiring (the ranking's sixth feature + the snapshot's indicators);
   matching 12 + the live overlap leg (profiles 12); frontier →
   `.6.3`.
+- `2026-09-07`: `.6.3` done — the label discipline sweep (every hit
+  is the ROADMAP's own rule or a "no independence score"
+  negation; no surface claims the forbidden term); no code changed.
+  **`.6` COMPLETE — Phase 3 is CLOSED** (the exit line holds at
+  the dev scale).
 
 ## Acceptance Checklist (PHASE-3.6.2)
 
@@ -1531,6 +1568,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.6.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the label discipline sweep (the mechanical grep: the forbidden claim appears nowhere); **Phase 3 is CLOSED** |
 | `2026-09-07` | `PHASE-3.6.2` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 12 passed` (the variation reward + the zero-without-facts); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_panel_snapshot` → `test result: ok. 1 passed` (the shared provider's named group in the snapshot); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg362_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the diversity feature + the panel wiring; frontier → `.6.3` |
 | `2026-09-07` | `PHASE-3.6.1` | `cargo test -p reasonbraid-server --lib dependence` → `test result: ok. 5 passed` (the overlap group, the variation, the single-member rule, the owner overlap, the no-overclaim rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg361_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the dependence-indicator computation; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-3.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the dependence-lane census + the contract-seam decomposition (`.6.1` indicators → `.6.2` diversity + wiring → `.6.3` labels); frontier → `.6.1` |
@@ -1558,6 +1596,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.6.3` | `REASONBRAID-PHASE3-0024` | the label discipline sweep (the mechanical grep: no surface claims the forbidden term) — **`.6` COMPLETE — Phase 3 is CLOSED** (docs-only) |
 | `PHASE-3.6.2` | `REASONBRAID-PHASE3-0023` | the diversity feature + the panel wiring (the sixth ranking feature + the snapshot's dependence indicators) |
 | `PHASE-3.6.1` | `REASONBRAID-PHASE3-0022` | the dependence-indicator computation (the pure overlaps over the lineage/ownership facts, never a score) |
 | `PHASE-3.6` | `REASONBRAID-PHASE3-0021` | the dependence-indicators lane decomposed at the census seams (the inputs exist; the computation/feature/labels are the gaps) |

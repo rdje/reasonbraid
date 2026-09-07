@@ -994,15 +994,61 @@ of a URI is not a promise the core can resolve it.
       frontier → `.7`.
 
 - ID: `PHASE-4.7`
-  Status: `proposed`
+  Status: `done`
   Goal: G4 hostile-content suite; explicit failure for unsupported references
   Gate: G4; subtraction record required
+  Children: `.7.1`–`.7.2` (decomposed `2026-09-07` at the census
+    seams): `.7.1` the hostile-content suite (the consolidated
+    G4 proof — the refusals the lanes already measure, assembled
+    into ONE suite the gate reads) → `.7.2` the G4 gate record +
+    the subtraction record (the gate package: Met with the named
+    deferrals — the Phase-1 `.1.8.2` pattern).
+  Done (`2026-09-07`): the census mapped the G4 exit against the
+    shipped surface: the explicit-failure machinery EXISTS and is
+    measured across the lanes — the 18-case SSRF refusal matrix,
+    the fetcher's 16 refusals (the loopback/private/ambiguous
+    proofs), the worker's 9 refusals (the bombs, the traversal,
+    the encrypted/JS PDFs), the budget trips (R1/R2), the fake
+    digest/excerpt refusals (`.6.1`/`.6.3`), the
+    unresolvable-now surface, the tombstone — but the G4 gate
+    has no CONSOLIDATED suite and no subtraction record. The
+    suite's shape: the hostile cases assembled into one
+    profiles-style test the gate cites; the record's deferrals
+    are the named lanes (the R3 container gate — hostile JS is
+    refused by default; the RX delivery; the media formats
+    beyond the four). Children at those seams — frontier →
+    `.7.1`.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.7` | `proposed` | `.6.4` done — **the `.6` lane (the evidence pipeline) is COMPLETE**: the snapshot store + the tombstone, the derivation graph, the claim-evidence graph + the citation validation, the retention enforcement + the freshness (profiles 19–22); the G4 hostile-content suite executes next |
+| 1 | `PHASE-4.7.1` | `proposed` | `.7` decomposed at the census seams — the explicit-failure machinery exists and is measured per-lane, but the G4 gate has no consolidated suite and no subtraction record; the hostile-content suite executes now |
+
+  - ID: `PHASE-4.7.1`
+    Status: `proposed`
+    Goal: the hostile-content suite — the consolidated G4 proof:
+      ONE profiles-style suite assembling the hostile scenarios
+      end-to-end (the loopback/private/mapped refusals through
+      the resolution path, the bomb + the traversal through the
+      worker, the fake digest + the fake excerpt through the
+      evidence store, the budget trips, the unsupported
+      scheme/type/kind refusals) — the gate's citation is ONE
+      test result, not a per-lane hunt.
+    Gate: G4 (the suite is the evidence)
+
+  - ID: `PHASE-4.7.2`
+    Status: `proposed`
+    Goal: the G4 gate record + the subtraction record — the
+      gate package (the Phase-1 `.1.8.2` pattern): the G4 record
+      (Met, with the named deferrals — the R3 container gate
+      (hostile JS refused by default), the RX delivery (the
+      capability-call lane), the media formats beyond the four
+      (named unsupported), the browser-engine provenance) + the
+      §19.8-style subtraction record (what Phase 4 shipped vs
+      the roadmap's §12 backlog) + the Phase-4 evidence
+      manifest.
+    Gate: G4; subtraction record required
 
 ## Changelog
 
@@ -1035,6 +1081,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.7` decomposed at the census seams — the
+  explicit-failure machinery exists and is measured per-lane
+  (the refusal matrices, the budget trips, the fake
+  digest/excerpt refusals, the unresolvable-now), but the G4
+  gate has no consolidated suite and no subtraction record;
+  children `.7.1` (the hostile-content suite) → `.7.2` (the
+  gate record + the subtraction record); frontier → `.7.1`.
 - `2026-09-07`: `.6.4` done — the license/retention + the
   freshness (migration 0031, the retention TTLs + the expire-due
   enforcement + the staleness surface + the replay-refresh);
@@ -1902,6 +1955,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.7` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the G4 census + the suite/record decomposition (`.7.1` the hostile-content suite → `.7.2` the gate record + the subtraction record); frontier → `.7.1` |
 | `2026-09-07` | `PHASE-4.6.4` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_retention_enforcement` → `test result: ok. 1 passed` (the license + the horizon, the staleness, the `at`-driven expiry, the replay-refresh); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg464_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the license/retention + the freshness; **`.6` COMPLETE** — frontier → `.7` |
 | `2026-09-07` | `PHASE-4.6.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_claim_assessments` → `test result: ok. 1 passed` (the true excerpt accepts + the replay, the FAKE excerpt refuses, the unknown kind names itself, the two read surfaces); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg463_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the claim-evidence graph + the citation validation; frontier → `.6.4` |
 | `2026-09-07` | `PHASE-4.6.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_derivation_graph` → `test result: ok. 1 passed` (the edge roundtrip, the replay, the traversal, the mismatch 400, the missing-parent refusal); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg462_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the derivation graph; frontier → `.6.3` |
@@ -1933,6 +1987,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.7` | `REASONBRAID-PHASE4-0027` | the G4 exit decomposed at the census seams (the suite + the gate record) |
 | `PHASE-4.6.4` | `REASONBRAID-PHASE4-0026` | the license/retention + the freshness (the TTL enforcement + the staleness + the replay-refresh) — **`.6` COMPLETE** |
 | `PHASE-4.6.3` | `REASONBRAID-PHASE4-0025` | the claim-evidence graph + the citation validation (the excerpt must be in the bytes — citation existence alone never satisfies the gate) |
 | `PHASE-4.6.2` | `REASONBRAID-PHASE4-0024` | the derivation graph (the verified edges + the replay + the traversal — a quote is never the original) |

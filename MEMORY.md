@@ -19,17 +19,20 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.7` (packs R0 + R1 + R2
-  COMPLETE; the `.5` lane COMPLETE; the `.6` lane — the evidence
-  pipeline — COMPLETE: the snapshot store + the tombstone, the
-  derivation graph, the claim-evidence graph + the citation
-  validation, the retention + the freshness (profiles 19–22);
+- **Active tree:** `PHASE-4` → frontier `.7.1` (packs R0 + R1 + R2
+  COMPLETE; the `.5` lane COMPLETE; the `.6` lane COMPLETE; `.7`
+  decomposed at the census seams — the refusals exist per-lane,
+  the consolidated proof does not: `.7.1` the hostile-content
+  suite → `.7.2` the G4 gate record + the subtraction record;
   `MAINT-1` done). Then the G4 exit.
-- **Next action:** execute `PHASE-4.7` — the G4 hostile-content
-  suite: the explicit failure for unsupported references, the
-  quarantine/quality gates, the §12.9 budget attacks — the
-  phase's EXIT gate (the subtraction record required; decompose
-  at the census seams first).
+- **Next action:** execute `PHASE-4.7.1` — the hostile-content
+  suite: ONE profiles-style test assembling the hostile
+  scenarios end-to-end (the loopback/private/mapped refusals
+  through the resolution path, the bomb + the traversal through
+  the worker, the fake digest + the fake excerpt through the
+  evidence store, the budget trips, the unsupported
+  scheme/type/kind refusals) — the gate's citation is ONE test
+  result.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

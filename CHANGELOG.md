@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G4 exit opens: the refusals exist, the consolidated proof does not (`PHASE-4.7`)
+
+- The explicit-failure machinery is measured per-lane (the refusal matrices, the budget trips, the fake digest/excerpt refusals, the unresolvable-now) — but the G4 gate has no consolidated suite and no subtraction record.
+- Decomposed: `.7.1` the hostile-content suite (ONE gate-citable test result) → `.7.2` the G4 gate record + the subtraction record. Frontier → `.7.1`.
+
 ## 2026-09-07 — The evidence pipeline is complete: the retention enforces, the freshness surfaces (`PHASE-4.6.4`)
 
 - `migrations/0031`: the `license`, `fresh_until`, `refreshed_at` columns.

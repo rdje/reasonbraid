@@ -6,6 +6,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The R3/R5/RX lane opens: the census found NOTHING exists (`PHASE-4.5`)
+
+- No browser/MCP crate in the lock; the credential surface is the `.1.2` opaque binding-ref plus the fetcher's no-ambient-credentials baseline; §12.8 (the agent-mediated vocabulary) has no machinery.
+- Decomposed at the census seams: `.5.1` the three contracts + the OPT-IN gate (default OFF — the packs ship compiled but disabled) → `.5.2` the machinery (gated) → `.5.3` the receipt + the wiring. Frontier → `.5.1`.
+
 ## 2026-09-07 — Pack R2 is complete: the pipeline, the receipt, and the media-type routing (`PHASE-4.4.3`)
 
 - `migrations/0027`: the R2 install record (`r2-extract-worker` — the extraction media types, egress `listed` + sandbox `process` — the first ladder-up, the kill-on-budget-trip evidence).

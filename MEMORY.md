@@ -19,14 +19,19 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.5` (packs R0 + R1 + R2
-  COMPLETE — the `.2`/`.3`/`.4` lanes: the contracts, the
-  machinery, the receipts, the wirings; `MAINT-1` done). Then
-  `.6`–`.7`.
-- **Next action:** execute `PHASE-4.5` — pack R5/R3: the opt-in
-  private/authenticated connectors + the sandboxed browser/
-  agent-mediated acquisition (the HIGHEST-RISK lane — do not
-  enable by default; decompose at the census seams first).
+- **Active tree:** `PHASE-4` → frontier `.5.1` (packs R0 + R1 + R2
+  COMPLETE; `.5` decomposed at the census seams — nothing exists:
+  `.5.1` the three contracts + the OPT-IN gate → `.5.2` the
+  machinery → `.5.3` the receipt + the wiring; `MAINT-1` done).
+  Then `.6`–`.7`.
+- **Next action:** execute `PHASE-4.5.1` — the three contracts +
+  the OPT-IN gate: the R5 credential broker (LOCAL, the opaque
+  binding ref, the delegated session, the explicit disclosure),
+  the R3 browser contract (the bounded interaction + the network
+  log + the ladder-top isolation claim + the measured
+  browser-runtime census), the RX §12.8 vocabulary, and the
+  enablement gate (compiled but DISABLED — never a default) —
+  one decision record. No code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

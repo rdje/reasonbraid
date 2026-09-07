@@ -663,10 +663,80 @@ of a URI is not a promise the core can resolve it.
       **`.4` COMPLETE (pack R2)** — frontier → `.5`.
 
 - ID: `PHASE-4.5`
-  Status: `proposed`
+  Status: `done`
   Goal: opt-in private/authenticated connectors (R5) and sandboxed browser/agent-mediated acquisition (R3/RX)
   Roadmap: §12.3, §12.8
   Note: highest risk; do not enable by default
+  Children: `.5.1`–`.5.3` (decomposed `2026-09-07` at the census
+    seams): `.5.1` the three contracts + the OPT-IN gate (the R5
+    credential broker, the R3 browser worker, the RX §12.8
+    vocabulary — one decision record, plus the measured browser/
+    broker censuses) → `.5.2` the machinery (the broker + the
+    browser worker + the agent-mediated client — ALL behind the
+    gate) → `.5.3` the receipt + the wiring (the disclosure
+    receipts + the gated registry entries + the resolve path).
+  Done (`2026-09-07`): the census mapped §12.3's R3/R5/RX rows +
+    §12.8 against the shipped surface: NOTHING exists for the
+    browser, the credential broker, or the agent-mediated
+    acquisition — no browser/MCP crate in the lock (`git grep -c
+    "credential_broker\|browser\|mcp\|a2a" e2b43ea -- crates/`
+    → the only hits are the WEB UI's app.js/index.html), and the
+    credential surface is the `.1.2` opaque
+    `credential_binding_ref` (never a secret) + the fetcher's
+    no-ambient-credentials baseline. The lane is a greenfield
+    with the R3/R5/RX rows + §12.8 as its spec. The pieces it
+    reuses exist: the worker-subprocess pattern (R2's), the
+    ADR-018 ladder's top (the browser's isolation claim), the
+    registry's `authentication_classes` column (all `none` so
+    far), and the §12.9 budget vocabulary (the browser steps +
+    the model calls join it). Children at those seams — frontier
+    → `.5.1`.
+
+  - ID: `PHASE-4.5.1`
+    Status: `proposed`
+    Goal: the three contracts + the OPT-IN gate — the R5
+      credential-broker contract (the LOCAL broker only — the
+      credential never enters the reference, the
+      `credential_binding_ref` is the opaque handle, the
+      delegated-session model, the explicit-disclosure rule), the
+      R3 browser contract (the bounded interaction — the step
+      budget, the network log, the rendering policy; the
+      isolation claim — the ADR-018 ladder's TOP; the measured
+      browser-runtime census — the CDP chromium reality vs the
+      pure-Rust doctrine, the binary's provenance named), the RX
+      §12.8 contract (the acquisition-call response vocabulary —
+      the snapshot/excerpt/structured-fact/redacted-derivative/
+      test-receipt/refusal; the not-inspected-original record;
+      the second-verifier rule), and the ENABLEMENT gate (the
+      packs ship compiled but DISABLED — the open state is a
+      named configuration change, never a default, never a
+      registry row) — one decision record with top-level
+      `answers:`. No code.
+    Backlog: 35 (the contracts half)
+
+  - ID: `PHASE-4.5.2`
+    Status: `proposed`
+    Goal: the machinery — the credential broker, the browser
+      worker, and the agent-mediated client, ALL behind the `.5.1`
+      gate: the broker resolves the binding ref to the session
+      credential at the request boundary (the credential never
+      logs, never persists in the reference), the browser worker
+      mirrors the R2 worker's stdio quarantine with the step +
+      network-log budgets, the §12.8 response shapes are the
+      typed vocabulary the enrolled-agent surface answers with.
+    Backlog: 35 (the machinery half)
+
+  - ID: `PHASE-4.5.3`
+    Status: `proposed`
+    Goal: the receipt + the wiring — the disclosure receipts (the
+      explicit-disclosure record: what credential class, what
+      was disclosed), the gated registry entries (the R3/R5/RX
+      rows exist ONLY when the gate is open), and the resolution
+      path's consumption (the resolve returns the gated packs
+      only when enabled; the handler executes them behind the
+      same ranked-first rule, mirroring the `.2.3`–`.4.3`
+      wiring).
+    Backlog: 35 (the receipt half)
 
 - ID: `PHASE-4.6`
   Status: `proposed`
@@ -683,7 +753,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.5` | `proposed` | `.4.3` done — **the `.4` lane (pack R2) is COMPLETE**: the contract + the worker + the receipt + the wiring (the hinted references pipeline acquire→extract, the refusal names the class through the resolution path); pack R5/R3 — the opt-in private connectors + the sandboxed browser acquisition (the highest-risk lane) — executes next |
+| 1 | `PHASE-4.5.1` | `proposed` | `.5` decomposed at the census seams — NOTHING exists for the browser/credential-broker/agent-mediated acquisition (the R3/R5/RX rows + §12.8 have no machinery); the three contracts + the OPT-IN gate execute now |
 
 ## Changelog
 
@@ -716,6 +786,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.5` decomposed at the census seams — NOTHING
+  exists for the browser/credential-broker/agent-mediated
+  acquisition (no crate in the lock; only the `.1.2` opaque
+  binding-ref hook + the worker-subprocess pattern exist to
+  reuse); children `.5.1` (the three contracts + the OPT-IN
+  gate) → `.5.2` (the machinery, gated) → `.5.3` (the receipt +
+  the wiring); frontier → `.5.1`.
 - `2026-09-07`: `.4.3` done — the R2 receipt + the pack wiring
   (migration 0027's install record: the extraction media types +
   the sandbox `process` claim — the first ladder-up; the
@@ -1286,6 +1363,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R3/R5/RX census + the contract-seam decomposition (`.5.1` the contracts + the opt-in gate → `.5.2` the machinery → `.5.3` the receipt + the wiring); frontier → `.5.1` |
 | `2026-09-07` | `PHASE-4.4.3` | `cargo test -p reasonbraid-server --lib extraction` → `test result: ok. 1 passed` (the spawner roundtrip against the REAL worker binary: the Derivation response + the surfaced refusal); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r2_resolver` → `test result: ok. 1 passed` (the hinted reference ranks the R2 built-in; the pipeline's acquisition leg names the loopback class; the hintless reference keeps the R0 path; the stricter requirement explicit); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg443_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R2 pack wired; **`.4` COMPLETE** — frontier → `.5` |
 | `2026-09-07` | `PHASE-4.4.2` | `cargo test -p reasonbraid-extract` → `test result: ok. 9 passed` (the per-format extractions + refusals + the two stdio roundtrips spawning the built binary); `cargo test --all` → rc=0, 53 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg442_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the extraction worker; frontier → `.4.3` |
 | `2026-09-07` | `PHASE-4.4.1` | docs-only (no code paths changed): the parser census measured (`cargo add --dry-run lopdf/pdf/zip/tar/atom_syndication` → the versions above, all pure Rust); `make gate` → 13/13 at commit | the R2 contract + the parser census; frontier → `.4.2` |
@@ -1308,6 +1386,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.5` | `REASONBRAID-PHASE4-0018` | the R3/R5/RX lane decomposed at the census seams (nothing exists — the contracts/machinery/wiring are the greenfield) |
 | `PHASE-4.4.3` | `REASONBRAID-PHASE4-0017` | the R2 receipt + the pack wiring (the hinted references pipeline acquire→extract — the Derivation receipt) — **`.4` COMPLETE** |
 | `PHASE-4.4.2` | `REASONBRAID-PHASE4-0016` | the extraction worker (the stdio protocol + the four parsers + the named refusals — the fresh-process quarantine) |
 | `PHASE-4.4.1` | `REASONBRAID-PHASE4-0015` | the R2 contract + the parser census (the Derivation-only extraction + the worker quarantine — the decision record) |

@@ -819,10 +819,81 @@ of a URI is not a promise the core can resolve it.
       shape ship here.)
 
 - ID: `PHASE-4.6`
-  Status: `proposed`
+  Status: `done`
   Goal: content-addressed snapshots, derivation graph, claim-evidence graph, citation validation, license/retention, freshness
   Backlog: 35
   Roadmap: §12.6–12.7, §12.9
+  Children: `.6.1`–`.6.4` (decomposed `2026-09-07` at the census
+    seams): `.6.1` the snapshot store + the tombstone (the §12.6
+    `EvidenceSnapshot` table + the content-addressed object store
+    — the `.1.1`'s named trigger — + the retention classes + the
+    tombstone rule) → `.6.2` the derivation graph (the
+    `Derivation` edges + the traversal) → `.6.3` the
+    claim-evidence graph + the citation validation (the five
+    assessments + the digest/selector checks) → `.6.4` the
+    license/retention + the freshness (the §12.9 re-fetch
+    policy).
+  Done (`2026-09-07`): the census mapped §12.6–12.7/§12.9 against
+    the shipped surface: the RECEIPTS exist (the `.2`–`.5` packs
+    produce the Web/Git/Extract/Authenticated/Browse shapes, all
+    with the ADR-011 digests + the parent links) but NOTHING
+    persists them — no `EvidenceSnapshot` machinery, no
+    `Derivation` edges, no claim-evidence assessments, no
+    tombstone (`git grep -c "EvidenceSnapshot\|tombstone"
+    f4696a6 -- crates/ migrations/` → the hits are the
+    node-inbox's Phase-2 retention + the references'
+    `retention_class` field — unrelated). The lane is a
+    greenfield with §12.6–12.7/§12.9 as its spec; it is the
+    Phase-4 blocker's LAST leg (the object store the `.1` census
+    named). Children at those seams — frontier → `.6.1`.
+
+  - ID: `PHASE-4.6.1`
+    Status: `proposed`
+    Goal: the snapshot store + the tombstone — the §12.6
+      `EvidenceSnapshot` (the original reference + the resolved
+      final locator; the retrieval time, the resolver
+      identity/version, the network + auth class; the provider
+      receipts + the immutable source version; the raw-byte
+      digest, length, media type, storage/retention class; the
+      quarantine/quality status), the content-addressed object
+      store (the acquired bytes persisted under their digest —
+      the `.1.1`'s named trigger), the submission surface (the
+      `.2`–`.5` receipts land here), the retention classes + the
+      tombstone rule (the deletion creates the tombstone + the
+      reason — never a silent disappearance).
+    Backlog: 35 (the store half)
+
+  - ID: `PHASE-4.6.2`
+    Status: `proposed`
+    Goal: the derivation graph — the `Derivation` edges (every
+      transformation: the snapshot → the derived chunks, the
+      extract/browse receipts' parent links, the
+      extraction/normalization version), the persistence + the
+      read surface (the parent/derived traversal — a quote or a
+      summary is NEVER the original, and the graph says so).
+    Backlog: 35 (the graph half)
+
+  - ID: `PHASE-4.6.3`
+    Status: `proposed`
+    Goal: the claim-evidence graph + the citation validation —
+      the five assessments (supports/contradicts/contextualizes/
+      source_only/unverifiable) with the author/verifier, the
+      excerpt/selector, the entailment rationale, the source
+      authority, the freshness, the independence/dependence
+      indicators, the uncertainty; the citation validation (the
+      claim's digest re-verification + the excerpt/selector check
+      — the citation must point at a REAL snapshot; citation
+      existence alone never satisfies an evidence gate).
+    Backlog: 35 (the claim half)
+
+  - ID: `PHASE-4.6.4`
+    Status: `proposed`
+    Goal: the license/retention + the freshness — the retention
+      classes' enforcement (the tombstone from `.6.1` rides the
+      class's expiry), the license metadata, the freshness (the
+      §12.9 re-fetch policy + the staleness surface the
+      assessments read).
+    Backlog: 35 (the retention half)
 
 - ID: `PHASE-4.7`
   Status: `proposed`
@@ -833,7 +904,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.6` | `proposed` | `.5.3` done — **the `.5` lane (the gated packs) is COMPLETE**: the startup sync keeps the R3/R5/RX rows in step with the gate, the resolve never returns a disabled pack, the authenticated + render + agent paths refuse with the class named (profiles 18); the snapshots + derivation-graph lane executes next |
+| 1 | `PHASE-4.6.1` | `proposed` | `.6` decomposed at the census seams — the receipts exist, NOTHING persists them (no snapshot/derivation/claim/tombstone machinery; the object store is the Phase-4 blocker's last leg); the snapshot store + the tombstone execute now |
 
 ## Changelog
 
@@ -866,6 +937,14 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.6` decomposed at the census seams — the
+  receipts exist (the `.2`–`.5` packs), NOTHING persists them
+  (no snapshot/derivation/claim/tombstone machinery — the object
+  store is the Phase-4 blocker's last leg); children `.6.1` (the
+  snapshot store + the tombstone) → `.6.2` (the derivation
+  graph) → `.6.3` (the claim-evidence graph + the citation
+  validation) → `.6.4` (the license/retention + the freshness);
+  frontier → `.6.1`.
 - `2026-09-07`: `.5.3` done — the gated receipt + the wiring
   (the startup sync — the rows exist ONLY while the gate is
   open; the auth filter; the per-request authenticated fetch +
@@ -1550,6 +1629,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the snapshot/derivation/claim census + the contract-seam decomposition (`.6.1` the store + the tombstone → `.6.2` the graph → `.6.3` the claims + the validation → `.6.4` the retention + the freshness); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-4.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_gated_packs` → `test result: ok. 1 passed` (the gate closed → the unresolvable-now; open → the R5 rank + the authenticated loopback refusal, the R3 rank + the pre-flight refusal, the RX rank + the capability call; closed again → the rows gone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg453_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the gated wiring; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-4.5.2` | `cargo test -p reasonbraid-browse` → `test result: ok. 2 passed` (the REAL-Chrome render + the network log against the local origin; the step-budget refusal before any navigation); `cargo test -p reasonbraid-server --lib broker/mediated` → 4 passed; `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg452_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R3/R5/RX machinery (compiled, unwired); frontier → `.5.3` |
 | `2026-09-07` | `PHASE-4.5.1` | docs-only (no code paths changed): the browser census measured (`cargo add --dry-run chromiumoxide/headless_chrome` → 0.9.1/1.0.22); `make gate` → 13/13 at commit | the three contracts + the OPT-IN gate; frontier → `.5.2` |
@@ -1576,6 +1656,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.6` | `REASONBRAID-PHASE4-0022` | the snapshot/derivation/claim lane decomposed at the census seams (the receipts exist, nothing persists them) |
 | `PHASE-4.5.3` | `REASONBRAID-PHASE4-0021` | the gated receipt + the wiring (the startup sync, the authenticated/render/agent paths — the disabled pack has no row) — **`.5` COMPLETE** |
 | `PHASE-4.5.2` | `REASONBRAID-PHASE4-0020` | the R3/R5/RX machinery (the browser worker with the real render, the broker, the §12.8 vocabulary — compiled, unwired) |
 | `PHASE-4.5.1` | `REASONBRAID-PHASE4-0019` | the R3/R5/RX contracts + the OPT-IN gate (the disclosed broker, the deployment-checked browser, the §12.8 vocabulary — the decision record) |

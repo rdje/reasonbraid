@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The snapshots lane opens: the receipts exist, nothing persists them (`PHASE-4.6`)
+
+- The `.2`–`.5` packs produce the ADR-011 receipt shapes; NOTHING stores them — no `EvidenceSnapshot`, no `Derivation` edges, no claim-evidence assessments, no tombstone (the object store is the Phase-4 blocker's last leg, the `.1` census's named trigger).
+- Decomposed at the census seams: `.6.1` the snapshot store + the tombstone → `.6.2` the derivation graph → `.6.3` the claim-evidence graph + the citation validation → `.6.4` the license/retention + the freshness. Frontier → `.6.1`.
+
 ## 2026-09-07 — The highest-risk lane is wired, and the gate is structural (`PHASE-4.5.3`)
 
 - `resolvers.rs`: the startup sync (`sync_gated_entries`) — opening registers the R3/R5/RX rows, closing REMOVES them; the disabled pack has no row, so the resolve can never return it. The auth filter routes credential-carrying references to the `credential` class only.

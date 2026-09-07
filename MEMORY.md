@@ -19,16 +19,18 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.6` (packs R0 + R1 + R2
-  COMPLETE; the `.5` lane — the gated R3/R5/RX packs — COMPLETE:
-  the contracts + the machinery + the gate (the startup sync
-  keeps the rows in step; OFF by default); `MAINT-1` done).
-  Then `.7`.
-- **Next action:** execute `PHASE-4.6` — the content-addressed
-  snapshots + the derivation graph + the claim-evidence graph +
-  the citation validation + the license/retention + the
-  freshness (the §12.6–12.7, §12.9 lane; decompose at the census
-  seams first — the receipts from `.2`–`.5` are its inputs).
+- **Active tree:** `PHASE-4` → frontier `.6.1` (packs R0 + R1 + R2
+  COMPLETE; the `.5` lane COMPLETE; `.6` decomposed at the census
+  seams — the receipts exist, nothing persists them: `.6.1` the
+  snapshot store + the tombstone → `.6.2` the derivation graph →
+  `.6.3` the claims + the validation → `.6.4` the retention +
+  the freshness; `MAINT-1` done). Then `.7`.
+- **Next action:** execute `PHASE-4.6.1` — the snapshot store +
+  the tombstone: the §12.6 `EvidenceSnapshot` table + the
+  content-addressed object store (the acquired bytes under their
+  digest) + the submission surface (the `.2`–`.5` receipts land
+  here) + the retention classes + the tombstone rule (the
+  deletion is the tombstone + the reason, never silent).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

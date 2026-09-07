@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G5 evidence census (`PHASE-5.6.1`)
+
+- The claim census: the README carries NO quality claim to retract (its claim is the mechanism one — shipped and tested); the bench's first live run reads H1 null on the 4-case differential sample (no structured workflow beat `single`; the burden 2–4×); five subtraction candidates named (S-1 the narrowed structure claim, S-2 the deferred calibration, S-3 the already-shadow learned routing, S-4 the supported cost claim, S-5 the README's stale status line); the declared domains are the seven §13.8 case classes. No code.
+
 ## 2026-09-07 — The G5-exit lane is decomposed at the census seams (`PHASE-5.6`)
 
 - The G5 gate ships as the `.4.4` SERVICE (the calibration + the baseline/threshold gates); the exit needs the PACKAGE: the claim census (the docs' quality claims vs the evidence), the gate record, the §19.8 subtraction record, and the narrowed product claims. Children: `.6.1` the evidence census → `.6.2` the gate package.

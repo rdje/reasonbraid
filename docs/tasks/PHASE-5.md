@@ -831,7 +831,7 @@ and honest inconclusive outcomes.
     31). Frontier → `.6.1`.
 
   - ID: `PHASE-5.6.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the G5 evidence census — the claim census (the
       quality claims across the README/book/ROADMAP vs the
       evidence: the WP7 harness's expected scores + the `.4`
@@ -841,6 +841,45 @@ and honest inconclusive outcomes.
       the declared domains (the case classes the exit names).
       No code.
     Roadmap: §19.5, §19.6 (G5), §19.8
+    Done (`2026-09-07`): the G5 evidence census landed. THE
+      CLAIMS: the README carries NO quality claim to retract —
+      its claim is the MECHANISM one ("Rust — not an LLM —
+      enforces identity, authorization, ordering, budgets,
+      and publication"; the model output stays untrusted
+      until the deterministic rules accept it — shipped +
+      tested across Phases 1–5). THE EVIDENCE: (a) the WP7
+      harness's scripted self-test proves the measurement
+      pipeline (the corpus's expected scores, the four
+      workflows, the deterministic grading — the
+      `tests/bench_harness.rs` proof); (b) the FIRST live run
+      (`docs/evidence/2026-09-07_benchmark-codex-run.md`): on
+      the 4-case differential feasibility sample NO structured
+      workflow beat `single` (H1 read: negative), the burden
+      measured (H6: 2–3× calls, 1.5–4× tokens — structure
+      costs more with no measured gain HERE), the calibration
+      too small to claim (Brier 0 on the one factual case),
+      the run-to-run variance itself a finding (code-002
+      single: 1.000 → 0.667 across runs); (c) the `.4`
+      service's registry/runs/trials/gates are the instrument
+      for the ENDURING accumulation. THE HONEST-INCONCLUSIVE
+      MACHINERY ships + tests (the twelve terminals, the
+      unresolved register, the budget-exhausted denial, the
+      blind commitment, the honesty trap — profiles 31,
+      evaluation 3, routing 2). THE SUBTRACTION CANDIDATES
+      (for `.6.2`'s record): S-1 the "structured deliberation
+      improves answers" claim (never shipped; the bench reads
+      null on the sample — the narrowed claim: the machinery
+      is BUILT and MEASURED, the default stays the cheapest
+      baseline per §13.8/§25.1); S-2 the calibration claim
+      (deferred until the `.4` accumulation); S-3 the
+      learned-routing claim (already shadow-only — `.5.3`);
+      S-4 the cost claim is SUPPORTED (structure costs 2–4×
+      on the sample); S-5 the README's STALE status line
+      ("Phase 0 — contracts and kill-risk experiments" —
+      the tree is at Phase 5; the `.6.2` edits fix it). THE
+      DECLARED DOMAINS: the seven §13.8 case classes + the
+      honest-inconclusive terminal vocabulary. No code.
+      Frontier → `.6.2`.
 
   - ID: `PHASE-5.6.2`
     Status: `proposed`
@@ -856,10 +895,16 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.6.1` | `proposed` | `.6` decomposed at the census seams (the G5 machinery ships as the `.4.4` service; the exit needs the PACKAGE — the claim census → the gate record + the subtraction record) — the evidence census executes first |
+| 1 | `PHASE-5.6.2` | `proposed` | `.6.1` done — the G5 evidence census (the README carries no quality claim to retract; the bench's first live run reads H1 null on the sample; five subtraction candidates named); the G5 gate package executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.6.1` done — the G5 evidence census (the
+  claim census: the README's mechanism claim stands, no
+  quality claim exists to retract; the bench's live run reads
+  H1 null on the 4-case sample; five subtraction candidates;
+  the declared domains = the seven case classes); no code;
+  frontier → `.6.2`.
 - `2026-09-07`: `.6` decomposed at the census seams — the G5
   gate ships as the `.4.4` service; the exit needs the
   package (the claim census → the gate record + the §19.8

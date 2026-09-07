@@ -19,16 +19,14 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.3.3` (`.2` — pack R0 —
-  COMPLETE; `.3.1` done: the R1 contract (decision record); `.3.2`
-  done: the R1 acquisition — gix behind the classified dial, 5
-  tests; `MAINT-1` done: the clippy debt repaired). Then `.4`–`.7`.
-- **Next action:** execute `PHASE-4.3.3` — the receipt + the R1
-  pack wiring: the R1 receipt (the resolved immutable commit + the
-  requested URL/ref + the included/excluded manifest + the `.2.3`
-  digest/chain fields), the `git` scheme registry entry (the
-  egress/sandbox claims), the resolve-path execution (mirroring
-  the `.2.3` R0 wiring).
+- **Active tree:** `PHASE-4` → frontier `.4` (packs R0 + R1
+  COMPLETE: the `.2` lane — the classifier, the fetcher, the
+  receipt, the wiring — and the `.3` lane — the contract, the
+  acquisition, the receipt, the wiring; `MAINT-1` done: the
+  clippy debt repaired). Then `.5`–`.7`.
+- **Next action:** execute `PHASE-4.4` — pack R2: the PDFs/text/
+  structured feeds/archives in sandboxed extraction workers (the
+  §12.3 R2 row; decompose at the census seams first).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

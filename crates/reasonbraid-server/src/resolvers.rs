@@ -118,6 +118,16 @@ pub async fn register(pool: &PgPool, advertise: &ResolverAdvertise) -> Result<()
 
 /// The built-in R0 pack's registry id (the migration 0025 install record).
 pub const R0_RESOLVER_ID: &str = "r0-https-fetcher";
+/// The built-in R1 pack's registry id (the migration 0026 install record).
+pub const R1_RESOLVER_ID: &str = "r1-git-fetcher";
+
+/// The acquisition result of a built-in pack (the `.2.3`/`.3.3` receipts).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(untagged)]
+pub enum Acquisition {
+    Web(crate::fetcher::AcquisitionReceipt),
+    Git(crate::git::GitReceipt),
+}
 
 /// The built-in R0's NAMED acquisition refusal (the `.2.2` fetcher's typed
 /// error) — the reference stays submitted, never fabricated.
@@ -136,7 +146,7 @@ pub struct ResolutionOutcome {
     pub resolvers: Vec<String>,
     pub unresolvable_now: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub acquisition: Option<crate::fetcher::AcquisitionReceipt>,
+    pub acquisition: Option<Acquisition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acquisition_error: Option<AcquisitionError>,
 }

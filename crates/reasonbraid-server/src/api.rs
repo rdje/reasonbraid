@@ -314,6 +314,9 @@ pub struct ApiState {
     /// The built-in R0 fetcher (the `.2.3` pack wiring): the production
     /// shape — https-only, the system roots, the `.2.1` public-only policy.
     fetcher: std::sync::Arc<crate::fetcher::Fetcher>,
+    /// The built-in R1 acquirer (the `.3.3` pack wiring): the same
+    /// public-only policy through the classified git transport.
+    git_fetcher: std::sync::Arc<crate::git::GitFetcher>,
 }
 
 impl ApiState {
@@ -324,6 +327,9 @@ impl ApiState {
                 crate::fetcher::Fetcher::new(crate::fetcher::FetchLimits::default())
                     .expect("the built-in R0 fetcher builds (the system roots are present)"),
             ),
+            git_fetcher: std::sync::Arc::new(crate::git::GitFetcher::new(
+                crate::git::GitLimits::default(),
+            )),
         }
     }
 }
@@ -1319,25 +1325,94 @@ async fn resolve_resource(
         &req.required_egress,
     )
     .await?;
-    // The built-in R0 pack executes when IT ranks first: the acquisition
-    // runs under the fetcher's own ceilings + the `.2.1` policy; a refusal
-    // is the NAMED error, and the reference stays submitted either way.
-    if outcome.resolvers.first().map(String::as_str) == Some(crate::resolvers::R0_RESOLVER_ID) {
-        match state.fetcher.fetch(&reference.original_locator).await {
-            Ok(document) => {
-                outcome.acquisition = Some(crate::fetcher::AcquisitionReceipt::from_document(
-                    &reference.original_locator,
-                    &document,
-                    chrono::Utc::now(),
-                ));
-            }
-            Err(error) => {
-                outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
-                    kind: error.kind().to_owned(),
-                    message: error.to_string(),
-                });
+    // The built-in packs execute when they rank first: the acquisition
+    // runs under the pack's own ceilings + the `.2.1` policy; a refusal is
+    // the NAMED error, and the reference stays submitted either way.
+    match outcome.resolvers.first().map(String::as_str) {
+        Some(crate::resolvers::R0_RESOLVER_ID) => {
+            match state.fetcher.fetch(&reference.original_locator).await {
+                Ok(document) => {
+                    outcome.acquisition = Some(crate::resolvers::Acquisition::Web(
+                        crate::fetcher::AcquisitionReceipt::from_document(
+                            &reference.original_locator,
+                            &document,
+                            chrono::Utc::now(),
+                        ),
+                    ));
+                }
+                Err(error) => {
+                    outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                        kind: error.kind().to_owned(),
+                        message: error.to_string(),
+                    });
+                }
             }
         }
+        Some(crate::resolvers::R1_RESOLVER_ID) => {
+            match state.git_fetcher.acquire(&reference.original_locator).await {
+                Ok(acquisition) => {
+                    let requested_ref = url::Url::parse(&reference.original_locator)
+                        .ok()
+                        .and_then(|u| u.fragment().map(str::to_owned))
+                        .unwrap_or_else(|| "HEAD".to_owned());
+                    outcome.acquisition = Some(crate::resolvers::Acquisition::Git(
+                        crate::git::GitReceipt::from_acquisition(
+                            &reference.original_locator,
+                            &requested_ref,
+                            &acquisition,
+                            chrono::Utc::now(),
+                        ),
+                    ));
+                }
+                Err(error) => {
+                    outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                        kind: match error {
+                            crate::git::GitError::DestinationRefused { .. } => {
+                                "destination_refused".to_owned()
+                            }
+                            crate::git::GitError::SchemeNotAllowed(_) => {
+                                "scheme_not_allowed".to_owned()
+                            }
+                            crate::git::GitError::UserinfoForbidden => {
+                                "userinfo_forbidden".to_owned()
+                            }
+                            crate::git::GitError::AmbiguousNumericHost(_) => {
+                                "ambiguous_numeric_host".to_owned()
+                            }
+                            crate::git::GitError::PortNotAllowed(_) => {
+                                "port_not_allowed".to_owned()
+                            }
+                            crate::git::GitError::NoHost => "no_host".to_owned(),
+                            crate::git::GitError::DnsLookupFailed => "dns_lookup_failed".to_owned(),
+                            crate::git::GitError::RefSelectorInvalid(_) => {
+                                "ref_selector_invalid".to_owned()
+                            }
+                            crate::git::GitError::HttpStatus(_) => "http_status".to_owned(),
+                            crate::git::GitError::DepthCeilingExceeded { .. } => {
+                                "depth_ceiling_exceeded".to_owned()
+                            }
+                            crate::git::GitError::BudgetExceeded { .. } => {
+                                "budget_exceeded".to_owned()
+                            }
+                            crate::git::GitError::Refused { .. } => "refused".to_owned(),
+                            crate::git::GitError::NoHeadRef => "no_head_ref".to_owned(),
+                            crate::git::GitError::ResolvedCommitMissing => {
+                                "resolved_commit_missing".to_owned()
+                            }
+                            crate::git::GitError::TimedOut => "timed_out".to_owned(),
+                            crate::git::GitError::UrlTooLong(_)
+                            | crate::git::GitError::UrlHasControlCharacters
+                            | crate::git::GitError::UrlUnparseable
+                            | crate::git::GitError::TransferFailed(_) => {
+                                "acquisition_failed".to_owned()
+                            }
+                        },
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+        _ => {}
     }
     Ok(Json(outcome))
 }

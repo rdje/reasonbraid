@@ -169,6 +169,90 @@ pub struct GitAcquisition {
     pub max_path_depth: u32,
     pub odb_bytes: u64,
     pub odb_path: PathBuf,
+    /// The included file paths (the manifest's `included` side; the
+    /// excluded side is empty — the refusal list refuses, never excludes).
+    pub paths: Vec<String>,
+}
+
+/// The R1 receipt (PHASE-4.3.3): the `.3.3` pack-wiring shape — the
+/// resolved immutable commit, the requested URL/ref, the manifest, and the
+/// `.2.3` receipt's digest/chain fields (the ADR-011 digest is over the
+/// acquired odb bytes; the commit sha is the git identity).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GitReceipt {
+    pub resolved_commit: String,
+    pub requested_url: String,
+    pub requested_ref: String,
+    pub digest: String,
+    pub chain: Vec<String>,
+    pub object_count: u64,
+    pub file_count: u64,
+    pub max_path_depth: u32,
+    pub odb_bytes: u64,
+    pub manifest: GitManifest,
+    pub acquired_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GitManifest {
+    pub included: Vec<String>,
+    pub excluded: Vec<String>,
+}
+
+impl GitReceipt {
+    pub fn from_acquisition(
+        requested_url: &str,
+        requested_ref: &str,
+        acquisition: &GitAcquisition,
+        acquired_at: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        Self {
+            resolved_commit: acquisition.resolved_commit.clone(),
+            requested_url: requested_url.to_owned(),
+            requested_ref: requested_ref.to_owned(),
+            digest: git_digest(&acquisition.odb_path),
+            chain: vec![requested_url.to_owned()],
+            object_count: acquisition.object_count,
+            file_count: acquisition.file_count,
+            max_path_depth: acquisition.max_path_depth,
+            odb_bytes: acquisition.odb_bytes,
+            manifest: GitManifest {
+                included: acquisition.paths.clone(),
+                excluded: Vec::new(),
+            },
+            acquired_at,
+        }
+    }
+}
+
+/// The ADR-011 digest over the ACQUIRED odb bytes: every object file
+/// (loose + packed), sorted by path, hashed in order — deterministic for
+/// the same acquisition.
+pub fn git_digest(odb_path: &std::path::Path) -> String {
+    use sha2::{Digest, Sha256};
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    collect_files(odb_path, &mut files);
+    files.sort();
+    let mut hasher = Sha256::new();
+    for file in files {
+        if let Ok(bytes) = std::fs::read(&file) {
+            hasher.update(&bytes);
+        }
+    }
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn collect_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files(&path, out);
+            } else {
+                out.push(path);
+            }
+        }
+    }
 }
 
 /// The R1 acquirer: the classified transport + the ceilings.
@@ -723,6 +807,7 @@ fn acquire_into(
         .try_into_commit()
         .map_err(|e| GitError::TransferFailed(format!("the HEAD is not a commit: {e}")))?;
     let mut counts = (0u64, 0u32);
+    let mut paths = Vec::new();
     walk_tree(
         &repo,
         head_commit
@@ -730,7 +815,9 @@ fn acquire_into(
             .map_err(|e| GitError::TransferFailed(e.to_string()))?
             .detach(),
         0,
+        "",
         &mut counts,
+        &mut paths,
         limits,
     )?;
     let object_count = repo
@@ -761,6 +848,7 @@ fn acquire_into(
         max_path_depth: counts.1,
         odb_bytes,
         odb_path,
+        paths,
     })
 }
 
@@ -771,7 +859,9 @@ fn walk_tree(
     repo: &gix::Repository,
     tree_id: gix::ObjectId,
     depth: u32,
+    prefix: &str,
     counts: &mut (u64, u32),
+    paths: &mut Vec<String>,
     limits: &GitLimits,
 ) -> Result<(), GitError> {
     if depth > limits.max_depth {
@@ -800,12 +890,27 @@ fn walk_tree(
                 actual: entry_depth,
             });
         }
+        let name = entry.filename().to_string();
+        let path = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}/{name}")
+        };
         if entry.mode().is_tree() {
-            walk_tree(repo, entry.oid().to_owned(), entry_depth, counts, limits)?;
+            walk_tree(
+                repo,
+                entry.oid().to_owned(),
+                entry_depth,
+                &path,
+                counts,
+                paths,
+                limits,
+            )?;
             continue;
         }
         counts.0 += 1;
         counts.1 = counts.1.max(entry_depth);
+        paths.push(path);
         if counts.0 > limits.max_files {
             return Err(GitError::BudgetExceeded {
                 what: "file count",
@@ -1150,6 +1255,49 @@ mod tests {
             other => panic!("the LFS pointer must refuse: {other:?}"),
         }
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn the_receipt_carries_the_commit_the_digest_and_the_manifest() {
+        let tmp = std::env::temp_dir().join(format!("r1-receipt-{}", std::process::id()));
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let first = source_repo(&source_dir);
+        let acquisition =
+            acquire_local(&source_dir, &GitLimits::default()).expect("the acquisition succeeds");
+        let acquired_at = chrono::DateTime::parse_from_rfc3339("2026-09-07T14:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let receipt = GitReceipt::from_acquisition(
+            "https://example.org/repo.git#main",
+            "main",
+            &acquisition,
+            acquired_at,
+        );
+        assert_eq!(receipt.resolved_commit, first.to_string());
+        assert_eq!(receipt.requested_url, "https://example.org/repo.git#main");
+        assert_eq!(receipt.requested_ref, "main");
+        assert!(receipt.digest.starts_with("sha256:"));
+        assert_eq!(receipt.digest.len(), 7 + 64);
+        assert_eq!(receipt.digest, git_digest(&acquisition.odb_path));
+        assert_eq!(
+            receipt.chain,
+            vec!["https://example.org/repo.git#main".to_owned()]
+        );
+        assert_eq!(receipt.object_count, 4);
+        assert_eq!(receipt.file_count, 2);
+        assert_eq!(receipt.max_path_depth, 2);
+        // The manifest: the included paths, the excluded side empty (the
+        // refusal list refuses — never excludes).
+        assert!(receipt.manifest.included.contains(&"a.txt".to_owned()));
+        assert!(receipt
+            .manifest
+            .included
+            .contains(&"dir/nested.txt".to_owned()));
+        assert!(receipt.manifest.excluded.is_empty());
+        assert_eq!(receipt.acquired_at, acquired_at);
+        std::fs::remove_dir_all(&tmp).ok();
+        std::fs::remove_dir_all(acquisition.odb_path.parent().expect("the target dir")).ok();
     }
 
     #[test]

@@ -466,7 +466,7 @@ of a URI is not a promise the core can resolve it.
       Frontier → `.3.3`.
 
   - ID: `PHASE-4.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the receipt + the pack wiring — the R1 receipt (the
       resolved immutable commit + the requested URL/ref + the
       included/excluded manifest + the `.2.3` receipt's digest/
@@ -477,6 +477,31 @@ of a URI is not a promise the core can resolve it.
       the resolve handler executes it when it ranks first —
       mirroring the `.2.3` R0 wiring).
     Backlog: 33 (the receipt half)
+    Done (`2026-09-07`): the R1 pack is WIRED — migration 0026
+      seeds the install record (resolver `r1-git-fetcher`: the
+      `git` scheme, the https transport patterns, the
+      clone/fetch abilities, the `none` auth class, egress
+      `listed` + sandbox `none` (the honest claims — no worktree
+      is ever materialized, no repository code executes), the
+      `follow-classified` redirect policy, the ADR-011 digest
+      format, the refusal/budget evidence); `git.rs` gains the
+      `GitReceipt` (the resolved immutable commit, the requested
+      URL/ref, the ADR-011 digest over the ACQUIRED odb bytes —
+      every object file sorted + hashed, the chain, the counts,
+      the included/excluded manifest — the walk now collects the
+      paths) + the pure receipt test (6 tests now);
+      `resolvers.rs` gains `R1_RESOLVER_ID` + the untagged
+      `Acquisition` enum (Web/Git receipts); the resolve handler
+      carries the `GitFetcher` in `ApiState` and EXECUTES the R1
+      pack when it ranks first — the receipt on success, the
+      NAMED refusal on failure (the reference preserved either
+      way). Measured (profiles 16): the git reference resolves to
+      `r1-git-fetcher` under its own classes; the loopback
+      literal refuses with the class named THROUGH the resolution
+      path (the R1 SSRF proof end-to-end); the reference stays
+      readable; the stricter requirement is the explicit
+      unresolvable-now. **`.3` COMPLETE (pack R1)** — frontier →
+      `.4`.
 
 - ID: `PHASE-4.4`
   Status: `proposed`
@@ -505,7 +530,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.3.3` | `proposed` | `.3.2` done — the R1 acquisition (gix over the classified transport: the pre-flight names the class, the belt guards every dial; the budgets + the submodule/LFS refusals named; no checkout execution; the resolved commit recorded — five tests); the receipt + the pack wiring execute now |
+| 1 | `PHASE-4.4` | `proposed` | `.3.3` done — **the `.3` lane (pack R1) is COMPLETE**: the contract + the acquisition + the receipt + the wiring (the git references resolve to the built-in, the refusal names the class through the resolution path); pack R2 — the sandboxed document extraction — executes now |
 
 ## Changelog
 
@@ -538,6 +563,16 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.3.3` done — the R1 receipt + the pack wiring
+  (migration 0026's install record: the `git` scheme, the honest
+  listed/none claims, the no-worktree evidence; the `GitReceipt`
+  with the ADR-011 digest over the acquired odb bytes + the
+  included/excluded manifest; the untagged Web/Git acquisition
+  outcome; the resolve handler executes the R1 pack when it ranks
+  first); profiles 16 (the git reference resolves; the loopback
+  refusal names the class through the resolution path; the
+  reference preserved); **`.3` COMPLETE (pack R1)** — frontier →
+  `.4`.
 - `2026-09-07`: `.3.2` done — the R1 acquisition (`src/git.rs`:
   gix over the classified transport — the `Http` trait wrapped
   around the belt-riding blocking client (the seam verified
@@ -614,6 +649,48 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.3.3)
+
+The CODE change owned by this leaf:
+`migrations/0026_r1_git_resolver_entry.sql` (NEW — the R1 install
+record), `crates/reasonbraid-server/src/git.rs` (the `GitReceipt` +
+the `GitManifest` + the `git_digest` + the path collection + the
+pure receipt test), `src/resolvers.rs` (the R1 id + the untagged
+`Acquisition`), `src/api.rs` (the `GitFetcher` in `ApiState` + the
+execution branch), and `tests/profiles.rs` (profiles 16).
+
+- [x] **REPRODUCE / ISSUE** — the `.3.2` close: the acquisition
+  exists but the receipt shape, the install record, and the
+  resolution consumption do not.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the pack was built in halves
+  — `git grep -c "GitReceipt\|r1-git-fetcher" b5a9de9 -- crates/
+  migrations/` → rc=1 (nothing before this leaf). The fix point is
+  the receipt over the acquired odb + the seeded install record +
+  the execution in the resolve path (the `.2.3` R0 pattern).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib git` → `test result:
+  ok. 6 passed` (the new receipt test: the resolved commit, the
+  ADR-011 `sha256:` + 64-hex digest over the acquired odb bytes,
+  the chain, the included manifest paths); the live
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles
+  the_r1_resolver` → `test result: ok. 1 passed` — the git
+  reference resolves to `r1-git-fetcher` under its own classes;
+  the loopback literal refuses with the class NAMED through the
+  resolution path; the reference stays submitted; the stricter
+  requirement is the explicit unresolvable-now.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 51 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg433_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0026_r1_git_resolver_entry.sql`, `src/git.rs`,
+  `src/resolvers.rs`, `src/api.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.3.2)
 
@@ -946,6 +1023,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.3.3` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 6 passed` (the new receipt test: the resolved commit + the ADR-011 digest over the odb + the included manifest); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r1_resolver` → `test result: ok. 1 passed` (the git reference resolves to the built-in; the loopback refusal names the class through the resolution path; the reference preserved; the stricter requirement explicit); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg433_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R1 pack wired; **`.3` COMPLETE** — frontier → `.4` |
 | `2026-09-07` | `PHASE-4.3.2` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 5 passed` (the grammar table, the pre-flight loopback/private refusals, the offline file-transport acquisition with the resolved commit + the counts, the submodule/LFS refusals, the budget trips); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg432_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the R1 acquisition; frontier → `.3.3` |
 | `2026-09-07` | `PHASE-4.3.1` | docs-only (no code paths changed): the library census measured (`cargo add --dry-run gix` → v0.87.1 pure Rust; `cargo add --dry-run git2` → v0.21.0 with the `openssl-sys`/`vendored-libgit2` C features); `make gate` → 13/13 at commit | the R1 contract + the library census; frontier → `.3.2` |
 | `2026-09-07` | `PHASE-4.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R1 census + the contract-seam decomposition (`.3.1` the contract + the library census → `.3.2` the acquisition → `.3.3` the receipt + the wiring); frontier → `.3.1` |
@@ -963,6 +1041,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.3.3` | `REASONBRAID-PHASE4-0013` | the R1 receipt + the pack wiring (the git references resolve to the built-in — the refusal names the class) — **`.3` COMPLETE** |
 | `PHASE-4.3.2` | `REASONBRAID-PHASE4-0012` | the R1 acquisition (gix over the classified transport — the budgets + the named refusals + the resolved commit) |
 | `PHASE-4.3.1` | `REASONBRAID-PHASE4-0011` | the R1 contract + the library census (gix over the classified transport — the decision record) |
 | `PHASE-4.3` | `REASONBRAID-PHASE4-0010` | the R1 lane decomposed at the census seams (nothing fetches Git — the contract/library-census/acquisition/receipt are the greenfield) |

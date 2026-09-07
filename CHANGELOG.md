@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Pack R1 is complete: the receipt, the install record, and the execution (`PHASE-4.3.3`)
+
+- `migrations/0026`: the R1 install record (`r1-git-fetcher` — the `git` scheme, clone/fetch, egress `listed` + sandbox `none` honestly claimed with the no-worktree evidence, `follow-classified` redirects, the ADR-011 digest format).
+- `git.rs`: the `GitReceipt` (the resolved immutable commit, the requested URL/ref, the ADR-011 digest over the acquired odb bytes, the included/excluded manifest — the walk now collects paths), `git_digest`.
+- `resolvers.rs` + `api.rs`: the untagged Web/Git acquisition outcome; the resolve handler executes the R1 pack when it ranks first — the receipt on success, the NAMED refusal on failure, the reference preserved.
+- Measured: profiles 16 — the git reference resolves to the built-in; the loopback refusal names the class through the resolution path. **`.3` COMPLETE (pack R1)** — frontier → `.4` (pack R2: sandboxed document extraction).
+
 ## 2026-09-07 — The R1 acquisition: gix behind the classified dial (`PHASE-4.3.2`)
 
 - `src/git.rs`: the hardened URL grammar (https-only, the fragment-carried ref selector), the pre-flight classification (the loopback/private refusals name their classes before any socket), the classified transport — gix's `Http` trait wrapped around a blocking reqwest client whose DNS rides the `.2.2` belt (every dial, redirects included, passes the policy; no proxy env; the unbounded upload kind refused), the mechanical budgets (depth/file/object/byte ceilings), the named refusals (submodule gitlinks, LFS pointers), the bare-repo no-checkout property, the resolved immutable commit.

@@ -33,10 +33,13 @@ reasonbraid-adapter = { path = "../reasonbraid-adapter", version = "0.1.0" }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# The `.1.2.2` handshake key-proof: HMAC-SHA256 over the canonical channel fields
-# with the node's dev secret (mirrors the server's verification exactly).
-hmac = "0.12"
-sha2 = "0.10"
+# The `.1.2.2` handshake: the node signs the canonical coverage with its
+# workload certificate's key (rcgen, the server-issued leaf's format) and
+# parses the leaf's validity window for the rotate-before-expiry trigger
+# (x509-parser). The cert/key DER files live beside the journal.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+rustls-pki-types = "1"
+x509-parser = "0.18"
 # sqlite: the embedded node journal (§11.4). Same driver stack as the server's Postgres
 # side; the bundled SQLite keeps the build hermetic (no system library dependency).
 # migrate: `sqlx::migrate!` embeds `migrations/` in the binary — the journal schema

@@ -23,13 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.2.2` (`.1.2.1` done: enroll
-  issues the leaf + the node stores it; the CA survives restarts — the
-  rebuild test proves it). Then `.1.3` revocation → `.1.4` delegation.
-- **Next action:** execute `PHASE-2.1.2.2` — the channel v3 cert-proof
-  handshake (the cert signature replaces the HMAC proof; chain + validity +
-  fingerprint + signature verified before any ledger read) + rotation at
-  ≤50% lifetime; the 17 channel suites + the demo move to the contract.
+- **Active tree:** `PHASE-2` → frontier `.1.3` (`.1.2` complete: cert
+  issuance at enrollment + the channel v3 cert-proof handshake + additive
+  rotation). Then `.1.4` delegation → `.1.5` caching → `.1.6` incarnations.
+- **Next action:** execute `PHASE-2.1.3` — the revocation surfaces: cert
+  revocation (the handshake refuses a revoked leaf; presence flips
+  `suspended`) + the `grant revoke`/`boundary revoke` write paths (the
+  `Revoked` statuses get their verbs + CLI + audited refusals).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

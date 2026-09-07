@@ -86,10 +86,12 @@ the fencing-token evidence path).
 
 - The dev profile has no directory: **a node id is the agent role wire id it
   serves** (one node, one role).
-- The channel credential is the dev shared secret (server as trust store) with
-  the HMAC key-proof handshake; X.509/mTLS workload identity is ADR-006/
-  ADR-007 (Phase 2). `channel-auth.txt` records the run's dev secrets — that is
-  the `.6.1` dev stance, NOT production identity.
+- Since `.1.2.2` the channel identity is the **workload certificate**: the
+  enrollment issues a 10-minute leaf (CN = the node id), the node stores it
+  beside its journal, and every handshake signs with its key. The transport is
+  still plain HTTP/1 (no mTLS claim — ADR-006/007); `channel-auth.txt` records
+  the run's dev secrets, which remain the `.6.1` dev stance for enrollment,
+  NOT production identity.
 - The demo uses the **deterministic fake adapter** (no tokens). The real-harness
   leg is the env-gated `RB_LIVE_CODEX=1` Codex suite (`PHASE-0.4.2`).
 - Two live processes for one node id would fence each other (each handshake

@@ -137,10 +137,10 @@ async fn bootstrap_admin(client: &reqwest::Client, base: &str) -> (String, Strin
     )
 }
 
-/// Seed an enrolled node (host → node → key) so the authenticated handshake can
-/// read this node's inbox; the enrollment endpoint's own semantics are proven by
-/// `node_enrollment.rs`.
-async fn seed_node(pool: &PgPool, node_id: &str) {
+/// Seed an enrolled node (host → node → key → certificate) so the authenticated
+/// handshake can read this node.s inbox; the enrollment endpoint.s own semantics
+/// are proven by `node_enrollment.rs`. Returns the certificate + key hex.
+async fn seed_node(pool: &PgPool, node_id: &str) -> (String, String) {
     let host_id = format!("hst_seed_{}", &node_id[4..]);
     let host_name = format!("seed-{node_id}");
     sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ($1, $2, $3)")
@@ -164,6 +164,25 @@ async fn seed_node(pool: &PgPool, node_id: &str) {
         .execute(pool)
         .await
         .expect("seed key");
+    let ca = ensure_server_ca(pool).await.expect("server CA");
+    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let fingerprint = reasonbraid_server::ca::cert_fingerprint(&cert_der);
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+    )
+    .bind(&fingerprint)
+    .bind(node_id)
+    .bind(&cert_der)
+    .bind(&key_der)
+    .execute(pool)
+    .await
+    .expect("seed certificate");
+    (
+        reasonbraid_server::ca::to_hex(&cert_der),
+        reasonbraid_server::ca::to_hex(&key_der),
+    )
 }
 
 async fn enqueue(state: &NodeChannelState, node_id: &str, command_id: &str) -> i64 {
@@ -181,9 +200,18 @@ async fn enqueue(state: &NodeChannelState, node_id: &str, command_id: &str) -> i
 
 /// The authenticated handshake (raw wire; the proof is computed with the node
 /// crate's public canonicalization). Returns the response body.
-async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value {
-    let proof =
-        reasonbraid_node::compute_key_proof(CHANNEL_VERSION, node_id, 0, &[], &[], DEV_SECRET);
+async fn handshake(
+    client: &reqwest::Client,
+    base: &str,
+    node_id: &str,
+    cert_hex: &str,
+    key_hex: &str,
+) -> Value {
+    let key_der = from_hex(key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let proof = reasonbraid_node::compute_cert_proof(&key, CHANNEL_VERSION, node_id, 0, &[], &[]);
     let response = client
         .post(format!("{base}/v1/nodes/handshake"))
         .json(&json!({
@@ -192,7 +220,8 @@ async fn handshake(client: &reqwest::Client, base: &str, node_id: &str) -> Value
             "last_acked_cursor": 0,
             "pending_operations": [],
             "ambiguous_attempts": [],
-            "key_proof": proof,
+            "cert_der": cert_hex,
+            "proof_signature": proof,
         }))
         .send()
         .await
@@ -214,7 +243,7 @@ async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
     let base = server.base();
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000201";
-    seed_node(&pool, node_id).await;
+    let (cert_hex, key_hex) = seed_node(&pool, node_id).await;
 
     let (tenant, alice) = bootstrap_admin(&client, &base).await;
     for i in 1..=3 {
@@ -240,7 +269,7 @@ async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
     assert!(quarantined["quarantined_at"].is_string());
 
     // Replay: the quarantined command is skipped, whatever the reported cursor.
-    let hs = handshake(&client, &base, node_id).await;
+    let hs = handshake(&client, &base, node_id, &cert_hex, &key_hex).await;
     assert_eq!(hs["current_cursor"], json!(3));
     let replay_ids: Vec<&str> = hs["replay"]
         .as_array()
@@ -325,7 +354,7 @@ async fn quarantine_and_prune_refusals_are_typed() {
     let base = server.base();
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000202";
-    seed_node(&pool, node_id).await;
+    let _ = seed_node(&pool, node_id).await;
 
     let (tenant, alice) = bootstrap_admin(&client, &base).await;
     enqueue(&state, node_id, "cmd_typed").await;
@@ -472,7 +501,7 @@ async fn prune_deletes_only_delivered_rows_older_than_the_window() {
     let base = server.base();
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000203";
-    seed_node(&pool, node_id).await;
+    let _ = seed_node(&pool, node_id).await;
 
     let (tenant, alice) = bootstrap_admin(&client, &base).await;
     for i in 1..=5 {
@@ -534,4 +563,15 @@ async fn prune_deletes_only_delivered_rows_older_than_the_window() {
     assert_eq!(measured["before"], json!(3));
     assert_eq!(measured["deleted"], json!(0));
     assert_eq!(measured["after"], json!(3));
+}
+
+/// Lowercase-hex decode (the wire ships DER as hex).
+fn from_hex(s: &str) -> Result<Vec<u8>, String> {
+    if !s.len().is_multiple_of(2) {
+        return Err("odd-length hex".to_string());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
 }

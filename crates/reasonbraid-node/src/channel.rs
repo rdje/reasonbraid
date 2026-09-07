@@ -1,15 +1,17 @@
-//! The node channel, client side (`PHASE-0.3.2`; authenticated by `PHASE-1.2.2`):
+//! The node channel, client side (`PHASE-0.3.2`; authenticated by `PHASE-1.2.2`,
+//! certificate-proofed by `PHASE-2.1.2.2`):
 //! the node's OUTBOUND connection to the control plane (`ROADMAP.md` §4/§9.3 —
 //! nodes initiate connections; ordinary deployments expose no inbound ports).
 //!
-//! Phase 1 speaks HTTP/1 JSON over the loopback development profile with the
-//! `.1.2.2` authentication layer: the handshake proves possession of the node's
-//! dev secret (HMAC-SHA256 over the channel fields), the server answers with a
-//! lease + fencing token, and every later message (events, ack, poll, heartbeat)
-//! carries that token. The authenticated streaming profile (§9.3: HTTP/2 or gRPC,
-//! mTLS workload identity) arrives with ADR-006/ADR-007's formal records; the
-//! protocol semantics here — cursor-based replay, original-id re-emission,
-//! reconciliation directives, lease/fencing — are transport-neutral.
+//! The node speaks HTTP/1 JSON over the loopback development profile with the
+//! certificate-proof authentication layer (`.1.2.2`, ADR-007): the handshake
+//! proves possession of the workload certificate's private key (an ECDSA
+//! signature over the canonical channel fields), the server chains the leaf to
+//! its CA, checks the node-id → fingerprint binding, and answers with a lease +
+//! fencing token; every later message (events, ack, poll, heartbeat) carries
+//! that token. The mTLS streaming transport (§9.3: HTTP/2 or gRPC) is a later
+//! hardening; the protocol semantics here — cursor-based replay, original-id
+//! re-emission, reconciliation directives, lease/fencing — are transport-neutral.
 //!
 //! The wire types mirror `reasonbraid-server`'s channel DTOs (`src/node_channel.rs`)
 //! one-for-one. The duplication is deliberate: a shared wire crate
@@ -20,20 +22,17 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::Sha256;
 
-type HmacSha256 = Hmac<Sha256>;
+/// The node channel's wire protocol version (must equal the server's). Version 3
+/// (`.1.2.2`) is the certificate-proof contract.
+pub const CHANNEL_VERSION: u32 = 3;
 
-/// The node channel's wire protocol version (must equal the server's). Version 2
-/// (`.1.2.2`) is the authenticated contract.
-pub const CHANNEL_VERSION: u32 = 2;
-
-/// The exact fields the handshake key-proof covers, in canonical (serde field)
+/// The exact fields the handshake proof covers, in canonical (serde field)
 /// order — the mirrored [`ProofCoverage`] shape the server verifies. Both sides
-/// serialize THIS struct to JSON and HMAC it with the node's dev secret.
+/// serialize THIS struct to JSON; the node signs it with its workload
+/// certificate's private key.
 #[derive(Debug, Serialize)]
 pub struct ProofCoverage<'a> {
     pub channel_version: u32,
@@ -43,18 +42,20 @@ pub struct ProofCoverage<'a> {
     pub ambiguous_attempts: &'a [AmbiguousAttempt],
 }
 
-/// Compute the handshake key-proof: lowercase-hex HMAC-SHA256 over the canonical
-/// coverage JSON, keyed with the node's dev secret. PUBLIC so server-side
-/// integration tests compute proofs with the same canonicalization the real node
-/// uses — a cross-side mismatch surfaces as a test failure, not a silent drift.
-pub fn compute_key_proof(
+/// Compute the handshake proof: a hex-encoded ECDSA P-256 signature over the
+/// canonical coverage JSON, made with the workload certificate's private key.
+/// PUBLIC so server-side integration tests can compute proofs with the same
+/// canonicalization the real node uses — a cross-side mismatch surfaces as a
+/// test failure, not a silent drift.
+pub fn compute_cert_proof(
+    key: &rcgen::KeyPair,
     channel_version: u32,
     node_id: &str,
     last_acked_cursor: i64,
     pending_operations: &[String],
     ambiguous_attempts: &[AmbiguousAttempt],
-    key_secret: &str,
 ) -> String {
+    use rcgen::SigningKey;
     let coverage = ProofCoverage {
         channel_version,
         node_id,
@@ -63,21 +64,23 @@ pub fn compute_key_proof(
         ambiguous_attempts,
     };
     let canonical = serde_json::to_vec(&coverage).expect("the coverage shape is encodable");
-    let mut mac =
-        HmacSha256::new_from_slice(key_secret.as_bytes()).expect("any key length is valid");
-    mac.update(&canonical);
-    mac.finalize()
-        .into_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    to_hex(&key.sign(&canonical).expect("the workload key signs"))
+}
+
+/// The rotate exchange: the node presents its CURRENT certificate (the proof
+/// covers the rotate coverage) and receives a fresh key + certificate.
+#[derive(Debug, Serialize)]
+pub struct RotateCoverage<'a> {
+    pub channel_version: u32,
+    pub node_id: &'a str,
+    pub cert_der: &'a str,
 }
 
 /// The reconnect exchange (`ROADMAP.md` §17.4 step 2): the node reports its durable
 /// resume facts — last acknowledged server cursor, pending local operation ids, the
 /// attempts its recovery classified `outcome_unknown` — and proves possession of
-/// its dev key; the server answers with the replay, the reconciliation guidance,
-/// and a fresh lease.
+/// its workload certificate's private key; the server answers with the replay, the
+/// reconciliation guidance, and a fresh lease.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HandshakeRequest {
@@ -86,9 +89,33 @@ pub struct HandshakeRequest {
     pub last_acked_cursor: i64,
     pub pending_operations: Vec<String>,
     pub ambiguous_attempts: Vec<AmbiguousAttempt>,
-    /// HMAC-SHA256 over the other fields (see [`ProofCoverage`]), hex-encoded,
-    /// keyed with the node's dev secret.
-    pub key_proof: String,
+    /// The node's workload certificate (hex DER) — the leaf the `.1.2.1`
+    /// enrollment issued (or `.1.2.2` rotation refreshed).
+    pub cert_der: String,
+    /// ECDSA P-256 signature over the canonical coverage (see
+    /// [`ProofCoverage`]), hex-encoded, made with the certificate's private key.
+    pub proof_signature: String,
+}
+
+/// The rotate exchange (`.1.2.2`): the node presents its CURRENT certificate
+/// and receives a FRESH key + certificate for the same node id.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RotateRequest {
+    pub channel_version: u32,
+    pub node_id: String,
+    pub cert_der: String,
+    pub proof_signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RotateResponse {
+    pub node_id: String,
+    pub cert_der: String,
+    pub key_der: String,
+    pub cert_fingerprint: String,
+    pub cert_expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// One ambiguous attempt the node reports for reconciliation.
@@ -199,6 +226,9 @@ pub enum ChannelError {
     /// The channel is not authenticated yet: the caller must handshake (and the
     /// node lifecycle makes that impossible outside `reconcile`).
     NotAuthenticated,
+    /// The channel has no workload identity: enroll first (the one-time token
+    /// is the credential) and install the issued certificate.
+    NotEnrolled,
 }
 
 impl fmt::Display for ChannelError {
@@ -215,6 +245,9 @@ impl fmt::Display for ChannelError {
             }
             ChannelError::NotAuthenticated => {
                 write!(f, "the node channel is not authenticated — handshake first")
+            }
+            ChannelError::NotEnrolled => {
+                write!(f, "the node has no workload certificate — enroll first")
             }
         }
     }
@@ -239,28 +272,84 @@ impl From<reqwest::Error> for ChannelError {
 ///
 /// The client keeps the fencing token from the latest successful handshake in
 /// shared state: every clone of a [`NodeChannel`] sees the same lease (the worker
-/// polls with it, the heartbeat task renews it, `reconcile` rotates it).
+/// polls with it, the heartbeat task renews it, `reconcile` rotates it). The
+/// workload identity (certificate + key) is also shared: a rotation installs
+/// the fresh pair and the next handshake signs with it.
 #[derive(Debug, Clone)]
 pub struct NodeChannel {
     base_url: String,
     node_id: String,
-    key_secret: String,
+    identity: WorkloadIdentity,
     fencing_token: Arc<Mutex<Option<String>>>,
     client: reqwest::Client,
 }
 
+/// A workload leaf stays valid 10 minutes (ADR-007); rotate when less than
+/// half of that remains.
+const ROTATE_REMAINING_SECS: i64 = 300;
+
+/// The installed workload identity: the certificate (DER) + its key. Shared so
+/// a rotation installs the fresh pair and the next handshake signs with it.
+type WorkloadIdentity = Arc<Mutex<Option<(Vec<u8>, rcgen::KeyPair)>>>;
+
 impl NodeChannel {
     /// Build the client for `base_url` (e.g. `http://127.0.0.1:8080`) acting as
-    /// `node_id`, proving possession of the node's dev signing secret
-    /// (`--node-secret`, the `.1.2.1` enrollment key).
-    pub fn new(base_url: impl Into<String>, node_id: String, key_secret: String) -> Self {
+    /// `node_id`, proving possession of the workload certificate's key (the
+    /// `.1.2.1` enrollment's leaf, or a `.1.2.2` rotation's refresh).
+    pub fn new(
+        base_url: impl Into<String>,
+        node_id: String,
+        cert_der: Vec<u8>,
+        key: rcgen::KeyPair,
+    ) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             node_id,
-            key_secret,
+            identity: Arc::new(Mutex::new(Some((cert_der, key)))),
             fencing_token: Arc::new(Mutex::new(None)),
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Build a client WITHOUT a workload identity: only the enrollment call is
+    /// possible (the one-time token is its credential). The caller installs the
+    /// identity from the enroll response before any handshake.
+    pub fn for_enrollment(base_url: impl Into<String>, node_id: String) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            node_id,
+            identity: Arc::new(Mutex::new(None)),
+            fencing_token: Arc::new(Mutex::new(None)),
+            client: reqwest::Client::new(),
+        }
+    }
+
+    /// Install a fresh workload identity (the enrollment response's or a
+    /// rotation's certificate + key).
+    pub fn install_identity(&self, cert_der: Vec<u8>, key: rcgen::KeyPair) {
+        *self
+            .identity
+            .lock()
+            .expect("the identity lock is not poisoned") = Some((cert_der, key));
+    }
+
+    /// Does the current leaf have ≤ half its lifetime left? (The rotate
+    /// trigger — a leaf with no identity reports `false`: enrollment installs
+    /// one before any handshake.)
+    pub fn cert_expires_soon(&self) -> bool {
+        let identity = self
+            .identity
+            .lock()
+            .expect("the identity lock is not poisoned");
+        let Some((cert_der, _)) = identity.as_ref() else {
+            return false;
+        };
+        let Ok((_, x509)) = x509_parser::parse_x509_certificate(cert_der) else {
+            return false;
+        };
+        let not_after = x509.validity().not_after.timestamp();
+        let now = chrono::Utc::now().timestamp();
+        not_after - now <= ROTATE_REMAINING_SECS
     }
 
     pub fn node_id(&self) -> &str {
@@ -310,24 +399,43 @@ impl NodeChannel {
     }
 
     /// The authenticated reconnect exchange: report the node's durable resume
-    /// facts WITH a key-proof over them, and receive the replay tail, the
-    /// reconciliation guidance, and a fresh lease. On success the returned
+    /// facts WITH a certificate proof over them, and receive the replay tail,
+    /// the reconciliation guidance, and a fresh lease. On success the returned
     /// fencing token becomes the channel's credential for events/ack/poll/
-    /// heartbeat — until the next handshake rotates it.
+    /// heartbeat — until the next handshake rotates it. If the workload leaf
+    /// is within its rotation window, the client rotates FIRST (the fresh
+    /// identity signs this handshake).
     pub async fn handshake(
         &self,
         req: &HandshakeRequest,
     ) -> Result<HandshakeResponse, ChannelError> {
-        let proof = compute_key_proof(
-            req.channel_version,
-            &req.node_id,
-            req.last_acked_cursor,
-            &req.pending_operations,
-            &req.ambiguous_attempts,
-            &self.key_secret,
-        );
+        if self.cert_expires_soon() {
+            let (cert_der, key) = self.rotate().await?;
+            self.install_identity(cert_der, key);
+        }
+        let (cert_hex, proof) = {
+            let identity = self
+                .identity
+                .lock()
+                .expect("the identity lock is not poisoned");
+            let Some((cert_der, key)) = identity.as_ref() else {
+                return Err(ChannelError::NotEnrolled);
+            };
+            (
+                to_hex(cert_der),
+                compute_cert_proof(
+                    key,
+                    req.channel_version,
+                    &req.node_id,
+                    req.last_acked_cursor,
+                    &req.pending_operations,
+                    &req.ambiguous_attempts,
+                ),
+            )
+        };
         let mut with_proof = req.clone();
-        with_proof.key_proof = proof;
+        with_proof.cert_der = cert_hex;
+        with_proof.proof_signature = proof;
         let response = self
             .client
             .post(format!("{}/v1/nodes/handshake", self.base_url))
@@ -340,6 +448,54 @@ impl NodeChannel {
             .lock()
             .expect("the fencing-token lock is not poisoned") = Some(parsed.fencing_token.clone());
         Ok(parsed)
+    }
+
+    /// Rotate the workload certificate: prove possession of the CURRENT leaf
+    /// over the rotate coverage and receive a FRESH key + certificate for the
+    /// same node id. The caller installs the returned pair (the running
+    /// session's fencing token stays valid — rotation is additive).
+    pub async fn rotate(&self) -> Result<(Vec<u8>, rcgen::KeyPair), ChannelError> {
+        use rcgen::SigningKey;
+        let (cert_hex, proof) = {
+            let identity = self
+                .identity
+                .lock()
+                .expect("the identity lock is not poisoned");
+            let Some((cert_der, key)) = identity.as_ref() else {
+                return Err(ChannelError::NotEnrolled);
+            };
+            let cert_hex = to_hex(cert_der);
+            let coverage = RotateCoverage {
+                channel_version: CHANNEL_VERSION,
+                node_id: &self.node_id,
+                cert_der: &cert_hex,
+            };
+            let canonical =
+                serde_json::to_vec(&coverage).expect("the rotate coverage is encodable");
+            (
+                cert_hex,
+                to_hex(&key.sign(&canonical).expect("the workload key signs")),
+            )
+        };
+        let response = self
+            .client
+            .post(format!("{}/v1/nodes/rotate", self.base_url))
+            .json(&serde_json::json!({
+                "channel_version": CHANNEL_VERSION,
+                "node_id": self.node_id,
+                "cert_der": cert_hex,
+                "proof_signature": proof,
+            }))
+            .send()
+            .await?;
+        let parsed: RotateResponse = self.parse(response).await?;
+        let cert_der = from_hex(&parsed.cert_der).map_err(ChannelError::Malformed)?;
+        let key = from_hex(&parsed.key_der).map_err(ChannelError::Malformed)?;
+        let key = rustls_pki_types::PrivateKeyDer::try_from(key)
+            .map_err(|e| ChannelError::Malformed(e.to_string()))?;
+        let key = rcgen::KeyPair::from_der_and_sign_algo(&key, &rcgen::PKCS_ECDSA_P256_SHA256)
+            .map_err(|e| ChannelError::Malformed(e.to_string()))?;
+        Ok((cert_der, key))
     }
 
     /// Submit one node-emitted event with its ORIGINAL id (redelivery-safe),
@@ -442,4 +598,19 @@ impl NodeChannel {
             .await?;
         self.parse(response).await
     }
+}
+
+/// Lowercase hex (the wire ships DER as hex — the codebase hand-rolls hex).
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn from_hex(s: &str) -> Result<Vec<u8>, String> {
+    if !s.len().is_multiple_of(2) {
+        return Err("odd-length hex".to_string());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
 }

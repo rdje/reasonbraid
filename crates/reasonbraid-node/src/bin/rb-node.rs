@@ -105,15 +105,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let adapter = FakeAdapter::new(script, lookup, capabilities);
 
     // Enrollment (`.1.2.1`): when a token is provided, consume it BEFORE any
-    // channel traffic. The token is the credential; the secret becomes the node's
-    // dev signing key (the `.1.2.2` handshake's HMAC proof rides it).
+    // channel traffic. The token is the credential; the dev secret rides the
+    // enroll request (the server's dev key row) but the CHANNEL identity is the
+    // workload certificate issued by the response (`.1.2.2`).
     if let Some(token) = &args.enroll_token {
         let nonce = args.enroll_nonce.as_deref().unwrap_or_else(|| {
             eprintln!("rb-node: --enroll-token requires --enroll-nonce");
             std::process::exit(1);
         });
-        let channel =
-            NodeChannel::new(&args.server, args.node_id.clone(), args.node_secret.clone());
+        let channel = NodeChannel::for_enrollment(&args.server, args.node_id.clone());
         let enroll_resp = channel
             .enroll(
                 token,
@@ -139,11 +139,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // The workload identity lives beside the journal (`cert.der` + `key.der`);
+    // the handshake signs with it. Without the files the node cannot prove
+    // itself — enroll first (or restore the node-local files).
+    let (cert_der, key) = load_workload_identity(&args.journal)
+        .map_err(|e| format!("rb-node: could not load the workload certificate: {e}"))?;
+
     let node = Node::open(
         &args.journal,
         &args.server,
         args.node_id.clone(),
-        args.node_secret.clone(),
+        cert_der,
+        key,
     )
     .await?;
     node.reconcile().await?;
@@ -231,4 +238,21 @@ fn save_workload_identity(
     std::fs::write(dir.join("cert.der"), hex_decode(cert)?).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("key.der"), hex_decode(key)?).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Load the workload identity (`cert.der` + `key.der`) beside the journal —
+/// the files `save_workload_identity` persists at enrollment.
+fn load_workload_identity(
+    journal_path: &std::path::Path,
+) -> Result<(Vec<u8>, rcgen::KeyPair), String> {
+    let dir = journal_path
+        .parent()
+        .ok_or_else(|| "the journal path has no parent directory".to_string())?;
+    let cert = std::fs::read(dir.join("cert.der")).map_err(|e| format!("missing cert.der: {e}"))?;
+    let key_bytes =
+        std::fs::read(dir.join("key.der")).map_err(|e| format!("missing key.der: {e}"))?;
+    let key = rustls_pki_types::PrivateKeyDer::try_from(key_bytes).map_err(|e| e.to_string())?;
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&key, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .map_err(|e| e.to_string())?;
+    Ok((cert, key))
 }

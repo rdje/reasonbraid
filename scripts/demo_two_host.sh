@@ -210,8 +210,8 @@ trap cleanup EXIT
     echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
     echo "database_url: $DATABASE_URL"
     echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "channel: .1.2.2 authenticated (channel_version 2) — key-proof handshake,"
-    echo "  lease/fencing token, heartbeats, observable presence"
+    echo "channel: .1.2.2 certificate-proof (channel_version 3) — workload-certificate"
+    echo "  handshake, lease/fencing token, heartbeats, observable presence"
     echo "limitation: fake adapter (deterministic) — the REAL-harness leg is the"
     echo "  RB_LIVE_CODEX=1 codex_live suite, out of scope for a no-token demo (WP6)"
     echo "limitation: dev trust store — the node secrets (channel-auth.txt) are the"
@@ -292,7 +292,7 @@ probe_poll() {
     tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
     [ -n "$tok" ] || return 1
     curl -s -o /dev/null -X POST -H 'content-type: application/json' \
-        -d "{\"channel_version\":2,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
+        -d "{\"channel_version\":3,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
         "$SERVER_BASE/v1/nodes/poll"
 }
 export -f probe_poll
@@ -329,6 +329,12 @@ CONTRIBUTION_ID="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENA
 [ -n "$CONTRIBUTION_ID" ] || { fail "contribution event id extracted"; exit 1; }
 log "node A's contribution landed (event $CONTRIBUTION_ID)"
 
+# The `.1.2.2` workload identity: enrollment issued the certificate and the node
+# stored it beside its journal — the handshake that delivered this contribution
+# signed its proof with it.
+check "the workload certificate is stored beside the journal (.1.2.2)" bash -c \
+    "[ -s '$NODE_A_DIR/cert.der' ] && [ -s '$NODE_A_DIR/key.der' ]"
+
 # no human copies messages: the content came from the adapter script, not the CLI.
 check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'AGENT-A: the claim holds only for'"
@@ -362,7 +368,7 @@ FENCE_A="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHER
 [ -n "$FENCE_A" ] || { fail "node A holds a live lease (fencing token present)"; exit 1; }
 EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
 DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE_A" '
-    { channel_version: 2,
+    { channel_version: 3,
       node_id: $n,
       event_id: .events[0].event_id,
       operation_id: .events[0].operation_id,

@@ -1445,16 +1445,17 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
- "hmac",
+ "rcgen",
  "reasonbraid-adapter",
  "reasonbraid-core",
  "reqwest",
+ "rustls-pki-types",
  "serde",
  "serde_json",
- "sha2",
  "sqlx",
  "tokio",
  "uuid",
+ "x509-parser",
 ]
 
 [[package]]
@@ -1464,18 +1465,20 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
- "hmac",
  "rcgen",
  "reasonbraid-core",
  "reasonbraid-node",
  "reqwest",
+ "ring",
  "rustls-pki-types",
+ "rustls-webpki",
  "serde",
  "serde_json",
  "sha2",
  "sqlx",
  "time",
  "tokio",
+ "x509-parser",
 ]
 
 [[package]]

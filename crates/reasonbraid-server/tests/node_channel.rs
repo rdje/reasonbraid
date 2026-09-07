@@ -107,10 +107,14 @@ async fn pool() -> Option<PgPool> {
 }
 
 /// Seed an enrolled node the `.1.2.1` way (host → node → key rows) — the
-/// `.1.2.2` handshake reads `node_keys` for this id. The enrollment ENDPOINT's
+/// Seed an enrolled node the `.1.2.1`/`.1.2.2` way (host → node → key → cert
+/// rows): the `.1.2.2` handshake chains the presented leaf to the server CA and
+/// checks the node-id → fingerprint binding. Returns the leaf + its key so each
+/// test signs proofs exactly as the real node does. The enrollment ENDPOINT's
 /// own semantics are proven by `node_enrollment.rs`; here the suite owns its
-/// identity rows directly so each channel test starts from a known enrolled state.
-async fn seed_node(pool: &PgPool, node_id: &str) {
+/// identity rows directly so each channel test starts from a known enrolled
+/// state.
+async fn seed_node(pool: &PgPool, node_id: &str) -> (Vec<u8>, Vec<u8>) {
     let host_id = format!("hst_seed_{}", &node_id[4..]);
     let host_name = format!("seed-{node_id}");
     sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ($1, $2, $3)")
@@ -134,6 +138,32 @@ async fn seed_node(pool: &PgPool, node_id: &str) {
         .execute(pool)
         .await
         .expect("seed key");
+    // The workload certificate (the `.1.2.2` identity): issued by the server's
+    // own CA and stored like the enrollment transaction stores it.
+    let ca = ensure_server_ca(pool).await.expect("server CA");
+    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let fingerprint = reasonbraid_server::ca::cert_fingerprint(&cert_der);
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+    )
+    .bind(&fingerprint)
+    .bind(node_id)
+    .bind(&cert_der)
+    .bind(&key_der)
+    .execute(pool)
+    .await
+    .expect("seed certificate");
+    (cert_der, key_der)
+}
+
+/// Rebuild the leaf key from its DER (tests open the Node multiple times //
+/// across server generations; rcgen::KeyPair is not Clone).
+fn key_from_der(key_der: &[u8]) -> rcgen::KeyPair {
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der.to_vec()).expect("leaf key DER");
+    rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("leaf key parses")
 }
 
 /// The running server half: an axum listener on an ephemeral loopback port backed by the
@@ -214,7 +244,7 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000001".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_fresh_{i}")).await;
@@ -224,7 +254,8 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
         journal_path("fresh"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -255,7 +286,7 @@ async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000002".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_tail_{i}")).await;
@@ -264,7 +295,8 @@ async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
         journal_path("tail"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -299,7 +331,7 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000003".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_dup_{i}")).await;
@@ -308,7 +340,8 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
         journal_path("duplicate"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -343,7 +376,7 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
     let state = NodeChannelState::new(pool.clone(), ca);
     let node_id = "nod_00000000-0000-7000-8000-000000000004".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     // A port with nothing listening: the channel is unreachable.
     let dead = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -351,9 +384,15 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     drop(dead);
 
     let journal = journal_path("schedulable");
-    let node = Node::open(&journal, dead_url, node_id.clone(), DEV_SECRET.to_string())
-        .await
-        .unwrap();
+    let node = Node::open(
+        &journal,
+        dead_url,
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    )
+    .await
+    .unwrap();
     assert_eq!(node.state().await, NodeState::Offline);
 
     // New work is refused before reconciliation, whatever the connection state.
@@ -375,7 +414,8 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
         &journal,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -404,7 +444,7 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000005".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("ambiguous-unknown");
     {
@@ -444,7 +484,8 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
         &journal_path,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -470,7 +511,7 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000006".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("ambiguous-adjudicated");
     let (op, event_id) = {
@@ -532,7 +573,8 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
         &journal_path,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -569,7 +611,7 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000007".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("reemit");
     let op = {
@@ -613,7 +655,8 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
         &journal_path,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -640,7 +683,7 @@ async fn server_restart_preserves_the_inbox_and_resume() {
     let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
     let state = NodeChannelState::new(pool.clone(), ca);
     let node_id = "nod_00000000-0000-7000-8000-000000000008".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("restart");
     {
@@ -652,7 +695,8 @@ async fn server_restart_preserves_the_inbox_and_resume() {
             &journal_path,
             server.base_url(),
             node_id.clone(),
-            DEV_SECRET.to_string(),
+            cert_der.clone(),
+            key_from_der(&key_der),
         )
         .await
         .unwrap();
@@ -668,7 +712,8 @@ async fn server_restart_preserves_the_inbox_and_resume() {
         &journal_path,
         dead_url,
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -684,7 +729,8 @@ async fn server_restart_preserves_the_inbox_and_resume() {
         &journal_path,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -711,7 +757,7 @@ async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000009".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     enqueue(&state, &node_id, "cmd_ahead_1").await;
     enqueue(&state, &node_id, "cmd_ahead_2").await;
@@ -720,7 +766,8 @@ async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
         journal_path("ahead"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -749,7 +796,7 @@ async fn poll_returns_the_tail_after_a_cursor() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000010".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_poll_{i}")).await;
@@ -758,7 +805,8 @@ async fn poll_returns_the_tail_after_a_cursor() {
         journal_path("poll"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -774,7 +822,8 @@ async fn poll_returns_the_tail_after_a_cursor() {
     let channel = reasonbraid_node::NodeChannel::new(
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     );
     channel
         .handshake(&reasonbraid_node::HandshakeRequest {
@@ -783,7 +832,8 @@ async fn poll_returns_the_tail_after_a_cursor() {
             last_acked_cursor: 0,
             pending_operations: vec![],
             ambiguous_attempts: vec![],
-            key_proof: String::new(),
+            cert_der: String::new(),
+            proof_signature: String::new(),
         })
         .await
         .expect("handshake");
@@ -813,7 +863,8 @@ async fn handshake_rejects_version_mismatch_and_unknown_fields() {
             "last_acked_cursor": 0,
             "pending_operations": [],
             "ambiguous_attempts": [],
-            "key_proof": "00"
+            "cert_der": "00",
+            "proof_signature": "00"
         }))
         .send()
         .await
@@ -855,7 +906,7 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000011".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let journal_path = journal_path("known-events");
     let (op_known, _op_new) = {
@@ -935,7 +986,8 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
         &journal_path,
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -967,14 +1019,15 @@ async fn duplicate_event_emission_dedupes_server_side() {
     let state = NodeChannelState::new(pool.clone(), ca);
     let server = TestServer::start(&pool).await;
     let node_id = "nod_00000000-0000-7000-8000-000000000012".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     enqueue(&state, &node_id, "cmd_dedupe").await;
     let node = Node::open(
         journal_path("event-dedupe"),
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     )
     .await
     .unwrap();
@@ -1015,28 +1068,29 @@ async fn duplicate_event_emission_dedupes_server_side() {
 /// existence leak), and no ledger fact is readable without an authenticated
 /// handshake.
 #[tokio::test]
-async fn handshake_without_a_valid_key_proof_is_refused() {
+async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000101".to_string();
-    seed_node(&pool, &node_id).await;
+    let _ = seed_node(&pool, &node_id).await;
 
-    let handshake = |key_proof: Option<String>| {
+    let handshake = |proof_signature: Option<String>| {
         let client = client.clone();
         let node_id = node_id.clone();
         let base = server.base_url();
         async move {
             let mut body = json!({
-                "channel_version": 2,
+                "channel_version": 3,
                 "node_id": node_id,
                 "last_acked_cursor": 0,
                 "pending_operations": [],
                 "ambiguous_attempts": [],
             });
-            if let Some(proof) = key_proof {
-                body["key_proof"] = json!(proof);
+            if let Some(proof) = proof_signature {
+                body["cert_der"] = json!("00");
+                body["proof_signature"] = json!(proof);
             }
             client
                 .post(format!("{base}/v1/nodes/handshake"))
@@ -1055,9 +1109,9 @@ async fn handshake_without_a_valid_key_proof_is_refused() {
         422,
         "a missing proof is malformed"
     );
-    // A structurally valid but wrong proof (HMAC over nothing relevant): the
-    // handler's constant-time verification refuses it 401, identically to an
-    // unenrolled node.
+    // A structurally valid but wrong proof (a signature over nothing relevant):
+    // the handler.s chain/status/signature ladder refuses it 401, identically to
+    // an unenrolled node.
     let wrong = handshake(Some(
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
     ))
@@ -1065,18 +1119,22 @@ async fn handshake_without_a_valid_key_proof_is_refused() {
     assert_eq!(wrong.status().as_u16(), 401, "a wrong proof is refused");
     let body: Value = wrong.json().await.unwrap();
     assert_eq!(body["code"], "unauthorized");
-    assert_eq!(body["message"], "the handshake key-proof was refused");
+    assert_eq!(
+        body["message"],
+        "the handshake certificate proof was refused"
+    );
 
     // An unenrolled node fails the same way (no existence leak).
     let stranger = client
         .post(format!("{}/v1/nodes/handshake", server.base_url()))
         .json(&json!({
-            "channel_version": 2,
+            "channel_version": 3,
             "node_id": "nod_00000000-0000-7000-8000-0000000001ff",
             "last_acked_cursor": 0,
             "pending_operations": [],
             "ambiguous_attempts": [],
-            "key_proof": "00",
+            "cert_der": "00",
+            "proof_signature": "00",
         }))
         .send()
         .await
@@ -1089,7 +1147,7 @@ async fn handshake_without_a_valid_key_proof_is_refused() {
     let malformed = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 2,
+            "channel_version": 3,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
@@ -1106,7 +1164,7 @@ async fn handshake_without_a_valid_key_proof_is_refused() {
     let unauthenticated = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 2,
+            "channel_version": 3,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
@@ -1143,12 +1201,13 @@ async fn heartbeat_renews_the_lease_and_presence_shows_online() {
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000102".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let channel = reasonbraid_node::NodeChannel::new(
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     );
     let handshake = channel
         .handshake(&reasonbraid_node::HandshakeRequest {
@@ -1157,7 +1216,8 @@ async fn heartbeat_renews_the_lease_and_presence_shows_online() {
             last_acked_cursor: 0,
             pending_operations: vec![],
             ambiguous_attempts: vec![],
-            key_proof: String::new(),
+            cert_der: String::new(),
+            proof_signature: String::new(),
         })
         .await
         .expect("handshake");
@@ -1215,13 +1275,14 @@ async fn a_second_handshake_fences_the_previous_lease() {
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000103".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let handshake = async || -> String {
         let channel = reasonbraid_node::NodeChannel::new(
             server.base_url(),
             node_id.clone(),
-            DEV_SECRET.to_string(),
+            cert_der.clone(),
+            key_from_der(&key_der),
         );
         channel
             .handshake(&reasonbraid_node::HandshakeRequest {
@@ -1230,7 +1291,8 @@ async fn a_second_handshake_fences_the_previous_lease() {
                 last_acked_cursor: 0,
                 pending_operations: vec![],
                 ambiguous_attempts: vec![],
-                key_proof: String::new(),
+                cert_der: String::new(),
+                proof_signature: String::new(),
             })
             .await
             .expect("handshake")
@@ -1249,7 +1311,7 @@ async fn a_second_handshake_fences_the_previous_lease() {
         async move {
             let mut body = body;
             body["fencing_token"] = json!(token);
-            body["channel_version"] = json!(2);
+            body["channel_version"] = json!(3);
             body["node_id"] = json!(node_id);
             client
                 .post(format!("{base}{path}"))
@@ -1308,12 +1370,13 @@ async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
     let node_id = "nod_00000000-0000-7000-8000-000000000104".to_string();
-    seed_node(&pool, &node_id).await;
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     let channel = reasonbraid_node::NodeChannel::new(
         server.base_url(),
         node_id.clone(),
-        DEV_SECRET.to_string(),
+        cert_der.clone(),
+        key_from_der(&key_der),
     );
     let handshake_req = reasonbraid_node::HandshakeRequest {
         channel_version: reasonbraid_node::CHANNEL_VERSION,
@@ -1321,7 +1384,8 @@ async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
         last_acked_cursor: 0,
         pending_operations: vec![],
         ambiguous_attempts: vec![],
-        key_proof: String::new(),
+        cert_der: String::new(),
+        proof_signature: String::new(),
     };
     let first = channel.handshake(&handshake_req).await.expect("handshake");
     assert_eq!(
@@ -1379,5 +1443,109 @@ async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
     assert_ne!(second.fencing_token, first.fencing_token);
     assert_eq!(presence().await["online"], json!(true));
     channel.heartbeat().await.expect("the new lease renews");
+    server.crash();
+}
+
+/// THE `.1.2.2` rotation acceptance: the node presents its CURRENT certificate
+/// and receives a FRESH key + certificate (a NEW fingerprint) for the same node
+/// id; rotation is ADDITIVE — the old leaf stays valid until expiry/revocation
+/// (`.1.3`) — and the fresh identity handshakes.
+#[tokio::test]
+async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000220".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+    let old_fp = reasonbraid_server::ca::cert_fingerprint(&cert_der);
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    let (fresh_cert, fresh_key) = channel.rotate().await.expect("rotate succeeds");
+    let fresh_fp = reasonbraid_server::ca::cert_fingerprint(&fresh_cert);
+    assert_ne!(fresh_fp, old_fp, "rotation issues a fresh fingerprint");
+
+    // The rotation is ADDITIVE: both rows exist for the same node id.
+    let (n,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count certs");
+    assert_eq!(n, 2, "the old leaf stays valid alongside the fresh one");
+
+    // The FRESH identity handshakes (installed; the client fills cert + proof).
+    channel.install_identity(fresh_cert, fresh_key);
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: 3,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await
+        .expect("the fresh identity handshakes");
+
+    // The OLD identity still handshakes too (no silent invalidation).
+    let old_channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    old_channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: 3,
+            node_id,
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await
+        .expect("the pre-rotation leaf stays valid");
+
+    server.crash();
+}
+
+/// A rotate call without a valid certificate proof is refused 401, identically
+/// to an unenrolled node (no existence leak).
+#[tokio::test]
+async fn rotation_without_a_valid_certificate_proof_is_refused() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000221".to_string();
+    let _ = seed_node(&pool, &node_id).await;
+
+    let forged = client
+        .post(format!("{}/v1/nodes/rotate", server.base_url()))
+        .json(&json!({
+            "channel_version": 3,
+            "node_id": node_id,
+            "cert_der": "00",
+            "proof_signature": "00",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        forged.status().as_u16(),
+        401,
+        "a forged rotate proof is refused"
+    );
+    let body: Value = forged.json().await.unwrap();
+    assert_eq!(body["code"], "unauthorized");
+
     server.crash();
 }

@@ -183,7 +183,7 @@ async fn enroll_node(
     tenant: &str,
     node_id: &str,
     secret: &str,
-) {
+) -> (String, String) {
     let response = client
         .post(format!("{base}/v1/nodes/enroll-tokens"))
         .header(PRINCIPAL_HEADER, human)
@@ -211,6 +211,11 @@ async fn enroll_node(
         .await
         .expect("enroll request");
     assert_eq!(response.status().as_u16(), 200, "the node enrolls");
+    let body: Value = response.json().await.expect("enroll json");
+    (
+        body["cert_der"].as_str().unwrap().to_string(),
+        body["key_der"].as_str().unwrap().to_string(),
+    )
 }
 
 /// The authenticated public channel path (`.1.2.2`): the node reports holding
@@ -220,9 +225,14 @@ async fn handshake(
     client: &reqwest::Client,
     base: &str,
     node_id: &str,
-    secret: &str,
+    cert_hex: &str,
+    key_hex: &str,
 ) -> (Value, String) {
-    let proof = reasonbraid_node::compute_key_proof(CHANNEL_VERSION, node_id, 0, &[], &[], secret);
+    let key_der = from_hex(key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let proof = reasonbraid_node::compute_cert_proof(&key, CHANNEL_VERSION, node_id, 0, &[], &[]);
     let response = client
         .post(format!("{base}/v1/nodes/handshake"))
         .json(&json!({
@@ -231,7 +241,8 @@ async fn handshake(
             "last_acked_cursor": 0,
             "pending_operations": [],
             "ambiguous_attempts": [],
-            "key_proof": proof,
+            "cert_der": cert_hex,
+            "proof_signature": proof,
         }))
         .send()
         .await
@@ -319,7 +330,10 @@ async fn thread_events(
 
 /// A full bootstrap: human (tenant owner) + one role, and a created thread.
 /// Returns (tenant, human, role, thread).
-async fn bootstrap(client: &reqwest::Client, base: &str) -> (String, String, String, String) {
+async fn bootstrap(
+    client: &reqwest::Client,
+    base: &str,
+) -> (String, String, String, String, String, String) {
     let (status, human) = enroll(
         client,
         base,
@@ -341,7 +355,8 @@ async fn bootstrap(client: &reqwest::Client, base: &str) -> (String, String, Str
 
     // The dev wiring's node IS the role: enroll it (`.1.2.1`) so the `.1.2.2`
     // authenticated handshake has a key to verify.
-    enroll_node(client, base, &human_id, &tenant, &role_id, DEV_SECRET).await;
+    let (cert_hex, key_hex) =
+        enroll_node(client, base, &human_id, &tenant, &role_id, DEV_SECRET).await;
 
     let (status, created) = command(
         client,
@@ -361,7 +376,7 @@ async fn bootstrap(client: &reqwest::Client, base: &str) -> (String, String, Str
     .await;
     assert_eq!(status, 200, "thread creates: {created:?}");
     let thread = created["thread_id"].as_str().unwrap().to_string();
-    (tenant, human_id, role_id, thread)
+    (tenant, human_id, role_id, thread, cert_hex, key_hex)
 }
 
 /// A `work_result` payload as the node emits it (`.6.2` contract).
@@ -392,7 +407,7 @@ async fn invite_dispatches_work_with_a_reservation() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
 
     let (status, _) = command(
         &client,
@@ -410,7 +425,8 @@ async fn invite_dispatches_work_with_a_reservation() {
 
     // THE `.1.3.1` contract: the invite recorded a PENDING invitation and
     // enqueued NOTHING — the work item exists only after the explicit accept.
-    let (pre_handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (pre_handshake, _token) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     assert_eq!(
         pre_handshake["replay"].as_array().unwrap().len(),
         0,
@@ -427,7 +443,7 @@ async fn invite_dispatches_work_with_a_reservation() {
     .await;
 
     // The node reads its inbox through the PUBLIC channel surface.
-    let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (handshake, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let replay = handshake["replay"].as_array().expect("replay array");
     assert_eq!(
         replay.len(),
@@ -476,7 +492,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
 
     let (status, _) = command(
         &client,
@@ -501,7 +517,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     )
     .await;
 
-    let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let work = handshake["replay"][0].clone();
     let command_id = work["command_id"].as_str().unwrap().to_string();
     let reservation_id = work["payload"]["reservation"]["reservation_id"]
@@ -631,7 +647,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
 
     let (status, _) = command(
         &client,
@@ -656,7 +672,8 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     )
     .await;
 
-    let (first_view, first_token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (first_view, first_token) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let command_id = first_view["replay"][0]["command_id"]
         .as_str()
         .unwrap()
@@ -711,7 +728,8 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     assert_eq!(status, 200, "challenge succeeds");
 
     // The challenge dispatched revise work to the contribution's author (the role).
-    let (replay_view, replay_token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (replay_view, replay_token) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let replay = replay_view["replay"].as_array().expect("replay array");
     assert_eq!(replay.len(), 2, "invite work + revise work");
     let revise = replay
@@ -785,7 +803,8 @@ async fn budget_denial_enqueues_work_without_a_reservation() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, _thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, _thread, cert_hex, key_hex) =
+        bootstrap(&client, &server.base()).await;
 
     let (status, created) = command(
         &client,
@@ -833,7 +852,7 @@ async fn budget_denial_enqueues_work_without_a_reservation() {
     )
     .await;
 
-    let (handshake, _token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (handshake, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let work = &handshake["replay"][0];
     assert_eq!(work["payload"]["kind"].as_str().unwrap(), "contribute");
     assert!(
@@ -865,7 +884,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
 
     let (status, _) = command(
         &client,
@@ -889,7 +908,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
         "key-accept-close",
     )
     .await;
-    let (handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let command_id = handshake["replay"][0]["command_id"]
         .as_str()
         .unwrap()
@@ -980,11 +999,11 @@ async fn ordinary_channel_events_stay_receipts_only() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread) = bootstrap(&client, &server.base()).await;
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
 
     // The `.1.2.2` contract: authenticate (handshake → fencing token) before any
     // channel traffic, even a receipt-only event.
-    let (_handshake, token) = handshake(&client, &server.base(), &role, DEV_SECRET).await;
+    let (_handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let (status, receipt) = submit_event(
         &client,
         &server.base(),
@@ -1006,4 +1025,15 @@ async fn ordinary_channel_events_stay_receipts_only() {
     assert_eq!(claims, 1, "only the thread-create command claimed a key");
     let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
     assert_eq!(events.len(), 1, "the thread timeline is untouched");
+}
+
+/// Lowercase-hex decode (the enroll response ships DER as hex).
+fn from_hex(s: &str) -> Result<Vec<u8>, String> {
+    if !s.len().is_multiple_of(2) {
+        return Err("odd-length hex".to_string());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
 }

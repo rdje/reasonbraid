@@ -147,3 +147,49 @@ pub fn from_hex(s: &str) -> Result<Vec<u8>, String> {
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
         .collect()
 }
+
+// ── The `.1.2.2` channel-proof verification (chain → status → signature) ──────
+
+/// Verify a presented leaf: it chains to THIS deployment's CA within its
+/// validity window (webpki), its fingerprint is registered for the node and
+/// not revoked/expired (the caller's row check), and `signature` verifies over
+/// `message` against the leaf's SPKI (ring, ECDSA P-256 ASN.1 — rcgen's
+/// default algorithm). Each refusal is a distinct `Err` reason so the caller
+/// maps it to the typed channel refusal.
+pub fn verify_leaf_chain(ca: &ServerCa, cert_der: &[u8]) -> Result<(), String> {
+    let cert: CertificateDer<'static> = cert_der.to_vec().into();
+    let ca_cert: CertificateDer<'static> = ca.cert_der.clone().into();
+    let anchor = webpki::anchor_from_trusted_cert(&ca_cert)
+        .map_err(|e| format!("CA anchor invalid: {e}"))?;
+    let anchors = [anchor];
+    let end_entity =
+        webpki::EndEntityCert::try_from(&cert).map_err(|e| format!("leaf unparsable: {e}"))?;
+    end_entity
+        .verify_for_usage(
+            &[webpki::ring::ECDSA_P256_SHA256],
+            &anchors,
+            &[],
+            rustls_pki_types::UnixTime::now(),
+            webpki::KeyUsage::client_auth(),
+            None,
+            None,
+        )
+        .map(|_| ())
+        .map_err(|e| format!("chain/validity verification failed: {e}"))
+}
+
+/// Extract the leaf.s SPKI DER (the public key the proof signature binds to).
+pub fn extract_point(cert_der: &[u8]) -> Result<Vec<u8>, String> {
+    let (_, x509) = x509_parser::parse_x509_certificate(cert_der)
+        .map_err(|e| format!("leaf unparsable: {e}"))?;
+    Ok(x509.public_key().subject_public_key.data.to_vec())
+}
+
+/// Verify an ECDSA P-256 (ASN.1) signature over `message` against the leaf.s
+/// EC point (see extract_point).
+pub fn verify_signature(point: &[u8], message: &[u8], signature: &[u8]) -> Result<(), String> {
+    use ring::signature::UnparsedPublicKey;
+    let key = UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1, point);
+    key.verify(message, signature)
+        .map_err(|_| "the proof signature did not verify".to_string())
+}

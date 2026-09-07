@@ -25,43 +25,55 @@ Every message carries a `channel_version` (currently **2**) and rejects unknown
 fields, so a forged authoritative field or a future version fails loudly, on
 both sides.
 
-## Authentication (`.1.2.2`)
+## Authentication (`.1.2.2`, certificate-proofed)
 
-The channel is authenticated end to end, on the dev stance (the server is the
-dev trust store — the same stance as the `.6.1` dev principal header):
+The channel is authenticated end to end with the workload certificate
+(ADR-007, `PHASE-2.1.2`). The dev trust store still holds the enrollment
+secret, but the CHANNEL identity is the certificate:
 
-1. **Enrollment** registers the node with a dev secret (`rb node issue-token` +
-   `rb-node --enroll-token … --node-secret …`). The server stores the secret
-   keyed to the node id (the dev profile collapses node == role: the node id is
-   the `rol_…` wire id it serves).
-2. **The handshake carries a key-proof** — an HMAC-SHA256 over the canonical
-   channel fields (version, node id, cursor, pending operations, ambiguous
-   attempts), keyed with the dev secret:
+1. **Enrollment** registers the node with a one-time token
+   (`rb node issue-token` + `rb-node --enroll-token … --node-secret …`). The
+   enrollment transaction issues a short-lived (10-minute) X.509 **workload
+   certificate** — CN = the node id, SAN = the token's host claim — and the
+   node persists `cert.der`/`key.der` beside its journal (the server-generated
+   key is dev-escrowed: the `.1.2.1` trust-store stance).
+2. **The handshake carries a certificate proof** — an ECDSA signature over the
+   canonical channel fields (version, node id, cursor, pending operations,
+   ambiguous attempts), made with the certificate's private key, plus the
+   certificate itself:
 
    ```json
    {
-     "channel_version": 2,
+     "channel_version": 3,
      "node_id": "rol_…",
      "last_acked_cursor": 3,
      "pending_operations": ["op_…"],
      "ambiguous_attempts": [
        { "attempt_id": "patt_…", "operation_id": "op_…" }
      ],
-     "key_proof": "9f3c…64 hex chars…"
+     "cert_der": "3082…hex DER…",
+     "proof_signature": "3045…hex signature…"
    }
    ```
 
-   A handshake without a valid proof is refused `401 unauthorized` **before any
-   ledger fact is read** — a missing key and a wrong proof fail identically (no
-   existence leak).
-3. **A successful handshake issues a lease**: a fresh random **fencing token**
+   The server verifies the leaf chains to its CA within its validity window,
+   that its fingerprint is registered for THIS node (and not revoked/expired),
+   and that the signature verifies — all **before any ledger fact is read**. A
+   foreign, expired, unregistered, or wrongly signed certificate is refused
+   `401 unauthorized` identically (no existence leak).
+3. **Rotation** (`POST /v1/nodes/rotate`): the node presents its CURRENT
+   certificate and receives a fresh key + certificate for the same node id.
+   Rotation is additive — the old leaf stays valid until expiry or revocation —
+   and the node rotates automatically when less than half the leaf's lifetime
+   remains, so a running session is never cut.
+4. **A successful handshake issues a lease**: a fresh random **fencing token**
    and an expiry 60 s out. The token is the channel's credential from then on:
    `events`, `ack`, and `poll` all carry it, and only the latest handshake's
    token is accepted — a second handshake **fences** the old token, so a stale
    process (one that missed the rotation) can write nothing.
-4. **Heartbeats renew a LIVE lease** (`POST /v1/nodes/heartbeat`, the node
+5. **Heartbeats renew a LIVE lease** (`POST /v1/nodes/heartbeat`, the node
    heartbeats every ~15 s). A fenced token or an expired lease is refused; only
-   a fresh handshake — a new key-proof — restores the channel.
+   a fresh handshake — a new certificate proof — restores the channel.
 
 ## Presence and leases
 
@@ -136,12 +148,14 @@ Two operator actions harden the per-node inbox (both on the control API,
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 
-## Honest limits (Phase 1, after `.1.2.3`)
+## Honest limits (Phase 2, after `.1.2.2`)
 
-- The credential is the dev shared secret + HMAC key-proof (server as trust
-  store). X.509/mTLS workload identity and certificate issuance are deferred
-  to ADR-006/ADR-007 (Phase 2); the key rotation model extends `node_keys`,
-  not a guessed shape now.
+- The channel identity is the workload certificate with the certificate-proof
+  handshake (chain-to-CA + node-id fingerprint + signature). The TRANSPORT is
+  still plain HTTP/1 (the mTLS streaming profile is a later hardening — the
+  proof rides the channel, per ADR-006); the CA key and the node's dev-
+  escrowed leaf key live with the control plane (ADR-007's Trusted-LAN
+  placement, re-evaluated before any non-LAN exposure).
 - The lease TTL is the dev constant 60 s; heartbeats are process-local (no
   persisted heartbeat state on the node side).
 - Two live processes for one node id fence each other by design (each

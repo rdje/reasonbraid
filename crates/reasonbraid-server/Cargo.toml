@@ -23,6 +23,12 @@ rcgen = { version = "0.14", default-features = false, features = ["crypto", "rin
 rustls-pki-types = "1"
 # rcgen's validity-window type (OffsetDateTime) — the same `time` family it links.
 time = "0.3"
+# The `.1.2.2` channel proof: webpki verifies the leaf chains to the CA within
+# its validity window; ring verifies the proof signature against the leaf's
+# SPKI (ECDSA P-256, the rcgen default); x509-parser extracts that SPKI.
+rustls-webpki = { version = "0.103", features = ["ring", "std"] }
+ring = "0.17"
+x509-parser = "0.18"
 # The node channel's HTTP surface (ROADMAP.md §9.3): JSON over HTTP/1 for Phase 0 — the
 # authenticated streaming profile is a later phase (WP5 identity, ADR-006's formal record).
 axum = "0.8"
@@ -39,7 +45,6 @@ serde_json = "1"
 sha2 = "0.10"
 # The .1.2.2 handshake key-proof: HMAC-SHA256 over the channel fields with the
 # node's dev secret (the .1.2.1 node_keys row); `verify_slice` is constant-time.
-hmac = "0.12"
 # tls-none: local/CI Postgres is reached over a plaintext socket (sslmode=disable), so no
 # TLS backend is pulled in — which also keeps the dependency tree (and its license surface)
 # small for the supply-chain gate.

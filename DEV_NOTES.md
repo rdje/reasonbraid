@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.2.2: when every valid proof is refused, isolate the legs before touching the crypto
+
+- **The ladder probe turned a mystery into a named interop fact.** 16 channel tests refused 401 with all-valid certificates; the probe (chain / SPKI / self-SPKI / ring-only control / digest variants) isolated it in three runs: the chain verified, the keys matched byte-for-byte, a pure-ring control passed — and yet ring's `UnparsedPublicKey` refused rcgen's SPKI DER in every format. The fix: verify against the **bare EC point** (the path webpki uses internally — which is why the chain check always worked). Probe removed before commit; the fix + record remain.
+- **A failing FIXED leg proves nothing about the ASN.1 leg.** `ECDSA_P256_SHA256_FIXED` expects a 64-byte raw r‖s; rcgen emits ASN.1 (70–72 bytes). Both FIXED probes were structurally invalid from the start — a good reminder that a probe variant must be a VALID test of its hypothesis.
+- **The rotation contract kept a running session safe by being additive.** The rotate endpoint issues a fresh fingerprint WITHOUT retiring the old one; the node rotates at ≤50% lifetime and the fresh identity signs the NEXT handshake — nothing is cut mid-session.
+- Promoted to `docs/decisions/2026-09-07_cert-proof-verification.md` (`answers:` present). **Frontier `PHASE-2.1.3` (revocation surfaces).**
+
 ## _(2026-09-07)_ — PHASE-2.1.2.1: a CA that must survive restarts belongs in the control plane's own store
 
 - **The demo's kill point chose the storage.** The server is SIGKILLed and restarted mid-demo, so the CA cannot live in memory: `server_ca` is ONE row (id 1) the boot loads or generates — and the enrollment suite's rebuild test asserts two `ensure_server_ca` passes return the SAME key + cert (previously issued leaves keep chaining).

@@ -106,7 +106,9 @@ slice can reuse the same control plane without rewriting it.
     Note: decomposed further (`2026-09-07`, the `.1.2.1`-first precedent —
       a coherent interim exists: the cert is issued and stored while the
       HMAC channel stays live until the v3 swap):
-    Children: `.1.2.1`–`.1.2.2`.
+    Children: `.1.2.1`–`.1.2.2`. **`.1.2` is COMPLETE** — the certificate
+      lifecycle rides the channel (v3 proof + rotation), backlog 11's cert
+      sliver is closed.
 
   - ID: `PHASE-2.1.2.1`
     Status: `done`
@@ -135,7 +137,7 @@ slice can reuse the same control plane without rewriting it.
       below records the evidence — frontier → `.1.2.2`.
 
   - ID: `PHASE-2.1.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the channel v3 cert-proof handshake + rotation —
       `CHANNEL_VERSION` 3: the handshake body carries the cert DER + a
       signature over the SAME canonical coverage JSON (the private key's
@@ -157,6 +159,20 @@ slice can reuse the same control plane without rewriting it.
       typed 401; a rotated cert heals the channel without re-enrollment;
       the demo passes on v3; all channel suites green; the book names the
       new contract.
+    Done (`2026-09-07`): CHANNEL_VERSION 3 landed — the handshake signs the
+      canonical coverage with the workload certificate's key, the server
+      verifies chain-to-CA + validity + the node-id fingerprint + the
+      signature BEFORE any ledger read; the rotate endpoint issues a fresh
+      key + cert (additive); the node rotates at ≤50% lifetime; the 19
+      channel tests + the demo (31 checks) pass on v3; the acceptance
+      checklist below records the evidence — frontier → `.1.3`.
+    Note: the verification leg uncovered a real interop fact — ring's
+      `UnparsedPublicKey` refuses rcgen's well-formed SPKI DER and accepts
+      the bare EC point (the path webpki uses internally); the proof
+      verifies against the extracted point. Measured by the temporary
+      ladder probe (chain / SPKI / self-SPKI / ring-only control /
+      digest variants); recorded in
+      `docs/decisions/2026-09-07_cert-proof-verification.md`.
 
   - ID: `PHASE-2.1.3`
     Status: `proposed`
@@ -250,7 +266,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.2.2` | `proposed` | `.1.2.1` done (enroll issues + the node stores the leaf; the CA survives restarts — the rebuild test proves it); the channel v3 cert-proof handshake + rotation execute now |
+| 1 | `PHASE-2.1.3` | `proposed` | `.1.2.2` done (the channel rides the certificate; rotation is additive); the revocation surfaces execute now — cert revocation + the `Revoked` statuses' write paths |
 
 ## Changelog
 
@@ -292,6 +308,71 @@ slice can reuse the same control plane without rewriting it.
   fingerprint, `rb-node` persists `cert.der`/`key.der` beside the journal;
   the HMAC channel untouched (the demo passes with the files stored, unused —
   the coherent interim); all guards green; frontier → `.1.2.2`.
+- `2026-09-07`: `.1.2.2` done — the channel v3 cert-proof handshake +
+  rotation: `CHANNEL_VERSION` 3 (the handshake signs the canonical coverage
+  with the workload certificate's key; the server verifies chain-to-CA +
+  validity + the node-id fingerprint + the signature before ANY ledger read);
+  the rotate endpoint issues a fresh key + cert (additive fingerprints); the
+  node rotates at ≤50% lifetime; the 19 channel tests + the demo (31 checks)
+  pass on v3; the verification leg's interop discovery (ring refuses rcgen's
+  SPKI DER, accepts the bare EC point) is recorded in
+  `docs/decisions/2026-09-07_cert-proof-verification.md`; the book's
+  node-channel + two-host-demo chapters carry the new contract; **`.1.2` is
+  COMPLETE**; frontier → `.1.3`.
+
+## Acceptance Checklist (PHASE-2.1.2.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/ca.rs`
+(the verification legs), `src/node_channel.rs` (v3 + rotate),
+`Cargo.toml` (rustls-webpki/ring/x509-parser), `crates/reasonbraid-node/src/channel.rs`
++ `src/node.rs` + `src/bin/rb-node.rs` (the v3 client + rotation), the test
+files, and `scripts/demo_two_host.sh` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — backlog 11's channel sliver is open: the
+  handshake authenticates with the dev secret (HMAC) while the workload
+  certificate exists but proves nothing — `grep -n 'key_proof'
+  crates/reasonbraid-server/src/node_channel.rs` (before this leaf) →
+  the v2 DTO + `verify_handshake_proof` read `node_keys`; no rotate
+  surface (`grep -n 'rotate' crates/reasonbraid-server/src/node_channel.rs`
+  → no matches).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.1.2.1` deliberately stopped at
+  issuance (the coherent interim); the channel swap is the `.1.2.2`
+  contract itself. The fix point is the handshake boundary (the proof
+  replaces the HMAC in the SAME canonical-coverage shape, so the
+  replay/cursor semantics are untouched) + a rotate endpoint reusing the
+  same verification ladder + the node-side identity install.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: HMAC v2,
+  19 channel tests on the secret. After: `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 19 passed` (`node_channel`: the 17 migrated tests +
+  the rotation pair — fresh fingerprint ≠ old, additive rows, both
+  identities handshake, forged rotate 401) + the demo
+  `ALL acceptance checks passed` (31 checks incl. the cert-file beat,
+  `rc=0`, `target/pg122e_guard.log`); the handshake ladder refuses
+  foreign/expired/unregistered/wrongly-signed certs with the typed 401
+  (`handshake_without_a_valid_certificate_proof_is_refused`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve live
+  server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19
+  + 4 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the
+  two-host demo `ALL acceptance checks passed` (31 PASS, `rc=0`,
+  `target/pg122e_guard.log`); `cargo test --all` → 42 offline suites green
+  (rc=0, `target/pg122c_offline.log`); `cargo clippy --all --all-targets
+  -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make
+  deny` → rc=0 (rustls-webpki with the `ring` feature + ring + x509-parser
+  entered the server graph without a ban); `make gate` → 13/13 at commit;
+  `make book` builds.
+- [x] **FIX** — `ca.rs` (`verify_leaf_chain` — webpki chain + validity;
+  `extract_point`; `verify_signature` — ring over the POINT, the measured
+  interop fix); `node_channel.rs` (v3 DTOs, `verify_cert_proof`/
+  `verify_rotate_proof`, the rotate endpoint + route); the node (`compute_cert_proof`,
+  the v3 client with the installable identity, rotate-before-handshake at
+  ≤50% lifetime, `Node::open` with the cert + key, the bin's identity
+  load); the migrated suites (node_channel 19, node_work, node_inbox);
+  the demo (v3 literals + the cert-file beat).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted →
+  `docs/decisions/2026-09-07_cert-proof-verification.md` gained
+  `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md` frontier, the book (node-channel + two-host-demo),
+  `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.1.2.1)
 
@@ -415,7 +496,8 @@ the ledger row are the record deliverables.
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-2.1.1` | `cargo test -p reasonbraid-cert-spike -- --nocapture` → `test result: ok. 1 passed` (6/6 verdicts incl. the three refusal pairs + additive rotation; issuance N=200 p50=63µs p95=69µs, `target/spike81.log`); `cargo test --all` → 39 offline suites + the spike green (rc=0, `target/spike81_all.log`); `cargo clippy -p reasonbraid-cert-spike --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (the first run caught the base64 split → rcgen ships without `pem`); `make gate` → 13/13 | the ADR-006/007 spike: the project-local CA model measured and adopted (ADR-007), the transport decision recorded (ADR-006), the ledger row filled — frontier → `.1.2` |
-| `2026-09-07` | `PHASE-2.1.2.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 4 + 3 + 6 + 7 `passed` — `node_enrollment` grew to 4 with the CA-persistence test) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`, `target/pg121b_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0 (rcgen's `x509-parser` feature entered the server graph without a ban); `make gate` → 13/13 | cert issuance at enrollment: the persisted `ServerCa` (generated on first boot, loaded thereafter — the rebuild test proves the same key + cert), the enroll response carries the leaf + dev-escrowed key + fingerprint, `rb-node` stores `cert.der`/`key.der`; the HMAC channel untouched (the coherent interim) — frontier → `.1.2.2` |
+| `2026-09-07` | `PHASE-2.1.2.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 4 + 3 + 6 + 7 `passed` — `node_enrollment` grew to 4 with the CA-persistence test) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS, `rc=0`, `target/pg121b_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg121_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0; `make gate` → 13/13 | cert issuance at enrollment: the persisted `ServerCa` (generated on first boot, loaded thereafter — the rebuild test proves the same key + cert), the enroll response carries the leaf + dev-escrowed key + fingerprint, `rb-node` stores `cert.der`/`key.der`; the HMAC channel untouched (the coherent interim) — frontier → `.1.2.2` |
+| `2026-09-07` | `PHASE-2.1.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 19 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 19 with the rotation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (31 PASS, `rc=0`, `target/pg122e_guard.log`); `cargo test --all` → 42 offline suites green (rc=0, `target/pg122c_offline.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make deny` → rc=0; `make gate` → 13/13 | the channel v3 cert-proof handshake + rotation landed (chain + validity + fingerprint + signature before any ledger read; the additive rotate endpoint; the node's ≤50%-lifetime rotation); the ring-SPKI interop discovery recorded; **`.1.2` complete** — frontier → `.1.3` |
 
 ## Commit Log
 
@@ -425,3 +507,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.1` | `REASONBRAID-PHASE2-0002` | the ADR-006/007 spike + records: the test-only experiment crate, the two accepted ADRs, the ledger row; `make deny`'s ban caught the base64 split — fixed by dropping rcgen's unused `pem` feature |
 | `PHASE-2.1.2` | `REASONBRAID-PHASE2-0003` | the issuance-vs-channel split (the `.1.2.1`-first precedent): `.1.2.1` cert issuance at enrollment → `.1.2.2` the channel v3 swap |
 | `PHASE-2.1.2.1` | `REASONBRAID-PHASE2-0004` | cert issuance at enrollment: migration 0011 + `ca.rs` (the persisted CA) + the enroll response's cert + escrowed key + the node's `cert.der`/`key.der` persistence; the HMAC channel untouched |
+| `PHASE-2.1.2.2` | `REASONBRAID-PHASE2-0005` | the channel v3 cert-proof handshake + rotation: the signature replaces the HMAC (chain + validity + fingerprint + signature before any ledger read), the additive rotate endpoint, the node's ≤50%-lifetime rotation; the ring-SPKI interop fix; the 19 channel tests + the demo 31/31 |

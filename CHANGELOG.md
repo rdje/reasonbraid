@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The channel proves itself with the workload certificate (`PHASE-2.1.2.2`)
+
+- **CHANNEL_VERSION 3**: the handshake's HMAC secret is retired — the node signs the canonical coverage with its workload certificate's key, and the server verifies **chain-to-CA + the validity window + the node-id fingerprint + the signature before any ledger read**. A foreign, expired, unregistered, or wrongly-signed certificate is a typed 401, identically to an unenrolled node.
+- **Rotation is additive and automatic**: `POST /v1/nodes/rotate` issues a fresh key + certificate (a new fingerprint; the old leaf stays valid until expiry/revocation), and the node rotates when less than half the leaf's lifetime remains — a running session is never cut.
+- **A real interop discovery, measured not guessed**: ring's `UnparsedPublicKey` refuses rcgen's well-formed SPKI DER yet accepts the bare EC point (the path webpki uses internally — which is why the chain check always worked). The ladder probe isolated every leg before the fix; recorded in `docs/decisions/2026-09-07_cert-proof-verification.md`.
+- The 19 channel tests (17 migrated + the rotation pair) + the demo pass on v3 (31/31, the new cert-file beat included); the full guard green (12 suites + e2e + demo rc=0), 42 offline suites, clippy/fmt clean, `make deny` rc=0. The book's node-channel + two-host-demo chapters carry the new contract. **`.1.2` complete** — frontier → `.1.3` (revocation surfaces).
+
 ## 2026-09-07 — Enroll now issues a workload certificate (`PHASE-2.1.2.1`)
 
 - **The CA that survives the demo's kill point.** Migration 0011 adds `server_ca` (ONE row per deployment) + `node_certificates`; the server generates its CA on first boot and LOADS it thereafter — the enrollment suite's rebuild test asserts two `ensure_server_ca` passes return the same key + cert, so a server SIGKILL + restart never orphans an issued leaf.

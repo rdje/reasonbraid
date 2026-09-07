@@ -25,10 +25,11 @@
 //!   becomes [`node::NodeState::Schedulable`] only when it completes — the WP3
 //!   "not schedulable until reconciliation completes" acceptance.
 //!
-//! `PHASE-1.2.2` authenticates the channel: the handshake proves the node's dev
-//! secret (HMAC key-proof over the channel fields — [`channel::compute_key_proof`]),
-//! the server's reply carries a lease + fencing token, and events/ack/poll/heartbeat
-//! all ride that token; [`channel::NodeChannel::heartbeat`] renews the lease.
+//! `PHASE-2.1.2.2` proves the channel with the workload certificate: the handshake
+//! signs the channel fields with the leaf.s key ([`channel::compute_cert_proof`]), the
+//! server chains the leaf to its CA and answers with a lease + fencing token, and
+//! events/ack/poll/heartbeat all ride that token; [`channel::NodeChannel::heartbeat`]
+//! renews the lease.
 //!
 //! The execution supervisor and the adapter boundary are WP4's leaves.
 //!
@@ -42,9 +43,9 @@ mod supervisor;
 mod worker;
 
 pub use channel::{
-    compute_key_proof, AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt,
+    compute_cert_proof, AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt,
     HandshakeRequest, HandshakeResponse, HeartbeatResponse, KnownEvent, NodeChannel, PollResponse,
-    ProofCoverage, ReplayCommand, CHANNEL_VERSION,
+    ProofCoverage, ReplayCommand, RotateRequest, RotateResponse, CHANNEL_VERSION,
 };
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,

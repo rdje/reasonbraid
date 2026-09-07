@@ -104,19 +104,20 @@ pub struct Node {
 
 impl Node {
     /// Open (or create) the journal at `journal_path` and build the outbound channel
-    /// toward `base_url`, proving the node's identity with `key_secret` (the dev
-    /// signing secret enrolled at `.1.2.1`). The node starts `Offline`; call
-    /// [`Node::reconcile`].
+    /// toward `base_url`, proving the node's identity with its workload certificate
+    /// (the `.1.2.1` enrollment leaf or a `.1.2.2` rotation). The node starts
+    /// `Offline`; call [`Node::reconcile`].
     pub async fn open(
         journal_path: impl AsRef<Path>,
         base_url: impl Into<String>,
         node_id: String,
-        key_secret: String,
+        cert_der: Vec<u8>,
+        key: rcgen::KeyPair,
     ) -> Result<Self, NodeError> {
         Ok(Self {
             node_id: node_id.clone(),
             journal: Journal::open(journal_path).await?,
-            channel: NodeChannel::new(base_url, node_id, key_secret),
+            channel: NodeChannel::new(base_url, node_id, cert_der, key),
             state: Arc::new(RwLock::new(NodeState::Offline)),
         })
     }
@@ -177,9 +178,9 @@ impl Node {
             })
             .collect();
 
-        // 3. The handshake exchange. The key-proof is the CHANNEL's job (it owns
-        //    the secret): it overwrites this placeholder with the HMAC over the
-        //    fields reported here, so the proof always covers what is sent.
+        // 3. The handshake exchange. The certificate + proof are the CHANNEL.s
+        //    job (it owns the workload identity): it fills both from the
+        //    installed leaf, so the proof always covers what is sent.
         let response = self
             .channel
             .handshake(&HandshakeRequest {
@@ -188,7 +189,8 @@ impl Node {
                 last_acked_cursor,
                 pending_operations,
                 ambiguous_attempts,
-                key_proof: String::new(),
+                cert_der: String::new(),
+                proof_signature: String::new(),
             })
             .await?;
 

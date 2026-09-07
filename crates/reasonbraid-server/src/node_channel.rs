@@ -60,19 +60,16 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres};
 
-type HmacSha256 = Hmac<Sha256>;
-
 /// The node channel's wire protocol version. Both sides must agree; a mismatch is a
 /// `protocol_incompatible` error, never a silent downgrade. Version 2 (`.1.2.2`) adds
 /// the authenticated contract: the handshake key-proof, the fencing token on
 /// `events`/`ack`/`poll`, and the `heartbeat`/`presence` endpoints.
-pub const CHANNEL_VERSION: u32 = 2;
+pub const CHANNEL_VERSION: u32 = 3;
 
 /// The dev-profile lease TTL: a heartbeat renews a LIVE lease by this much. 60 s
 /// gives the demo's 15 s heartbeat cadence a 4× margin; a process that stops
@@ -104,8 +101,9 @@ struct ProofCoverage<'a> {
 }
 
 /// The reconnect exchange (`§17.4` steps 2–3): the node reports its durable resume
-/// facts and proves possession of its `.1.2.1` dev key; the server replies with the
-/// replay, the reconciliation guidance, and a fresh lease (fencing token + expiry).
+/// facts and proves possession of its workload certificate's key (`.1.2.2`); the
+/// server replies with the replay, the reconciliation guidance, and a fresh lease
+/// (fencing token + expiry).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HandshakeRequest {
@@ -117,10 +115,42 @@ pub struct HandshakeRequest {
     pub pending_operations: Vec<String>,
     /// Attempts the node's recovery classified `outcome_unknown`.
     pub ambiguous_attempts: Vec<AmbiguousAttempt>,
-    /// HMAC-SHA256 over the other fields (see [`ProofCoverage`]), hex-encoded,
-    /// keyed with the node's dev secret. A handshake without a valid proof is
-    /// refused `401 unauthorized` before any ledger fact is read.
-    pub key_proof: String,
+    /// The node's workload certificate (hex DER) — the leaf the `.1.2.1`
+    /// enrollment issued (or `.1.2.2` rotation refreshed).
+    pub cert_der: String,
+    /// ECDSA P-256 signature over the canonical coverage (see
+    /// [`ProofCoverage`]), hex-encoded, made with the certificate's private
+    /// key. A handshake without a valid proof is refused `401 unauthorized`
+    /// before any ledger fact is read.
+    pub proof_signature: String,
+}
+
+/// The rotate exchange (`.1.2.2`): the node presents its CURRENT certificate
+/// and receives a FRESH key + certificate for the same node id.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RotateRequest {
+    pub channel_version: u32,
+    pub node_id: String,
+    pub cert_der: String,
+    pub proof_signature: String,
+}
+
+/// The exact fields the rotate proof covers, in canonical (serde field) order.
+#[derive(Debug, Serialize)]
+pub struct RotateCoverage<'a> {
+    pub channel_version: u32,
+    pub node_id: &'a str,
+    pub cert_der: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RotateResponse {
+    pub node_id: String,
+    pub cert_der: String,
+    pub key_der: String,
+    pub cert_fingerprint: String,
+    pub cert_expires_at: DateTime<Utc>,
 }
 
 /// One ambiguous attempt the node reports for reconciliation.
@@ -331,7 +361,7 @@ impl ApiError {
         ApiError {
             status: StatusCode::UNAUTHORIZED,
             code: "unauthorized",
-            message: "the handshake key-proof was refused".to_string(),
+            message: "the handshake certificate proof was refused".to_string(),
         }
     }
 
@@ -538,18 +568,32 @@ impl NodeChannelState {
         .await
     }
 
-    /// Verify the handshake's HMAC-SHA256 key-proof over the canonical channel
-    /// fields, keyed with the node's dev secret. A node with no key row and a node
-    /// with a wrong proof fail IDENTICALLY (no existence leak).
-    pub async fn verify_handshake_proof(&self, req: &HandshakeRequest) -> Result<(), ApiError> {
-        let secret: Option<String> =
-            sqlx::query_scalar("SELECT key_secret FROM node_keys WHERE node_id = $1")
-                .bind(&req.node_id)
-                .fetch_optional(&self.pool)
-                .await?;
-        let Some(secret) = secret else {
+    /// Verify the handshake's certificate proof: the presented leaf must chain
+    /// to this deployment's CA within its validity window (webpki), its
+    /// fingerprint must be registered for THIS node and neither revoked nor
+    /// expired (the row check — `.1.3` writes `revoked_at`), and the signature
+    /// must verify over the canonical channel fields against the leaf's key.
+    /// Everything runs BEFORE any ledger fact (cursor, replay, receipts) is
+    /// read; a node with no certificate and a node with a bad proof fail
+    /// IDENTICALLY (no existence leak).
+    pub async fn verify_cert_proof(&self, req: &HandshakeRequest) -> Result<(), ApiError> {
+        let cert_der = decode_hex(&req.cert_der).ok_or_else(ApiError::proof_refused)?;
+        let signature = decode_hex(&req.proof_signature).ok_or_else(ApiError::proof_refused)?;
+        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| ApiError::proof_refused())?;
+        let fingerprint = crate::ca::cert_fingerprint(&cert_der);
+        let row: Option<(String, bool)> = sqlx::query_as(
+            "SELECT node_id, (revoked_at IS NOT NULL OR expires_at <= now()) \
+             FROM node_certificates WHERE cert_fingerprint = $1",
+        )
+        .bind(&fingerprint)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((node_id, unusable)) = row else {
             return Err(ApiError::proof_refused());
         };
+        if node_id != req.node_id || unusable {
+            return Err(ApiError::proof_refused());
+        }
         let coverage = ProofCoverage {
             channel_version: req.channel_version,
             node_id: &req.node_id,
@@ -561,16 +605,40 @@ impl NodeChannelState {
         // encoding are fixed by the struct shape on both sides.
         let canonical = serde_json::to_vec(&coverage)
             .map_err(|e| ApiError::bad_request(format!("unencodable handshake fields: {e}")))?;
-        let proof = decode_hex(&req.key_proof).ok_or_else(ApiError::proof_refused)?;
-        let mut mac =
-            HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| ApiError::proof_refused())?;
-        mac.update(&canonical);
-        // Constant-time comparison: a timing side channel must not leak prefix
-        // agreement with the stored secret.
-        match mac.verify_slice(&proof) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(ApiError::proof_refused()),
+        let spki = crate::ca::extract_point(&cert_der).map_err(|_| ApiError::proof_refused())?;
+        crate::ca::verify_signature(&spki, &canonical, &signature)
+            .map_err(|_| ApiError::proof_refused())
+    }
+
+    /// The rotate proof check (the same ladder over the rotate coverage).
+    pub async fn verify_rotate_proof(&self, req: &RotateRequest) -> Result<(), ApiError> {
+        let cert_der = decode_hex(&req.cert_der).ok_or_else(ApiError::proof_refused)?;
+        let signature = decode_hex(&req.proof_signature).ok_or_else(ApiError::proof_refused)?;
+        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| ApiError::proof_refused())?;
+        let fingerprint = crate::ca::cert_fingerprint(&cert_der);
+        let row: Option<(String, bool)> = sqlx::query_as(
+            "SELECT node_id, (revoked_at IS NOT NULL OR expires_at <= now()) \
+             FROM node_certificates WHERE cert_fingerprint = $1",
+        )
+        .bind(&fingerprint)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((node_id, unusable)) = row else {
+            return Err(ApiError::proof_refused());
+        };
+        if node_id != req.node_id || unusable {
+            return Err(ApiError::proof_refused());
         }
+        let coverage = RotateCoverage {
+            channel_version: req.channel_version,
+            node_id: &req.node_id,
+            cert_der: &req.cert_der,
+        };
+        let canonical = serde_json::to_vec(&coverage)
+            .map_err(|e| ApiError::bad_request(format!("unencodable rotate fields: {e}")))?;
+        let spki = crate::ca::extract_point(&cert_der).map_err(|_| ApiError::proof_refused())?;
+        crate::ca::verify_signature(&spki, &canonical, &signature)
+            .map_err(|_| ApiError::proof_refused())
     }
 
     /// Verify a fencing token against the node's lease: the token must be the
@@ -782,6 +850,7 @@ pub fn node_router(pool: PgPool, ca: Arc<crate::ca::ServerCa>) -> Router {
         .route("/v1/nodes/heartbeat", post(heartbeat))
         .route("/v1/nodes/presence", get(presence))
         .route("/v1/nodes/enroll", post(enroll))
+        .route("/v1/nodes/rotate", post(rotate))
         .with_state(state)
 }
 
@@ -798,9 +867,9 @@ async fn handshake(
     Json(req): Json<HandshakeRequest>,
 ) -> Result<Json<HandshakeResponse>, ApiError> {
     check_version(req.channel_version)?;
-    // Authentication FIRST: a handshake without a valid key-proof is refused
-    // before any ledger fact (cursor, replay, receipts) is read.
-    state.verify_handshake_proof(&req).await?;
+    // Authentication FIRST: a handshake without a valid certificate proof is
+    // refused before any ledger fact (cursor, replay, receipts) is read.
+    state.verify_cert_proof(&req).await?;
 
     let current = state.current_cursor(&req.node_id).await?;
     if req.last_acked_cursor > current {
@@ -852,6 +921,58 @@ async fn handshake(
         known_events,
         fencing_token,
         lease_expires_at,
+    }))
+}
+
+/// The certificate rotation (`.1.2.2`): the node presents its CURRENT
+/// certificate (proof over the rotate coverage) and receives a FRESH key +
+/// certificate for the same node id. Rotation is ADDITIVE — the old
+/// fingerprint stays valid until expiry or revocation (`.1.3`), so a running
+/// session is never cut; the fresh identity rides the NEXT handshake.
+async fn rotate(
+    State(state): State<Arc<NodeChannelState>>,
+    Json(req): Json<RotateRequest>,
+) -> Result<Json<RotateResponse>, ApiError> {
+    check_version(req.channel_version)?;
+    state.verify_rotate_proof(&req).await?;
+
+    // The durable host claim (the SAN the leaf carries) comes from the node's
+    // host row — rotation keeps the same identity binding.
+    let host_claim: Option<String> = sqlx::query_scalar(
+        "SELECT h.name FROM nodes n JOIN hosts h ON n.host_id = h.host_id \
+         WHERE n.node_id = $1",
+    )
+    .bind(&req.node_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(host_claim) = host_claim else {
+        return Err(ApiError::unknown_node(&req.node_id));
+    };
+
+    let (cert_der, key_der) = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim);
+    let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
+    let now = Utc::now();
+    let cert_expires_at = now + ChronoDuration::seconds(crate::ca::LEAF_TTL_SECS);
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&cert_fingerprint)
+    .bind(&req.node_id)
+    .bind(&cert_der)
+    .bind(&key_der)
+    .bind(now)
+    .bind(cert_expires_at)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(RotateResponse {
+        node_id: req.node_id,
+        cert_der: crate::ca::to_hex(&cert_der),
+        key_der: crate::ca::to_hex(&key_der),
+        cert_fingerprint,
+        cert_expires_at,
     }))
 }
 

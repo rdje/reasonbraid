@@ -583,6 +583,10 @@ impl NodeChannelState {
                     policy_digest, decided_at, revocation_epoch \
              FROM node_inbox \
              WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                   WHERE v.role_id = $1 AND v.version = p.current_version \
+                     AND (v.profile->'availability'->>'concurrency')::bigint = 0) \
              ORDER BY cursor",
         )
         .bind(node_id)

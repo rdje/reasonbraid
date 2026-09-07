@@ -66,11 +66,12 @@ async fn pool() -> Option<PgPool> {
         "incarnations",
         "nodes",
         "hosts",
-        "agent_roles",
-        "human_principals",
         "recruitment_panels",
         "recruitment_responses",
+        "recruitment_offers",
         "recruitment_calls",
+        "agent_roles",
+        "human_principals",
         "tenants",
         "idempotency",
         "event_log",
@@ -1602,4 +1603,113 @@ async fn the_open_call_storm_controls_hold_at_the_dev_scale() {
             .contains("expired"),
         "the refusal names the expiry: {refused}"
     );
+}
+
+/// THE `.3.5.2` subscription acceptance: the open call's topic tags MATCH the
+/// subscribers' declared interests — the server records the offers (the
+/// advertisement window's durable trace) and the inspection shows them.
+#[tokio::test]
+async fn the_open_call_advertises_to_the_subscribers() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "subs-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // Two roles declaring the SAME interest; one also declares a second.
+    let mut profile = |extra: &[&str]| {
+        let mut p = visibility_profile();
+        p["interests"] = json!(["parser trivia"]);
+        for e in extra {
+            p["interests"].as_array_mut().unwrap().push(json!(e));
+        }
+        p
+    };
+    let (status, role_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "subs-agent-a", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role A enrolls: {role_a}");
+    let role_a_id = role_a["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_a_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_a_id}"),
+        &role_a_id,
+        &profile(&[]),
+    )
+    .await;
+    assert_eq!(status, 200, "role A writes");
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "subs-agent-b", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role B enrolls: {role_b}");
+    let role_b_id = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_b_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b_id}"),
+        &role_b_id,
+        &profile(&["schema drift"]),
+    )
+    .await;
+    assert_eq!(status, 200, "role B writes");
+
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let response = client
+        .post(format!("{base}/v1/calls"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "tenant_id": tenant,
+            "thread_id": "thr_00000000-0000-7000-8000-000000000002",
+            "expression": {
+                "scope": "tenant",
+                "interests": ["parser trivia"],
+                "presence_states": ["available", "offline"],
+            },
+            "join_deadline": deadline,
+            "expires_at": expiry,
+        }))
+        .send()
+        .await
+        .expect("open request");
+    assert_eq!(response.status().as_u16(), 200, "the call opens");
+    let opened: Value = response.json().await.unwrap();
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        opened["offered_to"],
+        json!(2),
+        "BOTH matching subscribers are offered: {opened}"
+    );
+
+    // The inspection lists the offers (the advertisement's durable trace).
+    let (status, inspected) = get(&client, &base, &format!("/v1/calls/{call_id}"), &human_id).await;
+    assert_eq!(status, 200, "the inspection: {inspected}");
+    let offers = inspected["offers"].as_array().unwrap();
+    assert_eq!(offers.len(), 2, "{inspected}");
+    for offer in offers {
+        let role = offer.as_str().unwrap();
+        assert!(
+            role == role_a_id || role == role_b_id,
+            "the offer names a real subscriber: {offer}"
+        );
+    }
 }

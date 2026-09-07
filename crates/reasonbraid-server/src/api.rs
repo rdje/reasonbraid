@@ -1333,10 +1333,38 @@ async fn open_recruitment_call(
         req.expires_at,
     )
     .await?;
+
+    // The advertisement (`.5.2`): the call's topic tags (the expression's
+    // interests) MATCH the subscribers' declared interests — the server
+    // records the offer (the §10.5 advertisement window's durable trace).
+    let subscribers: Vec<String> = sqlx::query_scalar(
+        "SELECT p.role_id \
+         FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+         JOIN agent_roles r ON r.role_id = p.role_id \
+         WHERE v.version = p.current_version AND r.tenant_id = $1 \
+           AND v.profile->'interests' ?| $2",
+    )
+    .bind(&req.tenant_id)
+    .bind(req.expression.interests.clone())
+    .fetch_all(&state.pool)
+    .await?;
+    let offered_count = subscribers.len();
+    for role_id in subscribers {
+        sqlx::query(
+            "INSERT INTO recruitment_offers (offer_id, call_id, role_id) \
+             VALUES ('ofr_' || gen_random_uuid()::text, $1, $2)",
+        )
+        .bind(&call_id)
+        .bind(&role_id)
+        .execute(&state.pool)
+        .await?;
+    }
+
     Ok(Json(json!({
         "call_id": call_id,
         "thread_id": req.thread_id,
         "status": "open",
+        "offered_to": offered_count,
     })))
 }
 
@@ -1544,6 +1572,12 @@ async fn inspect_call(
         ));
     }
     let responses = crate::recruitment::responses(&state.pool, &call_id).await?;
+    let offers: Vec<String> = sqlx::query_scalar(
+        "SELECT role_id FROM recruitment_offers WHERE call_id = $1 ORDER BY role_id",
+    )
+    .bind(&call_id)
+    .fetch_all(&state.pool)
+    .await?;
     let snapshot: Option<(Value, Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT panel, explanation, snapshotted_at FROM recruitment_panels WHERE call_id = $1",
     )
@@ -1556,6 +1590,7 @@ async fn inspect_call(
         "status": call.status,
         "min_participants": call.min_participants,
         "max_participants": call.max_participants,
+        "offers": offers,
         "responses": responses
             .into_iter()
             .map(|(respondent, kind, payload, at)| json!({

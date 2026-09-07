@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The interests become subscriptions, the concurrency becomes a gate (`PHASE-3.5.2`)
+
+- Migration 0022 (`recruitment_offers`): the open call's topic tags MATCH the subscribers' declared interests — the server records the offer (the §10.5 advertisement window's durable trace); the open response carries the offered count, the inspection lists the offers.
+- The delivery-boundary wake gate: the channel's replay skips a role whose current profile declares ZERO concurrency — the rows stay `queued` until the policy admits work. The §11.5 checklist's first half at the dev scale (the mode/topic + the operating-hours checks need the typed policy fields — named with the `.5.3` trigger).
+- Measured: the offers test (both matching subscribers offered) + the wake-gate test (the held role receives nothing, the admitted role receives the row) — profiles 10, node_channel 25. Frontier → `.5.3` (the node-initiated thread API).
+
 ## 2026-09-07 — The delivery ladder is a view, not a column: the states are the shipped transitions, named (`PHASE-3.5.1`)
 
 - Migration 0021's `node_inbox_state` view derives the §10.6 ladder from the columns the transitions ALREADY write: `queued` → `acknowledged` → `consumed` (the ack + the work-result receipt) and `dead_lettered` (the quarantine IS the dead letter) — one truth, never a parallel column. The `expired`/`revoked` terminals ride the retention/prune + the revocation re-delivery semantics (named).

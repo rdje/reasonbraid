@@ -559,7 +559,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       and the existing columns agree, measured); no regression.
 
   - ID: `PHASE-3.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the subscriptions + the wake policies — the profile's
       `interests` become ACTIONABLE subscriptions (the `.4` call's
       topic tags match the role's declared interests — the open
@@ -570,6 +570,23 @@ eligibility before ranking. Dependence indicators, never an independence score.
       concurrency checks — BEFORE the dispatch; the §11.5
       checklist's first half).
     Backlog: 30 (the subscription + wake half)
+    Done (`2026-09-07`): the subscriptions + the wake gate landed —
+      migration 0022 (`recruitment_offers`: the open call's topic
+      tags MATCH the subscribers' declared interests; the server
+      records the offer — the §10.5 advertisement window's durable
+      trace; the open response carries the offered count + the
+      inspection lists the offers) and the delivery-boundary wake
+      gate (the channel's replay skips a role whose current profile
+      declares ZERO concurrency — the rows stay `queued` until the
+      policy admits work; the §11.5 checklist's first half at the
+      dev scale: the concurrency gate is the typed fact, the
+      mode/topic + the operating-hours checks need the typed policy
+      fields — named with the `.5.3` trigger). Measured: the
+      offers test (both matching subscribers offered, the
+      inspection lists them) + the wake-gate test (the held role
+      receives nothing; the admitted role receives the row) — the
+      profiles suite grew to 10, the node_channel suite to 25.
+      Frontier → `.5.3`.
     Acceptance: the offer-to-subscribers + the wake-gate refusal are
       measured; no regression.
 
@@ -605,7 +622,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.5.2` | `proposed` | `.5.1` done — the delivery-state machine (the derived ladder, one truth, the inspection shows the state); the subscriptions + the wake gate execute now |
+| 1 | `PHASE-3.5.3` | `proposed` | `.5.2` done — the subscriptions + the wake gate (the server-recorded offers + the delivery-boundary zero-concurrency hold); the node-initiated thread API executes now |
 
 ## Changelog
 
@@ -700,6 +717,59 @@ eligibility before ranking. Dependence indicators, never an independence score.
   0021's view names the ladder from the shipped columns; the
   inspection shows the state per row); node_channel 24; frontier →
   `.5.2`.
+- `2026-09-07`: `.5.2` done — the subscriptions + the wake gate
+  (migration 0022's offers + the delivery-boundary zero-concurrency
+  hold); the profiles suite grew to 10, the node_channel suite to
+  25; frontier → `.5.3`.
+
+## Acceptance Checklist (PHASE-3.5.2)
+
+The CODE change owned by this leaf:
+`migrations/0022_recruitment_offers.sql` (NEW — the offers table),
+`crates/reasonbraid-server/src/api.rs` (the subscriber computation +
+the offers + the inspection field),
+`crates/reasonbraid-server/src/node_channel.rs` (the delivery-
+boundary wake gate in the replay query),
+`crates/reasonbraid-server/tests/profiles.rs` + `tests/node_channel
+.rs` (the two measured legs), and the eleven purge lists (the 0022
+FK ripple + the trio reordered before `agent_roles`) — `\.rs$` +
+`(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.5` census: the profile's
+  interests are declarative only (no offer trace exists) and the
+  stored `wake_policy`/concurrency facts gate nothing at the
+  delivery.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the interests were never
+  MATCHED against anything and the availability facts were
+  read-only — `git grep -c "recruitment_offers" 0bf7574 --
+  crates/ migrations/` → rc=1 (nothing before this leaf). The fix
+  points: the open call advertises to the subscribers (the
+  interests intersection, server-recorded) and the channel's
+  replay skips the zero-concurrency roles (the delivery-boundary
+  gate — the node's wake is the SERVER's hold at the dev scale).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  the_open_call_advertises` → `test result: ok. 1 passed` (BOTH
+  matching subscribers are offered; the inspection lists them) and
+  `cargo test -p reasonbraid-server --test node_channel
+  the_zero_concurrency` → `test result: ok. 1 passed` (the held
+  role receives NOTHING; the admitted role receives the row).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg352_guard.log`; the profiles suite grew to 10, the
+  node_channel suite to 25); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0022_recruitment_offers.sql`, `src/api.rs`,
+  `src/node_channel.rs` (the replay gate), the two test files, the
+  eleven purge lists (the trio reordered before `agent_roles` —
+  the first guard run caught the FK order).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.5.1)
 
@@ -1208,6 +1278,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.5.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_advertises` → `test result: ok. 1 passed` + `cargo test -p reasonbraid-server --test node_channel the_zero_concurrency` → `test result: ok. 1 passed` (the offers + the hold, measured); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg352_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the subscriptions + the wake gate; frontier → `.5.3` |
 | `2026-09-07` | `PHASE-3.5.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_delivery_ladder` → `test result: ok. 1 passed` (the three-rung walk — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg351_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the delivery-state machine (the derived ladder); frontier → `.5.2` |
 | `2026-09-07` | `PHASE-3.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the subscriptions-lane census + the contract-seam decomposition (`.5.1` ladder → `.5.2` subscriptions + wake → `.5.3` auto-initiation); frontier → `.5.1` |
 | `2026-09-07` | `PHASE-3.4.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_storm` → `test result: ok. 1 passed` (the 5th open's typed 429 + the expired call's refusal — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg343_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the storm controls' buildable core + the named deferrals; **`.4` COMPLETE** — frontier → `.5` |
@@ -1230,6 +1301,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.5.2` | `REASONBRAID-PHASE3-0019` | the subscriptions + the wake gate (migration 0022's offers + the delivery-boundary hold) |
 | `PHASE-3.5.1` | `REASONBRAID-PHASE3-0018` | the delivery-state machine (migration 0021's derived view + the inspection's `delivery_state`) |
 | `PHASE-3.5` | `REASONBRAID-PHASE3-0017` | the subscriptions lane decomposed at the census seams (the inbox machinery exists; the ladder/wake/auto-initiation are the gaps) |
 | `PHASE-3.4.3` | `REASONBRAID-PHASE3-0016` | the storm controls' buildable core (the fan-out caps + the expiry enforcement) + the six named deferrals — **`.4` COMPLETE** |

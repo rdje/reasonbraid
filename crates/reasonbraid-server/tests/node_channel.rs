@@ -87,11 +87,12 @@ async fn pool() -> Option<PgPool> {
         "hosts",
         "profile_versions",
         "agent_profiles",
-        "agent_roles",
-        "human_principals",
         "recruitment_panels",
         "recruitment_responses",
+        "recruitment_offers",
         "recruitment_calls",
+        "agent_roles",
+        "human_principals",
         "tenants",
         "idempotency",
         "event_log",
@@ -1634,6 +1635,89 @@ async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> S
     assert_eq!(response.status().as_u16(), 200, "the role enrolls");
     let body: Value = response.json().await.expect("enroll json");
     body["principal_id"].as_str().unwrap().to_string()
+}
+
+/// THE `.3.5.2` wake-gate acceptance: a role whose profile declares ZERO
+/// concurrency is HELD at the delivery boundary — its inbox rows stay
+/// `queued` (the replay skips them) until the policy admits work again.
+#[tokio::test]
+async fn the_zero_concurrency_wake_gate_holds_the_delivery() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+
+    // The dev wiring's node==role: the role must exist for the profile join.
+    let role_id = "rol_00000000-0000-7000-8000-0000000000c1".to_string();
+    sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ('ten_00000000-0000-7000-8000-0000000000c1', 'gate')")
+        .execute(&pool)
+        .await
+        .expect("seed tenant");
+    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'gate-role')")
+        .bind(&role_id)
+        .bind("ten_00000000-0000-7000-8000-0000000000c1")
+        .execute(&pool)
+        .await
+        .expect("seed role");
+    sqlx::query("INSERT INTO agent_profiles (role_id, current_version) VALUES ($1, 1)")
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("seed profile pointer");
+    sqlx::query(
+        "INSERT INTO profile_versions (version_id, role_id, version, content_hash, profile, written_by) \
+         VALUES ('pver_gate_1', $1, 1, 'h', $2, 'agt_gate')",
+    )
+    .bind(&role_id)
+    .bind(serde_json::json!({
+        "display_label": "gate",
+        "purpose": "probe",
+        "conversation_modes": [],
+        "capabilities": [],
+        "interests": [],
+        "languages": [],
+        "structured_output_formats": [],
+        "scopes": [],
+        "confidentiality_classes": [],
+        "availability": { "concurrency": 0, "operating_hours": null, "wake_policy": null },
+        "resolver_tool_capabilities": [],
+        "cost_latency_class": null,
+        "resource_ceilings": null,
+        "visibility": {},
+        "grants_by_reference": [],
+        "incarnation_id": null,
+    }))
+    .execute(&pool)
+    .await
+    .expect("seed the zero-concurrency profile");
+
+    let command_id = "cmd_gate_1".to_string();
+    state
+        .enqueue(
+            &role_id,
+            &command_id,
+            "ten_00000000-0000-7000-8000-0000000000c1",
+            "thr_00000000-0000-7000-8000-000000000000",
+            &json!({ "operation": "contribute", "command_id": command_id }),
+        )
+        .await
+        .expect("enqueue");
+
+    // The zero-concurrency gate HOLDS the delivery: the replay returns nothing.
+    let held = state.replay(&role_id, 0).await.expect("the replay");
+    assert!(held.is_empty(), "the held role receives nothing: {held:?}");
+
+    // The policy admits work again: the delivery flows.
+    sqlx::query(
+        "UPDATE profile_versions SET profile = jsonb_set(profile, '{availability,concurrency}', '2') \
+         WHERE role_id = $1 AND version = 1",
+    )
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("admit work");
+    let delivered = state.replay(&role_id, 0).await.expect("the replay");
+    assert_eq!(delivered.len(), 1, "the admitted role receives the row");
 }
 
 /// THE `.3.5.1` acceptance: the §10.6 ladder is ONE derived truth — the

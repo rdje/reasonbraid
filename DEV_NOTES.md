@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.5.2: a declared fact becomes a control when something MATCHES it — the offers and the hold are the first two matchers
+
+- **The interests and the concurrency were data until they met a consumer.** The open call now advertises to the subscribers (the interests intersection, server-recorded — the advertisement window's durable trace), and the channel's replay holds the zero-concurrency roles (the wake gate at the delivery boundary — the dev profile's honest stand-in for the node-side wake checklist, whose remaining checks need the typed policy fields). The first guard run caught the third purge-list ripple: the new table's FK order relative to `agent_roles` — the trio reordered in all eleven lists.
+- promotion: declined (the two matchers are the leaf's own measured contracts). **Frontier `PHASE-3.5.3` (the node-initiated thread API).**
+
 ## _(2026-09-07)_ — PHASE-3.5.1: the delivery ladder is observability, not machinery — the view names what the transitions already write
 
 - **No new column, no new writes**: the §10.6 states derive from the shipped facts (the ack, the quarantine, the work-result receipt) through one VIEW — the alternative (a `delivery_state` column maintained by the same code paths) would be a parallel truth waiting to drift. The inspection now shows each row's rung, and the measured walk proves the derivation agrees with the columns at three rungs simultaneously.

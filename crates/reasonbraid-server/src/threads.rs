@@ -705,6 +705,11 @@ pub fn work_payload(
         "objective": objective,
         "reservation": reservation,
         "reservation_reason": reservation_reason,
+        // The §14.6 retry authorization (`.2.3`): the dev profile dispatches
+        // nothing with a possible-duplicate risk — the flag rides the wire so
+        // the node's retry gate is typed, and it stays false until a surface
+        // (Phase 5+ correction machinery) authorizes a risky re-run.
+        "allow_possible_duplicate": false,
     });
     if let Some(target) = target_event_id {
         payload["target_event_id"] = json!(target);

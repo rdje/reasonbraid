@@ -634,7 +634,7 @@ slice can reuse the same control plane without rewriting it.
       no regression.
 
   - ID: `PHASE-2.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the retry policy — the §14.6 classes as a pure decision (the
       provider-accepted-but-unproven class retries only with an explicit
       possible-duplicate authorization; the refused/failed_known classes
@@ -642,6 +642,25 @@ slice can reuse the same control plane without rewriting it.
       bounded), the `retry_requires_authorization` reason code wired, and
       the supervisor's retry gate honoring it (a node-side journal fact,
       no silent retry).
+    Done (`2026-09-07`): the pure `retry_decision` landed in the core
+      crate (`retry.rs`: `None`/`prepared` re-dispatch unconditionally; a
+      budget-denied item — no reservation — is terminal whatever the
+      count; a reserved pre-dispatch refusal retries bounded
+      (`MAX_DISPATCH_ATTEMPTS` 3); `outcome_unknown` retries ONLY with
+      the delivery's `allow_possible_duplicate` flag — without it the
+      refusal names `retry_requires_authorization`; dispatched →
+      proof-or-adjudication; terminal states never; 5 tests — the core
+      suite 49). The work payload gains the typed flag (false in the dev
+      profile — nothing dispatches with duplicate risk); the worker's
+      skip decision became the retry gate (the payload facts parsed
+      first: reservation presence + the flag + the attempt count from
+      the `.1.6.2` accessor; a refusal is logged with the reason and the
+      item's journal status stays the visible fact). Four worker-level
+      tests prove the legs (re-dispatch after a reserved refusal reaches
+      the adapter and completes; the budget denial stays one attempt; the
+      ambiguous refusal stays one attempt; the authorized ambiguous
+      re-dispatch runs). The acceptance checklist below records the
+      evidence — frontier → `.2.4`.
     Acceptance: the pure retry decision's tests (per-class allow/refuse);
       a would-be retry without the authorization is refused and visible;
       no regression.
@@ -690,12 +709,20 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.2.3` | `proposed` | `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
+| 1 | `PHASE-2.2.4` | `proposed` | `.2.3` done — the retry policy (the pure decision + the worker's retry gate + the typed wire flag); the dead-letter/replay surface executes now |
+ `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
  `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.2.3` done — the retry policy: the pure `retry_decision`
+  (§14.6 classes: a budget denial is terminal, a reserved pre-dispatch
+  refusal retries bounded, an ambiguous outcome needs the explicit
+  possible-duplicate flag — the refusal names `retry_requires_authorization`),
+  the work payload's typed flag, the worker's retry gate (the attempt count
+  rides the `.1.6.2` accessor); core 49 + the four worker legs; frontier →
+  `.2.4`.
 - `2026-09-07`: `.2.2` done — lease/fencing hardening: migration 0015's
   lease epoch rides every fenced write (the token AND the epoch fence the old
   session), a stale-epoch renewal matches no row (the heartbeat loses the
@@ -965,6 +992,49 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.2.3)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/{retry.rs,
+lib.rs}` (the pure decision + exports), `crates/reasonbraid-server/src/
+threads.rs` (the typed wire flag), `crates/reasonbraid-node/src/worker.rs`
+(the retry gate), `crates/reasonbraid-node/tests/worker_retry_policy.rs` —
+all code paths.
+
+- [x] **REPRODUCE / ISSUE** — the worker's skip decision was binary:
+  `None | prepared` re-dispatch, everything else skip — the §14.6 classes
+  had no expression, the budget denial and the transient refusal shared
+  one status, and `retry_requires_authorization` existed as a code but
+  was wired nowhere.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the classes are distinguishable by
+  facts the worker already holds: the reservation's presence (a budget
+  denial means the server refused — retrying cannot change it) and the
+  delivery's duplicate flag (a risky re-run must be AUTHORIZED). The fix
+  is the pure decision over those facts, evaluated before any gate.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  decision, no flag. After: `cargo test -p reasonbraid-core` →
+  `test result: ok. 49 passed` (the five retry tests: the boundary-
+  never-crossed rule, the terminal budget denial at ANY count, the
+  bounded reserved retry, the authorization-required ambiguity, the
+  terminal states); `cargo test -p reasonbraid-node --test
+  worker_retry_policy` → `test result: ok. 4 passed` (a reserved refusal
+  re-dispatches and reaches the adapter; the budget denial stays one
+  attempt; the ambiguous refusal stays one attempt; the authorized
+  ambiguous re-dispatch runs).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve
+  live server suites green + CLI e2e `2 passed` + the demo
+  `ALL acceptance checks passed` (34 PASS — the budget-denied beat stays
+  `failed_before_dispatch=1`: the denial is terminal by design, `rc=0`,
+  `target/pg223_guard.log`); `cargo test --all` → 44 offline suites
+  green; `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `retry.rs` (the decision + the five tests); the typed
+  `allow_possible_duplicate` wire flag; the worker's retry gate (the
+  payload facts first, the attempt count from the `.1.6.2` accessor, the
+  refusal log naming the reason); the worker-level tests.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP — same
+  commit.
 
 ## Acceptance Checklist (PHASE-2.2.2)
 
@@ -1447,7 +1517,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 7 + 7 `passed` — `node_channel` grew to 22 with the deterministic renewal-race test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg222c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the lease epoch (migration 0015 + CHANNEL_VERSION 5): the token AND the epoch fence the old session, a stale-epoch renewal matches no row, the in-tx verifier closes the check-vs-commit window; frontier → `.2.3` |
+| `2026-09-07` | `PHASE-2.2.3` | `cargo test -p reasonbraid-core` → `test result: ok. 49 passed` (the five retry tests); `cargo test -p reasonbraid-node --test worker_retry_policy` → `test result: ok. 4 passed`; `bash scripts/run_pg_tests.sh` → all twelve live suites + e2e + the demo 34 PASS (`rc=0`, `target/pg223_guard.log`); `cargo test --all` → 44 offline suites; clippy/fmt clean; `make gate` → 13/13 | the retry policy (the pure §14.6 decision + the typed wire flag + the worker's retry gate); frontier → `.2.4` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 7 + 7 `passed` — `node_channel` grew to 22 with the deterministic renewal-race test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg222c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the lease epoch (migration 0015 + CHANNEL_VERSION 5): the token AND the epoch fence the old session, a stale-epoch renewal matches no row, the in-tx verifier closes the check-vs-commit window; frontier → `.2.3` |
  docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-005 accepted (the PostgreSQL queue — evidence-gated); frontier → `.2.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — the result-fold test gained the run-writer legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg162_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the run writer (the result receipt's attempt→incarnation link + the inspection chain); **`.1.6` complete — deferral #4 closes — `.1` COMPLETE**; frontier → `.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
@@ -1470,6 +1541,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.2.3` | `REASONBRAID-PHASE2-0021` | the retry policy: the pure `retry_decision` (§14.6 classes) + the `allow_possible_duplicate` wire flag + the worker's retry gate (attempt-counted, budget-denials terminal, ambiguity authorization-required) |
 | `PHASE-2.2.2` | `REASONBRAID-PHASE2-0020` | the lease epoch: migration 0015 + CHANNEL_VERSION 5 — every fenced write carries the epoch it saw, a stale-epoch renewal loses the race, the events transaction re-verifies FOR UPDATE |
 | `PHASE-2.2.1` | `REASONBRAID-PHASE2-0019` | ADR-005 accepted (the PostgreSQL queue — evidence-gated; the WP2 outbox worker + ADR-004/006 promote; no code changes) |
 | `PHASE-2.2` | `REASONBRAID-PHASE2-0018` | the contract-seam split (the Phase-1 lease/fencing + quarantine exist; retry policy, dead-letter/replay, ADR-005 open) |

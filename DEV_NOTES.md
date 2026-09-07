@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.2.3: the retry classes were already distinguishable — the reservation's presence and the delivery's flag
+
+- **The budget denial and the transient refusal share one journal status** (`failed_before_dispatch`), but the worker already holds the distinguishing fact: the delivery's reservation. The server denied the reservation = retrying can never help (terminal); a valid reservation = the refusal was node-side, before any provider contact (bounded retry). No new state machine — the pure decision reads what exists.
+- **The risky re-run must be AUTHORIZED, not inferred**: the delivery gains `allow_possible_duplicate` (false everywhere in the dev profile), so `outcome_unknown` stays untouched until a future surface says the possible duplicate is acceptable — the refusal names the §9.8 code the registry already carried.
+- promotion: declined (the class-vs-fact mapping and the terminal-budget-denial rule are the leaf's recorded contract — no new cross-cutting decision). **Frontier `PHASE-2.2.4` (dead-letter/replay).**
+
 ## _(2026-09-07)_ — PHASE-2.2.2: fencing is a pair, not a token — the epoch is what makes the race observable
 
 - **The renewal race was invisible by construction**: `renew_lease`'s WHERE was `node_id` only, so a stale heartbeat that verified before a concurrent handshake extended the NEW session's lease after it landed. The epoch turns "last writer wins" into "last writer must still be current": the write carries the epoch it saw, and the rotation made that epoch dead.

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The retry policy: classes over facts the worker already holds (`PHASE-2.2.3`)
+
+- The pure `retry_decision` lands in the core crate (§14.6): `None`/`prepared` re-dispatch unconditionally (the boundary was never crossed); a `failed_before_dispatch` WITHOUT a reservation is terminal (the SERVER denied the budget — a retry cannot change it); WITH a reservation it retries bounded (3 attempts); `outcome_unknown` retries only with the delivery's explicit `allow_possible_duplicate` flag — without it the refusal names §9.8's `retry_requires_authorization`; a dispatched attempt belongs to proof/adjudication; terminal states never. Five tests; the core suite is 49.
+- The work payload gains the typed flag (false in the dev profile — nothing dispatches with duplicate risk); the worker's binary skip became the retry gate (payload facts parsed first, the attempt count rides the `.1.6.2` accessor, a refusal logs the reason and the journal status stays the visible fact — never silently retried).
+- Four worker-level legs prove the behavior (re-dispatch reaches the adapter; the budget denial stays ONE attempt — the demo's `failed_before_dispatch=1` beat is the contract; the ambiguous refusal stays one; the authorized one re-dispatches). Demo 34/34. Frontier → `.2.4` (dead-letter/replay).
+
 ## 2026-09-07 — The lease epoch: a stale heartbeat loses the race it never knew it ran (`PHASE-2.2.2`)
 
 - Migration 0015 adds `node_leases.lease_epoch`; every handshake bumps it with the token — fencing is now a PAIR (token + epoch), and all four fenced writes (events/ack/poll/heartbeat) carry the epoch they saw.

@@ -187,19 +187,45 @@ impl<A: Adapter> Worker<A> {
         Ok(())
     }
 
-    /// The execution/skip decision and one item's attempt→event pipeline.
+    /// The execution/retry decision and one item's attempt→event pipeline.
     pub async fn process(&self, item: &WorkItem) -> Result<(), WorkerError> {
-        let safe = match item.latest_attempt_status.as_deref() {
-            // No attempt yet, or a crash before the dispatch boundary was crossed:
-            // the provider was never contacted, so execution is safe.
-            None | Some("prepared") => true,
-            // dispatched/outcome_unknown: proof or adjudication owns it (§14.6 —
-            // a silent retry could duplicate a provider effect). Terminal states:
-            // done.
-            Some(_) => false,
+        // The payload facts the retry gate reads (parsed BEFORE the decision —
+        // the gate's inputs are the delivery's own fields).
+        let payload: Value = serde_json::from_str(&item.payload)
+            .map_err(|e| WorkerError::MalformedPayload(e.to_string()))?;
+        let reservation_present = payload.get("reservation").is_some_and(|v| !v.is_null());
+        let duplicate_authorized = payload
+            .get("allow_possible_duplicate")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let attempt_count = match &item.operation_id {
+            Some(op) => self.node.journal().attempts_for_operation(op).await?.len(),
+            None => 0,
         };
-        if !safe {
-            return Ok(());
+
+        // THE retry gate (`.2.3`, §14.6): a pure decision over the previous
+        // attempt's facts. No attempt / a prepared one (the boundary never
+        // crossed) and a bounded, reserved pre-dispatch refusal re-dispatch;
+        // an outcome_unknown retries only with the explicit possible-duplicate
+        // authorization; a budget-denied item (no reservation) and every
+        // terminal state are refused — the refusal is logged with the reason
+        // (the §9.8 code), and the item's journal status stays the visible fact
+        // (never silently retried).
+        match reasonbraid_core::retry_decision(
+            item.latest_attempt_status.as_deref(),
+            attempt_count,
+            reservation_present,
+            duplicate_authorized,
+        ) {
+            reasonbraid_core::RetryVerdict::Retry => {}
+            reasonbraid_core::RetryVerdict::Refuse { reason } => {
+                eprintln!(
+                    "worker: {} REFUSED the re-dispatch of {} (retry gate): {reason}",
+                    self.node.node_id(),
+                    item.command_id
+                );
+                return Ok(());
+            }
         }
 
         // THE cached-decision gate (`.1.5.2`, ADR-008): the dispatch boundary
@@ -260,8 +286,6 @@ impl<A: Adapter> Worker<A> {
             }
         }
 
-        let payload: Value = serde_json::from_str(&item.payload)
-            .map_err(|e| WorkerError::MalformedPayload(e.to_string()))?;
         let work_kind = payload
             .get("kind")
             .and_then(|v| v.as_str())

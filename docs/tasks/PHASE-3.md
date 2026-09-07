@@ -591,7 +591,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       measured; no regression.
 
   - ID: `PHASE-3.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the node-initiated thread API — the `thread:create:auto`
       grant (a role initiates a NEW thread under the bounded grant:
       the topic + the audience + the rate + the depth + the spend +
@@ -604,6 +604,25 @@ eligibility before ranking. Dependence indicators, never an independence score.
       initiation lands. Replies do NOT inherit the child-thread
       permission (the grant is explicit per the mode).
     Backlog: 30 (the initiation half)
+    Done (`2026-09-07`): the node-initiated thread API landed —
+      `GrantAction::ThreadCreateAuto` (the core: never implied by
+      membership, never inherited by replies) + `POST
+      /v1/threads/auto` (the role's explicit grant authorizes, then
+      the §11.5 checklist evaluates server-side: the topic gate
+      (every initiation topic rides the DECLARED interests), the
+      confidentiality match, the concurrency gate (the `.5.2`
+      sibling), the spend bound (the grant's `spend_limits` cover
+      the declared budget) — each refusal is the typed 403 naming
+      its gate. The initiation rides the SAME create flow (the
+      server-assigned idempotency key). Measured
+      (`the_auto_initiation_lands_under_the_grant_and_the_checklist`,
+      profiles 11): the no-grant 403, the seeded grant's landing,
+      the topic-gate + the spend-bound refusals, and the
+      replies-do-not-inherit rule (the plain create stays denied).
+      The first run caught the latest-grant rule (the evaluation
+      reads the newest active grant — the seed's `valid_from` had
+      to be later than the enroll grant's). **`.5` COMPLETE** —
+      frontier → `.6`.
     Acceptance: the auto-initiation lands under the grant + the
       checklist refusals are typed; no regression.
 
@@ -622,7 +641,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.5.3` | `proposed` | `.5.2` done — the subscriptions + the wake gate (the server-recorded offers + the delivery-boundary zero-concurrency hold); the node-initiated thread API executes now |
+| 1 | `PHASE-3.6` | `proposed` | `.5.3` done — the node-initiated thread API (the explicit auto grant + the server-side checklist); **`.5` COMPLETE** — the dependence-indicators lane executes now (the last lane of Phase 3) |
 
 ## Changelog
 
@@ -721,6 +740,53 @@ eligibility before ranking. Dependence indicators, never an independence score.
   (migration 0022's offers + the delivery-boundary zero-concurrency
   hold); the profiles suite grew to 10, the node_channel suite to
   25; frontier → `.5.3`.
+- `2026-09-07`: `.5.3` done — the node-initiated thread API (the
+  explicit `thread_create_auto` grant + the server-side §11.5
+  checklist with the typed refusals); the profiles suite grew to
+  11; **`.5` COMPLETE** — frontier → `.6`.
+
+## Acceptance Checklist (PHASE-3.5.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-core/src/authority.rs` (the
+`ThreadCreateAuto` action + its wire names),
+`crates/reasonbraid-server/src/api.rs` (the `/v1/threads/auto`
+route + the handler: the grant + the checklist + the same-create
+flow), and `crates/reasonbraid-server/tests/profiles.rs` (the
+measured initiation) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.5` census: no
+  `thread:create:auto` grant exists (the roles cannot initiate;
+  the §11.5 wake checklist has no server-side evaluation).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the authority set was
+  thread-participation-only — `git grep -c "thread_create_auto"
+  42d38bf -- crates/` → rc=1 (no action before this leaf). The fix
+  point is the EXPLICIT grant + the server-side checklist (the
+  topic gate, the confidentiality match, the concurrency gate, the
+  spend bound) — each refusal a typed 403 naming its gate.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  the_auto_initiation` → `test result: ok. 1 passed` — the no-grant
+  role is refused; the seeded grant lands the initiation (the
+  topic rides the interests, the budget rides the spend bound);
+  the topic-gate + the spend-bound refusals are typed; and the
+  replies-do-not-inherit rule holds (the plain create stays
+  denied). The first run caught the latest-grant rule (the
+  evaluation reads the NEWEST active grant — the seed's
+  `valid_from` had to be later than the enroll grant's).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg353_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/authority.rs` (the action), `src/api.rs` (the
+  handler + the route), `tests/profiles.rs` (the measurement).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.5.2)
 
@@ -1278,6 +1344,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_auto_initiation` → `test result: ok. 1 passed` (the no-grant 403, the landing, the topic/spend refusals, the no-inheritance rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg353_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-initiated thread API; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-3.5.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_open_call_advertises` → `test result: ok. 1 passed` + `cargo test -p reasonbraid-server --test node_channel the_zero_concurrency` → `test result: ok. 1 passed` (the offers + the hold, measured); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg352_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the subscriptions + the wake gate; frontier → `.5.3` |
 | `2026-09-07` | `PHASE-3.5.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_channel the_delivery_ladder` → `test result: ok. 1 passed` (the three-rung walk — the FIRST live run passed); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg351_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the delivery-state machine (the derived ladder); frontier → `.5.2` |
 | `2026-09-07` | `PHASE-3.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the subscriptions-lane census + the contract-seam decomposition (`.5.1` ladder → `.5.2` subscriptions + wake → `.5.3` auto-initiation); frontier → `.5.1` |
@@ -1301,6 +1368,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.5.3` | `REASONBRAID-PHASE3-0020` | the node-initiated thread API (the `thread_create_auto` grant + the server-side checklist) — **`.5` COMPLETE** |
 | `PHASE-3.5.2` | `REASONBRAID-PHASE3-0019` | the subscriptions + the wake gate (migration 0022's offers + the delivery-boundary hold) |
 | `PHASE-3.5.1` | `REASONBRAID-PHASE3-0018` | the delivery-state machine (migration 0021's derived view + the inspection's `delivery_state`) |
 | `PHASE-3.5` | `REASONBRAID-PHASE3-0017` | the subscriptions lane decomposed at the census seams (the inbox machinery exists; the ladder/wake/auto-initiation are the gaps) |

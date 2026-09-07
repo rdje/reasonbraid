@@ -19,14 +19,15 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.5.3` (`.5.2` done: the
-  subscriptions + the wake gate — migration 0022's offers + the
-  delivery-boundary hold). Then `.6`.
-- **Next action:** execute `PHASE-3.5.3` — the node-initiated
-  thread API: the `thread:create:auto` grant (a role initiates a
-  NEW thread under the bounded grant — the topic/audience/rate/
-  depth/spend bounds) + the §11.5 wake checklist evaluated
-  server-side before the initiation lands.
+- **Active tree:** `PHASE-3` → frontier `.6` (`.5` COMPLETE: the
+  delivery ladder, the subscriptions + the wake gate, the
+  node-initiated thread API). Then `.6.1`-ish children; Phase 3
+  closes after `.6`.
+- **Next action:** execute `PHASE-3.6` — the dependence-indicators
+  lane (§10.4, the "UI never labels these independent probability"
+  acceptance): decompose at the census seams (the typed lineage +
+  participation facts exist; the indicators + the controlled
+  selection strategies do not).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

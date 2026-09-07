@@ -61,6 +61,10 @@ pub enum GrantAction {
     /// auditable act. Humans carry it via the dev admin set; roles stay
     /// deny-by-default (they shape content, humans shape the process).
     ThreadAdvanceRound,
+    /// Node-initiated thread creation (§11.5, `PHASE-3.5.3`): a role initiates a
+    /// NEW thread under this EXPLICIT grant — never implied by membership,
+    /// never inherited by replies (a child thread needs its own grant).
+    ThreadCreateAuto,
     /// Administrative authority — NEVER implied by membership or other actions.
     TenantAdmin,
 }
@@ -69,6 +73,7 @@ impl GrantAction {
     pub fn as_str(self) -> &'static str {
         match self {
             GrantAction::ThreadCreate => "thread_create",
+            GrantAction::ThreadCreateAuto => "thread_create_auto",
             GrantAction::ThreadInvite => "thread_invite",
             GrantAction::ThreadContribute => "thread_contribute",
             GrantAction::ThreadInspect => "thread_inspect",
@@ -84,6 +89,7 @@ impl GrantAction {
     pub fn from_wire_name(s: &str) -> Option<Self> {
         match s {
             "thread_create" => Some(GrantAction::ThreadCreate),
+            "thread_create_auto" => Some(GrantAction::ThreadCreateAuto),
             "thread_invite" => Some(GrantAction::ThreadInvite),
             "thread_contribute" => Some(GrantAction::ThreadContribute),
             "thread_inspect" => Some(GrantAction::ThreadInspect),

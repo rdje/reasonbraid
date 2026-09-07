@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The node-initiated thread API: an explicit grant, a server-side checklist — `.5` COMPLETE (`PHASE-3.5.3`)
+
+- `GrantAction::ThreadCreateAuto` (the core — never implied by membership, never inherited by replies) + `POST /v1/threads/auto`: the role's explicit grant authorizes, then the §11.5 checklist evaluates server-side — the topic gate (every initiation topic must ride the declared interests), the confidentiality match, the concurrency gate, and the spend bound (the grant's `spend_limits` cover the declared budget) — each refusal is a typed 403 naming its gate. The initiation rides the same create flow with a server-assigned idempotency key.
+- Measured (`tests/profiles.rs` grew to 11): the no-grant refusal, the landing under the seeded grant, the typed topic/spend refusals, and the replies-do-not-inherit rule (the plain create stays denied). **`.5` COMPLETE**; frontier → `.6` (the dependence indicators — the last lane of Phase 3).
+
 ## 2026-09-07 — The interests become subscriptions, the concurrency becomes a gate (`PHASE-3.5.2`)
 
 - Migration 0022 (`recruitment_offers`): the open call's topic tags MATCH the subscribers' declared interests — the server records the offer (the §10.5 advertisement window's durable trace); the open response carries the offered count, the inspection lists the offers.

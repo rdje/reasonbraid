@@ -1713,3 +1713,166 @@ async fn the_open_call_advertises_to_the_subscribers() {
         );
     }
 }
+
+/// THE `.3.5.3` acceptance: the node-initiated thread creation needs the
+/// EXPLICIT `thread_create_auto` grant, the §11.5 checklist gates server-side
+/// (the topic gate, the confidentiality match, the concurrency gate, the
+/// spend bound), and replies do NOT inherit the permission — the plain
+/// thread.create stays denied for the role.
+#[tokio::test]
+async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "auto-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "auto-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes its profile");
+
+    // Without the grant: the auto-initiation refuses (the explicit-grant rule).
+    let auto = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("auto request");
+            let status = response.status().as_u16();
+            let parsed: Value = response.json().await.expect("auto json");
+            (status, parsed)
+        }
+    };
+    let (status, refused) = auto(json!({
+        "tenant_id": tenant,
+        "subject": "auto probe",
+        "objective": "probe",
+        "topics": ["parser trivia"],
+    }))
+    .await;
+    assert_eq!(status, 403, "no auto grant, no initiation: {refused}");
+
+    // The boundary must permit the auto action (the ceiling the grant's
+    // subset check rides), then the EXPLICIT grant.
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+         VALUES ('grt_auto_probe', $1, $2, $3, 'role', $4, '[\"thread_create_auto\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', '{\"amount\": 100.0}', false, \
+                 now(), now() + interval '1 day', 'active')",
+    )
+    .bind(&boundary_id)
+    .bind(&tenant)
+    .bind(&human_id)
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed the auto grant");
+
+    // With the grant: the initiation lands (the topic rides the interests).
+    let (status, created) = auto(json!({
+        "tenant_id": tenant,
+        "subject": "auto probe",
+        "objective": "probe",
+        "topics": ["parser trivia"],
+        "budget_amount": 50.0,
+    }))
+    .await;
+    assert_eq!(status, 200, "the auto-initiation lands: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    assert!(thread_id.starts_with("thr_"), "{created}");
+
+    // The checklist refusals are typed:
+    // the topic gate.
+    let (status, refused) = auto(json!({
+        "tenant_id": tenant,
+        "subject": "auto probe 2",
+        "objective": "probe",
+        "topics": ["undeclared topic"],
+    }))
+    .await;
+    assert_eq!(status, 403, "the topic gate refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap_or("").contains("topic"),
+        "the refusal names the topic gate: {refused}"
+    );
+    // the spend bound.
+    let (status, refused) = auto(json!({
+        "tenant_id": tenant,
+        "subject": "auto probe 3",
+        "objective": "probe",
+        "budget_amount": 500.0,
+    }))
+    .await;
+    assert_eq!(status, 403, "the spend bound refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap_or("").contains("spend"),
+        "the refusal names the spend bound: {refused}"
+    );
+
+    // Replies do NOT inherit: the plain thread.create stays denied (the role
+    // holds only the AUTO action).
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &role_id)
+        .json(&{
+            let mut env = serde_json::json!({
+                "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                "operation": "thread.create",
+                "request_id": reasonbraid_core::RequestId::new().to_string(),
+                "idempotency_key": "key-auto-plain",
+                "body": { "tenant_id": tenant, "subject": "plain", "objective": "probe" },
+                "client_context": {},
+            });
+            env
+        })
+        .send()
+        .await
+        .expect("plain create");
+    assert_eq!(
+        response.status().as_u16(),
+        403,
+        "the plain create stays denied — no inherited permission"
+    );
+}

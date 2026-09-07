@@ -367,6 +367,7 @@ pub fn api_router(pool: PgPool) -> Router {
             post(attest_capability_claim),
         )
         .route("/v1/threads", post(create_thread))
+        .route("/v1/threads/auto", post(create_thread_auto))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
         .route("/v1/threads/{thread_id}/events", get(get_events))
@@ -1225,6 +1226,148 @@ async fn list_node_presence(
 }
 
 // ── The open-call artifact + the typed responses (PHASE-3.4.2) ────────────────────
+
+/// The node-initiated thread body (§11.5): the initiation declares its
+/// topics + the confidentiality class + the spend bound.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutoCreateRequest {
+    tenant_id: String,
+    subject: String,
+    objective: String,
+    #[serde(default)]
+    topics: Vec<String>,
+    #[serde(default)]
+    confidentiality_class: Option<String>,
+    #[serde(default)]
+    budget_amount: Option<f64>,
+}
+
+/// `POST /v1/threads/auto` — the node-initiated thread creation (`.3.5.3`):
+/// the role needs the EXPLICIT `thread:create:auto` grant, and the §11.5
+/// wake checklist evaluates server-side BEFORE the initiation lands — the
+/// topic gate (the declared interests cover the topics), the confidentiality
+/// match, the concurrency gate, and the grant's spend bound. Replies do NOT
+/// inherit the permission (a child thread needs its own grant).
+async fn create_thread_auto(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<AutoCreateRequest>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let GrantSubject::Role(role) = &principal else {
+        return Err(ControlApiError::unauthorized(
+            "only an enrolled role initiates a thread autonomously",
+        ));
+    };
+    let tenant_id: TenantId = req
+        .tenant_id
+        .parse()
+        .map_err(|_| ControlApiError::invalid_command("tenant_id is malformed"))?;
+
+    // 1. THE grant: the explicit `thread:create:auto` authority (audited).
+    let authz = CommandAuthz {
+        delegation_scope: None,
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        action: GrantAction::ThreadCreateAuto,
+        target: ResourceTarget::Tenant { tenant_id },
+    };
+    match authorize(&state.pool, &authz, Utc::now()).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            return Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )));
+        }
+        AuthorizationOutcome::Allowed { .. } => {}
+    }
+
+    // 2. THE §11.5 checklist (server-side).
+    let profile_row: Option<(Value, Option<i64>)> = sqlx::query_as(
+        "SELECT v.profile, (v.profile->'availability'->>'concurrency')::bigint \
+         FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+         WHERE v.role_id = $1 AND v.version = p.current_version",
+    )
+    .bind(role.to_string())
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((profile_json, concurrency)) = profile_row else {
+        return Err(ControlApiError::unauthorized(
+            "the role declares no profile — the auto-wake cannot be evaluated",
+        ));
+    };
+    let profile: crate::profiles::AgentProfile = serde_json::from_value(profile_json)
+        .map_err(|e| ControlApiError::internal_with_log(format!("profile unreadable: {e}")))?;
+
+    // a. The topic gate: every initiation topic must ride the DECLARED
+    //    interests (the auto-wake-for-topic rule).
+    for topic in &req.topics {
+        if !profile.interests.contains(topic) {
+            return Err(ControlApiError::unauthorized(format!(
+                "the auto-wake topic gate refuses: `{topic}` is not among the role's declared interests"
+            )));
+        }
+    }
+    // b. The confidentiality match.
+    if let Some(class) = &req.confidentiality_class {
+        if !profile.confidentiality_classes.contains(class) {
+            return Err(ControlApiError::unauthorized(format!(
+                "the confidentiality class `{class}` does not match the role's declared classes"
+            )));
+        }
+    }
+    // c. The concurrency gate (the `.5.2` sibling).
+    if concurrency == Some(0) {
+        return Err(ControlApiError::unauthorized(
+            "the role's declared concurrency is zero — the auto-wake is held",
+        ));
+    }
+    // d. The spend bound: the grant's spend limits cover the declared budget.
+    if let Some(budget) = req.budget_amount {
+        let max_spend: Option<f64> = sqlx::query_scalar(
+            "SELECT max((spend_limits->>'amount')::float) FROM authority_grants \
+             WHERE subject_id = $1 AND status = 'active' AND actions @> '[\"thread_create_auto\"]'::jsonb",
+        )
+        .bind(role.to_string())
+        .fetch_one(&state.pool)
+        .await?;
+        match max_spend {
+            Some(limit) if limit >= budget => {}
+            _ => {
+                return Err(ControlApiError::unauthorized(format!(
+                    "the declared budget {budget} exceeds the grant's spend bound"
+                )));
+            }
+        }
+    }
+
+    // 3. The initiation rides the SAME create flow (the auto grant authorizes
+    //    it — the command machinery does the rest). The idempotency key is the
+    //    server-assigned creation key (the auto-initiation is NOT a client
+    //    replay surface).
+    let body_value = serde_json::json!({
+        "tenant_id": tenant_id.to_string(),
+        "subject": req.subject,
+        "objective": req.objective,
+    });
+    let body: threads::CreateBody = serde_json::from_value(body_value.clone())
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let hash = request_hash(threads::OP_CREATE, &principal, &body_value);
+    let key = format!("auto_{}_{}", role, tenant_id);
+    let response = run_thread_command(
+        &state.pool,
+        &tenant_id,
+        &principal,
+        &authz,
+        &key,
+        &hash,
+        CommandTarget::Create { body: &body },
+    )
+    .await?;
+    Ok(response)
+}
 
 /// The call-open body (the §10.5 spec; the expression rides typed).
 #[derive(Debug, serde::Deserialize)]

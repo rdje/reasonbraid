@@ -36,7 +36,7 @@ post-LAN track has a named owner. This tree does not implement product code.
 | --- | --- | --- | --- | --- | --- |
 | 0 | `PHASE-0` | `active` | 8–14 | `RB-SEED` done | G0 for identity/authority/thread/delivery/budget |
 | 1 | `PHASE-1` | `active` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
-| 2 | `PHASE-2` | `proposed` | 12–20 | Phase 1 | authority non-escalation; restore; no silent unknown-retry |
+| 2 | `PHASE-2` | `done` | 12–20 | Phase 1 | authority non-escalation (the adversarial suite); restore + node replacement (the exercises); no silent unknown-retry (the six-leg inventory) — CLOSED 2026-09-07 |
 | 3 | `PHASE-3` | `proposed` | 12–19 | stable identity, inbox, grants | recruit without enumerating the network |
 | 4 | `PHASE-4` | `proposed` | 16–27 | authz, budgets, object store, observability | G4 |
 | 5 | `PHASE-5` | `proposed` | 15–26 + evaluators | evidence provenance, workflows | G5 on declared domains |

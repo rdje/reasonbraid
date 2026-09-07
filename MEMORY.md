@@ -23,14 +23,15 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.7.4` (`.7.3` done: ADR-022
-  — the linkage groundwork, the chain deferred with its trigger — +
-  the six-leg retry-safety inventory). Then Phase 2 closes.
-- **Next action:** execute `PHASE-2.7.4` — the Phase-2 subtraction
-  record (§19.8: what Phase 2 did NOT build, each with the profile
-  that re-opens it) + the G6–G7 feed record (the §16.12/G7 lines
-  mapped to the Phase-2 evidence vs what stays open until the
-  deployment profile exists). **Phase 2 closes after this leaf.**
+- **Phase 2 COMPLETE (2026-09-07):** the exit line's properties are
+  measured — authority non-escalation (the `.7.1` adversarial suite),
+  restore + node replacement (the `.4.1` exercise + the `.7.2` drill),
+  no false safe-retry of unknown attempts (the `.7.3` six-leg
+  inventory); the §19.8 subtraction record (S-1…S-13) + the G6–G7
+  feed ship; the tree is `done`.
+- **Active tree:** `PHASE-3` → frontier `.1` (the directory lane).
+- **Next action:** execute `PHASE-3.1` — the `PHASE-3` tree's
+  frontier (recruit without enumerating the network; §21).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

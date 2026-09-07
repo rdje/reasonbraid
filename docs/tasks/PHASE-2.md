@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-2`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 2 (`ROADMAP.md` §20.4); Trust track
 - Created: `2026-09-05`
 - Estimate: 12–20 engineer-weeks
@@ -1148,6 +1148,11 @@ slice can reuse the same control plane without rewriting it.
     runbook's named gap, measured) → `.7.3` ADR-022 (the audit
     hash-chain groundwork) + the no-false-safe-retry inventory →
     `.7.4` the Phase-2 subtraction record + the G6–G7 feed.
+    **`.7` is COMPLETE — Phase 2 is CLOSED**: the exit line's three
+    properties are measured, not argued (the adversarial suite, the
+    replacement drill, the six-leg inventory), the mandatory §19.8
+    subtraction record ships, and the G6–G7 feed hands the evidence
+    to the next deployment profile.
   Done (`2026-09-07`): the census mapped the exit lane's three
     properties + the gate items against the shipped surface: the
     non-escalation FOUNDATIONS exist (the deny-by-default evaluation,
@@ -1270,7 +1275,7 @@ slice can reuse the same control plane without rewriting it.
       recorded; the chain's trigger named; no code changes.
 
   - ID: `PHASE-2.7.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the Phase-2 subtraction record + the G6–G7 feed — the
       §19.8 mandatory record names what Phase 2 did NOT build (no
       Internet exposure, no external review, no SSRF suite, no
@@ -1282,6 +1287,19 @@ slice can reuse the same control plane without rewriting it.
       vs what stays open until the deployment profile exists. No
       code (docs).
     Backlog: —
+    Done (`2026-09-07`): the Phase-2 subtraction record
+      (`docs/decisions/2026-09-07_phase2-subtraction-record.md`,
+      `answers:` — S-1…S-13: thirteen named not-built items, each
+      with the profile that re-opens it) + the G6–G7 feed
+      (`docs/decisions/2026-09-07_phase2-gate-feed.md`, `answers:` —
+      every §16.12/G7 line mapped to its Phase-2 evidence or named
+      OPEN with its profile). No code changed.
+      **`PHASE-2.7` COMPLETE — Phase 2 is CLOSED** (the exit line:
+      authority non-escalation proven by the adversarial suite, full
+      restore + node replacement proven by the exercises, no known
+      path that reports an ambiguous provider attempt as safely
+      retryable — the six-leg inventory). The next executable work is
+      `PHASE-3.1` (the `PHASE-3` tree).
     Acceptance: the subtraction record + the gate-feed record land;
       each deferred item names its re-opening profile; no code
       changes. **`PHASE-2.7` and Phase 2 close.**
@@ -1289,9 +1307,12 @@ slice can reuse the same control plane without rewriting it.
 
 ## Current Frontier
 
-| Order | Leaf | Status | Why next |
-| --- | --- | --- | --- |
-| 1 | `PHASE-2.7.4` | `proposed` | `.7.3` done — ADR-022 (the linkage is the groundwork, the chain is a named trigger) + the six-leg retry-safety inventory; the Phase-2 subtraction record + the G6–G7 feed executes now |
+**Tree complete.** Phase 2 is CLOSED — the exit line's properties are
+measured (authority non-escalation: the `.7.1` adversarial suite; restore
+and node replacement: the `.4.1` exercise + the `.7.2` drill; no false
+safe-retry of unknown attempts: the `.7.3` six-leg inventory), the §19.8
+subtraction record + the G6–G7 feed ship. The next executable work is
+`PHASE-3.1` (the `PHASE-3` tree, now `active`).
  `.5.1` done — ADR-023 accepted (the four-record separation + the redaction rules pinning the future sink); the structured-log + metrics slice executes now |
  `.5` decomposed at the contract seams (the census: eprintln-only observability; the four-record doctrine is structurally true but nothing measures; ADR-023 unopened); the ADR-023 record executes now |
  `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
@@ -1307,6 +1328,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.7.4` done — the Phase-2 subtraction record
+  (S-1…S-13, each with its re-opening profile) + the G6–G7 feed
+  (every gate line mapped to its evidence or named OPEN); no code
+  changed. **`.7` COMPLETE — Phase 2 is CLOSED** (the exit line's
+  three properties measured; the subtraction record ships).
 - `2026-09-07`: `.7.3` done — ADR-022 accepted (the shipped
   audit linkage is the chain's groundwork; the chain + checkpoint +
   verification policy wait for the named trigger) + the retry-safety
@@ -2679,6 +2705,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
 | `2026-09-07` | `PHASE-2.5.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-023 accepted (the four-record separation + the redaction rules + the sink trigger); frontier → `.5.2` |
+| `2026-09-07` | `PHASE-2.7.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the subtraction record + the G6–G7 feed — **Phase 2 is CLOSED** |
 | `2026-09-07` | `PHASE-2.7.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-022 accepted (the linkage groundwork + the named chain trigger) + the retry-safety inventory (six measured legs); frontier → `.7.4` |
 | `2026-09-07` | `PHASE-2.7.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test node_replacement` → `test result: ok. 1 passed` (the measured ritual); `bash scripts/run_pg_tests.sh` → 17 live suites + the demo 34/34 (`target/pg272_guard.log`); `cargo test --all` → 50 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-replacement drill (the ritual measured end to end; the epoch fence held); frontier → `.7.3` |
 | `2026-09-07` | `PHASE-2.7.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test escalation` → `test result: ok. 4 passed` (the first live run caught four real behaviors the tests pinned); `bash scripts/run_pg_tests.sh` → 16 live suites + the demo 34/34 (`target/pg271b_guard.log`); `cargo test --all` → 49 offline suites; clippy/fmt clean; `make gate` → 13/13 | the non-escalation property suite (one named adversarial test per escalation surface); frontier → `.7.2` |
@@ -2719,6 +2746,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.7.4` | `REASONBRAID-PHASE2-0043` | the Phase-2 subtraction record (S-1…S-13) + the G6–G7 feed — **Phase 2 is CLOSED** (docs-only) |
 | `PHASE-2.7.3` | `REASONBRAID-PHASE2-0042` | ADR-022 (the audit-linkage groundwork, the chain deferred with its trigger) + the six-leg no-false-safe-retry inventory (docs-only) |
 | `PHASE-2.7.2` | `REASONBRAID-PHASE2-0041` | the node-replacement drill (the measured ritual + the replacement enroll path + migrations 0017/0018 + the runbook ritual) |
 | `PHASE-2.7.1` | `REASONBRAID-PHASE2-0040` | the non-escalation property suite (4 measured adversarial tests + the guard's live list gained the suite) |

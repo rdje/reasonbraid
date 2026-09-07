@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Phase 2 CLOSED: the subtraction record + the G6–G7 feed (`PHASE-2.7.4`)
+
+- `docs/decisions/2026-09-07_phase2-subtraction-record.md` (`answers:`) ships the mandatory §19.8 subtraction: thirteen named not-built items (S-1…S-13 — no Internet exposure, no SSRF/prompt-injection suites, no signing pipeline, no rate-limit machinery, no hash chain, no HA, no load numbers, no production RPO/RTO…), each with the exact profile whose arrival re-opens it.
+- `docs/decisions/2026-09-07_phase2-gate-feed.md` (`answers:`) turns the phase's end into a checklist: every §16.12/G7 line is mapped to its Phase-2 evidence (the adversarial suite, the restore + the replacement drill, the SLO instrumentation, the circuit breakers) or named OPEN with its re-opening profile — the hand-off the next deployment profile consumes.
+- **Phase 2 is CLOSED** — the exit line's three properties are measured: authority non-escalation (the `.7.1` adversarial suite), restore + node replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry of unknown attempts (the `.7.3` six-leg inventory). The next executable work is `PHASE-3.1`.
+
 ## 2026-09-07 — ADR-022: the audit linkage is the groundwork; the retry-safety inventory names six measured legs (`PHASE-2.7.3`)
 
 - ADR-022 accepted (evidence-gated): the shipped audit linkage (the actor/subject/grant/digest bindings, the deterministic UUIDv5 handles, the per-thread monotonic sequence, the audit reconstruction) IS the hash chain's groundwork; the chain + checkpoint + verification policy are deferred WITH their trigger (the first non-loopback deployment / the G7 ops gate).

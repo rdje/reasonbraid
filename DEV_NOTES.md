@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.7.4: a phase's end is a checklist, not a narrative — the gate feed maps every line to evidence or OPEN
+
+- **The G6–G7 feed converts the exit into a consumable hand-off**: every §16.12/G7 line is either a named measured artifact (the adversarial suite, the restore + the replacement drill, the SLO instrumentation) or OPEN with the profile that re-opens it — so the next deployment profile starts from the list, not from a re-census. And the §19.8 subtraction record names thirteen not-built items, each with its trigger — the phase's honesty boundary in one table.
+- promotion: promoted → `docs/decisions/2026-09-07_phase2-subtraction-record.md` (`answers:` present). **Phase 2 is CLOSED** (the exit line's three properties measured; the subtraction record ships). **Frontier `PHASE-3.1` (the `PHASE-3` tree).**
+
 ## _(2026-09-07)_ — PHASE-2.7.3: a chain without a threat model is placeholder machinery; an inventory without legs is a promise
 
 - **ADR-022 pins the linkage, defers the chain.** The shipped audit rows already carry everything a future chain hashes (actor, subject, grant, digest, sequence) — the `prev_hash` column would answer a threat model the trusted-LAN dev profile does not have, so it waits for the trigger that creates the threat (a non-loopback deployment). And the retry-safety inventory earns its claim leg by leg: six measured proofs (R-1…R-6) show the machine refuses every silent re-dispatch by default — including the `.7.2` drill's surprise, the replacement fence the revocation epoch provided for free.

@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-016 is accepted: the profile composes verbs, never capabilities (`PHASE-5.1.1`)
+
+- The workflow profile is VERSIONED CONFIGURATION over the thread aggregates; the composition invariants (no profile bypasses authorization/budget/lifecycle — an invalid profile is invalid at validation time); the eight §13.1 built-ins are the initial registry; the unknown profile is a typed refusal, never a stored string.
+- Durable in `docs/adr/016-workflow-profiles.md` (top-level `answers:`). No code. Frontier → `.1.2` (the registry + the validation).
+
 ## 2026-09-07 — Phase 5 opens: the census found the workflow profile is an unvalidated string (`PHASE-5.1`)
 
 - The CLI passes `workflow_profile` through to the thread body; `threads.rs` stores it verbatim — no DSL, no validation, no step composition, and ADR-016 is unopened.

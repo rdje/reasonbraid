@@ -54,7 +54,7 @@ and honest inconclusive outcomes.
     those seams — frontier → `.1.1`.
 
   - ID: `PHASE-5.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-016 + the census — the workflow-profile contract:
       the profile is VERSIONED CONFIGURATION over the same
       thread aggregates (the §13.1 table's eight built-ins as
@@ -65,6 +65,20 @@ and honest inconclusive outcomes.
       new capability). No code.
     Backlog: 36 (the ADR half)
     ADR: 016
+    Done (`2026-09-07`): ADR-016 accepted (evidence-gated) —
+      `docs/adr/016-workflow-profiles.md` (top-level `answers:`):
+      the profile is VERSIONED CONFIGURATION over the same
+      thread aggregates (the composition over the existing
+      verbs — never a new capability), the invariants are the
+      composition's boundary (no profile bypasses
+      authorization/budget/lifecycle — an invalid profile is
+      INVALID at validation time, not at run time), the initial
+      registry is the §13.1 table's eight built-ins, the custom
+      profiles validate against the same invariants, and the
+      thread's `workflow_profile` becomes a reference to a
+      profile VERSION (the unknown profile is the typed refusal,
+      never a stored string). No code changed. Frontier →
+      `.1.2`.
 
   - ID: `PHASE-5.1.2`
     Status: `proposed`
@@ -120,10 +134,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.1.1` | `proposed` | `.1` decomposed at the census seams — the profile is an unvalidated string today (no DSL, no validation, ADR-016 unopened); the ADR + the census execute now |
+| 1 | `PHASE-5.1.2` | `proposed` | `.1.1` done — ADR-016 accepted (`docs/adr/016-workflow-profiles.md`: the versioned configuration + the composition invariants + the eight built-ins); the profile registry + the validation execute now |
 
 ## Changelog
 
+- `2026-09-07`: `.1.1` done — ADR-016 accepted (the versioned
+  configuration + the composition invariants + the eight
+  built-ins — durable in `docs/adr/016-workflow-profiles.md`);
+  no code; frontier → `.1.2`.
 - `2026-09-07`: `.1` decomposed at the census seams — the profile
   is an unvalidated string today (the CLI passes it through, no
   DSL/validation/execution exists, ADR-016 unopened); children

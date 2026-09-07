@@ -292,7 +292,7 @@ probe_poll() {
     tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
     [ -n "$tok" ] || return 1
     curl -s -o /dev/null -X POST -H 'content-type: application/json' \
-        -d "{\"channel_version\":3,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
+        -d "{\"channel_version\":4,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
         "$SERVER_BASE/v1/nodes/poll"
 }
 export -f probe_poll
@@ -320,6 +320,7 @@ node_exec "$NODE_A_DIR" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-A: the claim holds only for"},{"step":"emit_chunk","chunk":" x<1; for x>=1 the bound fails."},{"step":"complete"}]' \
     --poll-ms 200 \
     --enroll-token "$TOKEN_A" --enroll-nonce "$NONCE_A" --node-secret "$SECRET_A" \
+    --provider fake --model scripted --harness fake \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "node A contributes" 60 bash -c \
@@ -334,6 +335,11 @@ log "node A's contribution landed (event $CONTRIBUTION_ID)"
 # signed its proof with it.
 check "the workload certificate is stored beside the journal (.1.2.2)" bash -c \
     "[ -s '$NODE_A_DIR/cert.der' ] && [ -s '$NODE_A_DIR/key.der' ]"
+
+# The `.1.6.1` incarnation surface: enrollment recorded the §8.1 facts the node
+# declared; the tenant_admin inspection shows them.
+check "the incarnation row records the enrolled node's §8.1 facts (.1.6.1)" bash -c \
+    "cli inspect incarnations --as organizer --tenant '$TENANT' --json | grep -q 'fake'"
 
 # no human copies messages: the content came from the adapter script, not the CLI.
 check "the agent content is the adapter's scripted chunks (no human relay)" bash -c \
@@ -486,6 +492,7 @@ node_exec "$NODE_B_DIR" \
     --fake-script '[{"step":"emit_chunk","chunk":"AGENT-B: the single budgeted answer"},{"step":"complete"}]' \
     --poll-ms 200 \
     --enroll-token "$TOKEN_B" --enroll-nonce "$NONCE_B" --node-secret "$SECRET_B" \
+    --provider fake --model scripted --harness fake \
     >"$WORK/node-b.log" 2>&1
 
 wait_for "node B contributes within its budget" 60 bash -c \

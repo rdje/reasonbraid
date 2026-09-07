@@ -79,6 +79,24 @@ struct Args {
     /// being enrolled; afterwards it is the key every handshake's proof rides.
     #[arg(long)]
     node_secret: String,
+
+    /// §8.1 incarnation fact (`.1.6.1`): the provider backend the node starts
+    /// with (e.g. `anthropic`, `openai`, `fake`).
+    #[arg(long)]
+    provider: Option<String>,
+
+    /// §8.1 incarnation fact: the model the node starts with.
+    #[arg(long)]
+    model: Option<String>,
+
+    /// §8.1 incarnation fact: the harness/adapter family (`claude`, `codex`,
+    /// `fake`, …).
+    #[arg(long)]
+    harness: Option<String>,
+
+    /// §8.1 incarnation fact: free-form configuration (JSON, stored verbatim).
+    #[arg(long, value_name = "JSON")]
+    config: Option<String>,
 }
 
 #[tokio::main]
@@ -114,13 +132,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         });
         let channel = NodeChannel::for_enrollment(&args.server, args.node_id.clone());
+        let config: Option<serde_json::Value> = args
+            .config
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| format!("--config is not JSON: {e}"))?;
         let enroll_resp = channel
-            .enroll(
+            .enroll_with_facts(
                 token,
                 &args.node_id,
                 &args.host_claim,
                 nonce,
                 &args.node_secret,
+                args.provider.as_deref(),
+                args.model.as_deref(),
+                args.harness.as_deref(),
+                config.as_ref(),
             )
             .await
             .map_err(|e| format!("rb-node: enrollment failed: {e}"))?;

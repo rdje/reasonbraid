@@ -599,16 +599,52 @@ impl NodeChannel {
         nonce: &str,
         key_secret: &str,
     ) -> Result<serde_json::Value, ChannelError> {
+        self.enroll_with_facts(
+            token_id, node_id, host_claim, nonce, key_secret, None, None, None, None,
+        )
+        .await
+    }
+
+    /// Enrollment with the §8.1 incarnation facts (`.1.6.1`): the node declares
+    /// the provider/model/harness/config it KNOWS at start; the server writes
+    /// them to the `incarnations` row when the node id is the role wire id it
+    /// serves (a plain `nod_…` node records no incarnation).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn enroll_with_facts(
+        &self,
+        token_id: &str,
+        node_id: &str,
+        host_claim: &str,
+        nonce: &str,
+        key_secret: &str,
+        provider: Option<&str>,
+        model: Option<&str>,
+        harness: Option<&str>,
+        config: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value, ChannelError> {
+        let mut body = serde_json::json!({
+            "token_id": token_id,
+            "node_id": node_id,
+            "host_claim": host_claim,
+            "nonce": nonce,
+            "key_secret": key_secret,
+        });
+        if let Some(v) = provider {
+            body["provider"] = serde_json::json!(v);
+        }
+        if let Some(v) = model {
+            body["model"] = serde_json::json!(v);
+        }
+        if let Some(v) = harness {
+            body["harness"] = serde_json::json!(v);
+        }
+        if let Some(v) = config {
+            body["config"] = v.clone();
+        }
         let response = self
             .client
             .post(format!("{}/v1/nodes/enroll", self.base_url))
-            .json(&serde_json::json!({
-                "token_id": token_id,
-                "node_id": node_id,
-                "host_claim": host_claim,
-                "nonce": nonce,
-                "key_secret": key_secret,
-            }))
+            .json(&body)
             .send()
             .await?;
         self.parse(response).await

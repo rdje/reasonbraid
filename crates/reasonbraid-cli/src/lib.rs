@@ -1203,6 +1203,42 @@ pub async fn run_inspect_boundaries(
     Ok(out)
 }
 
+/// The tenant's incarnations with their §8.1 facts (`.1.6.1`; tenant_admin).
+pub async fn run_inspect_incarnations(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::new(&cfg.server_base);
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/incarnations", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    let incarnations = response["incarnations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut out = format!("tenant {tenant}'s incarnations ({}):\n", incarnations.len());
+    for i in incarnations {
+        out.push_str(&format!(
+            "  {} — {} — {}/{}/{} — since {}\n",
+            i["incarnation_id"].as_str().unwrap_or("?"),
+            i["role_id"].as_str().unwrap_or("?"),
+            i["provider"].as_str().unwrap_or("?"),
+            i["model"].as_str().unwrap_or("?"),
+            i["harness"].as_str().unwrap_or("?"),
+            i["valid_from"].as_str().unwrap_or("?"),
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

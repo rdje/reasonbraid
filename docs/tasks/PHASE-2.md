@@ -494,7 +494,7 @@ slice can reuse the same control plane without rewriting it.
       interim exists, incarnations without runs).
 
   - ID: `PHASE-2.1.6.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the incarnation writer — the enroll request gains the §8.1
       facts the node knows at start (`provider`/`model`/`harness`/
       `config`; the dev profile's fake harness is one honest value), the
@@ -505,6 +505,22 @@ slice can reuse the same control plane without rewriting it.
       role — a re-enroll refreshes it or adds a new valid window, the
       decided contract below).
     Backlog: —
+    Done (`2026-09-07`): the incarnation writer landed — the enroll
+      request gains the §8.1 facts (all optional; `deny_unknown_fields`
+      keeps the wire strict), the enroll transaction writes the
+      `incarnations` row WHEN the node id is the agent ROLE wire id it
+      serves (the dev wiring; a plain `nod_…` node serves no role and
+      records no incarnation — the hierarchy's `role_id` is NOT NULL),
+      the response returns the `incarnation_id`, `rb-node` gains
+      `--provider`/`--model`/`--harness`/`--config`, and the tenant_admin
+      inspection surface (`GET /v1/admin/incarnations` + `rb inspect
+      incarnations`) shows the rows. No duplication is structural: the
+      one-token-per-node index makes a second token unissuable, the
+      consumed-token reuse refuses BEFORE the writer, and rotation has no
+      incarnation writer. The live test (node_enrollment, +1: the row +
+      its facts + the inspection + the refusal count + the role-less
+      null) + the demo beat (33 checks) + the acceptance checklist below
+      record the evidence — frontier → `.1.6.2`.
     Acceptance: an enrolled node's incarnation row exists with its §8.1
       facts and is inspectable; re-enroll/rotation do not duplicate
       incarnations; no regression.
@@ -557,7 +573,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.6.1` | `proposed` | `.1.6` decomposed at the incarnation-vs-run seam (the census: the 0007 hierarchy is schema-only — no writers, deferral #4; the enroll request carries no §8.1 facts); the incarnation writer executes now |
+| 1 | `PHASE-2.1.6.2` | `proposed` | `.1.6.1` done — the incarnation writer landed (the enroll request's §8.1 facts → the `incarnations` row + the inspection surface + the demo beat); the run writer executes now |
 
 ## Changelog
 
@@ -618,6 +634,15 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.6.1` done — the incarnation writer: the enroll request
+  gains the §8.1 facts, the enroll transaction writes the `incarnations`
+  row when the node id is the role wire id it serves (a plain `nod_…` node
+  records none — the hierarchy binds incarnations to roles), the response
+  returns the `incarnation_id`, `rb-node` gains the four flags, and
+  `GET /v1/admin/incarnations` + `rb inspect incarnations` inspect; no
+  duplication is structural (one token per node, the refusal before the
+  writer, no rotation writer); the demo gains the beat (33 checks);
+  frontier → `.1.6.2`.
 - `2026-09-07`: `.1.6` decomposed at the incarnation-vs-run seam — the
   census found the 0007 hierarchy SCHEMA-ONLY (`grep -rn 'INSERT INTO
   incarnations\|INSERT INTO runs' crates/` → no matches; deferral #4) and
@@ -797,6 +822,50 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
   migration 0003, the cached-decision reader + epoch store, the dispatch
   gate + `refuse_dispatch`); the tests + the demo's version bump + the
   book's cached-decisions section.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book,
+  KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.6.1)
+
+The CODE change owned by this leaf: `crates/reasonbraid-server/src/
+{node_channel.rs,api.rs}` (the enroll request/response + the incarnation
+writer + the admin inspection route), `crates/reasonbraid-node/src/
+{channel.rs,bin/rb-node.rs}` (the `enroll_with_facts` client + the flags),
+`crates/reasonbraid-cli/src/{lib,main.rs}` (`run_inspect_incarnations` +
+the verb), `crates/reasonbraid-server/tests/node_enrollment.rs`,
+`scripts/demo_two_host.sh`, `docs/book/src/cli.md` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — deferral #4's first half: the 0007
+  hierarchy is schema-only — `grep -rn 'INSERT INTO incarnations'
+  crates/` → no matches before this leaf — while the node KNOWS its
+  harness at start (`rb-node` builds the adapter from its flags) and the
+  enroll request carries none of the §8.1 facts.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the enrollment boundary discarded
+  the facts it alone sees (the node declares them once, at start). The
+  fix point is the enroll request/transaction: the facts ride the body,
+  the writer lands in the SAME transaction as the node/key/cert rows (a
+  refused enrollment writes nothing), and the role-vs-plain-node split
+  falls out of the schema (the hierarchy binds incarnations to roles).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  writer, no request fields, no inspection. After: `bash
+  scripts/run_pg_tests.sh` → `test result: ok. 5 passed`
+  (`node_enrollment`, +1: the role node's enrollment returns the branded
+  `incarnation_id`, the row carries the declared facts verbatim, the
+  tenant_admin list shows it, the consumed-token re-enrollment refuses
+  and duplicates NOTHING, a plain `nod_…` node records no incarnation) +
+  the full guard green (12 suites + e2e + the demo `ALL acceptance checks
+  passed` — 33 checks, `rc=0`, `target/pg161c_guard.log`).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds.
+- [x] **FIX** — `node_channel.rs` (the §8.1 request fields, the
+  incarnation writer in the enroll transaction, the response's
+  `incarnation_id`); `api.rs` (`GET /v1/admin/incarnations` +
+  the route); the node's `enroll_with_facts` client; `rb-node`'s four
+  flags; the CLI verb + the `rb inspect incarnations` text; the live
+  test; the demo beat; the book's cli chapter.
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
@@ -1156,7 +1225,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.1.5.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
+| `2026-09-07` | `PHASE-2.1.6.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
 
 ## Commit Log
 
@@ -1175,5 +1245,6 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.1.6.1` | `REASONBRAID-PHASE2-0016` | the incarnation writer: the enroll request's §8.1 facts → the `incarnations` row (role nodes only) + `GET /v1/admin/incarnations` + `rb inspect incarnations` + `rb-node`'s four flags + the demo beat |
 | `PHASE-2.1.6` | `REASONBRAID-PHASE2-0015` | the incarnation-vs-run split (the 0007 hierarchy is schema-only — deferral #4; the enroll request carries no §8.1 facts) |
 | `PHASE-2.1.5.2` | `REASONBRAID-PHASE2-0014` | the cached-decision machinery: migration 0013 (the tenant epoch + the inbox decision columns), the revocation writes bump the epoch in-transaction, the delivery-carried admission decision + CHANNEL_VERSION 4, the node journal's cached decision + the dispatch gate (refuses stale/denied/absent — journaled, adapter never invoked); the measured live revocation-invalidation leg — **`.1.5` complete** |

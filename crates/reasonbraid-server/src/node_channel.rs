@@ -1202,7 +1202,11 @@ async fn presence(
 /// human at `/v1/nodes/enroll-tokens`), the node's id, the host claim the token was
 /// bound to, the token nonce, and the node's dev signing secret (the server IS the
 /// dev trust store — the `.6.1` stance; the secret is the key the `.1.2.2`
-/// handshake's HMAC proof rides).
+/// handshake's HMAC proof rides). The §8.1 incarnation facts (`.1.6.1`) ride the
+/// same body: the provider/model/harness/configuration the node KNOWS at start —
+/// written to the `incarnations` row when the node id is the role wire id it
+/// serves (the dev wiring; a plain `nod_…` node serves no role, so it has no
+/// incarnation row).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeEnrollRequest {
@@ -1211,6 +1215,18 @@ pub struct NodeEnrollRequest {
     pub host_claim: String,
     pub nonce: String,
     pub key_secret: String,
+    /// §8.1: the provider backend (e.g. `anthropic`, `openai`, `fake`).
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// §8.1: the model/harness version the node starts with.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// §8.1: the harness (the adapter family — `claude`, `codex`, `fake`, …).
+    #[serde(default)]
+    pub harness: Option<String>,
+    /// §8.1: free-form configuration facts (stored verbatim, never interpreted).
+    #[serde(default)]
+    pub config: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1227,6 +1243,10 @@ pub struct NodeEnrollResponse {
     /// the `.1.2.2` handshake gates on.
     pub cert_fingerprint: String,
     pub cert_expires_at: DateTime<Utc>,
+    /// The incarnation row this enrollment wrote (`.1.6.1`) — present when the
+    /// node id is the role wire id it serves (a plain `nod_…` node serves no
+    /// role and records no incarnation).
+    pub incarnation_id: Option<String>,
 }
 
 /// A token refusal (unknown / used / expired / bound elsewhere / nonce mismatch) —
@@ -1430,6 +1450,39 @@ async fn enroll(
     .execute(&mut *tx)
     .await?;
 
+    // The incarnation writer (`.1.6.1`; deferral #4's first half): when the node
+    // id is the agent ROLE wire id it serves (the dev wiring — the work path),
+    // record the §8.1 facts the node declared. A plain `nod_…` node serves no
+    // role, so it records no incarnation (the hierarchy's role_id is NOT NULL).
+    // Re-enrollment cannot duplicate: the `nodes` primary key refuses a second
+    // enroll for the id, and rotation never touches this table — one incarnation
+    // per (role, enroll), with `valid_from` = now and no `valid_to` yet.
+    let incarnation_id: Option<String> = if req
+        .node_id
+        .parse::<reasonbraid_core::AgentRoleId>()
+        .is_ok()
+    {
+        let id = reasonbraid_core::AgentIncarnationId::new().to_string();
+        sqlx::query(
+                "INSERT INTO incarnations \
+                 (incarnation_id, role_id, tenant_id, provider, model, harness, config, valid_from) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            )
+            .bind(&id)
+            .bind(&req.node_id)
+            .bind(&tenant_id)
+            .bind(&req.provider)
+            .bind(&req.model)
+            .bind(&req.harness)
+            .bind(&req.config)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        Some(id)
+    } else {
+        None
+    };
+
     tx.commit().await?;
     Ok(Json(NodeEnrollResponse {
         node_id: req.node_id,
@@ -1438,5 +1491,6 @@ async fn enroll(
         key_der: crate::ca::to_hex(&key_der),
         cert_fingerprint,
         cert_expires_at,
+        incarnation_id,
     }))
 }

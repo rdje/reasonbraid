@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.6.1: the enrollment boundary alone sees the incarnation facts — the writer lives there, not at dispatch
+
+- **The facts exist exactly once, at node start** — the enroll request is the ONLY boundary where the node declares what it is (provider/model/harness/config); every later surface (handshake, poll, results) sees an already-committed identity. The writer rides the enroll transaction so a refused enrollment writes nothing.
+- **The role-vs-plain split fell out of the schema, not out of a new rule**: `incarnations.role_id` is NOT NULL, so a `nod_…` node (no role) records no incarnation — the code just checks whether the node id IS a role wire id. No new table, no new status.
+- **Duplication needs no guard because the refusal ladder already refuses**: one token per node (unissuable second token), the consumed-token reuse is a 401 before the writer, rotation has no incarnation writer — the "no duplicates" acceptance is proven by counting, not by policing.
+- promotion: declined (the boundary-placement rule and the role-vs-plain split are the leaf's recorded facts — no new cross-cutting decision). **Frontier `PHASE-2.1.6.2` (the run writer keyed on the result receipt).**
+
 ## _(2026-09-07)_ — PHASE-2.1.6: the incarnation writer has no facts to write — the enroll request never asked
 
 - **The hierarchy is schema-only because the boundary never captured the facts.** `incarnations` has the §8.1 columns (provider/model/harness/config) since 0007, but the enroll request carries only the token + secret + host claim — the node KNOWS its harness at start (it builds the adapter from its flags) and throws the knowledge away. The writer's job is to stop discarding it: the request gains the fields, the transaction writes the row.

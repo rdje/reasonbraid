@@ -228,6 +228,17 @@ audited); a revoked boundary freezes the tenant.s WRITES — every grant under
 it is refused — while the inspection lists stay open (the freeze never blinds
 the operator).
 
+The incarnation surface (`.1.6.1`; deferral #4's first half): a node that
+enrolls AS a role (the dev wiring — its id IS the role wire id) records the
+§8.1 facts it declared at start, and the tenant_admin inspection shows them:
+
+```text
+ inspect incarnations --as alice
+```
+
+A plain `nod_…` node serves no role and records no incarnation (the hierarchy
+binds incarnations to roles).
+
 The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
 principal whose grant is the authority source:
 

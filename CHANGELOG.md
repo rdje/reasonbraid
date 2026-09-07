@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The incarnation writer: enrollment stops discarding the §8.1 facts (`PHASE-2.1.6.1`)
+
+- Deferral #4's first half closes: the enroll request gains the §8.1 facts the node KNOWS at start (`provider`/`model`/`harness`/`config` — all optional, `deny_unknown_fields` keeps the wire strict), and the enroll transaction writes the `incarnations` row — but only when the node id is the agent ROLE wire id it serves (the dev wiring; a plain `nod_…` node serves no role and records no incarnation, per the hierarchy's `role_id IS NOT NULL`).
+- The response returns the `incarnation_id`; `rb-node` gains `--provider`/`--model`/`--harness`/`--config`; the tenant_admin surface inspects (`GET /v1/admin/incarnations` + `rb inspect incarnations`).
+- No duplication is structural, not guarded: the one-token-per-node index makes a second token unissuable, the consumed-token reuse refuses BEFORE the writer, and rotation has no incarnation writer. The live test proves the row + facts + inspection + the refusal count; the demo gains the beat (33 checks). Frontier → `.1.6.2` (the run writer).
+
 ## 2026-09-07 — `.1.6` split at the incarnation-vs-run seam (`PHASE-2.1.6`)
 
 - The census found the 0007 hierarchy SCHEMA-ONLY: `grep -rn 'INSERT INTO incarnations\|INSERT INTO runs' crates/` → no matches — deferral #4 ("the incarnation/run row writers are deferred to Phase 2 identity") is still open. The enroll request carries none of the §8.1 facts the node knows at start (`provider`/`model`/`harness`/`config`), and the dispatch boundary is node-local (the run row needs a server-side write keyed on the result receipt).

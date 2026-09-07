@@ -336,6 +336,7 @@ pub fn api_router(pool: PgPool) -> Router {
         )
         .route("/v1/admin/grants", get(list_grants))
         .route("/v1/admin/boundaries", get(list_boundaries))
+        .route("/v1/admin/incarnations", get(list_incarnations))
         .route("/v1/threads", post(create_thread))
         .route("/v1/threads", get(list_threads))
         .route("/v1/threads/{thread_id}", get(get_thread))
@@ -1254,6 +1255,55 @@ async fn list_boundaries(
         .collect();
     Ok(Json(
         json!({ "tenant_id": q.tenant_id.to_string(), "boundaries": boundaries }),
+    ))
+}
+
+/// The tenant's incarnations (`.1.6.1`; deferral #4's first half) — the §8.1
+/// facts each enrolled role node declared, the inspection surface the run
+/// writer (`.1.6.2`) links against.
+async fn list_incarnations(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
+    type Row = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<Value>,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to \
+         FROM incarnations WHERE tenant_id = $1 ORDER BY valid_from DESC",
+    )
+    .bind(q.tenant_id.to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let incarnations: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to)| {
+                json!({
+                    "incarnation_id": incarnation_id,
+                    "role_id": role_id,
+                    "provider": provider,
+                    "model": model,
+                    "harness": harness,
+                    "config": config,
+                    "valid_from": valid_from.map(|d| d.to_rfc3339()),
+                    "valid_to": valid_to.map(|d| d.to_rfc3339()),
+                })
+            },
+        )
+        .collect();
+    Ok(Json(
+        json!({ "tenant_id": q.tenant_id.to_string(), "incarnations": incarnations }),
     ))
 }
 

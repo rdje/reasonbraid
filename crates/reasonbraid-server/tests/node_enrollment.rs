@@ -514,3 +514,156 @@ async fn only_tenant_admin_issues_tokens() {
         .expect("count tokens");
     assert_eq!(n_tokens, 0, "the denial issued no token");
 }
+
+/// THE `.1.6.1` acceptance (deferral #4's first half): a role-serving node's
+/// enrollment writes the `incarnations` row with the §8.1 facts the node
+/// declared, the row is inspectable through the tenant_admin surface, a
+/// re-enrollment cannot duplicate it (the nodes PK refuses before the writer),
+/// and a plain `nod_…` node (no role) records no incarnation.
+#[tokio::test]
+async fn enrollment_writes_the_incarnation_row_with_its_facts() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+
+    // The dev wiring: the node id IS the role wire id it serves.
+    let (status, role) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({ "kind": "role", "name": "incarnating", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    let token = issue_token(&client, &base, &alice, &tenant, &role_id, "host-inc", None).await;
+    let (status, enrolled) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll"),
+        None,
+        json!({
+            "token_id": token["token_id"],
+            "node_id": role_id,
+            "host_claim": "host-inc",
+            "nonce": token["nonce"],
+            "key_secret": "dev-secret-inc",
+            "provider": "fake",
+            "model": "scripted-1",
+            "harness": "fake",
+            "config": { "temperature": 0.2 },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll node: {enrolled}");
+    let incarnation_id = enrolled["incarnation_id"]
+        .as_str()
+        .expect("the role node's enrollment returns its incarnation id")
+        .to_string();
+    assert!(
+        incarnation_id.starts_with("inc_"),
+        "the incarnation id is branded: {incarnation_id}"
+    );
+
+    // The row exists with the declared facts (a separate connection).
+    let row: (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<Value>,
+    ) = sqlx::query_as(
+        "SELECT role_id, provider, model, harness, config FROM incarnations \
+             WHERE incarnation_id = $1",
+    )
+    .bind(&incarnation_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the incarnation row");
+    assert_eq!(row.0, role_id);
+    assert_eq!(row.1.as_deref(), Some("fake"));
+    assert_eq!(row.2.as_deref(), Some("scripted-1"));
+    assert_eq!(row.3.as_deref(), Some("fake"));
+    assert_eq!(
+        row.4.as_ref().and_then(|c| c.get("temperature")),
+        Some(&serde_json::json!(0.2)),
+        "the config rides verbatim"
+    );
+
+    // Inspectable through the tenant_admin surface (no database surgery).
+    let response = client
+        .get(format!("{base}/v1/admin/incarnations?tenant_id={tenant}"))
+        .header(PRINCIPAL_HEADER, &alice)
+        .send()
+        .await
+        .expect("list request");
+    assert_eq!(response.status().as_u16(), 200);
+    let list: Value = response.json().await.expect("list json");
+    let incarnations = list["incarnations"].as_array().expect("array");
+    assert_eq!(incarnations.len(), 1, "exactly one incarnation: {list}");
+    assert_eq!(incarnations[0]["incarnation_id"], json!(incarnation_id));
+    assert_eq!(incarnations[0]["harness"], json!("fake"));
+
+    // A re-enrollment attempt is refused BEFORE the incarnation writer — the
+    // one-token-per-node index makes a second token unissuable, so the only
+    // re-enrollment attempt the dev profile can make is the CONSUMED token's
+    // reuse ("the token was already used") — and no second incarnation row can
+    // ever be written (the writer sits inside the enroll transaction, after
+    // the refusal ladder). Rotation never touches this table (no writer).
+    let (status2, refused) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll"),
+        None,
+        json!({
+            "token_id": token["token_id"],
+            "node_id": role_id,
+            "host_claim": "host-inc",
+            "nonce": token["nonce"],
+            "key_secret": "another-secret",
+            "harness": "fake",
+        }),
+    )
+    .await;
+    assert_eq!(status2, 401, "re-enrollment is refused: {refused}");
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM incarnations WHERE role_id = $1")
+        .bind(&role_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count incarnations");
+    assert_eq!(count, 1, "re-enrollment duplicated nothing");
+
+    // A plain nod_ node (no role) records NO incarnation — the hierarchy's
+    // role_id is NOT NULL, and the node serves no role.
+    let plain = "nod_00000000-0000-7000-8000-000000000161";
+    let token3 = issue_token(&client, &base, &alice, &tenant, plain, "host-plain", None).await;
+    let (status3, plain_enroll) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll"),
+        None,
+        json!({
+            "token_id": token3["token_id"],
+            "node_id": plain,
+            "host_claim": "host-plain",
+            "nonce": token3["nonce"],
+            "key_secret": "plain-secret",
+            "harness": "fake",
+        }),
+    )
+    .await;
+    assert_eq!(status3, 200, "the plain node enrolls: {plain_enroll}");
+    assert_eq!(
+        plain_enroll.get("incarnation_id"),
+        Some(&Value::Null),
+        "a role-less node records no incarnation"
+    );
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM incarnations WHERE tenant_id = $1")
+        .bind(&tenant)
+        .fetch_one(&pool)
+        .await
+        .expect("count tenant incarnations");
+    assert_eq!(total, 1, "still exactly the role node's incarnation");
+}

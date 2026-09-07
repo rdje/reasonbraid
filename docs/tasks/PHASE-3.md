@@ -43,7 +43,10 @@ eligibility before ranking. Dependence indicators, never an independence score.
     (`.1.6.1`) carries only the lineage sliver (provider/model/
     harness/config); ADR-014 (the semantic-index engine + embedding
     lifecycle) is unopened. Children at those seams — frontier →
-    `.1.1`.
+    `.1.1`. **`.1` is COMPLETE** — ADR-014 (the structural answer),
+    the typed + content-addressed write surface, and the measured
+    per-reader visibility enforcement ship; the profile lane feeds
+    the `.2` presence lane and the `.3` two-stage matching.
     promotion: declined (the census is the leaf's recorded contract — the `.1.1`–`.1.3` children execute it).
   - ID: `PHASE-3.1.1`
     Status: `done`
@@ -114,7 +117,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       regression.
 
   - ID: `PHASE-3.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the visibility enforcement + the read surface — the
       per-field visibility policy (self/tenant/network/public)
       evaluated PER READER at read time (the reader's grants decide
@@ -125,6 +128,23 @@ eligibility before ranking. Dependence indicators, never an independence score.
       read-side visibility decision. The self-asserted vs attested
       provenance is shown, never flattened.
     Backlog: 26 (the visibility half)
+    Done (`2026-09-07`): the visibility enforcement landed —
+      `filter_profile` in `profiles.rs` (the per-field policy
+      evaluated against the reader's class; a hidden field is ABSENT,
+      never nulled; the claim provenance rides every visible
+      capability) + the per-reader classification in `api.rs` (the
+      role itself → FULL; the tenant owner → FULL via the AUDITED
+      tenant-admin check; a same-tenant principal → TENANT; any other
+      enrolled principal → NETWORK; an unenrolled principal reads
+      nothing) + the response names the applied class
+      (`visibility: full|tenant|network` — the read decision is
+      deterministic + self-describing). The version history stays
+      FULL-only (the past versions may carry fields later
+      reclassified). Measured (`tests/profiles.rs` grew to 5): the
+      SAME profile read by four readers yields exactly the allowed
+      field sets each — the tenant view absents the self-only fields,
+      the network view absents the tenant+self fields, and the
+      history refuses the stranger. Frontier → `.2`.
     Acceptance: the per-reader filtering is measured (the adversarial
       reads: the same profile read by the owner, a tenant sibling,
       and a stranger yields exactly the allowed fields each); no
@@ -170,7 +190,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.1.3` | `proposed` | `.1.2` done — the profile schema + the write surface (migration 0019, the typed §10.1 fields, the content-addressed history, the write + attest verbs, measured); the visibility enforcement + the read surface executes now |
+| 1 | `PHASE-3.2` | `proposed` | `.1.3` done — the per-reader visibility enforcement (the four-reader measurement, the hidden-field-is-absent rule, the self-describing class); **`.1` is COMPLETE** — the lease-based presence lane executes now |
 
 ## Changelog
 
@@ -191,6 +211,58 @@ eligibility before ranking. Dependence indicators, never an independence score.
   the measured suite (3 tests; the guard grew to 18 live suites);
   the FK ripple updated every tenant-purging purge list; frontier →
   `.1.3`.
+- `2026-09-07`: `.1.3` done — the per-reader visibility enforcement
+  (the four-reader measurement, the absent-not-nulled rule, the
+  self-describing class, the full-only history); the profile suite
+  grew to 5; **`.1` is COMPLETE** — frontier → `.2`.
+
+## Acceptance Checklist (PHASE-3.1.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/profiles.rs` (the `ReaderClass` +
+`filter_profile` + the visibility ladder) and
+`crates/reasonbraid-server/src/api.rs` (the per-reader classification
++ the filtered `get_profile` response) and
+`crates/reasonbraid-server/tests/profiles.rs` (the two visibility
+tests + the `.1.2` stranger-read assertion updated to the classified
+semantics) — `\.rs$` in `.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1.2` read gate was binary
+  (self/owner or 403): the §10.1 per-field visibility policy is
+  STORED but nothing enforces it, so the `.2` lane would have no
+  privacy-filtered view to consume.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the policy was data without an
+  evaluator — `git grep -c "filter_profile\|ReaderClass" 0eade27 --
+  crates/` → rc=1 (no filter existed). The fix point is the READ
+  boundary: classify the reader (self/owner → FULL, same-tenant →
+  TENANT, any other enrolled principal → NETWORK, unenrolled →
+  nothing), evaluate each field's class against the reader, and OMIT
+  the hidden fields (absent, never nulled).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above + the 403-for-everyone-else gate. After:
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles` → `test result:
+  ok. 5 passed` — the SAME profile read by the role (full), the
+  owner (full, the audited admin read), a tenant sibling (the
+  tenant view: the self-only fields ABSENT), and a stranger (the
+  network view: the tenant+self fields ABSENT) yields exactly the
+  allowed field sets each; the response names the applied class;
+  the version history refuses the stranger (full-only).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg313_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/profiles.rs` (`ReaderClass`, the visibility
+  ladder, `filter_profile` — the provenance rides every visible
+  claim), `src/api.rs` (`reader_tenant`, `classify_reader`, the
+  filtered `get_profile` with the `visibility` marker; the history
+  reads keep the full-only gate), `tests/profiles.rs` (the two
+  visibility tests + the updated stranger-read assertion).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.1.2)
 
@@ -251,6 +323,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 5 passed` (the four-reader measurement + the full-only history); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg313_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the per-reader visibility enforcement (the absent-not-nulled filter + the classification + the self-describing response); **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-3.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 3 passed` (the write + history, the gates, the attestation); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg312_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the profile schema + the write surface (migration 0019 + the verbs + the measured suite); frontier → `.1.3` |
 
 ## Commit Log
@@ -258,5 +331,6 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.1.3` | `REASONBRAID-PHASE3-0004` | the per-reader visibility enforcement (the four-reader measurement, the absent-not-nulled filter, the full-only history) — **`.1` COMPLETE** |
 | `PHASE-3.1.2` | `REASONBRAID-PHASE3-0003` | the profile schema + the write surface (migration 0019 + the typed §10.1 fields + the content-addressed history + the write/attest verbs + the measured suite) |
 | `PHASE-3.1.1` | `REASONBRAID-PHASE3-0002` | ADR-014 accepted (deterministic eligibility first; the embedding engine behind its trigger; no embedding columns) |

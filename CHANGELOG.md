@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The per-reader visibility enforcement — a hidden field is absent, never nulled — `.1` COMPLETE (`PHASE-3.1.3`)
+
+- `filter_profile` (in `profiles.rs`) evaluates the per-field visibility policy against the reader's class: the role itself → FULL, the tenant owner → FULL (via the audited tenant-admin check), a same-tenant principal → TENANT, any other enrolled principal → NETWORK, an unenrolled principal reads nothing. A hidden field is OMITTED from the response — absent, never nulled — and the response names the applied class (`visibility: full|tenant|network`).
+- The version history stays FULL-only (past versions may carry fields later reclassified); the claim provenance rides every visible capability.
+- Measured (`tests/profiles.rs`, now 5 tests): the SAME profile read by four readers yields exactly the allowed field sets each — the tenant view absents the self-only fields, the network view absents the tenant+self fields, the history refuses the stranger. **`.1` COMPLETE**; frontier → `.2` (the lease-based presence lane).
+
 ## 2026-09-07 — The directory profile lands: typed, versioned, content-addressed (`PHASE-3.1.2`)
 
 - Migration 0019 (`agent_profiles` + `profile_versions`): one current pointer per role + the content-addressed history — every write is a new version, the SHA-256 hash is server-computed over the typed profile, the old versions stay readable, and each version records its writer (the actor handle).

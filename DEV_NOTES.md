@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.1.3: a hidden field is absent, not nulled — the response names the class it applied
+
+- **The visibility decision is deterministic, self-describing, and shaped at the read boundary.** The per-field policy from `.1.2` becomes an evaluator: the reader's class (self/owner → full, same-tenant → tenant, any other enrolled principal → network, unenrolled → nothing) decides which fields EXIST in the response — a hidden field is omitted, never nulled, so a client can distinguish "hidden from me" from "the profile has no value there". The response carries the applied class, the owner's full read stays the audited tenant-admin path, and the version history stays full-only (past versions may carry fields later reclassified).
+- promotion: declined (the filter + the classification are the leaf's own measured contract — no new cross-cutting decision). **`.1` COMPLETE. Frontier `PHASE-3.2` (the lease-based presence lane).**
+
 ## _(2026-09-07)_ — PHASE-3.1.2: content addressing is the audit of the profile — identical content hashes identically, and the FK ripple is the spend_breakers lesson again
 
 - **The profile's history IS its audit trail**: every write is a new version whose hash is server-computed over the typed profile — identical content re-hashes identically (measured), changed content versions anew, the old versions stay readable, and each version records its writer. A profile therefore cannot be silently rewritten: the content-addressed history makes the mutation visible by construction, without a separate audit table.

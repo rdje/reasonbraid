@@ -1247,20 +1247,112 @@ fn profile_error(e: sqlx::Error, role_id: &str) -> ControlApiError {
     }
 }
 
-/// `GET /v1/profiles/{role_id}` — the full current profile (self or owner).
+/// The reader's tenant (their identity row), when enrolled.
+async fn reader_tenant(
+    pool: &PgPool,
+    principal: &GrantSubject,
+) -> Result<Option<String>, sqlx::Error> {
+    let id = principal.id_string();
+    match principal {
+        GrantSubject::Human(_) => {
+            sqlx::query_scalar("SELECT tenant_id FROM human_principals WHERE principal_id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+        }
+        GrantSubject::Role(_) => {
+            sqlx::query_scalar("SELECT tenant_id FROM agent_roles WHERE role_id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+        }
+    }
+}
+
+/// The per-reader classification (`.1.3`): the role itself or its tenant owner
+/// reads FULL; a same-tenant principal reads the TENANT view; any other
+/// enrolled principal reads the NETWORK view.
+async fn classify_reader(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    role_id: &str,
+) -> Result<Option<crate::profiles::ReaderClass>, ControlApiError> {
+    if is_self(principal, role_id) {
+        return Ok(Some(crate::profiles::ReaderClass::Full));
+    }
+    let Some(role_tenant) = role_tenant(pool, role_id).await? else {
+        return Ok(None);
+    };
+    let Some(reader_tenant) = reader_tenant(pool, principal).await? else {
+        return Ok(None); // an unenrolled principal reads nothing
+    };
+    if reader_tenant == role_tenant {
+        // The owner (tenant_admin) reads FULL — the decision is audited.
+        if let Ok(tenant) = role_tenant.parse() {
+            if authorize_tenant_admin(pool, principal, tenant)
+                .await
+                .is_ok()
+            {
+                return Ok(Some(crate::profiles::ReaderClass::Full));
+            }
+        }
+        return Ok(Some(crate::profiles::ReaderClass::Tenant));
+    }
+    Ok(Some(crate::profiles::ReaderClass::Network))
+}
+
+/// `GET /v1/profiles/{role_id}` — the per-reader filtered profile (`.1.3`):
+/// the role/owner reads the full profile; a tenant sibling reads the tenant
+/// view; a stranger reads the network view. A hidden field is ABSENT, never
+/// nulled; the response names the applied class.
 async fn get_profile(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(role_id): Path<String>,
-) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
+) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_profile_read(&state.pool, &principal, &role_id).await?;
+    let Some(class) = classify_reader(&state.pool, &principal, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    };
     let Some(current) = crate::profiles::current_profile(&state.pool, &role_id).await? else {
         return Err(ControlApiError::not_found(format!(
             "no profile for `{role_id}`"
         )));
     };
-    Ok(Json(current))
+    let (profile, visibility) = match class {
+        crate::profiles::ReaderClass::Full => {
+            let profile: crate::profiles::AgentProfile =
+                serde_json::from_value(current.profile.clone()).map_err(|e| {
+                    ControlApiError::internal_with_log(format!(
+                        "stored profile no longer parses: {e}"
+                    ))
+                })?;
+            (crate::profiles::filter_profile(&profile, class), "full")
+        }
+        other => {
+            let profile: crate::profiles::AgentProfile =
+                serde_json::from_value(current.profile.clone()).map_err(|e| {
+                    ControlApiError::internal_with_log(format!(
+                        "stored profile no longer parses: {e}"
+                    ))
+                })?;
+            let name = match other {
+                crate::profiles::ReaderClass::Tenant => "tenant",
+                crate::profiles::ReaderClass::Network => "network",
+                crate::profiles::ReaderClass::Full => unreachable!(),
+            };
+            (crate::profiles::filter_profile(&profile, other), name)
+        }
+    };
+    Ok(Json(json!({
+        "role_id": role_id,
+        "version": current.version,
+        "content_hash": current.content_hash,
+        "visibility": visibility,
+        "written_by": current.written_by,
+        "written_at": current.written_at.to_rfc3339(),
+        "profile": profile,
+    })))
 }
 
 /// `GET /v1/profiles/{role_id}/versions` — the content-addressed history.

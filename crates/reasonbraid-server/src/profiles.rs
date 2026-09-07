@@ -150,6 +150,144 @@ impl Default for VisibilityPolicy {
     }
 }
 
+/// The reader's visibility class (the per-reader classification the `.1.3`
+/// read surface applies). `Self` sees everything; the ladder is
+/// Public < Network < Tenant < Self.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReaderClass {
+    /// The role itself (or its accountable owner): the full profile.
+    Full,
+    /// A principal enrolled in the role's tenant.
+    Tenant,
+    /// Any other enrolled principal (the network view).
+    Network,
+}
+
+fn visibility_rank(class: VisibilityClass) -> u8 {
+    match class {
+        VisibilityClass::Public => 0,
+        VisibilityClass::Network => 1,
+        VisibilityClass::Tenant => 2,
+        VisibilityClass::SelfOnly => 3,
+    }
+}
+
+/// A reader of the given class sees a field when the field's visibility class
+/// is AT LEAST as wide as the reader's class (a `tenant` field is visible to
+/// the tenant, the network, and the public). `Self` sees everything.
+fn field_visible(field: VisibilityClass, reader: ReaderClass) -> bool {
+    if reader == ReaderClass::Full {
+        return true;
+    }
+    visibility_rank(field)
+        <= match reader {
+            ReaderClass::Tenant => 2,
+            ReaderClass::Network => 1,
+            ReaderClass::Full => unreachable!(),
+        }
+}
+
+/// The per-reader filtered profile: a hidden field is ABSENT, never nulled.
+/// The provenance of every visible capability claim rides along (the
+/// self-asserted vs attested distinction is shown, never flattened).
+pub fn filter_profile(profile: &AgentProfile, reader: ReaderClass) -> Value {
+    let v = &profile.visibility;
+    let mut out = serde_json::Map::new();
+    fn put(out: &mut serde_json::Map<String, Value>, key: &str, visible: bool, value: Value) {
+        if visible {
+            out.insert(key.to_string(), value);
+        }
+    }
+    fn ser<T: Serialize>(x: &T) -> Value {
+        serde_json::to_value(x).expect("serializes")
+    }
+    put(
+        &mut out,
+        "display_label",
+        field_visible(v.display_label, reader),
+        ser(&profile.display_label),
+    );
+    put(
+        &mut out,
+        "purpose",
+        field_visible(v.purpose, reader),
+        ser(&profile.purpose),
+    );
+    put(
+        &mut out,
+        "conversation_modes",
+        field_visible(v.conversation_modes, reader),
+        ser(&profile.conversation_modes),
+    );
+    put(
+        &mut out,
+        "capabilities",
+        field_visible(v.capabilities, reader),
+        ser(&profile.capabilities),
+    );
+    put(
+        &mut out,
+        "interests",
+        field_visible(v.interests, reader),
+        ser(&profile.interests),
+    );
+    put(
+        &mut out,
+        "languages",
+        field_visible(v.languages, reader),
+        ser(&profile.languages),
+    );
+    put(
+        &mut out,
+        "structured_output_formats",
+        field_visible(v.structured_output_formats, reader),
+        ser(&profile.structured_output_formats),
+    );
+    put(
+        &mut out,
+        "scopes",
+        field_visible(v.scopes, reader),
+        ser(&profile.scopes),
+    );
+    put(
+        &mut out,
+        "confidentiality_classes",
+        field_visible(v.confidentiality_classes, reader),
+        ser(&profile.confidentiality_classes),
+    );
+    put(
+        &mut out,
+        "availability",
+        field_visible(v.availability, reader),
+        ser(&profile.availability),
+    );
+    put(
+        &mut out,
+        "resolver_tool_capabilities",
+        field_visible(v.resolver_tool_capabilities, reader),
+        ser(&profile.resolver_tool_capabilities),
+    );
+    put(
+        &mut out,
+        "cost_latency_class",
+        field_visible(v.cost_latency_class, reader),
+        ser(&profile.cost_latency_class),
+    );
+    put(
+        &mut out,
+        "resource_ceilings",
+        field_visible(v.resource_ceilings, reader),
+        ser(&profile.resource_ceilings),
+    );
+    put(
+        &mut out,
+        "grants_by_reference",
+        field_visible(v.grants_by_reference, reader),
+        ser(&profile.grants_by_reference),
+    );
+    Value::Object(out)
+}
+
 /// The canonical content hash: the SHA-256 of the typed profile's serialized
 /// form (field order fixed by the struct — deterministic for the same input).
 pub fn content_hash(profile: &AgentProfile) -> Result<String, serde_json::Error> {

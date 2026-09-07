@@ -352,8 +352,8 @@ async fn the_profile_gates_hold_for_strangers_lineage_and_forged_fields() {
     .await;
     assert_eq!(status, 403, "a sibling role cannot: {refused}");
 
-    // The read gate: the stranger cannot read the profile either (`.1.2`'s
-    // self/owner view; the `.1.3` leaf adds the filtered views).
+    // The read gate (`.1.3` classifies readers; `.1.2` gated self/owner only):
+    // no profile was written, so the classified read finds NOTHING.
     let (status, _peeked) = get(
         &client,
         &base,
@@ -361,7 +361,7 @@ async fn the_profile_gates_hold_for_strangers_lineage_and_forged_fields() {
         &stranger_id,
     )
     .await;
-    assert_eq!(status, 403, "the stranger cannot read the profile");
+    assert_eq!(status, 404, "the classified read finds no profile");
 
     // A dangling lineage reference fails closed.
     let mut dangling = body.clone();
@@ -496,4 +496,273 @@ async fn the_owner_attests_a_capability_claim_with_provenance() {
         status, 403,
         "the role cannot attest its own claims: {refused}"
     );
+}
+
+/// A profile with an EXPLICIT per-field visibility policy: the display label
+/// travels everywhere, the capabilities stay tenant-scoped, the interests
+/// reach the network, and the confidential/ceiling fields stay self-only.
+fn visibility_profile() -> Value {
+    json!({
+        "display_label": "visible everywhere",
+        "purpose": "probe the per-reader filtering",
+        "conversation_modes": ["architecture_deliberation"],
+        "capabilities": [{
+            "taxonomy_id": "code_review",
+            "confidence": "self_asserted",
+        }],
+        "interests": ["parser trivia"],
+        "languages": ["en"],
+        "structured_output_formats": ["json"],
+        "scopes": ["repo:example/parser"],
+        "confidentiality_classes": ["internal"],
+        "cost_latency_class": "cheap",
+        "resource_ceilings": { "calls": 100 },
+        "visibility": {
+            "display_label": "public",
+            "purpose": "network",
+            "conversation_modes": "tenant",
+            "capabilities": "tenant",
+            "interests": "network",
+            "languages": "network",
+            "structured_output_formats": "tenant",
+            "scopes": "tenant",
+            "confidentiality_classes": "self_only",
+            "availability": "tenant",
+            "resolver_tool_capabilities": "tenant",
+            "cost_latency_class": "tenant",
+            "resource_ceilings": "self_only",
+            "grants_by_reference": "self_only",
+        },
+    })
+}
+
+/// THE `.1.3` acceptance, measured: the SAME profile read by the role, the
+/// owner, a tenant sibling, and a stranger yields exactly the allowed fields
+/// each — a hidden field is ABSENT, never nulled, and the response names the
+/// applied class.
+#[tokio::test]
+async fn the_same_profile_read_by_four_readers_yields_exactly_the_allowed_fields() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "vis-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let tenant_a = owner["tenant_id"].as_str().unwrap().to_string();
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "vis-agent", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, sibling) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "vis-sibling", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the sibling enrolls: {sibling}");
+    let sibling_id = sibling["principal_id"].as_str().unwrap().to_string();
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "vis-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes the policy: {written}");
+
+    let read = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        async move {
+            let (status, body) = get(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_id}"),
+                &principal,
+            )
+            .await;
+            assert_eq!(status, 200, "the read succeeds: {body}");
+            body
+        }
+    };
+
+    // The role itself: FULL, every field.
+    let own = read(role_id.clone()).await;
+    assert_eq!(own["visibility"], json!("full"));
+    let own_fields = own["profile"].as_object().unwrap();
+    assert!(
+        own_fields.contains_key("confidentiality_classes"),
+        "the self read is full"
+    );
+    assert!(
+        own_fields.contains_key("resource_ceilings"),
+        "the self read is full"
+    );
+
+    // The owner (tenant_admin): FULL (the audited admin read).
+    let owners = read(owner_id.clone()).await;
+    assert_eq!(owners["visibility"], json!("full"));
+    assert!(owners["profile"]
+        .as_object()
+        .unwrap()
+        .contains_key("confidentiality_classes"));
+
+    // The tenant sibling: TENANT view — the network+public+tenant fields
+    // exist; the self-only fields are ABSENT (not nulled).
+    let tenant_view = read(sibling_id.clone()).await;
+    assert_eq!(tenant_view["visibility"], json!("tenant"));
+    let fields = tenant_view["profile"].as_object().unwrap();
+    for key in [
+        "display_label",
+        "purpose",
+        "conversation_modes",
+        "capabilities",
+        "interests",
+        "languages",
+        "structured_output_formats",
+        "scopes",
+        "cost_latency_class",
+    ] {
+        assert!(
+            fields.contains_key(key),
+            "the tenant view carries `{key}`: {fields:?}"
+        );
+    }
+    for hidden in [
+        "confidentiality_classes",
+        "resource_ceilings",
+        "grants_by_reference",
+    ] {
+        assert!(
+            !fields.contains_key(hidden),
+            "the tenant view ABSENTS `{hidden}` (never nulls it): {fields:?}"
+        );
+    }
+
+    // The stranger (another tenant): NETWORK view — only public+network fields.
+    let network_view = read(stranger_id.clone()).await;
+    assert_eq!(network_view["visibility"], json!("network"));
+    let fields = network_view["profile"].as_object().unwrap();
+    for key in ["display_label", "purpose", "interests", "languages"] {
+        assert!(
+            fields.contains_key(key),
+            "the network view carries `{key}`: {fields:?}"
+        );
+    }
+    for hidden in [
+        "capabilities",
+        "scopes",
+        "conversation_modes",
+        "cost_latency_class",
+        "confidentiality_classes",
+        "resource_ceilings",
+    ] {
+        assert!(
+            !fields.contains_key(hidden),
+            "the network view ABSENTS `{hidden}`: {fields:?}"
+        );
+    }
+
+    // The provenance rides the visible claims (never flattened).
+    let claim = tenant_view["profile"]["capabilities"][0].clone();
+    assert_eq!(claim["confidence"], json!("self_asserted"));
+}
+
+/// The history stays FULL-only: a tenant sibling or a stranger cannot read
+/// the version history (the past versions may carry fields later reclassified).
+#[tokio::test]
+async fn the_version_history_stays_full_only() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "vis-owner-2" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap().to_string();
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "vis-agent-2", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "vis-stranger-2" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes");
+
+    // The stranger reads the NETWORK view of the current profile but NOT the
+    // history.
+    let (status, versions) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/versions"),
+        &stranger_id,
+    )
+    .await;
+    assert_eq!(status, 403, "the history is full-only: {versions}");
+    let (status, _) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/versions/1"),
+        &stranger_id,
+    )
+    .await;
+    assert_eq!(status, 403, "a past version is full-only");
+
+    // The owner reads the history.
+    let (status, versions) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/versions"),
+        &owner_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the owner reads the history: {versions}");
 }

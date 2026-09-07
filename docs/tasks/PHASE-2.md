@@ -175,7 +175,7 @@ slice can reuse the same control plane without rewriting it.
       `docs/decisions/2026-09-07_cert-proof-verification.md`.
 
   - ID: `PHASE-2.1.3`
-    Status: `proposed`
+    Status: `active`
     Goal: revocation surfaces — `node revoke`/cert status (the server
       refuses a revoked cert at the handshake; a revoked node goes
       `suspended` with visible presence), `grant revoke` + `boundary
@@ -186,6 +186,52 @@ slice can reuse the same control plane without rewriting it.
     Acceptance: a revoked cert/grant/boundary is refused at the next
       boundary crossing with an audit row; revocation is observable
       through the inspection surfaces; no existing suite regresses.
+    Note: gap census (`2026-09-07`, on pickup): the REFUSAL paths already
+      exist — the handshake ladder checks `revoked_at IS NOT NULL`
+      (`.1.2.2`), and the grant/boundary evaluation filters
+      `status = 'active'` (`grep -n "status = 'active'"
+      crates/reasonbraid-server/src/authority.rs` → lines 407/538) — what
+      is MISSING is every write path (`grep -n 'revoke'
+      crates/reasonbraid-server/src/api.rs
+      crates/reasonbraid-cli/src/main.rs` → no verbs) + the suspended
+      presence state (the 0009 view derives online/offline only).
+    Children: `.1.3.1`–`.1.3.2` (decomposed `2026-09-07` at the
+      cert-vs-grant seam — two independent contracts).
+
+  - ID: `PHASE-2.1.3.1`
+    Status: `proposed`
+    Goal: node/cert revocation — `POST /v1/nodes/revoke` (the
+      tenant_admin surface, the issue-token pattern): sets `revoked_at`
+      on the node's ACTIVE certificates (zero rows = 404; the refusal is
+      audited by the authorization record); the handshake ladder ALREADY
+      refuses revoked leaves (the `.1.2.2` row check — the test proves the
+      next handshake is 401); migration 0012 extends the `node_presence`
+      view with `suspended` (a node with a revoked certificate reads
+      suspended, whatever its lease); `rb node revoke --node <id>`
+      [--reason] --as/--tenant; the demo gains the revoke beat (node B,
+      after its thread closes — presence `suspended:true`). The book's
+      node-channel + cli chapters carry the surface.
+    Backlog: 11
+    Acceptance: revoking a node refuses its next handshake (401) and
+      flips presence to `suspended`; an unknown node is 404; a non-admin
+      caller is the typed 403 + audit row; the demo passes with the new
+      beat; no regression.
+
+  - ID: `PHASE-2.1.3.2`
+    Status: `proposed`
+    Goal: grant/boundary revocation — `POST
+      /v1/admin/grants/{grant_id}/revoke` + `POST
+      /v1/admin/boundaries/{boundary_id}/revoke` (tenant_admin-audited):
+      the `Revoked` statuses get their write paths; the evaluation's
+      existing `status = 'active'` filters refuse them at the next
+      decision (the test proves a revoked grant loses its authority while
+      the tenant's other grants keep working); `rb grant revoke` + `rb
+      boundary revoke`; the inspection surfaces show the status.
+    Backlog: 11
+    Acceptance: a revoked grant is refused at the next authorization
+      (with the audit row) while other grants evaluate; a revoked boundary
+      refuses its ceiling checks; unknown ids are 404; non-admin callers
+      are 403; no regression.
 
   - ID: `PHASE-2.1.4`
     Status: `proposed`
@@ -266,7 +312,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.3` | `proposed` | `.1.2.2` done (the channel rides the certificate; rotation is additive); the revocation surfaces execute now — cert revocation + the `Revoked` statuses' write paths |
+| 1 | `PHASE-2.1.3.1` | `proposed` | `.1.3` decomposed at the cert-vs-grant seam (the refusal paths exist; the write paths don't); node/cert revocation executes first, then the grant/boundary verbs |
 
 ## Changelog
 
@@ -319,6 +365,13 @@ slice can reuse the same control plane without rewriting it.
   `docs/decisions/2026-09-07_cert-proof-verification.md`; the book's
   node-channel + two-host-demo chapters carry the new contract; **`.1.2` is
   COMPLETE**; frontier → `.1.3`.
+- `2026-09-07`: `.1.3` decomposed at the cert-vs-grant seam — the census
+  found the REFUSAL paths already exist (the `.1.2.2` handshake checks
+  `revoked_at`, the evaluation filters `status = 'active'`) while NO write
+  path exists (`grep -n 'revoke' api.rs main.rs` → no verbs) and presence
+  has no suspended state; children `.1.3.1` (node/cert revocation + the
+  suspended presence + the demo beat) → `.1.3.2` (grant/boundary revoke
+  verbs); frontier → `.1.3.1`.
 
 ## Acceptance Checklist (PHASE-2.1.2.2)
 

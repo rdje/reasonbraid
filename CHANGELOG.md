@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.3` split at the cert-vs-grant seam (`PHASE-2.1.3`)
+
+- The census found the REFUSAL paths already exist — the `.1.2.2` handshake ladder checks `revoked_at`, and the grant/boundary evaluation filters `status = 'active'` — while NO write path exists (`grep -n 'revoke'` over api.rs + the CLI → no verbs) and the presence view derives online/offline only (no suspended state).
+- Children: `.1.3.1` node/cert revocation (`POST /v1/nodes/revoke` + the suspended presence + `rb node revoke` + the demo beat) → `.1.3.2` the `grant revoke`/`boundary revoke` verbs. Tree-only commit.
+
 ## 2026-09-07 — The channel proves itself with the workload certificate (`PHASE-2.1.2.2`)
 
 - **CHANNEL_VERSION 3**: the handshake's HMAC secret is retired — the node signs the canonical coverage with its workload certificate's key, and the server verifies **chain-to-CA + the validity window + the node-id fingerprint + the signature before any ledger read**. A foreign, expired, unregistered, or wrongly-signed certificate is a typed 401, identically to an unenrolled node.

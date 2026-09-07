@@ -285,6 +285,7 @@ async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
 
     // Poll: same filter on the live tail.
     let fencing_token = hs["fencing_token"].as_str().unwrap();
+    let lease_epoch = hs["lease_epoch"].as_i64().unwrap();
     let poll = client
         .post(format!("{base}/v1/nodes/poll"))
         .json(&json!({
@@ -292,6 +293,7 @@ async fn quarantine_skips_replay_and_poll_and_is_inspectable() {
             "node_id": node_id,
             "after_cursor": 0,
             "fencing_token": fencing_token,
+            "lease_epoch": lease_epoch,
         }))
         .send()
         .await

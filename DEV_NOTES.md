@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.2.2: fencing is a pair, not a token — the epoch is what makes the race observable
+
+- **The renewal race was invisible by construction**: `renew_lease`'s WHERE was `node_id` only, so a stale heartbeat that verified before a concurrent handshake extended the NEW session's lease after it landed. The epoch turns "last writer wins" into "last writer must still be current": the write carries the epoch it saw, and the rotation made that epoch dead.
+- **The token is never the whole story.** A stale epoch with the CURRENT token is refused — the honest pair is (token, epoch), and the in-tx `FOR UPDATE` re-verify makes the rotation observable even inside the events transaction (admission is not the apply).
+- promotion: declined (the pair-fencing rule is the leaf's recorded contract — no new cross-cutting decision). **Frontier `PHASE-2.2.3` (the retry policy).**
+
 ## _(2026-09-07)_ — PHASE-2.2.1: the transport ADR closes by promotion — the evidence shipped before the record, twice
 
 - **ADR-005 is the second "implementation ran ahead of the record" closure (after ADR-006).** The Phase-0 WP2 worker already IS the PostgreSQL queue with proven fencing/lease/ack semantics; the ADR's job was to promote the evidence and name the broker trigger, not to re-litigate a shipped, green transport.

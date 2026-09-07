@@ -21,10 +21,11 @@ GET  /v1/nodes/presence    observable online/offline state
 POST /v1/nodes/enroll      the one-time-token enrollment (`.1.2.1`)
 ```
 
-Every message carries a `channel_version` (currently **4**) and rejects unknown
+Every message carries a `channel_version` (currently **5**) and rejects unknown
 fields, so a forged authoritative field or a future version fails loudly, on
-both sides. Version 4 added the cached-decision fields (below); version 3 was
-the certificate-proofed handshake (`.1.2.2`).
+both sides. Version 5 added the lease epoch (below); version 4 added the
+cached-decision fields; version 3 was the certificate-proofed handshake
+(`.1.2.2`).
 
 ## Authentication (`.1.2.2`, certificate-proofed)
 
@@ -68,13 +69,19 @@ secret, but the CHANNEL identity is the certificate:
    and the node rotates automatically when less than half the leaf's lifetime
    remains, so a running session is never cut.
 4. **A successful handshake issues a lease**: a fresh random **fencing token**
-   and an expiry 60 s out. The token is the channel's credential from then on:
-   `events`, `ack`, and `poll` all carry it, and only the latest handshake's
-   token is accepted — a second handshake **fences** the old token, so a stale
-   process (one that missed the rotation) can write nothing.
+   and an expiry 60 s out, plus a bumped **lease epoch** (`.2.2`). The token is
+   the channel's credential from then on: `events`, `ack`, `poll`, and
+   `heartbeat` all carry it AND the epoch it was issued under, and only the
+   latest handshake's pair is accepted — a second handshake **fences** the old
+   token, and a write or renewal from the fenced epoch matches nothing (a stale
+   process that missed the rotation can neither write nor extend the lease it
+   lost).
 5. **Heartbeats renew a LIVE lease** (`POST /v1/nodes/heartbeat`, the node
-   heartbeats every ~15 s). A fenced token or an expired lease is refused; only
-   a fresh handshake — a new certificate proof — restores the channel.
+   heartbeats every ~15 s). A fenced token, a stale epoch, or an expired lease
+   is refused; only a fresh handshake — a new certificate proof — restores the
+   channel. A heartbeat racing a newer handshake loses: its renewal carries the
+   epoch it verified, and the write matches no row once the rotation lands
+   (`.2.2` — the last writer is never a stale one).
 
 ## Presence and leases
 

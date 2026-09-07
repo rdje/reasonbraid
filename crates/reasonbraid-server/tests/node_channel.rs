@@ -1105,7 +1105,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
         let base = server.base_url();
         async move {
             let mut body = json!({
-                "channel_version": 4,
+                "channel_version": 5,
                 "node_id": node_id,
                 "last_acked_cursor": 0,
                 "pending_operations": [],
@@ -1151,7 +1151,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let stranger = client
         .post(format!("{}/v1/nodes/handshake", server.base_url()))
         .json(&json!({
-            "channel_version": 4,
+            "channel_version": 5,
             "node_id": "nod_00000000-0000-7000-8000-0000000001ff",
             "last_acked_cursor": 0,
             "pending_operations": [],
@@ -1170,7 +1170,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let malformed = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 4,
+            "channel_version": 5,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
@@ -1187,12 +1187,13 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     let unauthenticated = client
         .post(format!("{}/v1/nodes/events", server.base_url()))
         .json(&json!({
-            "channel_version": 4,
+            "channel_version": 5,
             "node_id": node_id,
             "event_id": "evt_00000000-0000-7000-8000-000000000101",
             "operation_id": "op_00000000-0000-7000-8000-000000000101",
             "payload": { "kind": "some_signal" },
             "fencing_token": "fnc_not-the-live-token",
+            "lease_epoch": 1,
         }))
         .send()
         .await
@@ -1300,14 +1301,14 @@ async fn a_second_handshake_fences_the_previous_lease() {
     let node_id = "nod_00000000-0000-7000-8000-000000000103".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let handshake = async || -> String {
+    let handshake = async || -> (String, i64) {
         let channel = reasonbraid_node::NodeChannel::new(
             server.base_url(),
             node_id.clone(),
             cert_der.clone(),
             key_from_der(&key_der),
         );
-        channel
+        let hs = channel
             .handshake(&reasonbraid_node::HandshakeRequest {
                 channel_version: reasonbraid_node::CHANNEL_VERSION,
                 node_id: node_id.clone(),
@@ -1318,15 +1319,15 @@ async fn a_second_handshake_fences_the_previous_lease() {
                 proof_signature: String::new(),
             })
             .await
-            .expect("handshake")
-            .fencing_token
+            .expect("handshake");
+        (hs.fencing_token, hs.lease_epoch)
     };
-    let old_token = handshake().await;
-    let new_token = handshake().await;
+    let (old_token, old_epoch) = handshake().await;
+    let (new_token, _new_epoch) = handshake().await;
     assert_ne!(old_token, new_token, "every handshake rotates the token");
 
     let base = server.base_url();
-    let probe = |path: &'static str, token: &str, body: Value| {
+    let probe = |path: &'static str, token: &str, epoch: i64, body: Value| {
         let client = client.clone();
         let base = base.clone();
         let node_id = node_id.clone();
@@ -1334,7 +1335,8 @@ async fn a_second_handshake_fences_the_previous_lease() {
         async move {
             let mut body = body;
             body["fencing_token"] = json!(token);
-            body["channel_version"] = json!(4);
+            body["lease_epoch"] = json!(epoch);
+            body["channel_version"] = json!(5);
             body["node_id"] = json!(node_id);
             client
                 .post(format!("{base}{path}"))
@@ -1347,9 +1349,10 @@ async fn a_second_handshake_fences_the_previous_lease() {
         }
     };
 
-    // The old token is fenced on EVERY surface.
+    // The old token is fenced on EVERY surface — its epoch died with it, so even
+    // a write carrying the old epoch can never match the rotated lease row.
     assert_eq!(
-        probe("/v1/nodes/heartbeat", &old_token, json!({})).await,
+        probe("/v1/nodes/heartbeat", &old_token, old_epoch, json!({})).await,
         401,
         "heartbeat with a fenced token is refused"
     );
@@ -1357,6 +1360,7 @@ async fn a_second_handshake_fences_the_previous_lease() {
         probe(
             "/v1/nodes/events",
             &old_token,
+            old_epoch,
             json!({ "event_id": "evt_fenced", "operation_id": "op_fenced", "payload": {} }),
         )
         .await,
@@ -1364,19 +1368,31 @@ async fn a_second_handshake_fences_the_previous_lease() {
         "events with a fenced token are refused"
     );
     assert_eq!(
-        probe("/v1/nodes/ack", &old_token, json!({ "ack_cursor": 0 })).await,
+        probe(
+            "/v1/nodes/ack",
+            &old_token,
+            old_epoch,
+            json!({ "ack_cursor": 0 })
+        )
+        .await,
         401,
         "ack with a fenced token is refused"
     );
     assert_eq!(
-        probe("/v1/nodes/poll", &old_token, json!({ "after_cursor": 0 })).await,
+        probe(
+            "/v1/nodes/poll",
+            &old_token,
+            old_epoch,
+            json!({ "after_cursor": 0 })
+        )
+        .await,
         401,
         "poll with a fenced token is refused"
     );
 
     // The new token is the live lease's.
     assert_eq!(
-        probe("/v1/nodes/heartbeat", &new_token, json!({})).await,
+        probe("/v1/nodes/heartbeat", &new_token, _new_epoch, json!({})).await,
         200,
         "the current token renews"
     );
@@ -1506,7 +1522,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
     channel.install_identity(fresh_cert, fresh_key);
     channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 4,
+            channel_version: 5,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1526,7 +1542,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
     );
     old_channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 4,
+            channel_version: 5,
             node_id,
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1554,7 +1570,7 @@ async fn rotation_without_a_valid_certificate_proof_is_refused() {
     let forged = client
         .post(format!("{}/v1/nodes/rotate", server.base_url()))
         .json(&json!({
-            "channel_version": 4,
+            "channel_version": 5,
             "node_id": node_id,
             "cert_der": "00",
             "proof_signature": "00",
@@ -1635,7 +1651,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
     );
     channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 4,
+            channel_version: 5,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1664,7 +1680,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
     // The NEXT handshake is refused: the ladder sees the revoked row.
     let refused = channel
         .handshake(&reasonbraid_node::HandshakeRequest {
-            channel_version: 4,
+            channel_version: 5,
             node_id: node_id.clone(),
             last_acked_cursor: 0,
             pending_operations: vec![],
@@ -1786,4 +1802,74 @@ async fn revocation_refusals_are_typed_and_audited() {
     );
 
     server.crash();
+}
+
+/// THE `.2.2` renewal-race leg, deterministic at the state level: after a
+/// second handshake rotates the lease (new token, bumped epoch), a renewal
+/// carrying the OLD epoch matches no row — the stale heartbeat loses the race
+/// instead of extending the session that fenced it. The in-tx verifier
+/// refuses the stale epoch the same way (the check-vs-commit window).
+#[tokio::test]
+async fn a_stale_epoch_renewal_loses_the_race() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let node_id = "nod_00000000-0000-7000-8000-000000000152".to_string();
+    seed_node(&pool, &node_id).await;
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+
+    let (token_a, epoch_a, _expiry_a) = state
+        .issue_lease(&node_id, Utc::now())
+        .await
+        .expect("first lease");
+    let (token_b, epoch_b, _expiry_b) = state
+        .issue_lease(&node_id, Utc::now())
+        .await
+        .expect("second lease rotates");
+    assert_ne!(token_a, token_b, "rotation issues a fresh token");
+    assert_eq!(
+        epoch_b,
+        epoch_a + 1,
+        "every handshake bumps the lease epoch"
+    );
+
+    // THE race: the stale heartbeat's check passed (epoch_a was live when it
+    // verified) but the write lands AFTER the rotation — the epoch guard
+    // matches no row, and the renewal is refused instead of extending the
+    // NEW session's lease.
+    let raced = state.renew_lease(&node_id, epoch_a, Utc::now()).await;
+    assert!(
+        raced.is_err(),
+        "a renewal from a fenced epoch matches no row"
+    );
+
+    // The epoch rides the fencing check: the honest pair passes, a stale
+    // epoch fails even WITH the current token (the token is never the whole
+    // story).
+    state
+        .verify_fencing(&node_id, &token_b, epoch_b)
+        .await
+        .expect("the current token + epoch verify");
+    assert!(
+        state
+            .verify_fencing(&node_id, &token_b, epoch_a)
+            .await
+            .is_err(),
+        "a stale epoch with the current token is refused"
+    );
+
+    // The check-vs-commit window: the same guard INSIDE a transaction.
+    let mut tx = pool.begin().await.expect("begin");
+    assert!(
+        state
+            .verify_fencing_in_tx(&mut tx, &node_id, &token_b, epoch_a)
+            .await
+            .is_err(),
+        "the in-tx verifier refuses the stale epoch"
+    );
+    state
+        .verify_fencing_in_tx(&mut tx, &node_id, &token_b, epoch_b)
+        .await
+        .expect("the in-tx verifier accepts the honest pair");
+    tx.commit().await.expect("commit");
 }

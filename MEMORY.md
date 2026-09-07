@@ -23,13 +23,16 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.2.2` (`.2.1` done: ADR-005
-  accepted — the PostgreSQL queue is the event transport, evidence-gated).
-  Then `.2.3`, `.2.4`.
-- **Next action:** execute `PHASE-2.2.2` — lease/fencing hardening: the
-  renewal race (a stale heartbeat must not extend the lease its own
-  handshake fenced), the lease epoch (renewals/events carry the epoch
-  they saw; a fenced epoch is refused), the check-vs-commit window.
+- **Active tree:** `PHASE-2` → frontier `.2.3` (`.2.2` done: the lease
+  epoch — migration 0015 + CHANNEL_VERSION 5; a stale-epoch renewal
+  loses the race, the events transaction re-verifies FOR UPDATE). Then
+  `.2.4`.
+- **Next action:** execute `PHASE-2.2.3` — the retry policy: the §14.6
+  classes as a pure decision (provider-accepted-but-unproven retries only
+  with an explicit possible-duplicate authorization; refused/failed_known
+  never auto-retry; transient pre-dispatch retries bounded), the
+  `retry_requires_authorization` reason code wired, the supervisor's
+  retry gate.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

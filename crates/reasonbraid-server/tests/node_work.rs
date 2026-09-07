@@ -241,14 +241,15 @@ async fn enroll_node(
 
 /// The authenticated public channel path (`.1.2.2`): the node reports holding
 /// nothing, proves its key over the reported fields, and receives its inbox
-/// replay + a fresh lease. Returns the response and the fencing token.
+/// replay + a fresh lease. Returns the response, the fencing token, and the
+/// lease epoch.
 async fn handshake(
     client: &reqwest::Client,
     base: &str,
     node_id: &str,
     cert_hex: &str,
     key_hex: &str,
-) -> (Value, String) {
+) -> (Value, String, i64) {
     let key_der = from_hex(key_hex).expect("key hex");
     let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
     let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
@@ -274,14 +275,19 @@ async fn handshake(
         .as_str()
         .expect("the handshake returns a fencing token")
         .to_string();
-    (body, token)
+    let epoch = body["lease_epoch"]
+        .as_i64()
+        .expect("the handshake returns the lease epoch");
+    (body, token, epoch)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn submit_event(
     client: &reqwest::Client,
     base: &str,
     node_id: &str,
     fencing_token: &str,
+    lease_epoch: i64,
     event_id: &str,
     operation_id: &str,
     payload: &Value,
@@ -295,6 +301,7 @@ async fn submit_event(
             "operation_id": operation_id,
             "payload": payload,
             "fencing_token": fencing_token,
+            "lease_epoch": lease_epoch,
         }))
         .send()
         .await
@@ -446,7 +453,7 @@ async fn invite_dispatches_work_with_a_reservation() {
 
     // THE `.1.3.1` contract: the invite recorded a PENDING invitation and
     // enqueued NOTHING — the work item exists only after the explicit accept.
-    let (pre_handshake, _token) =
+    let (pre_handshake, _token, _ep1) =
         handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     assert_eq!(
         pre_handshake["replay"].as_array().unwrap().len(),
@@ -464,7 +471,8 @@ async fn invite_dispatches_work_with_a_reservation() {
     .await;
 
     // The node reads its inbox through the PUBLIC channel surface.
-    let (handshake, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (handshake, _token, _ep6) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let replay = handshake["replay"].as_array().expect("replay array");
     assert_eq!(
         replay.len(),
@@ -538,7 +546,8 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
     )
     .await;
 
-    let (handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (handshake, token, ep7) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let work = handshake["replay"][0].clone();
     let command_id = work["command_id"].as_str().unwrap().to_string();
     let reservation_id = work["payload"]["reservation"]["reservation_id"]
@@ -559,6 +568,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &server.base(),
         &role,
         &token,
+        ep7,
         "evt_00000000-0000-7000-8000-000000000001",
         "op_00000000-0000-7000-8000-000000000001",
         &result,
@@ -641,6 +651,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &server.base(),
         &role,
         &token,
+        ep7,
         "evt_00000000-0000-7000-8000-000000000001",
         "op_00000000-0000-7000-8000-000000000001",
         &result,
@@ -660,6 +671,7 @@ async fn node_result_becomes_one_contribution_despite_duplicates() {
         &server.base(),
         &role,
         &token,
+        ep7,
         "evt_00000000-0000-7000-8000-000000000002",
         "op_00000000-0000-7000-8000-000000000002",
         &result,
@@ -741,7 +753,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     )
     .await;
 
-    let (first_view, first_token) =
+    let (first_view, first_token, ep4) =
         handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let command_id = first_view["replay"][0]["command_id"]
         .as_str()
@@ -756,6 +768,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
         &server.base(),
         &role,
         &first_token,
+        ep4,
         "evt_00000000-0000-7000-8000-000000000011",
         "op_00000000-0000-7000-8000-000000000011",
         &work_result(
@@ -797,7 +810,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
     assert_eq!(status, 200, "challenge succeeds");
 
     // The challenge dispatched revise work to the contribution's author (the role).
-    let (replay_view, replay_token) =
+    let (replay_view, replay_token, ep5) =
         handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let replay = replay_view["replay"].as_array().expect("replay array");
     assert_eq!(replay.len(), 2, "invite work + revise work");
@@ -824,6 +837,7 @@ async fn challenge_dispatches_revise_work_and_the_revision_lands() {
         &server.base(),
         &role,
         &replay_token,
+        ep5,
         "evt_00000000-0000-7000-8000-000000000012",
         "op_00000000-0000-7000-8000-000000000012",
         &work_result(
@@ -921,7 +935,8 @@ async fn budget_denial_enqueues_work_without_a_reservation() {
     )
     .await;
 
-    let (handshake, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (handshake, _token, _ep6) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let work = &handshake["replay"][0];
     assert_eq!(work["payload"]["kind"].as_str().unwrap(), "contribute");
     assert!(
@@ -977,7 +992,8 @@ async fn result_after_close_is_stored_as_a_rejection() {
         "key-accept-close",
     )
     .await;
-    let (handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (handshake, token, ep7) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let command_id = handshake["replay"][0]["command_id"]
         .as_str()
         .unwrap()
@@ -1009,6 +1025,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
         &server.base(),
         &role,
         &token,
+        ep7,
         "evt_00000000-0000-7000-8000-000000000021",
         "op_00000000-0000-7000-8000-000000000021",
         &result,
@@ -1023,6 +1040,7 @@ async fn result_after_close_is_stored_as_a_rejection() {
         &server.base(),
         &role,
         &token,
+        ep7,
         "evt_00000000-0000-7000-8000-000000000022",
         "op_00000000-0000-7000-8000-000000000022",
         &result,
@@ -1072,12 +1090,14 @@ async fn ordinary_channel_events_stay_receipts_only() {
 
     // The `.1.2.2` contract: authenticate (handshake → fencing token) before any
     // channel traffic, even a receipt-only event.
-    let (_handshake, token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (_handshake, token, ep8) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     let (status, receipt) = submit_event(
         &client,
         &server.base(),
         &role,
         &token,
+        ep8,
         "evt_00000000-0000-7000-8000-000000000031",
         "op_00000000-0000-7000-8000-000000000031",
         &json!({ "kind": "some_other_signal", "value": 1 }),
@@ -1155,7 +1175,7 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
     // THE delivery carries the decision: the handshake replay names the admitting
     // record + digest + decision time + the epoch at decision time (0 — no
     // revocation yet), and the response carries the current epoch.
-    let (view, _token) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let (view, _token, _ep9) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
     assert_eq!(view["revocation_epoch"], json!(0), "fresh tenant epoch");
     let work = &view["replay"][0];
     assert!(

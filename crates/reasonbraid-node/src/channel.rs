@@ -27,7 +27,7 @@ use serde_json::Value;
 
 /// The node channel's wire protocol version (must equal the server's). Version 3
 /// (`.1.2.2`) is the certificate-proof contract.
-pub const CHANNEL_VERSION: u32 = 4;
+pub const CHANNEL_VERSION: u32 = 5;
 
 /// The exact fields the handshake proof covers, in canonical (serde field)
 /// order — the mirrored [`ProofCoverage`] shape the server verifies. Both sides
@@ -182,6 +182,8 @@ pub struct HandshakeResponse {
     pub known_events: Vec<KnownEvent>,
     pub fencing_token: String,
     pub lease_expires_at: chrono::DateTime<chrono::Utc>,
+    /// The lease EPOCH this handshake's token was issued under (`.2.2`).
+    pub lease_epoch: i64,
     /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008).
     pub revocation_epoch: i64,
 }
@@ -296,6 +298,9 @@ pub struct NodeChannel {
     node_id: String,
     identity: WorkloadIdentity,
     fencing_token: Arc<Mutex<Option<String>>>,
+    /// The lease epoch the current token was issued under (`.2.2`) — sent with
+    /// every fenced write so a stale session can never ride a rotated lease.
+    lease_epoch: Arc<Mutex<Option<i64>>>,
     client: reqwest::Client,
 }
 
@@ -322,6 +327,7 @@ impl NodeChannel {
             node_id,
             identity: Arc::new(Mutex::new(Some((cert_der, key)))),
             fencing_token: Arc::new(Mutex::new(None)),
+            lease_epoch: Arc::new(Mutex::new(None)),
             client: reqwest::Client::new(),
         }
     }
@@ -335,6 +341,7 @@ impl NodeChannel {
             node_id,
             identity: Arc::new(Mutex::new(None)),
             fencing_token: Arc::new(Mutex::new(None)),
+            lease_epoch: Arc::new(Mutex::new(None)),
             client: reqwest::Client::new(),
         }
     }
@@ -378,6 +385,15 @@ impl NodeChannel {
             .lock()
             .expect("the fencing-token lock is not poisoned")
             .clone()
+            .ok_or(ChannelError::NotAuthenticated)
+    }
+
+    /// The lease epoch from the latest successful handshake (the same guard as
+    /// the token — an unauthenticated channel has neither).
+    fn current_lease_epoch(&self) -> Result<i64, ChannelError> {
+        self.lease_epoch
+            .lock()
+            .expect("the lease-epoch lock is not poisoned")
             .ok_or(ChannelError::NotAuthenticated)
     }
 
@@ -458,10 +474,18 @@ impl NodeChannel {
             .send()
             .await?;
         let parsed: HandshakeResponse = self.parse(response).await?;
-        *self
-            .fencing_token
-            .lock()
-            .expect("the fencing-token lock is not poisoned") = Some(parsed.fencing_token.clone());
+        {
+            let mut token = self
+                .fencing_token
+                .lock()
+                .expect("the fencing-token lock is not poisoned");
+            let mut epoch = self
+                .lease_epoch
+                .lock()
+                .expect("the lease-epoch lock is not poisoned");
+            *token = Some(parsed.fencing_token.clone());
+            *epoch = Some(parsed.lease_epoch);
+        }
         Ok(parsed)
     }
 
@@ -531,6 +555,7 @@ impl NodeChannel {
                 "operation_id": operation_id,
                 "payload": payload,
                 "fencing_token": self.current_fencing_token()?,
+                "lease_epoch": self.current_lease_epoch()?,
             }))
             .send()
             .await?;
@@ -548,6 +573,7 @@ impl NodeChannel {
                 "node_id": self.node_id,
                 "ack_cursor": ack_cursor,
                 "fencing_token": self.current_fencing_token()?,
+                "lease_epoch": self.current_lease_epoch()?,
             }))
             .send()
             .await?;
@@ -565,6 +591,7 @@ impl NodeChannel {
                 "node_id": self.node_id,
                 "after_cursor": after_cursor,
                 "fencing_token": self.current_fencing_token()?,
+                "lease_epoch": self.current_lease_epoch()?,
             }))
             .send()
             .await?;
@@ -582,6 +609,7 @@ impl NodeChannel {
                 "channel_version": CHANNEL_VERSION,
                 "node_id": self.node_id,
                 "fencing_token": self.current_fencing_token()?,
+                "lease_epoch": self.current_lease_epoch()?,
             }))
             .send()
             .await?;

@@ -69,7 +69,7 @@ use sqlx::{PgPool, Postgres};
 /// `protocol_incompatible` error, never a silent downgrade. Version 2 (`.1.2.2`) adds
 /// the authenticated contract: the handshake key-proof, the fencing token on
 /// `events`/`ack`/`poll`, and the `heartbeat`/`presence` endpoints.
-pub const CHANNEL_VERSION: u32 = 4;
+pub const CHANNEL_VERSION: u32 = 5;
 
 /// The dev-profile lease TTL: a heartbeat renews a LIVE lease by this much. 60 s
 /// gives the demo's 15 s heartbeat cadence a 4× margin; a process that stops
@@ -224,6 +224,10 @@ pub struct HandshakeResponse {
     /// that renews the lease or guards `events`/`ack`/`poll`) and its expiry.
     pub fencing_token: String,
     pub lease_expires_at: DateTime<Utc>,
+    /// The lease EPOCH this handshake's token was issued under (`.2.2`): every
+    /// fenced write carries it, so a stale session's writes and renewals are
+    /// refused even when they race a newer handshake.
+    pub lease_epoch: i64,
     /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008): the node
     /// stores it and evaluates every cached admission decision against it at
     /// the dispatch boundary.
@@ -241,6 +245,10 @@ pub struct EventSubmission {
     pub payload: Value,
     /// The fencing token this node's latest handshake issued.
     pub fencing_token: String,
+    /// The lease epoch the fencing token was issued under (`.2.2`): a write
+    /// from a fenced epoch is refused even if its token check raced past a
+    /// newer handshake.
+    pub lease_epoch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -260,6 +268,8 @@ pub struct AckRequest {
     pub ack_cursor: i64,
     /// The fencing token this node's latest handshake issued.
     pub fencing_token: String,
+    /// The lease epoch the fencing token was issued under (`.2.2`).
+    pub lease_epoch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -280,6 +290,8 @@ pub struct PollRequest {
     pub after_cursor: i64,
     /// The fencing token this node's latest handshake issued.
     pub fencing_token: String,
+    /// The lease epoch the fencing token was issued under (`.2.2`).
+    pub lease_epoch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -302,6 +314,10 @@ pub struct HeartbeatRequest {
     pub channel_version: u32,
     pub node_id: String,
     pub fencing_token: String,
+    /// The lease epoch the fencing token was issued under (`.2.2`): the
+    /// renewal only lands if the row STILL carries that epoch — a heartbeat
+    /// racing a newer handshake loses instead of extending the new session.
+    pub lease_epoch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -726,12 +742,19 @@ impl NodeChannelState {
     /// latest handshake's AND the lease must still be live. A missing/mismatched
     /// token and an expired lease are refused differently (the node can tell a
     /// fenced credential from a lapsed one), but neither reads any ledger fact.
-    pub async fn verify_fencing(&self, node_id: &str, token: &str) -> Result<(), ApiError> {
+    pub async fn verify_fencing(
+        &self,
+        node_id: &str,
+        token: &str,
+        lease_epoch: i64,
+    ) -> Result<(), ApiError> {
         let expires: Option<DateTime<Utc>> = sqlx::query_scalar(
-            "SELECT lease_expires_at FROM node_leases WHERE node_id = $1 AND fencing_token = $2",
+            "SELECT lease_expires_at FROM node_leases \
+             WHERE node_id = $1 AND fencing_token = $2 AND lease_epoch = $3",
         )
         .bind(node_id)
         .bind(token)
+        .bind(lease_epoch)
         .fetch_optional(&self.pool)
         .await?;
         match expires {
@@ -741,54 +764,95 @@ impl NodeChannelState {
         }
     }
 
+    /// The check-vs-commit re-verification (`.2.2`): the same fencing facts,
+    /// checked INSIDE the caller's transaction with the lease row locked — a
+    /// handshake that rotates the lease between an admission check and the
+    /// apply is observed here (the row no longer matches), so a fenced session
+    /// can never ride a stale admission into the write.
+    pub async fn verify_fencing_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        node_id: &str,
+        token: &str,
+        lease_epoch: i64,
+    ) -> Result<(), ApiError> {
+        let expires: Option<DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT lease_expires_at FROM node_leases \
+             WHERE node_id = $1 AND fencing_token = $2 AND lease_epoch = $3 \
+             FOR UPDATE",
+        )
+        .bind(node_id)
+        .bind(token)
+        .bind(lease_epoch)
+        .fetch_optional(&mut **tx)
+        .await?;
+        match expires {
+            None => Err(ApiError::fencing_refused()),
+            Some(expires) if expires <= Utc::now() => Err(ApiError::lease_expired()),
+            Some(_) => Ok(()),
+        }
+    }
+
     /// Issue (or rotate) the node's lease: a FRESH fencing token every handshake,
-    /// expiry `LEASE_TTL` out. The old token is fenced by the rotation — a stale
-    /// process's heartbeats/events stop being accepted the moment a newer
-    /// handshake lands. The token is generated IN PostgreSQL (`gen_random_uuid()`)
+    /// expiry `LEASE_TTL` out, and a bumped lease EPOCH (`.2.2`). The old token
+    /// is fenced by the rotation — a stale process's heartbeats/events stop being
+    /// accepted the moment a newer handshake lands, and its epoch-bound renewals
+    /// match no row. The token is generated IN PostgreSQL (`gen_random_uuid()`)
     /// in the same statement that writes the row — 128 bits of server entropy,
     /// never client-chosen.
     pub async fn issue_lease(
         &self,
         node_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<(String, DateTime<Utc>), sqlx::Error> {
+    ) -> Result<(String, i64, DateTime<Utc>), sqlx::Error> {
         let expires = now + LEASE_TTL;
-        let (token,): (String,) = sqlx::query_as(
-            "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at, issued_at) \
-             VALUES ($1, 'fnc_' || gen_random_uuid()::text, $2, $3, $3) \
+        let (token, epoch): (String, i64) = sqlx::query_as(
+            "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at, \
+                                      issued_at, lease_epoch) \
+             VALUES ($1, 'fnc_' || gen_random_uuid()::text, $2, $3, $3, 1) \
              ON CONFLICT (node_id) DO UPDATE SET \
                fencing_token = EXCLUDED.fencing_token, \
                lease_expires_at = EXCLUDED.lease_expires_at, \
                last_seen_at = EXCLUDED.last_seen_at, \
-               issued_at = EXCLUDED.issued_at \
-             RETURNING fencing_token",
+               issued_at = EXCLUDED.issued_at, \
+               lease_epoch = node_leases.lease_epoch + 1 \
+             RETURNING fencing_token, lease_epoch",
         )
         .bind(node_id)
         .bind(expires)
         .bind(now)
         .fetch_one(&self.pool)
         .await?;
-        Ok((token, expires))
+        Ok((token, epoch, expires))
     }
 
     /// Renew a LIVE lease (the caller already verified the fencing token): push
-    /// `lease_expires_at` and `last_seen_at` forward. Returns the new expiry.
+    /// `lease_expires_at` and `last_seen_at` forward. The epoch the caller saw
+    /// rides the WHERE (`.2.2`): a renewal whose handshake was superseded
+    /// between the check and this write matches no row and is refused — a
+    /// stale heartbeat can never extend the session that fenced it.
     pub async fn renew_lease(
         &self,
         node_id: &str,
+        lease_epoch: i64,
         now: DateTime<Utc>,
     ) -> Result<DateTime<Utc>, sqlx::Error> {
         let expires = now + LEASE_TTL;
-        sqlx::query_scalar(
+        let renewed: Option<DateTime<Utc>> = sqlx::query_scalar(
             "UPDATE node_leases SET lease_expires_at = $3, last_seen_at = $2 \
-             WHERE node_id = $1 \
+             WHERE node_id = $1 AND lease_epoch = $4 \
              RETURNING lease_expires_at",
         )
         .bind(node_id)
         .bind(now)
         .bind(expires)
-        .fetch_one(&self.pool)
-        .await
+        .bind(lease_epoch)
+        .fetch_optional(&self.pool)
+        .await?;
+        match renewed {
+            Some(expiry) => Ok(expiry),
+            None => Err(sqlx::Error::RowNotFound),
+        }
     }
 
     /// One node's observable presence (`node_presence`, migration 0009). `None`
@@ -1005,9 +1069,11 @@ async fn handshake(
         }
     }
 
-    // The authenticated reconnect issued a fresh lease: a NEW fencing token, so a
-    // stale process fenced by this rotation is refused from here on.
-    let (fencing_token, lease_expires_at) = state.issue_lease(&req.node_id, Utc::now()).await?;
+    // The authenticated reconnect issued a fresh lease: a NEW fencing token and
+    // a bumped epoch, so a stale process fenced by this rotation is refused from
+    // here on — its token, its epoch-bound renewals, and its writes all fail.
+    let (fencing_token, lease_epoch, lease_expires_at) =
+        state.issue_lease(&req.node_id, Utc::now()).await?;
     let revocation_epoch = state.revocation_epoch(&req.node_id).await?;
 
     Ok(Json(HandshakeResponse {
@@ -1019,6 +1085,7 @@ async fn handshake(
         fencing_token,
         lease_expires_at,
         revocation_epoch,
+        lease_epoch,
     }))
 }
 
@@ -1080,7 +1147,7 @@ async fn events(
 ) -> Result<Json<EventReceipt>, ApiError> {
     check_version(req.channel_version)?;
     state
-        .verify_fencing(&req.node_id, &req.fencing_token)
+        .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
     // ONE transaction (`PHASE-0.6.2`): the receipt and — when the payload is a
     // thread work result — the domain application (claim → authorize → validate →
@@ -1089,6 +1156,13 @@ async fn events(
     // application still commits the receipt (the node DID emit this event) with
     // the rejection stored as the command's idempotent result.
     let mut tx = state.pool.begin().await?;
+    // The check-vs-commit window (`.2.2`): the admission check above ran
+    // OUTSIDE the transaction — a handshake that lands between then and the
+    // apply would have rotated the lease under this write. Re-verify INSIDE,
+    // locking the lease row, so the rotation is observed, not lost.
+    state
+        .verify_fencing_in_tx(&mut tx, &req.node_id, &req.fencing_token, req.lease_epoch)
+        .await?;
     let accepted = record_event_in_tx(
         &mut *tx,
         &req.node_id,
@@ -1121,7 +1195,7 @@ async fn ack(
 ) -> Result<Json<AckResponse>, ApiError> {
     check_version(req.channel_version)?;
     state
-        .verify_fencing(&req.node_id, &req.fencing_token)
+        .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
     let current = state.current_cursor(&req.node_id).await?;
     if req.ack_cursor > current {
@@ -1145,7 +1219,7 @@ async fn poll(
         return Err(ApiError::bad_request("node_id is required".to_string()));
     }
     state
-        .verify_fencing(&req.node_id, &req.fencing_token)
+        .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
     let current = state.current_cursor(&req.node_id).await?;
     if req.after_cursor > current {
@@ -1161,18 +1235,24 @@ async fn poll(
     }))
 }
 
-/// Renew a LIVE lease: the fencing token must be the latest handshake's and the
-/// lease must not have expired. Renewal returns the new expiry; the token itself
-/// rotates only at the handshake.
+/// Renew a LIVE lease: the fencing token must be the latest handshake's, the
+/// epoch must still be current, and the lease must not have expired. Renewal
+/// returns the new expiry; the token itself rotates only at the handshake. A
+/// renewal whose epoch was superseded between the check and the write matches
+/// no row — the stale heartbeat loses the race (`.2.2`), it never extends the
+/// session that fenced it.
 async fn heartbeat(
     State(state): State<Arc<NodeChannelState>>,
     Json(req): Json<HeartbeatRequest>,
 ) -> Result<Json<HeartbeatResponse>, ApiError> {
     check_version(req.channel_version)?;
     state
-        .verify_fencing(&req.node_id, &req.fencing_token)
+        .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
-    let lease_expires_at = state.renew_lease(&req.node_id, Utc::now()).await?;
+    let lease_expires_at = state
+        .renew_lease(&req.node_id, req.lease_epoch, Utc::now())
+        .await
+        .map_err(|_| ApiError::fencing_refused())?;
     Ok(Json(HeartbeatResponse {
         channel_version: CHANNEL_VERSION,
         fencing_token: req.fencing_token,

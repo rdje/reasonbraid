@@ -603,7 +603,7 @@ slice can reuse the same control plane without rewriting it.
       named; no code changes.
 
   - ID: `PHASE-2.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: lease/fencing hardening — the renewal race (a heartbeat
       concurrent with a handshake must not resurrect a fenced token:
       both write the lease row today, so the LAST writer wins — a stale
@@ -613,6 +613,22 @@ slice can reuse the same control plane without rewriting it.
       the check-vs-commit window (the fencing check runs at request
       admission, then the transaction applies — a lease that lapses
       mid-transaction is not re-checked; the epoch column closes it).
+    Done (`2026-09-07`): migration 0015 adds `node_leases.lease_epoch`;
+      every handshake bumps it (the rotation's token AND epoch fence the
+      old session); all four fenced writes (events/ack/poll/heartbeat)
+      carry the epoch they saw and the fencing check requires the pair;
+      `renew_lease` rides the epoch in its WHERE — a heartbeat racing a
+      newer handshake matches no row (RowNotFound → the typed fencing
+      refusal); the events handler re-verifies the pair INSIDE its
+      transaction (`verify_fencing_in_tx`, the lease row FOR UPDATE) so a
+      rotation landing between the admission check and the apply is
+      observed; CHANNEL_VERSION 5; the node channel stores the epoch
+      beside the token. The deterministic state-level test proves the
+      race (a renewal from the fenced epoch is refused, the in-tx
+      verifier refuses the stale pair) + the wire test re-proves every
+      fenced surface with the epoch; the full guard green (12 suites +
+      e2e + demo, `target/pg222c_guard.log`). The acceptance checklist
+      below records the evidence — frontier → `.2.3`.
     Acceptance: the renewal race test (concurrent heartbeat + handshake
       → the old token stays fenced); a stale-epoch renewal is refused;
       no regression.
@@ -674,11 +690,17 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.2.2` | `proposed` | `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
+| 1 | `PHASE-2.2.3` | `proposed` | `.2.2` done — the lease epoch hardened the fencing (the renewal race + the check-vs-commit window); the retry policy executes now |
+ `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.2.2` done — lease/fencing hardening: migration 0015's
+  lease epoch rides every fenced write (the token AND the epoch fence the old
+  session), a stale-epoch renewal matches no row (the heartbeat loses the
+  race), the events transaction re-verifies the pair FOR UPDATE (the
+  check-vs-commit window), CHANNEL_VERSION 5; frontier → `.2.3`.
 - `2026-09-07`: `.2.1` done — ADR-005 accepted: the PostgreSQL queue is the
   event transport (the WP2 leased outbox worker + ADR-004 + the ADR-006 pull
   channel — shipped across two phases; the broker trigger is named). No code
@@ -940,6 +962,48 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
   migration 0003, the cached-decision reader + epoch store, the dispatch
   gate + `refuse_dispatch`); the tests + the demo's version bump + the
   book's cached-decisions section.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book,
+  KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.2.2)
+
+The CODE change owned by this leaf: migration `0015_lease_epoch.sql`,
+`crates/reasonbraid-server/src/node_channel.rs` (the epoch on the four DTOs +
+`issue_lease`/`renew_lease`/`verify_fencing` + the in-tx verifier + the
+handlers), `crates/reasonbraid-node/src/channel.rs` (the epoch beside the
+token), `crates/reasonbraid-server/tests/node_channel.rs` +
+`tests/node_inbox.rs` + `tests/node_work.rs` (the wire bodies), the demo's
+probes, `docs/book/src/node-channel.md` — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — the renewal race: `renew_lease`'s UPDATE had no
+  token/epoch guard (`grep -n renew_lease node_channel.rs` → the WHERE was
+  `node_id` only), so a stale heartbeat that verified before a concurrent
+  handshake extended the NEW session's lease after it landed; the fencing
+  check ran at admission, outside the events transaction.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the token is checked but never carried
+  into the write, and the check and the apply are separate moments. The fix
+  is the lease EPOCH: the handshake bumps it with the token, every fenced
+  write carries the pair it saw, the renewal's WHERE requires the pair (0
+  rows = the race lost), and the events transaction re-verifies the pair FOR
+  UPDATE (a rotation between admission and apply is observed).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no epoch,
+  the unguarded renewal. After: `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 22 passed` (`node_channel`, +1: the deterministic
+  state-level race — rotation bumps the epoch, a renewal from the fenced
+  epoch matches no row, a stale epoch with the CURRENT token is refused,
+  the in-tx verifier refuses the stale pair) + the wire test re-proves
+  every fenced surface carries the epoch + the full guard green (12 suites
+  + e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS,
+  `rc=0`, `target/pg222c_guard.log`)).
+- [x] **NO REGRESSION** — `cargo test --all` → every offline suite green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds.
+- [x] **FIX** — migration 0015; the epoch through the channel DTOs + the
+  lease methods + the handlers + the in-tx verifier; the node channel's
+  epoch storage; the wire bodies; the demo probes; the book's lease
+  passages + CHANNEL_VERSION 5.
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
@@ -1383,7 +1447,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.2.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-005 accepted (the PostgreSQL queue — evidence-gated); frontier → `.2.2` |
+| `2026-09-07` | `PHASE-2.2.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 7 + 7 `passed` — `node_channel` grew to 22 with the deterministic renewal-race test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg222c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the lease epoch (migration 0015 + CHANNEL_VERSION 5): the token AND the epoch fence the old session, a stale-epoch renewal matches no row, the in-tx verifier closes the check-vs-commit window; frontier → `.2.3` |
+ docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-005 accepted (the PostgreSQL queue — evidence-gated); frontier → `.2.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — the result-fold test gained the run-writer legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg162_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the run writer (the result receipt's attempt→incarnation link + the inspection chain); **`.1.6` complete — deferral #4 closes — `.1` COMPLETE**; frontier → `.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
@@ -1405,6 +1470,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.2.2` | `REASONBRAID-PHASE2-0020` | the lease epoch: migration 0015 + CHANNEL_VERSION 5 — every fenced write carries the epoch it saw, a stale-epoch renewal loses the race, the events transaction re-verifies FOR UPDATE |
 | `PHASE-2.2.1` | `REASONBRAID-PHASE2-0019` | ADR-005 accepted (the PostgreSQL queue — evidence-gated; the WP2 outbox worker + ADR-004/006 promote; no code changes) |
 | `PHASE-2.2` | `REASONBRAID-PHASE2-0018` | the contract-seam split (the Phase-1 lease/fencing + quarantine exist; retry policy, dead-letter/replay, ADR-005 open) |
 | `PHASE-2.1.6.2` | `REASONBRAID-PHASE2-0017` | the run writer: migration 0014 + the result fold's run row (after the idempotency claim — one result = one run) + `GET /v1/admin/runs` + `rb inspect runs` + the demo beat — **`.1.6` complete, deferral #4 closes, `.1` COMPLETE** |

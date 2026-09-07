@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The lease epoch: a stale heartbeat loses the race it never knew it ran (`PHASE-2.2.2`)
+
+- Migration 0015 adds `node_leases.lease_epoch`; every handshake bumps it with the token — fencing is now a PAIR (token + epoch), and all four fenced writes (events/ack/poll/heartbeat) carry the epoch they saw.
+- The renewal race is closed structurally: `renew_lease` rides the epoch in its WHERE, so a heartbeat that verified before a concurrent handshake matches no row once the rotation lands — the stale session can neither write nor extend the lease it lost. The events transaction re-verifies the pair `FOR UPDATE` (the check-vs-commit window: a rotation between admission and apply is observed).
+- CHANNEL_VERSION 5. The deterministic state-level test proves the race (rotation bumps the epoch, a renewal from the fenced epoch is refused, a stale epoch with the CURRENT token is refused); the wire test re-proves every fenced surface; node_channel grew to 22; demo 34/34. Frontier → `.2.3` (the retry policy).
+
 ## 2026-09-07 — ADR-005: the PostgreSQL queue is the event transport, accepted with evidence (`PHASE-2.2.1`)
 
 - The queue item closes by promotion, not by experiment: the WP2 leased outbox worker IS the PostgreSQL queue (claim with a per-row fencing token, deduped delivery, acknowledge only with the current token AND a live lease — kill points 3–5 proven), ADR-004 formalized the outbox that is the queue, ADR-006 accepted the pull channel that consumes it, and two phases of delivery leaves shipped on it (dispatch, quarantine/retention, revocation, the `.1.5.2` decision metadata, the `.1.6` run linkage).

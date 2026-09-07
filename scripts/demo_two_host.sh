@@ -210,7 +210,7 @@ trap cleanup EXIT
     echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
     echo "database_url: $DATABASE_URL"
     echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "channel: .1.2.2 certificate-proof (channel_version 4) — workload-certificate"
+    echo "channel: .1.2.2 certificate-proof (channel_version 5) — workload-certificate"
     echo "  handshake, lease/fencing token, heartbeats, observable presence"
     echo "limitation: fake adapter (deterministic) — the REAL-harness leg is the"
     echo "  RB_LIVE_CODEX=1 codex_live suite, out of scope for a no-token demo (WP6)"
@@ -283,7 +283,7 @@ SECRET_B="dev-secret-b-$RUN_ID"
 # The authenticated-channel probes (bash -c / wait_for) need these.
 export ROLE_A ROLE_B DATABASE_URL
 probe_poll() {
-    local tok
+    local tok epoch
     # The fencing token is the node's channel CREDENTIAL. The demo reads it via
     # psql ONLY to drive the authenticated probes as the node itself — no
     # supported surface should expose a live credential (least privilege), and
@@ -291,8 +291,10 @@ probe_poll() {
     # (the `.1.8` census note — this read is an oracle, not an inspection).
     tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
     [ -n "$tok" ] || return 1
+    epoch="$(psql "$DATABASE_URL" -Atc "SELECT lease_epoch FROM node_leases WHERE node_id = '$ROLE_A'")"
+    [ -n "$epoch" ] || return 1
     curl -s -o /dev/null -X POST -H 'content-type: application/json' \
-        -d "{\"channel_version\":4,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\"}" \
+        -d "{\"channel_version\":5,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\",\"lease_epoch\":$epoch}" \
         "$SERVER_BASE/v1/nodes/poll"
 }
 export -f probe_poll
@@ -377,14 +379,16 @@ check "node A's presence is observable ONLINE through the channel API" \
 # rb-journal (the `.1.8` census note).
 FENCE_A="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
 [ -n "$FENCE_A" ] || { fail "node A holds a live lease (fencing token present)"; exit 1; }
+EPOCH_A="$(psql "$DATABASE_URL" -Atc "SELECT lease_epoch FROM node_leases WHERE node_id = '$ROLE_A'")"
 EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
-DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE_A" '
-    { channel_version: 4,
+DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE_A" --argjson e "$EPOCH_A" '
+    { channel_version: 5,
       node_id: $n,
       event_id: .events[0].event_id,
       operation_id: .events[0].operation_id,
       payload: (.events[0].payload | fromjson),
-      fencing_token: $f }')"
+      fencing_token: $f,
+      lease_epoch: $e }')"
 log "duplicating the delivery: re-POSTing $(printf '%s' "$DUP_BODY" | jq -r .event_id) verbatim"
 curl -s -X POST "$SERVER_BASE/v1/nodes/events" \
     -H 'content-type: application/json' \

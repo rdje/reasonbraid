@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-030: the moderation/synthesis contract (`PHASE-5.3.1`)
+
+- ADR-030 accepted (`docs/adr/030-moderation-and-synthesis.md`): the moderation action is a contribution (never a new authority); the closed kind set refuses the capability-shaped fields — the §13.5 prohibitions hold by construction; the appealable action IS the existing challenge; the `moderate` step joins the vocabulary; the synthesis record is re-derivable derived content. No code.
+
 ## 2026-09-07 — The moderator/synthesizer lane is decomposed at the census seams (`PHASE-5.3`)
 
 - The §13.5 census: the moderator is ZERO machinery (no role, no kind, no step — the step vocabulary has no `moderate`); the synthesizer is half-shipped (the `synthesize` step name + the `.2.4.1` minority-report shapes). Children: `.3.1` ADR-030 → `.3.2` the moderation kinds → `.3.3` the synthesis record.

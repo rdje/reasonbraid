@@ -414,7 +414,7 @@ and honest inconclusive outcomes.
     `.3.1`.
 
   - ID: `PHASE-5.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-030 + the census — the moderator/synthesizer
       contract: the moderation actions are CONTRIBUTIONS (the
       closed kind vocabulary IS the structural prohibition — a
@@ -426,6 +426,23 @@ and honest inconclusive outcomes.
       `.2.4.1` derived-content shape. No code.
     ADR: 030
     Roadmap: §13.5
+    Done (`2026-09-07`): ADR-030 accepted (evidence-gated) —
+      `docs/adr/030-moderation-and-synthesis.md` (top-level
+      `answers:`): the moderation action is a CONTRIBUTION
+      (never a new role/authority — the verbs' checks bound
+      it); the closed kind set (`classify`,
+      `request_clarification`, `propose_close`, `draft_summary`,
+      `identify_unanswered`) REFUSES the capability-shaped
+      fields (the verdict/claims/evidence_refs/target) — the
+      §13.5 prohibitions hold by construction; the action may
+      reference its target via `ref_event_id` and can never
+      erase (the moderated content stays in the ledger); the
+      appealable action IS the existing challenge; the
+      `moderate` step joins the vocabulary (the built-ins
+      unchanged); the synthesis record is re-derivable derived
+      content (the identity + the event-log input range + the
+      sources + the coverage). No code changed. Frontier →
+      `.3.2`.
 
   - ID: `PHASE-5.3.2`
     Status: `proposed`
@@ -469,10 +486,14 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.3.1` | `proposed` | `.3` decomposed at the census seams (the moderator is zero machinery, the synthesizer half-shipped — the `.2.4.1` shapes are the seed) — ADR-030 opens the lane |
+| 1 | `PHASE-5.3.2` | `proposed` | `.3.1` done — ADR-030 accepted (the moderation actions are contributions, the closed vocabulary is the prohibition, the appeal is the challenge, the `moderate` step joins the vocabulary); the moderation kinds execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.1` done — ADR-030 accepted (the
+  moderator/synthesizer contract: the prohibition is the
+  vocabulary's negative space, the appeal is the challenge, the
+  synthesis is re-derivable); no code; frontier → `.3.2`.
 - `2026-09-07`: `.3` decomposed at the census seams — the
   moderator is zero machinery (no role/kind/step), the
   synthesizer half-shipped (the `synthesize` step + the

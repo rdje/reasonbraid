@@ -12,6 +12,13 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The highest-risk lane is wired, and the gate is structural (`PHASE-4.5.3`)
+
+- `resolvers.rs`: the startup sync (`sync_gated_entries`) — opening registers the R3/R5/RX rows, closing REMOVES them; the disabled pack has no row, so the resolve can never return it. The auth filter routes credential-carrying references to the `credential` class only.
+- `fetcher.rs` + `browse.rs` + `broker.rs`: the per-request authenticated fetch (the credential attaches for THAT acquisition only), the render pre-flight + spawner, the disclosure-bearing `AuthenticatedReceipt` and the network-log `BrowserReceipt`.
+- The handler's R5/R3/RX branches run behind the enabled belt; the binary syncs the gate at startup (`RB_ENABLE_R5R3RX`, OFF by default).
+- Measured: profiles 18 — closed → the unresolvable-now; open → the authenticated loopback refusal names the class (the SSRF proof through the authenticated path), the render pre-flight refuses before any spawn, the §12.8 capability call publishes; closed again → the rows are gone. **`.5` COMPLETE (the gated lane)** — frontier → `.6` (the snapshots + derivation-graph lane).
+
 ## 2026-09-07 — The highest-risk lane's machinery ships, compiled but unwired (`PHASE-4.5.2`)
 
 - `crates/reasonbraid-browse`: the R3 browser worker — the stdio protocol, the bounded interaction (navigate/click/scroll/type + the step budget + the wall-clock ceiling), the network-log disclosure, the provenance-named browser startup check; two tests against the REAL Chrome (the local render + the step-budget refusal before any navigation).

@@ -8,7 +8,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
-use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, ui_router};
+use reasonbraid_server::{
+    api_router, ca::ensure_server_ca, node_router, r5r3rx_enabled, sync_gated_entries, ui_router,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -39,6 +41,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The workload-identity CA (`.1.2.1`, ADR-007): loaded from `server_ca` or
     // generated on first boot — it must survive restarts so issued leaves chain.
     let ca = Arc::new(ensure_server_ca(&pool).await?);
+
+    // The `.5.3` OPT-IN gate's startup sync: the R3/R5/RX registry rows
+    // exist ONLY while the gate is open (the resolve never returns a
+    // disabled pack — the disabled pack has no row).
+    sync_gated_entries(&pool, r5r3rx_enabled()).await?;
 
     let app = api_router(pool.clone())
         .merge(node_router(pool, ca))

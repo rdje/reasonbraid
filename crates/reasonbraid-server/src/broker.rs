@@ -50,6 +50,15 @@ impl std::fmt::Debug for Credential {
     }
 }
 
+/// The authenticated acquisition's receipt (the `.5.3` wiring): the
+/// explicit disclosure + the underlying web receipt — the credential class
+/// rides the disclosure, never the value.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct AuthenticatedReceipt {
+    pub disclosure: DisclosureRecord,
+    pub receipt: crate::fetcher::AcquisitionReceipt,
+}
+
 /// The explicit-disclosure record (the `.5.3` receipt's input): WHAT was
 /// disclosed, WHERE, WHEN — never the value.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]

@@ -29,6 +29,7 @@ pub mod agg;
 mod api;
 mod authority;
 pub mod broker;
+pub mod browse;
 mod budget;
 pub mod ca;
 mod dependence;
@@ -53,7 +54,8 @@ mod tx;
 pub mod ui;
 
 pub use api::{
-    api_router, ApiState, ControlApiError, EnrollRequest, EnrollResponse, PRINCIPAL_HEADER,
+    api_router, api_router_gated, r5r3rx_enabled, ApiState, ControlApiError, EnrollRequest,
+    EnrollResponse, PRINCIPAL_HEADER,
 };
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
@@ -72,5 +74,6 @@ pub use node_channel::{
 pub use outbox::{
     claim_ready, complete, deliver, ClaimedOutboxItem, CompleteOutcome, DeliverOutcome,
 };
+pub use resolvers::sync_gated_entries;
 pub use tx::{apply_command, ApplyError, Command, CommandOutcome};
 pub use ui::ui_router;

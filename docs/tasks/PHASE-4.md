@@ -773,7 +773,7 @@ of a URI is not a promise the core can resolve it.
       profile). Frontier → `.5.3`.
 
   - ID: `PHASE-4.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the receipt + the wiring — the disclosure receipts (the
       explicit-disclosure record: what credential class, what
       was disclosed), the gated registry entries (the R3/R5/RX
@@ -783,6 +783,40 @@ of a URI is not a promise the core can resolve it.
       same ranked-first rule, mirroring the `.2.3`–`.4.3`
       wiring).
     Backlog: 35 (the receipt half)
+    Done (`2026-09-07`): the gate is WIRED — `resolvers.rs`: the
+      three gated ids + the STARTUP SYNC (`sync_gated_entries`:
+      opening registers the R3/R5/RX rows, closing REMOVES them —
+      the resolve never returns a disabled pack because the
+      disabled pack has no row) + the auth filter (a
+      credential-carrying reference ranks only the `credential`
+      class; a binding-less one only the `none` class) + the
+      `acquisition_call` outcome field; `fetcher.rs`: the
+      per-request `fetch_authenticated` (the credential attaches
+      for THIS acquisition only — never ambient) + the
+      `preflight` (the R3 spawn's classification gate);
+      `browse.rs` (NEW): the R3 spawner (ONE request line, ONE
+      response line, the time budget KILLS the worker) + the
+      `BrowserReceipt` (the network-log disclosure); `broker.rs`:
+      the `AuthenticatedReceipt` (the disclosure + the web
+      receipt); the resolve handler: the R5 branch (the broker
+      resolve → the authenticated fetch → the disclosure
+      receipt), the R3 branch (the preflight → the spawner), the
+      RX branch (the §12.8 capability-call publication) — ALL
+      behind the belt `state.r5r3rx_enabled`; the binary's
+      startup syncs the gate (the `RB_ENABLE_R5R3RX` env, OFF by
+      default); the `api_router_gated` seam. Measured (profiles
+      18): the gate CLOSED — the binding-carrying reference is
+      the explicit unresolvable-now; the gate OPEN — the R5 pack
+      ranks + the authenticated acquisition refuses the loopback
+      with the class NAMED (the SSRF proof through the
+      authenticated path), the R3 pack ranks + the pre-flight
+      refuses before any worker spawn, the RX pack ranks + the
+      capability call publishes the locator; the gate CLOSED
+      again — the rows are gone, the unresolvable-now returns.
+      **`.5` COMPLETE (the gated lane)** — frontier → `.6`.
+      (The RX delivery — the actual agent round-trip — rides the
+      capability-call lane; the vocabulary + the publication
+      shape ship here.)
 
 - ID: `PHASE-4.6`
   Status: `proposed`
@@ -799,7 +833,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.5.3` | `proposed` | `.5.2` done — the machinery (the browser worker rendering with the REAL Chrome + the network log, the credential broker with the redacted value, the §12.8 vocabulary — compiled but unwired); the gated receipt + the wiring execute now |
+| 1 | `PHASE-4.6` | `proposed` | `.5.3` done — **the `.5` lane (the gated packs) is COMPLETE**: the startup sync keeps the R3/R5/RX rows in step with the gate, the resolve never returns a disabled pack, the authenticated + render + agent paths refuse with the class named (profiles 18); the snapshots + derivation-graph lane executes next |
 
 ## Changelog
 
@@ -832,6 +866,12 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.5.3` done — the gated receipt + the wiring
+  (the startup sync — the rows exist ONLY while the gate is
+  open; the auth filter; the per-request authenticated fetch +
+  the preflight + the render spawner + the capability-call
+  publication — all behind the enabled belt); profiles 18;
+  **`.5` COMPLETE (the gated lane)** — frontier → `.6`.
 - `2026-09-07`: `.5.2` done — the machinery, compiled but
   unwired: the browser worker (`crates/reasonbraid-browse` — the
   stdio protocol, the step + network-log budgets, the startup
@@ -965,6 +1005,52 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.5.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/resolvers.rs` (the gated ids + the
+sync + the auth filter + the call field), `src/fetcher.rs` (the
+authenticated fetch + the preflight), `src/browse.rs` (NEW — the
+spawner + the receipt), `src/broker.rs` (the authenticated
+receipt), `src/api.rs` (the gate + the branches + the seam),
+`src/bin/rb-server.rs` (the startup sync), `src/lib.rs` (the
+re-exports), and `tests/profiles.rs` (profiles 18).
+
+- [x] **REPRODUCE / ISSUE** — the `.5.2` close: the machinery
+  exists, compiled but UNWIRED — the gate has no rows, no
+  receipts, no resolution consumption.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the wiring was the lane's
+  last third — `git grep -c "sync_gated_entries\|AuthenticatedReceipt\|BrowserReceipt"
+  929aae2 -- crates/` → rc=1 (nothing before this leaf). The fix
+  point is the `.5.1` gate made structural: the startup sync
+  (rows exist ONLY while open), the auth filter, the per-request
+  credential, the receipts, the resolve-path branches.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_gated_packs` → `test result: ok. 1 passed` — the
+  gate CLOSED: the binding-carrying reference is the explicit
+  unresolvable-now (the disabled pack has no row); the gate
+  OPEN: the R5 pack ranks + the authenticated acquisition
+  refuses the loopback with the class NAMED (the SSRF proof
+  through the authenticated path), the R3 pack ranks + the
+  pre-flight refuses BEFORE any worker spawn, the RX pack ranks
+  + the §12.8 capability call publishes the locator; the gate
+  CLOSED again: the sync REMOVES the rows and the
+  unresolvable-now returns.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg453_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/resolvers.rs`, `src/fetcher.rs`,
+  `src/browse.rs`, `src/broker.rs`, `src/api.rs`,
+  `src/bin/rb-server.rs`, `src/lib.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.5.2)
 
@@ -1464,6 +1550,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_gated_packs` → `test result: ok. 1 passed` (the gate closed → the unresolvable-now; open → the R5 rank + the authenticated loopback refusal, the R3 rank + the pre-flight refusal, the RX rank + the capability call; closed again → the rows gone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg453_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the gated wiring; **`.5` COMPLETE** — frontier → `.6` |
 | `2026-09-07` | `PHASE-4.5.2` | `cargo test -p reasonbraid-browse` → `test result: ok. 2 passed` (the REAL-Chrome render + the network log against the local origin; the step-budget refusal before any navigation); `cargo test -p reasonbraid-server --lib broker/mediated` → 4 passed; `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg452_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R3/R5/RX machinery (compiled, unwired); frontier → `.5.3` |
 | `2026-09-07` | `PHASE-4.5.1` | docs-only (no code paths changed): the browser census measured (`cargo add --dry-run chromiumoxide/headless_chrome` → 0.9.1/1.0.22); `make gate` → 13/13 at commit | the three contracts + the OPT-IN gate; frontier → `.5.2` |
 | `2026-09-07` | `PHASE-4.5` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R3/R5/RX census + the contract-seam decomposition (`.5.1` the contracts + the opt-in gate → `.5.2` the machinery → `.5.3` the receipt + the wiring); frontier → `.5.1` |
@@ -1489,6 +1576,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.5.3` | `REASONBRAID-PHASE4-0021` | the gated receipt + the wiring (the startup sync, the authenticated/render/agent paths — the disabled pack has no row) — **`.5` COMPLETE** |
 | `PHASE-4.5.2` | `REASONBRAID-PHASE4-0020` | the R3/R5/RX machinery (the browser worker with the real render, the broker, the §12.8 vocabulary — compiled, unwired) |
 | `PHASE-4.5.1` | `REASONBRAID-PHASE4-0019` | the R3/R5/RX contracts + the OPT-IN gate (the disclosed broker, the deployment-checked browser, the §12.8 vocabulary — the decision record) |
 | `PHASE-4.5` | `REASONBRAID-PHASE4-0018` | the R3/R5/RX lane decomposed at the census seams (nothing exists — the contracts/machinery/wiring are the greenfield) |

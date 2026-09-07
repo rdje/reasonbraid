@@ -122,6 +122,13 @@ pub const R0_RESOLVER_ID: &str = "r0-https-fetcher";
 pub const R1_RESOLVER_ID: &str = "r1-git-fetcher";
 /// The built-in R2 pack's registry id (the migration 0027 install record).
 pub const R2_RESOLVER_ID: &str = "r2-extract-worker";
+/// The gated packs' registry ids (the `.5.3` wiring): NO migration seeds
+/// them — the startup sync registers them ONLY when the gate is open, and
+/// removes them when it is closed. The resolve never returns a disabled
+/// pack because the disabled pack has no row.
+pub const R3_RESOLVER_ID: &str = "r3-browser-worker";
+pub const R5_RESOLVER_ID: &str = "r5-credential-broker";
+pub const RX_RESOLVER_ID: &str = "rx-agent-mediated";
 
 /// The acquisition result of a built-in pack (the `.2.3`/`.3.3` receipts).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -130,6 +137,8 @@ pub enum Acquisition {
     Web(crate::fetcher::AcquisitionReceipt),
     Git(crate::git::GitReceipt),
     Extract(crate::extraction::ExtractionReceipt),
+    Authenticated(Box<crate::broker::AuthenticatedReceipt>),
+    Browse(crate::browse::BrowserReceipt),
 }
 
 /// The built-in R0's NAMED acquisition refusal (the `.2.2` fetcher's typed
@@ -152,6 +161,10 @@ pub struct ResolutionOutcome {
     pub acquisition: Option<Acquisition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acquisition_error: Option<AcquisitionError>,
+    /// The RX pack's capability-call publication (the §12.2/§12.8 shape)
+    /// — present when the agent-mediated resolver ranks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acquisition_call: Option<crate::mediated::AcquisitionCall>,
 }
 
 /// Resolve a reference: the scheme + the ADR-018 isolation filters FIRST
@@ -161,38 +174,52 @@ pub async fn resolve(
     pool: &PgPool,
     scheme: &str,
     media_type: Option<&str>,
+    credential_binding: Option<&str>,
     required_sandbox: &str,
     required_egress: &str,
 ) -> Result<ResolutionOutcome, sqlx::Error> {
     let sandbox_rank = SANDBOX_LEVELS.iter().position(|s| *s == required_sandbox);
     let egress_rank = EGRESS_CLASSES.iter().position(|e| *e == required_egress);
-    // The media-type routing (the `.4.1` contract): a reference CARRYING a
-    // media-type hint ranks only the resolvers whose advertised types
-    // include it (the extraction pack); a hintless reference keeps the
-    // acquisition-only path.
-    let rows: Vec<(String, String, String, Value)> = match media_type {
-        Some(hint) => {
-            sqlx::query_as(
-                "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms \
-             FROM resolver_capabilities \
-             WHERE schemes @> $1::jsonb AND media_types @> $2::jsonb",
-            )
-            .bind(serde_json::json!([scheme]))
-            .bind(serde_json::json!([hint]))
-            .fetch_all(pool)
-            .await?
+    // The routing filters (the `.4.1` + `.5.1` contracts):
+    // - a media-type hint ranks only the resolvers whose advertised types
+    //   include it (the extraction pack); a hintless reference keeps the
+    //   acquisition-only path (the extraction ability is excluded);
+    // - a credential binding ranks only the resolvers that declare the
+    //   `credential` authentication class (the R5 broker); a binding-less
+    //   reference ranks only the `none`-class packs.
+    let base = "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms FROM resolver_capabilities WHERE schemes @> $1::jsonb";
+    let query: String = match (media_type, credential_binding) {
+        (Some(_hint), Some(_binding)) => {
+            format!("{base} AND media_types @> $2::jsonb AND authentication_classes @> $3::jsonb")
+        }
+        (Some(_hint), None) => {
+            format!("{base} AND media_types @> $2::jsonb AND authentication_classes @> $3::jsonb")
+        }
+        (None, Some(_binding)) => format!("{base} AND authentication_classes @> $2::jsonb"),
+        (None, None) => format!(
+            "{base} AND NOT abilities @> '[\"extract\"]'::jsonb \
+             AND (authentication_classes @> $2::jsonb OR authentication_classes = '[]'::jsonb)"
+        ),
+    };
+    let mut query_builder = sqlx::query_as::<_, (String, String, String, Value)>(&query)
+        .bind(serde_json::json!([scheme]));
+    if let Some(hint) = media_type {
+        query_builder = query_builder.bind(serde_json::json!([hint]));
+    }
+    let rows: Vec<(String, String, String, Value)> = match credential_binding {
+        Some(_) => {
+            query_builder
+                .bind(serde_json::json!(["credential"]))
+                .fetch_all(pool)
+                .await?
         }
         None => {
-            sqlx::query_as(
-                "SELECT resolver_id, sandbox_level, egress_class, latency_range_ms \
-             FROM resolver_capabilities WHERE schemes @> $1::jsonb AND NOT abilities @> '[\"extract\"]'::jsonb",
-            )
-            .bind(serde_json::json!([scheme]))
-            .fetch_all(pool)
-            .await?
+            query_builder
+                .bind(serde_json::json!(["none"]))
+                .fetch_all(pool)
+                .await?
         }
     };
-
     // The filters: the resolver's declared classes must MEET the required
     // ones (the ADR-018 ladder order — the claim is the maximum, so a
     // resolver claiming LESS than required is ineligible).
@@ -231,5 +258,100 @@ pub async fn resolve(
         unresolvable_now,
         acquisition: None,
         acquisition_error: None,
+        acquisition_call: None,
     })
+}
+
+/// The gate's startup sync: the R3/R5/RX rows exist ONLY while the gate is
+/// open — opening registers them, closing REMOVES them (the resolve never
+/// returns a disabled pack because the disabled pack has no row).
+pub async fn sync_gated_entries(pool: &PgPool, enabled: bool) -> Result<(), sqlx::Error> {
+    if enabled {
+        for advertise in gated_advertises() {
+            register(pool, &advertise).await?;
+        }
+    } else {
+        sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = ANY($1::text[])")
+            .bind([R3_RESOLVER_ID, R5_RESOLVER_ID, RX_RESOLVER_ID])
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// The gated packs' advertises (the `.5.1` contract's claims).
+fn gated_advertises() -> Vec<ResolverAdvertise> {
+    vec![
+        ResolverAdvertise {
+            resolver_id: R5_RESOLVER_ID.to_owned(),
+            schemes: vec!["https".to_owned()],
+            locator_patterns: vec!["https://*".to_owned()],
+            media_types: Vec::new(),
+            max_bytes: 16 * 1024 * 1024,
+            abilities: vec!["fetch-authenticated".to_owned()],
+            authentication_classes: vec!["credential".to_owned()],
+            egress_class: "listed".to_owned(),
+            sandbox_level: "none".to_owned(),
+            redirect_policy: "follow-classified".to_owned(),
+            archive_policy: "deny".to_owned(),
+            subresource_policy: "deny".to_owned(),
+            javascript_policy: "deny".to_owned(),
+            snapshot_formats: vec!["sha256:<hex>".to_owned()],
+            derivation_formats: Vec::new(),
+            latency_range_ms: serde_json::json!({ "min": 200, "max": 5000 }),
+            version: "0.1.0".to_owned(),
+            security_evidence: serde_json::json!({
+                "broker": "local",
+                "credential": "per-request, never ambient",
+                "disclosure": "explicit",
+            }),
+        },
+        ResolverAdvertise {
+            resolver_id: R3_RESOLVER_ID.to_owned(),
+            schemes: vec!["web+render".to_owned()],
+            locator_patterns: vec!["https://*".to_owned()],
+            media_types: Vec::new(),
+            max_bytes: 16 * 1024 * 1024,
+            abilities: vec!["render".to_owned()],
+            authentication_classes: vec!["none".to_owned()],
+            egress_class: "listed".to_owned(),
+            sandbox_level: "vm_container".to_owned(),
+            redirect_policy: "deny".to_owned(),
+            archive_policy: "deny".to_owned(),
+            subresource_policy: "deny".to_owned(),
+            javascript_policy: "allow-bounded".to_owned(),
+            snapshot_formats: vec!["sha256:<hex>".to_owned()],
+            derivation_formats: vec!["text/chunks".to_owned()],
+            latency_range_ms: serde_json::json!({ "min": 1000, "max": 60000 }),
+            version: "0.1.0".to_owned(),
+            security_evidence: serde_json::json!({
+                "worker": "process-per-render",
+                "network_log": true,
+                "container_required": true,
+            }),
+        },
+        ResolverAdvertise {
+            resolver_id: RX_RESOLVER_ID.to_owned(),
+            schemes: vec!["web+agent".to_owned()],
+            locator_patterns: Vec::new(),
+            media_types: Vec::new(),
+            max_bytes: 0,
+            abilities: vec!["agent-mediated".to_owned()],
+            authentication_classes: vec!["none".to_owned()],
+            egress_class: "any".to_owned(),
+            sandbox_level: "none".to_owned(),
+            redirect_policy: "deny".to_owned(),
+            archive_policy: "deny".to_owned(),
+            subresource_policy: "deny".to_owned(),
+            javascript_policy: "deny".to_owned(),
+            snapshot_formats: Vec::new(),
+            derivation_formats: Vec::new(),
+            latency_range_ms: serde_json::json!({ "min": 5000, "max": 300000 }),
+            version: "0.1.0".to_owned(),
+            security_evidence: serde_json::json!({
+                "vocabulary": "the §12.8 acquisition-call shapes",
+                "delivery": "the capability-call lane",
+            }),
+        },
+    ]
 }

@@ -1,0 +1,170 @@
+//! The R3 browser pipeline (PHASE-4.5.3): the server-side spawner + the
+//! render receipt. The spawner sends ONE request line to the browser
+//! worker (the URL is ALREADY classified — the caller's pre-flight ran
+//! before the spawn), reads ONE response line, and KILLS the worker when
+//! the time budget trips — the killing budget inside the deployment's
+//! container boundary is the quarantine's enforcement.
+
+use std::fmt;
+use std::io::Read;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+
+/// The worker's wire response (the success shape).
+#[derive(Debug, Deserialize)]
+pub struct BrowseWorkerResponse {
+    pub parent_digest: String,
+    pub chunks: Vec<BrowseChunk>,
+    pub network_log: Vec<NetworkEntry>,
+    pub page_title: String,
+    pub browser_version: String,
+    pub worker_version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BrowseChunk {
+    pub digest: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NetworkEntry {
+    pub url: String,
+    pub method: String,
+}
+
+/// The render receipt (the `.5.1` contract's Derivation + disclosure): the
+/// rendered chunks (each with its own ADR-011 digest), the network log
+/// (every request the page made — the disclosure), and the browser
+/// version.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BrowserReceipt {
+    pub parent_digest: String,
+    pub chunks: Vec<BrowseChunk>,
+    pub network_log: Vec<NetworkEntry>,
+    pub page_title: String,
+    pub browser_version: String,
+    pub requested_url: String,
+    pub acquired_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowseError {
+    WorkerMissing(String),
+    SpawnFailed(String),
+    RequestFailed(String),
+    TimedOut,
+    WorkerRefused { kind: String, message: String },
+}
+
+impl fmt::Display for BrowseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WorkerMissing(path) => write!(f, "the browser worker `{path}` is absent"),
+            Self::SpawnFailed(detail) => write!(f, "the browser worker failed to spawn: {detail}"),
+            Self::RequestFailed(detail) => write!(f, "the browser request failed: {detail}"),
+            Self::TimedOut => {
+                write!(
+                    f,
+                    "the render exceeded the time budget (the worker was killed)"
+                )
+            }
+            Self::WorkerRefused { kind, message } => {
+                write!(f, "the browser worker refused: {kind}: {message}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for BrowseError {}
+
+/// The browser worker's binary: the `R3_BROWSER_BIN` override, or the
+/// server-binary-adjacent default (the same derivation the R2 spawner
+/// uses).
+pub fn browse_worker_path() -> PathBuf {
+    if let Ok(path) = std::env::var("R3_WORKER_BIN") {
+        return PathBuf::from(path);
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
+        .and_then(|dir| {
+            if dir.ends_with("deps") {
+                dir.parent().map(|p| p.to_path_buf())
+            } else {
+                Some(dir)
+            }
+        })
+        .map(|dir| dir.join("reasonbraid-browse"))
+        .unwrap_or_else(|| PathBuf::from("reasonbraid-browse"))
+}
+
+/// Run one render: the already-classified URL + the steps + the budgets
+/// in, the Derivation response (or the named refusal) out. The time
+/// budget KILLS the worker on the trip.
+pub fn run_browse(url: &str, time_budget: Duration) -> Result<BrowseWorkerResponse, BrowseError> {
+    let binary = browse_worker_path();
+    if !binary.exists() {
+        return Err(BrowseError::WorkerMissing(binary.display().to_string()));
+    }
+    let request = serde_json::json!({
+        "url": url,
+        "steps": [{ "action": "navigate", "url": url }],
+        "limits": {
+            "max_steps": 4,
+            "max_output_bytes": 4 * 1024 * 1024,
+            "time_budget_secs": time_budget.as_secs().max(1)
+        }
+    });
+    let mut child = Command::new(&binary)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| BrowseError::SpawnFailed(e.to_string()))?;
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("the worker stdin piped");
+        writeln!(stdin, "{request}").map_err(|e| BrowseError::RequestFailed(e.to_string()))?;
+    }
+    let mut output = String::new();
+    let deadline = std::time::Instant::now() + time_budget;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| BrowseError::RequestFailed(e.to_string()))?
+        {
+            if !status.success() {
+                return Err(BrowseError::RequestFailed(format!(
+                    "the worker exited with {status}"
+                )));
+            }
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(BrowseError::TimedOut);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    child
+        .stdout
+        .take()
+        .expect("the worker stdout piped")
+        .read_to_string(&mut output)
+        .map_err(|e| BrowseError::RequestFailed(e.to_string()))?;
+    if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&output) {
+        if let Some(error) = envelope.get("error") {
+            return Err(BrowseError::WorkerRefused {
+                kind: error["kind"].as_str().unwrap_or("unknown").to_owned(),
+                message: error["message"].as_str().unwrap_or("unknown").to_owned(),
+            });
+        }
+    }
+    serde_json::from_str::<BrowseWorkerResponse>(&output)
+        .map_err(|e| BrowseError::RequestFailed(format!("the response failed to parse: {e}")))
+}

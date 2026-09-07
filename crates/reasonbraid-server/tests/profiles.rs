@@ -93,12 +93,28 @@ struct TestServer {
 
 impl TestServer {
     async fn start(pool: &PgPool) -> Self {
+        Self::start_with_router(pool, api_router(pool.clone())).await
+    }
+
+    /// The `.5.3` seam: an explicit gate + a pre-populated broker.
+    async fn start_gated(
+        pool: &PgPool,
+        enabled: bool,
+        broker: std::sync::Arc<reasonbraid_server::broker::Broker>,
+    ) -> Self {
+        let router = reasonbraid_server::api_router_gated(pool.clone(), enabled, broker);
+        Self::start_with_router(pool, router).await
+    }
+
+    async fn start_with_router(pool: &PgPool, router: axum::Router) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let ca = std::sync::Arc::new(ensure_server_ca(pool).await.expect("server CA"));
-        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
+        let router = router.merge(node_router(
+            pool.clone(),
+            std::sync::Arc::new(ensure_server_ca(pool).await.expect("server CA")),
+        ));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -2641,5 +2657,238 @@ async fn the_r2_resolver_ranks_the_hinted_reference_and_the_pipeline_names_the_r
         strict["unresolvable_now"],
         json!(true),
         "the stricter requirement filters the R2 built-in out: {strict}"
+    );
+}
+
+/// The OPT-IN gate (PHASE-4.5.3): the R3/R5/RX packs resolve ONLY while the
+/// gate is open — closed, the binding-carrying reference is the explicit
+/// unresolvable-now (the disabled pack has no row). Open, the R5 pack ranks
+/// the binding-carrying reference and the authenticated acquisition refuses
+/// the loopback with the class NAMED (the SSRF proof through the
+/// authenticated path); the R3 render and the RX capability call rank their
+/// references too.
+#[tokio::test]
+async fn the_gated_packs_resolve_only_while_the_gate_is_open() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    // The gate CLOSED (the default everywhere): the binding-carrying
+    // reference has no row to rank — the explicit unresolvable-now.
+    {
+        let server = TestServer::start(&pool).await;
+        let base = server.base();
+        let client = reqwest::Client::new();
+        let (status, human) = enroll(
+            &client,
+            &base,
+            json!({ "kind": "human", "name": "gate-human" }),
+        )
+        .await;
+        assert_eq!(status, 200, "the human enrolls: {human}");
+        let human_id = human["principal_id"].as_str().unwrap().to_string();
+        let (status, submitted): (u16, Value) = {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "original_locator": "https://private.example/report",
+                    "scheme": "https",
+                    "credential_binding_ref": "cred_gate_test",
+                }))
+                .send()
+                .await
+                .expect("submit request");
+            (
+                response.status().as_u16(),
+                response.json().await.expect("submit json"),
+            )
+        };
+        assert_eq!(
+            status, 200,
+            "the binding-carrying reference submits: {submitted}"
+        );
+        let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+        let response = client
+            .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+            .send()
+            .await
+            .expect("resolve request");
+        let resolved: Value = response.json().await.unwrap();
+        assert_eq!(
+            resolved["unresolvable_now"],
+            json!(true),
+            "the disabled pack has no row: {resolved}"
+        );
+    }
+
+    // The gate OPEN: the startup sync registers the rows.
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("the gate opens");
+
+    let broker = std::sync::Arc::new(reasonbraid_server::broker::Broker::default());
+    broker.register(
+        "cred_gate_test",
+        reasonbraid_server::broker::Credential::new("test-token-read", "tok_GATE_SECRET"),
+    );
+    let server = TestServer::start_gated(&pool, true, broker).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "gate-open-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The R5 pack ranks the binding-carrying reference; the authenticated
+    // acquisition refuses the loopback with the class named.
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://127.0.0.1/private",
+                "scheme": "https",
+                "credential_binding_ref": "cred_gate_test",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(
+        status, 200,
+        "the binding-carrying reference submits: {submitted}"
+    );
+    let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r5-credential-broker"]),
+        "the R5 pack ranks the binding-carrying reference: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the authenticated acquisition names its refusal: {resolved}"
+    );
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "the class is named: {resolved}"
+    );
+
+    // The R3 pack ranks the render reference; the pre-flight refuses the
+    // loopback BEFORE any worker spawn.
+    let (status, render_ref): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://127.0.0.1/page",
+                "scheme": "web+render",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the render reference submits: {render_ref}");
+    let render_id = render_ref["resource_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/resources/{render_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r3-browser-worker"]),
+        "the R3 pack ranks the render reference: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the pre-flight refuses before any worker spawn: {resolved}"
+    );
+
+    // The RX pack ranks the agent-mediated reference and publishes the
+    // §12.8 capability call.
+    let (status, agent_ref): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://internal.example/data",
+                "scheme": "web+agent",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the agent reference submits: {agent_ref}");
+    let agent_id = agent_ref["resource_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/resources/{agent_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["rx-agent-mediated"]),
+        "the RX pack ranks the agent reference: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_call"]["locator"],
+        json!("https://internal.example/data"),
+        "the capability call publishes the locator: {resolved}"
+    );
+
+    // The gate CLOSED again: the sync REMOVES the rows — the same
+    // reference is the explicit unresolvable-now.
+    reasonbraid_server::sync_gated_entries(&pool, false)
+        .await
+        .expect("the gate closes");
+    let response = client
+        .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let resolved: Value = response.json().await.unwrap();
+    assert_eq!(
+        resolved["unresolvable_now"],
+        json!(true),
+        "the closed gate has no rows to rank: {resolved}"
     );
 }

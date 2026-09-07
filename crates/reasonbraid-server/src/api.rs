@@ -317,10 +317,37 @@ pub struct ApiState {
     /// The built-in R1 acquirer (the `.3.3` pack wiring): the same
     /// public-only policy through the classified git transport.
     git_fetcher: std::sync::Arc<crate::git::GitFetcher>,
+    /// The `.5.3` OPT-IN gate: the R3/R5/RX packs resolve ONLY while this
+    /// flag is set (the startup sync keeps the registry rows in step).
+    r5r3rx_enabled: bool,
+    /// The local credential broker (the R5 pack's engine).
+    broker: std::sync::Arc<crate::broker::Broker>,
+}
+
+/// The gate's environment switch: `RB_ENABLE_R5R3RX=1|true` — OFF by
+/// default everywhere (the `.5.1` contract).
+pub fn r5r3rx_enabled() -> bool {
+    matches!(
+        std::env::var("RB_ENABLE_R5R3RX").as_deref(),
+        Ok("1" | "true" | "TRUE")
+    )
 }
 
 impl ApiState {
     pub fn new(pool: PgPool) -> Self {
+        Self::with_gate(
+            pool,
+            r5r3rx_enabled(),
+            std::sync::Arc::new(crate::broker::Broker::default()),
+        )
+    }
+
+    /// The test/deployment seam: an explicit gate + a pre-populated broker.
+    pub fn with_gate(
+        pool: PgPool,
+        enabled: bool,
+        broker: std::sync::Arc<crate::broker::Broker>,
+    ) -> Self {
         Self {
             pool,
             fetcher: std::sync::Arc::new(
@@ -330,6 +357,8 @@ impl ApiState {
             git_fetcher: std::sync::Arc::new(crate::git::GitFetcher::new(
                 crate::git::GitLimits::default(),
             )),
+            r5r3rx_enabled: enabled,
+            broker,
         }
     }
 }
@@ -337,6 +366,20 @@ impl ApiState {
 /// The control API router (`§9.4` Phase 0 subset).
 pub fn api_router(pool: PgPool) -> Router {
     let state = Arc::new(ApiState::new(pool));
+    api_router_with_state(state)
+}
+
+/// The test seam: an explicit gate + a pre-populated broker (the
+/// profiles suite drives both gate states).
+pub fn api_router_gated(
+    pool: PgPool,
+    enabled: bool,
+    broker: std::sync::Arc<crate::broker::Broker>,
+) -> Router {
+    api_router_with_state(Arc::new(ApiState::with_gate(pool, enabled, broker)))
+}
+
+fn api_router_with_state(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v1/enrollments", post(enroll))
         .route("/v1/nodes/enroll-tokens", post(issue_node_enroll_token))
@@ -1322,6 +1365,7 @@ async fn resolve_resource(
         &state.pool,
         &reference.scheme,
         reference.media_type_hint.as_deref(),
+        reference.credential_binding_ref.as_deref(),
         &req.required_sandbox,
         &req.required_egress,
     )
@@ -1348,6 +1392,122 @@ async fn resolve_resource(
                     });
                 }
             }
+        }
+        Some(crate::resolvers::R5_RESOLVER_ID) if state.r5r3rx_enabled => {
+            // The R5 pack: the broker resolves the binding at the request
+            // boundary, the credential attaches for THIS acquisition only
+            // (never ambient), and the disclosure rides the receipt.
+            let binding = reference.credential_binding_ref.clone().unwrap_or_default();
+            match state.broker.resolve(&binding) {
+                Err(error) => {
+                    outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                        kind: "credential_unavailable".to_owned(),
+                        message: error.to_string(),
+                    });
+                }
+                Ok(credential) => {
+                    match state
+                        .fetcher
+                        .fetch_authenticated(
+                            &reference.original_locator,
+                            &credential.authorization_header().1,
+                        )
+                        .await
+                    {
+                        Ok(document) => {
+                            let disclosure = state.broker.disclose(
+                                &binding,
+                                document.final_url.host_str().unwrap_or("unknown"),
+                                chrono::Utc::now(),
+                            );
+                            match disclosure {
+                                Ok(disclosure) => {
+                                    outcome.acquisition =
+                                        Some(crate::resolvers::Acquisition::Authenticated(Box::new(
+                                            crate::broker::AuthenticatedReceipt {
+                                                disclosure,
+                                                receipt: crate::fetcher::AcquisitionReceipt::from_document(
+                                                    &reference.original_locator,
+                                                    &document,
+                                                    chrono::Utc::now(),
+                                                ),
+                                            },
+                                        )));
+                                }
+                                Err(error) => {
+                                    outcome.acquisition_error =
+                                        Some(crate::resolvers::AcquisitionError {
+                                            kind: "credential_unavailable".to_owned(),
+                                            message: error.to_string(),
+                                        });
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                                kind: error.kind().to_owned(),
+                                message: error.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Some(crate::resolvers::R3_RESOLVER_ID) if state.r5r3rx_enabled => {
+            // The R3 pack: the pre-flight classifies the URL BEFORE the
+            // worker spawns (the worker receives an already-classified
+            // URL); the render receipt carries the network log.
+            match state.fetcher.preflight(&reference.original_locator).await {
+                Err(error) => {
+                    outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                        kind: error.kind().to_owned(),
+                        message: error.to_string(),
+                    });
+                }
+                Ok(_) => match crate::browse::run_browse(
+                    &reference.original_locator,
+                    std::time::Duration::from_secs(120),
+                ) {
+                    Ok(response) => {
+                        outcome.acquisition = Some(crate::resolvers::Acquisition::Browse(
+                            crate::browse::BrowserReceipt {
+                                parent_digest: response.parent_digest,
+                                chunks: response.chunks,
+                                network_log: response.network_log,
+                                page_title: response.page_title,
+                                browser_version: response.browser_version,
+                                requested_url: reference.original_locator.clone(),
+                                acquired_at: chrono::Utc::now(),
+                            },
+                        ));
+                    }
+                    Err(error) => {
+                        let kind = match &error {
+                            crate::browse::BrowseError::WorkerMissing(_) => {
+                                "browser_worker_missing"
+                            }
+                            crate::browse::BrowseError::SpawnFailed(_) => "browser_spawn_failed",
+                            crate::browse::BrowseError::RequestFailed(_) => "render_failed",
+                            crate::browse::BrowseError::TimedOut => "render_timed_out",
+                            crate::browse::BrowseError::WorkerRefused { kind, .. } => kind,
+                        };
+                        outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                            kind: kind.to_owned(),
+                            message: error.to_string(),
+                        });
+                    }
+                },
+            }
+        }
+        Some(crate::resolvers::RX_RESOLVER_ID) if state.r5r3rx_enabled => {
+            // The RX pack: the capability-call publication (the §12.2/
+            // §12.8 shape) — the enrolled agents answer with the typed
+            // vocabulary; the delivery rides the capability-call lane.
+            outcome.acquisition_call = Some(crate::mediated::AcquisitionCall {
+                call_id: format!("cal_{resource_id}"),
+                locator: reference.original_locator.clone(),
+                requires_second_verifier: false,
+            });
         }
         Some(crate::resolvers::R2_RESOLVER_ID) => {
             // The R2 pipeline: the R0 fetcher acquires the bytes (under the

@@ -390,19 +390,50 @@ impl Fetcher {
     /// GET a document. Every refusal is a typed [`FetchError`]; the time
     /// ceiling wraps the WHOLE acquisition (every hop + the body read).
     pub async fn fetch(&self, raw_url: &str) -> Result<FetchedDocument, FetchError> {
-        self.fetch_with(Method::GET, raw_url).await
+        self.fetch_with(Method::GET, raw_url, None).await
+    }
+
+    /// GET with a per-request Authorization header (the R5 pack's
+    /// delegated session — the credential attaches for THIS acquisition
+    /// only, never ambient; the `.5.1` contract's per-request rule).
+    pub async fn fetch_authenticated(
+        &self,
+        raw_url: &str,
+        header_value: &str,
+    ) -> Result<FetchedDocument, FetchError> {
+        self.fetch_with(
+            Method::GET,
+            raw_url,
+            Some(("Authorization", header_value.to_owned())),
+        )
+        .await
+    }
+
+    /// The R3 pack's pre-flight: the hardened parse + the destination
+    /// classification BEFORE the browser worker is spawned (the worker
+    /// receives an already-classified URL).
+    pub async fn preflight(&self, raw_url: &str) -> Result<Url, FetchError> {
+        let parsed = harden_url(
+            raw_url,
+            &self.schemes,
+            &self.ports,
+            self.limits.max_url_length,
+        )?;
+        self.classify(&parsed).await?;
+        Ok(parsed)
     }
 
     /// HEAD a document (the metadata check — no body is read or sniffed from
     /// bytes; the header-only sniff falls back to `Text` when untyped).
     pub async fn fetch_head(&self, raw_url: &str) -> Result<FetchedDocument, FetchError> {
-        self.fetch_with(Method::HEAD, raw_url).await
+        self.fetch_with(Method::HEAD, raw_url, None).await
     }
 
     async fn fetch_with(
         &self,
         method: Method,
         raw_url: &str,
+        extra_header: Option<(&'static str, String)>,
     ) -> Result<FetchedDocument, FetchError> {
         let run = async {
             let mut current = harden_url(
@@ -418,9 +449,11 @@ impl Fetcher {
                 // The pre-flight: resolve + classify BEFORE any socket opens.
                 self.classify(&current).await?;
                 chain.push(current.clone());
-                let request = self
-                    .client
-                    .request(method.clone(), current.clone())
+                let mut request_builder = self.client.request(method.clone(), current.clone());
+                if let Some((name, value)) = &extra_header {
+                    request_builder = request_builder.header(*name, value);
+                }
+                let request = request_builder
                     .build()
                     .map_err(|_| FetchError::UrlUnparseable)?;
                 let response = self

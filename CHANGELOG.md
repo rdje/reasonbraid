@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The presence state machine: six states, one honesty precedence (`PHASE-3.2.1`)
+
+- `crates/reasonbraid-server/src/presence.rs`: the §10.2 six states as the deterministic `presence_state(enrolled, suspended, lease_live, concurrency)` — an unknown id is never fabricated into an offline node, suspension outranks the lease (the 0017 rule), an expired lease reads `offline` (the known-but-quiet node), a profile-declared zero concurrency reads `draining`, and `busy` is the named `.4` capacity-accounting trigger (no input feeds it yet).
+- The channel's presence response gains the derived `state` (the current profile version's declared concurrency feeds the derivation); presence reads only — it never changes enrollment.
+- Measured: 5 pure derivation tests + the live `offline`/`available` legs in the node_channel suite; the guard 18 live suites + demo 34/34. Frontier → `.2.2` (the offline-known distinction + the stale handling).
+
 ## 2026-09-07 — `.2` split at the census seams (`PHASE-3.2`)
 
 - The presence-lane census mapped §10.2 (backlog 27) against the shipped surface: the lease store (0009), the presence view (0012/0017), and the channel's one-node presence endpoint exist — but the response carries only `online` + `suspended` + the clock fields (no six-state machine: `grep -rn "draining\|busy\|offline_known" crates/` → nothing), the offline-KNOWN row (an enrolled node whose lease expired) is indistinguishable from an unknown node at the directory level, and the privacy-filtered views (counts/pseudonyms/no roster per the initiator's scope) do not exist.

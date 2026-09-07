@@ -173,7 +173,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
     pseudonyms / no roster per the initiator's scope) do not exist.
     Children at those seams — frontier → `.2.1`.
   - ID: `PHASE-3.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the presence state machine — the six §10.2 states as a
       DETERMINISTIC derivation: `available` (a live lease + the
       profile's availability class admits work), `offline` (the
@@ -186,6 +186,20 @@ eligibility before ranking. Dependence indicators, never an independence score.
       the offline tests; the channel's presence response gains the
       derived state.
     Backlog: 27 (the state machine half)
+    Done (`2026-09-07`): the state machine landed —
+      `crates/reasonbraid-server/src/presence.rs`: the six §10.2
+      states as the deterministic `presence_state(enrolled,
+      suspended, lease_live, concurrency)` with the honesty
+      precedence (unknown is never fabricated; suspension outranks
+      the lease; the expired lease reads offline; zero declared
+      concurrency drains; `busy` is the named `.4` trigger — no
+      input feeds it yet). The channel's presence response gains the
+      derived `state` (the profile's declared concurrency feeds the
+      derivation through the current profile version); presence reads
+      only — it never changes enrollment. Measured: the five pure
+      derivation tests + the live offline/available assertions in the
+      node_channel suite; the demo's presence checks unchanged.
+      Frontier → `.2.2`.
     Acceptance: the derivation is pure + tested; the response names
       the state; presence does not change enrollment; no regression.
 
@@ -256,7 +270,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.2.1` | `proposed` | `.2` decomposed at the census seams (the lease store + the presence view exist; the six-state machine, the offline-known row, and the filtered views do not); the presence state machine executes now |
+| 1 | `PHASE-3.2.2` | `proposed` | `.2.1` done — the presence state machine (the six states derived; the response names the state); the offline-known distinction + the stale handling executes now |
 
 ## Changelog
 
@@ -287,6 +301,60 @@ eligibility before ranking. Dependence indicators, never an independence score.
   and the privacy-filtered views are the gaps; children `.2.1` (the
   state machine) → `.2.2` (the offline-known + stale handling) →
   `.2.3` (the filtered views); frontier → `.2.1`.
+- `2026-09-07`: `.2.1` done — the presence state machine (the six
+  states derived with the honesty precedence; the response names the
+  state; `busy` is the named `.4` trigger); five pure tests + the
+  live offline/available legs; frontier → `.2.2`.
+
+## Acceptance Checklist (PHASE-3.2.1)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/presence.rs` (NEW — the six-state
+derivation + the five tests), `crates/reasonbraid-server/src/lib.rs`
+(the module), `crates/reasonbraid-server/src/node_channel.rs` (the
+presence query gains the profile's declared concurrency; the response
+gains the derived `state`), and
+`crates/reasonbraid-server/tests/node_channel.rs` (the offline/
+available legs assert the derived state) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.2` census: the presence surface
+  carries a clock + a flag but no state machine (`grep -rn
+  "draining\|busy\|offline_known" crates/` → nothing); §10.2 names
+  six states the response cannot express.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the states were never DERIVED:
+  `online` and `suspended` are raw view columns, and the profile's
+  availability class (the `.1` lane) feeds nothing —
+  `git grep -c "draining\|busy\|offline_known" 5dd367b -- crates/`
+  → 2 files, both the SQLite `busy_timeout` settings (rc=0), and
+  `git grep -c "offline_known\|draining\|PresenceState" 5dd367b
+  -- crates/` → rc=1 (no presence-state machinery existed). The fix
+  point is a pure
+  function with an honesty precedence — an unknown id is never
+  fabricated, suspension outranks the lease, an expired lease reads
+  offline, zero declared concurrency drains — wired into the
+  channel's presence response (reads only: presence never changes
+  enrollment).
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  `PresenceResponse { node_id, online, suspended, last_seen_at,
+  lease_expires_at }` (no state). After:
+  `cargo test -p reasonbraid-server --lib presence` → `test result:
+  ok. 5 passed` (the unenrolled-is-unknown rule, the suspension
+  precedence, the offline-known, the draining, the available);
+  `bash scripts/run_pg_tests.sh` → the node_channel presence legs
+  assert `state: "offline"` (the seeded lease-less node) and
+  `state: "available"` (the heartbeat-renewed node) — `test result:
+  ok.` 18 live suites + the demo 34/34 (`target/pg321_guard.log`).
+- [x] **NO REGRESSION** — `cargo test --all` → 51 offline suites
+  green; `cargo clippy --all --all-targets -- -D warnings` → clean;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at commit.
+- [x] **FIX** — `src/presence.rs` (the enum + the derivation + the
+  five tests), `src/lib.rs`, `src/node_channel.rs` (the concurrency
+  join + the `state` field), `tests/node_channel.rs` (the two state
+  legs).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.1.3)
 
@@ -395,6 +463,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.2.1` | `cargo test -p reasonbraid-server --lib presence` → `test result: ok. 5 passed` (the derivation precedence); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg321_guard.log`, the node_channel presence legs assert `offline`/`available`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the presence state machine (the six states derived; presence reads, never writes); frontier → `.2.2` |
 | `2026-09-07` | `PHASE-3.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the presence-lane census + the contract-seam decomposition (`.2.1` state machine → `.2.2` offline-known → `.2.3` filtered views); frontier → `.2.1` |
 | `2026-09-07` | `PHASE-3.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 5 passed` (the four-reader measurement + the full-only history); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg313_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the per-reader visibility enforcement (the absent-not-nulled filter + the classification + the self-describing response); **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-3.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 3 passed` (the write + history, the gates, the attestation); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg312_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the profile schema + the write surface (migration 0019 + the verbs + the measured suite); frontier → `.1.3` |
@@ -404,6 +473,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.2.1` | `REASONBRAID-PHASE3-0006` | the presence state machine (the six-state derivation + the response's `state` field) |
 | `PHASE-3.2` | `REASONBRAID-PHASE3-0005` | the presence lane decomposed at the census seams (the shipped lease/presence forms vs the three gaps) |
 | `PHASE-3.1.3` | `REASONBRAID-PHASE3-0004` | the per-reader visibility enforcement (the four-reader measurement, the absent-not-nulled filter, the full-only history) — **`.1` COMPLETE** |
 | `PHASE-3.1.2` | `REASONBRAID-PHASE3-0003` | the profile schema + the write surface (migration 0019 + the typed §10.1 fields + the content-addressed history + the write/attest verbs + the measured suite) |

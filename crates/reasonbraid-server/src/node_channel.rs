@@ -342,6 +342,10 @@ pub struct PresenceResponse {
     /// reads `suspended` whatever the lease says — a revoked node cannot
     /// re-handshake.
     pub suspended: bool,
+    /// The derived six-state presence (`.3.2.1`): `available` | `offline` |
+    /// `suspended` | `draining` | `unknown` (`busy` waits for the `.4`
+    /// capacity accounting).
+    pub state: String,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub lease_expires_at: Option<DateTime<Utc>>,
 }
@@ -880,9 +884,14 @@ impl NodeChannelState {
             suspended: bool,
             last_seen_at: Option<DateTime<Utc>>,
             lease_expires_at: Option<DateTime<Utc>>,
+            concurrency: Option<i64>,
         }
         let row: Option<PresenceRow> = sqlx::query_as(
-            "SELECT online, suspended, last_seen_at, lease_expires_at FROM node_presence WHERE node_id = $1",
+            "SELECT online, suspended, last_seen_at, lease_expires_at, \
+                    (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                     FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                     WHERE v.role_id = $1 AND v.version = p.current_version) AS concurrency \
+             FROM node_presence WHERE node_id = $1",
         )
         .bind(node_id)
         .fetch_optional(&self.pool)
@@ -893,6 +902,9 @@ impl NodeChannelState {
             suspended: r.suspended,
             last_seen_at: r.last_seen_at,
             lease_expires_at: r.lease_expires_at,
+            state: crate::presence::presence_state(true, r.suspended, r.online, r.concurrency)
+                .as_str()
+                .to_string(),
         }))
     }
 }

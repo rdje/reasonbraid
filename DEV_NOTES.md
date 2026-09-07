@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.2.1: the honesty precedence IS the state machine — suspension outranks the lease, an unknown id is never fabricated
+
+- **The six §10.2 states collapse to one deterministic precedence**: unknown (never fabricated), suspended (whatever the lease says — the 0017 rule), offline (the known-but-quiet node), draining (the profile's declared zero concurrency), available (the default), and busy (the named `.4` trigger — no input feeds it yet). Presence reads only — it never changes enrollment — and the derivation is pure, so every state is a unit test away from a regression.
+- promotion: declined (the precedence is the leaf's own contract; `busy`'s trigger is the `.4` lane's named deferral). **Frontier `PHASE-3.2.2` (the offline-known distinction + the stale handling).**
+
 ## _(2026-09-07)_ — PHASE-3.2: the presence surface has a clock and a flag — the six states are a derivation nobody writes
 
 - **The census found the PARTS of presence without the state machine**: the lease clock (online), the revocation flag (suspended), and the one-node endpoint — but no `busy`/`draining`/`offline`/`unknown` derivation anywhere. The seams: the derivation itself (`.2.1` — pure, reads-only: presence never changes enrollment), the offline-KNOWN row + the honest unknown (`.2.2` — "this node is known, just quiet" vs the typed 404), and the per-scope filtered views (`.2.3` — counts, pseudonyms, or nothing per the initiator's scope, reusing the `.1.3` field filter).

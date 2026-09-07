@@ -1215,6 +1215,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
     assert_eq!(presence.status().as_u16(), 200);
     let p: Value = presence.json().await.unwrap();
     assert_eq!(p["online"], json!(false));
+    assert_eq!(p["state"], json!("offline"), "the derived state: {p}");
     assert!(p["last_seen_at"].is_null() && p["lease_expires_at"].is_null());
     server.crash();
 }
@@ -1279,6 +1280,7 @@ async fn heartbeat_renews_the_lease_and_presence_shows_online() {
     );
     let p = presence().await;
     assert_eq!(p["online"], json!(true), "presence stays online");
+    assert_eq!(p["state"], json!("available"), "the derived state: {p}");
 
     // A second heartbeat renews again — and the lease is visible through the API.
     let first_seen = p["last_seen_at"].as_str().unwrap().to_string();

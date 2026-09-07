@@ -23,13 +23,13 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.2.1` (`.2` split at the contract
-  seams: the Phase-1 lease/fencing + quarantine exist; retry policy,
-  dead-letter/replay, ADR-005 open). Then `.2.2`–`.2.4`.
-- **Next action:** execute `PHASE-2.2.1` — ADR-005 (the transport
-  choice, accepted with evidence: the Phase-0 `.2.2` leased outbox worker
-  IS the PostgreSQL-queue choice; the NATS/JetStream trigger named —
-  ADR-006's precedent; no code changes).
+- **Active tree:** `PHASE-2` → frontier `.2.2` (`.2.1` done: ADR-005
+  accepted — the PostgreSQL queue is the event transport, evidence-gated).
+  Then `.2.3`, `.2.4`.
+- **Next action:** execute `PHASE-2.2.2` — lease/fencing hardening: the
+  renewal race (a stale heartbeat must not extend the lease its own
+  handshake fenced), the lease epoch (renewals/events carry the epoch
+  they saw; a fenced epoch is refused), the check-vs-commit window.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

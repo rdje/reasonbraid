@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-005: the PostgreSQL queue is the event transport, accepted with evidence (`PHASE-2.2.1`)
+
+- The queue item closes by promotion, not by experiment: the WP2 leased outbox worker IS the PostgreSQL queue (claim with a per-row fencing token, deduped delivery, acknowledge only with the current token AND a live lease — kill points 3–5 proven), ADR-004 formalized the outbox that is the queue, ADR-006 accepted the pull channel that consumes it, and two phases of delivery leaves shipped on it (dispatch, quarantine/retention, revocation, the `.1.5.2` decision metadata, the `.1.6` run linkage).
+- Subtraction stands: no NATS/JetStream, no second durability store. The broker revisit trigger is named (measured fan-out/push/replication need, with numbers). No code changed. Frontier → `.2.2` (lease/fencing hardening).
+
 ## 2026-09-07 — `.2` split at the contract seams (`PHASE-2.2`)
 
 - The census found the Phase-1 machinery in place (the `.1.2.2` lease/fencing: 60s TTL, per-handshake token rotation, refused stale tokens; the `.1.2.3` quarantine/prune: operator-driven, reason-stored) while three contracts are open: a capability-aware RETRY policy (§14.6's provider-accepted-but-unproven class — only the reason code exists), a dead-letter/replay surface (quarantine is one-way today: nothing auto-quarantines after N refusals, nothing re-delivers), and ADR-005 (unopened — the Phase-0 `.2.2` outbox worker + the channel decisions are its evidence).

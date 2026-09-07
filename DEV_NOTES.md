@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.2.1: the transport ADR closes by promotion — the evidence shipped before the record, twice
+
+- **ADR-005 is the second "implementation ran ahead of the record" closure (after ADR-006).** The Phase-0 WP2 worker already IS the PostgreSQL queue with proven fencing/lease/ack semantics; the ADR's job was to promote the evidence and name the broker trigger, not to re-litigate a shipped, green transport.
+- promotion: declined (the promotion-by-evidence pattern is already ADR-006's recorded precedent; the ADR-005 record itself holds the answer). **Frontier `PHASE-2.2.2` (lease/fencing hardening).**
+
 ## _(2026-09-07)_ — PHASE-2.2: the lane's census found one-way machinery — quarantine refuses, nothing replays
 
 - **Quarantine is one-way today**: the `.1.2.3` verbs mark + prune, but nothing re-delivers a quarantined command and nothing auto-quarantines after N dispatch refusals (the `.1.5.2` gate refuses, the row just sits). Dead-letter/replay is a REVERSAL contract, not a new bucket.

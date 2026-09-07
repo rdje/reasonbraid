@@ -583,7 +583,7 @@ slice can reuse the same control plane without rewriting it.
     operator replay verb).
 
   - ID: `PHASE-2.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-005 — the transport choice, accepted with evidence: the
       Phase-0 `.2.2` leased outbox worker IS the PostgreSQL-queue choice
       (ADR-004's machinery), the node channel is the pull surface, and
@@ -591,6 +591,14 @@ slice can reuse the same control plane without rewriting it.
       no broker experiment (the dev profile has no measured need — the
       NATS/JetStream trigger is named, ADR-006's precedent).
     ADR: 005
+    Done (`2026-09-07`): ADR-005 accepted — the PostgreSQL queue is the
+      event transport (the WP2 leased outbox worker for server jobs + the
+      per-node inbox for the pull channel; the fencing/lease/ack
+      semantics proven at kill points 3–5 are its production contract).
+      The record names the broker revisit trigger (measured fan-out/push/
+      replication need, with numbers). No code changed — the record
+      promotes the shipped evidence (`docs/adr/INDEX.md` row added; the
+      queue item closes). Frontier → `.2.2`.
     Acceptance: ADR-005 accepted (evidence-gated), the revisit trigger
       named; no code changes.
 
@@ -666,11 +674,15 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.2.1` | `proposed` | `.2` decomposed at the contract seams (the census: leases/fencing + quarantine exist in their Phase-1 forms; retry policy, dead-letter/replay, and ADR-005 are open); the ADR-005 record executes now |
+| 1 | `PHASE-2.2.2` | `proposed` | `.2.1` done — ADR-005 accepted (the PostgreSQL queue, evidence-gated; no code changes); the lease/fencing hardening executes now |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.2.1` done — ADR-005 accepted: the PostgreSQL queue is the
+  event transport (the WP2 leased outbox worker + ADR-004 + the ADR-006 pull
+  channel — shipped across two phases; the broker trigger is named). No code
+  changed. Frontier → `.2.2`.
 - `2026-09-07`: `.2` decomposed at the contract seams — the census found
   the `.1.2.2` lease/fencing + the `.1.2.3` quarantine/prune EXIST in
   their Phase-1 forms while the retry policy, the dead-letter/replay
@@ -1371,7 +1383,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
-| `2026-09-07` | `PHASE-2.1.6.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — the result-fold test gained the run-writer legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg162_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the run writer (the result receipt's attempt→incarnation link + the inspection chain); **`.1.6` complete — deferral #4 closes — `.1` COMPLETE**; frontier → `.2` |
+| `2026-09-07` | `PHASE-2.2.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-005 accepted (the PostgreSQL queue — evidence-gated); frontier → `.2.2` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — the result-fold test gained the run-writer legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg162_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the run writer (the result receipt's attempt→incarnation link + the inspection chain); **`.1.6` complete — deferral #4 closes — `.1` COMPLETE**; frontier → `.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 5 + 3 + 7 + 7 `passed` — `node_enrollment` grew to 5 with the incarnation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (33 PASS, `rc=0`, `target/pg161c_guard.log`); `cargo test --all` → every offline suite green; clippy/fmt clean; `make gate` → 13/13 | the incarnation writer (the §8.1 request facts + the enroll transaction's row + the inspection surface + `rb-node`'s flags + the demo beat); frontier → `.1.6.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 7 + 7 `passed` — `node_work` grew to 7 with the measured live leg: the REAL node worker completes the fresh allow, the revocation bumps the epoch 0→1, the next dispatch refuses without a re-ask) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg152b_guard.log`); `cargo test -p reasonbraid-node --test worker_cached_decision` → `test result: ok. 5 passed`; `cargo test --all` → 43 offline suites green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the cached-decision machinery (migration 0013 + the epoch-in-transaction + the delivery-carried decision + CHANNEL_VERSION 4 + the node-side dispatch gate); **`.1.5` complete** — frontier → `.1.6` |
 
@@ -1392,6 +1405,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.2.1` | `REASONBRAID-PHASE2-0019` | ADR-005 accepted (the PostgreSQL queue — evidence-gated; the WP2 outbox worker + ADR-004/006 promote; no code changes) |
 | `PHASE-2.2` | `REASONBRAID-PHASE2-0018` | the contract-seam split (the Phase-1 lease/fencing + quarantine exist; retry policy, dead-letter/replay, ADR-005 open) |
 | `PHASE-2.1.6.2` | `REASONBRAID-PHASE2-0017` | the run writer: migration 0014 + the result fold's run row (after the idempotency claim — one result = one run) + `GET /v1/admin/runs` + `rb inspect runs` + the demo beat — **`.1.6` complete, deferral #4 closes, `.1` COMPLETE** |
 | `PHASE-2.1.6.1` | `REASONBRAID-PHASE2-0016` | the incarnation writer: the enroll request's §8.1 facts → the `incarnations` row (role nodes only) + `GET /v1/admin/incarnations` + `rb inspect incarnations` + `rb-node`'s four flags + the demo beat |

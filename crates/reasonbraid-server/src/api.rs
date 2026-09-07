@@ -430,6 +430,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/resources/{resource_id}/resolve",
             post(resolve_resource),
         )
+        .route(
+            "/v1/workflow-profiles",
+            post(register_workflow_profile).get(list_workflow_profiles),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -1789,6 +1793,54 @@ async fn resolve_resource(
         _ => {}
     }
     Ok(Json(outcome))
+}
+
+// ── The workflow-profile registry (PHASE-5.1.2; backlog 36) ─────────────────────────
+
+/// `POST /v1/workflow-profiles` — register a custom profile (the
+/// operator's verb): the steps MUST pass the composition validation.
+async fn register_workflow_profile(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<crate::workflows::ResolvedProfile>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no profile",
+        ));
+    }
+    let profile_id = body
+        .get("profile_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the profile_id is required"))?;
+    let steps: Vec<String> = body
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ControlApiError::invalid_command("the steps are required"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    match crate::workflows::register(&state.pool, profile_id, &steps).await {
+        Ok(resolved) => Ok(Json(resolved)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/workflow-profiles` — the registry's latest versions.
+async fn list_workflow_profiles(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::workflows::ResolvedProfile>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no profiles",
+        ));
+    }
+    Ok(Json(crate::workflows::list(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────
@@ -4210,8 +4262,17 @@ async fn create_thread(
             threads::OP_CREATE
         )));
     }
-    let body: CreateBody = serde_json::from_value(envelope.body.clone())
+    let mut body: CreateBody = serde_json::from_value(envelope.body.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    // The ADR-016 boundary: the workflow profile is a VALIDATED reference —
+    // the unknown id is the typed refusal (never a stored string), and the
+    // canonical id rides the body onward.
+    if let Some(profile) = body.workflow_profile.as_deref() {
+        let resolved = crate::workflows::resolve(&state.pool, Some(profile))
+            .await
+            .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+        body.workflow_profile = Some(resolved.profile_id);
+    }
     let tenant_id = body.tenant_id;
     let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
     let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;

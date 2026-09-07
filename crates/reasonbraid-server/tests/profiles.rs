@@ -1893,6 +1893,158 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     );
 }
 
+/// The workflow-profile registry + the validation (PHASE-5.1.2, ADR-016):
+/// the built-ins list, the custom registration validates the composition
+/// (the unknown step / the non-terminal last / the adjudicate-without-blind
+/// refusals), and the thread-create boundary resolves the reference (the
+/// unknown id is the typed refusal; the known id rides the projection).
+#[tokio::test]
+async fn the_workflow_profile_registry_validates_and_resolves() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "wfp-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The registry's built-ins list (the eight §13.1 entries).
+    let (status, profiles) = get(&client, &base, "/v1/workflow-profiles", &human_id).await;
+    assert_eq!(status, 200, "the profiles list: {profiles}");
+    let profiles = profiles.as_array().expect("the array");
+    assert_eq!(profiles.len(), 8, "{profiles:?}");
+    assert!(profiles
+        .iter()
+        .any(|p| p["profile_id"] == json!("quick_advice")));
+
+    // The custom registration: the VALID steps land.
+    let response = client
+        .post(format!("{base}/v1/workflow-profiles"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "profile_id": "custom_deliberate",
+            "steps": ["solicit", "critique", "decide"],
+        }))
+        .send()
+        .await
+        .expect("register request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the valid profile registers"
+    );
+    let registered: Value = response.json().await.unwrap();
+    assert_eq!(registered["version"], json!(1));
+
+    // The invalid compositions refuse with their names.
+    for (steps, expected) in [
+        (json!(["solicit", "teleport", "decide"]), "vocabulary"),
+        (json!(["solicit", "synthesize"]), "terminal"),
+        (json!(["solicit", "adjudicate", "decide"]), "blind"),
+    ] {
+        let response = client
+            .post(format!("{base}/v1/workflow-profiles"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({ "profile_id": "custom_bad", "steps": steps }))
+            .send()
+            .await
+            .expect("invalid register request");
+        assert_eq!(
+            response.status().as_u16(),
+            400,
+            "the invalid profile refuses"
+        );
+        let refused: Value = response.json().await.unwrap();
+        assert!(
+            refused["message"].as_str().unwrap().contains(expected),
+            "{refused}"
+        );
+    }
+
+    // The thread-create boundary: the UNKNOWN id is the typed refusal.
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "wfp-unknown",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "wfp",
+                "objective": "probe",
+                "workflow_profile": "no_such_profile",
+            },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("unknown-profile create");
+    assert_eq!(
+        response.status().as_u16(),
+        400,
+        "the unknown profile refuses"
+    );
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("no_such_profile"),
+        "{refused}"
+    );
+
+    // The KNOWN id rides the projection.
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "wfp-known",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "wfp-known",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("known-profile create");
+    assert_eq!(response.status().as_u16(), 200, "the known profile creates");
+    let created: Value = response.json().await.unwrap();
+    let thread_id = created["thread_id"]
+        .as_str()
+        .or_else(|| created["thread"]["thread_id"].as_str())
+        .unwrap()
+        .to_string();
+    let (status, thread) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the thread reads: {thread}");
+    assert_eq!(
+        thread["state"]["workflow_profile"],
+        json!("independent_panel"),
+        "the validated reference rides the projection: {thread}"
+    );
+}
+
 /// THE `.3.6.2` panel-wiring acceptance: two joiners sharing the provider
 /// produce the named overlap group in the panel snapshot's dependence
 /// indicators.

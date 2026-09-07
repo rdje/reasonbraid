@@ -81,7 +81,7 @@ and honest inconclusive outcomes.
       `.1.2`.
 
   - ID: `PHASE-5.1.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the profile registry + the validation — the typed
       profile shape (the steps + the version), the eight §13.1
       built-ins shipped as the versioned registry entries, the
@@ -90,6 +90,31 @@ and honest inconclusive outcomes.
       becoming a VALIDATED reference (the unknown profile is the
       typed refusal, never a stored string).
     Backlog: 36 (the registry half)
+    Done (`2026-09-07`): the registry landed — migration 0032
+      (`workflow_profiles`: the profile_id + the version + the
+      steps + the built_in flag; the eight §13.1 built-ins
+      seeded as version 1); `crates/reasonbraid-server/src/
+      workflows.rs` (NEW): the step vocabulary (the twelve kinds
+      — the composition over the existing verbs, nothing else
+      expressible), the `validate_steps` invariants (the known
+      kinds only, the terminal last, the adjudicate-after-blind
+      rule — the authorization/budget/lifecycle invariants live
+      in the VERBS), the `resolve` (the latest version; `None` →
+      the `quick_advice` default; the unknown id is the typed
+      refusal), the `register` (the custom profiles — validated,
+      the version increments), the `list`; the thread's
+      `workflow_profile` became a VALIDATED REFERENCE: the
+      CreateBody carries the id string (the old Phase-1
+      `WorkflowProfile` enum is gone), the create boundary
+      resolves it (the unknown = the 400 naming the id; the
+      canonical id rides the projection), the bare thread
+      defaults to `quick_advice`; the verbs: `POST`/`GET
+      /v1/workflow-profiles`. Measured (profiles 25): the
+      built-ins list, the custom registration, the three
+      invalid-composition refusals (the unknown step / the
+      non-terminal last / the adjudicate-without-blind), the
+      unknown-id create refusal, the known-id projection
+      roundtrip. Frontier → `.1.3`.
 
   - ID: `PHASE-5.1.3`
     Status: `proposed`
@@ -134,10 +159,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.1.2` | `proposed` | `.1.1` done — ADR-016 accepted (`docs/adr/016-workflow-profiles.md`: the versioned configuration + the composition invariants + the eight built-ins); the profile registry + the validation execute now |
+| 1 | `PHASE-5.1.3` | `proposed` | `.1.2` done — the profile registry + the validation (migration 0032 + `src/workflows.rs`: the twelve-kind vocabulary, the three composition rules, the eight built-ins, the create-boundary resolution — profiles 25); the profile-driven execution executes now |
 
 ## Changelog
 
+- `2026-09-07`: `.1.2` done — the profile registry + the
+  validation (migration 0032: the eight built-ins; the twelve-
+  kind vocabulary; the three composition rules; the thread's
+  profile is a validated reference — the unknown id refuses at
+  the create boundary); profiles 25; frontier → `.1.3`.
 - `2026-09-07`: `.1.1` done — ADR-016 accepted (the versioned
   configuration + the composition invariants + the eight
   built-ins — durable in `docs/adr/016-workflow-profiles.md`);
@@ -150,3 +180,51 @@ and honest inconclusive outcomes.
 
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.7, §13, backlog 36–37.
+
+
+## Acceptance Checklist (PHASE-5.1.2)
+
+The CODE change owned by this leaf:
+`migrations/0032_workflow_profiles.sql` (NEW — the registry +
+the eight built-ins), `crates/reasonbraid-server/src/workflows.rs`
+(NEW — the vocabulary + the validation + the resolve/register/
+list), `src/threads.rs` (the CreateBody's string reference, the
+projection's id, the default), `src/api.rs` (the create-boundary
+resolution + the two verbs), `src/lib.rs` (the module),
+`tests/profiles.rs` (profiles 25), `tests/command_api.rs` + the
+CLI e2e (the old wire names → the ADR-016 names) — `\.rs$` +
+`(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the `.1` census: the profile is an
+  unvalidated string (the Phase-1 enum's four variants; no
+  registry, no validation).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the wire predates ADR-016 —
+  `git grep -c "workflow_profiles\|validate_steps" 7dc77a2 --
+  crates/ migrations/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-016 registry: the versioned entries, the
+  composition validation, the create-boundary resolution.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_workflow_profile_registry` → `test result: ok. 1
+  passed` — the eight built-ins list, the valid custom
+  registration (version 1), the three invalid-composition
+  refusals (the unknown step / the non-terminal last / the
+  adjudicate-without-blind), the unknown-id create refusal, the
+  known-id projection roundtrip. The first live runs caught the
+  SEVENTH SQL-continuation doubling (in the resolve query) +
+  the two old-wire test suites (the command_api + the CLI e2e
+  asserted the Phase-1 enum names) — all fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg512e_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0032_workflow_profiles.sql`, `src/workflows.rs`,
+  `src/threads.rs`, `src/api.rs`, `src/lib.rs`,
+  `tests/profiles.rs`, `tests/command_api.rs`,
+  `crates/reasonbraid-cli/tests/cli_end_to_end.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.

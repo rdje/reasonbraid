@@ -55,6 +55,7 @@ mod tx;
 /// The `.1.6.2` static inspection console (embedded at compile time; no API
 /// routes, no write path — the page reads the existing GET surfaces).
 pub mod ui;
+pub mod workflows;
 
 pub use api::{
     api_router, api_router_gated, r5r3rx_enabled, ApiState, ControlApiError, EnrollRequest,

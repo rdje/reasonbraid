@@ -479,7 +479,7 @@ async fn the_real_cli_drives_the_whole_flow() {
             "--classification",
             "confidential",
             "--workflow-profile",
-            "critique-revise",
+            "critique",
             "--as",
             "alice",
         ])

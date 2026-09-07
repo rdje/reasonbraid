@@ -12,6 +12,13 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The profile registry ships: the validated reference replaces the stored string (`PHASE-5.1.2`)
+
+- `migrations/0032`: the eight §13.1 built-ins as versioned entries.
+- `src/workflows.rs`: the twelve-kind step vocabulary, the three composition rules (the known kinds, the terminal last, the adjudicate-after-blind), the resolve/register/list surfaces.
+- The thread's `workflow_profile` is now a VALIDATED reference: the unknown id is the typed refusal at the create boundary; the bare thread defaults to `quick_advice`; the Phase-1 enum is gone.
+- Measured: profiles 25. Frontier → `.1.3` (the profile-driven execution).
+
 ## 2026-09-07 — ADR-016 is accepted: the profile composes verbs, never capabilities (`PHASE-5.1.1`)
 
 - The workflow profile is VERSIONED CONFIGURATION over the thread aggregates; the composition invariants (no profile bypasses authorization/budget/lifecycle — an invalid profile is invalid at validation time); the eight §13.1 built-ins are the initial registry; the unknown profile is a typed refusal, never a stored string.

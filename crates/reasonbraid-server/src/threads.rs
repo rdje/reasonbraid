@@ -112,22 +112,9 @@ pub enum Classification {
     Confidential,
 }
 
-/// The workflow profile (`PHASE-1.1.3`; ADR-002): the routing default is
-/// **single-agent** — the WP7 null result means structure is opt-in, never the
-/// default. The other variants are the benchmark's measured shapes, reserved for
-/// later routing work; the dev profile records the choice and runs every profile
-/// as single-agent for now (stated, not silently ignored — see
-/// `docs/decisions/2026-09-06_thread-api-completion.md`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowProfile {
-    #[default]
-    SingleAgent,
-    BlindIndependent,
-    CritiqueRevise,
-    Moderator,
-}
-
+/// The workflow profile (ADR-016, `PHASE-5.1.2`): the VALIDATED reference
+/// to a registered profile — the id string, defaulting to `quick_advice`
+/// at the create boundary.
 /// Participant rules (`ROADMAP.md` §20.3: explicit participants first): explicit
 /// invites on by default, join requests off — the trusted-LAN slice has no
 /// request flow yet (`PHASE-1.1.3`).
@@ -166,8 +153,11 @@ pub struct CreateBody {
     pub budget: Option<BudgetSpec>,
     #[serde(default)]
     pub classification: Option<Classification>,
+    /// The validated workflow-profile reference (ADR-016: the id of a
+    /// registered profile — the unknown id is the typed refusal at the
+    /// create boundary).
     #[serde(default)]
-    pub workflow_profile: Option<WorkflowProfile>,
+    pub workflow_profile: Option<String>,
     #[serde(default)]
     pub participant_rules: Option<ParticipantRules>,
 }
@@ -384,7 +374,7 @@ pub struct ThreadProjection {
     #[serde(default)]
     pub classification: Classification,
     #[serde(default)]
-    pub workflow_profile: WorkflowProfile,
+    pub workflow_profile: String,
     #[serde(default)]
     pub participant_rules: ParticipantRules,
     #[serde(default)]
@@ -550,7 +540,10 @@ pub fn prepare_create(
         open_challenges: 0,
         close_reason: None,
         classification: body.classification.unwrap_or_default(),
-        workflow_profile: body.workflow_profile.unwrap_or_default(),
+        workflow_profile: body
+            .workflow_profile
+            .clone()
+            .unwrap_or_else(|| crate::workflows::DEFAULT_PROFILE_ID.to_owned()),
         participant_rules: body.participant_rules.clone().unwrap_or_default(),
         cancel_reason: None,
         ceiling_id: ceiling_id.clone(),
@@ -1257,7 +1250,10 @@ mod tests {
         // The `.1.1.3` defaults are stated, not empty: general / single-agent /
         // explicit-invites-only.
         assert_eq!(projection.classification, Classification::General);
-        assert_eq!(projection.workflow_profile, WorkflowProfile::SingleAgent);
+        assert_eq!(
+            projection.workflow_profile,
+            crate::workflows::DEFAULT_PROFILE_ID
+        );
         assert_eq!(projection.cancel_reason, None);
         assert!(
             projection.participant_rules.allow_explicit_invites,

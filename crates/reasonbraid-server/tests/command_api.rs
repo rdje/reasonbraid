@@ -1011,7 +1011,7 @@ async fn create_carries_typed_classification_profile_and_rules() {
                 "subject": "profiled",
                 "objective": "typed fields",
                 "classification": "confidential",
-                "workflow_profile": "critique_revise",
+                "workflow_profile": "critique",
                 "participant_rules": { "allow_explicit_invites": true, "allow_join_requests": true },
             }),
         ),
@@ -1027,10 +1027,7 @@ async fn create_carries_typed_classification_profile_and_rules() {
     )
     .await;
     assert_eq!(inspected["state"]["classification"], json!("confidential"));
-    assert_eq!(
-        inspected["state"]["workflow_profile"],
-        json!("critique_revise")
-    );
+    assert_eq!(inspected["state"]["workflow_profile"], json!("critique"));
     assert_eq!(
         inspected["state"]["participant_rules"]["allow_explicit_invites"],
         json!(true)
@@ -1040,7 +1037,7 @@ async fn create_carries_typed_classification_profile_and_rules() {
         json!(true)
     );
 
-    // Unnamed fields take the STATED defaults (ADR-002): general / single-agent /
+    // Unnamed fields take the STATED defaults: general / quick_advice /
     // explicit-invites-only.
     let (status, defaulted) = command(
         &client,
@@ -1066,7 +1063,7 @@ async fn create_carries_typed_classification_profile_and_rules() {
     assert_eq!(inspected["state"]["classification"], json!("general"));
     assert_eq!(
         inspected["state"]["workflow_profile"],
-        json!("single_agent")
+        json!("quick_advice")
     );
     assert_eq!(
         inspected["state"]["participant_rules"]["allow_explicit_invites"],
@@ -1098,7 +1095,7 @@ async fn create_carries_typed_classification_profile_and_rules() {
     assert_eq!(status, 400, "unknown field: {unknown}");
     assert_eq!(unknown["code"], json!("invalid_command"));
 
-    // An out-of-registry enum value is rejected, not silently stored.
+    // An out-of-registry profile id is rejected, not silently stored.
     let (status, bad_enum) = command(
         &client,
         &base,

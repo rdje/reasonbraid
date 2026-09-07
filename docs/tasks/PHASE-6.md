@@ -566,7 +566,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       profile). Frontier → `.4.3.1`.
 
   - ID: `PHASE-6.4.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the publication-store contract + the census — the
       decision record: the local bare repository, the ref
       scheme (the immutable `refs/rb/publications/<id>` +
@@ -576,6 +576,19 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       reference update with the EXPECTED old id — the CAS).
       No code.
     Roadmap: §15.2, §15.7
+    Done (`2026-09-07`): the store contract landed —
+      `docs/decisions/2026-09-07_publication-store-
+      contract.md`: the LOCAL bare repository (the §15.2
+      LAN-slice shape; the remote-publication profile is a
+      named deferral), the ref scheme (the staging
+      `refs/rb/staging/<id>`, the IMMUTABLE
+      `refs/rb/publications/<id>` — written once, never
+      moved, the EFFECTIVE `refs/rb/effective` — the
+      compare-and-swap ref with the EXPECTED old id), the
+      write path's gix surface (the commit-tree + the
+      `PreviousValue` reference update + the fetch-back
+      digest re-derivation — no git CLI, the pure-Rust
+      doctrine). No code changed. Frontier → `.4.3.2`.
 
   - ID: `PHASE-6.4.3.2`
     Status: `proposed`
@@ -620,10 +633,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.3.1` | `proposed` | `.4.3` decomposed at the census seams (the write half is the greenfield — the R1 pack only acquires; the `.4.2` records are the matrix's DB half) — the publication-store contract executes first |
+| 1 | `PHASE-6.4.3.2` | `proposed` | `.4.3.1` done — the publication-store contract (the local bare repo, the three-ref scheme, the CAS write path); the Git publication half executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.3.1` done — the publication-store
+  contract (the local bare repository, the staging/
+  immutable/effective ref scheme, the CAS write path); no
+  code; frontier → `.4.3.2`.
 - `2026-09-07`: `.4.3` decomposed at the census seams — the
   write half is the greenfield (the R1 pack only acquires;
   the reconciler exists nowhere); children `.4.3.1` (the

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The publication-store contract (`PHASE-6.4.3.1`)
+
+- The decision record (`docs/decisions/2026-09-07_publication-store-contract.md`): the LOCAL bare repository (the remote-publication profile is a named deferral), the three-ref scheme (the staging branch, the immutable publication ref — written once, the effective channel via the compare-and-swap with the expected old id), and the gix write path (no git CLI). No code.
+
 ## 2026-09-07 — The Git-publication half is decomposed at the census seams (`PHASE-6.4.3`)
 
 - The write half is the greenfield (the Phase-4 R1 pack only ACQUIRES — no commit/ref-write path exists; the reconciler exists nowhere); the `.4.2` publication records are the matrix's DB half. Children: `.4.3.1` the publication-store contract → `.4.3.2` the Git publication half → `.4.3.3` the reconciliation matrix + the kill-point tests.

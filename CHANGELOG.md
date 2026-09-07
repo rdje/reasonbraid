@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.5` split at the ADR-vs-implementation seam (`PHASE-2.1.5`)
+
+- The census found the ROADMAP rule (§16.4 — cache only explicitly cacheable decisions, honor expiry + revocation freshness, per-action-class fail-open/fail-closed) with NO machinery: no decision cache in the node or server, no revocation epoch (the `.1.3` write paths bump none), and the poll payload carries no decision metadata — while the plumbing is PRE-SHAPED: the journal's `authz_ref` column exists with every writer binding `None`, and the authorization record already holds the digest/version/decided_at.
+- Children: `.1.5.1` ADR-008 + the pure semantics spike (cacheable classes, freshness/expiry, the epoch invalidation, the fail-closed classifier — core-crate types, the `.1.4.1` precedent) → `.1.5.2` the implementation (the decision rides the delivery, the tenant epoch bumps on revocation, the node-side cache honors the rules). Tree-only commit.
+
 ## 2026-09-07 — Delegation rides the envelope: the dual evaluation landed (`PHASE-2.1.4.2`)
 
 - The command envelope gained the optional `authority_context` (the ADR-009 shape — `on_behalf_of` + `purpose` + `scope`; the subject rides a plain string, the tagged-newtype wire fact from the spike). The CLI's thread verbs gained `--on-behalf-of`/`--purpose` (the scope defaults to the command's own target — the honest minimal attenuation).

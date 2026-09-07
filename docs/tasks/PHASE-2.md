@@ -350,7 +350,7 @@ slice can reuse the same control plane without rewriting it.
       no regression.
 
   - ID: `PHASE-2.1.5`
-    Status: `proposed`
+    Status: `active`
     Goal: cached-decision semantics — ADR-008 (which decisions are
       cacheable, the freshness/expiry rule, the revocation-epoch
       invalidation, the fail-closed rule when the authority store is
@@ -361,6 +361,70 @@ slice can reuse the same control plane without rewriting it.
       revocation invalidates the cache (measured); an unreachable
       authority store fails closed for irreversible writes; the suites
       stay green.
+    Note: gap census (`2026-09-07`, on pickup): the ROADMAP rule exists
+      (§16.4 — cache only explicitly cacheable decisions, honor expiry +
+      revocation freshness, per-action-class fail-open/fail-closed) but
+      NO machinery: `grep -rn 'cache'
+      crates/reasonbraid-node/src/ crates/reasonbraid-server/src/` → 0
+      matches (fresh in-tx evaluation everywhere); no revocation epoch
+      exists (`grep -rn 'epoch'` over the node/server/migrations → the
+      `.1.3` write paths bump none); the poll payload carries no decision
+      metadata (`ReplayCommand` = cursor/id/tenant/thread/payload —
+      channel.rs:132-138) — but the plumbing is PRE-SHAPED: the node
+      journal's `authz_ref` column exists with every writer binding
+      `None` (journal.rs:144/437/444; writers at worker.rs:149 +
+      node.rs:208) and `authorization_records` already holds
+      `policy_digest`/`policy_version`/`decided_at` (migration 0004; the
+      version is the hardcoded `"dev-authz-1"`).
+    Children: `.1.5.1`–`.1.5.2` (decomposed `2026-09-07` at the
+      ADR-vs-implementation seam — the `.1.4` precedent).
+
+  - ID: `PHASE-2.1.5.1`
+    Status: `proposed`
+    Goal: ADR-008 + the semantics spike — which decisions are cacheable
+      (the dev profile's answer: the server's ADMISSION decision rides
+      the delivery and the node caches ONLY that — §11.1's minimum
+      state), the freshness/expiry rule, the revocation-epoch
+      invalidation (a per-tenant epoch counter bumped by every revocation
+      write; a cached decision records the epoch it was decided under, a
+      bump invalidates it), and the per-action-class fail-closed rule
+      (irreversible writes fail closed when the authority store is
+      unreachable; the dev-profile classes declared). The spike is pure
+      core-crate types + offline tests (the `.1.4.1` precedent):
+      `CachedDecision` (decision, decided_at, expires_at,
+      revocation_epoch, policy_digest) with the freshness/expiry/
+      invalidation checks + the fail-closed classifier. The engine half
+      of ADR-008 is recorded accepted-with-evidence (the Phase-0 `.5.1`
+      in-tx evaluator IS the chosen engine — no OPA/Cedar experiment for
+      the dev profile; ADR-006's precedent).
+    Backlog: 11
+    ADR: 008
+    Acceptance: the spike's offline tests are green (a fresh, unexpired,
+      epoch-current cached allow passes; an expired or epoch-stale one
+      fails; the irreversible classes fail closed); ADR-008 names the
+      cacheable decisions + the declared rules + the honest limits; no
+      product code changes (pure core types consumed by `.1.5.2`).
+
+  - ID: `PHASE-2.1.5.2`
+    Status: `proposed`
+    Goal: the implementation — the delivery carries the decision: the
+      poll payload's commands gain the admission-decision metadata
+      (authz_ref + policy_digest + decided_at + the epoch at decision
+      time) so a dispatched command names its admitting record; the
+      server gains the tenant revocation epoch (migration 0013) bumped in
+      the same transaction as every `.1.3` revocation write; the node
+      journals the cached decision (the pre-shaped `authz_ref` finally
+      gains a value) and the dispatch boundary honors the `.1.5.1` rules
+      (a fresh, epoch-current cached allow dispatches; an expired or
+      epoch-stale one refuses the irreversible write — fail closed — and
+      refreshes at the next poll); the tests prove expiry/refresh,
+      revocation invalidation (measured), fail-closed.
+    Backlog: 11
+    ADR: 008
+    Acceptance: a cached allow expires/refreshes on the declared rule; a
+      revocation invalidates the cache (measured — the next dispatch
+      refuses without a re-ask); an unreachable authority store fails
+      closed for irreversible writes; the suites stay green.
 
   - ID: `PHASE-2.1.6`
     Status: `proposed`
@@ -411,7 +475,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.5` | `proposed` | `.1.4` is COMPLETE (the delegated authority context rides the envelope + the dual evaluation); the cached-decision semantics execute now |
+| 1 | `PHASE-2.1.5.1` | `proposed` | `.1.5` decomposed at the ADR-vs-implementation seam (the census: no cache machinery, no revocation epoch, the poll payload carries no decision metadata — but the journal's `authz_ref` is pre-shaped); the ADR-008 semantics spike executes now |
 
 ## Changelog
 
@@ -472,6 +536,15 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.5` decomposed at the ADR-vs-implementation seam — the
+  census found the ROADMAP rule (§16.4) with NO machinery: no decision
+  cache in the node or server (`grep -rn 'cache'` → 0 matches), no
+  revocation epoch (the `.1.3` writes bump none), the poll payload carries
+  no decision metadata — but the journal's `authz_ref` column is
+  PRE-SHAPED (every writer binds `None`) and the authorization record
+  holds the digest/version/decided_at; children `.1.5.1` (ADR-008 + the
+  pure semantics spike) → `.1.5.2` (the delivery-carried decision + the
+  tenant epoch + the node-side cache); frontier → `.1.5.1`.
 - `2026-09-07`: `.1.4.2` done — the delegation implementation: the
   envelope's optional `authority_context` (the subject rides a string —
   the tagged-newtype wire fact), the DUAL evaluation (the caller's own
@@ -880,3 +953,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4` | `REASONBRAID-PHASE2-0009b` | the ADR-vs-implementation split (the delegation plumbing is pre-shaped) |
 | `PHASE-2.1.4.1` | `REASONBRAID-PHASE2-0010` | ADR-009 (chain-in-envelope) + the pure `DelegationConstraints`/`delegation_scope_is_subset` prototype with the offline tests |
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
+| `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |

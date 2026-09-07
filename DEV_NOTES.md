@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.5: the census found a rule with no machinery — and plumbing that's already waiting for it
+
+- **The journal's `authz_ref` column is pre-shaped but every writer binds `None`.** The delivery path was built with a place for the admitting authorization record's id before any decision metadata existed. `.1.5.2`'s job is to make the delivery carry the decision (authz_ref + policy_digest + decided_at + the epoch at decision time) so the pre-shaped column finally gains a value.
+- **There is no revocation epoch to bump.** The `.1.3` revocation writes set `revoked_at`/`status='revoked'` rows, but nothing maintains a per-tenant epoch — so a node-side cache would have no cheap invalidation signal today. The spike's answer is a tenant counter bumped in the same transaction as every revocation write; a cached decision records the epoch it was decided under and a bump invalidates it.
+- promotion: declined (the seam facts are the leaf's census note; the ADR-008 answer itself lands with `.1.5.1`). **Frontier `PHASE-2.1.5.1` (the ADR-008 semantics spike).**
+
 ## _(2026-09-07)_ — PHASE-2.1.4.2: under delegation, the record binds the authority source, not the caller
 
 - **The dual evaluation changed what "the grant" means in the audit row.** Before the leaf, `delegate_subject` was dormant (audit-only). Now the SUBJECT's grant is the authority source: the caller's own grant is checked independently (a non-holder cannot delegate), the record's `grant_id` + the policy digest bind the SUBJECT, and the pre-existing audit test had to move to the dual semantics (it seeded one grant; the new contract needs both).

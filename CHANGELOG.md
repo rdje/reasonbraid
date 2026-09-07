@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-029: the structured-deliberation contract (`PHASE-5.2.1`)
+
+- The `.2.1` leaf accepted ADR-029 (`docs/adr/029-structured-deliberation.md`): the typed claim/objection/revision records are SHAPES over the existing verbs (never a new capability); the blind commitment point is a READ-SURFACE rule (the ledger holds the blind content from post time; the round advance commits); the evidence request is a contribution, not an acquisition; the adjudication is an attributable verdict; the minority report carries the coverage report; the close speaks §13.4's twelve terminals. No code.
+
 ## 2026-09-07 — The deliberation lane is decomposed at the census seams (`PHASE-5.2`)
 
 - The §13.4/§13.6 census: FOUR greenfields (the blind-first visibility, the structured claim/objection/revision records, the evidence requests, the adjudication + the minority reports + the terminals) against the reusable pieces (the contribution kind vocabulary, the open_challenges + unresolved registers, the Phase-4 evidence pipeline). Children: `.2.1` ADR-029 → `.2.2` the structured records → `.2.3` the blind-first lane → `.2.4` the requests + the adjudication + the reports.

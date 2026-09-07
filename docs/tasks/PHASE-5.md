@@ -185,7 +185,7 @@ and honest inconclusive outcomes.
     Frontier → `.2.1`.
 
   - ID: `PHASE-5.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-029 + the census — the structured-deliberation
       contract: the typed claim/objection/revision records (the
       digest-targeted structure over the existing
@@ -198,6 +198,24 @@ and honest inconclusive outcomes.
       code.
     ADR: 029
     Roadmap: §13.4, §13.6
+    Done (`2026-09-07`): ADR-029 accepted (evidence-gated) —
+      `docs/adr/029-structured-deliberation.md` (top-level
+      `answers:`): the records are SHAPES over the existing verbs
+      (the claim rides `contribute`, the objection rides
+      `challenge` and targets the claim digest, the revision
+      rides `revise` and answers the objection — the
+      authority/budget/lifecycle checks keep living in the
+      verbs); the blind commitment point is a READ-SURFACE rule
+      (the blind content is in the ledger from post time; the
+      pre-commitment readers see the digest + the marker; the
+      commitment is the round advance — no new verb); the
+      evidence request is a contribution, NOT an acquisition (no
+      budget/resolver authority); the adjudication is an
+      attributable verdict event (never a silent rewrite); the
+      minority report is derived content with the coverage
+      report; the close speaks §13.4's twelve terminals (the
+      legacy words stay aliases). No code changed. Frontier →
+      `.2.2`.
 
   - ID: `PHASE-5.2.2`
     Status: `proposed`
@@ -255,10 +273,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.2.1` | `proposed` | `.2` decomposed at the census seams (the four greenfields: the blind-first visibility, the structured records, the evidence requests, the adjudication + the minority reports + the terminals — the reusable pieces: the kind vocabulary, the registers, the Phase-4 pipeline) — ADR-029 opens the lane |
+| 1 | `PHASE-5.2.2` | `proposed` | `.2.1` done — ADR-029 accepted (the records shape the wire, never a new capability; the blind commitment point is a read-surface rule; the twelve terminals); the typed claim/objection/revision records execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.2.1` done — ADR-029 accepted (the
+  structured-deliberation contract: the typed records, the
+  read-surface blind commitment, the request-is-not-acquisition
+  rule, the attributable verdict, the coverage report, the
+  twelve terminals); no code; frontier → `.2.2`.
 - `2026-09-07`: `.2` decomposed at the census seams — the four
   greenfields (the blind-first visibility, the structured
   records, the evidence requests, the adjudication + the

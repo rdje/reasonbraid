@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.8` decomposed at the census seams: the demo already proves §26.1 (`PHASE-1.8`)
+
+- The tool-backed census (`grep -n` over the demo + `crates/` + `.github/` + `migrations/`) maps every §26.1 acceptance point to EXISTING demo evidence with real SIGKILL kill points: enrollment, no human relay, durable invitations + blind contributions, duplicate transport → exactly one domain effect, server restart loses no accepted command, node SIGKILL after dispatch → exactly one `outcome_unknown` with boundary history (no silent retry, no effect), the budget denial journaled before provider contact, spend visible (`.1.6.1`), `inconclusive` + the unresolved register (`.1.5.3`), and every state assertion through CLI/API/`rb-journal`/console — never psql (the two psql reads obtain the fencing token to forge the duplicate: a credential oracle, which a least-privilege API must not expose).
+- **The last demo gap:** the header claims "the audit view reconstructs the whole story" but no beat asserts it, and no demo contribution carries an evidence ref → `.1.8.1` closes it.
+- Named deferrals with triggers (ride the gate record): capability advertisement → Phase 3 directory; expected-artifact/manual-decision-rule fields + LLM synthesis → Phase 5; incarnation/run row writers → Phase 2 identity; fuzz baseline → Phase 4 parsers.
+- Decomposition: `.1.8.1` (the audit-reconstruction demo leg) → `.1.8.2` (the G1–G2 gate package: `make deny` + `make secret-scan` evidence, the Phase-1 evidence manifest, the gate record, the subtraction record, the Phase 1 close). Tree-only commit.
+
 ## 2026-09-07 — The packaged LAN story: four self-contained binaries + a practiced runbook (`PHASE-1.7.2`)
 
 - `make release` builds the four release binaries (`rb`, `rb-server`, `rb-node`, `rb-journal`) — self-contained: the migrations and the console embed at compile time, so a deployed binary needs no runtime path back to the checkout (§12).

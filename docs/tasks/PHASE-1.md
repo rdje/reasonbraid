@@ -537,16 +537,95 @@ conversation without binding-governance claims.
       checklist below records the evidence — **`.1.7` is COMPLETE**.
 
 - ID: `PHASE-1.8`
-  Status: `proposed`
-  Goal: G1–G2 exit + Demonstration A (two hosts, blind contributions, kill-after-dispatch → ambiguous, duplicate delivery → one effect, inconclusive allowed)
-  Acceptance: no manual relaying; restart/reconnect loses no accepted command; spend/uncertainty visible; inspectable via CLI/UI not database surgery
+  Status: `active`
+  Goal: G1–G2 exit + Demonstration A — the §26.1 acceptance mapped to the
+    existing demo evidence, the last demo gap closed, the gate record +
+    subtraction record written, Phase 1 closed
+  Acceptance: no manual relaying; restart/reconnect loses no accepted command;
+    spend/uncertainty visible; inspectable via CLI/UI not database surgery
   Gate: G1, G2; subtraction record required
+  Note: gap census (`2026-09-07`, on pickup — tool-backed: `grep -n` over
+    `scripts/demo_two_host.sh`, `crates/`, `.github/`, `migrations/`):
+    - ALREADY PROVEN end-to-end by the demo (real SIGKILL kill points):
+      enrollment (`.1.2.1`), no human relay (beat: "the agent content is the
+      adapter's scripted chunks"), durable invitations + blind contributions
+      (`.1.3.1`), duplicate transport → ONE domain effect (`accepted:false` +
+      exactly one contribution), server SIGKILL + restart loses no accepted
+      command, node SIGKILL AFTER dispatch → `outcome_unknown` exactly once
+      with its boundary history, no silent retry, no effect
+      (`journal-a-ambiguous.json`), the budget denial journaled BEFORE
+      provider contact + spend visible (`.1.6.1`), `inconclusive` + the
+      unresolved register (`.1.5.3`), every state assertion via CLI/API/
+      `rb-journal`/console — never psql (the two psql reads obtain the
+      fencing token to FORGE the duplicate transport — a credential oracle;
+      exposing a live credential through the API would violate least
+      privilege, so the read stays but gets a comment naming the
+      distinction).
+    - THE LAST DEMO GAP — the header (line 31) claims "the audit view
+      reconstructs the whole story" but NO beat asserts it, and no demo
+      contribution carries an evidence ref (`.1.5.1`'s surface is never
+      exercised end-to-end) → `.1.8.1`.
+    - DEFERRALS (named, with triggers — the gate record + subtraction record
+      carry them): capability advertisement (Phase 3 directory — no
+      capability surface exists), expected-artifact + manual-decision-rule
+      create fields (Phase 5 workflow/decision rules; `objective` +
+      `workflow_profile` stand in), LLM synthesis (Phase 5 — no synthesizer
+      yet), incarnation/run row WRITERS (migration 0007 + the branded
+      `inc`/`run` id space + `patt_` attempt records exist, but no code
+      writes incarnation/run rows — Phase 2 identity owns the lifecycle),
+      fuzz baseline (no fuzz crates — the first parsers that need fuzzing
+      arrive with Phase 4's resource packs).
+    - G1 supply-chain: `make deny` + `make secret-scan` +
+      `.github/workflows/supply-chain.yml` are wired — the gate package runs
+      them as fresh evidence (`.1.8.2`).
+  Children: `.1.8.1`–`.1.8.2` (decomposed `2026-09-07` at the demo-gap-vs-
+    gate-package seam).
+
+  - ID: `PHASE-1.8.1`
+    Status: `proposed`
+    Goal: the audit-reconstruction demo leg — THREAD_A's contribution gains
+      an evidence ref (`--evidence-uri`; asserted to ride the event), and a
+      new section 11 beat fetches the AUDIT views of both threads +
+      THREAD_B's budget through the supported read surfaces (curl + the dev
+      header — the console's own pattern; no psql, no database surgery) and
+      asserts the reconstruction: the commands, the participants, the
+      accept's authority row, the budget denial, the stop reasons (closed /
+      inconclusive with the register), the evidence ref — the §26.1 step-7
+      claim the demo's header already makes but no beat proves. The
+      bundle's summary table + the book's two-host-demo chapter gain the
+      leg; the two psql reads gain a comment naming the credential-oracle
+      distinction (the `.1.8` census note).
+    Backlog: —
+    Acceptance: the demo passes with the new beats (`rc=0`; the count grows
+      from 24); the book chapter names the leg; the lockstep docs land.
+
+  - ID: `PHASE-1.8.2`
+    Status: `proposed`
+    Goal: the G1–G2 gate package + the Phase 1 close — the G1 supply-chain
+      evidence (`make deny` + `make secret-scan` green), the full guard
+      re-run (offline + 12 live suites + e2e + the demo with `.1.8.1`'s
+      beats, debug AND release-built), the Phase-1 evidence manifest
+      (`docs/evidence/2026-09-07_phase1-evidence-manifest.md` — the Phase-0
+      shape), the gate record (`docs/decisions/2026-09-07_phase1-gate-record.md`:
+      gate_id `PHASE-1-G1G2`, the outcome, the §26.1 table with evidence per
+      row, the named deferrals), the Phase-1 SubtractionRecord
+      (`docs/decisions/2026-09-07_phase1-subtraction-record.md` — the §19.8
+      shape incl. the `.1.7` ops deferrals), and the close: the tree +
+      `docs/TASK_TREE.md` (PHASE-1 `done`, PHASE-2 `active` frontier `.1`),
+      `PHASE-2.md` unblocked, MEMORY/LIVE_STATUS/CHANGELOG/DEV_NOTES, the
+      decisions INDEX + KNOWLEDGE_MAP, the book's roadmap chapter (Phase 1
+      complete → Phase 2 current).
+    Gate: G1, G2
+    Acceptance: the gate record's every §26.1 acceptance row cites
+      re-runnable evidence; the subtraction record has no empty list; the
+      full guard set is green at the close commit; the frontier moves to
+      `PHASE-2.1`.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-1.8` | `proposed` | **`.1.7` is COMPLETE** (`.1.7.1` `make dev` + `.1.7.2` the packaged LAN story — the release-built demo proof passed 24/24); the G1–G2 exit + Demonstration A close Phase 1 |
+| 1 | `PHASE-1.8.1` | `proposed` | `.1.8` decomposed at the census seams — the §26.1 evidence is already demo-proven end-to-end (real SIGKILL kill points); the audit-reconstruction beat is the last demo gap; the G1–G2 gate package + the Phase 1 close follow |
 
 ## Changelog
 
@@ -581,6 +660,7 @@ conversation without binding-governance claims.
 - `2026-09-06`: `.1.7.1` executing — `scripts/dev.sh` + the `make dev` target landed (the boot reuses the test harness's §13 ephemeral-PG shape; the difference from `run_pg_tests.sh` is the lifecycle — foreground server + interactive teardown — not the boot); the `--check` self-verification beat caught three authoring slips before its first green run (the inspect verb is `inspect threads`, the dev-profile CLI requires `--as <principal>`, and the residue census must observe the CLEANED state); the book's introduction gains the Run-it section, the README quick start gains the `make dev` line.
 - `2026-09-07`: `.1.7.1` done — `make dev` is the one-command development environment: `scripts/dev.sh` boots an ephemeral on-volume PostgreSQL (§13 shape), `rb-server` in the foreground (migrations on startup), console URL + CLI hint, Ctrl-C teardown with a residue census; `dev.sh --check` is the permanent self-verification beat (console at `/` + a real CLI enroll/inspect round-trip + residue 0 — `dev-check: OK`, rc=0); the full live guard green (12 suites + e2e + demo rc=0, `target/dev1_guard.log`); the book's Run-it section + the README quick start carry the path; frontier → `.1.7.2`.
 - `2026-09-07`: `.1.7.2` done — the packaged LAN story: `make release` builds the four self-contained binaries (migrations + console embed at compile time); `deploy/README.md` is the operator runbook (the two §6.6 profiles, the subtraction record); the book gains the `deployment` chapter; the packaging claim is VERIFIED by the demo passing 24/24 on the RELEASE binaries (`--release` build-root switch; `target/release_demo.log`; the bundle's `env.txt` records the release root; `make demo` stays debug); the standard guard green (12 suites + e2e + demo rc=0, `target/dev2_guard.log`); decision record `docs/decisions/2026-09-07_deployment-packaging.md`; **`.1.7` is COMPLETE** — frontier → `.1.8`.
+- `2026-09-07`: `.1.8` decomposed at the census seams — the tool-backed §26.1 census (`grep -n` over the demo + `crates/` + `.github/` + `migrations/`) shows the acceptance is ALREADY demo-proven end-to-end (real SIGKILL kill points: server-restart survival, kill-after-dispatch → exactly one `outcome_unknown`, duplicate transport → one domain effect, budget denial + `inconclusive` + register, CLI/API/console-only inspection); the LAST demo gap is the audit-reconstruction claim (the header makes it, no beat proves it, and no demo contribution carries an evidence ref); named deferrals (capability advertisement → Phase 3, expected-artifact/decision-rule + synthesis → Phase 5, incarnation/run writers → Phase 2, fuzz → Phase 4) ride the gate record; children `.1.8.1` (the audit leg) → `.1.8.2` (the G1–G2 gate package + the Phase 1 close); frontier → `.1.8.1`.
 
 ## Acceptance Checklist (PHASE-1.1.1)
 

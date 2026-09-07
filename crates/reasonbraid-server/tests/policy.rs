@@ -42,6 +42,7 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "policy_projections",
         "policy_approvals",
         "policy_decisions",
         "policy_proposals",
@@ -1480,4 +1481,68 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
     let (status, projections) = get(&client, &base, "/v1/policy-projections", &human_id).await;
     assert_eq!(status, 200, "the projections read: {projections}");
     assert_eq!(projections.as_array().unwrap().len(), 3, "{projections:?}");
+}
+
+#[tokio::test]
+async fn the_codex_and_claude_projections_ride_the_verb() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "cc-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "cc",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the harness clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    for (target, marker) in [
+        ("codex", "- `c1` [cc-policy 1.0.0]: the harness clause"),
+        ("claude", "- c1 [cc-policy 1.0.0]: the harness clause"),
+    ] {
+        let (status, projected) = post(
+            &client,
+            &base,
+            "/v1/policy-projections",
+            &human_id,
+            &json!({
+                "projection_id": format!("cc-{target}"),
+                "target": target,
+                "resolution": {
+                    "policies": [ { "policy_id": "cc-policy", "version": "1.0.0" } ],
+                    "target": { "layer": "organization", "target": "*" },
+                },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the {target} projection: {projected}");
+        assert!(
+            projected["bytes"].as_str().unwrap().contains(marker),
+            "the {target} harness shape renders: {projected}"
+        );
+        assert!(projected["digest"].as_str().unwrap().starts_with("sha256:"));
+    }
 }

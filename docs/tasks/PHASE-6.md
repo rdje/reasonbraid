@@ -399,7 +399,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       Frontier → `.3.3`.
 
   - ID: `PHASE-6.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the Codex + the Claude projections — the AGENTS.md
       + the CLAUDE.md renderers over the same core, the
       UNREPRESENTABLE declarations (a clause that cannot ride
@@ -407,6 +407,26 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       projection tests (the loss/ordering/escaping/size
       limits/harness conflicts — §15.5's list).
     Roadmap: §15.5
+    Done (`2026-09-07`): the Codex + the Claude projections
+      landed per ADR-033 — the compiler crate gains the
+      `codex` (the AGENTS.md fragment: the backticked clause
+      ids — the codex convention) + the `claude` (the
+      CLAUDE.md fragment: the plain ids) renderers over the
+      same stable-sorted core; the §15.5 coverage: the
+      escaping (the backtick escape — the statement backticks
+      must not break the harness's parse), the size limit
+      (the 8192-char statement ceiling — the oversized
+      statement DECLARES itself, never truncates), the
+      ordering + the loss (the stable sort + the shared
+      unrepresentable path), the harness shapes (the two
+      bundles' distinct conventions); the byte-identical
+      guarantee rides every target. Measured (compiler 8 +
+      policy 6): the codex backticked ids + the claude plain
+      ids, the per-target repeat, the oversized-statement
+      declaration, the backtick escape; the live suite: the
+      two targets through the projection verb with their
+      harness shapes + the digests. **`.3` COMPLETE** —
+      frontier → `.4`.
 
 - ID: `PHASE-6.4`
   Status: `proposed`
@@ -436,10 +456,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.3.3` | `proposed` | `.3.2` done — the compiler core (the hermetic crate + the generic/lock renderers + the projection records; compiler 5 + policy 5); the Codex + the Claude projections execute next |
+| 1 | `PHASE-6.4` | `proposed` | `.3.3` done — the Codex + the Claude projections (the harness-shaped renderers, the size + escape declarations; compiler 8 + policy 6) — **the `.3` lane (the deterministic compiler) is COMPLETE**; the signed-publication lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.3` done — the Codex + the Claude
+  projections (the AGENTS.md + the CLAUDE.md renderers, the
+  size + escape declarations, the harness shapes); compiler
+  8 + policy 6; **`.3` COMPLETE** — frontier → `.4`.
 - `2026-09-07`: `.3.2` done — the compiler core (the
   hermetic `reasonbraid-policy-compiler` crate + the
   generic/lock renderers + migration 0041 + the projection
@@ -727,6 +751,55 @@ lib.rs` + `Cargo.toml` (the module + the dependency),
   `0041_policy_projections.sql`, `src/projections.rs`,
   `src/lib.rs`, `src/api.rs`, `tests/policy.rs`,
   `crates/reasonbraid-server/Cargo.toml`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.3.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-policy-compiler/src/lib.rs` (the `codex` +
+`claude` targets + the `render_codex`/`render_claude`
+renderers + the backtick escape + the `STATEMENT_LIMIT`),
+`crates/reasonbraid-policy-compiler/tests/compiler.rs` (the
+three new tests), `crates/reasonbraid-server/tests/policy.rs`
+(the new live test) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  compiler rendered only the generic + the lock targets (the
+  `.3.2` core); the Codex/Claude harness shapes + the size
+  limit + the backtick escape were absent.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "render_codex\|render_claude\|STATEMENT_LIMIT" 4ccb1c8 --
+  crates/reasonbraid-policy-compiler/` → rc=1 (nothing
+  before this leaf). The fix point is the ADR-033 target
+  vocabulary: the two harness renderers over the same core.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `cargo test -p
+  reasonbraid-policy-compiler` → `test result: ok. 8
+  passed` — the codex backticked ids + the claude plain ids,
+  the per-target byte-identical repeat, the oversized-
+  statement declaration (never a truncation), the backtick
+  escape; `DATABASE_URL=… cargo test -p reasonbraid-server
+  --test policy the_codex_and_claude_projections_ride_the_verb`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 6 tests … ok`) — the two targets through
+  the projection verb with their harness shapes + the
+  digests. The first passes caught the escape-assertion
+  layering (the backtick literal) + the filter-remnant
+  syntax — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 61 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg530_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `crates/reasonbraid-policy-compiler/src/lib.rs`,
+  `crates/reasonbraid-policy-compiler/tests/compiler.rs`,
+  `crates/reasonbraid-server/tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

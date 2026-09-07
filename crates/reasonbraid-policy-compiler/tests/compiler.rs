@@ -132,3 +132,81 @@ fn an_unknown_target_refuses() {
     .expect_err("the unknown target refuses");
     assert!(error.to_string().contains("vocabulary"), "{error}");
 }
+
+#[test]
+fn the_codex_and_claude_projections_render_their_harness_shapes() {
+    let clauses = vec![
+        clause("p-a", "c1", "the objective clause"),
+        clause("p-a", "c2", "the authority clause"),
+    ];
+    let codex = compile(&CompileRequest {
+        target: "codex".to_string(),
+        clauses: clauses.clone(),
+        lock: vec![],
+    })
+    .expect("compiles");
+    assert!(
+        codex
+            .bytes
+            .contains("- `c1` [p-a 1.0.0]: the objective clause"),
+        "the codex backticks the ids: {}",
+        codex.bytes
+    );
+    let claude = compile(&CompileRequest {
+        target: "claude".to_string(),
+        clauses: clauses.clone(),
+        lock: vec![],
+    })
+    .expect("compiles");
+    assert!(
+        claude
+            .bytes
+            .contains("- c1 [p-a 1.0.0]: the objective clause"),
+        "the claude bundle uses the plain ids: {}",
+        claude.bytes
+    );
+    // The byte-identical guarantee rides every target.
+    let again = compile(&CompileRequest {
+        target: "codex".to_string(),
+        clauses,
+        lock: vec![],
+    })
+    .expect("compiles");
+    assert_eq!(codex.bytes, again.bytes, "the codex bytes repeat");
+}
+
+#[test]
+fn the_oversized_statement_declares_itself_not_truncates() {
+    let long = "x".repeat(9000);
+    let artifact = compile(&CompileRequest {
+        target: "codex".to_string(),
+        clauses: vec![clause("p-a", "c1", &long)],
+        lock: vec![],
+    })
+    .expect("compiles");
+    assert!(
+        !artifact.bytes.contains("xxx"),
+        "the oversized statement is NOT rendered"
+    );
+    assert_eq!(artifact.unrepresentable.len(), 1);
+    assert!(
+        artifact.unrepresentable[0].reason.contains("exceeds"),
+        "the reason names the limit: {:?}",
+        artifact.unrepresentable
+    );
+}
+
+#[test]
+fn the_backticks_escape_in_the_codex_bundle() {
+    let artifact = compile(&CompileRequest {
+        target: "codex".to_string(),
+        clauses: vec![clause("p-a", "c1", "a `backtick` in the statement")],
+        lock: vec![],
+    })
+    .expect("compiles");
+    assert!(
+        artifact.bytes.contains("a \\`backtick\\` in the statement"),
+        "the backticks escape: {}",
+        artifact.bytes
+    );
+}

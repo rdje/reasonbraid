@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The Codex and the Claude projections land — the `.3` lane is COMPLETE (`PHASE-6.3.3`)
+
+- The compiler crate gains the `codex` (the AGENTS.md fragment — the backticked clause ids) and the `claude` (the CLAUDE.md fragment — the plain ids) renderers over the same stable-sorted core; the §15.5 coverage ships: the backtick escape (the harness-parse safety), the 8192-character statement ceiling (the oversized statement DECLARES itself, never truncates), the per-target byte-identical repeats. Measured: compiler 8 + policy 6. **The `.3` lane (the deterministic compiler) is COMPLETE.**
+
 ## 2026-09-07 — The compiler core lands (`PHASE-6.3.2`)
 
 - The hermetic `reasonbraid-policy-compiler` crate (no database/network/clock): the pure `compile` function with the stable sort, the generic bundle + the `policy.lock` renderers, the escaping, the declared unrepresentable, and the ADR-011 digest over the rendered bytes. The server gains migration 0041 + the `POST`/`GET /v1/policy-projections` verbs (the resolve → the compile → the record). Measured: compiler 5 + policy 5.

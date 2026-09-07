@@ -14,8 +14,13 @@ use sha2::{Digest, Sha256};
 
 /// The target vocabulary (the initial §15.5 set — the MCP/host/checklist
 /// targets are named deferrals; a target without an adapter is the typed
-/// refusal).
-pub const TARGETS: [&str; 2] = ["generic", "lock"];
+/// refusal). `.3.3` added the Codex `AGENTS.md` + the Claude `CLAUDE.md`
+/// renderers.
+pub const TARGETS: [&str; 4] = ["generic", "lock", "codex", "claude"];
+
+/// The per-statement size ceiling (the harnesses' line limits — a statement
+/// over it is a DECLARED unrepresentable, never a silent truncation).
+pub const STATEMENT_LIMIT: usize = 8192;
 
 /// One resolved clause: the winning policy/version + the clause + the path
 /// (the server's `.1.3` resolution output, projected onto the compiler's
@@ -106,6 +111,39 @@ fn escape(statement: &str) -> String {
         .replace('\\', "\\\\")
         .replace('\n', "\\n")
         .replace('\t', "\\t")
+        .replace('`', "\\`")
+}
+
+/// The Codex `AGENTS.md` fragment: the backticked clause ids (the codex
+/// markdown convention) + the escaped statements.
+fn render_codex(clauses: &[InputClause]) -> String {
+    let mut out = String::from("# Policy directives (deterministic projection)\n");
+    for clause in clauses {
+        out.push_str(&format!(
+            "- `{clause_id}` [{policy} {version}]: {statement}\n",
+            clause_id = clause.clause_id,
+            policy = clause.policy_id,
+            version = clause.policy_version,
+            statement = escape(&clause.statement),
+        ));
+    }
+    out
+}
+
+/// The Claude `CLAUDE.md` fragment: the plain clause ids (the claude
+/// convention) + the escaped statements.
+fn render_claude(clauses: &[InputClause]) -> String {
+    let mut out = String::from("# Policy directives (deterministic projection)\n");
+    for clause in clauses {
+        out.push_str(&format!(
+            "- {clause_id} [{policy} {version}]: {statement}\n",
+            clause_id = clause.clause_id,
+            policy = clause.policy_id,
+            version = clause.policy_version,
+            statement = escape(&clause.statement),
+        ));
+    }
+    out
 }
 
 /// The generic bundle renderer: the header + the stable-ordered clauses.
@@ -162,9 +200,7 @@ pub fn compile(request: &CompileRequest) -> Result<CompiledArtifact, CompileErro
     let representable: Vec<InputClause> = clauses
         .iter()
         .filter(|clause| {
-            if is_representable(&clause.statement) {
-                true
-            } else {
+            if !is_representable(&clause.statement) {
                 unrepresentable.push(Unrepresentable {
                     clause_id: clause.clause_id.clone(),
                     policy_id: clause.policy_id.clone(),
@@ -172,6 +208,17 @@ pub fn compile(request: &CompileRequest) -> Result<CompiledArtifact, CompileErro
                         .to_string(),
                 });
                 false
+            } else if clause.statement.len() > STATEMENT_LIMIT {
+                unrepresentable.push(Unrepresentable {
+                    clause_id: clause.clause_id.clone(),
+                    policy_id: clause.policy_id.clone(),
+                    reason: format!(
+                        "the statement exceeds the target's {STATEMENT_LIMIT}-character limit"
+                    ),
+                });
+                false
+            } else {
+                true
             }
         })
         .cloned()
@@ -180,6 +227,8 @@ pub fn compile(request: &CompileRequest) -> Result<CompiledArtifact, CompileErro
     let body = match request.target.as_str() {
         "generic" => render_generic(&representable),
         "lock" => render_lock(&lock),
+        "codex" => render_codex(&representable),
+        "claude" => render_claude(&representable),
         _ => unreachable!("the vocabulary check holds above"),
     };
     let bytes = body.into_bytes();

@@ -306,9 +306,65 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       frontier → `.3`.
 
 - ID: `PHASE-6.3`
-  Status: `proposed`
+  Status: `done`
   Goal: deterministic compiler plus initial Codex and Claude-family projections; unrepresentable clauses fail closed
   Roadmap: §15.5
+  Children: `.3.1`–`.3.3` (decomposed `2026-09-07` at the census
+    seams): `.3.1` ADR-033 + the census (the compiler contract:
+    the deterministic rendering — the same inputs + compiler +
+    profile + target parameters produce BYTE-IDENTICAL output;
+    the target vocabulary; the UNREPRESENTABLE clause is the
+    DECLARED refusal, never a silent omission) → `.3.2` the
+    compiler core (the resolved set → the generic bundle +
+    the policy.lock; the deterministic serialization) → `.3.3`
+    the Codex + the Claude projections (the AGENTS.md +
+    CLAUDE.md renderers, the unrepresentable declarations,
+    the projection tests — the loss/ordering/escaping/size/
+    harness-conflict coverage).
+  Done (`2026-09-07`): the census at the seams. The compiler
+    is a GREENFIELD: no projection exists, no target
+    vocabulary, no unrepresentable declaration (`git grep -c
+    "projection" HEAD -- crates/` → the hits are the thread/
+    profile projections, not the policy compiler). The
+    REUSABLE pieces: the `.1` resolution (the resolved clause
+    set is the compiler's input), the `.1` registry's digest
+    shapes (the byte-identical proof's substrate), the
+    policy.lock's inputs (the set + the authority facts).
+    The §23 queue has no compiler entry — the lane opens
+    ADR-033. Frontier → `.3.1`.
+
+  - ID: `PHASE-6.3.1`
+    Status: `proposed`
+    Goal: ADR-033 + the census — the compiler contract: the
+      deterministic rendering (the byte-identical guarantee),
+      the target vocabulary (the generic bundle, the
+      AGENTS.md, the CLAUDE.md, the policy.lock — the
+      §15.5 list's initial set), the unrepresentable clause
+      as the DECLARED refusal (never a silent omission), the
+      hermetic build rule (the compiler is a separate crate —
+      the clean-worker doctrine). No code.
+    ADR: 033
+    Roadmap: §15.5
+
+  - ID: `PHASE-6.3.2`
+    Status: `proposed`
+    Goal: the compiler core — the resolved clause set → the
+      GENERIC instruction bundle + the `policy.lock` (the
+      versions, the digests, the dependencies, the authority
+      basis), the deterministic serialization (the stable
+      renderer — the byte-identical proof), the projection
+      record (the target + the profile + the digest).
+    Roadmap: §15.5
+
+  - ID: `PHASE-6.3.3`
+    Status: `proposed`
+    Goal: the Codex + the Claude projections — the AGENTS.md
+      + the CLAUDE.md renderers over the same core, the
+      UNREPRESENTABLE declarations (a clause that cannot ride
+      a target names itself — never a silent drop), the
+      projection tests (the loss/ordering/escaping/size
+      limits/harness conflicts — §15.5's list).
+    Roadmap: §15.5
 
 - ID: `PHASE-6.4`
   Status: `proposed`
@@ -338,10 +394,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.3` | `proposed` | `.2.3` done — the approval records + the authority proofs (the grant re-check at the approval boundary, the quorum snapshot; policy 4) — **the `.2` lane (the policy lifecycle) is COMPLETE**; the deterministic compiler lane executes next |
+| 1 | `PHASE-6.3.1` | `proposed` | `.3` decomposed at the census seams (the compiler is the greenfield; the `.1` resolution is its input) — ADR-033 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.3` decomposed at the census seams — the
+  compiler is the greenfield (no projection exists; the `.1`
+  resolution is its input); children `.3.1` (ADR-033 + the
+  census) → `.3.2` (the compiler core) → `.3.3` (the Codex +
+  Claude projections); frontier → `.3.1`.
 - `2026-09-07`: `.2.3` done — the approval records (migration
   0040: the authority proof — the grant re-check at the
   approval boundary, the quorum snapshot, the separate row);

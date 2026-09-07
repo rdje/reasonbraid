@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The compiler lane is decomposed at the census seams (`PHASE-6.3`)
+
+- The projection compiler is the greenfield (no projection, no target vocabulary, no unrepresentable declaration exists); the `.1` resolution's clause set is its input. Children: `.3.1` ADR-033 → `.3.2` the compiler core → `.3.3` the Codex + the Claude projections.
+
 ## 2026-09-07 — The approval records land — the `.2` lane is COMPLETE (`PHASE-6.2.3`)
 
 - Migration 0040: the approval is its OWN row with the AUTHORITY PROOF — the grant re-checked at the approval boundary (active, unexpired, held by the approver — the §4.5 identity/authority at the action time); the quorum snapshot rides the row; the approval advances the proposal (`decided` → `approved`). The verbs: `POST`/`GET /v1/policy-approvals`. Measured: policy 4. **The `.2` lane (the policy lifecycle) is COMPLETE.**

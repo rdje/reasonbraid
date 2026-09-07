@@ -16,9 +16,9 @@ use std::sync::OnceLock;
 
 use chrono::{Duration, Utc};
 use reasonbraid_core::{
-    boundary_active_at, policy_digest, AuthorityGrant, AuthorizationDecisionRecord, BoundaryStatus,
-    Decision, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget,
-    RiskClass, TargetSelector,
+    boundary_active_at, policy_digest, AgentRoleId, AuthorityGrant, AuthorizationDecisionRecord,
+    BoundaryStatus, Decision, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject,
+    ResourceTarget, RiskClass, TargetSelector,
 };
 use reasonbraid_server::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
@@ -100,16 +100,21 @@ fn boundary(
 fn grant(
     boundary_id: &str,
     tenant: &str,
-    role_id: &str,
+    subject_id: &str,
     actions: Vec<GrantAction>,
     selector: TargetSelector,
 ) -> AuthorityGrant {
+    let subject = if let Ok(role) = subject_id.parse::<AgentRoleId>() {
+        GrantSubject::Role(role)
+    } else {
+        GrantSubject::Human(subject_id.parse().expect("a human principal id"))
+    };
     AuthorityGrant {
-        grant_id: format!("grt_{}", &role_id[4..]),
+        grant_id: format!("grt_{}", &subject_id[4..]),
         boundary_id: boundary_id.to_string(),
         tenant_id: tenant.parse().unwrap(),
         issuer: "hpr_00000000-0000-7000-8000-000000000001".parse().unwrap(),
-        subject: GrantSubject::Role(role_id.parse().unwrap()),
+        subject,
         actions,
         selector,
         risk_ceiling: RiskClass::Low,
@@ -132,6 +137,7 @@ fn authz(
         actor: actor.parse().unwrap(),
         principal,
         delegate_subject: delegate,
+        delegation_scope: None,
         action,
         target,
     }
@@ -341,17 +347,27 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
         false,
     );
     create_boundary(&pool, &boundary).await.unwrap();
-    let grt = grant(
+    // The ACTOR's grant (the caller check) + the SUBJECT's grant (the
+    // authority source under the `.1.4.2` dual evaluation).
+    let actor_grt = grant(
         &boundary.boundary_id,
         tenant,
         "rol_00000000-0000-7000-8000-000000000103",
         vec![GrantAction::ThreadContribute],
         TargetSelector::TenantWide,
     );
-    create_grant(&pool, &grt).await.unwrap();
+    create_grant(&pool, &actor_grt).await.unwrap();
+    let subject_grt = grant(
+        &boundary.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000113",
+        vec![GrantAction::ThreadContribute],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &subject_grt).await.unwrap();
 
     let delegate = Some(GrantSubject::Human(
-        "hpr_00000000-0000-7000-8000-000000000103".parse().unwrap(),
+        "hpr_00000000-0000-7000-8000-000000000113".parse().unwrap(),
     ));
     let principal = GrantSubject::Role("rol_00000000-0000-7000-8000-000000000103".parse().unwrap());
     let target = thread_target(tenant, "thr_00000000-0000-7000-8000-000000000103");
@@ -397,7 +413,11 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
         record.boundary_id.as_deref(),
         Some(boundary.boundary_id.as_str())
     );
-    assert_eq!(record.grant_id.as_deref(), Some(grt.grant_id.as_str()));
+    assert_eq!(
+        record.grant_id.as_deref(),
+        Some(subject_grt.grant_id.as_str()),
+        "the record binds the SUBJECT's grant (the authority source)"
+    );
     assert_eq!(record.decision, Decision::Allowed);
     assert_eq!(record.policy_version, boundary.policy_version);
     assert_eq!(record.policy_digest.len(), 64);
@@ -405,8 +425,8 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
     // The digest re-derives from the SAME inputs (the re-derive leg).
     let expected = policy_digest(
         Some(&boundary),
-        Some(&grt),
-        Some(&principal),
+        Some(&subject_grt),
+        delegate.as_ref(),
         GrantAction::ThreadContribute,
         &target,
         &Decision::Allowed,

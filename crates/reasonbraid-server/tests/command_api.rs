@@ -10,7 +10,9 @@
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
-use reasonbraid_core::{ClientContext, CommandEnvelope, RequestId, PROTOCOL_VERSION};
+use reasonbraid_core::{
+    AuthorityContext, ClientContext, CommandEnvelope, RequestId, TargetSelector, PROTOCOL_VERSION,
+};
 use reasonbraid_server::{api_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -116,6 +118,7 @@ fn envelope(operation: &str, key: &str, body: Value) -> CommandEnvelope {
         idempotency_key: key.to_string(),
         expected_aggregate_version: None,
         body,
+        authority_context: None,
         client_context: ClientContext::default(),
     }
 }
@@ -1997,4 +2000,207 @@ async fn revoking_the_boundary_suspends_the_ceiling() {
     .await;
     assert_eq!(status, 200);
     assert_eq!(boundaries["boundaries"][0]["status"], json!("revoked"));
+}
+
+/// A command envelope carrying the `.1.4.2` delegation context (the scope is
+/// either exactly `thread` or tenant-wide — the caller's own attenuation).
+fn envelope_with_delegation(
+    operation: &str,
+    key: &str,
+    body: Value,
+    on_behalf_of: &str,
+    thread: Option<&str>,
+) -> CommandEnvelope {
+    let scope = match thread {
+        Some(id) => TargetSelector::Threads {
+            threads: vec![id.parse().expect("thread id parses")],
+        },
+        None => TargetSelector::TenantWide,
+    };
+    CommandEnvelope {
+        protocol_version: PROTOCOL_VERSION.to_string(),
+        operation: operation.to_string(),
+        request_id: RequestId::new(),
+        idempotency_key: key.to_string(),
+        expected_aggregate_version: None,
+        body,
+        authority_context: Some(AuthorityContext {
+            on_behalf_of: on_behalf_of.to_string(),
+            purpose: Some("test delegation".to_string()),
+            scope,
+        }),
+        client_context: ClientContext::default(),
+    }
+}
+
+/// THE `.1.4.2` acceptance: a delegation within the subject's grant succeeds
+/// (and audits the subject), a widening scope is a typed 403 naming the
+/// invariant, the caller's own authority is checked, and a revoked subject
+/// grant refuses the delegation at the next decision (the `.1.3` freshness).
+#[tokio::test]
+async fn delegation_succeeds_within_the_subjects_grant_and_refuses_widening() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "del-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll alice: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "del-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let role_grant = role["grant_id"].as_str().unwrap().to_string();
+
+    // Two threads: the delegation target + a sibling for the widening case.
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-del-c1",
+            json!({ "tenant_id": tenant, "subject": "del target", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread = created["thread_id"].as_str().unwrap().to_string();
+    let (status, created2) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-del-c2",
+            json!({ "tenant_id": tenant, "subject": "del sibling", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create sibling: {created2}");
+    let sibling = created2["thread_id"].as_str().unwrap().to_string();
+
+    // 1. Narrower succeeds: the human acts ON BEHALF OF the role with the
+    //    scope = exactly the target thread.
+    let (status, delegated) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-del-1",
+            json!({ "tenant_id": tenant, "content": "delegated contribution" }),
+            &role_id,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the delegation within the subject's grant succeeds: {delegated}"
+    );
+    // The audit row carries the SUBJECT.
+    let (n_subject,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(&tenant)
+    .bind(&role_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count subject rows");
+    assert!(n_subject >= 1, "the decision record carries the chain");
+
+    // 2. Widening refused: the same delegation with the scope naming the
+    //    SIBLING thread (outside the request's target).
+    let (status, widened) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-del-2",
+            json!({ "tenant_id": tenant, "content": "widening attempt" }),
+            &role_id,
+            Some(&sibling),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a widening scope is refused with the invariant: {widened}"
+    );
+    assert!(
+        widened["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("widening"),
+        "the refusal names the widening invariant: {widened}"
+    );
+
+    // 3. The caller's own authority is checked: the role delegates ON BEHALF
+    //    OF the human for a thread-create (the role lacks thread_create).
+    let (status, caller_refused) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &role_id,
+        &envelope_with_delegation(
+            "thread.create",
+            "key-del-3",
+            json!({ "tenant_id": tenant, "subject": "illegal delegation", "objective": "probe" }),
+            &alice_id,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "the caller's own authority gates the delegation: {caller_refused}"
+    );
+
+    // 4. Revocation freshness: revoke the subject's grant; the delegation is
+    //    refused at the next decision (the `.1.3` filter, no new machinery).
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/grants/{role_grant}/revoke"),
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the subject grant is revoked: {revoked}");
+    let (status, after_revoke) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-del-4",
+            json!({ "tenant_id": tenant, "content": "after the revocation" }),
+            &role_id,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a revoked subject grant refuses the delegation: {after_revoke}"
+    );
 }

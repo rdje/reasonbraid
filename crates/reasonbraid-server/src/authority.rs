@@ -23,10 +23,10 @@
 
 use chrono::{DateTime, Utc};
 use reasonbraid_core::{
-    boundary_active_at, grant_active_at, grant_exceeds_boundary, policy_digest, ActorPrincipalId,
-    AuthorityGrant, AuthorizationDecisionRecord, AuthorizationRecordId, BoundaryStatus, Decision,
-    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass,
-    TargetSelector,
+    boundary_active_at, delegation_scope_is_subset, grant_active_at, grant_exceeds_boundary,
+    policy_digest, ActorPrincipalId, AuthorityGrant, AuthorizationDecisionRecord,
+    AuthorizationRecordId, BoundaryStatus, Decision, EnrollmentAuthorityBoundary, GrantAction,
+    GrantStatus, GrantSubject, ResourceTarget, RiskClass, TargetSelector,
 };
 use serde_json::Value;
 use sqlx::PgPool;
@@ -43,6 +43,10 @@ pub struct CommandAuthz {
     pub principal: GrantSubject,
     /// The original subject when the actor acts on its behalf (delegation).
     pub delegate_subject: Option<GrantSubject>,
+    /// The attenuation the delegator applied (the `.1.4.2` scope): the
+    /// request's target must be WITHIN it and it must be within the subject's
+    /// grant selector (§16.3.1 — a delegate cannot widen).
+    pub delegation_scope: Option<TargetSelector>,
     pub action: GrantAction,
     pub target: ResourceTarget,
 }
@@ -515,6 +519,16 @@ pub async fn authorize(
     Ok(outcome)
 }
 
+/// The request's target as a selector, for the delegation subset check.
+fn target_to_selector(target: &ResourceTarget) -> TargetSelector {
+    match target {
+        ResourceTarget::Tenant { .. } => TargetSelector::TenantWide,
+        ResourceTarget::Thread { thread_id, .. } => TargetSelector::Threads {
+            threads: vec![*thread_id],
+        },
+    }
+}
+
 /// The transactional body of [`authorize`] — shared with [`apply_authorized_command`]
 /// so the audit record and the command's writes are one commit.
 pub(crate) async fn authorize_in_tx<E>(
@@ -555,15 +569,80 @@ where
     .bind(subject_id)
     .fetch_optional(&mut *pool)
     .await?;
-    let grant = grant_row.map(|r| grant_from_row(r).expect("stored grant parses"));
+    let mut grant = grant_row.map(|r| grant_from_row(r).expect("stored grant parses"));
 
-    let decision = evaluate(boundary.as_ref(), grant.as_ref(), authz, at);
+    // The delegation dual check (`.1.4.2`, ADR-009): the SUBJECT's grant is the
+    // authority source, the ACTOR's own grant is the caller permission, and the
+    // requested scope must contain the request's target AND stay within the
+    // subject's grant selector (§16.3.1 — a delegate cannot widen).
+    let decision = match &authz.delegate_subject {
+        Some(subject) => {
+            let (skind, sid) = subject_parts(subject);
+            let subject_row: Option<GrantRow> = sqlx::query_as(
+                "SELECT grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, \
+                        selector, risk_ceiling, spend_limits, delegable, valid_from, expires_at, status \
+                 FROM authority_grants \
+                 WHERE tenant_id = $1 AND subject_kind = $2 AND subject_id = $3 AND status = 'active' \
+                 ORDER BY valid_from DESC LIMIT 1",
+            )
+            .bind(&tenant)
+            .bind(skind)
+            .bind(sid)
+            .fetch_optional(&mut *pool)
+            .await?;
+            let subject_grant =
+                subject_row.map(|r| grant_from_row(r).expect("stored grant parses"));
+
+            // The caller's own permission (the same evaluation, delegation stripped).
+            let caller = CommandAuthz {
+                actor: authz.actor,
+                principal: authz.principal.clone(),
+                delegate_subject: None,
+                delegation_scope: None,
+                action: authz.action,
+                target: authz.target.clone(),
+            };
+            let caller_decision = evaluate(boundary.as_ref(), grant.as_ref(), &caller, at);
+            let subject_decision = evaluate(boundary.as_ref(), subject_grant.as_ref(), authz, at);
+
+            // The scope ladder: the request's target within the requested scope,
+            // and the requested scope within the subject's grant selector.
+            let scope_ok = match &authz.delegation_scope {
+                None => true,
+                Some(scope) => {
+                    delegation_scope_is_subset(&target_to_selector(&authz.target), scope)
+                        && subject_grant
+                            .as_ref()
+                            .is_some_and(|g| delegation_scope_is_subset(scope, &g.selector))
+                }
+            };
+
+            let decided = match (caller_decision, subject_decision) {
+                (Decision::Denied { reason }, _) => Decision::Denied {
+                    reason: format!("the caller's own authority failed: {reason}"),
+                },
+                (_, Decision::Denied { reason }) => Decision::Denied { reason },
+                (Decision::Allowed, Decision::Allowed) if !scope_ok => Decision::Denied {
+                    reason: "the delegation scope is wider than the subject's grant or does not \
+                             cover the request's target (the §16.3 widening invariant)"
+                        .to_string(),
+                },
+                _ => Decision::Allowed,
+            };
+            // The record + digest bind the AUTHORITY SOURCE: the subject's grant.
+            if let Some(sg) = subject_grant {
+                grant = Some(sg);
+            }
+            decided
+        }
+        None => evaluate(boundary.as_ref(), grant.as_ref(), authz, at),
+    };
     let record_id = AuthorizationRecordId::new().to_string();
 
     let digest = policy_digest(
         boundary.as_ref(),
         grant.as_ref(),
-        Some(&authz.principal),
+        authz.delegate_subject.as_ref().or(Some(&authz.principal)),
         authz.action,
         &authz.target,
         &decision,

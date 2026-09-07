@@ -216,6 +216,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -230,6 +236,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -250,6 +262,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -265,6 +283,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -280,6 +304,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -300,6 +330,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -314,6 +350,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -327,6 +369,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -339,6 +387,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -351,6 +405,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -366,6 +426,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -379,6 +445,12 @@ enum ThreadCommand {
         as_: Option<String>,
         #[arg(long)]
         tenant: Option<String>,
+        /// The delegated subject (`.1.4.2`: `hpr_…` | `rol_…` — the grant holder).
+        #[arg(long)]
+        on_behalf_of: Option<String>,
+        /// Why (audit context).
+        #[arg(long)]
+        purpose: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -490,6 +562,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             allow_join_requests,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -517,6 +591,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 &objective,
                 &budget,
                 &profile,
+                on_behalf_of.as_deref(),
+                purpose.as_deref(),
                 json,
             )
             .await
@@ -526,6 +602,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             agent,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -539,6 +617,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.invite",
                     body: json!({ "agent_role": role }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -551,6 +631,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             evidence_uri,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -574,6 +656,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                         "kind": kind,
                         "evidence_refs": evidence_refs,
                     }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -585,6 +669,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             text,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -597,6 +683,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.challenge",
                     body: json!({ "target_event_id": target, "content": text }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -608,6 +696,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             text,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -620,6 +710,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.revise",
                     body: json!({ "target_event_id": target, "content": text }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -632,6 +724,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             unresolved,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -648,6 +742,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.close",
                     body,
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -658,6 +754,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             reason,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -670,6 +768,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.cancel",
                     body: json!({ "reason": reason }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -679,6 +779,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             thread,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -691,6 +793,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.accept_invitation",
                     body: json!({}),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -700,6 +804,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             thread,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -712,6 +818,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.join",
                     body: json!({}),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -721,6 +829,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             thread,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -733,6 +843,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.advance_round",
                     body: json!({}),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -742,6 +854,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             thread,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -754,6 +868,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.decline_invitation",
                     body: json!({}),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )
@@ -764,6 +880,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             participant,
             as_,
             tenant,
+            on_behalf_of,
+            purpose,
             json,
         }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
@@ -776,6 +894,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     tenant,
                     operation: "thread.remove_participant",
                     body: json!({ "participant": participant }),
+                    on_behalf_of,
+                    purpose,
                     json_out: json,
                 },
             )

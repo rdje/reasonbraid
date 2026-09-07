@@ -228,6 +228,18 @@ audited); a revoked boundary freezes the tenant.s WRITES — every grant under
 it is refused — while the inspection lists stay open (the freeze never blinds
 the operator).
 
+The delegation flags (`.1.4.2`) let an actor act ON BEHALF OF another
+principal whose grant is the authority source:
+
+```text
+ thread contribute --thread thr_… --text "delegated" \\
+    --on-behalf-of rol_… --purpose "owner is offline" --as alice
+```
+
+The server runs the dual evaluation — the caller.s own grant AND the
+subject.s grant — and refuses a widening scope with a typed 403 naming the
+invariant; the audit row binds the subject.
+
 ## Honest limits (Phase 1)
 
 - **Development credentials**: the CLI presents a trusted principal header, and

@@ -23,15 +23,14 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1.4.2` (`.1.4.1` done: ADR-009
-  accepted — chain-in-envelope; `.1.3` complete: node/cert + grant +
-  boundary revocation). Then `.1.5` → `.1.6`.
-- **Next action:** execute `PHASE-2.1.4.2` — the delegation implementation:
-  the envelope gains the optional `authority_context` (the ADR-009 shape;
-  the subject rides a STRING field — GrantSubject is a tagged newtype), the
-  authorize path evaluates BOTH caller and subject grants + the subset rule
-  (a widening request is a typed 403), the audit row carries the chain, the
-  CLI gains `--on-behalf-of`.
+- **Active tree:** `PHASE-2` → frontier `.1.5` (`.1.4` complete: the
+  delegated authority context rides the envelope + the dual evaluation;
+  `.1.3` complete: node/cert + grant + boundary revocation). Then `.1.6`.
+- **Next action:** execute `PHASE-2.1.5` — the cached-decision semantics:
+  ADR-008 (which decisions are cacheable, the freshness/expiry rule, the
+  revocation-epoch invalidation, the fail-closed rule) + the node-side
+  cache honoring it. The `.1.3`/`.1.4` revocation freshness is the model:
+  a cache must never outlive a revocation.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.1.4.2: under delegation, the record binds the authority source, not the caller
+
+- **The dual evaluation changed what "the grant" means in the audit row.** Before the leaf, `delegate_subject` was dormant (audit-only). Now the SUBJECT's grant is the authority source: the caller's own grant is checked independently (a non-holder cannot delegate), the record's `grant_id` + the policy digest bind the SUBJECT, and the pre-existing audit test had to move to the dual semantics (it seeded one grant; the new contract needs both).
+- **The scope ladder is two subset checks, not one.** The request's target must be within the REQUESTED scope, and the requested scope within the subject's grant selector — the widening refusal names which leg failed.
+- promotion: declined (the dual-evaluation semantics and the record-binds-the-subject rule are per-slice engine facts recorded in the leaf — no new cross-cutting decision). **Frontier `PHASE-2.1.5` (the cached-decision semantics).**
+
 ## _(2026-09-07)_ — PHASE-2.1.4.1: decide the representation from the plumbing that already exists
 
 - **The census chose the ADR's answer in advance.** The delegation plumbing was pre-shaped (`delegate_subject` + the audit subject split) — chain-in-envelope rides it for free, while a capability token would add an issuance/store/signature lifecycle duplicating the `.1.3` grant filters that already revoke. The spike's job was to prove the invariant (a pure subset function) and measure the wire delta, not to re-litigate the shape.

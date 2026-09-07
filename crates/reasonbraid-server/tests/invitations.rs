@@ -111,6 +111,7 @@ fn envelope(operation: &str, key: &str, body: Value) -> CommandEnvelope {
         idempotency_key: key.to_string(),
         expected_aggregate_version: None,
         body,
+        authority_context: None,
         client_context: Default::default(),
     }
 }

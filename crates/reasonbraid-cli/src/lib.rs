@@ -23,7 +23,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use reasonbraid_core::{
-    AgentRoleId, ClientContext, CommandEnvelope, HumanPrincipalId, RequestId, PROTOCOL_VERSION,
+    AgentRoleId, AuthorityContext, ClientContext, CommandEnvelope, HumanPrincipalId, RequestId,
+    TargetSelector, PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -288,7 +289,14 @@ impl ApiClient {
         self.parse(response).await
     }
 
-    fn envelope(operation: &str, body: Value) -> CommandEnvelope {
+    /// The envelope with the optional delegation context (`.1.4.2`, ADR-009 —
+    /// chain-in-envelope). The scope is computed by the CALLER (the command's
+    /// own target — the honest minimal attenuation).
+    fn envelope_with(
+        operation: &str,
+        body: Value,
+        delegation: Option<(String, Option<String>, TargetSelector)>,
+    ) -> CommandEnvelope {
         CommandEnvelope {
             protocol_version: PROTOCOL_VERSION.to_string(),
             operation: operation.to_string(),
@@ -298,6 +306,11 @@ impl ApiClient {
             idempotency_key: Uuid::now_v7().to_string(),
             expected_aggregate_version: None,
             body,
+            authority_context: delegation.map(|(on_behalf_of, purpose, scope)| AuthorityContext {
+                on_behalf_of,
+                purpose,
+                scope,
+            }),
             client_context: ClientContext::default(),
         }
     }
@@ -318,8 +331,13 @@ impl ApiClient {
         self.parse(response).await
     }
 
-    pub async fn create_thread(&self, principal: &str, body: Value) -> Result<Value, CliError> {
-        let env = Self::envelope("thread.create", body);
+    pub async fn create_thread(
+        &self,
+        principal: &str,
+        body: Value,
+        delegation: Option<(String, Option<String>, TargetSelector)>,
+    ) -> Result<Value, CliError> {
+        let env = Self::envelope_with("thread.create", body, delegation);
         self.post_command("/v1/threads", principal, &env).await
     }
 
@@ -431,8 +449,9 @@ impl ApiClient {
         principal: &str,
         operation: &str,
         body: Value,
+        delegation: Option<(String, Option<String>, TargetSelector)>,
     ) -> Result<Value, CliError> {
-        let env = Self::envelope(operation, body);
+        let env = Self::envelope_with(operation, body, delegation);
         self.post_command(
             &format!("/v1/threads/{thread_id}/commands"),
             principal,
@@ -551,6 +570,7 @@ pub struct CreateProfileArgs {
     pub allow_join_requests: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_thread_create(
     cfg: &Config,
     principal: &PrincipalRef,
@@ -558,6 +578,8 @@ pub async fn run_thread_create(
     objective: &str,
     budget: &BudgetArgs,
     profile: &CreateProfileArgs,
+    on_behalf_of: Option<&str>,
+    purpose: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
     let client = ApiClient::new(&cfg.server_base);
@@ -590,7 +612,16 @@ pub async fn run_thread_create(
     if profile.allow_join_requests {
         body["participant_rules"] = json!({ "allow_join_requests": true });
     }
-    let response = client.create_thread(&principal.id, body).await?;
+    let delegation = on_behalf_of.map(|subject| {
+        (
+            subject.to_string(),
+            purpose.map(|p| p.to_string()),
+            TargetSelector::TenantWide,
+        )
+    });
+    let response = client
+        .create_thread(&principal.id, body, delegation)
+        .await?;
 
     // Remember the thread → tenant mapping for later verbs.
     let mut state = StateFile::load(&cfg.state_dir)?;
@@ -624,6 +655,9 @@ pub struct ThreadVerbArgs {
     pub tenant: Option<String>,
     pub operation: &'static str,
     pub body: Value,
+    /// The delegated subject (`--on-behalf-of <hpr_…|rol_…>`, `.1.4.2`).
+    pub on_behalf_of: Option<String>,
+    pub purpose: Option<String>,
     pub json_out: bool,
 }
 
@@ -638,8 +672,25 @@ pub async fn run_thread_verb(
     let mut full = args.body.clone();
     let obj = full.as_object_mut().expect("verb body is an object");
     obj.insert("tenant_id".to_string(), json!(tenant));
+    // The delegation scope is the command's own target — the honest minimal
+    // attenuation (`.1.4.2`).
+    let delegation = args.on_behalf_of.as_ref().map(|subject| {
+        (
+            subject.clone(),
+            args.purpose.clone(),
+            TargetSelector::Threads {
+                threads: vec![args.thread_id.parse().expect("the thread id parses")],
+            },
+        )
+    });
     let response = client
-        .thread_command(&args.thread_id, &principal.id, args.operation, full)
+        .thread_command(
+            &args.thread_id,
+            &principal.id,
+            args.operation,
+            full,
+            delegation,
+        )
         .await?;
     if args.json_out {
         return or_json(&response, true);

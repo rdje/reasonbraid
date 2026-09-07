@@ -195,7 +195,7 @@ impl ResourceTarget {
 
 /// Which resources a grant's actions reach: everything in the tenant, or a named
 /// thread set.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TargetSelector {
     TenantWide,
@@ -884,10 +884,9 @@ pub fn delegation_scope_is_subset(requested: &TargetSelector, granted: &TargetSe
     match (requested, granted) {
         (_, TargetSelector::TenantWide) => true,
         (TargetSelector::TenantWide, TargetSelector::Threads { .. }) => false,
-        (
-            TargetSelector::Threads { threads: want },
-            TargetSelector::Threads { threads: have },
-        ) => want.iter().all(|t| have.contains(t)),
+        (TargetSelector::Threads { threads: want }, TargetSelector::Threads { threads: have }) => {
+            want.iter().all(|t| have.contains(t))
+        }
     }
 }
 
@@ -946,7 +945,10 @@ mod delegation_tests {
             &granted,
         ));
         // A tenant-wide request is never within a thread-scoped grant.
-        assert!(!delegation_scope_is_subset(&TargetSelector::TenantWide, &granted));
+        assert!(!delegation_scope_is_subset(
+            &TargetSelector::TenantWide,
+            &granted
+        ));
     }
 
     #[test]

@@ -273,6 +273,28 @@ fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, ControlApiErro
     )))
 }
 
+/// Resolve the delegation from the envelope's `authority_context` (`.1.4.2`,
+/// ADR-009 — chain-in-envelope): the subject rides `delegate_subject` (the
+/// authority source), the requested scope rides `delegation_scope`. The actor
+/// keeps its own identity (the caller check in the dual evaluation).
+fn delegation_from_envelope(
+    envelope: &CommandEnvelope,
+) -> Result<(Option<GrantSubject>, Option<TargetSelector>), ControlApiError> {
+    let Some(ctx) = &envelope.authority_context else {
+        return Ok((None, None));
+    };
+    if let Ok(human) = ctx.on_behalf_of.parse::<HumanPrincipalId>() {
+        return Ok((Some(GrantSubject::Human(human)), Some(ctx.scope.clone())));
+    }
+    if let Ok(role) = ctx.on_behalf_of.parse::<AgentRoleId>() {
+        return Ok((Some(GrantSubject::Role(role)), Some(ctx.scope.clone())));
+    }
+    Err(ControlApiError::invalid_command(format!(
+        "malformed `on_behalf_of` value `{}` (expected hpr_… | rol_…)",
+        ctx.on_behalf_of
+    )))
+}
+
 /// The canonical idempotency request hash: operation + presented principal +
 /// canonical (struct-field-order) body JSON, SHA-256 hex.
 fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> String {
@@ -649,6 +671,7 @@ async fn issue_node_enroll_token(
     }
 
     let authz = CommandAuthz {
+        delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
         delegate_subject: None,
@@ -718,6 +741,7 @@ async fn authorize_tenant_admin(
     tenant_id: TenantId,
 ) -> Result<(), ControlApiError> {
     let authz = CommandAuthz {
+        delegation_scope: None,
         actor: actor_handle_for_subject(principal),
         principal: principal.clone(),
         delegate_subject: None,
@@ -1585,6 +1609,7 @@ where
     };
     let hash = request_hash(operation, &principal, &body);
     let authz = CommandAuthz {
+        delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
         delegate_subject: None,
@@ -1712,10 +1737,12 @@ async fn create_thread(
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let tenant_id = body.tenant_id;
     let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
+    let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
+        delegation_scope,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegate_subject,
         action: GrantAction::ThreadCreate,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -1874,10 +1901,12 @@ async fn thread_command(
         }
     };
 
+    let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
+        delegation_scope,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegate_subject,
         action: authz_action,
         target: ResourceTarget::Thread {
             tenant_id,
@@ -1915,6 +1944,7 @@ where
     Fut: std::future::Future<Output = Result<Value, ControlApiError>>,
 {
     let authz = CommandAuthz {
+        delegation_scope: None,
         actor: actor_handle_for_subject(principal),
         principal: principal.clone(),
         delegate_subject: None,

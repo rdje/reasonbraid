@@ -10,6 +10,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::authority::TargetSelector;
 use crate::id::{
     ActorPrincipalId, AuthorizationRecordId, CorrelationId, EventId, RequestId, TenantId, ThreadId,
 };
@@ -38,7 +39,28 @@ pub struct CommandEnvelope {
     pub expected_aggregate_version: Option<u64>,
     /// Operation-specific payload, interpreted by the owning aggregate (§8.6).
     pub body: serde_json::Value,
+    /// The delegation context (`.1.4.2`, ADR-009 — chain-in-envelope): present
+    /// when the authenticated actor acts ON BEHALF OF another principal whose
+    /// grant is the authority source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_context: Option<AuthorityContext>,
     pub client_context: ClientContext,
+}
+
+/// The delegation context a command may carry (`.1.4.2`, ADR-009). The subject
+/// rides a STRING field (`rol_…`/`hpr_…`): `GrantSubject` is a serde tagged
+/// newtype and is not a wire field.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityContext {
+    /// The principal the actor acts on behalf of (the grant holder).
+    pub on_behalf_of: String,
+    /// Why (audit context; the authorization record carries it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
+    /// The scope the delegation may touch — the request's target must be
+    /// within it (the §16.3 widening invariant measures against it).
+    pub scope: TargetSelector,
 }
 
 /// Correlation context a client may attach to a command (`ROADMAP.md` §9.1).

@@ -281,7 +281,9 @@ slice can reuse the same control plane without rewriting it.
       envelope carries no delegation field and the dual evaluation +
       the widening check do not exist.
     Children: `.1.4.1`–`.1.4.2` (decomposed `2026-09-07` at the
-      ADR-vs-implementation seam).
+      ADR-vs-implementation seam). **`.1.4` is COMPLETE** — the delegated
+      authority context rides the envelope + the dual evaluation (ADR-009,
+      the §16.3 invariants held mechanically).
 
   - ID: `PHASE-2.1.4.1`
     Status: `done`
@@ -316,7 +318,7 @@ slice can reuse the same control plane without rewriting it.
       or explicitly declined with the reason.
 
   - ID: `PHASE-2.1.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the implementation — the envelope gains the optional
       `authority_context` (the `.1.4.1` choice: `on_behalf_of` +
       `purpose` + `scope` constraints, deny-unknown); the authorize path
@@ -328,6 +330,20 @@ slice can reuse the same control plane without rewriting it.
       (a revoked subject grant refuses the delegated request at the next
       decision).
     Backlog: 11
+    Done (`2026-09-07`): the envelope gained the optional
+      `authority_context` (the ADR-009 shape — the subject rides a STRING
+      field); the authorize path runs the DUAL evaluation (the caller's
+      own grant AND the subject's grant, the latter as the authority
+      source the record + digest bind) + the scope ladder (the request's
+      target within the requested scope, the scope within the subject's
+      grant selector — a widening request is a typed 403 naming the
+      invariant); the CLI gained `--on-behalf-of`/`--purpose` on the
+      thread verbs (the scope = the command's own target); the acceptance
+      test proves narrower-succeeds (the audit carries the subject),
+      widening-refused, the caller check, and the `.1.3` revocation
+      freshness; the audit test moved to the dual semantics; the
+      acceptance checklist below records the evidence — **`.1.4` is
+      COMPLETE** — frontier → `.1.5`.
     Acceptance: a delegated request within the subject's grant succeeds
       and audits the chain; a widening attempt is a typed refusal; a
       revoked subject grant refuses the delegation at the next decision;
@@ -395,7 +411,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.4.2` | `proposed` | `.1.4.1` done (ADR-009 accepted: chain-in-envelope; the subset invariant is a pure tested function); the implementation executes now |
+| 1 | `PHASE-2.1.5` | `proposed` | `.1.4` is COMPLETE (the delegated authority context rides the envelope + the dual evaluation); the cached-decision semantics execute now |
 
 ## Changelog
 
@@ -456,6 +472,14 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.4.2` done — the delegation implementation: the
+  envelope's optional `authority_context` (the subject rides a string —
+  the tagged-newtype wire fact), the DUAL evaluation (the caller's own
+  grant AND the subject's grant — the record + digest bind the subject),
+  the scope ladder (widening = a typed 403 naming the invariant), the CLI
+  flags, and the acceptance test (narrower-succeeds / widening-refused /
+  caller-check / revocation-freshness); command_api grew to 16; **`.1.4`
+  is COMPLETE**; frontier → `.1.5`.
 - `2026-09-07`: `.1.4.1` done — ADR-009 accepted: chain-in-envelope for
   the dev profile (the plumbing was pre-shaped; expiry/revocation ride the
   `.1.3` grant filters; no token lifecycle); the spike landed the pure
@@ -539,6 +563,50 @@ files, and `scripts/demo_two_host.sh` — all code paths.
   `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
   `docs/TASK_TREE.md` frontier, the book (node-channel + two-host-demo),
   `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.1.4.2)
+
+The CODE change owned by this leaf: `crates/reasonbraid-core/src/{envelope.rs,authority.rs,lib.rs}`
+(the envelope field + the re-exports), `crates/reasonbraid-server/src/{authority.rs,api.rs}`
+(the dual evaluation + the delegation parse), `crates/reasonbraid-cli/src/{lib,main.rs}`
+(the flags + threading), and the test files — all code paths.
+
+- [x] **REPRODUCE / ISSUE** — the delegation plumbing is pre-shaped but
+  UNWIRED: `grep -n "delegate_subject" crates/reasonbraid-server/src/authority.rs`
+  → the field + the audit subject split exist while the envelope carries
+  no delegation field (`grep -n "authority_context" crates/reasonbraid-core/src/envelope.rs`
+  → no matches before this leaf) and the dual check does not exist.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.1.4.1` decided the representation
+  (chain-in-envelope); this leaf is the wiring: the envelope boundary +
+  the authorize_in_tx dual evaluation + the scope ladder, riding the
+  `.1.3` grant filters for freshness.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  delegation on the wire, `delegate_subject` dormant. After: `bash
+  scripts/run_pg_tests.sh` → `test result: ok. 16 passed` (`command_api`,
+  +1: the delegation test — the narrower scope succeeds with the subject
+  audited, the widening scope is a typed 403 naming the invariant, the
+  caller's own authority gates, and the revoked subject grant refuses
+  the next delegation) + the audit test's dual semantics (the record +
+  digest bind the SUBJECT's grant); the full guard green (12 suites + e2e
+  + the demo 32/32, `rc=0`, `target/pg142e_guard.log`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → all twelve live
+  server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21
+  + 4 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the
+  demo `ALL acceptance checks passed` (32 PASS, `rc=0`,
+  `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D
+  warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` →
+  13/13 at commit; `make book` builds.
+- [x] **FIX** — `envelope.rs` (`AuthorityContext` + the envelope field);
+  `authority.rs` (the `delegation_scope` field, `target_to_selector`,
+  the dual evaluation with the caller check + the scope ladder, the
+  record/digest binding the subject); `api.rs`
+  (`delegation_from_envelope` + the handler wiring); the CLI (the two
+  flags on every thread verb, the scope = the command's own target, the
+  envelope threading); the tests (the delegation acceptance test; the
+  audit test moved to the dual semantics with both grants).
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's logs
+  below, `docs/TASK_TREE.md` frontier, the book's cli chapter,
+  KNOWLEDGE_MAP — same commit. DEV_NOTES: `promotion: declined (the dual-evaluation semantics and the record-binds-the-subject rule are per-slice engine facts recorded here — no new cross-cutting decision)`.
 
 ## Acceptance Checklist (PHASE-2.1.4.1)
 
@@ -795,6 +863,7 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.3.1` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `node_channel` grew to 21 with the revocation pair) + CLI e2e `2 passed` + the two-host demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg131f_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | node/cert revocation: `POST /v1/nodes/revoke` (tenant_admin-audited, the typed refusals), the suspended presence (migration 0012), `rb node revoke`, the demo beat — frontier → `.1.3.2` |
 | `2026-09-07` | `PHASE-2.1.3.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 15 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 15 with the revocation pair) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg132c_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the grant/boundary revocation write paths + the admin inspection lists + the freeze carve-out; **`.1.3` complete** — frontier → `.1.4` |
 | `2026-09-07` | `PHASE-2.1.4.1` | `cargo test -p reasonbraid-core` → `test result: ok. 39 passed` (the three delegation tests: subset narrowing/equality/emptiness pass, widening refused per-dimension, the wire-size leg); `cargo test --all` → every offline suite green; `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-009 accepted (chain-in-envelope) + the pure subset prototype; frontier → `.1.4.2` |
+| `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 
 ## Commit Log
 
@@ -810,3 +879,4 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.3.2` | `REASONBRAID-PHASE2-0008` | the grant/boundary revoke verbs + the admin inspection lists + the freeze carve-out (reads survive the boundary revocation); `command_api` grew to 15 — **`.1.3` complete** |
 | `PHASE-2.1.4` | `REASONBRAID-PHASE2-0009b` | the ADR-vs-implementation split (the delegation plumbing is pre-shaped) |
 | `PHASE-2.1.4.1` | `REASONBRAID-PHASE2-0010` | ADR-009 (chain-in-envelope) + the pure `DelegationConstraints`/`delegation_scope_is_subset` prototype with the offline tests |
+| `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |

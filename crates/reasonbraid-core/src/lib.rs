@@ -42,13 +42,16 @@ mod id;
 mod state;
 
 pub use authority::{
-    actor_handle_for_subject, boundary_active_at, grant_active_at, grant_exceeds_boundary,
-    policy_digest, AuthorityGrant, AuthorizationDecisionRecord, BoundaryStatus, BoundaryViolation,
-    Decision, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget,
-    RiskClass, TargetSelector, UnknownAuthorityName,
+    actor_handle_for_subject, boundary_active_at, delegation_scope_is_subset, grant_active_at,
+    grant_exceeds_boundary, policy_digest, AuthorityGrant, AuthorizationDecisionRecord,
+    BoundaryStatus, BoundaryViolation, Decision, DelegationConstraints,
+    EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass,
+    TargetSelector, UnknownAuthorityName,
 };
 pub use budget::{BudgetDimensions, BudgetError, ReservationReference};
-pub use envelope::{ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION};
+pub use envelope::{
+    AuthorityContext, ClientContext, CommandEnvelope, CommittedEvent, PROTOCOL_VERSION,
+};
 pub use error::{DomainError, KnownReasonCode, ReasonCode, Retryability};
 pub use id::{
     ActorPrincipal, ActorPrincipalId, AgentIncarnation, AgentIncarnationId, AgentRole, AgentRoleId,

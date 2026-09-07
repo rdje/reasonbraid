@@ -1677,9 +1677,46 @@ async fn close_call(
             candidates.push((candidate, verdict));
         }
     }
-    let mut ranked = crate::matching::rank(&expression, &candidates, &Default::default());
+    // The dependence facts (`.6.2`): each joiner's LATEST incarnation lineage
+    // + the tenant as the owner — the panel's indicator inputs.
+    let mut facts: std::collections::HashMap<String, crate::dependence::MemberFacts> =
+        std::collections::HashMap::new();
+    for joiner in &joiners {
+        let lineage: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT provider, model, harness FROM incarnations \
+                 WHERE role_id = $1 ORDER BY valid_from DESC LIMIT 1",
+        )
+        .bind(joiner)
+        .fetch_optional(&state.pool)
+        .await?;
+        let (provider, model_family, harness) = lineage.unwrap_or((None, None, None));
+        facts.insert(
+            joiner.clone(),
+            crate::dependence::MemberFacts {
+                role_id: joiner.clone(),
+                provider,
+                model_family,
+                harness,
+                lineage: None,
+                owner: Some(call.tenant_id.clone()),
+            },
+        );
+    }
+    let mut ranked = crate::matching::rank_with_dependence(
+        &expression,
+        &candidates,
+        &Default::default(),
+        Some(&facts),
+    );
     ranked.truncate(call.max_participants as usize);
-    crate::recruitment::snapshot_panel(&state.pool, &call_id, &ranked).await?;
+    let indicators: Vec<crate::dependence::DependenceIndicator> =
+        crate::dependence::dependence_indicators(
+            &ranked
+                .iter()
+                .filter_map(|r| facts.get(&r.role_id).cloned())
+                .collect::<Vec<_>>(),
+        );
+    crate::recruitment::snapshot_panel(&state.pool, &call_id, &ranked, &indicators).await?;
     Ok(Json(json!({
         "call_id": call_id,
         "status": "closed",

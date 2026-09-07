@@ -260,26 +260,33 @@ pub async fn snapshot_panel(
     pool: &sqlx::PgPool,
     call_id: &str,
     ranked: &[crate::matching::RankedCandidate],
+    dependence_indicators: &[crate::dependence::DependenceIndicator],
 ) -> Result<(), sqlx::Error> {
     let panel: Vec<Value> = ranked
         .iter()
         .map(|r| serde_json::json!(r.role_id))
         .collect();
-    let explanation: Vec<Value> = ranked
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "role_id": r.role_id,
-                "stage1_reasons": r.stage1_reasons,
-                "features": r.features,
-                "total": r.total,
+    // The selection explanation: the per-panelist reasons + features AND the
+    // panel's dependence indicators (`.6.2`) — the diversity facts beside the
+    // ranking facts.
+    let explanation = serde_json::json!({
+        "per_panelist": ranked
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "role_id": r.role_id,
+                    "stage1_reasons": r.stage1_reasons,
+                    "features": r.features,
+                    "total": r.total,
+                })
             })
-        })
-        .collect();
+            .collect::<Vec<_>>(),
+        "dependence_indicators": dependence_indicators,
+    });
     sqlx::query("INSERT INTO recruitment_panels (call_id, panel, explanation) VALUES ($1, $2, $3)")
         .bind(call_id)
         .bind(serde_json::json!(panel))
-        .bind(serde_json::json!(explanation))
+        .bind(explanation)
         .execute(pool)
         .await?;
     sqlx::query("UPDATE recruitment_calls SET status = 'closed' WHERE call_id = $1")

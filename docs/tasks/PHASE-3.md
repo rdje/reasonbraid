@@ -680,7 +680,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
       a named indicator); no regression.
 
   - ID: `PHASE-3.6.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the diversity feature + the panel wiring — the `.3`
       ranking gains the `diversity` feature (the selection seeks
       VARIATION among the dependence attributes: a panel whose
@@ -689,6 +689,20 @@ eligibility before ranking. Dependence indicators, never an independence score.
       probability) + the `.4.2` panel snapshot carries the panel's
       dependence indicators beside the selection explanation.
     Backlog: 29 (the selection half)
+    Done (`2026-09-07`): the diversity feature + the panel wiring
+      landed — the ranking's SIXTH feature (`diversity`: the
+      inverse of the candidate's heaviest attribute overlap with
+      the OTHER eligible candidates — a unique provider scores 1.0,
+      two sharers score lower; the explanation names the overlap
+      fraction, never a probability; no dependence facts → the
+      feature contributes nothing) + the close handler's wiring
+      (each joiner's LATEST incarnation lineage + the tenant as the
+      owner feed the `.6.1` computation) + the panel snapshot's
+      `dependence_indicators` beside the per-panelist explanation.
+      Measured: the two diversity unit tests (the variation reward
+      + the zero-without-facts) — matching 12 — and the live leg
+      (two joiners sharing the provider produce the named overlap
+      group in the snapshot) — profiles 12. Frontier → `.6.3`.
     Acceptance: the diversity feature + the snapshot's indicators
       are measured; no regression.
 
@@ -715,7 +729,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.6.2` | `proposed` | `.6.1` done — the dependence-indicator computation (the five attributes, the named groups, the no-overclaim strings); the diversity feature + the panel wiring execute now |
+| 1 | `PHASE-3.6.3` | `proposed` | `.6.2` done — the diversity feature + the panel wiring (the sixth feature + the snapshot's indicators, measured); the label discipline sweep executes now — and Phase 3 closes |
 
 ## Changelog
 
@@ -827,6 +841,58 @@ eligibility before ranking. Dependence indicators, never an independence score.
 - `2026-09-07`: `.6.1` done — the dependence-indicator computation
   (the five attributes, the named overlap groups, the
   no-overclaim explanations); five unit tests; frontier → `.6.2`.
+- `2026-09-07`: `.6.2` done — the diversity feature + the panel
+  wiring (the ranking's sixth feature + the snapshot's indicators);
+  matching 12 + the live overlap leg (profiles 12); frontier →
+  `.6.3`.
+
+## Acceptance Checklist (PHASE-3.6.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/matching.rs` (the `diversity`
+preference + the sixth feature + the `rank_with_dependence` path +
+the two unit tests), `crates/reasonbraid-server/src/recruitment.rs`
+(the snapshot carries the indicators), `crates/reasonbraid-server/
+src/api.rs` (the close handler's lineage wiring), and
+`crates/reasonbraid-server/tests/profiles.rs` (the live overlap
+leg + the updated explanation shape) — `\.rs$` in
+`.doctrine/code_paths.txt`.
+
+- [x] **REPRODUCE / ISSUE** — the `.6` census: the `.3` ranking has
+  no diversity feature and the `.4.2` snapshot carries no
+  dependence facts — the selection cannot seek the §10.4
+  variation.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the ranking (`.3.2`) scored
+  the candidate attributes but never the panel SPREAD — `git grep
+  -c "diversity\|rank_with_dependence" 3b7cd8b -- crates/` →
+  1 match, the dependence.rs doc quote (no feature, rc=0). The fix
+  point is the sixth
+  feature (the inverse of the heaviest attribute overlap with the
+  other eligible candidates — unknown facts contribute nothing,
+  never a guess) + the close handler's lineage wiring (the latest
+  incarnation per joiner + the tenant as the owner).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `cargo test -p reasonbraid-server --lib matching` → `test result:
+  ok. 12 passed` (the unique provider scores higher than the
+  sharers; the explanation names the 50% overlap, never a
+  probability; zero without the facts) and
+  `DATABASE_URL=postgres://postgres@127.0.0.1:55432/reasonbraid_test
+  cargo test -p reasonbraid-server --test profiles
+  the_panel_snapshot` → `test result: ok. 1 passed` (two joiners
+  sharing the provider produce the named `openai` group with both
+  members in the snapshot's `dependence_indicators`).
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh` → 18 live
+  suites + the demo `ALL acceptance checks passed` 34/34
+  (`target/pg362_guard.log`); `cargo test --all` → 51 offline
+  suites green; `cargo clippy --all --all-targets -- -D warnings` →
+  clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `src/matching.rs`, `src/recruitment.rs`,
+  `src/api.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-3.6.1)
 
@@ -1465,6 +1531,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.6.2` | `cargo test -p reasonbraid-server --lib matching` → `test result: ok. 12 passed` (the variation reward + the zero-without-facts); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_panel_snapshot` → `test result: ok. 1 passed` (the shared provider's named group in the snapshot); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg362_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the diversity feature + the panel wiring; frontier → `.6.3` |
 | `2026-09-07` | `PHASE-3.6.1` | `cargo test -p reasonbraid-server --lib dependence` → `test result: ok. 5 passed` (the overlap group, the variation, the single-member rule, the owner overlap, the no-overclaim rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg361_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the dependence-indicator computation; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-3.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the dependence-lane census + the contract-seam decomposition (`.6.1` indicators → `.6.2` diversity + wiring → `.6.3` labels); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-3.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_auto_initiation` → `test result: ok. 1 passed` (the no-grant 403, the landing, the topic/spend refusals, the no-inheritance rule); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg353_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the node-initiated thread API; **`.5` COMPLETE** — frontier → `.6` |
@@ -1491,6 +1558,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.6.2` | `REASONBRAID-PHASE3-0023` | the diversity feature + the panel wiring (the sixth ranking feature + the snapshot's dependence indicators) |
 | `PHASE-3.6.1` | `REASONBRAID-PHASE3-0022` | the dependence-indicator computation (the pure overlaps over the lineage/ownership facts, never a score) |
 | `PHASE-3.6` | `REASONBRAID-PHASE3-0021` | the dependence-indicators lane decomposed at the census seams (the inputs exist; the computation/feature/labels are the gaps) |
 | `PHASE-3.5.3` | `REASONBRAID-PHASE3-0020` | the node-initiated thread API (the `thread_create_auto` grant + the server-side checklist) — **`.5` COMPLETE** |

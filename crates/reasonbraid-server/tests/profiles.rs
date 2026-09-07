@@ -1466,14 +1466,19 @@ async fn the_call_artifact_rides_the_invitation_machinery() {
     let (status, inspected) = get(&client, &base, &format!("/v1/calls/{call_id}"), &human_id).await;
     assert_eq!(status, 200, "the inspection: {inspected}");
     assert_eq!(inspected["responses"].as_array().unwrap().len(), 2);
-    let explanation = inspected["explanation"].as_array().unwrap();
+    let explanation = inspected["explanation"].as_object().unwrap();
+    let per_panelist = explanation["per_panelist"].as_array().unwrap();
     assert!(
-        explanation[0]["stage1_reasons"]
+        per_panelist[0]["stage1_reasons"]
             .as_array()
             .unwrap()
             .iter()
             .any(|r| r.as_str().unwrap().contains("code_review")),
         "the selection explanation rides: {inspected}"
+    );
+    assert!(
+        explanation.contains_key("dependence_indicators"),
+        "the snapshot carries the dependence indicators: {inspected}"
     );
 }
 
@@ -1874,5 +1879,127 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
         response.status().as_u16(),
         403,
         "the plain create stays denied — no inherited permission"
+    );
+}
+
+/// THE `.3.6.2` panel-wiring acceptance: two joiners sharing the provider
+/// produce the named overlap group in the panel snapshot's dependence
+/// indicators.
+#[tokio::test]
+async fn the_panel_snapshot_carries_the_dependence_indicators() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "dep-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let mut roles = Vec::new();
+    for name in ["dep-agent-a", "dep-agent-b"] {
+        let (status, role) = enroll(
+            &client,
+            &base,
+            json!({ "kind": "role", "name": name, "tenant_id": tenant }),
+        )
+        .await;
+        assert_eq!(status, 200, "the role enrolls: {role}");
+        let role_id = role["principal_id"].as_str().unwrap().to_string();
+        enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+        let (status, _) = put(
+            &client,
+            &base,
+            &format!("/v1/profiles/{role_id}"),
+            &role_id,
+            &visibility_profile(),
+        )
+        .await;
+        assert_eq!(status, 200, "the role writes");
+        let (status, _) = post(
+            &client,
+            &base,
+            &format!("/v1/profiles/{role_id}/attest"),
+            &human_id,
+            &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_dep/20260907" }),
+        )
+        .await;
+        assert_eq!(status, 200, "the owner attests");
+        // The incarnation lineage: both roles share the provider (the
+        // dependence fact the indicator computes).
+        sqlx::query("UPDATE incarnations SET provider = 'openai' WHERE role_id = $1")
+            .bind(&role_id)
+            .execute(&pool)
+            .await
+            .expect("seed the lineage");
+        roles.push(role_id);
+    }
+
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let response = client
+        .post(format!("{base}/v1/calls"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "tenant_id": tenant,
+            "thread_id": "thr_00000000-0000-7000-8000-000000000003",
+            "expression": {
+                "scope": "tenant",
+                "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                "presence_states": ["available", "offline"],
+            },
+            "join_deadline": deadline,
+            "expires_at": expiry,
+        }))
+        .send()
+        .await
+        .expect("open request");
+    assert_eq!(response.status().as_u16(), 200);
+    let opened: Value = response.json().await.unwrap();
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+
+    for role_id in &roles {
+        let response = client
+            .post(format!("{base}/v1/calls/{call_id}/respond"))
+            .header(PRINCIPAL_HEADER, role_id)
+            .json(&json!({ "kind": "join" }))
+            .send()
+            .await
+            .expect("join request");
+        assert_eq!(response.status().as_u16(), 200, "the role joins");
+    }
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/close"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(response.status().as_u16(), 200, "the close snapshots");
+
+    let (status, inspected) = get(&client, &base, &format!("/v1/calls/{call_id}"), &human_id).await;
+    assert_eq!(status, 200, "the inspection: {inspected}");
+    let indicators = inspected["explanation"]["dependence_indicators"]
+        .as_array()
+        .unwrap();
+    let provider = indicators
+        .iter()
+        .find(|i| i["attribute"] == json!("provider"))
+        .expect("the provider indicator");
+    assert_eq!(
+        provider["groups"][0]["value"],
+        json!("openai"),
+        "the shared provider rides the named group: {inspected}"
+    );
+    assert_eq!(
+        provider["groups"][0]["members"].as_array().unwrap().len(),
+        2,
+        "both members ride: {inspected}"
     );
 }

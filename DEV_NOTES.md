@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.6.2: the diversity feature is the inverse of the heaviest overlap — and absent facts contribute nothing, never a guess
+
+- **The selection-side half of §10.4 landed as the ranking's sixth feature**: the candidate's diversity score inverts their heaviest attribute overlap with the OTHER eligible candidates (a unique provider scores 1.0; two sharers score lower), the explanation names the overlap fraction, and — the honest edge — when no dependence facts are loaded the feature contributes exactly zero (an unknown is never scored into a guess). The panel snapshot now carries the computed indicators beside the per-panelist explanation: the selection's audit shows both what was chosen and what the chosen share.
+- promotion: declined (the feature + the wiring are the leaf's own contracts; the `.6.3` sweep closes the labels). **Frontier `PHASE-3.6.3` (the label discipline — and Phase 3 closes).**
+
 ## _(2026-09-07)_ — PHASE-3.6.1: a group of one is variation, not dependence — the indicator's honesty is the counts, not a number
 
 - **The dependence computation refuses the number altogether.** Each §10.4 attribute yields its overlap groups (only the ≥2-member groups ride) and an explanation naming the counts + the values — a spread attribute's explanation SAYS "varies across the panel", and a test pre-checks that no explanation string ever claims independence or probability. The calibrated estimator (the only place a number would live) stays a named deferral in the domain that can evaluate it.

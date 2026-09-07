@@ -19,15 +19,14 @@
   replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
   of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
   record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
-- **Active tree:** `PHASE-3` → frontier `.6.2` (`.6.1` done: the
-  dependence-indicator computation — the five attributes, the
-  named overlap groups, the no-overclaim strings). Then `.6.3`;
-  Phase 3 closes after `.6.3`.
-- **Next action:** execute `PHASE-3.6.2` — the diversity feature +
-  the panel wiring: the `.3` ranking gains the `diversity` feature
-  (the selection seeks the variation among the dependence
-  attributes) + the `.4.2` panel snapshot carries the panel's
-  indicators beside the selection explanation.
+- **Active tree:** `PHASE-3` → frontier `.6.3` (`.6.2` done: the
+  diversity feature + the panel wiring). Phase 3 closes after
+  `.6.3`.
+- **Next action:** execute `PHASE-3.6.3` — the label discipline:
+  the §10.4 acceptance as a mechanical sweep (the term "independent
+  probability" appears nowhere; the indicator's wire name is the
+  approved "diversity and dependence indicators" label). No code
+  beyond the labels. **Phase 3 closes after this leaf.**
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

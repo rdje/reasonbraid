@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The selection seeks variation: the diversity feature + the panel's indicators (`PHASE-3.6.2`)
+
+- The ranking gains its sixth feature, `diversity`: the inverse of the candidate's heaviest attribute overlap with the OTHER eligible candidates — a unique provider scores 1.0, two sharers score lower, and the explanation names the overlap fraction (never a probability). No dependence facts → the feature contributes nothing (unknown is never a guess).
+- The close handler wires the `.6.1` computation: each joiner's LATEST incarnation lineage + the tenant as the owner feed the indicators, and the panel snapshot carries them (`explanation.dependence_indicators`) beside the per-panelist reasons + features.
+- Measured: matching 12 (the variation reward + the zero-without-facts) and the live overlap leg (two joiners sharing the provider produce the named group in the snapshot) — profiles 12. Frontier → `.6.3` (the label discipline sweep — and Phase 3 closes).
+
 ## 2026-09-07 — The dependence indicators: named overlaps, never a score (`PHASE-3.6.1`)
 
 - `crates/reasonbraid-server/src/dependence.rs`: the pure `dependence_indicators(members)` over the §10.4 observable conditions (the common provider, the model family, the harness, the declared lineage, the owner) — each attribute yields its overlap groups (a group of ONE member is variation, not dependence) and an explanation naming the counts + the values, never a probability.

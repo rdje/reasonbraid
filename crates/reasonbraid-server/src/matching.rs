@@ -306,6 +306,9 @@ pub struct RankingPreferences {
     pub affinity: f64,
     pub latency: f64,
     pub balance: f64,
+    /// The diversity weight (`.6.2`): the selection seeks the VARIATION among
+    /// the dependence attributes — a spread panel scores higher.
+    pub diversity: f64,
 }
 
 impl Default for RankingPreferences {
@@ -316,6 +319,7 @@ impl Default for RankingPreferences {
             affinity: 1.0,
             latency: 1.0,
             balance: 1.0,
+            diversity: 1.0,
         }
     }
 }
@@ -348,6 +352,20 @@ pub fn rank(
     expression: &EligibilityExpression,
     candidates: &[(EligibilityCandidate, EligibilityVerdict)],
     preferences: &RankingPreferences,
+) -> Vec<RankedCandidate> {
+    rank_with_dependence(expression, candidates, preferences, None)
+}
+
+/// The rank with the dependence facts (`.6.2`): the diversity feature scores
+/// each candidate by the INVERSE of their heaviest attribute overlap with the
+/// OTHER eligible candidates — a candidate whose provider is unique among the
+/// panel scores 1.0; two sharers score lower. No dependence facts → the
+/// feature scores 0 (unknown contributes nothing, never a guess).
+pub fn rank_with_dependence(
+    expression: &EligibilityExpression,
+    candidates: &[(EligibilityCandidate, EligibilityVerdict)],
+    preferences: &RankingPreferences,
+    dependence: Option<&std::collections::HashMap<String, crate::dependence::MemberFacts>>,
 ) -> Vec<RankedCandidate> {
     let mut ranked: Vec<RankedCandidate> = candidates
         .iter()
@@ -435,6 +453,51 @@ pub fn rank(
                 _ => 0.0,
             };
 
+            // The diversity feature (`.6.2`): the inverse of the heaviest
+            // attribute overlap with the OTHER eligible candidates.
+            let diversity_score = match dependence {
+                None => 0.0,
+                Some(facts) => {
+                    let mine = facts.get(&candidate.role_id);
+                    let others: Vec<&crate::dependence::MemberFacts> = candidates
+                        .iter()
+                        .filter(|(_, v)| v.eligible)
+                        .filter(|(c, _)| c.role_id != candidate.role_id)
+                        .filter_map(|(c, _)| facts.get(&c.role_id))
+                        .collect();
+                    let mut heaviest = 0.0f64;
+                    if let Some(mine) = mine {
+                        for attribute in [
+                            &mine.provider,
+                            &mine.model_family,
+                            &mine.harness,
+                            &mine.lineage,
+                            &mine.owner,
+                        ] {
+                            if let Some(value) = attribute {
+                                let sharers = others
+                                    .iter()
+                                    .filter(|o| {
+                                        o.provider.as_ref() == Some(value)
+                                            || o.model_family.as_ref() == Some(value)
+                                            || o.harness.as_ref() == Some(value)
+                                            || o.lineage.as_ref() == Some(value)
+                                            || o.owner.as_ref() == Some(value)
+                                    })
+                                    .count();
+                                if !others.is_empty() {
+                                    let fraction = sharers as f64 / others.len() as f64;
+                                    if fraction > heaviest {
+                                        heaviest = fraction;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    1.0 - heaviest
+                }
+            };
+
             let features = vec![
                 FeatureScore {
                     feature: "capability_match",
@@ -483,6 +546,21 @@ pub fn rank(
                         "the presence state `{}` admits work",
                         candidate.presence_state.as_str()
                     ),
+                },
+                FeatureScore {
+                    feature: "diversity",
+                    score: diversity_score,
+                    contribution: preferences.diversity * diversity_score,
+                    explanation: if dependence.is_none() {
+                        "no dependence facts are loaded (the feature contributes nothing)".to_string()
+                    } else if diversity_score >= 1.0 {
+                        "the candidate varies across the panel's dependence attributes".to_string()
+                    } else {
+                        format!(
+                            "the candidate shares a dependence attribute with {:.0}% of the other candidates",
+                            (1.0 - diversity_score) * 100.0
+                        )
+                    },
                 },
             ];
             let total: f64 = features.iter().map(|f| f.contribution).sum();
@@ -811,6 +889,106 @@ mod tests {
             ranked.is_empty(),
             "the ineligible role never appears: {ranked:?}"
         );
+    }
+
+    /// The diversity feature: a candidate whose provider is unique among the
+    /// panel scores higher than the sharers — the selection seeks the
+    /// variation (`.6.2`).
+    #[test]
+    fn the_diversity_feature_rewards_the_attribute_variation() {
+        let expression = EligibilityExpression::default();
+        let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+        let b = candidate("rol_b", Some(profile_with(vec![], vec![])));
+        let c = candidate("rol_c", Some(profile_with(vec![], vec![])));
+        let va = eligible(&expression, &a);
+        let vb = eligible(&expression, &b);
+        let vc = eligible(&expression, &c);
+        let facts: std::collections::HashMap<String, crate::dependence::MemberFacts> = [
+            (
+                "rol_a".to_string(),
+                crate::dependence::MemberFacts {
+                    role_id: "rol_a".to_string(),
+                    provider: Some("openai".to_string()),
+                    model_family: None,
+                    harness: None,
+                    lineage: None,
+                    owner: None,
+                },
+            ),
+            (
+                "rol_b".to_string(),
+                crate::dependence::MemberFacts {
+                    role_id: "rol_b".to_string(),
+                    provider: Some("openai".to_string()),
+                    model_family: None,
+                    harness: None,
+                    lineage: None,
+                    owner: None,
+                },
+            ),
+            (
+                "rol_c".to_string(),
+                crate::dependence::MemberFacts {
+                    role_id: "rol_c".to_string(),
+                    provider: Some("anthropic".to_string()),
+                    model_family: None,
+                    harness: None,
+                    lineage: None,
+                    owner: None,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let ranked = rank_with_dependence(
+            &expression,
+            &[(a, va), (b, vb), (c, vc)],
+            &RankingPreferences::default(),
+            Some(&facts),
+        );
+        let diversity_of = |role: &str| {
+            ranked
+                .iter()
+                .find(|r| r.role_id == role)
+                .unwrap()
+                .features
+                .iter()
+                .find(|f| f.feature == "diversity")
+                .unwrap()
+                .score
+        };
+        assert!(diversity_of("rol_c") > diversity_of("rol_a"), "{ranked:?}");
+        assert_eq!(diversity_of("rol_a"), diversity_of("rol_b"), "{ranked:?}");
+        // The explanation names the overlap fraction, never a probability.
+        let a_expl = &ranked
+            .iter()
+            .find(|r| r.role_id == "rol_a")
+            .unwrap()
+            .features
+            .iter()
+            .find(|f| f.feature == "diversity")
+            .unwrap()
+            .explanation;
+        assert!(
+            a_expl.contains("50%"),
+            "the explanation names the overlap fraction: {a_expl}"
+        );
+    }
+
+    /// Without the dependence facts the feature contributes nothing (unknown
+    /// contributes nothing, never a guess).
+    #[test]
+    fn the_diversity_feature_scores_zero_without_the_facts() {
+        let expression = EligibilityExpression::default();
+        let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+        let va = eligible(&expression, &a);
+        let ranked = rank(&expression, &[(a, va)], &RankingPreferences::default());
+        let diversity = ranked[0]
+            .features
+            .iter()
+            .find(|f| f.feature == "diversity")
+            .unwrap();
+        assert_eq!(diversity.score, 0.0, "{ranked:?}");
     }
 
     /// The tie-break is deterministic (the role id order).

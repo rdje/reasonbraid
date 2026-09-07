@@ -134,3 +134,95 @@ pub async fn list_resolutions(pool: &PgPool) -> Result<Vec<serde_json::Value>, s
     .await?;
     Ok(rows)
 }
+
+// ── The shadow recommendations (`.5.3`, ADR-031) ───────────────────────────────────
+
+/// The recommendation submission (`.5.3`): the class → the arm + the evidence
+/// reference (the `.4` trial/gate id it rests on). The arm must be an
+/// EXISTING registered profile — the recommendation can re-order what exists,
+/// never raise authority/spend/access/side-effect scope.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecommendationSubmission {
+    pub recommendation_id: String,
+    pub case_class: String,
+    pub arm: String,
+    pub evidence_ref: String,
+}
+
+impl RoutingError {
+    fn unknown_evidence(reference: &str) -> Self {
+        RoutingError::UnknownClass(format!(
+            "evidence reference `{reference}` (the recommendation names a `.4` trial or gate)"
+        ))
+    }
+}
+
+/// Record one shadow recommendation. It is NEVER applied — the create
+/// boundary keeps resolving the rule table; this record is the evidence a
+/// future policy gate weighs.
+pub async fn record_recommendation(
+    pool: &PgPool,
+    submission: &RecommendationSubmission,
+) -> Result<serde_json::Value, RoutingError> {
+    if !CASE_CLASSES.contains(&submission.case_class.as_str()) {
+        return Err(RoutingError::UnknownClass(submission.case_class.clone()));
+    }
+    // The never-a-raise constraint: the arm must be a REGISTERED profile.
+    let registered: Option<bool> =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM workflow_profiles WHERE profile_id = $1)")
+            .bind(&submission.arm)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| RoutingError::PhantomArm(submission.arm.clone()))?;
+    if !registered.unwrap_or(false) {
+        return Err(RoutingError::PhantomArm(submission.arm.clone()));
+    }
+    // The evidence: a `.4` trial or gate the recommendation rests on.
+    let evidence: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM evaluation_trials WHERE trial_id = $1) \
+         OR EXISTS (SELECT 1 FROM evaluation_gates WHERE gate_id = $1)",
+    )
+    .bind(&submission.evidence_ref)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| RoutingError::unknown_evidence(&submission.evidence_ref))?;
+    if !evidence.unwrap_or(false) {
+        return Err(RoutingError::unknown_evidence(&submission.evidence_ref));
+    }
+    let inserted = sqlx::query(
+        "INSERT INTO routing_recommendations \
+         (recommendation_id, case_class, arm, evidence_ref) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&submission.recommendation_id)
+    .bind(&submission.case_class)
+    .bind(&submission.arm)
+    .bind(&submission.evidence_ref)
+    .execute(pool)
+    .await;
+    match inserted {
+        Ok(_) => Ok(serde_json::json!({
+            "recommendation_id": submission.recommendation_id,
+            "case_class": submission.case_class,
+            "arm": submission.arm,
+            "evidence_ref": submission.evidence_ref,
+            "applied": false,
+        })),
+        Err(_) => Err(RoutingError::UnknownClass(format!(
+            "recommendation `{}` (the id already exists — record a new one)",
+            submission.recommendation_id
+        ))),
+    }
+}
+
+/// The recommendations, newest first.
+pub async fn list_recommendations(pool: &PgPool) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    let rows: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object('recommendation_id', recommendation_id, \
+         'case_class', case_class, 'arm', arm, 'evidence_ref', evidence_ref, \
+         'applied', false) FROM routing_recommendations ORDER BY recorded_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

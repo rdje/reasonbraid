@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The shadow recommendation lands — the `.5` lane is COMPLETE (`PHASE-5.5.3`)
+
+- Migration 0037: the recommendation maps a class to an arm drawn from the EXISTING registered profiles (never a raise), names its `.4` evidence reference, and is recorded with `applied: false` on its face — the create boundary keeps resolving the RULE table (the shadow proof). Measured: routing 2. **The `.5` lane (the routing policy) is COMPLETE.**
+
 ## 2026-09-07 — The rule-based routing policy lands (`PHASE-5.5.2`)
 
 - Migration 0036: the seven §13.8 rows as the built-in rules (one deterministic arm per case class); the resolution is a lookup with an append-only audit row; the create boundary applies the policy ONLY when no explicit profile is named (the explicit profile always wins; the bare thread keeps the `quick_advice` default); the arm must be a registered profile (a phantom arm fails closed). The verbs: `GET /v1/routing/rules`, `POST /v1/routing/resolve`, `GET /v1/routing/resolutions`. Measured: routing 1.

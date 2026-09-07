@@ -383,3 +383,180 @@ async fn the_rule_based_policy_routes_deterministically() {
     assert!(surfaces.contains(&"create_boundary"), "{surfaces:?}");
     assert!(surfaces.contains(&"resolve_verb"), "{surfaces:?}");
 }
+
+#[tokio::test]
+async fn the_shadow_recommendation_records_and_never_applies() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rec-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // The evidence: a `.4` trial (the recommendation names it).
+    let digest_a = "a".repeat(64);
+    let digest_b = "b".repeat(64);
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &human_id,
+        &json!({
+            "corpus_id": "rec-corpus",
+            "version": 1,
+            "cases_digest": digest_a,
+            "prompts_digest": digest_b,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the corpus registers");
+    let (status, trial) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "trial_id": "rec-trial",
+            "corpus_id": "rec-corpus",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["single", "blind"],
+            "case_ids": ["c1"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the trial creates: {trial}");
+
+    // 1. The recommendation records with `applied: false` — the shadow is
+    // stated on the record itself.
+    let (status, recorded) = post(
+        &client,
+        &base,
+        "/v1/routing/recommendations",
+        &human_id,
+        &json!({
+            "recommendation_id": "rec-1",
+            "case_class": "uncertain",
+            "arm": "critique",
+            "evidence_ref": "rec-trial",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the recommendation records: {recorded}");
+    assert_eq!(recorded["applied"], json!(false));
+
+    // 2. The never-a-raise constraint: an arm outside the registered set
+    // refuses (the recommendation can re-order what exists, not invent).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/routing/recommendations",
+        &human_id,
+        &json!({
+            "recommendation_id": "rec-2",
+            "case_class": "uncertain",
+            "arm": "not_a_profile",
+            "evidence_ref": "rec-trial",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the phantom arm refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("registered profile"),
+        "{refused}"
+    );
+
+    // 3. A ghost evidence reference refuses (the recommendation names the
+    // evidence it rests on).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/routing/recommendations",
+        &human_id,
+        &json!({
+            "recommendation_id": "rec-3",
+            "case_class": "uncertain",
+            "arm": "critique",
+            "evidence_ref": "ghost-trial",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost evidence refuses: {refused}");
+
+    // 4. An unknown class refuses.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/routing/recommendations",
+        &human_id,
+        &json!({
+            "recommendation_id": "rec-4",
+            "case_class": "not_a_class",
+            "arm": "critique",
+            "evidence_ref": "rec-trial",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown class refuses: {refused}");
+
+    // 5. The recommendation is NEVER applied: the create boundary keeps
+    // resolving the RULE table (the class `uncertain` still routes to
+    // `independent_panel`, NOT the recommended `critique`).
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "rec-shadow-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "shadow",
+                "objective": "probe",
+                "routing_class": "uncertain",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the shadow create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the shadow thread reads: {state}");
+    assert_eq!(
+        state["state"]["workflow_profile"],
+        json!("independent_panel"),
+        "the RULE's arm, not the recommendation's"
+    );
+
+    // 6. The list shows the record with the stated non-application.
+    let (status, recommendations) =
+        get(&client, &base, "/v1/routing/recommendations", &human_id).await;
+    assert_eq!(status, 200, "the recommendations read: {recommendations}");
+    let recommendations = recommendations.as_array().unwrap();
+    assert_eq!(recommendations.len(), 1, "{recommendations:?}");
+    assert_eq!(recommendations[0]["arm"], json!("critique"));
+    assert_eq!(recommendations[0]["applied"], json!(false));
+}

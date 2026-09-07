@@ -771,7 +771,7 @@ and honest inconclusive outcomes.
       rows with both surfaces. Frontier → `.5.3`.
 
   - ID: `PHASE-5.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the shadow recommendation — the learned-routing
       surface: the recommendation records (the class → the
       arm, the evidence reference — the `.4` trial/gate
@@ -779,6 +779,25 @@ and honest inconclusive outcomes.
       EXISTING registered profiles — never a raise), the
       recommendation is recorded, never applied.
     Roadmap: §13.8
+    Done (`2026-09-07`): the shadow recommendation landed per
+      ADR-031 — migration 0037
+      (`routing_recommendations`: the class + the arm + the
+      evidence reference); `routing.rs` gains the
+      `record_recommendation` (the class in the vocabulary;
+      the arm must be a REGISTERED profile — the
+      never-a-raise constraint; the evidence ref must be a
+      `.4` trial or gate — the recommendation names what it
+      rests on; the duplicate id refuses) + the list; the api:
+      `POST`/`GET /v1/routing/recommendations` — the record
+      carries `applied: false` ON ITS FACE; the create
+      boundary keeps resolving the RULE table (the shadow
+      proof: the class `uncertain` still routes to the rule's
+      `independent_panel`, not the recommended `critique`).
+      Measured (routing 2): the recorded recommendation with
+      the stated non-application, the phantom-arm + the
+      ghost-evidence + the unknown-class refusals, the
+      shadow-create still on the rule's arm, the list.
+      **`.5` COMPLETE** — frontier → `.6`.
 
 - ID: `PHASE-5.6`
   Status: `proposed`
@@ -790,10 +809,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.5.3` | `proposed` | `.5.2` done — the rule-based policy (the seven built-in rules, the deterministic resolution, the create-boundary application, the audit; routing 1); the shadow recommendation executes next |
+| 1 | `PHASE-5.6` | `proposed` | `.5.3` done — the shadow recommendation (the registered-arm constraint, the named evidence, the stated non-application; routing 2) — **the `.5` lane (the routing policy) is COMPLETE**; the G5-exit lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.3` done — the shadow recommendation
+  (migration 0037: the registered-arm constraint, the named
+  evidence, the stated `applied: false`; the shadow proof —
+  the create keeps the rule's arm); routing 2; **`.5`
+  COMPLETE** — frontier → `.6`.
 - `2026-09-07`: `.5.2` done — the rule-based policy (migration
   0036: the seven §13.8 rules, the deterministic resolution,
   the append-only audit; the create-boundary application with
@@ -1498,6 +1522,50 @@ the guard) — `\.rs$` + `(^|/)migrations/` + `scripts/`.
 - [x] **FIX** — `0036_routing_policy.sql`, `src/routing.rs`,
   `src/threads.rs`, `src/api.rs`, `tests/routing.rs`,
   `scripts/run_pg_tests.sh`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.5.3)
+
+The CODE change owned by this leaf:
+`migrations/0037_routing_recommendations.sql` (NEW — the
+recommendation table), `crates/reasonbraid-server/src/
+routing.rs` (the `RecommendationSubmission` shape, the
+`record_recommendation` + the list),
+`crates/reasonbraid-server/src/api.rs` (the two verbs),
+`crates/reasonbraid-server/tests/routing.rs` (the new test) —
+`\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  learned-routing surface existed (the `.5` census — the
+  routing was the rule table + the client's choice only).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "routing_recommendations\|RecommendationSubmission" dc02a50
+  -- crates/ migrations/` → rc=1 (nothing before this leaf).
+  The fix point is the ADR-031 shadow contract: the record
+  with the registered-arm constraint + the named evidence +
+  the stated non-application.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test routing
+  the_shadow_recommendation_records_and_never_applies` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 2 tests … ok`) — the recorded recommendation
+  with `applied: false`, the phantom-arm + the ghost-evidence
+  + the unknown-class refusals, the shadow-create still on
+  the RULE's arm (the never-applied proof), the list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 57 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 20 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg524_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0037_routing_recommendations.sql`,
+  `src/routing.rs`, `src/api.rs`, `tests/routing.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

@@ -465,6 +465,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/routing/rules", get(list_routing_rules))
         .route("/v1/routing/resolve", post(resolve_routing_class))
         .route("/v1/routing/resolutions", get(list_routing_resolutions))
+        .route(
+            "/v1/routing/recommendations",
+            post(record_routing_recommendation).get(list_routing_recommendations),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -2197,6 +2201,44 @@ async fn list_routing_resolutions(
         ));
     }
     Ok(Json(crate::routing::list_resolutions(&state.pool).await?))
+}
+
+/// `POST /v1/routing/recommendations` — record the shadow recommendation
+/// (`.5.3`): the arm must be an EXISTING registered profile (never a raise);
+/// the record is NEVER applied.
+async fn record_routing_recommendation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::routing::RecommendationSubmission>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no recommendation",
+        ));
+    }
+    match crate::routing::record_recommendation(&state.pool, &submission).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/routing/recommendations` — the shadow records, newest first.
+async fn list_routing_recommendations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no recommendations",
+        ));
+    }
+    Ok(Json(
+        crate::routing::list_recommendations(&state.pool).await?,
+    ))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

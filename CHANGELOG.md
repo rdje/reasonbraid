@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-020: the canonical-publication contract (`PHASE-6.4.1`)
+
+- ADR-020 accepted (`docs/adr/020-canonical-publication.md`): the publication is the nine-step §15.7 state machine over the staged record; the Git refs are the publication truth with the compare-and-swap idempotency; the reconciliation is the six §15.8 rules (the never-silent-promote); the signatures ride the manifest digest. No code.
+
 ## 2026-09-07 — The publication lane is decomposed at the census seams (`PHASE-6.4`)
 
 - The inputs + the substrate ship (the decisions/approvals, the byte-identical projections, the Git machinery, the CA keys, the transactional outbox); the publication records + the reconciliation matrix are the greenfield. Children: `.4.1` ADR-020 → `.4.2` the records + the staging → `.4.3` the Git publication + the reconciliation.

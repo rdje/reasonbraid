@@ -460,7 +460,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     Frontier → `.4.1`.
 
   - ID: `PHASE-6.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-020 + the census — the publication contract:
       the nine-step §15.7 state machine (the lock, the
       clean-worker compile, the sign, the one-transaction
@@ -475,6 +475,26 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       code.
     ADR: 020
     Roadmap: §15.7–15.8
+    Done (`2026-09-07`): ADR-020 accepted (evidence-gated) —
+      `docs/adr/020-canonical-publication.md` (top-level
+      `answers:`): the publication is the NINE-STEP §15.7
+      state machine over the staged record (each step typed —
+      a step that cannot complete is the typed failure,
+      never a skip); the publication record is the machine's
+      aggregate (the decision + the approval + the projection
+      references + the manifest digest + the
+      staged/effective/failed state + the Git object ids —
+      never folded into the approval); the Git refs are the
+      publication truth, PostgreSQL coordinates (the
+      compare-and-swap is the idempotency primitive — a ref
+      that moved is the typed failure, never a force-push);
+      the reconciliation is the SIX §15.8 rules (the
+      idempotent retry, the verify-and-advance, the
+      stop-and-alert, the freeze-and-repair, the
+      quarantine-and-adjudicate — never a silent promote, the
+      out-of-band alert); the signatures ride the MANIFEST
+      digest, never the prose. No code changed. Frontier →
+      `.4.2`.
 
   - ID: `PHASE-6.4.2`
     Status: `proposed`
@@ -518,10 +538,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.1` | `proposed` | `.4` decomposed at the census seams (the inputs + the substrate ship — the decisions/approvals, the projections, the Git + the CA + the outbox; the publication records + the reconciliation are the greenfield) — ADR-020 opens the lane |
+| 1 | `PHASE-6.4.2` | `proposed` | `.4.1` done — ADR-020 accepted (the nine-step machine, the aggregate record, the CAS idempotency, the six reconciliation rules); the publication records + the staging execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.1` done — ADR-020 accepted (the
+  publication contract: the nine-step machine, the
+  compare-and-swap idempotency, the six §15.8 reconciliation
+  rules, the manifest-digest signatures); no code; frontier →
+  `.4.2`.
 - `2026-09-07`: `.4` decomposed at the census seams — the
   publication inputs + the substrate ship (the decisions/
   approvals, the byte-identical projections, the Git + the

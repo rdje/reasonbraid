@@ -614,13 +614,35 @@ and honest inconclusive outcomes.
       refuses. Frontier → `.4.3`.
 
   - ID: `PHASE-5.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the randomized routing experiments + the cohort
       tracking — the trial assignment (the seeded
       randomization over the workflow arms), the cohort
       records (the case cohorts + the subject cohorts), the
       per-arm results.
     Roadmap: §13.7, §13.8
+    Done (`2026-09-07`): the shadow trials landed per ADR-017 —
+      migration 0034 (`evaluation_trials`: the declared seed +
+      the arms + the cohorts + the case ids + the SERVER-
+      computed assignment; `evaluation_trial_results`:
+      APPEND-ONLY per-arm rows — never an overwrite);
+      `evaluation.rs` gains the `create_trial` (the seeded
+      assignment via a dependency-free splitmix64 — the std
+      hasher is NOT stable across releases, the draw must be;
+      the empty-arms/cases + the unknown-cohort-kind + the
+      phantom-corpus + the duplicate refusals), the
+      `record_trial_results` (the append to a REGISTERED trial
+      only), the list verbs; the api: `POST`/`GET
+      /v1/evaluations/trials` + `POST`/`GET
+      /v1/evaluations/trials/{id}/results`; the trial never
+      changes production routing (the shadow rule — the `.5`
+      lane's decision consumes the records). Measured
+      (evaluation 2): the assignment covers every case with a
+      declared arm, the SAME seed + cases re-draw the SAME
+      assignment (the reproducibility proof), the different
+      seed differs, the five refusals, the append-only results
+      (both rows survive), the newest-first list. Frontier →
+      `.4.4`.
 
   - ID: `PHASE-5.4.4`
     Status: `proposed`
@@ -646,10 +668,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.4.3` | `proposed` | `.4.2` done — the evaluation-service core (the registry + the seed-declaring run records + the lists; evaluation 1); the randomized routing experiments + the cohorts execute next |
+| 1 | `PHASE-5.4.4` | `proposed` | `.4.3` done — the shadow trials (the server-computed seeded assignment, the recorded cohorts, the append-only results; evaluation 2); the calibration + the regression gates execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.3` done — the shadow trials (migration
+  0034: the server-computed seeded assignment via the
+  dependency-free splitmix64, the recorded cohorts, the
+  append-only per-arm results); evaluation 2; frontier →
+  `.4.4`.
 - `2026-09-07`: `.4.2` done — the evaluation-service core
   (migration 0033: the registry + the run records; the
   declared-seed rule, the phantom-corpus + duplicate
@@ -1180,6 +1207,55 @@ the guard) — `\.rs$` + `(^|/)migrations/` + `scripts/`.
 - [x] **FIX** — `0033_evaluation_service.sql`, `src/evaluation.rs`,
   `src/lib.rs`, `src/api.rs`, `tests/evaluation.rs`,
   `scripts/run_pg_tests.sh`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-5.4.3)
+
+The CODE change owned by this leaf:
+`migrations/0034_evaluation_trials.sql` (NEW — the trial +
+the append-only results tables), `crates/reasonbraid-server/
+src/evaluation.rs` (the `TrialSubmission`/`CohortRecord`/
+`StoredTrial` shapes, the `splitmix64` stable draw, the
+`create_trial` + `record_trial_results` + the list verbs),
+`crates/reasonbraid-server/src/api.rs` (the four trial verbs),
+`crates/reasonbraid-server/tests/evaluation.rs` (the new test)
+— `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no trial,
+  no assignment, no cohort records, no per-arm results (the
+  `.4` census — the harness ran one workflow at a time).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "evaluation_trials\|splitmix64\|TrialSubmission" 5579701 --
+  crates/ migrations/` → rc=1 (nothing before this leaf). The
+  fix point is the ADR-017 shadow-trial contract: the SERVER
+  computes the seeded assignment (reproducible — never a
+  client-supplied draw), the cohorts are recorded labels, the
+  results append.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test evaluation
+  the_shadow_trials_record_the_seeded_assignment_and_the_cohorts`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 2 tests … ok`) — the assignment covers every
+  case with a declared arm, the SAME seed + cases re-draw the
+  SAME assignment (the reproducibility proof), the different
+  seed differs, the five refusals (the empty arms / the empty
+  cases / the unknown cohort kind / the phantom corpus / the
+  duplicate), the append-only results (both rows survive), the
+  newest-first list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 56 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 19 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg521_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0034_evaluation_trials.sql`, `src/evaluation.rs`,
+  `src/api.rs`, `tests/evaluation.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

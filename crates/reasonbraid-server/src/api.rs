@@ -442,6 +442,14 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/evaluations/runs",
             post(record_evaluation_run).get(list_evaluation_runs),
         )
+        .route(
+            "/v1/evaluations/trials",
+            post(create_evaluation_trial).get(list_evaluation_trials),
+        )
+        .route(
+            "/v1/evaluations/trials/{trial_id}/results",
+            post(record_trial_results).get(list_trial_results),
+        )
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -1922,6 +1930,81 @@ async fn list_evaluation_runs(
         ));
     }
     Ok(Json(crate::evaluation::list_runs(&state.pool).await?))
+}
+
+/// `POST /v1/evaluations/trials` — create the SHADOW routing trial (`.4.3`):
+/// the server computes the seeded assignment (the record alone reproduces
+/// the draw); the trial never changes production routing.
+async fn create_evaluation_trial(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::evaluation::TrialSubmission>,
+) -> Result<Json<crate::evaluation::StoredTrial>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal creates no trial",
+        ));
+    }
+    match crate::evaluation::create_trial(&state.pool, &submission).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/trials` — the trials, newest first.
+async fn list_evaluation_trials(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::evaluation::StoredTrial>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no trials",
+        ));
+    }
+    Ok(Json(crate::evaluation::list_trials(&state.pool).await?))
+}
+
+/// `POST /v1/evaluations/trials/{id}/results` — append one per-arm results
+/// row (append-only — the record's identity is its content).
+async fn record_trial_results(
+    State(state): State<Arc<ApiState>>,
+    Path(trial_id): Path<String>,
+    headers: HeaderMap,
+    Json(results): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no results",
+        ));
+    }
+    match crate::evaluation::record_trial_results(&state.pool, &trial_id, &results).await {
+        Ok(()) => Ok(Json(json!({ "trial_id": trial_id, "appended": true }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/evaluations/trials/{id}/results` — the recorded per-arm results.
+async fn list_trial_results(
+    State(state): State<Arc<ApiState>>,
+    Path(trial_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no results",
+        ));
+    }
+    Ok(Json(
+        crate::evaluation::list_trial_results(&state.pool, &trial_id).await?,
+    ))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

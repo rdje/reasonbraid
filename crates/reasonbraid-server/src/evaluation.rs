@@ -215,6 +215,8 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
 type CorpusRow = (String, i64, String, String, Value);
 /// The stored run row shape.
 type RunRow = (String, String, String, i64, Option<i64>, bool, i64, Value);
+/// The stored trial row shape.
+type TrialRow = (String, String, i64, i64, Value, Value, Value, Value);
 
 /// The registry's latest versions (one row per corpus id).
 pub async fn list_corpora(pool: &PgPool) -> Result<Vec<RegisteredCorpus>, sqlx::Error> {
@@ -272,4 +274,216 @@ pub async fn list_runs(pool: &PgPool) -> Result<Vec<StoredRun>, sqlx::Error> {
             },
         )
         .collect())
+}
+
+// ── The randomized routing trials + the cohorts (`.4.3`, ADR-017) ────────────────
+
+/// One cohort record (`.4.3`): a recorded LABEL over the trial's subjects or
+/// cases — never a derived claim (the reports aggregate only what is
+/// recorded here).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CohortRecord {
+    pub label: String,
+    /// `case` (the case ids the cohort covers) or `subject` (the subject ids).
+    pub kind: String,
+    pub members: Vec<String>,
+}
+
+/// The trial submission (`.4.3`): the shadow experiment — the arms, the
+/// recorded cohorts, and the cases. The SERVER computes the seeded
+/// assignment (the client never supplies it, so the draw is reproducible
+/// from the record alone).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrialSubmission {
+    pub trial_id: String,
+    pub corpus_id: String,
+    pub corpus_version: i64,
+    pub seed: i64,
+    pub arms: Vec<String>,
+    #[serde(default)]
+    pub cohorts: Vec<CohortRecord>,
+    pub case_ids: Vec<String>,
+}
+
+/// The stored trial (the computed assignment rides it).
+#[derive(Debug, Clone, Serialize)]
+pub struct StoredTrial {
+    pub trial_id: String,
+    pub corpus_id: String,
+    pub corpus_version: i64,
+    pub seed: i64,
+    pub arms: Vec<String>,
+    pub cohorts: Vec<CohortRecord>,
+    pub case_ids: Vec<String>,
+    pub assignment: serde_json::Map<String, serde_json::Value>,
+}
+
+impl EvaluationError {
+    fn empty_arms() -> Self {
+        EvaluationError::MalformedDigest("the arms are empty".to_string())
+    }
+    fn empty_cases() -> Self {
+        EvaluationError::MalformedDigest("the case ids are empty".to_string())
+    }
+    fn bad_cohort(label: &str) -> Self {
+        EvaluationError::MalformedDigest(format!(
+            "cohort `{label}` has an unknown kind (expected `case` or `subject`)"
+        ))
+    }
+}
+
+/// The stable splitmix64 over (seed, bytes) — a dependency-free deterministic
+/// draw so the same seed + case re-draws the same arm on every run (the
+/// `std` hasher is NOT stable across releases; the assignment must be).
+fn splitmix64(seed: u64, input: &[u8]) -> u64 {
+    let mut z = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    for &b in input {
+        z = z.wrapping_add(u64::from(b));
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^= z >> 31;
+    }
+    z
+}
+
+/// Create the shadow trial: the seeded assignment is SERVER-computed (the
+/// record alone reproduces it — the client never supplies a draw).
+pub async fn create_trial(
+    pool: &PgPool,
+    submission: &TrialSubmission,
+) -> Result<StoredTrial, EvaluationError> {
+    if submission.arms.is_empty() {
+        return Err(EvaluationError::empty_arms());
+    }
+    if submission.case_ids.is_empty() {
+        return Err(EvaluationError::empty_cases());
+    }
+    for cohort in &submission.cohorts {
+        if cohort.kind != "case" && cohort.kind != "subject" {
+            return Err(EvaluationError::bad_cohort(&cohort.label));
+        }
+    }
+    let corpus_exists: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM evaluation_corpora \
+         WHERE corpus_id = $1 AND version = $2)",
+    )
+    .bind(&submission.corpus_id)
+    .bind(submission.corpus_version)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| EvaluationError::UnknownCorpus(submission.corpus_id.clone()))?;
+    if !corpus_exists.unwrap_or(false) {
+        return Err(EvaluationError::UnknownCorpus(submission.corpus_id.clone()));
+    }
+
+    // The seeded draw: splitmix64 over the (case id, seed) — stable across
+    // runs and platforms (the std hasher is not).
+    let mut assignment = serde_json::Map::new();
+    for case_id in &submission.case_ids {
+        let draw = splitmix64(submission.seed as u64, case_id.as_bytes());
+        let arm = &submission.arms[(draw as usize) % submission.arms.len()];
+        assignment.insert(case_id.clone(), serde_json::Value::String(arm.clone()));
+    }
+
+    let inserted = sqlx::query(
+        "INSERT INTO evaluation_trials \
+         (trial_id, corpus_id, corpus_version, seed, arms, cohorts, case_ids, assignment) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(&submission.trial_id)
+    .bind(&submission.corpus_id)
+    .bind(submission.corpus_version)
+    .bind(submission.seed)
+    .bind(serde_json::to_value(&submission.arms).expect("the arms serialize"))
+    .bind(serde_json::to_value(&submission.cohorts).expect("the cohorts serialize"))
+    .bind(serde_json::to_value(&submission.case_ids).expect("the case ids serialize"))
+    .bind(serde_json::to_value(&assignment).expect("the assignment serializes"))
+    .execute(pool)
+    .await;
+    match inserted {
+        Ok(_) => Ok(StoredTrial {
+            trial_id: submission.trial_id.clone(),
+            corpus_id: submission.corpus_id.clone(),
+            corpus_version: submission.corpus_version,
+            seed: submission.seed,
+            arms: submission.arms.clone(),
+            cohorts: submission.cohorts.clone(),
+            case_ids: submission.case_ids.clone(),
+            assignment,
+        }),
+        Err(_) => Err(EvaluationError::Duplicate(format!(
+            "trial `{}`",
+            submission.trial_id
+        ))),
+    }
+}
+
+/// Append one per-arm results row (append-only — never an overwrite).
+pub async fn record_trial_results(
+    pool: &PgPool,
+    trial_id: &str,
+    results: &Value,
+) -> Result<(), EvaluationError> {
+    let trial_exists: Option<bool> =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM evaluation_trials WHERE trial_id = $1)")
+            .bind(trial_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| EvaluationError::Duplicate(trial_id.to_string()))?;
+    if !trial_exists.unwrap_or(false) {
+        return Err(EvaluationError::Duplicate(format!(
+            "trial `{trial_id}` (the results append to a REGISTERED trial)"
+        )));
+    }
+    sqlx::query("INSERT INTO evaluation_trial_results (trial_id, results) VALUES ($1, $2)")
+        .bind(trial_id)
+        .bind(results)
+        .execute(pool)
+        .await
+        .map_err(|_| EvaluationError::Duplicate("trial result".to_string()))?;
+    Ok(())
+}
+
+/// The trials, newest first.
+pub async fn list_trials(pool: &PgPool) -> Result<Vec<StoredTrial>, sqlx::Error> {
+    let rows: Vec<TrialRow> = sqlx::query_as(
+        "SELECT trial_id, corpus_id, corpus_version, seed, arms, cohorts, case_ids, assignment \
+         FROM evaluation_trials ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(trial_id, corpus_id, corpus_version, seed, arms, cohorts, case_ids, assignment)| {
+                StoredTrial {
+                    trial_id,
+                    corpus_id,
+                    corpus_version,
+                    seed,
+                    arms: serde_json::from_value(arms).expect("the arms parse"),
+                    cohorts: serde_json::from_value(cohorts).expect("the cohorts parse"),
+                    case_ids: serde_json::from_value(case_ids).expect("the case ids parse"),
+                    assignment: assignment
+                        .as_object()
+                        .expect("the assignment is an object")
+                        .clone(),
+                }
+            },
+        )
+        .collect())
+}
+
+/// The recorded per-arm results for one trial, oldest first.
+pub async fn list_trial_results(pool: &PgPool, trial_id: &str) -> Result<Vec<Value>, sqlx::Error> {
+    let rows: Vec<Value> = sqlx::query_scalar(
+        "SELECT results FROM evaluation_trial_results WHERE trial_id = $1 \
+         ORDER BY recorded_at",
+    )
+    .bind(trial_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }

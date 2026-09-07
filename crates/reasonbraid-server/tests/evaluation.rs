@@ -374,3 +374,247 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
     let (status, _) = get(&client, &base, "/v1/evaluations/runs", "hpr_ghost").await;
     assert_eq!(status, 401, "the unenrolled read refuses");
 }
+
+#[tokio::test]
+async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "tri-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The trial's corpus must exist.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &human_id,
+        &json!({
+            "corpus_id": "tri-corpus",
+            "version": 1,
+            "cases_digest": DIGEST_A,
+            "prompts_digest": DIGEST_B,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the corpus registers");
+
+    // 1. The trial creation: the SERVER computes the seeded assignment (the
+    // client supplies only the arms, the cohorts, and the case ids).
+    let (status, trial) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "trial_id": "tri-1",
+            "corpus_id": "tri-corpus",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["single", "blind", "critique"],
+            "cohorts": [
+                { "label": "factual", "kind": "case", "members": ["c1", "c2"] },
+                { "label": "expert-humans", "kind": "subject", "members": ["hpr-x"] },
+            ],
+            "case_ids": ["c1", "c2", "c3", "c4"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the trial creates: {trial}");
+    assert_eq!(trial["trial_id"], json!("tri-1"));
+    let assignment = trial["assignment"].as_object().unwrap();
+    assert_eq!(assignment.len(), 4, "every case is assigned: {trial}");
+    for case_id in ["c1", "c2", "c3", "c4"] {
+        let arm = assignment[case_id].as_str().unwrap();
+        assert!(
+            ["single", "blind", "critique"].contains(&arm),
+            "the arm is one of the declared arms: {trial}"
+        );
+    }
+    assert_eq!(trial["cohorts"].as_array().unwrap().len(), 2);
+
+    // 2. The reproducibility: the SAME seed + the same cases re-draw the
+    // SAME assignment (a new trial id, the identical draw).
+    let (status, repeat) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "trial_id": "tri-1-repeat",
+            "corpus_id": "tri-corpus",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["single", "blind", "critique"],
+            "cohorts": [],
+            "case_ids": ["c1", "c2", "c3", "c4"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the repeat trial creates: {repeat}");
+    assert_eq!(
+        repeat["assignment"], trial["assignment"],
+        "the draw reproduces"
+    );
+
+    // 3. A different seed may (and generally does) draw differently — the
+    // assignment is the seed's, not a guess.
+    let (status, different) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "trial_id": "tri-2",
+            "corpus_id": "tri-corpus",
+            "corpus_version": 1,
+            "seed": 8,
+            "arms": ["single", "blind", "critique"],
+            "cohorts": [],
+            "case_ids": ["c1", "c2", "c3", "c4"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second trial creates: {different}");
+    assert_ne!(different["assignment"], trial["assignment"]);
+
+    // 4. The refusals: the empty arms, the empty cases, the unknown cohort
+    // kind, the phantom corpus, the duplicate trial.
+    for (key, body, needle) in [
+        (
+            "tri-empty-arms",
+            json!({
+                "trial_id": "tri-empty-arms",
+                "corpus_id": "tri-corpus",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": [],
+                "case_ids": ["c1"],
+            }),
+            "arms are empty",
+        ),
+        (
+            "tri-empty-cases",
+            json!({
+                "trial_id": "tri-empty-cases",
+                "corpus_id": "tri-corpus",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": ["single"],
+                "case_ids": [],
+            }),
+            "case ids are empty",
+        ),
+        (
+            "tri-bad-cohort",
+            json!({
+                "trial_id": "tri-bad-cohort",
+                "corpus_id": "tri-corpus",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": ["single"],
+                "cohorts": [ { "label": "x", "kind": "nope", "members": [] } ],
+                "case_ids": ["c1"],
+            }),
+            "unknown kind",
+        ),
+        (
+            "tri-phantom",
+            json!({
+                "trial_id": "tri-phantom",
+                "corpus_id": "ghost",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": ["single"],
+                "case_ids": ["c1"],
+            }),
+            "not registered",
+        ),
+    ] {
+        let (status, refused) =
+            post(&client, &base, "/v1/evaluations/trials", &human_id, &body).await;
+        assert_eq!(status, 400, "{key}: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains(needle),
+            "{refused}"
+        );
+    }
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "trial_id": "tri-1",
+            "corpus_id": "tri-corpus",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["single"],
+            "case_ids": ["c1"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the duplicate trial refuses: {refused}");
+
+    // 5. The per-arm results are APPEND-ONLY: two submissions accumulate
+    // (the record's identity is its content, never an overwrite).
+    let (status, appended) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials/tri-1/results",
+        &human_id,
+        &json!({ "single": { "mean": 0.9 }, "blind": { "mean": 0.8 } }),
+    )
+    .await;
+    assert_eq!(status, 200, "the results append: {appended}");
+    let (status, appended) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials/tri-1/results",
+        &human_id,
+        &json!({ "critique": { "mean": 0.95 } }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second results row appends: {appended}");
+    let (status, results) = get(
+        &client,
+        &base,
+        "/v1/evaluations/trials/tri-1/results",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the results read: {results}");
+    assert_eq!(
+        results.as_array().unwrap().len(),
+        2,
+        "both rows survive: {results}"
+    );
+
+    // 6. A result append to an unknown trial refuses.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials/ghost/results",
+        &human_id,
+        &json!({ "single": { "mean": 0.5 } }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost trial refuses: {refused}");
+
+    // 7. The trials list, newest first.
+    let (status, trials) = get(&client, &base, "/v1/evaluations/trials", &human_id).await;
+    assert_eq!(status, 200, "the trials list: {trials}");
+    let trials = trials.as_array().unwrap();
+    assert_eq!(trials.len(), 3, "{trials:?}");
+    assert_eq!(trials[0]["trial_id"], json!("tri-2"), "newest first");
+}

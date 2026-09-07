@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The shadow routing trials land (`PHASE-5.4.3`)
+
+- Migration 0034: the trial records the declared seed + the arms + the cohorts + the case ids, and the SERVER computes the seeded assignment (a dependency-free splitmix64 — the `std` hasher is not stable across releases, the draw must be): the same seed + cases re-draw the same assignment. The per-arm results append (never overwrite); the trial never changes production routing (the `.5` lane's decision consumes the records). Measured: evaluation 2.
+
 ## 2026-09-07 — The evaluation-service core lands (`PHASE-5.4.2`)
 
 - Migration 0033: the versioned corpus registry (the declared 64-hex digests) + the experiment run records (the workflow arm, the corpus reference, the DECLARED seed — a non-deterministic run without one is the typed refusal — the trial count, the harness's results). The four verbs (`POST`/`GET /v1/evaluations/corpora`, `POST`/`GET /v1/evaluations/runs`) record, never re-grade: the service RECORDS, the WP7 harness MEASURES. The pg script gained the `evaluation` suite.

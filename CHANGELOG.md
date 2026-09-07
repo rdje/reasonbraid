@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The restore is the recovery control: a backup restored on every guard run (`PHASE-2.4.1`)
+
+- `scripts/backup.sh` (custom-format pg_dump, dated file under `target/backups/`) + `scripts/restore.sh` (pg_restore --clean --if-exists --exit-on-error into a caller-chosen isolated database) land.
+- The guard gains the restore EXERCISE (§17.5's last line — a backup that has never been restored is not a recovery control): the `backup_restore` suite seeds rows, takes a real pg_dump, MUTATES the live database, restores into an isolated database (createdb → pg_restore → assert → dropdb), and asserts the pre-mutation state came back. It skips offline or without the pg tools.
+- The dev-profile dump is plaintext (the encryption + key story is the `.4.3` deferral). The guard grew to 14 suites; demo 34/34. Frontier → `.4.2` (the migration upgrade test).
+
 ## 2026-09-07 — `.4` split at the contract seams (`PHASE-2.4`)
 
 - The census found NOTHING: no backup/restore tooling (`grep -rn 'pg_dump|pg_basebackup|restore' scripts/ Makefile` → no matches), the migrations are applied to a fresh database by every suite but the upgrade-an-EXISTING-database path is never exercised, and the object/Git inventory + the key recovery + the reconciliation have nothing to bind in the dev profile (no object store, no canonical Git) — named deferrals, not build targets.

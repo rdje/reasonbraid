@@ -831,7 +831,7 @@ slice can reuse the same control plane without rewriting it.
     recovery + the reconciliation — named triggers).
 
   - ID: `PHASE-2.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: backup + restore automation — `scripts/backup.sh` (pg_dump
       custom-format to a dated file, the dev profile's plaintext stance
       — encryption is the §17.5 note, deferred with the key story) +
@@ -840,6 +840,18 @@ slice can reuse the same control plane without rewriting it.
       fresh database, and asserts the state returned — the restore is the
       proof (§17.5's last line), run in CI.
     Roadmap: §17.5
+    Done (`2026-09-07`): `scripts/backup.sh` + `scripts/restore.sh`
+      landed, and the restore EXERCISE runs in the guard
+      (`backup_restore` suite): the test seeds rows, takes a REAL pg_dump
+      of the live database, MUTATES it, restores into an ISOLATED
+      database (createdb → pg_restore → assert → dropdb), and asserts the
+      restored state matches the pre-mutation state — the backup that has
+      never been restored is not a recovery control, and this one is
+      restored on every guard run. The suite skips offline (no
+      DATABASE_URL) and when the pg tools are absent. The guard grew to
+      14 suites + the demo 34/34 (`target/pg241f_guard.log`); the
+      acceptance checklist below records the evidence — frontier →
+      `.4.2`.
     Acceptance: the backup file restores into an isolated database and
       the restored state matches the pre-mutation state (measured); the
       guard leg is green.
@@ -891,7 +903,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.4.1` | `proposed` | `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
+| 1 | `PHASE-2.4.2` | `proposed` | `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
+ `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
  `.3` is COMPLETE (ADR-012/013, the spend latch, the reconciliation surface); the backup/PITR + migrations lane executes now |
  `.3.2` done — the spend circuit breakers (the in-tx latch + the arm/reset/inspect verbs); the usage-reconciliation surface executes now |
  `.3.1` done — ADR-012/013 accepted (the shipped ambiguity + budget machinery promotes; no code); the spend circuit breakers execute now |
@@ -901,6 +914,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.4.1` done — the backup + restore automation:
+  `scripts/backup.sh`/`scripts/restore.sh` + the guard's restore exercise
+  (seed → real pg_dump → mutate → restore into an isolated database →
+  assert the pre-mutation state — the backup is restored on every guard
+  run); frontier → `.4.2`.
 - `2026-09-07`: `.4` decomposed at the contract seams — the census found
   NOTHING: no backup/restore tooling, the upgrade-an-existing-database path
   unexercised, and the object/Git inventory with nothing to bind in the dev
@@ -1213,6 +1231,41 @@ the Allowed outcome's digest/decided_at), `crates/reasonbraid-node/src/
 - [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
   tree's logs below, `docs/TASK_TREE.md` frontier, the book,
   KNOWLEDGE_MAP — same commit.
+
+## Acceptance Checklist (PHASE-2.4.1)
+
+The CODE change owned by this leaf: `scripts/backup.sh` + `scripts/restore.sh`
+(`(^|/)scripts/` + `\.sh$`), `crates/reasonbraid-server/tests/backup_restore.rs`
+(`\.rs$`), `scripts/run_pg_tests.sh` (the suite joins the guard) — all code
+paths.
+
+- [x] **REPRODUCE / ISSUE** — §17.5: not one backup existed (`grep -rn
+  'pg_dump|pg_basebackup|restore' scripts/ Makefile` → no matches before
+  this leaf); the demo's SIGKILL beat proves durability, not restoration.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the recovery control is the
+  RESTORE, not the dump (§17.5's last line). The fix is the exercise: a
+  guard suite that runs the real pg_dump/pg_restore pair and asserts the
+  restored state — a backup that is restored on every guard run is a
+  control, not an artifact.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no
+  tooling, no exercise. After: `bash scripts/run_pg_tests.sh` →
+  `test result: ok. 1 passed` (`backup_restore` — the seed → pg_dump →
+  mutate → createdb → pg_restore → assert-the-pre-mutation-state →
+  dropdb leg) + the full guard green (14 suites + e2e `2 passed` + the
+  demo `ALL acceptance checks passed` (34 PASS, `rc=0`,
+  `target/pg241f_guard.log`)).
+- [x] **NO REGRESSION** — `cargo test --all` → 46 offline suites green;
+  `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt
+  --all -- --check` → rc=0; `make gate` → 13/13 at commit; `make book`
+  builds.
+- [x] **FIX** — `scripts/backup.sh` (custom-format pg_dump, dated file);
+  `scripts/restore.sh` (pg_restore --clean --if-exists --exit-on-error
+  into a caller-chosen database); the restore-exercise suite (the URL's
+  user/host/port all ride the pg tools — the exercise's first runs
+  caught each); the guard list.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs below, `docs/TASK_TREE.md` frontier, the book's
+  deployment chapter, KNOWLEDGE_MAP — same commit.
 
 ## Acceptance Checklist (PHASE-2.3.3)
 
@@ -1863,7 +1916,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
-| `2026-09-07` | `PHASE-2.3.3` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `command_api` grew to 17 with the measured reconciliation leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg233_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture); **`.3` COMPLETE** — frontier → `.4` |
+| `2026-09-07` | `PHASE-2.4.1` | `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
+ `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `command_api` grew to 17 with the measured reconciliation leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg233_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture); **`.3` COMPLETE** — frontier → `.4` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `budget` grew to 9 with the two breaker legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg232c_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the spend circuit breakers (migration 0016 + the in-tx latch + the arm/reset/inspect verbs + the CLI); frontier → `.3.3` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `node_work` grew to 8 with the live dead-letter/replay leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg224b_guard.log`); `cargo test -p reasonbraid-node --test worker_dead_letter` → `test result: ok. 2 passed`; `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the two-way quarantine (the once-only dead-letter report + the server's auto-quarantine + `POST /v1/nodes/replay` + `rb node replay` + the decision-scoped retry re-arm); **`.2` COMPLETE** — frontier → `.3` |
  `cargo test -p reasonbraid-core` → `test result: ok. 49 passed` (the five retry tests); `cargo test -p reasonbraid-node --test worker_retry_policy` → `test result: ok. 4 passed`; `bash scripts/run_pg_tests.sh` → all twelve live suites + e2e + the demo 34 PASS (`rc=0`, `target/pg223_guard.log`); `cargo test --all` → 44 offline suites; clippy/fmt clean; `make gate` → 13/13 | the retry policy (the pure §14.6 decision + the typed wire flag + the worker's retry gate); frontier → `.2.4` |
@@ -1890,6 +1944,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.4.1` | `REASONBRAID-PHASE2-0028` | the backup + restore automation: `scripts/backup.sh`/`restore.sh` + the guard's restore exercise (seed → dump → mutate → restore → assert the pre-mutation state) |
 | `PHASE-2.4` | `REASONBRAID-PHASE2-0027` | the contract-seam split (no backup tooling, the upgrade path unexercised, the inventory has nothing to bind) |
 | `PHASE-2.3.3` | `REASONBRAID-PHASE2-0026` | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture, measured against the ledger rows) — **`.3` COMPLETE** |
 | `PHASE-2.3.2` | `REASONBRAID-PHASE2-0025` | the spend circuit breakers: migration 0016 + the in-tx latch (tripped refuses everything new, the crossing trips with the denial's transaction) + the arm/reset/inspect verbs + the CLI |

@@ -65,3 +65,20 @@ build.
 - **Flags, not config files:** everything is flags/env; process supervision
   units and container images arrive with Phase 2 operations — recorded in the
   runbook's subtraction record.
+
+## Backup and restore (`.4.1`)
+
+The recovery control is the RESTORE, not the dump (§17.5: a backup that has
+never been restored is not a recovery control):
+
+```bash
+bash scripts/backup.sh                  # DATABASE_URL -> target/backups/<date>.dump
+createdb reasonbraid_restored           # an ISOLATED target database
+BACKUP_FILE=… RESTORE_DATABASE_URL=… bash scripts/restore.sh
+```
+
+The dev-profile dump is plaintext (the encryption + key story deferral is
+named in the `.4.3` record), and the guard runs the restore EXERCISE on every
+pass: the `backup_restore` suite seeds rows, takes a real `pg_dump`, mutates
+the live database, restores into an isolated database, and asserts the
+pre-mutation state came back.

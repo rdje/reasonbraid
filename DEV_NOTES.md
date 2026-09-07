@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.4.1: the restore exercise runs the real tools — the URL's user/host/port each got their own failure
+
+- **The control is the restore, so the test runs the real pg_dump/pg_restore pair** — no mocked dumps. The first three guard runs each caught a real integration fact (the URL's userinfo, the host:port split, the dropdb-before-assert ordering) — exactly the failure class a mock would have hidden.
+- promotion: declined (the exercise-runs-the-real-tools rule is the leaf's recorded contract — no new cross-cutting decision). **Frontier `PHASE-2.4.2` (the migration upgrade test).**
+
 ## _(2026-09-07)_ — PHASE-2.4: the lane's census found NOTHING — every §17.5 control starts from zero
 
 - **Not one backup exists.** The demo's SIGKILL+restart beat proves durability (the DB survives a crash), not restoration — and §17.5's last line is the acceptance: a backup that has never been restored is not a recovery control. `.4.1`'s whole point is the restore exercise, not the dump.

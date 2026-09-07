@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-2`
-- Status: `proposed`
+- Status: `active`
 - Roadmap lane: Phase 2 (`ROADMAP.md` §20.4); Trust track
 - Created: `2026-09-05`
 - Estimate: 12–20 engineer-weeks
@@ -61,8 +61,12 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | `PHASE-2.1` | `proposed` | blocked on Phase 1 G2 |
+| 1 | `PHASE-2.1` | `proposed` | Phase 1 is CLOSED (G1–G2 Met, Demonstration A 30/30) — the identity/recovery lane executes; the pickup gap census + decomposition come first (the `.1`-pattern) |
 
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: Unblocked — the Phase-1 G2 close (`PHASE-1.8.2`, gate record
+  **Met**) releases the frontier; `.1` (workload certificate lifecycle,
+  scoped grants, delegated authority context, revocation, cached-decision
+  rules — backlog 11, ADR 007/008/009) executes after its pickup census.

@@ -73,3 +73,5 @@
 - [`2026-09-07_node-channel-wiring.md`](docs/decisions/2026-09-07_node-channel-wiring.md)
 - [`2026-09-07_phase0-adr-set.md`](docs/decisions/2026-09-07_phase0-adr-set.md)
 - [`2026-09-07_phase0-subtraction-record.md`](docs/decisions/2026-09-07_phase0-subtraction-record.md)
+- [`2026-09-07_phase1-gate-record.md`](docs/decisions/2026-09-07_phase1-gate-record.md)
+- [`2026-09-07_phase1-subtraction-record.md`](docs/decisions/2026-09-07_phase1-subtraction-record.md)

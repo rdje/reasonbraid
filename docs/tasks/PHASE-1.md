@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-1`
-- Status: `active`
+- Status: `done`
 - Roadmap lane: Phase 1 (`ROADMAP.md` §20.3)
 - Created: `2026-09-05`
 - Estimate: 14–22 engineer-weeks
@@ -579,7 +579,9 @@ conversation without binding-governance claims.
       `.github/workflows/supply-chain.yml` are wired — the gate package runs
       them as fresh evidence (`.1.8.2`).
   Children: `.1.8.1`–`.1.8.2` (decomposed `2026-09-07` at the demo-gap-vs-
-    gate-package seam).
+    gate-package seam). **`.1.8` is COMPLETE** — Demonstration A passed
+    30/30 (debug + release-built), the G1–G2 gate record is **Met**, the
+    subtraction record ships — **Phase 1 is CLOSED**.
 
   - ID: `PHASE-1.8.1`
     Status: `done`
@@ -603,7 +605,7 @@ conversation without binding-governance claims.
       checklist below records the evidence.
 
   - ID: `PHASE-1.8.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the G1–G2 gate package + the Phase 1 close — the G1 supply-chain
       evidence (`make deny` + `make secret-scan` green), the full guard
       re-run (offline + 12 live suites + e2e + the demo with `.1.8.1`'s
@@ -623,12 +625,19 @@ conversation without binding-governance claims.
       re-runnable evidence; the subtraction record has no empty list; the
       full guard set is green at the close commit; the frontier moves to
       `PHASE-2.1`.
+    Done (`2026-09-07`): the gate package landed and **Phase 1 is CLOSED** —
+      the evidence manifest, the gate record (outcome **Met**, five named
+      deferrals), and the subtraction record; the full guard green
+      (39 offline + 12 live suites + e2e + the demo 30/30, debug AND
+      release-built, `make deny` + `make secret-scan` rc=0); the acceptance
+      checklist below records the evidence; the frontier moves to
+      `PHASE-2.1`.
 
 ## Current Frontier
 
-| Order | Leaf | Status | Why next |
-| --- | --- | --- | --- |
-| 1 | `PHASE-1.8.2` | `proposed` | `.1.8.1` done — the demo's 30 PASS carry the audit-reconstruction leg, so the §26.1 evidence is complete end-to-end; the G1–G2 gate package + the Phase 1 close execute now |
+**Tree complete.** Phase 1 is CLOSED — G1–G2 **Met** + Demonstration A passed
+30/30 (debug AND release-built). The next executable work is `PHASE-2.1`
+(identity/recovery — the `PHASE-2` tree, now `active`).
 
 ## Changelog
 
@@ -665,6 +674,7 @@ conversation without binding-governance claims.
 - `2026-09-07`: `.1.7.2` done — the packaged LAN story: `make release` builds the four self-contained binaries (migrations + console embed at compile time); `deploy/README.md` is the operator runbook (the two §6.6 profiles, the subtraction record); the book gains the `deployment` chapter; the packaging claim is VERIFIED by the demo passing 24/24 on the RELEASE binaries (`--release` build-root switch; `target/release_demo.log`; the bundle's `env.txt` records the release root; `make demo` stays debug); the standard guard green (12 suites + e2e + demo rc=0, `target/dev2_guard.log`); decision record `docs/decisions/2026-09-07_deployment-packaging.md`; **`.1.7` is COMPLETE** — frontier → `.1.8`.
 - `2026-09-07`: `.1.8` decomposed at the census seams — the tool-backed §26.1 census (`grep -n` over the demo + `crates/` + `.github/` + `migrations/`) shows the acceptance is ALREADY demo-proven end-to-end (real SIGKILL kill points: server-restart survival, kill-after-dispatch → exactly one `outcome_unknown`, duplicate transport → one domain effect, budget denial + `inconclusive` + register, CLI/API/console-only inspection); the LAST demo gap is the audit-reconstruction claim (the header makes it, no beat proves it, and no demo contribution carries an evidence ref); named deferrals (capability advertisement → Phase 3, expected-artifact/decision-rule + synthesis → Phase 5, incarnation/run writers → Phase 2, fuzz → Phase 4) ride the gate record; children `.1.8.1` (the audit leg) → `.1.8.2` (the G1–G2 gate package + the Phase 1 close); frontier → `.1.8.1`.
 - `2026-09-07`: `.1.8.1` done — the audit-reconstruction demo leg: the human contributes a position with `--evidence-uri` (`.1.5.1`'s surface exercised end-to-end) and section 11's six checks rebuild the story through the supported read surfaces only (A's audit authority rows + 64-hex digests, the ordered event timeline, the ref on the event, B's denied reservation row + close authority) — 30 PASS / 0 FAIL, `rc=0`; the first run caught a beat mis-read (the thread-scoped audit view starts at the invite — `thread.create` authorizes at tenant scope, the `.6.1` shape `command_api` asserts) — fixed, rerun green; the two psql reads gained comments naming the credential-oracle distinction; the book's two-host-demo chapter gains steps 10–12; frontier → `.1.8.2`.
+- `2026-09-07`: `.1.8.2` done — the G1–G2 gate package + the Phase 1 close: the evidence manifest (`docs/evidence/2026-09-07_phase1-evidence-manifest.md`), the gate record (`docs/decisions/2026-09-07_phase1-gate-record.md` — outcome **Met**, the §26.1 table with per-row evidence, five named deferrals), and the §19.8 subtraction record (`docs/decisions/2026-09-07_phase1-subtraction-record.md` — no empty list); the full guard green at the close (39 offline suites + 12 live suites + e2e + the demo 30/30, debug AND release-built, `make deny` + `make secret-scan` rc=0, `make gate` 13/13); **`.1.8` is COMPLETE** — **Phase 1 is CLOSED** — the frontier moves to `PHASE-2.1` (the `PHASE-2` tree is now `active`).
 
 ## Acceptance Checklist (PHASE-1.1.1)
 
@@ -1720,6 +1730,62 @@ deliverable.
   `docs/TASK_TREE.md` frontier, the book chapter — same commit. DEV_NOTES: no
   new durable lesson — `promotion: declined (the thread-scoped audit view starting at the invite is the .6.1 shape the command_api suite already asserts; this leaf adds no cross-cutting fact)`.
 
+## Acceptance Checklist (PHASE-1.8.2)
+
+The CODE change owned by this leaf: none — the gate package is evidence +
+records (`docs/evidence/2026-09-07_phase1-evidence-manifest.md`,
+`docs/decisions/2026-09-07_phase1-gate-record.md`,
+`docs/decisions/2026-09-07_phase1-subtraction-record.md`) + the lockstep
+close (tree, index, `PHASE-2.md`, MEMORY/LIVE_STATUS/CHANGELOG/DEV_NOTES, the
+book's roadmap chapter, KNOWLEDGE_MAP). The checklist is written for
+traceability (the `.1.4.2` evidence-leaf precedent).
+
+- [x] **REPRODUCE / ISSUE** — the Phase-1 exit gate is open: `grep -n "Status"
+  docs/tasks/PHASE-1.md | head -1` → `active`; no gate record exists for
+  Phase 1 (`ls docs/decisions/ | grep -c phase1` → 0 before this leaf), no
+  Phase-1 evidence manifest (`ls docs/evidence/ | grep -c phase1` → 0), and
+  the §19.8 subtraction record exists for Phase 0 only
+  (`docs/decisions/2026-09-07_phase0-subtraction-record.md`).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the gate closes a PHASE, so its evidence
+  must be a package, not scattered leaf notes: the §26.1 acceptance, the
+  G1/G2 clauses, and the subtraction record each need one re-runnable,
+  cited home. The fix point is the record set (manifest → gate record →
+  subtraction record) + the mechanical close (frontier → `PHASE-2.1`).
+- [x] **ADDRESSED (verified)** — measured before→after. Before: no gate
+  package, the tree `active`. After: the manifest maps G1 (39 offline suites
+  rc=0 `target/gate82_offline.log`; `make deny` rc=0 `target/gate82_deny.log`;
+  `make secret-scan` rc=0 `target/gate82_gitleaks.log`) and G2 + the §26.1
+  table (the demo bundle `target/demo/20260907-021558/` + the release-built
+  bundle `20260907-021623`); the gate record's outcome is **Met** with five
+  named deferrals (each with a trigger); the subtraction record has no empty
+  list; the tree + index + `PHASE-2.md` + book carry the close.
+- [x] **NO REGRESSION** — `cargo test --all` → 39 offline suites green
+  (rc=0, `target/gate82_offline.log`); `bash scripts/run_pg_tests.sh` → all
+  twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 +
+  3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2
+  passed` + the two-host demo `ALL acceptance checks passed` (30 PASS /
+  0 FAIL, `rc=0`, `target/gate82_guard.log`); the release-built demo —
+  ephemeral PG + `bash scripts/demo_two_host.sh --release` → 30 PASS /
+  0 FAIL, `rc=0`, `target/gate82_release_demo.log` (`bin_root …/target/release
+  (release)`) + PG teardown residue 0; `make deny` → rc=0; `make
+  secret-scan` → rc=0 (`no leaks found`); `make gate` → 13/13 at commit;
+  `make book` builds. No code changed — the guard set above IS the
+  re-derivation (§16).
+- [x] **FIX** — `docs/evidence/2026-09-07_phase1-evidence-manifest.md` +
+  `docs/evidence/INDEX.md`; `docs/decisions/2026-09-07_phase1-gate-record.md`
+  (with `answers:`) + `docs/decisions/2026-09-07_phase1-subtraction-record.md`
+  + INDEX rows; the tree (leaf statuses, the `.1.8` complete note, the
+  frontier → tree-complete, the metadata status); `docs/TASK_TREE.md`
+  (PHASE-1 `done`, PHASE-2 `active`); `PHASE-2.md` (unblocked); the book's
+  roadmap chapter (Phase 1 complete → Phase 2 current); KNOWLEDGE_MAP
+  regenerated; CHANGELOG.md rotated at the README-STABILITY 96,000-byte
+  threshold (the pre-Phase-1 scaffold-port history + bootstrap → git
+  history; 97,010 → 85,598 bytes).
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES (promoted → `docs/decisions/2026-09-07_phase1-gate-record.md`
+  gained `answers:`), MEMORY, LIVE_STATUS, this tree's logs below,
+  `docs/TASK_TREE.md`, `PHASE-2.md`, the book chapter, `docs/evidence/INDEX.md`,
+  `docs/decisions/INDEX.md`, KNOWLEDGE_MAP — same commit.
+
 ## Verification Log
 
 | Date | Leaf | Checks | Result |
@@ -1746,6 +1812,7 @@ deliverable.
 | `2026-09-07` | `PHASE-1.7.1` | `bash -n scripts/dev.sh` → clean; `bash scripts/dev.sh --check` → `dev-check: OK` rc=0 (console at `/`, real `rb enroll` + `inspect threads --as devcheck`, residue census 0 — the beat's first three runs caught the verb shape, the `--as` requirement, and the census-before-teardown ordering); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (`rc=0`, `target/dev1_guard.log`); `make gate` → 13/13; `make book` builds | `make dev` is the one-command development environment (ephemeral on-volume PG, foreground server, residue census); the book's Run-it section + the README quick start carry the path — frontier → `.1.7.2` |
 | `2026-09-07` | `PHASE-1.7.2` | `bash -n scripts/demo_two_host.sh` → clean; `make release` → rc=0 (the four binaries); the release-built demo — ephemeral PG + `bash scripts/demo_two_host.sh --database-url … --release` → `ALL acceptance checks passed` (24 PASS / 0 FAIL, `rc=0`, `target/release_demo.log`, `env.txt` → `bin_root: …/target/release (release)`) + PG teardown residue 0; `bash scripts/run_pg_tests.sh` → all twelve live suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + demo rc=0 (`target/dev2_guard.log`); `make gate` → 13/13; `make book` builds | the packaged LAN story landed (`make release`, `deploy/` runbook, the book's `deployment` chapter, the subtraction record, the decision record); the packaging claim verified by the release-built demo — **`.1.7` complete** — frontier → `.1.8` |
 | `2026-09-07` | `PHASE-1.8.1` | `bash -n scripts/demo_two_host.sh` → clean; `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `test result: ok. 2 passed` + the two-host demo `ALL acceptance checks passed` (30 PASS / 0 FAIL, `rc=0`, `target/demo81b_guard.log`; the first run `target/demo81_guard.log` caught the beat's audit-scope mis-read — the thread-scoped audit view starts at the invite, the `.6.1` shape `command_api` already asserts — fixed, rerun green); `make gate` → 13/13; `make book` builds | the audit-reconstruction demo leg landed (the evidence-referenced human contribution + section 11's six checks: A's authority rows + digest proofs, the ordered timeline, the ref on the event, B's denied reservation row + close authority) — the §26.1 demo evidence is complete end-to-end; frontier → `.1.8.2` |
+| `2026-09-07` | `PHASE-1.8.2` | `cargo test --all` → 39 offline suites green (rc=0, `target/gate82_offline.log`); `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 13 + 3 + 4 + 17 + 3 + 3 + 6 + 7 `passed`) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (30 PASS / 0 FAIL, `rc=0`, `target/gate82_guard.log`, bundle `20260907-021558`); the release-built demo → 30 PASS / 0 FAIL (`rc=0`, `target/gate82_release_demo.log`, bundle `20260907-021623`, `bin_root …/target/release (release)`) + PG teardown residue 0; `make deny` rc=0 + `make secret-scan` rc=0 (`target/gate82_deny.log`/`gate82_gitleaks.log`); `make gate` → 13/13; `make book` builds | the G1–G2 gate package landed (the evidence manifest, the gate record — outcome **Met** with five named deferrals — and the §19.8 subtraction record); **`.1.8` complete** — **Phase 1 is CLOSED**; the frontier moves to `PHASE-2.1` |
 
 ## Commit Log
 
@@ -1774,3 +1841,4 @@ deliverable.
 | `PHASE-1.7.1` | `REASONBRAID-PHASE1-0029` | `scripts/dev.sh` + the `make dev` target (ephemeral on-volume PG, foreground server, `--check` beat) + the book's Run-it section + the README quick-start line |
 | `PHASE-1.7.2` | `REASONBRAID-PHASE1-0030` | `make release` + `deploy/README.md` (the LAN runbook + subtraction record) + the book's `deployment` chapter + the demo's `--release` build-root switch; the release-built demo passed 24/24 — **`.1.7` complete** |
 | `PHASE-1.8.1` | `REASONBRAID-PHASE1-0032` | the audit-reconstruction demo leg: the evidence-referenced human contribution + section 11's six checks (A's audit authority rows + digest proofs, the ordered timeline, the ref on the event, B's denied reservation row + close authority); the demo passes 30/30; the first run caught the beat's audit-scope mis-read (the thread-scoped view starts at the invite — the `.6.1` shape `command_api` asserts), fixed |
+| `PHASE-1.8.2` | `REASONBRAID-PHASE1-0033` | the G1–G2 gate package + the Phase 1 close: the evidence manifest, the gate record (Met, five named deferrals), the subtraction record; the full guard green incl. the release-built demo 30/30 — **Phase 1 is CLOSED**, the frontier moves to `PHASE-2.1` |

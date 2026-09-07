@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-1.8.2: a phase closes on evidence, not on a checklist
+
+- **The gate package is a census, not a victory lap.** The `.1.8` pickup census mapped every §26.1 acceptance point to an EXISTING demo beat (real SIGKILL kill points) before any new work; the only gap was the audit-reconstruction claim (closed in `.1.8.1`), and the gate record cites per-row evidence — bundle files, guard logs, suites — never prose.
+- **A deferral without an owner and a trigger is an omission.** The five named deferrals (capability advertisement → Phase 3; expected-artifact/decision-rule + synthesis → Phase 5; incarnation/run writers → Phase 2; fuzz → Phase 4; ops hardening → Phase 2) each carry the condition that revives them, and the subtraction record's lists are none empty.
+- **"No database surgery" has one legitimate exception: credentials.** The demo's two psql reads obtain the fencing token to forge the duplicate transport as the node itself — a least-privilege API must not expose a live credential, so the oracle stays (documented in the script); every STATE assertion rides the CLI/API/console/`rb-journal`.
+- Promoted to `docs/decisions/2026-09-07_phase1-gate-record.md` (`answers:` present). **Frontier `PHASE-2.1` (identity/recovery).**
+
 ## _(2026-09-07)_ — PHASE-1.7.2: prove the artifact, not only the behavior
 
 - **Debug proves the code; the release-built demo proves the package.** The census found the demo builds `--bins` (debug) only, so the packaging claim had zero evidence. The cheapest honest proof: a `--release` flag that switches the build root — the script already had a build-root seam (`BIN_SERVER`/`BIN_NODE`/…), so the flag is a selection, not a fork; `make demo` stays debug.

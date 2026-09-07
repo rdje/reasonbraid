@@ -48,7 +48,7 @@ of a URI is not a promise the core can resolve it.
     unopened. Children at those seams — frontier → `.1.1`.
     promotion: declined (the census is the leaf's recorded contract — the `.1.1`–`.1.3` children execute it).
   - ID: `PHASE-4.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-011 (the object store + the content-addressing
       format) + ADR-018 (the resolver sandbox/runtime + the
       network isolation), accepted with the dev profile's answers:
@@ -60,6 +60,19 @@ of a URI is not a promise the core can resolve it.
       snapshots lane (the trigger named). No code.
     Backlog: 31 (the ADR half)
     ADR: 011, 018
+    Done (`2026-09-07`): ADR-011 + ADR-018 accepted
+      (evidence-gated): the content-addressing format
+      (`docs/adr/011-object-store-content-addressing.md`) pins
+      `sha256:<hex>` over the ACQUIRED bytes — the references'
+      `expected_digest` and the future snapshots speak one scheme;
+      the store + the derivation graph ride the `.6` lane behind
+      the first-snapshot-receipt trigger. The isolation vocabulary
+      (`docs/adr/018-resolver-sandbox-isolation.md`) pins the
+      sandbox-level ladder + the egress class (the claim is the
+      maximum) — the `.1.3` registry's advertise shape carries the
+      classes; a required-isolation miss is the explicit failure,
+      never the silent downgrade; the runtimes ride the packs
+      (`.2`–`.4`). No code changed. Frontier → `.1.2`.
     Acceptance: the two ADRs accepted (the format + the isolation
       classes named); no code changes.
 
@@ -137,7 +150,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.1.1` | `proposed` | `.1` decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs); the ADR-011 + ADR-018 records execute now |
+| 1 | `PHASE-4.1.2` | `proposed` | `.1.1` done — ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); the typed `ResourceReference` + the submission executes now |
 
 ## Changelog
 
@@ -149,3 +162,20 @@ of a URI is not a promise the core can resolve it.
   contract + the registry + ADR-011/018 do not); children `.1.1`
   (the two ADRs) → `.1.2` (the typed reference) → `.1.3` (the
   registry); frontier → `.1.1`.
+- `2026-09-07`: `.1.1` done — ADR-011 + ADR-018 accepted (the
+  `sha256:<hex>` format + the isolation-class vocabulary); no code
+  changed; frontier → `.1.2`.
+
+## Verification Log
+
+| Date | Leaf | Checks | Result |
+| --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 4 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
+| `2026-09-07` | `PHASE-4.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-011 + ADR-018 accepted (the digest scheme + the isolation classes); frontier → `.1.2` |
+
+## Commit Log
+
+| Leaf | Commit subject or reference | Notes |
+| --- | --- | --- |
+| `PHASE-4.1` | `REASONBRAID-PHASE4-0001` | the resource-reference lane decomposed at the census seams (the greenfield contract + the registry + the two unopened ADRs) |
+| `PHASE-4.1.1` | `REASONBRAID-PHASE4-0002` | ADR-011 + ADR-018 accepted (the `sha256:<hex>` format + the isolation-class vocabulary — no code) |

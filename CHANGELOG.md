@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-011 + ADR-018: one digest scheme, one isolation vocabulary (`PHASE-4.1.1`)
+
+- ADR-011 accepted (evidence-gated): the content-addressing format is `sha256:<hex>` over the ACQUIRED bytes (as acquired, pre-transformation) — the references' `expected_digest` and the future snapshots speak one scheme; the store + the derivation graph ride the `.6` lane behind the first-snapshot-receipt trigger.
+- ADR-018 accepted (evidence-gated): the isolation vocabulary (the sandbox-level ladder `none` < `process` < `constrained_process` < `vm_container` + the egress class `none`/`loopback`/`listed`/`any` — the claim is the maximum) pins the registry's advertise shape; a required-isolation miss is the explicit failure, never the silent downgrade; the runtimes ride the resolver packs.
+- No code changed. Frontier → `.1.2` (the typed `ResourceReference` + the submission).
+
 ## 2026-09-07 — Phase 4 opens: the resource-reference lane decomposed at the census seams (`PHASE-4.1`)
 
 - The Phase-2/3 closes delivered the authz/budgets legs of the tree's blocker (the object store is this phase's own `.6`), so `PHASE-4` goes `active` and its `.1` (the universal `ResourceReference` + the resolver capability registry — backlog 31) decomposes at the census seams.

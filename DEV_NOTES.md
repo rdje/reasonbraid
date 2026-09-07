@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-4.1.1: the two ADRs pin the vocabulary the machinery will speak — a digest scheme and an isolation ladder, both before the first consumer
+
+- **ADR-011 + ADR-018 settle the formats the greenfield needs before its first table**: the digest (`sha256:<hex>` over the ACQUIRED bytes) lets the reference's `expected_digest` and the future snapshots verify the SAME fact, and the isolation ladder + the egress classes let a reference fail EXPLICITLY (no eligible resolver in the required class) instead of silently degrading to a weaker sandbox. The machinery (the store, the runtimes) rides the lanes whose triggers name it.
+- promotion: declined (the two ADR records themselves hold the answers). **Frontier `PHASE-4.1.2` (the typed `ResourceReference` + the submission).**
+
 ## _(2026-09-07)_ — PHASE-4.1: the resource surface is a greenfield with a reason name and a reference shape already waiting
 
 - **Phase 4 opens on the §9.8 `resource_unresolvable` reason name and the typed `EvidenceRef`s** — the honest vocabulary for the explicit-failure doctrine (unsupported/mutable resources fail explicitly, never become fabricated evidence) existed before any resource machinery. The `.1` census splits the lane at the seams: the two ADRs (the content-addressing format + the isolation classes), the typed contract (the locator's immutability is an update-refusal), and the registry (the authz→risk→rank order + the preserved-on-failure reference).

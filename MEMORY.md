@@ -19,16 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.1.1` (the tree opened by
-  the Phase-2/3 closes; `.1` decomposed at the census seams: the
-  resource surface is a greenfield, ADR-011/018 unopened). Then
-  `.1.2`, `.1.3`, `.2`–`.7`.
-- **Next action:** execute `PHASE-4.1.1` — ADR-011 (the object
-  store + the content-addressing format) + ADR-018 (the resolver
-  sandbox/runtime + the network isolation): the dev profile's
-  answers (the digest scheme the snapshots + the expected digests
-  share; the isolation classes the resolver packs declare; the
-  store rides the `.6` snapshots lane); no code.
+- **Active tree:** `PHASE-4` → frontier `.1.2` (`.1.1` done:
+  ADR-011 + ADR-018 — the `sha256:<hex>` format + the isolation
+  classes). Then `.1.3`, `.2`–`.7`.
+- **Next action:** execute `PHASE-4.1.2` — the typed
+  `ResourceReference`: the §12.1 contract (the immutable locator,
+  the scheme, the media-type hint, the TYPED `expected_digest`, the
+  fragment/selector, the opaque credential-binding ref, the
+  ownership/visibility/purpose/retention/risk fields, the
+  submitted-by) + the durable submission verb (the locator's
+  immutability is the update-refusal).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -258,7 +258,7 @@ slice can reuse the same control plane without rewriting it.
       are 403; no regression.
 
   - ID: `PHASE-2.1.4`
-    Status: `proposed`
+    Status: `active`
     Goal: the delegated authority context — `AuthorityContext` (actor,
       subject, tenant, scopes, selectors, purposes, constraints, issuer
       chain, validity) rides the command envelope + the authorization
@@ -273,6 +273,52 @@ slice can reuse the same control plane without rewriting it.
     Acceptance: a delegated request with a narrower subset succeeds; a
       widening attempt is a typed refusal naming the invariant; the
       decision record carries the chain; race/revocation tests green.
+    Note: gap census (`2026-09-07`, on pickup): the plumbing is
+      PRE-SHAPED — `CommandAuthz.delegate_subject` exists (always `None`)
+      and the authorization_records INSERT already writes the subject
+      split when delegation applies (`grep -n "delegate_subject"
+      crates/reasonbraid-server/src/authority.rs` → lines 45/579); the
+      envelope carries no delegation field and the dual evaluation +
+      the widening check do not exist.
+    Children: `.1.4.1`–`.1.4.2` (decomposed `2026-09-07` at the
+      ADR-vs-implementation seam).
+
+  - ID: `PHASE-2.1.4.1`
+    Status: `proposed`
+    Goal: ADR-009 + the representation spike — the decision between
+      chain-in-envelope (the request carries the structured delegation)
+      and attenuated capability tokens (a separately issued credential)
+      for the dev profile, decided by an executable prototype: a pure
+      `DelegationConstraints` type + the subset check (the widening
+      invariant) with offline tests in the core crate, plus the measured
+      wire-size comparison (the envelope delta vs a token blob at depth
+      1–3). ADR-009 records the choice + the honest limits (the dev
+      profile's chain rides the existing grants for expiry/revocation —
+      the `.1.3` filters apply unchanged).
+    Backlog: 11
+    ADR: 009
+    Acceptance: the subset prototype's tests are green (narrower passes,
+      widening refused per-dimension); the ADR names the representation
+      + the measurement; the ledger row for the chosen shape is filled
+      or explicitly declined with the reason.
+
+  - ID: `PHASE-2.1.4.2`
+    Status: `proposed`
+    Goal: the implementation — the envelope gains the optional
+      `authority_context` (the `.1.4.1` choice: `on_behalf_of` +
+      `purpose` + `scope` constraints, deny-unknown); the authorize path
+      evaluates BOTH the caller's and the subject's grants (the dual
+      check) and applies the subset rule (a widening request is a typed
+      403 naming the invariant); the authorization record carries the
+      chain; the CLI gains `--on-behalf-of` (+ `--purpose`); the tests
+      prove narrower-succeeds / widening-refused / revocation-freshness
+      (a revoked subject grant refuses the delegated request at the next
+      decision).
+    Backlog: 11
+    Acceptance: a delegated request within the subject's grant succeeds
+      and audits the chain; a widening attempt is a typed refusal; a
+      revoked subject grant refuses the delegation at the next decision;
+      no regression.
 
   - ID: `PHASE-2.1.5`
     Status: `proposed`
@@ -336,7 +382,7 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.1.4` | `proposed` | `.1.3` is COMPLETE (node/cert + grant + boundary revocation, all riding the existing refusal ladders); the delegated authority context executes now |
+| 1 | `PHASE-2.1.4.1` | `proposed` | `.1.4` decomposed at the ADR-vs-implementation seam (the plumbing is pre-shaped: `delegate_subject` + the audit subject split exist); ADR-009 + the representation spike execute now |
 
 ## Changelog
 
@@ -397,6 +443,12 @@ slice can reuse the same control plane without rewriting it.
   handshake is refused and presence reads suspended while the live lease is
   untouched; `rb node revoke`; the demo gains the beat (32 checks); the
   channel suite grew to 21; frontier → `.1.3.2`.
+- `2026-09-07`: `.1.4` decomposed at the ADR-vs-implementation seam — the
+  census found the plumbing PRE-SHAPED (`CommandAuthz.delegate_subject` +
+  the audit subject split exist, always `None`) while the envelope field,
+  the dual evaluation, and the widening check do not; children `.1.4.1`
+  (ADR-009 + the representation spike) → `.1.4.2` (the implementation);
+  frontier → `.1.4.1`.
 - `2026-09-07`: `.1.3.2` done — the grant/boundary revocation write paths:
   the `Revoked` statuses got their verbs (`POST /v1/admin/grants/{id}/revoke`
   + `/v1/admin/boundaries/{id}/revoke`, tenant_admin-audited, typed 404/409

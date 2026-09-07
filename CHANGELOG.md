@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1.4` split at the ADR-vs-implementation seam (`PHASE-2.1.4`)
+
+- The census found the delegation plumbing PRE-SHAPED: `CommandAuthz.delegate_subject` exists (always `None`) and the authorization-records INSERT already writes the subject split when delegation applies — what's missing is the envelope field, the dual (caller + subject) evaluation, and the widening check.
+- Children: `.1.4.1` ADR-009 + the representation spike (chain-in-envelope vs capability tokens, with the pure subset-check prototype) → `.1.4.2` the implementation. Tree-only commit.
+
 ## 2026-09-07 — The `Revoked` statuses got their write paths (`PHASE-2.1.3.2`)
 
 - `POST /v1/admin/grants/{id}/revoke` + `POST /v1/admin/boundaries/{id}/revoke` (tenant_admin-audited, typed 404/409 refusals) — the evaluation's existing `status = 'active'` filters refuse the subjects at the NEXT decision: the tests prove a revoked grant's next command is a 403 with the audited denial while the human's own grant keeps working.

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The typed policy schema lands (`PHASE-6.1.2`)
+
+- Migration 0038: the `PolicyVersion` document (the §15.1 fields — the stable clause ids, the applicability, the exception schema, the provenance) with the OWNERSHIP metadata validated against the authority model (the owning authority must be an ACTIVE grant — the label grants nothing); the ADR-011 digest shape, the semantic version, the closed lifecycle vocabulary, the unique clause ids. The verbs: `POST`/`GET /v1/policies`. Measured: policy 1.
+
 ## 2026-09-07 — ADR-019: the semantic-policy contract (`PHASE-6.1.1`)
 
 - ADR-019 accepted (`docs/adr/019-semantic-policy.md`): the policy is a versioned digest-pinned document (never prose); the ownership is the authority binding (the label grants nothing); the `PolicySetVersion` is a lock manifest; the resolution is the seven §15.3 steps, fail-closed, with the explanation tree riding the result. No code.

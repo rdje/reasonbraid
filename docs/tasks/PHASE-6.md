@@ -95,7 +95,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       Frontier → `.1.2`.
 
   - ID: `PHASE-6.1.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the policy schema — the typed `PolicyVersion` (the
       §15.1 fields: the stable id + the semantic version +
       the digest + the lifecycle status, the normative
@@ -105,6 +105,29 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       validation (the clause ids, the digest, the ownership
       reference) + the versioned registry.
     Roadmap: §15.1, §15.2
+    Done (`2026-09-07`): the typed policy schema landed per
+      ADR-019 — migration 0038 (`policy_versions`: the §15.1
+      fields — the stable clause ids ride the JSONB clauses,
+      the applicability + the non-applicability + the
+      exception schema + the provenance + the ownership);
+      `crates/reasonbraid-server/src/policy.rs` (NEW): the
+      `PolicyVersionInput`/`ClauseStatement` shapes, the
+      `register` (the ADR-011 digest shape, the semantic
+      version, the closed lifecycle vocabulary, the non-empty
+      clauses, the UNIQUE stable clause ids, the OWNING
+      AUTHORITY must be an ACTIVE grant — the label grants
+      nothing, an unresolvable owner is invalid at
+      registration; the duplicate version refuses) + the
+      `list` (the FromRow struct — the 18 columns exceed the
+      tuple impl's ceiling); the api: `POST`/`GET
+      /v1/policies` (the enrolled gate); the pg script gained
+      the `policy` suite. Measured (policy 1): the document
+      registers with the fields echoing, the NEW version of
+      the same policy registers, the seven refusals (the
+      duplicate, the bad digest, the bad semver, the unknown
+      lifecycle, the duplicate clause ids, the empty clauses,
+      the ghost authority), the newest-first list, the
+      unenrolled refusal. Frontier → `.1.3`.
 
   - ID: `PHASE-6.1.3`
     Status: `proposed`
@@ -156,10 +179,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.1.2` | `proposed` | `.1.1` done — ADR-019 accepted (the digest-pinned document, the ownership = the authority binding, the seven-step fail-closed resolution); the typed policy schema executes next |
+| 1 | `PHASE-6.1.3` | `proposed` | `.1.2` done — the typed policy schema (the validated document + the authority-checked ownership + the versioned registry; policy 1); the layering + the precedence executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.1.2` done — the typed policy schema
+  (migration 0038: the §15.1 document with the stable clause
+  ids, the authority-checked ownership, the versioned
+  registry); policy 1; frontier → `.1.3`.
 - `2026-09-07`: `.1.1` done — ADR-019 accepted (the
   semantic-policy contract: the digest-pinned document, the
   ownership = the authority binding, the seven-step
@@ -172,3 +199,51 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
   schema) → `.1.3` (the layering + the precedence); frontier
   → `.1.1`.
 - `2026-09-05`: Created from `ROADMAP.md` §20.8, §15, §26.2, backlog 38–39.
+
+
+## Acceptance Checklist (PHASE-6.1.2)
+
+The CODE change owned by this leaf:
+`migrations/0038_policy_registry.sql` (NEW — the policy table),
+`crates/reasonbraid-server/src/policy.rs` (NEW — the shapes +
+the register + the list), `crates/reasonbraid-server/src/
+lib.rs` (the module), `crates/reasonbraid-server/src/api.rs`
+(the two verbs), `crates/reasonbraid-server/tests/policy.rs`
+(NEW — the suite), `scripts/run_pg_tests.sh` (the policy
+suite joins the guard) — `\.rs$` + `(^|/)migrations/` +
+`scripts/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no policy
+  schema existed (the `.1` census — `git grep -c
+  "PolicyVersion" HEAD -- crates/ migrations/` → rc=1).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_versions\|PolicyVersionInput\|ClauseStatement"
+  c6ed5e7 -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the ADR-019 schema: the typed
+  document + the authority-checked ownership + the versioned
+  registry.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_policy_registry_validates_the_digest_pinned_document` →
+  `test result: ok. 1 passed` — the document registers (the
+  fields echo), the NEW version registers, the seven refusals
+  (the duplicate / the bad digest / the bad semver / the
+  unknown lifecycle / the duplicate clause ids / the empty
+  clauses / the GHOST owning authority), the newest-first
+  list, the unenrolled refusal. The first live pass caught
+  the list-count miscount (two rows, not three) — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 58 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg525_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0038_policy_registry.sql`, `src/policy.rs`,
+  `src/lib.rs`, `src/api.rs`, `tests/policy.rs`,
+  `scripts/run_pg_tests.sh`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).

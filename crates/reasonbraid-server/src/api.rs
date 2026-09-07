@@ -469,6 +469,7 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/routing/recommendations",
             post(record_routing_recommendation).get(list_routing_recommendations),
         )
+        .route("/v1/policies", post(register_policy).get(list_policies))
         .route("/v1/snapshots", post(submit_snapshot))
         .route("/v1/snapshots/expire-due", post(expire_due_snapshots))
         .route("/v1/snapshots/stale", get(list_stale_snapshots))
@@ -2239,6 +2240,44 @@ async fn list_routing_recommendations(
     Ok(Json(
         crate::routing::list_recommendations(&state.pool).await?,
     ))
+}
+
+// ── The policy registry (PHASE-6.1.2; ADR-019, backlog 38) ─────────────────────────
+
+/// `POST /v1/policies` — register one policy version (the typed,
+/// validated, digest-pinned document; the owning authority must be an
+/// ACTIVE grant — the label grants nothing).
+async fn register_policy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::policy::PolicyVersionInput>,
+) -> Result<Json<crate::policy::RegisteredPolicy>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no policy",
+        ));
+    }
+    match crate::policy::register(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policies` — the registered policy versions, newest first.
+async fn list_policies(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::policy::RegisteredPolicy>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no policies",
+        ));
+    }
+    Ok(Json(crate::policy::list(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

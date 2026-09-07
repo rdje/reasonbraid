@@ -43,6 +43,7 @@ mod matching;
 pub mod mediated;
 mod node_channel;
 mod outbox;
+pub mod policy;
 mod presence;
 mod profiles;
 mod recruitment;

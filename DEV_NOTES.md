@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-2.4.3: a deferral with a trigger is a control; placeholder infrastructure is the lie
+
+- **The dev profile inventories what it HAS** — the database, via the `.4.1` restore exercise — and defers the rest by naming the exact surface whose arrival re-opens each item (object store → Phase 4, Git mirror → Phase 6, key recovery → the first signed release). No empty tables, no stub scripts, no exactly-once-of-inventory.
+- promotion: promoted → `docs/decisions/2026-09-07_phase2-inventory-deferrals.md` (`answers:` present). **`.4` COMPLETE. Frontier `PHASE-2.5` (observability + dashboards).**
+
 ## _(2026-09-07)_ — PHASE-2.4.2: the upgrade test needs a runtime Migrator, not the macro — the prefix is the point
 
 - **`migrate!` applies everything; the upgrade test needs a PREFIX.** The runtime `Migrator::new(path)` + the public (semver-exempt) fields build the all-but-last migrator, stage the pre-upgrade database, then run the full one over the seeded data — the N-1 → N path that no fresh-migration suite ever exercised.

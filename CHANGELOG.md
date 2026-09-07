@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The absent controls are named deferrals, not placeholder infrastructure — `.4` is COMPLETE (`PHASE-2.4.3`)
+
+- `docs/decisions/2026-09-07_phase2-inventory-deferrals.md` lands (`answers:` present): the object-store inventory (Phase 4), the canonical Git mirror (Phase 6), the signing-key recovery (the first signed release), the multi-store reconciliation (the first multi-store restore), and the backup encryption each name the exact product surface whose arrival re-opens them.
+- The subtraction doctrine governs: the `.4.1` restore exercise is the reconciliation that EXISTS (it proves the database restores on every guard pass); building an inventory for an absent object store would be the lie the doctrine forbids. No code changed.
+- **`.4` COMPLETE**: the restore exercise runs on every guard pass, the upgrade path is measured, the absent controls are named. Frontier → `.5` (observability + dashboards).
+
 ## 2026-09-07 — The upgrade path, measured: an existing database upgrades and its data survives (`PHASE-2.4.2`)
 
 - The guard gains the `migration_upgrade` suite: a runtime `Migrator` applies all but the last migration to a clean schema, the REAL API seeds the tenant + boundary rows, the remaining migrations apply over the existing data, and the rows + the post-upgrade API behavior (the role enroll) survive — §17.6's upgrade-an-existing-database path, which every fresh-migration suite left unexercised, now runs on every guard pass.

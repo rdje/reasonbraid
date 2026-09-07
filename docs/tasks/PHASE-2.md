@@ -808,7 +808,7 @@ slice can reuse the same control plane without rewriting it.
       (measured); no regression.
 
 - ID: `PHASE-2.4`
-  Status: `active`
+  Status: `complete`
   Goal: backup, PITR, object/Git inventory groundwork, migrations, upgrade/rollback testing
   Roadmap: §17.5–17.6
   Note: gap census (`2026-09-07`, on pickup): NOTHING exists —
@@ -828,7 +828,9 @@ slice can reuse the same control plane without rewriting it.
     recovery control) → `.4.2` the migration upgrade test (an existing
     database upgrades, its data survives) → `.4.3` the
     inventory-groundwork deferral record (object/Git inventory + key
-    recovery + the reconciliation — named triggers).
+    recovery + the reconciliation — named triggers). **`.4` is COMPLETE** —
+    the restore exercise runs on every guard pass, the upgrade path is
+    measured, the absent controls are named deferrals.
 
   - ID: `PHASE-2.4.1`
     Status: `done`
@@ -879,13 +881,22 @@ slice can reuse the same control plane without rewriting it.
       behavior (measured); no regression.
 
   - ID: `PHASE-2.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the inventory-groundwork deferral record — the object/Git
       inventory, the signing-key recovery design, the post-restore
       reconciliation, and the backup encryption have nothing to bind in
       the dev profile (no object store, no canonical Git, no release
       signing); a decisions record names each with its trigger. No code.
     Roadmap: §17.5–§17.6
+    Done (`2026-09-07`): `docs/decisions/2026-09-07_phase2-inventory-
+      deferrals.md` landed (`answers:` present) — each absent control
+      names the exact product surface whose arrival re-opens it (the
+      object store → Phase 4, the Git mirror → Phase 6, the signing key →
+      the first signed release, the multi-store reconciliation → the first
+      multi-store restore, the encryption → the key story); no placeholder
+      infrastructure (the subtraction doctrine). The `.4.1` restore
+      exercise is the reconciliation that exists. No code changed.
+      **`.4` is COMPLETE** — frontier → `.5`.
     Acceptance: the record lands with `answers:` naming each deferral's
       trigger; no code changes.
 
@@ -911,7 +922,8 @@ slice can reuse the same control plane without rewriting it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-2.4.3` | `proposed` | `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
+| 1 | `PHASE-2.5` | `proposed` | `.4` is COMPLETE (the restore exercise, the measured upgrade path, the named deferrals); the observability lane executes now |
+ `.4.2` done — the migration upgrade test (the existing-database path, measured); the inventory-groundwork deferral record executes now |
  `.4.1` done — the backup + restore automation with the measured restore exercise; the migration upgrade test executes now |
  `.4` decomposed at the contract seams (the census: no backup tooling, the upgrade path unexercised, the inventory has nothing to bind — named deferrals); the backup + restore automation executes now |
  `.3` is COMPLETE (ADR-012/013, the spend latch, the reconciliation surface); the backup/PITR + migrations lane executes now |
@@ -923,6 +935,11 @@ slice can reuse the same control plane without rewriting it.
 ## Changelog
 
 - `2026-09-05`: Created from `ROADMAP.md` §20.4.
+- `2026-09-07`: `.4.3` done — the inventory-groundwork deferral record
+  (`docs/decisions/2026-09-07_phase2-inventory-deferrals.md`, `answers:`): the
+  object/Git inventory, the key recovery, the multi-store reconciliation, and
+  the encryption are deferred WITH their triggers; no placeholder
+  infrastructure. **`.4` COMPLETE**; frontier → `.5`.
 - `2026-09-07`: `.4.2` done — the migration upgrade test: the guard's
   `migration_upgrade` suite applies all but the last migration, seeds through
   the REAL API, upgrades over the existing data, and asserts the rows + the
@@ -1961,7 +1978,8 @@ the ledger row are the record deliverables.
 | `2026-09-07` | `PHASE-2.1.4.2` | `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 5 + 16 + 3 + 4 + 21 + 4 + 3 + 6 + 7 `passed` — `command_api` grew to 16 with the delegation test) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (32 PASS, `rc=0`, `target/pg142e_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the delegation implementation (the envelope field + the dual evaluation + the scope ladder + the CLI flags); **`.1.4` complete** — frontier → `.1.5` |
 | `2026-09-07` | `PHASE-2.1.5.1` | `cargo test -p reasonbraid-core` → `test result: ok. 44 passed` (the five cache tests: fresh+epoch-current allow dispatches, expiry → stale, an epoch bump invalidates a fresh entry, a deny is never widened, the §16.4 fail table); `cargo test --all` → 42 offline suites green (rc=0 — the FIRST run failed the golden-drift test: the `.1.4.2` envelope change never regenerated `command-envelope.schema.json` and its live-suites-only NO REGRESSION set never re-ran the core crate's own suite; `write_schema_goldens` regenerated, the lesson recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`); `cargo clippy --all --all-targets -- -D warnings` → clean; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | ADR-008 accepted (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure cache semantics landed; frontier → `.1.5.2` |
 | `2026-09-07` | `PHASE-2.3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-012 + ADR-013 accepted (the shipped ambiguity + budget machinery promotes); frontier → `.3.2` |
-| `2026-09-07` | `PHASE-2.4.2` | `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
+| `2026-09-07` | `PHASE-2.4.3` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the inventory-groundwork deferral record (the absent controls named with their triggers); **`.4` COMPLETE** — frontier → `.5` |
+ `bash scripts/run_pg_tests.sh` → fifteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 1 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `migration_upgrade` suite: the all-but-last migrations + the real-API seed + the upgrade + the survival assertions) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg242b_guard.log`); `cargo test --all` → 47 offline suites; clippy/fmt clean; `make gate` → 13/13 | the migration upgrade test (the existing-database path, measured); frontier → `.4.3` |
  `bash scripts/run_pg_tests.sh` → fourteen live server suites green (`test result: ok.` 4 + 5 + 9 + 1 + 7 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 + 2 `passed` — the new `backup_restore` suite: seed → pg_dump → mutate → createdb → pg_restore → assert the pre-mutation state → dropdb) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg241f_guard.log`); `cargo test --all` → 46 offline suites; clippy/fmt clean; `make gate` → 13/13 | the backup + restore automation (the restore EXERCISE is the recovery control); frontier → `.4.2` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 17 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `command_api` grew to 17 with the measured reconciliation leg) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg233_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the usage-reconciliation surface (`GET /v1/admin/usage` + `rb inspect usage` — the summed held/settled/overrun/denied picture); **`.3` COMPLETE** — frontier → `.4` |
  `bash scripts/run_pg_tests.sh` → all twelve live server suites green (`test result: ok.` 4 + 5 + 9 + 9 + 16 + 3 + 4 + 22 + 5 + 3 + 8 + 7 `passed` — `budget` grew to 9 with the two breaker legs) + CLI e2e `2 passed` + the demo `ALL acceptance checks passed` (34 PASS, `rc=0`, `target/pg232c_guard.log`); `cargo test --all` → 45 offline suites; clippy/fmt clean; `make gate` → 13/13 | the spend circuit breakers (migration 0016 + the in-tx latch + the arm/reset/inspect verbs + the CLI); frontier → `.3.3` |
@@ -1990,6 +2008,7 @@ the ledger row are the record deliverables.
 | `PHASE-2.1.4.2` | `REASONBRAID-PHASE2-0011` | the delegation implementation: the envelope's `authority_context`, the dual evaluation (caller + subject; the record binds the subject), the scope ladder, the CLI flags — **`.1.4` complete** |
 | `PHASE-2.1.5` | `REASONBRAID-PHASE2-0012` | the ADR-vs-implementation split (no cache machinery; the journal's `authz_ref` is pre-shaped) |
 | `PHASE-2.1.5.1` | `REASONBRAID-PHASE2-0013` | ADR-008 (the shipped evaluator stays; the node caches ONLY the admission decisions riding its delivery) + the pure `CachedDecision`/`CacheVerdict`/fail-table prototype (44 core tests); the verification caught + fixed the `.1.4.2` schema-golden drift (recorded in `docs/decisions/2026-09-07_verification-set-coverage.md`) |
+| `PHASE-2.4.3` | `REASONBRAID-PHASE2-0030` | the inventory-groundwork deferral record (the absent §17.5/§17.6 controls named with their triggers — no placeholder infrastructure) — **`.4` COMPLETE** |
 | `PHASE-2.4.2` | `REASONBRAID-PHASE2-0029` | the migration upgrade test (the N-1 → N path: the real API seeds, the remaining migrations apply over the existing data, the rows + behavior survive — measured) |
 | `PHASE-2.4.1` | `REASONBRAID-PHASE2-0028` | the backup + restore automation: `scripts/backup.sh`/`restore.sh` + the guard's restore exercise (seed → dump → mutate → restore → assert the pre-mutation state) |
 | `PHASE-2.4` | `REASONBRAID-PHASE2-0027` | the contract-seam split (no backup tooling, the upgrade path unexercised, the inventory has nothing to bind) |

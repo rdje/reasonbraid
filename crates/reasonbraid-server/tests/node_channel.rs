@@ -22,7 +22,9 @@ use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use reasonbraid_node::{Journal, Node, NodeState};
-use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, NodeChannelState, PRINCIPAL_HEADER};
+use reasonbraid_server::{
+    api_router, ca::ensure_server_ca, node_router, NodeChannelState, PRINCIPAL_HEADER,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 

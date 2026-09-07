@@ -221,7 +221,9 @@ slice can reuse the same control plane without rewriting it.
       suite proves the next handshake is 401 + presence suspended + the
       typed refusals (404 unknown, 403 non-admin + audit, 409 re-revoke);
       the demo gains the beat (32 checks) — the acceptance checklist below
-      records the evidence — frontier → `.1.3.2`.
+      records the evidence — frontier → `.1.3.2`. (Follow-up `REASONBRAID-PHASE2-0009`:
+      the bootstrap assert now prints the enroll body — the diagnostic that
+      found the seed-tenant boundary gap.)
     Acceptance: revoking a node refuses its next handshake (401) and
       flips presence to `suspended`; an unknown node is 404; a non-admin
       caller is the typed 403 + audit row; the demo passes with the new

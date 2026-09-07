@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The lifecycle lane is decomposed at the census seams (`PHASE-6.2`)
+
+- The §15.6 lifecycle records are the greenfield (no proposal/approval/decision row exists); the substrate ships: the `.1` policy registry, the Phase-5 deliberation threads (one thread, multiple decisions — the verdict kind), the Phase-2 authority model (the proofs' substrate). Children: `.2.1` ADR-032 → `.2.2` the proposal + the decision records → `.2.3` the approvals + the proofs.
+
 ## 2026-09-07 — The seven-step resolution lands — the `.1` lane is COMPLETE (`PHASE-6.1.3`)
 
 - The `POST /v1/policies/resolve` pipeline runs the seven §15.3 steps (the authority check, the applicability filter, the dependencies/conflicts, the DAG precedence, the exception schemas, the FAIL-CLOSED binding conflict, the explanation tree); the impact map (`GET /v1/policies/{id}/{version}/impact`) is the derivable coverage. Measured: policy 2. **The `.1` lane (the semantic policy schema) is COMPLETE.**

@@ -170,10 +170,75 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       **`.1` COMPLETE** — frontier → `.2`.
 
 - ID: `PHASE-6.2`
-  Status: `proposed`
+  Status: `done`
   Goal: proposal/review/approval records with authority proofs and quorum snapshots
   Roadmap: §4.5, §15.6
   Acceptance: discussion, decision, approval, publication, and deployment remain separate records
+  Children: `.2.1`–`.2.3` (decomposed `2026-09-07` at the census
+    seams): `.2.1` ADR-032 + the census (the lifecycle contract:
+    the five records stay separate — discussion/decision/
+    approval/publication/deployment; the proposal references a
+    policy version + a deliberation thread; the decision
+    references the verdict + the electorate snapshot; the
+    approval references the authority proof) → `.2.2` the
+    proposal + the decision records → `.2.3` the approval
+    records + the authority proofs + the quorum snapshots.
+  Done (`2026-09-07`): the census at the seams. The §15.6
+    lifecycle records are a GREENFIELD: no proposal record, no
+    approval record, no decision record exists (`git grep -c
+    "proposal" HEAD -- crates/reasonbraid-server/src/` → the
+    hits are the profile/step names, not lifecycle records).
+    The REUSABLE pieces: the `.1` policy registry (the
+    proposal targets a policy version), the Phase-5
+    deliberation machinery (the proposal's discussion rides a
+    THREAD — the contribute/challenge/revise/verdict verbs,
+    the twelve terminals, the minority report; "one thread
+    may yield multiple decisions" maps to the verdict kind),
+    the Phase-2 authority model (the grants/audit — the
+    authority proof's substrate), the Phase-5 electorate
+    facts (the thread's participants — the quorum snapshot's
+    source). The §23 queue has no lifecycle entry (020/021
+    are the `.4`/`.5` leaves') — the lane opens ADR-032.
+    Frontier → `.2.1`.
+
+  - ID: `PHASE-6.2.1`
+    Status: `proposed`
+    Goal: ADR-032 + the census — the policy-lifecycle
+      contract: the five records stay SEPARATE (the
+      discussion, the decision, the approval, the
+      publication, the deployment — §15.6's closure list);
+      the proposal references a policy version + a
+      deliberation thread; the decision references the
+      verdict + the ELECTorate snapshot (the authority at
+      the action time — §4.5); the approval references the
+      authority proof (the grant check at the approval
+      boundary). No code.
+    ADR: 032
+    Roadmap: §4.5, §15.6
+
+  - ID: `PHASE-6.2.2`
+    Status: `proposed`
+    Goal: the proposal + the decision records — the typed
+      proposal (the target policy version + the thread
+      reference + the status), the decision record (the
+      rule + the electorate snapshot + the verdict
+      reference — one thread, multiple decisions), the
+      lifecycle status machine (the draft → decided →
+      approved → published → deployed stages as the typed
+      statuses).
+    Roadmap: §15.6
+
+  - ID: `PHASE-6.2.3`
+    Status: `proposed`
+    Goal: the approval records + the authority proofs — the
+      approval row (the proposal + the approver + the
+      AUTHORITY PROOF: the grant check at the approval
+      boundary — the §4.5 identity/authority at the action
+      time), the quorum snapshot (the electorate + the
+      denominator + the abstentions), the separate-record
+      enforcement (the discussion/decision/approval are
+      distinct rows, never folded).
+    Roadmap: §4.5, §15.6
 
 - ID: `PHASE-6.3`
   Status: `proposed`
@@ -208,10 +273,17 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.2` | `proposed` | `.1.3` done — the seven-step layering/precedence (the authority-checked, applicability-filtered, DAG-precedence, fail-closed resolution + the impact maps; policy 2) — **the `.1` lane (the semantic policy schema) is COMPLETE**; the proposal/review/approval lifecycle executes next |
+| 1 | `PHASE-6.2.1` | `proposed` | `.2` decomposed at the census seams (the lifecycle records are the greenfield; the threads + the authority model + the `.1` registry are the substrate) — ADR-032 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.2` decomposed at the census seams — the
+  lifecycle records are the greenfield (no proposal/approval/
+  decision row exists; the threads + the authority model +
+  the `.1` registry are the substrate); children `.2.1`
+  (ADR-032 + the census) → `.2.2` (the proposal + the
+  decision records) → `.2.3` (the approvals + the proofs);
+  frontier → `.2.1`.
 - `2026-09-07`: `.1.3` done — the seven-step layering +
   precedence (the fail-closed resolution with the
   explanation tree + the impact maps); policy 2; **`.1`

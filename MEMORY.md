@@ -23,11 +23,12 @@
   `.1.8` done (identity store → node/channel/inbox → participants →
   adapters → contributions/rounds/close → UI/budget → dev + packaging →
   gate) + the three defect leaves closed.
-- **Active tree:** `PHASE-2` → frontier `.1` (workload certificate lifecycle,
-  scoped grants, delegated authority context, revocation, cached-decision
-  rules — backlogs 11, ADR 007/008/009). Pickup census + decomposition next.
-- **Next action:** execute `PHASE-2.1` — the §20.4 gap census at the
-  identity/recovery seams, then decompose at them.
+- **Active tree:** `PHASE-2` → frontier `.1.1` (`.1` decomposed at the census
+  seams: six tool-backed gaps — no cert machinery, no revocation write path,
+  no delegation, no decision cache, no incarnation writers, no ledger row).
+- **Next action:** execute `PHASE-2.1.1` — the ADR-006/007 spike: reconcile
+  ADR-006 with the existing channel decisions + choose the workload identity
+  issuance model (rcgen vs step-ca vs SPIFFE/SPIRE) with a measured spike.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

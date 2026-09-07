@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.1` decomposed at the census seams: six gaps own the identity lane (`PHASE-2.1`)
+
+- The pickup census (tool-backed greps over the authority engine, api.rs, the node, migrations, Cargo.tomls, and the ADR index) found the scoped-grant core + one-time enrollment tokens EXIST (Phase 1 carry) while six gaps own the lane: **no workload certificate machinery at all** (ADR-006/007/008/009 unopened), **no revocation write path** (`Revoked` statuses are types + tests only), **no delegated authority context** (§16.3's chain is refused), **no cached-decision semantics**, **no incarnation/run writers** (the Phase-1 gate-record deferral #4), and **no dependency-ledger identity-issuer row**.
+- Decomposition: `.1.1` the ADR-006/007 issuance spike → `.1.2` the certificate lifecycle + channel v3 → `.1.3` revocation surfaces → `.1.4` the delegation context → `.1.5` cached decisions → `.1.6` incarnation/run writers. Tree-only commit; the lockstep docs carry the frontier.
+
 ## 2026-09-07 — Phase 1 closes: G1–G2 Met, Demonstration A passed 30/30 (`PHASE-1.8.2`)
 
 - **The exit gate is closed.** The gate record (`docs/decisions/2026-09-07_phase1-gate-record.md`) marks G1–G2 **Met**: G1 = 39 offline suites + 12 live-PG suites + CLI e2e, `make deny` rc=0 (advisories/bans/licenses/sources ok), `make secret-scan` rc=0 (no leaks); G2 = real durable stores (PostgreSQL + SQLite journals), the node journal, two live-qualified adapters + the deterministic fake, and the recovery demonstration. The evidence manifest (`docs/evidence/2026-09-07_phase1-evidence-manifest.md`) maps every clause to re-runnable commands.

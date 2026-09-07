@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — Phase 3 opens: the directory profile lane decomposed at the census seams (`PHASE-3.1`)
+
+- The Phase-2 close delivered the tree's blocker (stable identity, inbox, and grants), so `PHASE-3` goes `active` and its `.1` (capability/interest/visibility profiles + versioned embeddings — backlog 26) decomposes at the census seams.
+- The census found NOTHING shipped for the §10.1 registration profile: no table, no write verbs, no read surface, no visibility policy — the incarnation writer (`.1.6.1`) carries only the lineage sliver (provider/model/harness/config); ADR-014 (the semantic-index engine + the embedding lifecycle) is unopened.
+- Children: `.1.1` ADR-014 (the dev profile's answer + the embedding trigger) → `.1.2` the profile schema + the versioned write surface (migration 0019) → `.1.3` the per-reader visibility enforcement + the read surface. Tree-only commit; frontier → `.1.1`.
+
 ## 2026-09-07 — Phase 2 CLOSED: the subtraction record + the G6–G7 feed (`PHASE-2.7.4`)
 
 - `docs/decisions/2026-09-07_phase2-subtraction-record.md` (`answers:`) ships the mandatory §19.8 subtraction: thirteen named not-built items (S-1…S-13 — no Internet exposure, no SSRF/prompt-injection suites, no signing pipeline, no rate-limit machinery, no hash chain, no HA, no load numbers, no production RPO/RTO…), each with the exact profile whose arrival re-opens it.

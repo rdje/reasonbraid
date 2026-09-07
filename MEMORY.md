@@ -7,31 +7,25 @@
 
 1. Read `README.md`, `MEMORY_ARCHITECTURE.md`, `TOOLBOX.md`, `DOCTRINE_ENFORCEMENT.md`.
 2. Open the active task-tree below → its Current Frontier → continue from the next action.
-3. Scope/gates: `ROADMAP.md`. Phase 2 execution: the `PHASE-2` tree under `docs/tasks/`.
+3. Scope/gates: `ROADMAP.md`. Phase 3 execution: the `PHASE-3` tree under `docs/tasks/`.
 
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Phase 0 COMPLETE:** the exit gate is closed (ADR-002 signed by the accountable owner —
-  `docs/adr/002-phase1-scope.md`, GO) and the PHASE-0 tree is `done`: WP1–WP8 +
-  `MAINT-1` (README_POLICY re-adopted: derived caps + routing-pressure closure) +
-  `MAINT-2` (ReasonBraid-only naming — zero scaffold-name tokens remain).
-- **Phase 1 COMPLETE:** G1–G2 **Met** + Demonstration A passed 30/30 (debug
-  AND release-built) — the gate record, the §19.8 subtraction record, and
-  the evidence manifest ship (`docs/decisions/2026-09-07_phase1-*.md`,
-  `docs/evidence/2026-09-07_phase1-evidence-manifest.md`). All leaves `.1`–
-  `.1.8` done (identity store → node/channel/inbox → participants →
-  adapters → contributions/rounds/close → UI/budget → dev + packaging →
-  gate) + the three defect leaves closed.
-- **Phase 2 COMPLETE (2026-09-07):** the exit line's properties are
-  measured — authority non-escalation (the `.7.1` adversarial suite),
-  restore + node replacement (the `.4.1` exercise + the `.7.2` drill),
-  no false safe-retry of unknown attempts (the `.7.3` six-leg
-  inventory); the §19.8 subtraction record (S-1…S-13) + the G6–G7
-  feed ship; the tree is `done`.
-- **Active tree:** `PHASE-3` → frontier `.1` (the directory lane).
-- **Next action:** execute `PHASE-3.1` — the `PHASE-3` tree's
-  frontier (recruit without enumerating the network; §21).
+- **Phases 0–2 COMPLETE:** Phase 0's exit gate closed (ADR-002 signed, the
+  WP1–WP8 + MAINT leaves `done`); Phase 1's G1–G2 **Met** + Demonstration A
+  30/30 (the gate + subtraction records ship); Phase 2's exit line measured —
+  authority non-escalation (the `.7.1` adversarial suite), restore + node
+  replacement (the `.4.1` exercise + the `.7.2` drill), no false safe-retry
+  of unknown attempts (the `.7.3` six-leg inventory) — the §19.8 subtraction
+  record (S-1…S-13) + the G6–G7 feed ship; all three trees `done`.
+- **Active tree:** `PHASE-3` → frontier `.1.1` (opened by the Phase-2 close;
+  `.1` decomposed at the census seams: the §10.1 profile is a greenfield,
+  ADR-014 unopened). Then `.1.2`, `.1.3`, `.2`–`.6`.
+- **Next action:** execute `PHASE-3.1.1` — ADR-014 (the directory
+  semantic-index engine + the embedding lifecycle): the dev profile's answer
+  (deterministic structural eligibility first; the learned embedding/index
+  machinery behind its trigger) accepted as the record; no code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

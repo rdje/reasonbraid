@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.1: the directory profile is a greenfield — the census is what makes the ADR honest
+
+- **Phase 3 opens on the Phase-2 deliverables** (stable identity, inbox, grants — the blocker the tree named at creation), and the `.1` census found the §10.1 registration profile has NOTHING shipped: no table, no verbs, no visibility policy — only the incarnation lineage sliver from `.1.6.1`. ADR-014 therefore pins the dev profile's answer BEFORE any embedding machinery: deterministic structural eligibility first (§10.3's two-stage matching), learned embeddings behind their trigger — and the §10.1 rule that a high self-declared score is never equivalent to verified competence rides every capability claim.
+- promotion: declined (the census is the leaf's recorded contract — the `.1.1`–`.1.3` children execute it). **Frontier `PHASE-3.1.1` (ADR-014).**
+
 ## _(2026-09-07)_ — PHASE-2.7.4: a phase's end is a checklist, not a narrative — the gate feed maps every line to evidence or OPEN
 
 - **The G6–G7 feed converts the exit into a consumable hand-off**: every §16.12/G7 line is either a named measured artifact (the adversarial suite, the restore + the replacement drill, the SLO instrumentation) or OPEN with the profile that re-opens it — so the next deployment profile starts from the list, not from a re-census. And the §19.8 subtraction record names thirteen not-built items, each with its trigger — the phase's honesty boundary in one table.

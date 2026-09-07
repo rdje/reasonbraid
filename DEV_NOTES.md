@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-07)_ — PHASE-3.2: the presence surface has a clock and a flag — the six states are a derivation nobody writes
+
+- **The census found the PARTS of presence without the state machine**: the lease clock (online), the revocation flag (suspended), and the one-node endpoint — but no `busy`/`draining`/`offline`/`unknown` derivation anywhere. The seams: the derivation itself (`.2.1` — pure, reads-only: presence never changes enrollment), the offline-KNOWN row + the honest unknown (`.2.2` — "this node is known, just quiet" vs the typed 404), and the per-scope filtered views (`.2.3` — counts, pseudonyms, or nothing per the initiator's scope, reusing the `.1.3` field filter).
+- promotion: declined (the census is the leaf's recorded contract — the `.2.1`–`.2.3` children execute it). **Frontier `PHASE-3.2.1` (the presence state machine).**
+
 ## _(2026-09-07)_ — PHASE-3.1.3: a hidden field is absent, not nulled — the response names the class it applied
 
 - **The visibility decision is deterministic, self-describing, and shaped at the read boundary.** The per-field policy from `.1.2` becomes an evaluator: the reader's class (self/owner → full, same-tenant → tenant, any other enrolled principal → network, unenrolled → nothing) decides which fields EXIST in the response — a hidden field is omitted, never nulled, so a client can distinguish "hidden from me" from "the profile has no value there". The response carries the applied class, the owner's full read stays the audited tenant-admin path, and the version history stays full-only (past versions may carry fields later reclassified).

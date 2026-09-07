@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-07 — `.2` split at the census seams (`PHASE-3.2`)
+
+- The presence-lane census mapped §10.2 (backlog 27) against the shipped surface: the lease store (0009), the presence view (0012/0017), and the channel's one-node presence endpoint exist — but the response carries only `online` + `suspended` + the clock fields (no six-state machine: `grep -rn "draining\|busy\|offline_known" crates/` → nothing), the offline-KNOWN row (an enrolled node whose lease expired) is indistinguishable from an unknown node at the directory level, and the privacy-filtered views (counts/pseudonyms/no roster per the initiator's scope) do not exist.
+- Children: `.2.1` the presence state machine (the six states DERIVED) → `.2.2` the offline-known distinction + the stale handling → `.2.3` the privacy-filtered directory views. Tree-only commit; frontier → `.2.1`.
+
 ## 2026-09-07 — The per-reader visibility enforcement — a hidden field is absent, never nulled — `.1` COMPLETE (`PHASE-3.1.3`)
 
 - `filter_profile` (in `profiles.rs`) evaluates the per-field visibility policy against the reader's class: the role itself → FULL, the tenant owner → FULL (via the audited tenant-admin check), a same-tenant principal → TENANT, any other enrolled principal → NETWORK, an unenrolled principal reads nothing. A hidden field is OMITTED from the response — absent, never nulled — and the response names the applied class (`visibility: full|tenant|network`).

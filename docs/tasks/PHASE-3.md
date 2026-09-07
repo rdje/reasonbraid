@@ -151,10 +151,76 @@ eligibility before ranking. Dependence indicators, never an independence score.
       regression.
 
 - ID: `PHASE-3.2`
-  Status: `proposed`
+  Status: `done`
   Goal: lease-based presence; offline-known distinction; privacy-filtered views
   Backlog: 27
   Roadmap: §10.2
+  Children: `.2.1`–`.2.3` (decomposed `2026-09-07` at the census
+    seams): `.2.1` the presence state machine (the six states DERIVED
+    from the lease clock + the suspension + the profile's availability
+    class) → `.2.2` the offline-known distinction + the stale
+    handling (the directory's offline-known row, the honest unknown)
+    → `.2.3` the privacy-filtered directory views (counts /
+    pseudonyms / nothing per the initiator's scope).
+  Done (`2026-09-07`): the census mapped §10.2 against the shipped
+    surface: the lease store (0009) + the presence view (0012/0017)
+    + the channel's one-node presence endpoint exist — but the
+    response carries only `online` + `suspended` + the clock fields
+    (`grep -rn "draining\|busy\|offline_known" crates/` → no state
+    machine anywhere), the offline-KNOWN row (an enrolled node whose
+    lease expired) is indistinguishable from an unknown node at the
+    directory level, and the privacy-filtered views (counts /
+    pseudonyms / no roster per the initiator's scope) do not exist.
+    Children at those seams — frontier → `.2.1`.
+  - ID: `PHASE-3.2.1`
+    Status: `proposed`
+    Goal: the presence state machine — the six §10.2 states as a
+      DETERMINISTIC derivation: `available` (a live lease + the
+      profile's availability class admits work), `offline` (the
+      lease expired), `suspended` (a revoked cert — the 0017 view),
+      `unknown` (no enrollment), `busy`/`draining` (the concurrency
+      accounting — NAMED with their trigger: the `.4` capacity
+      reservations lane). Presence never changes enrollment (the
+      derivation reads, it never writes). The pure
+      `presence_state(lease, suspension, availability)` function +
+      the offline tests; the channel's presence response gains the
+      derived state.
+    Backlog: 27 (the state machine half)
+    Acceptance: the derivation is pure + tested; the response names
+      the state; presence does not change enrollment; no regression.
+
+  - ID: `PHASE-3.2.2`
+    Status: `proposed`
+    Goal: the offline-known distinction + the stale handling — the
+      directory's OFFLINE-KNOWN row (an enrolled node whose lease
+      expired reads `offline` WITH its expiry visible — the
+      operator's "this node is known, just quiet"), the honest
+      `unknown` (an unenrolled node id is the typed 404, never a
+      fabricated offline), the stale-lease handling (the heartbeat's
+      expiry window + the re-handshake path re-leases). The
+      offline-delivery expiry + max age are the `.5` lane's (named,
+      not built here).
+    Backlog: 27 (the distinction half)
+    Acceptance: the offline-known vs unknown distinction is measured
+      (the expired-lease node reads offline-with-expiry; the unknown
+      id is the typed 404); no regression.
+
+  - ID: `PHASE-3.2.3`
+    Status: `proposed`
+    Goal: the privacy-filtered directory views — the §10.2 rule
+      "counts, pseudonyms, or no roster at all according to the
+      initiator's scope": `GET /v1/directory/presence` returns per
+      the initiator's own scope + each profile's visibility policy —
+      the tenant view lists the tenant's nodes with their
+      tenant-visible fields, the network view lists only the
+      network-visible pseudonyms (or the count alone when the policy
+      says so), and a zero-visibility profile contributes nothing
+      (not even a count). The `.1.3` filter is the field-level
+      engine.
+    Backlog: 27 (the views half)
+    Acceptance: the three scopes are measured (the same directory
+      read by a tenant member, a stranger, and the owner yields the
+      allowed shapes); no regression.
 
 - ID: `PHASE-3.3`
   Status: `proposed`
@@ -190,7 +256,7 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-3.2` | `proposed` | `.1.3` done — the per-reader visibility enforcement (the four-reader measurement, the hidden-field-is-absent rule, the self-describing class); **`.1` is COMPLETE** — the lease-based presence lane executes now |
+| 1 | `PHASE-3.2.1` | `proposed` | `.2` decomposed at the census seams (the lease store + the presence view exist; the six-state machine, the offline-known row, and the filtered views do not); the presence state machine executes now |
 
 ## Changelog
 
@@ -215,6 +281,12 @@ eligibility before ranking. Dependence indicators, never an independence score.
   (the four-reader measurement, the absent-not-nulled rule, the
   self-describing class, the full-only history); the profile suite
   grew to 5; **`.1` is COMPLETE** — frontier → `.2`.
+- `2026-09-07`: `.2` decomposed at the census seams — the lease
+  store + the presence view + the one-node endpoint exist (the
+  Phase-1/2 forms); the six-state machine, the offline-known row,
+  and the privacy-filtered views are the gaps; children `.2.1` (the
+  state machine) → `.2.2` (the offline-known + stale handling) →
+  `.2.3` (the filtered views); frontier → `.2.1`.
 
 ## Acceptance Checklist (PHASE-3.1.3)
 
@@ -323,6 +395,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | --- | --- | --- | --- |
 | `2026-09-07` | `PHASE-3.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | Phase 3 opened + the `.1` census + the contract-seam decomposition; frontier → `.1.1` |
 | `2026-09-07` | `PHASE-3.1.1` | docs-only (no code paths changed): `make gate` → 13/13 at commit | ADR-014 accepted (the structural-eligibility answer + the embedding trigger); frontier → `.1.2` |
+| `2026-09-07` | `PHASE-3.2` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the presence-lane census + the contract-seam decomposition (`.2.1` state machine → `.2.2` offline-known → `.2.3` filtered views); frontier → `.2.1` |
 | `2026-09-07` | `PHASE-3.1.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 5 passed` (the four-reader measurement + the full-only history); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg313_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the per-reader visibility enforcement (the absent-not-nulled filter + the classification + the self-describing response); **`.1` COMPLETE** — frontier → `.2` |
 | `2026-09-07` | `PHASE-3.1.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles` → `test result: ok. 3 passed` (the write + history, the gates, the attestation); `bash scripts/run_pg_tests.sh` → 18 live suites + the demo 34/34 (`target/pg312_guard.log`); `cargo test --all` → 51 offline suites; clippy/fmt clean; `make gate` → 13/13 | the profile schema + the write surface (migration 0019 + the verbs + the measured suite); frontier → `.1.3` |
 
@@ -331,6 +404,7 @@ ripple — `profile_versions`/`agent_profiles` purge before
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
 | `PHASE-3.1` | `REASONBRAID-PHASE3-0001` | the directory-profile lane decomposed at the census seams (the §10.1 greenfield; ADR-014 unopened) |
+| `PHASE-3.2` | `REASONBRAID-PHASE3-0005` | the presence lane decomposed at the census seams (the shipped lease/presence forms vs the three gaps) |
 | `PHASE-3.1.3` | `REASONBRAID-PHASE3-0004` | the per-reader visibility enforcement (the four-reader measurement, the absent-not-nulled filter, the full-only history) — **`.1` COMPLETE** |
 | `PHASE-3.1.2` | `REASONBRAID-PHASE3-0003` | the profile schema + the write surface (migration 0019 + the typed §10.1 fields + the content-addressed history + the write/attest verbs + the measured suite) |
 | `PHASE-3.1.1` | `REASONBRAID-PHASE3-0002` | ADR-014 accepted (deterministic eligibility first; the embedding engine behind its trigger; no embedding columns) |

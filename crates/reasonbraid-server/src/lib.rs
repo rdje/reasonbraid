@@ -33,6 +33,7 @@ pub mod browse;
 mod budget;
 pub mod ca;
 mod dependence;
+pub mod derivations;
 pub mod extraction;
 pub mod fetcher;
 pub mod git;

@@ -19,17 +19,19 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.6.2` (packs R0 + R1 + R2
+- **Active tree:** `PHASE-4` → frontier `.6.3` (packs R0 + R1 + R2
   COMPLETE; the `.5` lane COMPLETE; `.6.1` done: the snapshot
-  store + the tombstone (migration 0028, the verified
-  content-addressing, the R0/R2/R5 auto-submits, profiles 19);
-  `MAINT-1` done). Then `.6.3`, `.6.4`, `.7`.
-- **Next action:** execute `PHASE-4.6.2` — the derivation graph:
-  the `Derivation` edges (the snapshot → the derived chunks, the
-  extract/browse receipts' parent links, the extraction version)
-  + the persistence + the read surface (the parent/derived
-  traversal — a quote or a summary is NEVER the original, and
-  the graph says so).
+  store + the tombstone; `.6.2` done: the derivation graph (the
+  verified edges + the traversal, profiles 20); `MAINT-1` done).
+  Then `.6.4`, `.7`.
+- **Next action:** execute `PHASE-4.6.3` — the claim-evidence
+  graph + the citation validation: the five assessments
+  (supports/contradicts/contextualizes/source_only/unverifiable)
+  with the author/verifier + the excerpt/selector + the
+  rationale + the authority + the freshness + the independence +
+  the uncertainty; the validation (the digest re-verification +
+  the excerpt check — the citation must point at a REAL
+  snapshot).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

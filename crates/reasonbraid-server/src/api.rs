@@ -431,6 +431,11 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(resolve_resource),
         )
         .route("/v1/snapshots", post(submit_snapshot))
+        .route("/v1/derivations", post(submit_derivation))
+        .route(
+            "/v1/snapshots/{snapshot_id}/derivations",
+            get(list_derivations),
+        )
         .route(
             "/v1/snapshots/{snapshot_id}",
             get(get_snapshot).delete(tombstone_snapshot),
@@ -1612,7 +1617,7 @@ async fn resolve_resource(
                     std::fs::remove_file(&input_path).ok();
                     match extraction {
                         Ok(response) => {
-                            let _ = crate::snapshots::submit(
+                            let snapshot = crate::snapshots::submit(
                                 &state.pool,
                                 &crate::snapshots::SnapshotSubmission {
                                     reference_id: resource_id.clone(),
@@ -1641,6 +1646,27 @@ async fn resolve_resource(
                                 chrono::Utc::now(),
                             )
                             .await;
+                            // The derivation graph: every derived chunk is a
+                            // Derivation edge — the parent stays addressable
+                            // (a chunk is NEVER the original).
+                            if let Ok(snapshot) = snapshot {
+                                for chunk in &response.chunks {
+                                    let _ = crate::derivations::submit(
+                                        &state.pool,
+                                        &crate::derivations::DerivationSubmission {
+                                            parent_snapshot_id: snapshot.snapshot_id.clone(),
+                                            derived_kind: "chunk".to_owned(),
+                                            derived_digest: chunk.digest.clone(),
+                                            content: chunk.text.clone(),
+                                            extraction_version: Some(
+                                                response.extractor_version.clone(),
+                                            ),
+                                            source_selector: None,
+                                        },
+                                    )
+                                    .await;
+                                }
+                            }
                             outcome.acquisition = Some(crate::resolvers::Acquisition::Extract(
                                 crate::extraction::ExtractionReceipt {
                                     parent_digest: response.parent_digest,
@@ -1746,6 +1772,48 @@ async fn resolve_resource(
         _ => {}
     }
     Ok(Json(outcome))
+}
+
+// ── The derivation graph (PHASE-4.6.2; backlog 35) ──────────────────────────────────
+
+/// `POST /v1/derivations` — submit a derivation edge (any enrolled
+/// principal; the content MUST hash to the declared digest; the same
+/// parent + kind + digest is the replay).
+async fn submit_derivation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(submission): Json<crate::derivations::DerivationSubmission>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal submits no derivation",
+        ));
+    }
+    match crate::derivations::submit(&state.pool, &submission).await {
+        Ok(derivation_id) => Ok(Json(json!({ "derivation_id": derivation_id }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/snapshots/{id}/derivations` — the parent/derived traversal
+/// (the snapshot's children, oldest first).
+async fn list_derivations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(snapshot_id): Path<String>,
+) -> Result<Json<Vec<crate::derivations::StoredDerivation>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no derivations",
+        ));
+    }
+    Ok(Json(
+        crate::derivations::children_of(&state.pool, &snapshot_id).await?,
+    ))
 }
 
 // ── The evidence snapshot store (PHASE-4.6.1; backlog 35) ───────────────────────────

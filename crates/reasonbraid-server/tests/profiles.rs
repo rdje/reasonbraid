@@ -3057,3 +3057,154 @@ async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
     assert!(stored["deleted_at"].is_string(), "{stored}");
     assert_eq!(stored["deletion_reason"], json!("the retention expired"));
 }
+
+/// The derivation graph (PHASE-4.6.2): every transformation is a
+/// Derivation edge — the content MUST hash to its declared digest, the
+/// parent snapshot must exist, the same parent + kind + digest is the
+/// REPLAY, and the children traversal lists the derived edges.
+#[tokio::test]
+async fn the_derivation_graph_edges_roundtrip_and_replay() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "drv-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The parent: a reference + its snapshot.
+    let (status, submitted): (u16, Value) = {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "original_locator": "https://example.org/derivation-parent",
+                "scheme": "https",
+            }))
+            .send()
+            .await
+            .expect("submit request");
+        (
+            response.status().as_u16(),
+            response.json().await.expect("submit json"),
+        )
+    };
+    assert_eq!(status, 200, "the reference submits: {submitted}");
+    let reference_id = submitted["resource_id"].as_str().unwrap().to_string();
+    let bytes = b"the parent bytes";
+    let parent_digest = reasonbraid_server::fetcher::digest_sha256_hex(bytes);
+    let response = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "reference_id": reference_id,
+            "original_locator": "https://example.org/derivation-parent",
+            "final_locator": "https://example.org/derivation-parent",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": parent_digest,
+            "byte_length": bytes.len(),
+            "media_type": "text/plain",
+            "bytes_base64": "dGhlIHBhcmVudCBieXRlcw==",
+        }))
+        .send()
+        .await
+        .expect("snapshot request");
+    let snapshot_outcome: Value = response.json().await.unwrap();
+    let snapshot_id = snapshot_outcome["snapshot_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // The derivation: the derived chunk with its own digest.
+    let content = "the derived chunk text";
+    let chunk_digest = reasonbraid_server::fetcher::digest_sha256_hex(content.as_bytes());
+    let body = |digest: &str| {
+        json!({
+            "parent_snapshot_id": snapshot_id,
+            "derived_kind": "chunk",
+            "derived_digest": digest,
+            "content": content,
+            "extraction_version": "0.1.0",
+        })
+    };
+    let response = client
+        .post(format!("{base}/v1/derivations"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body(&chunk_digest))
+        .send()
+        .await
+        .expect("derivation request");
+    assert_eq!(response.status().as_u16(), 200, "the derivation submits");
+    let outcome: Value = response.json().await.unwrap();
+    let derivation_id = outcome["derivation_id"].as_str().unwrap().to_string();
+
+    // The replay: the same parent + kind + digest → the same id.
+    let response = client
+        .post(format!("{base}/v1/derivations"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body(&chunk_digest))
+        .send()
+        .await
+        .expect("replay request");
+    let replay: Value = response.json().await.unwrap();
+    assert_eq!(replay["derivation_id"], json!(derivation_id));
+
+    // The traversal: the snapshot's children list the edge.
+    let (status, children) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}/derivations"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the children read: {children}");
+    let children = children.as_array().expect("the children array");
+    assert_eq!(children.len(), 1, "{children:?}");
+    assert_eq!(children[0]["derivation_id"], json!(derivation_id));
+    assert_eq!(children[0]["derived_kind"], json!("chunk"));
+    assert_eq!(children[0]["content"], json!(content));
+
+    // The digest mismatch: the content must hash to the declared digest.
+    let response = client
+        .post(format!("{base}/v1/derivations"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&body(
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        ))
+        .send()
+        .await
+        .expect("mismatch request");
+    assert_eq!(response.status().as_u16(), 400, "the mismatch refuses");
+
+    // The missing parent refuses with its name.
+    let response = client
+        .post(format!("{base}/v1/derivations"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "parent_snapshot_id": "snp_missing",
+            "derived_kind": "chunk",
+            "derived_digest": chunk_digest,
+            "content": content,
+        }))
+        .send()
+        .await
+        .expect("missing-parent request");
+    assert_eq!(
+        response.status().as_u16(),
+        400,
+        "the missing parent refuses"
+    );
+    let refused: Value = response.json().await.unwrap();
+    assert!(
+        refused["message"].as_str().unwrap().contains("parent"),
+        "{refused}"
+    );
+}

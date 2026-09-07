@@ -897,7 +897,7 @@ of a URI is not a promise the core can resolve it.
       masked DB error, not the check. Frontier → `.6.2`.
 
   - ID: `PHASE-4.6.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the derivation graph — the `Derivation` edges (every
       transformation: the snapshot → the derived chunks, the
       extract/browse receipts' parent links, the
@@ -905,6 +905,30 @@ of a URI is not a promise the core can resolve it.
       read surface (the parent/derived traversal — a quote or a
       summary is NEVER the original, and the graph says so).
     Backlog: 35 (the graph half)
+    Done (`2026-09-07`): the derivation graph landed — migration
+      0029 (`derivations`: the `Derivation` edge — the parent
+      snapshot FK (CASCADE), the derived kind (the §12.6 named
+      set), the derived content's OWN ADR-011 digest, the
+      extraction version, the source selector, the replay unique
+      index); `crates/reasonbraid-server/src/derivations.rs`
+      (NEW): the typed `DerivationSubmission` (the
+      deny-unknown-fields boundary), the `submit` (the content
+      MUST hash to the declared digest — verified, never
+      trusted; the parent must exist; the same parent + kind +
+      digest is the REPLAY), the `children_of` traversal (the
+      parent/derived read surface — a quote or a summary is
+      NEVER the original, and the graph says so); the verbs:
+      `POST /v1/derivations` + `GET
+      /v1/snapshots/{id}/derivations`; the resolve handler's R2
+      branch auto-submits the extract chunks as the snapshot's
+      Derivation edges (the R3 render's derivations ride the
+      `.6.4` lane — its source snapshot is defined with the
+      freshness). Measured (profiles 20): the edge roundtrip,
+      the replay, the traversal, the digest-mismatch 400, the
+      missing-parent refusal. The write-tool's verbatim
+      continuations re-introduced the SQL-doubling (the FIFTH
+      occurrence) — caught at the pre-compile sweep this time.
+      Frontier → `.6.3`.
 
   - ID: `PHASE-4.6.3`
     Status: `proposed`
@@ -937,7 +961,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.6.2` | `proposed` | `.6.1` done — the snapshot store + the tombstone (migration 0028, the content-addressing verified not trusted, the replay, the tombstone rule, the R0/R2/R5 auto-submits — profiles 19); the derivation graph executes now |
+| 1 | `PHASE-4.6.3` | `proposed` | `.6.2` done — the derivation graph (migration 0029, the verified derived digests, the replay, the children traversal, the R2 chunk auto-derivations — profiles 20); the claim-evidence graph + the citation validation execute now |
 
 ## Changelog
 
@@ -970,6 +994,10 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.6.2` done — the derivation graph (migration
+  0029: the `Derivation` edges with the verified digests + the
+  replay + the children traversal; the R2 chunks auto-derive);
+  profiles 20; frontier → `.6.3`.
 - `2026-09-07`: `.6.1` done — the snapshot store + the
   tombstone (migration 0028: the content-addressed objects + the
   §12.6 shape; the VERIFIED digest, the replay, the tombstone
@@ -1122,6 +1150,44 @@ reproduce outside the family they are sent to. Routed to
 `PHASE-4-MAINT-1` (opened above — the repair leaf; the Phase-3
 modules' share rides it, and `docs/tasks/PHASE-3.md` references
 the route).
+
+## Acceptance Checklist (PHASE-4.6.2)
+
+The CODE change owned by this leaf:
+`migrations/0029_derivations.sql` (NEW — the `Derivation` edges),
+`crates/reasonbraid-server/src/derivations.rs` (NEW — the typed
+submission + the verified submit + the traversal), `src/api.rs`
+(the two verbs + the R2 chunk auto-derivations), `src/lib.rs`
+(the module), and `tests/profiles.rs` (profiles 20).
+
+- [x] **REPRODUCE / ISSUE** — the `.6.1` close: the snapshots
+  store the originals, but no transformation is an EDGE — the
+  derived chunks float parentless.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the graph was the lane's
+  second third — `git grep -c "derivations\|DerivationSubmission"
+  62a7f0b -- crates/ migrations/` → rc=1 (nothing before this
+  leaf). The fix point is the §12.6 `Derivation` edge: the own
+  digest verified, the parent link, the traversal.
+- [x] **ADDRESSED (verified)** — measured before→after. Before: the
+  grep above. After:
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  profiles the_derivation_graph` → `test result: ok. 1 passed`
+  — the edge submits (the content hashes to the declared
+  digest), the REPLAY returns the same id, the children
+  traversal lists the edge (the parent stays addressable), the
+  digest MISMATCH is the 400, the missing parent refuses with
+  its name.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 55 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the
+  demo `ALL acceptance checks passed` (`target/pg462_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0029_derivations.sql`, `src/derivations.rs`,
+  `src/api.rs`, `src/lib.rs`, `tests/profiles.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, DEV_NOTES, MEMORY, LIVE_STATUS, this
+  tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
+  same commit.
 
 ## Acceptance Checklist (PHASE-4.6.1)
 
@@ -1710,6 +1776,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.6.2` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_derivation_graph` → `test result: ok. 1 passed` (the edge roundtrip, the replay, the traversal, the mismatch 400, the missing-parent refusal); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg462_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the derivation graph; frontier → `.6.3` |
 | `2026-09-07` | `PHASE-4.6.1` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_snapshot_store` → `test result: ok. 1 passed` (the submit → the read-back, the replay, the digest-mismatch 400, the tombstone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg461_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the snapshot store + the tombstone; frontier → `.6.2` |
 | `2026-09-07` | `PHASE-4.6` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the snapshot/derivation/claim census + the contract-seam decomposition (`.6.1` the store + the tombstone → `.6.2` the graph → `.6.3` the claims + the validation → `.6.4` the retention + the freshness); frontier → `.6.1` |
 | `2026-09-07` | `PHASE-4.5.3` | `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_gated_packs` → `test result: ok. 1 passed` (the gate closed → the unresolvable-now; open → the R5 rank + the authenticated loopback refusal, the R3 rank + the pre-flight refusal, the RX rank + the capability call; closed again → the rows gone); `cargo test --all` → rc=0, 55 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg453_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the gated wiring; **`.5` COMPLETE** — frontier → `.6` |
@@ -1738,6 +1805,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.6.2` | `REASONBRAID-PHASE4-0024` | the derivation graph (the verified edges + the replay + the traversal — a quote is never the original) |
 | `PHASE-4.6.1` | `REASONBRAID-PHASE4-0023` | the snapshot store + the tombstone (the content-addressing verified, the replay, the R0/R2/R5 auto-submits) |
 | `PHASE-4.6` | `REASONBRAID-PHASE4-0022` | the snapshot/derivation/claim lane decomposed at the census seams (the receipts exist, nothing persists them) |
 | `PHASE-4.5.3` | `REASONBRAID-PHASE4-0021` | the gated receipt + the wiring (the startup sync, the authenticated/render/agent paths — the disabled pack has no row) — **`.5` COMPLETE** |

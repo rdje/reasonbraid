@@ -12,6 +12,12 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The derivation graph ships: every transformation is an edge (`PHASE-4.6.2`)
+
+- `migrations/0029`: the `Derivation` edges — the parent link, the derived kind, the content's OWN verified ADR-011 digest, the replay index.
+- `src/derivations.rs`: the typed submission (the content MUST hash to the declared digest; the parent must exist; the same parent + kind + digest replays), the `children_of` traversal.
+- The verbs + the R2 chunk auto-derivations (the extract chunks land as the snapshot's edges). Measured: profiles 20. Frontier → `.6.3` (the claim-evidence graph + the citation validation).
+
 ## 2026-09-07 — The snapshot store ships: the content-addressing is verified, the deletion is a tombstone (`PHASE-4.6.1`)
 
 - `migrations/0028`: `snapshot_objects` (the bytes under their ADR-011 digest — identical bytes, one row) + `evidence_snapshots` (the §12.6 shape; the tombstone state rides the row).

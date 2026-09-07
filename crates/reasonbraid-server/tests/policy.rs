@@ -1281,3 +1281,203 @@ async fn the_approval_carries_its_authority_proof() {
     assert_eq!(approvals.len(), 1, "{approvals:?}");
     assert_eq!(approvals[0]["approval_id"], json!("ap-app-1"));
 }
+
+#[tokio::test]
+async fn the_projection_compiles_the_resolved_set_byte_identical() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pj-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // Two policies: the baseline (the c1/c2 clauses) + the shape policy
+    // (the c3 clause with a CONTROL character — the compiler declares it
+    // unrepresentable instead of silently dropping it).
+    for (policy_id, clauses) in [
+        (
+            "pj-base",
+            json!([
+                { "id": "c1", "statement": "every thread declares its objective" },
+                { "id": "c2", "statement": "every publication names its authority" },
+            ]),
+        ),
+        (
+            "pj-shape",
+            json!([ { "id": "c3", "statement": "a control \u{0001} character" } ]),
+        ),
+    ] {
+        let (status, registered) = post(
+            &client,
+            &base,
+            "/v1/policies",
+            &human_id,
+            &json!({
+                "policy_id": policy_id,
+                "version": "1.0.0",
+                "digest": DIGEST,
+                "lifecycle": "draft",
+                "title": policy_id,
+                "owning_authority": grant_id,
+                "clauses": clauses,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the policy registers: {registered}");
+    }
+
+    // 1. The generic projection: the resolved set renders byte-identically
+    // (the digest pins it), and the control-char clause DECLARES itself.
+    let (status, projected) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pj-1",
+            "target": "generic",
+            "resolution": {
+                "policies": [
+                    { "policy_id": "pj-base", "version": "1.0.0" },
+                    { "policy_id": "pj-shape", "version": "1.0.0" },
+                ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+            "lock": [],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the projection records: {projected}");
+    assert!(projected["digest"].as_str().unwrap().starts_with("sha256:"));
+    assert!(
+        projected["bytes"]
+            .as_str()
+            .unwrap()
+            .contains("## c1 [pj-base 1.0.0]"),
+        "the bundle renders the clause: {projected}"
+    );
+    assert!(
+        projected["bytes"]
+            .as_str()
+            .unwrap()
+            .contains("## c2 [pj-base 1.0.0]"),
+        "the second clause renders"
+    );
+    let unrepresentable = projected["unrepresentable"].as_array().unwrap();
+    assert_eq!(unrepresentable.len(), 1, "{projected}");
+    assert_eq!(unrepresentable[0]["clause_id"], json!("c3"));
+    assert!(
+        unrepresentable[0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("control"),
+        "{projected}"
+    );
+
+    // 2. The SAME request re-projects byte-identically (a second id, the
+    // identical digest).
+    let (status, repeated) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pj-1-repeat",
+            "target": "generic",
+            "resolution": {
+                "policies": [
+                    { "policy_id": "pj-base", "version": "1.0.0" },
+                    { "policy_id": "pj-shape", "version": "1.0.0" },
+                ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+            "lock": [],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the repeat projects: {repeated}");
+    assert_eq!(
+        repeated["digest"], projected["digest"],
+        "the byte-identical guarantee"
+    );
+
+    // 3. The policy.lock projection renders the stable rows.
+    let (status, locked) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pj-lock",
+            "target": "lock",
+            "resolution": {
+                "policies": [ { "policy_id": "pj-base", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+            "lock": [
+                { "policy_id": "pj-base", "version": "1.0.0", "digest": DIGEST, "owning_authority": grant_id },
+            ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the lock projects: {locked}");
+    assert!(
+        locked["bytes"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("pj-base 1.0.0 {DIGEST} {grant_id}")),
+        "{locked}"
+    );
+
+    // 4. An unknown target refuses (the named deferral — no adapter).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pj-mcp",
+            "target": "mcp",
+            "resolution": {
+                "policies": [ { "policy_id": "pj-base", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown target refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("vocabulary"),
+        "{refused}"
+    );
+
+    // 5. The duplicate projection id refuses; the list carries the three.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "pj-1",
+            "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "pj-base", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the duplicate refuses: {refused}");
+    let (status, projections) = get(&client, &base, "/v1/policy-projections", &human_id).await;
+    assert_eq!(status, 200, "the projections read: {projections}");
+    assert_eq!(projections.as_array().unwrap().len(), 3, "{projections:?}");
+}

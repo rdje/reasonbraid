@@ -47,6 +47,7 @@ mod outbox;
 pub mod policy;
 mod presence;
 mod profiles;
+pub mod projections;
 mod recruitment;
 mod resolvers;
 mod resources;

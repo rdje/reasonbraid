@@ -366,7 +366,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       code changed. Frontier → `.3.2`.
 
   - ID: `PHASE-6.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the compiler core — the resolved clause set → the
       GENERIC instruction bundle + the `policy.lock` (the
       versions, the digests, the dependencies, the authority
@@ -374,6 +374,29 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       renderer — the byte-identical proof), the projection
       record (the target + the profile + the digest).
     Roadmap: §15.5
+    Done (`2026-09-07`): the compiler core landed per ADR-033 —
+      `crates/reasonbraid-policy-compiler` (NEW, hermetic:
+      no database/network/clock — serde + sha2 only): the
+      `CompileRequest`/`InputClause`/`LockedPolicy`/
+      `CompiledArtifact`/`Unrepresentable` shapes, the
+      `compile` (the pure function: the STABLE sort — the
+      clause id then the policy id — the generic bundle
+      renderer with the escaping, the `policy.lock` renderer
+      with the stable rows, the unrepresentable declaration
+      for the control-char statements, the unknown-target
+      refusal), the ADR-011 digest over the rendered bytes;
+      the server: migration 0041 (`policy_projections`: the
+      artifact record), `crates/reasonbraid-server/src/
+      projections.rs` (NEW: the `project` — the `.1.3`
+      resolve → the compile → the record), the api: `POST`/
+      `GET /v1/policy-projections`. Measured (compiler 5 +
+      policy 5): the byte-identical repeat, the shuffled
+      stable order, the newline escaping + the control-char
+      declaration, the lock rows, the unknown-target
+      refusal; the live suite: the generic projection with
+      the declared unrepresentable, the repeat's identical
+      digest, the lock projection, the duplicate refusal.
+      Frontier → `.3.3`.
 
   - ID: `PHASE-6.3.3`
     Status: `proposed`
@@ -413,10 +436,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.3.2` | `proposed` | `.3.1` done — ADR-033 accepted (the byte-identical renderer, the declared unrepresentable, the hermetic crate); the compiler core executes next |
+| 1 | `PHASE-6.3.3` | `proposed` | `.3.2` done — the compiler core (the hermetic crate + the generic/lock renderers + the projection records; compiler 5 + policy 5); the Codex + the Claude projections execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.3.2` done — the compiler core (the
+  hermetic `reasonbraid-policy-compiler` crate + the
+  generic/lock renderers + migration 0041 + the projection
+  verbs); compiler 5 + policy 5; frontier → `.3.3`.
 - `2026-09-07`: `.3.1` done — ADR-033 accepted (the
   compiler contract: the byte-identical renderer, the
   declared unrepresentable, the hermetic crate, the
@@ -648,6 +675,58 @@ policy.rs` (the new test + the purge-gap fix) — `\.rs$` +
   commit.
 - [x] **FIX** — `0040_policy_approvals.sql`, `src/lifecycle.rs`,
   `src/api.rs`, `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.3.2)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-policy-compiler/` (NEW — the hermetic
+crate: the Cargo.toml, the lib.rs shapes + the `compile`, the
+tests/compiler.rs suite), `migrations/0041_policy_projections.sql`
+(NEW), `crates/reasonbraid-server/src/projections.rs` (NEW —
+the `project` + the list), `crates/reasonbraid-server/src/
+lib.rs` + `Cargo.toml` (the module + the dependency),
+`crates/reasonbraid-server/src/api.rs` (the two verbs),
+`crates/reasonbraid-server/tests/policy.rs` (the new test) —
+`\.rs$` + `\.toml$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  projection, no compiler, no target vocabulary, no
+  unrepresentable declaration (the `.3` census).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_projections\|reasonbraid-policy-compiler\|ProjectionRequest"
+  cbde3b2 -- crates/ migrations/` → rc=1 (nothing before
+  this leaf). The fix point is the ADR-033 core: the pure
+  renderer + the projection record.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `cargo test -p
+  reasonbraid-policy-compiler` → `test result: ok. 5
+  passed` — the byte-identical repeat, the shuffled stable
+  order, the newline escaping + the control-char
+  declaration, the lock rows, the unknown-target refusal;
+  `DATABASE_URL=… cargo test -p reasonbraid-server --test
+  policy the_projection_compiles_the_resolved_set_byte_identical`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 5 tests … ok`) — the generic projection
+  with the declared unrepresentable, the repeat's identical
+  digest, the lock projection, the unknown-target + the
+  duplicate refusals, the list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 61 suites
+  (the compiler crate added its two);
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg529_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `crates/reasonbraid-policy-compiler/`,
+  `0041_policy_projections.sql`, `src/projections.rs`,
+  `src/lib.rs`, `src/api.rs`, `tests/policy.rs`,
+  `crates/reasonbraid-server/Cargo.toml`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

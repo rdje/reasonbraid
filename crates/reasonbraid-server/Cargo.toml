@@ -15,6 +15,7 @@ workspace = true
 # The domain authority types the .5.1 engine evaluates and persists (boundary ceiling,
 # grants, decisions, the policy digest). The first direct core dependency of the server.
 reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+reasonbraid-policy-compiler = { path = "../reasonbraid-policy-compiler", version = "0.1.0" }
 # The workload-identity CA (PHASE-2.1.2.1, ADR-007): the project-local issuer the
 # enrollment path signs node leaves with. DER only (no `pem` feature — the bans
 # doctrine's base64-split fix from the .1.1 spike stays).

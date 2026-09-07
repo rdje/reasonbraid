@@ -16,16 +16,16 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.3.2` (**PHASE 5 CLOSED**; ADR-033 accepted — the byte-identical renderer, the declared unrepresentable, the hermetic crate).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.3.3` (**PHASE 5 CLOSED**; the compiler core ships — the hermetic crate + the projection records; compiler 5 + policy 5).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.3.2` — the compiler core: the
-  resolved clause set → the GENERIC instruction bundle + the
-  `policy.lock`, the deterministic serialization (the byte-identical
-  proof), the projection record (the target + the profile + the
-  digest) — per ADR-033.
+- **Next action:** execute `PHASE-6.3.3` — the Codex + the Claude
+  projections: the AGENTS.md + the CLAUDE.md renderers over the same
+  core, the unrepresentable declarations, the projection tests (the
+  loss/ordering/escaping/size/harness-conflict coverage) — per
+  ADR-033.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

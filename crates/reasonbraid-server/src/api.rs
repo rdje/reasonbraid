@@ -484,6 +484,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(record_policy_approval).get(list_policy_approvals),
         )
         .route(
+            "/v1/policy-projections",
+            post(project_policies).get(list_policy_projections),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2446,6 +2450,42 @@ async fn list_policy_approvals(
         ));
     }
     Ok(Json(crate::lifecycle::list_approvals(&state.pool).await?))
+}
+
+/// `POST /v1/policy-projections` — project one resolved set (`.3.2`): the
+/// server resolves, the hermetic compiler renders, the artifact records
+/// with its digest + its declared unrepresentables.
+async fn project_policies(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::projections::ProjectionRequest>,
+) -> Result<Json<crate::projections::StoredProjection>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal projects no policy",
+        ));
+    }
+    match crate::projections::project(&state.pool, &request).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-projections` — the projection records, newest first.
+async fn list_policy_projections(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::projections::StoredProjection>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no projections",
+        ));
+    }
+    Ok(Json(crate::projections::list(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The compiler core lands (`PHASE-6.3.2`)
+
+- The hermetic `reasonbraid-policy-compiler` crate (no database/network/clock): the pure `compile` function with the stable sort, the generic bundle + the `policy.lock` renderers, the escaping, the declared unrepresentable, and the ADR-011 digest over the rendered bytes. The server gains migration 0041 + the `POST`/`GET /v1/policy-projections` verbs (the resolve → the compile → the record). Measured: compiler 5 + policy 5.
+
 ## 2026-09-07 — ADR-033: the projection-compiler contract (`PHASE-6.3.1`)
 
 - ADR-033 accepted (`docs/adr/033-projection-compiler.md`): the compiler renders the resolved set, never re-resolves; the rendering is byte-identical by construction; the unrepresentable clause is the DECLARED refusal (never a silent omission); the compiler is a separate hermetic crate; the projection digest is the publication's verification primitive. No code.

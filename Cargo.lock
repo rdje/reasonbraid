@@ -3439,6 +3439,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reasonbraid-policy-compiler"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "reasonbraid-server"
 version = "0.1.0"
 dependencies = [
@@ -3455,6 +3464,7 @@ dependencies = [
  "reasonbraid-adapter",
  "reasonbraid-core",
  "reasonbraid-node",
+ "reasonbraid-policy-compiler",
  "reqwest 0.12.28",
  "ring",
  "rustls-pki-types",

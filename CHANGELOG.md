@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-07 — The R2 contract is decided: extraction is a Derivation, parsed in a worker quarantine (`PHASE-4.4.1`)
+
+- The parser census, measured: lopdf 0.44.0 (chosen) vs pdf 0.10.0 (rejected as the lower-level API), zip 8.6.0, tar 0.4.46, atom_syndication 0.12.10 — all pure Rust.
+- The contract (`docs/decisions/2026-09-07_r2-extraction-contract.md`, top-level `answers:`): the extraction always produces a Derivation (parent digest + extractor version + derived chunk digests); the parsers run in `process`-class worker processes — the first ladder-up, the stdio quarantine with killing budgets; the named refusals (encrypted/JS PDFs, nested archives, traversal, bombs); the media-type routing (hinted references pipeline acquire→extract).
+- No code. Frontier → `.4.2` (the extraction workers).
+
 ## 2026-09-07 — The R2 lane opens: the census found NOTHING extracts (`PHASE-4.4`)
 
 - No PDF/zip/tar/feed crate in the lock (only the fetcher's flate2); the codebase's `extract` hits are axum's extractor module and the CA's EC helper.

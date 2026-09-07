@@ -19,17 +19,16 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-4` → frontier `.4.1` (packs R0 + R1
-  COMPLETE; `.4` decomposed at the census seams — nothing
-  extracts: `.4.1` the R2 contract + the parser census → `.4.2`
-  the workers → `.4.3` the receipt + the wiring; `MAINT-1` done).
-  Then `.5`–`.7`.
-- **Next action:** execute `PHASE-4.4.1` — the R2 contract + the
-  parser census: the format set, the §12.6 Derivation shape, the
-  worker sandbox class (`process` — the honest ladder-up), the
-  refusal vocabulary, the media-type routing design + the
-  measured parser-library census (lopdf/pdf, zip/tar, the feed
-  crates — the pure-Rust families). No code.
+- **Active tree:** `PHASE-4` → frontier `.4.2` (packs R0 + R1
+  COMPLETE; `.4.1` done: the R2 contract — the Derivation-only
+  extraction + the `process`-class worker quarantine, decision
+  `2026-09-07_r2-extraction-contract.md`; `MAINT-1` done). Then
+  `.4.3`, `.5`–`.7`.
+- **Next action:** execute `PHASE-4.4.2` — the extraction workers:
+  the worker process under the `.4.1` contract (the stdio JSON
+  protocol, the per-format parsers — lopdf/zip/tar/
+  atom_syndication, the mechanical refusals, the killing
+  per-extraction budgets, the fresh-process quarantine).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

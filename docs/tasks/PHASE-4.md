@@ -534,7 +534,7 @@ of a URI is not a promise the core can resolve it.
     parent links). Children at those seams — frontier → `.4.1`.
 
   - ID: `PHASE-4.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the R2 contract + the parser census — the §12.3 R2 row
       as the TYPED contract: the format set (PDF; the open
       formats — UTF-8 text, the structured feeds (Atom/RSS), the
@@ -558,6 +558,26 @@ of a URI is not a promise the core can resolve it.
       — the pure-Rust families against the lean supply-chain
       doctrine). No code.
     Backlog: 34 (the contract half)
+    Done (`2026-09-07`): the contract is decided + durable —
+      `docs/decisions/2026-09-07_r2-extraction-contract.md`
+      (top-level `answers:`): the format set (PDF text only, the
+      one-level archives, the Atom/RSS feeds — plain text is NOT
+      an extraction); the extraction is ALWAYS a Derivation (the
+      parent digest + the extractor version + the derived chunks,
+      each with its own ADR-011 digest); the sandbox claim is
+      `process` — the FIRST ladder-up (the parsers EXECUTE
+      untrusted content in a dedicated worker process per
+      extraction: the stdio JSON protocol + the killing budgets =
+      the quarantine); the refusal vocabulary decided before the
+      parsers (encrypted/JS PDFs, nested archives, traversal, the
+      bomb); the media-type routing (the R2 pack advertises the
+      acquisition schemes with its media types; a hinted
+      reference pipelines acquire→extract, a hintless one stays
+      acquisition-only — the `.4.3` resolve gains the filter);
+      the parser census MEASURED (`cargo add --dry-run`: lopdf
+      0.44.0 chosen, pdf 0.10.0 rejected as the lower-level API,
+      zip 8.6.0 + tar 0.4.46, atom_syndication 0.12.10 — all
+      pure Rust, no C). No code changed. Frontier → `.4.2`.
 
   - ID: `PHASE-4.4.2`
     Status: `proposed`
@@ -606,7 +626,7 @@ of a URI is not a promise the core can resolve it.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-4.4.1` | `proposed` | `.4` decomposed at the census seams — NOTHING extracts (no parser crate in the lock; the §12.3 R2 row has no machinery); the R2 contract + the measured parser census execute now |
+| 1 | `PHASE-4.4.2` | `proposed` | `.4.1` done — the R2 contract decided (`docs/decisions/2026-09-07_r2-extraction-contract.md`: the Derivation-only extraction, the `process`-class worker quarantine, the named refusals, the media-type routing, lopdf/zip/tar/atom_syndication measured); the extraction workers execute now |
 
 ## Changelog
 
@@ -639,6 +659,13 @@ of a URI is not a promise the core can resolve it.
   SSRF policy (the pure §12.4 rules, the public-only policy, the
   mapped-form re-classification); four unit tests; frontier →
   `.2.2`.
+- `2026-09-07`: `.4.1` done — the R2 contract + the parser
+  census: the Derivation-only extraction, the `process`-class
+  worker quarantine (the stdio protocol + the killing budgets),
+  the named refusal vocabulary, the media-type routing, and the
+  measured crate set (lopdf/zip/tar/atom_syndication, all pure
+  Rust) — durable in `docs/decisions/2026-09-07_r2-extraction-
+  contract.md`; no code; frontier → `.4.2`.
 - `2026-09-07`: `.4` decomposed at the census seams — NOTHING
   extracts (no PDF/zip/tar/feed crate in the lock; the R0/R1
   pieces exist to reuse: the receipts, the ADR-018 ladder, the
@@ -1106,6 +1133,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Date | Leaf | Checks | Result |
 | --- | --- | --- | --- |
+| `2026-09-07` | `PHASE-4.4.1` | docs-only (no code paths changed): the parser census measured (`cargo add --dry-run lopdf/pdf/zip/tar/atom_syndication` → the versions above, all pure Rust); `make gate` → 13/13 at commit | the R2 contract + the parser census; frontier → `.4.2` |
 | `2026-09-07` | `PHASE-4.4` | docs-only (no code paths changed): `make gate` → 13/13 at commit | the R2 census + the contract-seam decomposition (`.4.1` the contract + the parser census → `.4.2` the workers → `.4.3` the receipt + the wiring); frontier → `.4.1` |
 | `2026-09-07` | `PHASE-4.3.3` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 6 passed` (the new receipt test: the resolved commit + the ADR-011 digest over the odb + the included manifest); `DATABASE_URL=… cargo test -p reasonbraid-server --test profiles the_r1_resolver` → `test result: ok. 1 passed` (the git reference resolves to the built-in; the loopback refusal names the class through the resolution path; the reference preserved; the stricter requirement explicit); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg433_guard.log`); clippy/fmt clean; `make gate` → 13/13 | the R1 pack wired; **`.3` COMPLETE** — frontier → `.4` |
 | `2026-09-07` | `PHASE-4.3.2` | `cargo test -p reasonbraid-server --lib git` → `test result: ok. 5 passed` (the grammar table, the pre-flight loopback/private refusals, the offline file-transport acquisition with the resolved commit + the counts, the submodule/LFS refusals, the budget trips); `cargo test --all` → rc=0, 51 suites; `bash scripts/run_pg_tests.sh` → rc=0, 18 live suites + the demo (`target/pg432_guard.log`); `cargo clippy --all --all-targets -- -D warnings` → rc=0; `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 | the R1 acquisition; frontier → `.3.3` |
@@ -1125,6 +1153,7 @@ verbs + the module), `crates/reasonbraid-server/tests/profiles.rs`
 
 | Leaf | Commit subject or reference | Notes |
 | --- | --- | --- |
+| `PHASE-4.4.1` | `REASONBRAID-PHASE4-0015` | the R2 contract + the parser census (the Derivation-only extraction + the worker quarantine — the decision record) |
 | `PHASE-4.4` | `REASONBRAID-PHASE4-0014` | the R2 lane decomposed at the census seams (nothing extracts — the contract/parser-census/worker/receipt are the greenfield) |
 | `PHASE-4.3.3` | `REASONBRAID-PHASE4-0013` | the R1 receipt + the pack wiring (the git references resolve to the built-in — the refusal names the class) — **`.3` COMPLETE** |
 | `PHASE-4.3.2` | `REASONBRAID-PHASE4-0012` | the R1 acquisition (gix over the classified transport — the budgets + the named refusals + the resolved commit) |

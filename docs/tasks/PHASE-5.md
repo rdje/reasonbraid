@@ -549,7 +549,7 @@ and honest inconclusive outcomes.
     Frontier → `.4.1`.
 
   - ID: `PHASE-5.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-017 + the census — the evaluation-service
       contract: the versioned case registry (the corpus
       versions ride the service, the digests pin them), the
@@ -564,6 +564,21 @@ and honest inconclusive outcomes.
       baseline blocks the claim). No code.
     ADR: 017
     Roadmap: §13.7, §19.5, §19.7
+    Done (`2026-09-07`): ADR-017 accepted (evidence-gated) —
+      `docs/adr/017-evaluation-service.md` (top-level
+      `answers:`): the service RECORDS, the harness MEASURES
+      (one grading implementation — a second judge would
+      invite drift); the registry is versioned +
+      content-addressed (the ADR-011 digests pin the corpus);
+      the experiment record DECLARES its seed (an undeclared
+      randomness is the typed refusal); the randomized routing
+      trial is SHADOW-ONLY (the evidence the `.5` lane's
+      decision consumes — it never changes production
+      routing); the cohort is a recorded label (the reports
+      aggregate only the recorded assignments); the
+      calibration record accumulates (the model grader never
+      judges alone); the regression gate is the G5 threshold
+      and only BLOCKS. No code changed. Frontier → `.4.2`.
 
   - ID: `PHASE-5.4.2`
     Status: `proposed`
@@ -608,10 +623,15 @@ and honest inconclusive outcomes.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-5.4.1` | `proposed` | `.4` decomposed at the census seams (the WP7 bench harness is the substrate; the service/experiments/cohorts/calibration/gates are the greenfield) — ADR-017 opens the lane |
+| 1 | `PHASE-5.4.2` | `proposed` | `.4.1` done — ADR-017 accepted (the service records, the harness measures; the seed-declaring records; the shadow-only trials); the evaluation-service core executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.1` done — ADR-017 accepted (the
+  evaluation-service contract: the records-and-gates service,
+  the digest-pinned registry, the declared seeds, the shadow
+  trials, the recorded cohorts, the G5 threshold); no code;
+  frontier → `.4.2`.
 - `2026-09-07`: `.4` decomposed at the census seams — the WP7
   bench harness is the substrate (the versioned corpus, the
   four workflows, the deterministic grading, the reports); the

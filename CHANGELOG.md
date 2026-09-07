@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-017: the evaluation-service contract (`PHASE-5.4.1`)
+
+- ADR-017 accepted (`docs/adr/017-evaluation-service.md`): the service RECORDS, the harness MEASURES (one grading implementation); the registry is versioned + digest-pinned; the experiment records declare their seeds; the randomized routing trials are shadow-only; the cohorts are recorded labels; the calibration accumulates; the regression gate is the blocking-only G5 threshold. No code.
+
 ## 2026-09-07 — The evaluation lane is decomposed at the census seams (`PHASE-5.4`)
 
 - The §13.7/§19.5 census: the WP7 bench harness (Phase 0) is a substantial substrate — the digest-carrying versioned corpus, the four deliberation workflows over the real Adapter contract, the deterministic grading (Brier + rubrics), the spread-bearing reports, the ScriptedAgent self-test; the GREENFIELD is the service itself (the case registry, the run records, the randomized trials, the cohorts, the calibration record, the regression gates). Children: `.4.1` ADR-017 → `.4.2` the service core → `.4.3` the routing experiments + the cohorts → `.4.4` the calibration + the gates.

@@ -19,7 +19,7 @@
   six lanes shipped (the directory profiles, the presence, the two-stage
   matching, the recruitment protocol, the subscriptions + the node-initiated
   API, the dependence indicators) — all four trees `done`.
-- **Active tree:** `PHASE-5` → frontier `.4.1` (**PHASE 4 CLOSED**;
+- **Active tree:** `PHASE-5` → frontier `.4.2` (**PHASE 4 CLOSED**;
   the `.1` lane COMPLETE (ADR-016 + the registry + the
   validation + the execution — the steps ride the projection,
   profiles 25); the `.2` lane decomposed at the census seams
@@ -28,11 +28,11 @@
   the terminals — `.2.1` ADR-029 → `.2.2` the records → `.2.3`
   the blind lane → `.2.4` the requests + the adjudication);
   `MAINT-1` done). Then `.3`–`.4`.
-- **Next action:** execute `PHASE-5.4.1` — ADR-017 + the
-  census: the evaluation-service contract (the versioned case
-  registry, the experiment records with the declared seeds,
-  the randomized routing trials, the cohort tracking, the
-  calibration record, the regression gates). No code.
+- **Next action:** execute `PHASE-5.4.2` — the
+  evaluation-service core: the case registry (the versioned
+  cases + the digests) + the experiment records (the workflow,
+  the corpus version, the seed, the trial count, the result
+  rows) + the results persistence — per ADR-017.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

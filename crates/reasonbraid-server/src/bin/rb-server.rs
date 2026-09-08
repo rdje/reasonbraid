@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    api_router, ca::ensure_server_ca, node_router, r5r3rx_enabled, sync_gated_entries, ui_router,
+    api_router, ca::ensure_server_ca_with_store, node_router, r5r3rx_enabled, secret_store,
+    sync_gated_entries, ui_router,
 };
 
 #[derive(Debug, Parser)]
@@ -30,6 +31,12 @@ struct Args {
     /// PostgreSQL URL for the control plane store (defaults to $DATABASE_URL).
     #[arg(long, env = "DATABASE_URL")]
     database_url: String,
+
+    /// The DECLARED secret-store profile (`.1.4.2`): the configuration
+    /// choice the key reads route through. An undeclared name refuses the
+    /// boot — never a silent fallback to the dev rows.
+    #[arg(long, default_value = secret_store::PROFILE_DEV_DATABASE)]
+    secret_store_profile: String,
 }
 
 #[tokio::main]
@@ -38,9 +45,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = sqlx::PgPool::connect(&args.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
+    // The declared secret store (`.1.4.2`): resolved ONCE at boot — the
+    // undeclared profile is the typed refusal, never a silent fallback.
+    let store = secret_store::SecretStore::resolve(&args.secret_store_profile)
+        .map_err(|e| format!("{e}"))?;
+
     // The workload-identity CA (`.1.2.1`, ADR-007): loaded from `server_ca` or
     // generated on first boot — it must survive restarts so issued leaves chain.
-    let ca = Arc::new(ensure_server_ca(&pool).await?);
+    // The material reads THROUGH the resolved store (the registry is the seam).
+    let ca = Arc::new(ensure_server_ca_with_store(&pool, &store).await?);
 
     // The `.5.3` OPT-IN gate's startup sync: the R3/R5/RX registry rows
     // exist ONLY while the gate is open (the resolve never returns a

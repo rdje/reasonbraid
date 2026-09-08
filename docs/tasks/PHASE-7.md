@@ -460,7 +460,7 @@ reopens the applicable portions of G4–G7.
       No code changed. Frontier → `.1.4.2`.
 
   - ID: `PHASE-7.1.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the secret-store declared profiles — the profile
       registry with the shipped `dev_database` profile (the
       plaintext dev rows — the ADR-007 stance, honest);
@@ -470,6 +470,59 @@ reopens the applicable portions of G4–G7.
       undeclared-profile request is the typed refusal;
       the measured suite.
     Roadmap: §16.8
+    Done (`2026-09-08`): `secret_store.rs` — the declared
+      registry: `DECLARED_PROFILES` (the shipped
+      `dev_database`), `SecretStore::resolve` (the
+      boot-time seam — an UNDECLARED name is the typed
+      `UndeclaredStore` refusal naming the profile AND the
+      declared set, never a silent fallback),
+      `load_ca_material` (the CA row read THROUGH the
+      store). `ca::ensure_server_ca_with_store` routes the
+      CA material read through the resolved profile (the
+      old inline SELECT is gone — the store is the only
+      seam); `ensure_server_ca` stays as the
+      dev-default convenience (the tests' path — the SAME
+      implementation, no hidden third route). The boot
+      (`rb-server`) gains `--secret-store-profile`
+      (default `dev_database`), resolved ONCE before the
+      CA load — the undeclared name refuses the boot. The
+      node-key material: the handshake rides the cert
+      proof (the `.1.2.2` channel); the `node_keys`
+      secret is enrollment-written + the cert proof
+      carries the identity — the key-read routing covers
+      the CA material (the live key read); the external
+      store joins by adding its name + its implementation
+      (the named extension point). The measured suite:
+      the OFFLINE unit tests (the resolution, the typed
+      refusal, the declared default, the list) — the
+      read-through routing rides EVERY live suite + the
+      demo (they all boot through the store).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the key reads
+      were AMBIENT (the CA SELECT inline in `ca.rs` — the
+      store was an undeclared fact, the ADR-034
+      "ambient dependency"); the registry + the routed
+      read make the configuration choice mechanical.
+      Evidence: `cargo test -p reasonbraid-server --lib
+      secret_store` → `test result: ok. 3 passed; 0
+      failed` (the resolution + the refusal).
+    - [x] **ADDRESSED** — the registry, the
+      store-routed CA read, the boot resolution + the CLI
+      flag, the typed `UndeclaredStore` refusal.
+      Evidence: the unit tests (the undeclared name
+      refuses AND names itself + the declared set); the
+      guard boots every suite through the store seam
+      (`target/pg_secretstore_guard.log`).
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 24 suites + the demo `ALL acceptance checks
+      passed` (`target/pg_secretstore_guard.log`);
+      `cargo test --all` → rc=0, 67 suites
+      (`target/secretstore_offline.log`); clippy/fmt
+      clean; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — none new: the leaf
+      executes the `.1.4.1` contract (the decision record
+      already carries the registry-is-the-only-seam
+      answers).
 
   - ID: `PHASE-7.1.4.3`
     Status: `proposed`
@@ -511,10 +564,14 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.4.2` | `proposed` | `.1.4.1` done — the declared-profile contract accepted (the registry is the only seam; each control refuses at its decision point); the secret-store declared profiles execute next |
+| 1 | `PHASE-7.1.4.3` | `proposed` | `.1.4.2` done — the secret-store declared profiles ship (the registry + the store-routed CA read + the boot-time typed refusal); the classification-driven controls execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.4.2` done — the secret-store declared
+  profiles (the registry + the store-routed CA read + the
+  boot-time resolution + the typed undeclared refusal +
+  the offline measured suite); frontier → `.1.4.3`.
 - `2026-09-08`: `.1.4.1` done — the declared-profile
   contract accepted (the decision record: the secret-store
   profile vocabulary + the classification-controls

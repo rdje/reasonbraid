@@ -61,6 +61,7 @@ mod resources;
 pub mod reviews;
 mod rls;
 pub mod routing;
+pub mod secret_store;
 pub mod snapshots;
 pub mod ssrf;
 mod telemetry;

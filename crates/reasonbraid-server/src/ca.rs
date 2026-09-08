@@ -83,12 +83,21 @@ fn load_ca(ca_der: Vec<u8>, key_der: Vec<u8>) -> ServerCa {
 /// Ensure the deployment's CA exists (row id 1), loading it if it does and
 /// generating + persisting it if it does not. Race-safe: two concurrent first
 /// boots race the INSERT, the loser reloads the winner's row.
+///
+/// The convenience form resolves the shipped `dev_database` store (the
+/// tests' default); the boot path uses [`ensure_server_ca_with_store`] with
+/// the DEPLOYMENT's resolved profile — the store is the only seam (`.1.4.2`).
 pub async fn ensure_server_ca(pool: &PgPool) -> Result<ServerCa, sqlx::Error> {
-    let existing: Option<(Vec<u8>, Vec<u8>)> =
-        sqlx::query_as("SELECT ca_der, key_der FROM server_ca WHERE ca_id = 1")
-            .fetch_optional(pool)
-            .await?;
-    if let Some((ca_der, key_der)) = existing {
+    ensure_server_ca_with_store(pool, &crate::secret_store::SecretStore::dev()).await
+}
+
+/// The store-routed form: the CA material reads THROUGH the declared
+/// profile (the configuration choice, never an ambient dependency).
+pub async fn ensure_server_ca_with_store(
+    pool: &PgPool,
+    store: &crate::secret_store::SecretStore,
+) -> Result<ServerCa, sqlx::Error> {
+    if let Some((ca_der, key_der)) = store.load_ca_material(pool).await? {
         return Ok(load_ca(ca_der, key_der));
     }
     let fresh = generate_ca();
@@ -100,10 +109,10 @@ pub async fn ensure_server_ca(pool: &PgPool) -> Result<ServerCa, sqlx::Error> {
     .bind(&fresh.key_der)
     .execute(pool)
     .await?;
-    let (ca_der, key_der): (Vec<u8>, Vec<u8>) =
-        sqlx::query_as("SELECT ca_der, key_der FROM server_ca WHERE ca_id = 1")
-            .fetch_one(pool)
-            .await?;
+    let (ca_der, key_der): (Vec<u8>, Vec<u8>) = store
+        .load_ca_material(pool)
+        .await?
+        .expect("the CA row just written loads back");
     Ok(load_ca(ca_der, key_der))
 }
 

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The secret-store declared profiles: the registry is the seam (`PHASE-7.1.4.2`)
+
+- `secret_store.rs`: the declared registry — `DECLARED_PROFILES` (the shipped `dev_database`), `SecretStore::resolve` (the boot-time seam; the undeclared name is the typed refusal naming itself + the declared set), `load_ca_material` (the CA row read THROUGH the store). `ca::ensure_server_ca_with_store` routes the CA material through the resolved profile (the inline SELECT is gone — one read path); the `ensure_server_ca` convenience keeps the tests on the SAME implementation. `rb-server` gains `--secret-store-profile` (default `dev_database`), resolved once before the CA load — the undeclared profile refuses the boot, never a silent fallback. The external stores join as new registry entries (the named extension point). Measured: the offline unit suite (the resolution + the refusal, 3/3); the read-through routing rides every live suite + the demo. Frontier → `.1.4.3`.
+
 ## 2026-09-08 — The declared-profile contract: the registry is the only seam (`PHASE-7.1.4.1`)
 
 - `docs/decisions/2026-09-08_declared-profiles-secrets-classification.md` (top-level `answers:`): the secret store is a DECLARED PROFILE — the registry is the only seam, the shipped `dev_database` (the plaintext rows + the hashed node secret) is the honest dev stance named, and the undeclared store is the typed `secret_store_unconfigured` refusal. Each classification control refuses at ITS decision point: the evaluator control at the dispatch (no confidential-qualified evaluator in the dev profile → the typed refusal), the retention at the sweep; the region/export controls have no decision point yet — the named deferrals. The confidential classification stays creatable (the controls refuse the provider use, never the thread). No code. Frontier → `.1.4.2`.

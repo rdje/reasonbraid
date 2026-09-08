@@ -16,21 +16,20 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4.2`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4.3`.
   `.1.1` done (ADR-034 accepted); `.1.2` done (the mTLS workload identity);
   the `.1.3` lane COMPLETE (the RLS layer, the quotas, the
-  quarantine-evidence rule); `.1.4` done (the census: the dev secrets are
-  the plaintext rows + the hashed node secret; the classification is
-  RECORDED-ONLY — the "silent general"; no region/export machinery) →
-  decomposed; `.1.4.1` done (the declared-profile contract — the decision
-  record: the registry is the only seam, each classification control
-  refuses at its decision point).
-- **Next action:** execute `PHASE-7.1.4.2` — the secret-store declared
-  profiles: the profile registry with the shipped `dev_database` profile
-  (the plaintext dev rows — the ADR-007 stance, honest); the CA/node-key
-  reads route through the declared profile (the store is a configuration
-  choice, never an ambient dependency — mechanical); the
-  undeclared-profile request is the typed refusal; the measured suite.
+  quarantine-evidence rule); `.1.4` done (the census) → decomposed;
+  `.1.4.1` done (the declared-profile contract); `.1.4.2` done (the
+  secret-store registry + the store-routed CA read + the boot-time typed
+  refusal).
+- **Next action:** execute `PHASE-7.1.4.3` — the classification-driven
+  controls (the dev subset): the evaluator-access decision at the DISPATCH
+  (a confidential thread's work delivery refuses without a
+  confidential-qualified evaluator profile — the typed refusal, never a
+  silent general); the retention/export vocabulary wired where the
+  machinery exists (the snapshot retention_class); the region control
+  stays the named deferral.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

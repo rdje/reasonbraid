@@ -20,18 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3.1`. **The `.1` lane is COMPLETE**; **the `.2` lane is
-  COMPLETE**; `.3` done (the MCP census — the parking-lot trigger fires:
-  the read-first, the write-half as the qualified profile) → decomposed
-  `.3.1` (the census + ADR-024) → `.3.2` (the SDK pin) → `.3.3` (the
-  read-half) → `.3.4` (the listen-stream durability) → `.3.5` (the
-  write-half profile).
-- **Next action:** execute `PHASE-8.3.1` — the census + ADR-024 (the
-  MCP surface + the version-profile contract): the tool vocabulary +
-  the same-handlers mapping, the resource vocabulary, the listen-stream
-  durability contract (the ephemeral transport state + the
-  ReasonBraid-owned durable state), the version-pin + the
-  conformance-fixture stance.
+  frontier `.3.2`. **The `.1` lane is COMPLETE**; **the `.2` lane is
+  COMPLETE**; `.3` done (the MCP census) → decomposed; `.3.1` done
+  (ADR-024 accepted — the same-handlers tools, the read/write split,
+  the listen-stream durability).
+- **Next action:** execute `PHASE-8.3.2` — the MCP SDK census + the
+  pin: the official Rust MCP SDK's exact versions + the supply-chain
+  gate, the protocol profile selection (the MCP 2026-07-28 baseline),
+  the `Cargo.lock` pin + the tested release record.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

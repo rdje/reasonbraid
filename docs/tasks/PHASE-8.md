@@ -510,7 +510,7 @@ default.
   Children: `.3.1`–`.3.5`
 
   - ID: `PHASE-8.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the census + ADR-024 — the MCP surface +
       the version-profile contract: the tool
       vocabulary + the same-handlers mapping, the
@@ -521,6 +521,32 @@ default.
       stance.
     ADR: 024
     Roadmap: §9.6
+    Done (`2026-09-08`): ADR-024 accepted
+      (evidence-gated) — `docs/adr/024-mcp-interoperability-surface.md`
+      (top-level `answers:`): the tools ARE the same
+      command handlers (the MCP surface is the HTTP
+      verbs' re-expression — never a new authority
+      path; a tool no handler backs is NOT exposed);
+      the READ/WRITE split (the read tools first —
+      the inspection verbs over the cross-store
+      corpus; the write tools as the QUALIFIED
+      profile — the enrolled principal, the per-verb
+      local grants, the per-principal quota (the
+      `.1.3.2` machinery's `principal` scope
+      re-opens), the audit; the remote metadata never
+      grants authority; the tokens never enter the
+      thread content); the listen stream is the
+      EPHEMERAL transport state (the durable
+      subscription/cursor/delivery-ids/dedup stay in
+      REASONBRAID; the reconnect reauthorizes →
+      recreates → reconciles → resumes from the OWN
+      cursor → surfaces the possible-gap — never
+      stronger than the upstream proves); the version
+      profile (the official SDK behind
+      `reasonbraid-mcp`, the tested release pin, the
+      independent conformance fixtures — the A2A
+      lane's discipline). No code changed. Frontier →
+      `.3.2`.
 
   - ID: `PHASE-8.3.2`
     Status: `proposed`
@@ -582,10 +608,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.1` | `proposed` | `.3` decomposed at the census seams (the §9.6 surface is the greenfield; the parking-lot trigger fires — the read-first, the write-half as the qualified profile); the census + ADR-024 execute first |
+| 1 | `PHASE-8.3.2` | `proposed` | `.3.1` done — ADR-024 accepted (the same-handlers tools, the read/write split, the listen-stream durability); the SDK census + the pin execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.3.1` done — ADR-024 accepted
+  (evidence-gated): the tools are the same handlers
+  + the read/write split + the listen-stream
+  durability contract + the version-profile
+  discipline; no code; frontier → `.3.2`.
 - `2026-09-08`: `.3` done — the MCP census at the
   seams (the §9.6 tool/resource vocabulary + the
   listen-stream contract; ADR-024 reserved; the

@@ -16,16 +16,16 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.4.3`.
-  The `.1` lane is COMPLETE; the `.2` lane is COMPLETE; `.3` done (the
-  extraction criteria); `.4` done (the census) → decomposed; `.4.1` done
-  (the load harness — the measured run); `.4.2` done (the §18.6 runbook
-  set — the thirteen-family catalogue complete).
-- **Next action:** execute `PHASE-7.4.3` — the game-day catalogue + the
-  pen-test record: the exercise mapping (which games exist — the
-  replacement drill, the restore exercise, the demo's kill points — vs
-  the named gaps) + the pen-test remediation stance (the findings become
-  the backlog items with owners).
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.5`
+  (the G6–G7 exit for a named capability profile). The `.1` lane, the
+  `.2` lane, and the `.4` lane are COMPLETE; `.3` done (the extraction
+  criteria). The `.4` lane: the load harness (the measured run), the
+  thirteen-family runbook catalogue, the game-day catalogue + the
+  pen-test stance.
+- **Next action:** execute `PHASE-7.5` — open the exit lane at the census
+  seams: the G6–G7 gate for a named capability profile, the subtraction
+  record, the explicit unsupported matrix (ADR-022; the kill/pivot: no
+  remote enrollment while the qualification gate is incomplete).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

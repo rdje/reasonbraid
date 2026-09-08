@@ -958,7 +958,7 @@ reopens the applicable portions of G4–G7.
       changed.
 
   - ID: `PHASE-7.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the game-day catalogue + the pen-test record
       — the exercise mapping (which games exist — the
       replacement drill, the restore exercise, the
@@ -967,6 +967,44 @@ reopens the applicable portions of G4–G7.
       the backlog items with owners; the remediation
       rides the external test's findings).
     Roadmap: §16.12, §18.6
+    Decision: `docs/decisions/2026-09-08_game-days-pentest.md`
+    Done (`2026-09-08`): the catalogue + the stance land
+      — `docs/decisions/2026-09-08_game-days-pentest.md`
+      (top-level `answers:`): the shipped game days ARE
+      the guard (the eight mapped exercises — the
+      replacement drill, the restore, the demo's kill
+      points, the migration upgrade, the hostile + the
+      non-escalation suites, the load harness, the
+      adapter conformance — each cross-referenced to a
+      runbook's closure tests); the named gaps are
+      scale- and human-shaped (the multi-node churn,
+      the human tabletop, the load-driven game — each
+      with its trigger: the public-enrollment profile,
+      the first incident, the qualified-profile
+      measurement); the pen-test stance: every finding
+      becomes a task-tree leaf with an owner + a
+      regression test, the remediation lands BEFORE the
+      gate closes, an unremediable finding is a
+      subtraction-record entry (never a silent pass),
+      and the record stays empty until the test runs
+      (no invented findings). No code changed.
+      **The `.4` lane is COMPLETE.** Frontier → `.5`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §18.6
+      "game days exercise them; findings become backlog
+      items" line had no recorded mapping/stance (the
+      `.4` census: the exercises exist, the catalogue
+      does not); the record fixes both. Evidence:
+      `make gate` → 13/13 (the record + the INDEX row
+      green).
+    - [x] **ADDRESSED** — the eight-exercise catalogue
+      + the three named gaps + the findings-to-leaves
+      stance. Evidence: the record's `answers:`; the
+      cross-referenced guard suites are the measured
+      ones.
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds; no code paths
+      changed.
 
 - ID: `PHASE-7.5`
   Status: `proposed`
@@ -979,10 +1017,15 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.4.3` | `proposed` | `.4.2` done — the §18.6 runbook set completes (the thirteen-family catalogue over the shipped controls); the game-day catalogue + the pen-test record executes next |
+| 1 | `PHASE-7.5` | `proposed` | `.4.3` done — the game-day catalogue + the pen-test stance ship; **the `.4` lane is COMPLETE** — the G6–G7 exit lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.4.3` done — the game-day catalogue +
+  the pen-test stance (the guard as the eight mapped
+  exercises, the three named scale/human gaps, the
+  findings-to-leaves remediation contract); **the `.4`
+  lane is COMPLETE**; frontier → `.5`.
 - `2026-09-08`: `.4.2` done — the §18.6 runbook set
   (the twelve remaining families over the shipped
   controls, each with the honest limits stated — the

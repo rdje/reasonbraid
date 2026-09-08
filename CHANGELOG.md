@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The game-day catalogue + the pen-test stance: the guard is the exercise (`PHASE-7.4.3`)
+
+- `docs/decisions/2026-09-08_game-days-pentest.md` (top-level `answers:`): the shipped game days ARE the guard — the eight mapped exercises (the replacement drill, the restore, the demo's kill points, the migration upgrade, the hostile + the non-escalation suites, the load harness, the adapter conformance), each cross-referenced to a runbook's closure tests; the named gaps are scale/human-shaped (the multi-node churn, the tabletop, the load-driven game — each with its trigger); the pen-test stance: every finding becomes a task-tree leaf with an owner + a regression test, the remediation lands before the gate closes, and the record stays empty until the test runs (no invented findings). **The `.4` lane is COMPLETE** — frontier → `.5` (the G6–G7 exit).
+
 ## 2026-09-08 — The §18.6 runbook set: the thirteen-family catalogue completes (`PHASE-7.4.2`)
 
 - The twelve remaining runbooks land in `docs/runbooks/` — the provider outage/ambiguous charge, the credential compromise, the notification storm, the runaway budget, the poisoned resource, the database failover/loss, the object loss, the Git/DB publication mismatch, the signing-key incident, the cross-tenant exposure suspicion, the audit-chain break, and the rollback/suspension/DR — each in the §18.6 shape over the SHIPPED controls (the real verbs, surfaces, and guard suites as the closure tests) with the honest limits stated: the failover record names the missing failover machinery (the restore path IS the control), the signing-key record rides the `.2.3` manifest tool, the cross-tenant detection is the re-derivation probe, the audit-chain record names the ADR-022 deferral. No code. Frontier → `.4.3`.

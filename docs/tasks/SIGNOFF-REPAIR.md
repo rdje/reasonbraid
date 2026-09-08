@@ -48,11 +48,31 @@ The registry decision is explicit site-operator authority, issued only through o
 
 ### SIGNOFF-REPAIR.2.2 — Disposable PostgreSQL verification
 
-- Status: `pending`.
+- Status: `active`; execute children `.2.2.1` then `.2.2.2` and commit each.
 - Sources / owned surfaces: `scripts/run_pg_tests.sh, tests pool helpers, migration_upgrade, backup_restore, rls`.
 - Goal and acceptance: Refuse destructive tests against an unowned database; create isolated local cluster/database/roles, support focused suites, serialize shared fixtures, verify shutdown before cleanup, and prove failure-path residue handling.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.2.2.1 — Owned PostgreSQL runner and focused selection
+
+- Status: `done`.
+- Owns: `scripts/run_pg_tests.sh`, new Python runner and its lifecycle controls, related toolbox/book/CI documentation and live pointers.
+- Scope: create a unique repository-local cluster, ignore caller database targets, select named Cargo integration suites, serialize shared fixtures, identify the actual server before any database mutation, supervise/reap PostgreSQL and test commands, and preserve evidence when shutdown cannot be proven. The existing broad suite remains available.
+- Measured source cause: the old runner uses fixed port 55432, invokes ambient Cargo without changing cwd, and unconditionally removes the cluster after ignoring `pg_ctl stop` failure. Its single broad command prevents focused authority reproductions. The 32 database-consuming test entrypoints still need independent refusal outside this runner; child `.2.2.2` owns that separate Rust/CI change.
+- Acceptance: real focused PostgreSQL suite succeeds; caller URL is not used; lifecycle controls prove failure and signal cleanup, occupied-port refusal and retention on unresolved shutdown. All runner-owned data stays on the repository volume.
+- Baseline reproduction: `git show ae99e01:scripts/run_pg_tests.sh` executed unchanged in a repository-local fixture using Bash functions named `stub/initdb`, `stub/createdb`, `stub/pg_ctl` and `cargo`; executable placeholder files satisfy its tool preflight. The initdb stub creates a witness, the stop stub returns 9 and the other stubs succeed; `RB_DEMO=0`. Output: `pg_ctl stop injected exit 9 ; runner exit 0 ; retained cluster directories 0`, rc=0 for the assertion probe. No real server was started. The fixture was removed afterward.
+- Signal regression found during verification: SIGTERM between OS process creation and Python handle publication left a test sleeper alive until its 60-second timeout, while PostgreSQL stopped. A deterministic Popen injection reproduced `spawn interrupted before handle publication left a child alive` (1 test failed, rc=1); after deferring terminal signals until handle assignment and restoring child signals through an explicit Python exec trampoline, that test passed (1 test, OK, rc=0). The exact stopped failure fixture was removed after process/receipt verification: 1,271 files, residue False. No outside process was signalled.
+- Verification: final lifecycle controls 12 passed; real PostgreSQL controls 4 passed (simultaneous isolation, failure log/receipt preservation and SIGTERM cleanup). `CARGO_NET_OFFLINE=true RB_DEMO=0 DATABASE_URL=postgres://unowned.invalid/never_use bash scripts/run_pg_tests.sh authority` passed all 9 tests, rc=0, through the final runner. Both owned product-test clusters were stopped and removed; the final run was `target/pg-tests/run-srkgcbhd`. No Rust source changed.
+- Commit: `REASONBRAID-REPAIR-0003`.
+
+#### SIGNOFF-REPAIR.2.2.2 — Test-side disposable database proof
+
+- Status: `pending`.
+- Owns: server/CLI/MCP test pool helpers, destructive migration/restore/RLS exercises, CI PostgreSQL invocation, documentation.
+- Scope: verify runner-issued ownership against the connected server before migrations, purges, schema drops or role changes; ordinary cargo tests with an arbitrary DATABASE_URL must refuse before destructive SQL. Preserve offline skips and prove negative controls. Wire CI through the same isolated runner, including PostgreSQL tools and repository-local environment.
+- Acceptance: real owned tests pass, missing/forged/wrong-server ownership fails before effects, cross-suite shared fixtures serialize, restore and RLS helpers remain isolated.
+- Verification and commit: pending.
 
 ### SIGNOFF-REPAIR.3.1 — Tenant-bound revocation
 
@@ -283,6 +303,7 @@ The registry decision is explicit site-operator authority, issued only through o
 - Status: `pending`.
 - Sources / owned surfaces: `bootstrap/update_scaffold, check scripts, task acceptance probes`.
 - Goal and acceptance: Protect populated repositories, preserve project indexes, enforce ownership before all changes, validate staged evidence for the actual leaf, reject failed process censuses, and correct table/path checks against primary specifications.
+- Host execution follow-up from `.2.2.1`: a fresh `#!/bin/bash` stub under `target/pg-runner-baseline-controls` printed `ready` in 0.0 seconds through `/bin/bash <stub>` but direct execution timed out at 3 seconds; a baseline Python-shebang stub also stalled for 59 seconds. `BASH_ENV` was unset. An authorized one-second `sample` of the exact fresh stub returned 897 samples at `_dyld_start + 0`, before interpreter code; all probe groups were stopped/reaped and fixture census returned no residue. Cause is narrowed to host/loader execution startup, not the script body; the underlying host control is unproved. The current PG runner enters Python/Bash explicitly and its actual installed PostgreSQL processes pass. Follow-up: reproduce direct versus interpreter startup in the supported execution environment, identify the responsible loader/security/tooling control before changing any host policy, and retain explicit-interpreter entrypoints where sufficient. No global security setting has been changed.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -310,18 +331,18 @@ The registry decision is explicit site-operator authority, issued only through o
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
-## Current commit acceptance — SIGNOFF-REPAIR.2.1
+## Current commit acceptance — SIGNOFF-REPAIR.2.2.1
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the environment census (`python3 -B`, `os.stat` and selected environment names, rc=0) found unset CARGO_HOME/RUSTUP_HOME and off-volume TMPDIR: device `16777232` versus repository `16777244`. `make -n check` previously invoked ambient Cargo. Root-local target alone did not control dependency or temporary stores.
-- [x] **ADDRESSED (verified)** — `python3 -B scripts/tests/test_project_env.py` ran 5 tests, `OK`, rc=0: default override/relocation, symlink-store refusal, verified source-preserving copy, corrupt archive refusal and symlink-index refusal. The actual seed verified 932 files / 98,176,507 bytes; `cargo metadata --offline --locked --format-version 1` through the launcher resolved 496 packages, outside_repository 0, rc=0. A real child proved local cwd/temp/cache and literal argv preservation. `make -n check book demo release` confirms launcher wiring.
-- [x] **NO REGRESSION** — `python3 -B scripts/project_env.py cargo test --offline --locked -p reasonbraid-core` compiled and ran: `test result: ok. 49 passed; 0 failed; 1 ignored` (the existing schema writer); doc-tests 0, rc=0. No Rust source changed. `make book` rc=0; `git diff --check` rc=0. The commit hook runs the staged doctrine gate; full CI remains pre-push work.
-- [x] **FIX / LOCKSTEP** — the launcher, integrity tests, Makefile integration and ignored local stores ship with README prerequisites, TOOLBOX invocation, deployment-book examples, decision/index, memory, live status and changelog updates. Remaining direct-entrypoint and intrinsic runtime locality issues retain their owning leaves; this is not a blanket locality qualification.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the baseline shell-function probe described in `.2.2.1` ran the unchanged `ae99e01` runner and produced `pg_ctl stop injected exit 9 ; runner exit 0 ; retained cluster directories 0`, rc=0 for the assertion. The old cleanup ignored failed shutdown and deleted data. The additional deterministic spawn/signal control failed once (rc=1), proving the unregistered-child window before its repair.
+- [x] **ADDRESSED (verified)** — `python3 -B scripts/tests/test_pg_runner.py` ran 12 tests, `OK`, rc=0. `python3 -B scripts/project_env.py python3 -B scripts/tests/test_pg_runner_live.py` ran 4 tests, `OK`, rc=0. These include foreign-server refusal before creation (including a changed server on the creation connection), occupied-port refusal, retention on unknown shutdown, signal-safe process publication/reaping, real simultaneous cluster isolation and durable failure logs. The exact retained signal fixture was cleaned only after stopped-state/process verification (1,271 files, residue False).
+- [x] **NO REGRESSION** — the final owned runner command above ran the existing authority suite: `9 passed; 0 failed; 0 ignored`, rc=0, then printed `stopped and removed target/pg-tests/run-srkgcbhd`. The sentinel external DATABASE_URL was ignored. `make book` rc=0; Python AST checks and `bash -n scripts/run_pg_tests.sh` rc=0; `git diff --check` empty, rc=0. Full CI remains pre-push work; no Rust source changed.
+- [x] **FIX / LOCKSTEP** — owned runner, lifecycle controls, command logs/receipts and signal-safe child startup ship with the deployment book, CI documentation, TOOLBOX, decision/index, task/current-status/memory pointers and changelog. Test-side refusal and CI execution changes remain explicitly owned by `.2.2.2`; current tenant/site authority defects are not claimed fixed by infrastructure tests.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.2.2` | `pending` | safe focused runtime reproductions |
+| 1 | `SIGNOFF-REPAIR.2.2.2` | `pending` | refuse destructive tests outside an owned disposable database; align CI |
 | 2 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
 | 3 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
 
@@ -347,6 +368,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.2.2.1`: `REASONBRAID-REPAIR-0003 (leaf SIGNOFF-REPAIR.2.2.1): supervise disposable PostgreSQL tests and focused suites`.
 
 - `SIGNOFF-REPAIR.2.1`: `REASONBRAID-REPAIR-0002 (leaf SIGNOFF-REPAIR.2.1): localize command stores and verify Cargo cache seeding`.
 

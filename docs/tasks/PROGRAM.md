@@ -153,16 +153,15 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.2.2`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.2.2.2`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.2.1
+## Current index synchronization — SIGNOFF-REPAIR.2.2.1
 
-Implementation and its acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
-This index records only the corresponding executable frontier.
+Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — `git diff --cached -- docs/tasks/PROGRAM.md` (rc=0) showed the removed frontier row naming `SIGNOFF-REPAIR.2.1` after that environment slice passed its focused checks.
-- [x] **ADDRESSED (verified)** — `rg -n 'next executable work|SIGNOFF-REPAIR.2.2' docs/tasks/PROGRAM.md docs/tasks/SIGNOFF-REPAIR.md` (rc=0) returned the index frontier at line 156 and the owning tree's pending `.2.2` frontier at line 324.
-- [x] **NO REGRESSION** — phase ownership, roadmap mapping and gate definitions are unchanged in the staged diff; `make book` (rc=0) and `git diff --check` (empty output, rc=0) passed. The implementation's 5 launcher controls and 49 passing core tests are recorded in the owning leaf.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the prior Current Frontier named parent `.2.2`; the owning tree is now decomposed into runner `.2.2.1` and test-side guard `.2.2.2`. `git diff -- docs/tasks/SIGNOFF-REPAIR.md` (rc=0) shows the children and their separate scope.
+- [x] **ADDRESSED (verified)** — the index now names `.2.2.2`; the runner passed 12 lifecycle controls, 4 real PG controls and the existing authority suite (`9 passed; 0 failed`, rc=0), as recorded in the owning tree.
+- [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0 and `git diff --check` empty, rc=0; the index advances no product qualification claim.
 
 ## Decisions
 

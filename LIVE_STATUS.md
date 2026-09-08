@@ -10,7 +10,8 @@ The full startup source read found open invariant failures and coverage gaps.
 Historical phase closure does not establish current production qualification.
 `docs/tasks/SIGNOFF-REPAIR.md` owns reproduction, fixes and requalification;
 `docs/tasks/artifacts/signoff_review/INDEX.md` preserves the source evidence.
-No runtime reproductions have been run for this review yet.
+The runner cleanup and spawn/signal defects now have runtime controls and fixes;
+product authorization reproductions remain pending.
 
 | Area | Status | Current evidence and remaining work |
 | --- | --- | --- |
@@ -27,7 +28,7 @@ No runtime reproductions have been run for this review yet.
 | Phase 7 — Internet qualification | Mostly Done | Hardening machinery exists; G6/G7 Internet exposure remains NOT MET. Local repairs and external threat-model, injection and penetration-test evidence remain required. |
 | Phase 8 — federation and interoperability | In Progress | Through regional routing historically recorded; `.5.3` store-and-forward, `.5.4` exit export/import and `.6` G8 remain. Shared authority and protocol gaps are prerequisite repairs. |
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
-| Corrective review | In Progress | `.1` census and `.2.1` local command environment complete; next `.2.2` focused PG verification. Product repairs pending. |
+| Corrective review | In Progress | `.1` census, `.2.1` local environment and `.2.2.1` supervised focused runner complete; next `.2.2.2` test-side database ownership. Product repairs pending. |
 
 The shared adapter/region registry design is now explicit site-operator authority.
 The existing code still uses tenant-admin authority; `.3.2` owns replacing it.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Supervised focused PostgreSQL verification (`SIGNOFF-REPAIR.2.2.1`)
+
+The runner now creates unique owned clusters, ignores caller database targets,
+checks server identity before creation, and runs named suites serially. It records
+process/command receipts and logs, verifies shutdown before deletion, and retains
+failure evidence. A reproduced spawn/signal race is closed by deferred signals
+and an exec trampoline. Test-side refusal and CI wiring remain `.2.2.2`.
+Validation: 12 lifecycle controls, 4 live PostgreSQL controls, 9 existing authority
+tests, syntax checks, book build and the staged doctrine gate.
+
 ## 2026-09-09 — Repository-local command environment (`SIGNOFF-REPAIR.2.1`)
 
 Added a launcher and Makefile integration for repository-derived Cargo, build,

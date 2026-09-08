@@ -33,12 +33,47 @@ retained. If the source is incomplete, use the launcher with `cargo fetch --lock
 when network access is available. Installed compiler, Python, database and mdBook
 binaries remain documented read-only toolchain inputs.
 
-Invoke direct diagnostic scripts through the launcher too, for example
-`python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh`. That existing
-script runs the broad suite; focused PostgreSQL selection is the next repair.
+Invoke direct diagnostic scripts through the launcher too. The PostgreSQL
+runner enters it automatically; see the focused verification commands below.
 The launcher controls default stores; explicit output paths and worker-specific
 storage remain subject to the same-volume policy. It is not a filesystem sandbox.
 Details and verification: `docs/decisions/2026-09-09_repository-local-command-environment.md`.
+
+## Focused PostgreSQL verification
+
+```bash
+bash scripts/run_pg_tests.sh --list
+bash scripts/run_pg_tests.sh authority command_api
+bash scripts/run_pg_tests.sh allowlist regions
+# Broad collection, without the demonstration:
+RB_DEMO=0 bash scripts/run_pg_tests.sh
+# Add the demonstration to a focused run:
+bash scripts/run_pg_tests.sh authority --demo
+```
+
+Install PostgreSQL 16 first. The runner finds its binaries through PATH or
+Homebrew; PG_BIN can select an installed directory. It ignores caller
+DATABASE_URL and connection overrides, creates a unique database under
+`target/pg-tests/run-*`, and verifies the server belongs to that run before
+creating fixtures. Database creation rechecks that identity on its own connection,
+so a changed server cannot receive the creation command. An available loopback port is selected automatically;
+`--port 55432` requests a particular free port. The old PG_PORT variable is no
+longer used. Suites run sequentially with one test thread to protect shared
+fixtures.
+
+Success stops the server, reaps its process group and removes the workspace.
+Command output is saved to numbered logs and printed when that command exits.
+Failure retains those logs, `postgres.log` and `runner.json` for diagnosis; `stopped` means
+shutdown was verified, while `shutdown-unverified` requires process inspection
+before cleanup. Ctrl-C also stops owned processes. Forced termination cannot
+run cleanup, so inspect the receipt and server metadata before removing residue.
+This is a trusted-host test service using loopback trust authentication and
+synthetic data.
+
+At this checkpoint, direct Rust test invocations still accept DATABASE_URL;
+use the runner for disposable verification. Test-side refusal and CI alignment
+are tracked by `SIGNOFF-REPAIR.2.2.2`. The detailed lifecycle contract is
+`docs/decisions/2026-09-09_disposable-postgresql-runner.md`.
 
 ## The four binaries
 

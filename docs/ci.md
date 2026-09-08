@@ -27,14 +27,13 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
 - `make secret-scan` — `gitleaks detect --source . --redact`. **Requires** `gitleaks`
   (`brew install gitleaks`). Scans working tree and history for secrets; `--redact` keeps
   any finding out of the log.
-- `bash scripts/run_pg_tests.sh` — the PostgreSQL proofs: `initdb` into a temp dir,
-  start an ephemeral server on a throwaway port, run the seven server integration
-  suites (atomic transaction, outbox-worker fencing/kill points, node channel
-  reconnect/reconciliation, authority, budget, command API, node wiring) plus the
-  real-binary CLI end-to-end suite, then the two-host demonstration
-  (`scripts/demo_two_host.sh`, `RB_DEMO=0` to skip) — and tear everything down
-  (no background service left running). **Requires** `postgresql@16`
-  (`brew install postgresql@16`) and `jq`.
+- `bash scripts/run_pg_tests.sh authority command_api` — focused suites in a new
+  supervised PostgreSQL 16 cluster; caller DATABASE_URL is ignored. `--list`
+  lists names. No names runs 30 server suites, MCP and CLI tests, then the
+  demonstration (`RB_DEMO=0` omits it). Suites are serialized. Success removes
+  only the stopped owned workspace; failure preserves diagnostic data under
+  `target/pg-tests/run-*`. See `docs/book/src/deployment.md` for recovery and
+  `--port`/`--demo` examples. Requires PostgreSQL 16; the demo also needs `jq`.
 - The WP3 node journal tests and the WP4 adapter suites need no service at all:
   SQLite is a file and the fake/stub adapters are in-process, so the journal
   kill-point sweep, the `rb-journal` CLI tests, and the adapter/ supervisor tests run
@@ -45,8 +44,9 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not
-installed them locally. The `pg-tests` job runs the same integration tests the local script
-does, against a `postgres:16` service container.
+installed them locally. The current `pg-tests` job runs a subset of the local runner's suites against a
+`postgres:16` service container. `SIGNOFF-REPAIR.2.2.2` owns test-side disposable
+ownership checks and routing CI through the supervised runner.
 
 ## Not a release claim
 

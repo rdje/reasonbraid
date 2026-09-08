@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Disposable files require verified process shutdown
+
+- The old PG runner discarded stop failures and then removed live data unconditionally. The replacement owns foreground process handles and separate process groups, verifies server identity before creation, and retains evidence when reaping is unproved. Focused suites run serially against unique clusters; direct test-side refusal remains the next child. Twelve lifecycle controls and four real PostgreSQL controls pass; the final runner also passes all nine existing authority tests. The deterministic spawn/signal regression failed before repair and passes after terminal signals are deferred until handle publication; an exec trampoline restores child signals.
+- promotion: promoted → `docs/decisions/2026-09-09_disposable-postgresql-runner.md`; owner `SIGNOFF-REPAIR.2.2.1`.
+
 ## _(2026-09-09)_ — A local build directory does not localize compiler and package stores
 
 - The environment census measured different volume IDs for the repository versus ambient Cargo/TMPDIR. The new launcher overrides standard writable stores and selects the installed pinned compiler directly, avoiding shared rustup mutation. Cache seeding verifies locked archive hashes, copies only required index/archive data and preserves ambiguous shared source ownership. Five locality/integrity controls pass; offline metadata resolves entirely inside the repository.

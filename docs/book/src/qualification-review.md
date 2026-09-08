@@ -1,8 +1,8 @@
 # Current qualification and corrective work
 
 The startup source review is complete. It read the roadmap, all tracked code and
-all book sources before changes. Runtime reproduction of the new findings is still
-pending. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
+all book sources before changes. Runner cleanup and process-creation races now
+have runtime controls and fixes; reproduction of product findings remains pending. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
 
 Historical test results in this manual describe the assertions exercised at those
 commits. They do not establish current production qualification. Internet exposure

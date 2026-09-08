@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The public-enrollment contract: the vetting is re-derivation, the exposure stays a qualified profile (`PHASE-7.2.4`)
+
+- `docs/decisions/2026-09-08_public-enrollment-contract.md` (top-level `answers:`): the enrollment is a STAGED vetting ladder (the identity claim → the capability declaration → the operator's acceptance → the cert issuance; the public form adds ONE stage — the claim VETTING, re-derived never trusted); the suspicion → the quarantine is the OPERATOR's typed action over the shipped machinery (the §16.11 counters + the quarantine verb + the evidence rule — the policy connects them, nothing new builds); the revocation propagation inherits the shipped ladder verbatim; the exposure is a QUALIFIED profile under the `.5` gate (ADR-034's qualified-surface rule — never an experimental default). **The `.2` lane is COMPLETE** — frontier → `.3`.
+
 ## 2026-09-08 — The signed release manifests: the digest-pinned manifest + the Ed25519 signature (`PHASE-7.2.3`)
 
 - The new `crates/reasonbraid-release-tool` (`rb-release-manifest`): `keygen` (the release identity key — raw PKCS8 DER, 0600, never overwrites; gitignored), `generate` (the per-binary `sha256:<hex>` digests + the canonical manifest — the fixed field order + the sorted binaries map — + the Ed25519 signature over the exact bytes at `<out>.sig`), `verify` (the signature over the manifest's exact bytes + the RE-DERIVED digests — a changed binary or a tampered manifest refuses). `make release` gains the step end-to-end (the keygen on first use → the generate → the verify; the measured run: 4 binaries signed + verified). The offline roundtrip suite proves the refusals. The dependency-level SBOM (the SPDX/CycloneDX graph) is the named deferral — the manifest is the artifact-level SBOM. Frontier → `.2.4`.

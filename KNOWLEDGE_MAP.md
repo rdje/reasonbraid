@@ -97,6 +97,7 @@
 - [`2026-09-07_workload-identity-issuance.md`](docs/decisions/2026-09-07_workload-identity-issuance.md)
 - [`2026-09-07_workspace-single-rustls-provider.md`](docs/decisions/2026-09-07_workspace-single-rustls-provider.md)
 - [`2026-09-08_declared-profiles-secrets-classification.md`](docs/decisions/2026-09-08_declared-profiles-secrets-classification.md)
+- [`2026-09-08_public-enrollment-contract.md`](docs/decisions/2026-09-08_public-enrollment-contract.md)
 - [`2026-09-08_quarantine-preserves-evidence.md`](docs/decisions/2026-09-08_quarantine-preserves-evidence.md)
 - [`2026-09-08_rls-tenant-claim.md`](docs/decisions/2026-09-08_rls-tenant-claim.md)
 - [`2026-09-08_tls13-refusals-are-read-side.md`](docs/decisions/2026-09-08_tls13-refusals-are-read-side.md)

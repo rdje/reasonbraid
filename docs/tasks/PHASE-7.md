@@ -750,13 +750,47 @@ reopens the applicable portions of G4–G7.
       identity placement, the deferrals).
 
   - ID: `PHASE-7.2.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the public-enrollment contract — the §16.10
       enrollment policy (the vetting steps, the
       quarantine-on-suspicion trigger, the revocation
       propagation over the shipped machinery); the
       EXPOSURE itself stays the `.5` kill/pivot gate.
     Roadmap: §16.10, §16.12
+    Decision: `docs/decisions/2026-09-08_public-enrollment-contract.md`
+    Done (`2026-09-08`): the contract accepted —
+      `docs/decisions/2026-09-08_public-enrollment-contract.md`
+      (top-level `answers:`): the enrollment is a STAGED
+      vetting ladder (the identity claim → the capability
+      declaration → the operator's acceptance → the cert
+      issuance; the public form adds ONE stage — the
+      claim VETTING, the re-derivation discipline); the
+      suspicion → the quarantine is the OPERATOR's typed
+      action over the shipped machinery (the §16.11
+      observable counters + the quarantine verb + the
+      `.1.3.3` evidence rule — the policy connects them,
+      nothing new builds); the revocation propagation
+      INHERITS the shipped ladder verbatim (the cert
+      revocation → the suspended presence → the epoch
+      fence → the replacement drill); the exposure is a
+      QUALIFIED profile under the `.5` gate — never an
+      experimental default (ADR-034). No code changed.
+      **The `.2` lane is COMPLETE.** Frontier → `.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the public
+      enrollment had no policy record (the `.2` census:
+      the machinery ships, the vocabulary does not); the
+      contract fixes the vocabulary the `.5` gate
+      judges against. Evidence: `make gate` → 13/13
+      (the record + the INDEX row green).
+    - [x] **ADDRESSED** — the vetting ladder, the
+      suspicion-to-quarantine mapping, the revocation
+      inheritance, the qualified-profile exposure
+      stance. Evidence: the record's `answers:`; the
+      shipped verbs the contract maps are the measured
+      ones (the quarantine/replacement suites).
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds; no code paths changed.
 
 - ID: `PHASE-7.3`
   Status: `proposed`
@@ -779,10 +813,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.2.4` | `proposed` | `.2.3` done — the signed release manifests ship (the tool + the pipeline step + the measured roundtrip); the public-enrollment contract executes next |
+| 1 | `PHASE-7.3` | `proposed` | `.2.4` done — the public-enrollment contract ships (the vetting ladder + the suspicion-to-quarantine mapping + the qualified-profile stance); **the `.2` lane is COMPLETE** — the scalable-coordinator lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.4` done — the public-enrollment
+  contract (the staged vetting ladder, the
+  suspicion-to-quarantine policy over the shipped
+  verbs, the revocation inheritance, the qualified-
+  profile exposure stance); **the `.2` lane is
+  COMPLETE**; frontier → `.3`.
 - `2026-09-08`: `.2.3` done — the SBOM + the signed
   release artifacts (the `rb-release-manifest` tool —
   keygen/generate/verify — + the `make release` step +

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The deployment records land (`PHASE-6.5.2`)
+
+- Migration 0043: the authority-checked targets (the closed type vocabulary), the per-target assignments over the EFFECTIVE publication (the chain gate) with the DESIRED pair (the ref + the digest), and the receipt attesting the OBSERVED digest + the state — the drift's comparison input. The verbs: `POST`/`GET /v1/deployment-targets`, `POST`/`GET /v1/deployments`, `POST /v1/deployments/{target}/{publication}/receipt`. Measured: policy 9.
+
 ## 2026-09-07 — ADR-021: the target-deployment contract (`PHASE-6.5.1`)
 
 - ADR-021 accepted (`docs/adr/021-target-deployment.md`): the deployment is per-target waves, never globally atomic; the receipt attests the digest (never the hope); the drift is the six-way §15.10 vocabulary; the §4.7 correction authorities stay distinct (the reversal is fast, the authority is not universally lower). No code.

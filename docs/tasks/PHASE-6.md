@@ -716,7 +716,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       changed. Frontier → `.5.2`.
 
   - ID: `PHASE-6.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the deployment records + the waves — the target
       rows (the id + the type + the authority), the
       desired/observed state pair, the canary wave
@@ -725,6 +725,31 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       attestation — the record references the effective
       publication's ref id).
     Roadmap: §15.9
+    Done (`2026-09-07`): the deployment records landed per
+      ADR-021 — migration 0043 (`deployment_targets`: the id
+      + the closed type vocabulary + the OWNING AUTHORITY;
+      `deployment_assignments`: the target + the effective
+      publication + the wave + the DESIRED pair (the ref +
+      the digest) + the observed pair (the receipt));
+      `crates/reasonbraid-server/src/deployments.rs` (NEW):
+      the `register_target` (the type vocabulary + the
+      active-grant authority check — the same proof as the
+      policies'), the `assign` (the target must exist; the
+      publication must be EFFECTIVE — the chain gate; the
+      desired digest rides the ADR-011 shape; the observed
+      starts `pending`), the `record_receipt` (the OBSERVED
+      digest + the closed state vocabulary — the
+      attestation, the drift's comparison input), the list;
+      the api: `POST`/`GET /v1/deployment-targets` + `POST`/
+      `GET /v1/deployments` + `POST
+      /v1/deployments/{target}/{publication}/receipt`.
+      Measured (policy 9): the target register + the
+      ghost-authority + the unknown-type refusals, the
+      assignment to the effective publication (the pending
+      observed), the staged-publication + the ghost-target +
+      the bad-digest refusals, the receipt with the observed
+      pair, the unknown-state refusal, the desired/observed
+      list. Frontier → `.5.3`.
 
   - ID: `PHASE-6.5.3`
     Status: `proposed`
@@ -753,10 +778,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.5.2` | `proposed` | `.5.1` done — ADR-021 accepted (the per-target waves, the digest-attesting receipts, the six-way drift, the distinct correction authorities); the deployment records + the waves execute next |
+| 1 | `PHASE-6.5.3` | `proposed` | `.5.2` done — the deployment records + the waves (the authority-checked targets, the effective-publication chain gate, the observed-pair receipts; policy 9); the drift + the corrections execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.2` done — the deployment records
+  (migration 0043: the authority-checked targets, the
+  desired/observed pair, the effective-publication chain
+  gate, the digest-attesting receipts); policy 9; frontier →
+  `.5.3`.
 - `2026-09-07`: `.5.1` done — ADR-021 accepted (the
   deployment contract: the per-target waves, the
   digest-attesting receipts, the six-way drift, the distinct
@@ -1292,6 +1322,54 @@ offline suite) — `\.rs$`.
 - [x] **FIX** — `src/reconciler.rs`, `src/lib.rs`,
   `tests/reconciler.rs`, `tests/profiles.rs` (the horizon
   repair).
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.5.2)
+
+The CODE change owned by this leaf:
+`migrations/0043_policy_deployments.sql` (NEW — the target +
+the assignment tables), `crates/reasonbraid-server/src/
+deployments.rs` (NEW — the shapes + the register_target +
+the assign + the record_receipt + the list),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the five verbs),
+`crates/reasonbraid-server/tests/policy.rs` (the new test) —
+`\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  deployment/target/receipt record existed (the `.5` census —
+  the lane stopped at the effective publication).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "deployment_targets\|deployment_assignments\|AssignmentInput"
+  250cefd -- crates/ migrations/` → rc=1 (nothing before
+  this leaf). The fix point is the ADR-021 record half: the
+  per-target desired/observed pair + the digest-attesting
+  receipt.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_deployment_rides_the_effective_publication_per_target`
+  → `test result: ok. 1 passed` (also inside the full live
+  suite: `running 9 tests … ok`) — the target register + the
+  ghost-authority + the unknown-type refusals, the
+  assignment to the effective publication (the pending
+  observed), the staged-publication + the ghost-target + the
+  bad-digest refusals, the receipt with the observed pair,
+  the unknown-state refusal, the desired/observed list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 63 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg534_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0043_policy_deployments.sql`,
+  `src/deployments.rs`, `src/lib.rs`, `src/api.rs`,
+  `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

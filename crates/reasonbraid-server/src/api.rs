@@ -504,6 +504,18 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(publish_publication),
         )
         .route(
+            "/v1/deployment-targets",
+            post(register_deployment_target).get(list_deployment_targets),
+        )
+        .route(
+            "/v1/deployments",
+            post(assign_deployment).get(list_deployments),
+        )
+        .route(
+            "/v1/deployments/{target_id}/{publication_id}/receipt",
+            post(record_deployment_receipt),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2661,6 +2673,115 @@ async fn publish_publication(
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     Ok(Json(row))
+}
+
+/// `POST /v1/deployment-targets` — register one target (`.5.2`): the id +
+/// the type + the OWNING AUTHORITY (the grant check).
+async fn register_deployment_target(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::deployments::TargetInput>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal registers no target",
+        ));
+    }
+    match crate::deployments::register_target(&state.pool, &input).await {
+        Ok(()) => Ok(Json(json!({ "target_id": input.target_id }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/deployment-targets` — the targets.
+async fn list_deployment_targets(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no targets",
+        ));
+    }
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT target_id, target_type, owning_authority FROM deployment_targets ORDER BY target_id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(target_id, target_type, owning_authority)| {
+                json!({
+                    "target_id": target_id,
+                    "target_type": target_type,
+                    "owning_authority": owning_authority,
+                })
+            })
+            .collect(),
+    ))
+}
+
+/// `POST /v1/deployments` — assign one publication to one target (`.5.2`):
+/// the canary wave + the DESIRED pair.
+async fn assign_deployment(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::deployments::AssignmentInput>,
+) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal assigns nothing",
+        ));
+    }
+    match crate::deployments::assign(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/deployments` — the assignments with the desired/observed pair.
+async fn list_deployments(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::deployments::StoredAssignment>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no deployments",
+        ));
+    }
+    Ok(Json(
+        crate::deployments::list_assignments(&state.pool).await?,
+    ))
+}
+
+/// `POST /v1/deployments/{target}/{publication}/receipt` — the RECEIPT
+/// (`.5.2`): the OBSERVED digest + the state (the attestation).
+async fn record_deployment_receipt(
+    State(state): State<Arc<ApiState>>,
+    Path((target_id, publication_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(input): Json<crate::deployments::ReceiptInput>,
+) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no receipt",
+        ));
+    }
+    match crate::deployments::record_receipt(&state.pool, &target_id, &publication_id, &input).await
+    {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

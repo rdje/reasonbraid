@@ -34,6 +34,7 @@ mod budget;
 pub mod ca;
 pub mod claims;
 mod dependence;
+pub mod deployments;
 pub mod derivations;
 pub mod evaluation;
 pub mod extraction;

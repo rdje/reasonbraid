@@ -2137,3 +2137,359 @@ async fn the_publish_verb_drives_the_git_half() {
     assert_eq!(status, 400, "the non-repository refuses: {refused}");
     let _ = std::fs::remove_dir_all(&repo_dir);
 }
+
+#[tokio::test]
+async fn the_deployment_rides_the_effective_publication_per_target() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "dp-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain to the EFFECTIVE publication (the made-up object ids ride
+    // the /effective verb — the git half is the `.4.3` lane's, already
+    // proven).
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "dp-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "dp",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the deployed clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "dp-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "dp",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "dp-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "dp-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    let make_chain = |suffix: &'static str, publication_id: &'static str, effective: bool| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        let verdict_event = verdict_event.clone();
+        let grant_id = grant_id.clone();
+        async move {
+            let proposal_id = format!("dp-prop-{suffix}");
+            let decision_id = format!("dp-dec-{suffix}");
+            let approval_id = format!("dp-app-{suffix}");
+            let (status, _) = post(
+                &client,
+                &base,
+                "/v1/policy-proposals",
+                &human_id,
+                &json!({
+                    "proposal_id": proposal_id,
+                    "policy_id": "dp-policy",
+                    "policy_version": "1.0.0",
+                    "thread_id": thread_id,
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the proposal registers");
+            let (status, _) = post(
+                &client,
+                &base,
+                "/v1/policy-decisions",
+                &human_id,
+                &json!({
+                    "decision_id": decision_id,
+                    "proposal_id": proposal_id,
+                    "rule": "majority",
+                    "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                    "verdict_event_id": verdict_event,
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the decision records");
+            let (status, _) = post(
+                &client,
+                &base,
+                "/v1/policy-approvals",
+                &human_id,
+                &json!({
+                    "approval_id": approval_id,
+                    "proposal_id": proposal_id,
+                    "decision_id": decision_id,
+                    "approver": human_id,
+                    "grant_id": grant_id,
+                    "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the approval records");
+            let (status, projection) = post(
+                &client,
+                &base,
+                "/v1/policy-projections",
+                &human_id,
+                &json!({
+                    "projection_id": format!("{proposal_id}-proj"),
+                    "target": "generic",
+                    "resolution": {
+                        "policies": [ { "policy_id": "dp-policy", "version": "1.0.0" } ],
+                        "target": { "layer": "organization", "target": "*" },
+                    },
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the projection records");
+            let projection_digest = projection["digest"].as_str().unwrap().to_string();
+            let (status, _) = post(
+                &client,
+                &base,
+                "/v1/policy-publications",
+                &human_id,
+                &json!({
+                    "publication_id": publication_id,
+                    "proposal_id": proposal_id,
+                    "decision_id": decision_id,
+                    "approval_id": approval_id,
+                    "projection_id": format!("{proposal_id}-proj"),
+                    "manifest_digest": projection_digest.clone(),
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the publication stages");
+            if effective {
+                let (status, _) = post(
+                    &client,
+                    &base,
+                    &format!("/v1/policy-publications/{publication_id}/effective"),
+                    &human_id,
+                    &json!({ "git_object_ids": ["abc123", "def456"] }),
+                )
+                .await;
+                assert_eq!(status, 200, "the publication marks effective");
+            }
+            (proposal_id, projection_digest)
+        }
+    };
+    let (_, projection_digest) = make_chain("1", "dp-pub-1", true).await;
+    let _ = make_chain("2", "dp-pub-2", false).await;
+
+    // 1. The target registers (the authority checked).
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({
+            "target_id": "dp-target",
+            "target_type": "repository",
+            "owning_authority": grant_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the target registers");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({
+            "target_id": "dp-ghost-authority",
+            "target_type": "repository",
+            "owning_authority": "grt_ghost",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost authority refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({
+            "target_id": "dp-bad-type",
+            "target_type": "not_a_type",
+            "owning_authority": grant_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown type refuses: {refused}");
+
+    // 2. The assignment rides the EFFECTIVE publication (the desired pair).
+    let (status, assignment) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "dp-target",
+            "publication_id": "dp-pub-1",
+            "wave": 1,
+            "desired_ref": "abc123",
+            "desired_digest": projection_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the assignment records: {assignment}");
+    assert_eq!(assignment["observed_state"], json!("pending"));
+    // The STAGED publication refuses (the chain gate).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "dp-target",
+            "publication_id": "dp-pub-2",
+            "wave": 1,
+            "desired_ref": "zzz",
+            "desired_digest": projection_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the staged publication refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("effective"),
+        "{refused}"
+    );
+    // The ghost target + the bad digest refuse.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "ghost-target",
+            "publication_id": "dp-pub-1",
+            "wave": 1,
+            "desired_ref": "abc123",
+            "desired_digest": projection_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost target refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "dp-target",
+            "publication_id": "dp-pub-1",
+            "wave": 2,
+            "desired_ref": "abc123",
+            "desired_digest": "not-a-digest",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the bad digest refuses: {refused}");
+
+    // 3. The receipt attests the OBSERVED digest + the state.
+    let (status, receipt) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipt",
+        &human_id,
+        &json!({
+            "observed_digest": projection_digest,
+            "observed_state": "applied",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the receipt records: {receipt}");
+    assert_eq!(receipt["observed_digest"], json!(projection_digest));
+    assert_eq!(receipt["observed_state"], json!("applied"));
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipt",
+        &human_id,
+        &json!({ "observed_digest": projection_digest, "observed_state": "vibes" }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown state refuses: {refused}");
+
+    // 4. The list carries the desired/observed pair.
+    let (status, deployments) = get(&client, &base, "/v1/deployments", &human_id).await;
+    assert_eq!(status, 200, "the deployments read: {deployments}");
+    let deployments = deployments.as_array().unwrap();
+    assert_eq!(deployments.len(), 1, "{deployments:?}");
+    assert_eq!(deployments[0]["desired_digest"], json!(projection_digest));
+    assert_eq!(deployments[0]["observed_digest"], json!(projection_digest));
+}

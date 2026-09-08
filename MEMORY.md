@@ -16,15 +16,16 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.5.2` (**PHASE 5 CLOSED**; ADR-021 accepted — the per-target waves, the digest-attesting receipts, the distinct corrections).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-6` → frontier `.5.3` (**PHASE 5 CLOSED**; the deployment records ship — the authority-checked targets + the observed-pair receipts; policy 9).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.5.2` — the deployment records +
-  the waves: the target rows (the id + the type + the authority), the
-  desired/observed state pair, the canary wave assignments, the
-  receipts (the per-target digest attestation) — per ADR-021.
+- **Next action:** execute `PHASE-6.5.3` — the drift + the
+  corrections: the drift records (the §15.10 six categories over the
+  desired vs the observed digest), the §4.7 operations (the
+  suspension/supersession/retraction/waiver), the outcome records
+  (§15.11) — per ADR-021.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The G6–G7 census: seven of the ten lines ship, the three external gaps hold the kill/pivot (`PHASE-7.5`)
+
+- The census maps the §16.12 ten-line gate against the shipped lanes: SHIPPED — the authenticated enrollment/rotation/revocation/tenant-isolation tests, the non-escalation + the confused-deputy suite, the SSRF/rebinding/redirect/archive-bomb suite, the dependency/SBOM/provenance/signing pipeline, the restore + the compromised-key exercise, the rate-limit/breaker/storm tests, and the runbooks/contacts/evidence/disclosure. THE THREE EXTERNAL GAPS: the externally reviewed threat model, the prompt-injection action-boundary suite, and the penetration test. The §25.1 kill/pivot therefore HOLDS — the Internet exposure stays UNCLAIMED; the exit names the hardening machinery + the LAN profile with the three gaps as the exposure's preconditions. Decomposed: `.5.1` the evidence census → `.5.2` the gate package.
+
 ## 2026-09-08 — The game-day catalogue + the pen-test stance: the guard is the exercise (`PHASE-7.4.3`)
 
 - `docs/decisions/2026-09-08_game-days-pentest.md` (top-level `answers:`): the shipped game days ARE the guard — the eight mapped exercises (the replacement drill, the restore, the demo's kill points, the migration upgrade, the hostile + the non-escalation suites, the load harness, the adapter conformance), each cross-referenced to a runbook's closure tests; the named gaps are scale/human-shaped (the multi-node churn, the tabletop, the load-driven game — each with its trigger); the pen-test stance: every finding becomes a task-tree leaf with an owner + a regression test, the remediation lands before the gate closes, and the record stays empty until the test runs (no invented findings). **The `.4` lane is COMPLETE** — frontier → `.5` (the G6–G7 exit).

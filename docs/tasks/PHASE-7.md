@@ -1007,20 +1007,74 @@ reopens the applicable portions of G4–G7.
       changed.
 
 - ID: `PHASE-7.5`
-  Status: `proposed`
+  Status: `done`
   Goal: G6–G7 exit for a named capability profile; subtraction record; explicit unsupported matrix
   Gate: G6, G7
   Kill/pivot: do not expose remote enrollment if the qualification gate is incomplete (`ROADMAP.md` §25.1)
   ADR: 022
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured (the §16.12 ten-line map):
+    SHIPPED — (2) the authenticated enrollment/rotation/
+    revocation/tenant-isolation tests (the channel +
+    the `.1.2` mTLS + the `.1.3.1` RLS suites), (3) the
+    non-escalation + the confused-deputy suite (the
+    `.2.7.1` four legs), (4) the SSRF/rebinding/
+    redirect/archive-bomb suite (the Phase-4 matrix +
+    the extraction refusals), (6) the dependency/
+    SBOM/provenance/signing pipeline (the `.2.3`
+    manifest + the deny/secret-scan gates), (7) the
+    restore + the compromised-key exercise (the
+    backup/restore + the replacement drill + the
+    signing-key runbook), (8) the rate-limit/
+    breaker/storm tests (the `.1.3.2` quotas + the
+    Phase-2 breakers), (10) the runbooks/contacts/
+    evidence/disclosure (the thirteen-family catalogue
+    + SECURITY.md). THE THREE EXTERNAL GAPS — (1) the
+    externally reviewed threat model, (5) the
+    prompt-injection action-boundary suite, (9) the
+    penetration test. The §25.1 kill/pivot therefore
+    HOLDS: the Internet exposure stays UNCLAIMED —
+    the exit names the hardening machinery + the LAN
+    profile, with the three gaps as the exposure's
+    preconditions. Children: `.5.1` the evidence
+    census → `.5.2` the gate package.
+  Children: `.5.1`–`.5.2`
+
+  - ID: `PHASE-7.5.1`
+    Status: `proposed`
+    Goal: the G6–G7 evidence census — the ten-line map
+      with the per-row evidence (the suite names + the
+      guard counts), the three external gaps named as
+      the exposure preconditions (each with its
+      trigger), the §25.1 reading.
+    Gate: G6, G7
+
+  - ID: `PHASE-7.5.2`
+    Status: `proposed`
+    Goal: the G6–G7 gate package — the gate record (the
+      honest outcome: the Internet capability is NOT
+      claimed; the hardening machinery + the LAN
+      profile ship, the exposure stays the qualified
+      profile), the §19.8 subtraction record (the
+      withdrawn/unsupported claims), the explicit
+      unsupported matrix, the evidence manifest.
+    Gate: G6, G7
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.5` | `proposed` | `.4.3` done — the game-day catalogue + the pen-test stance ship; **the `.4` lane is COMPLETE** — the G6–G7 exit lane executes next |
+| 1 | `PHASE-7.5.1` | `proposed` | `.5` decomposed at the census seams (7 of the 10 §16.12 lines ship; the 3 external gaps hold the §25.1 kill/pivot) — the evidence census executes first |
 
 ## Changelog
 
+- `2026-09-08`: `.5` done — the G6–G7 census at the
+  seams (the ten-line map: seven ship, three are the
+  external gaps — the reviewed threat model, the
+  prompt-injection suite, the pen-test — so the §25.1
+  kill/pivot holds: the exposure stays unclaimed) →
+  decomposed `.5.1` (the evidence census) → `.5.2`
+  (the gate package); frontier → `.5.1`.
 - `2026-09-08`: `.4.3` done — the game-day catalogue +
   the pen-test stance (the guard as the eight mapped
   exercises, the three named scale/human gaps, the

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The federation lane opens: the `.1` block lifts (`PHASE-8.1`)
+
+- The census at the seams: the block ("stable trust and compatibility contracts") LIFTS — the trust contracts (the workload identity, the `.2.4` enrollment policy, the revocation drill, the audit groundwork) and the compatibility contracts (the wire envelopes, the ADR-027 adapter ladder) ship + are measured by the Phase-7 guard of record. The lane's five pieces split: the visibility scopes ship in their intra-tenant form (the network-pseudonym class + the ADR-034 explicit opt-in), the remote recruitment, the portable cards, and the cross-domain receipts are the greenfield; ADR-026 is reserved. Decomposed: `.1.1` the census + ADR-026 → `.1.2` the visibility + the recruitment → `.1.3` the portable cards → `.1.4` the receipts. The PHASE-8 tree is `active` — frontier → `.1.1`.
+
 ## 2026-09-08 — The G6–G7 gate package — PHASE 7 IS CLOSED (`PHASE-7.5.2`)
 
 - The gate record (`docs/decisions/2026-09-08_phase7-gate-record.md`, top-level `answers:`): **G6–G7 NOT MET for the Internet exposure — Met as the hardening-machinery exit for the LAN profile.** The exposure stays UNCLAIMED (the §25.1 kill/pivot holds by design — the phase never exposed anything); the seven shipped §16.12 lines cite the guard; the three external gaps (the reviewed threat model, the prompt-injection suite, the pen-test) are the named preconditions. The subtraction record (S-1…S-12: the exposure, the review, the prompt-injection suite, the pen-test, the app role, the external stores, the confidential evaluator, the scaling, the dependency SBOM, the export disposition, the regions, the scale/human game days — each with its trigger), the explicit unsupported matrix, and the evidence manifest (the guard of record: rc=0 25 live suites + the demo, rc=0 70 offline suites, the load-harness run, the signed release). **The PHASE-7 tree is COMPLETE** — the next executable work is `PHASE-8.1`.

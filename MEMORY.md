@@ -19,9 +19,18 @@
   prompt-injection suite, the pen-test). The gate record + the
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
-- **Active tree:** none in Phase 7 (the tree is COMPLETE). The next
-  executable work is `PHASE-8.1` (the federation/interop lane — the
-  `PHASE-8` tree is `proposed`; opening it is the director's go).
+- **Active tree:** `PHASE-8` (the federation/interoperability lane) →
+  frontier `.1.1`. The tree opened at the Phase-7 close (the `.1` block
+  LIFTS: the trust + the compatibility contracts ship + are measured);
+  `.1` done (the census) → decomposed `.1.1` (the census + ADR-026) →
+  `.1.2` (the visibility + the remote recruitment) → `.1.3` (the
+  portable cards) → `.1.4` (the cross-domain receipts).
+- **Next action:** execute `PHASE-8.1.1` — the census + ADR-026 (the
+  federation trust-agreement contract): the explicit agreement shape
+  (a federated domain is a NAMED trust, never a transitive default),
+  the local-grant rule (the kill line), the
+  visibility/recruitment/receipt vocabulary over the shipped
+  machinery.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

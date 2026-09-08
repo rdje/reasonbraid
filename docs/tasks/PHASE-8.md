@@ -3,7 +3,11 @@
 ## Metadata
 
 - Tree ID: `PHASE-8`
-- Status: `proposed`
+- Status: `active` (opened `2026-09-08` — the `.1` block LIFTS: the
+  trust contracts (the workload identity, the enrollment policy, the
+  revocation ladder, the audit groundwork) and the compatibility
+  contracts (the wire envelopes, the ADR-027 adapter ladder) ship +
+  are measured by the Phase-7 guard of record)
 - Roadmap lane: Phase 8 (`ROADMAP.md` §20.10)
 - Created: `2026-09-05`
 - Estimate: 16–30 engineer-weeks
@@ -24,11 +28,72 @@ default.
 ## Task Tree
 
 - ID: `PHASE-8.1`
-  Status: `proposed`
+  Status: `done`
   Goal: explicit federation trust agreements, tenant-to-tenant visibility, remote recruitment, portable agent cards/profiles, cross-domain audit receipts
   ADR: 026
   Roadmap: §6.6 Federation profile
   Kill: remote domain must not authorize local effects without a local grant (`ROADMAP.md` §25)
+  Done (`2026-09-08`): the census at the seams — the
+    block LIFTS and the lane decomposes. Measured: the
+    TRUST contracts ship + are measured (the `.1.2`
+    mTLS workload identity + the cert proof, the `.2.4`
+    enrollment policy's staged ladder, the `.2.7`
+    revocation drill, the audit linkage groundwork —
+    the Phase-7 guard of record); the COMPATIBILITY
+    contracts ship (the versioned wire envelopes, the
+    ADR-027 adapter verification ladder, the pinned
+    interfaces); the lane's five pieces split at the
+    seams: the visibility scopes ship in their
+    intra-tenant form (the network-pseudonym class +
+    the ADR-034 explicit opt-in — the FEDERATION form
+    is the contract's), the remote recruitment, the
+    portable cards, and the cross-domain receipts are
+    the greenfield (ADR-026 is reserved — no record).
+    Children: `.1.1` the census + ADR-026 → `.1.2` the
+    visibility + the remote recruitment → `.1.3` the
+    portable cards/profiles → `.1.4` the receipts.
+  Children: `.1.1`–`.1.4`
+
+  - ID: `PHASE-8.1.1`
+    Status: `proposed`
+    Goal: the census + ADR-026 — the federation
+      trust-agreement contract: the explicit agreement
+      shape (a federated domain is a NAMED trust, never
+      a transitive default), the local-grant rule (the
+      kill line: the remote domain never authorizes
+      local effects — the local grant is the only
+      authority), the visibility/recruitment/receipt
+      vocabulary over the shipped machinery.
+    ADR: 026
+    Roadmap: §6.6
+
+  - ID: `PHASE-8.1.2`
+    Status: `proposed`
+    Goal: the tenant-to-tenant visibility + the remote
+      recruitment — the explicit opt-in machinery over
+      the shipped visibility scopes + the recruitment
+      (the federation form of the network-pseudonym
+      class; the cross-tenant recruitment rides the
+      explicit agreement, never the default).
+    Roadmap: §6.6
+
+  - ID: `PHASE-8.1.3`
+    Status: `proposed`
+    Goal: the portable agent cards/profiles — the
+      export/import shape (the digest-pinned portable
+      form of the §10.1 profile + the capability
+      declaration), the ADR-027 verification ladder
+      applied to the imported card.
+    Roadmap: §6.6
+
+  - ID: `PHASE-8.1.4`
+    Status: `proposed`
+    Goal: the cross-domain audit receipts — the
+      receipt shape over the shipped audit linkage (the
+      ADR-022 groundwork's federation form: the remote
+      domain's receipt references its OWN records; the
+      local chain stays the local truth).
+    Roadmap: §6.6
 
 - ID: `PHASE-8.2`
   Status: `proposed`
@@ -62,8 +127,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | `PHASE-8.1` | `proposed` | blocked on stable trust and compatibility contracts |
+| 1 | `PHASE-8.1.1` | `proposed` | `.1` decomposed at the census seams (the block LIFTS — the trust + the compatibility contracts ship + are measured; ADR-026 is the greenfield) — the census + ADR-026 execute first |
 
 ## Changelog
 
-- `2026-09-05`: Created from `ROADMAP.md` §20.10, §9.6–9.7, ADR 024–027.
+- `2026-09-08`: the tree opens — `.1` done (the census
+  at the seams: the block LIFTS — the trust +
+  compatibility contracts ship + are measured; the
+  visibility ships intra-tenant, the recruitment/
+  cards/receipts are the greenfield; ADR-026
+  reserved) → decomposed `.1.1` (the census + ADR-026)
+  → `.1.2` (the visibility + the recruitment) → `.1.3`
+  (the portable cards) → `.1.4` (the receipts);
+  frontier → `.1.1`.

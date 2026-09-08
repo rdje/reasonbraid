@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The signed release manifests: the digest-pinned manifest + the Ed25519 signature (`PHASE-7.2.3`)
+
+- The new `crates/reasonbraid-release-tool` (`rb-release-manifest`): `keygen` (the release identity key — raw PKCS8 DER, 0600, never overwrites; gitignored), `generate` (the per-binary `sha256:<hex>` digests + the canonical manifest — the fixed field order + the sorted binaries map — + the Ed25519 signature over the exact bytes at `<out>.sig`), `verify` (the signature over the manifest's exact bytes + the RE-DERIVED digests — a changed binary or a tampered manifest refuses). `make release` gains the step end-to-end (the keygen on first use → the generate → the verify; the measured run: 4 binaries signed + verified). The offline roundtrip suite proves the refusals. The dependency-level SBOM (the SPDX/CycloneDX graph) is the named deferral — the manifest is the artifact-level SBOM. Frontier → `.2.4`.
+
 ## 2026-09-08 — The disclosure + the supported-version policy (`PHASE-7.2.2`)
 
 - `SECURITY.md` lands: the reporting path names the ACCOUNTABLE OWNER (no invented public channel — the repo is private, the ADR-001 gate); the vetting rides the claim-verification discipline (a report is re-derived, never trusted); the embargo is the honest private-repo shape (the fix ships with its leaf + its regression test + its disclosure note); the supported-version window (the latest + the previous minor) begins at the first public release together with the disclosure channel + the CVE pipeline. The README's stale Status block (Phase 6.1) is fixed to the Phase-7 state + the security row added. No code. Frontier → `.2.3`.

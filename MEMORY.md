@@ -16,15 +16,16 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.2.3`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.2.4`.
   The `.1` lane is COMPLETE. The `.2` lane: the census → decomposed;
-  `.2.1` done (ADR-027 accepted); `.2.2` done (SECURITY.md — the
-  disclosure + the supported-version policy).
-- **Next action:** execute `PHASE-7.2.3` — the SBOM + the signed
-  release artifacts: the release pipeline generates the per-binary
-  SBOM + the signed manifest (`make release` gains the step; the
-  local release identity is the dev stance — the protected identity
-  is the named deferral).
+  `.2.1` done (ADR-027); `.2.2` done (SECURITY.md); `.2.3` done (the
+  signed release manifests — the `rb-release-manifest` tool + the `make
+  release` step).
+- **Next action:** execute `PHASE-7.2.4` — the public-enrollment
+  contract: the §16.10 enrollment policy (the vetting steps, the
+  quarantine-on-suspicion trigger, the revocation propagation over the
+  shipped machinery); the EXPOSURE itself stays the `.5` kill/pivot
+  gate.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

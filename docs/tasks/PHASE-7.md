@@ -694,7 +694,7 @@ reopens the applicable portions of G4–G7.
       (the guard stays green from `.2.1`).
 
   - ID: `PHASE-7.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the SBOM + the signed release artifacts — the
       release pipeline generates the per-binary SBOM +
       the signed manifest (`make release` gains the
@@ -702,6 +702,52 @@ reopens the applicable portions of G4–G7.
       stance — the protected identity is the named
       deferral).
     Roadmap: §16.10
+    Done (`2026-09-08`): the release manifest lands as
+      the ADR-027 verification unit — the new
+      `crates/reasonbraid-release-tool` (the
+      `rb-release-manifest` bin, ring Ed25519 + sha2 —
+      the workspace rules): `keygen` (the release
+      identity key, the raw PKCS8 DER, 0600, refuses to
+      overwrite — the dev placement, gitignored),
+      `generate` (the per-binary `sha256:<hex>` digests
+      + the canonical manifest — the struct field order
+      + the SORTED binaries map — + the Ed25519
+      signature over the exact bytes at `<out>.sig`),
+      `verify` (the signature over the manifest's exact
+      bytes + the RE-DERIVED digests against the
+      binaries — a changed binary or a tampered
+      manifest refuses). `make release` gains the step
+      (the keygen on first use + the generate + the
+      verify — the release is signed end-to-end). The
+      offline roundtrip suite (`tests/manifest.rs`)
+      proves: the generate → the verify, the overwrite
+      refusal, the changed-binary refusal, the
+      tampered-manifest refusal, the wrong-key refusal.
+      The dependency-level SBOM (the SPDX/CycloneDX
+      graph) is the named deferral — the manifest is
+      the artifact-level SBOM; the full graph awaits
+      the generator-tool census (the trigger).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the release
+      artifacts were unsigned + digest-less (the §16.10
+      greenfield from the census); the manifest + the
+      signature land in the release pipeline. Evidence:
+      `cargo test -p reasonbraid-release-tool` →
+      `test result: ok. 1 passed; 0 failed` (the
+      roundtrip + the three refusals).
+    - [x] **ADDRESSED** — the tool (keygen/generate/
+      verify), the `make release` step, the gitignored
+      key, the typed refusals. Evidence: `make release`
+      → rc=0 with the manifest + the verify
+      (`target/release_manifest.log`).
+    - [x] **NO REGRESSION** — `cargo test --all` → rc=0
+      (the new crate's suite joins the offline count);
+      clippy/fmt clean; `make deny` green (the new
+      crate reuses the vetted dep set); `make gate` →
+      13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the leaf
+      executes ADR-027 verbatim (the manifest unit, the
+      identity placement, the deferrals).
 
   - ID: `PHASE-7.2.4`
     Status: `proposed`
@@ -733,10 +779,15 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.2.3` | `proposed` | `.2.2` done — SECURITY.md lands (the disclosure + the supported-version policy + the README lockstep fix); the SBOM + the signed release artifacts execute next |
+| 1 | `PHASE-7.2.4` | `proposed` | `.2.3` done — the signed release manifests ship (the tool + the pipeline step + the measured roundtrip); the public-enrollment contract executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.3` done — the SBOM + the signed
+  release artifacts (the `rb-release-manifest` tool —
+  keygen/generate/verify — + the `make release` step +
+  the measured refusals; the dependency-graph SBOM is
+  the named deferral); frontier → `.2.4`.
 - `2026-09-08`: `.2.2` done — SECURITY.md (the
   disclosure path over the accountable owner, the
   re-derivation vetting, the honest embargo, the

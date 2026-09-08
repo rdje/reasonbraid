@@ -1,0 +1,28 @@
+# reasonbraid-release-tool — the release identity's manifest signer (`PHASE-7.2.3`, ADR-027).
+# The workspace single-provider rule: ring for the Ed25519 signature, sha2 for the
+# per-binary digests — no second crypto family, no ambient openssl.
+[package]
+name = "reasonbraid-release-tool"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rb-release-manifest"
+path = "src/main.rs"
+
+[dependencies]
+# The CLI surface (the generate/keygen/verify verbs).
+clap = { version = "4", features = ["derive"] }
+# The per-binary digests (the ADR-011 sha256:<hex> scheme).
+sha2 = "0.10"
+# The Ed25519 release identity (the ring provider — the workspace rule).
+ring = "0.17"
+# The canonical manifest bytes.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The manifest's created_at (the RFC3339 timestamp).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

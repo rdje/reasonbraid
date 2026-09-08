@@ -62,9 +62,19 @@ dev:
 # binaries (migrations + the console embed at compile time). The LAN runbook
 # is deploy/README.md; the release-built proof is
 # `bash scripts/demo_two_host.sh --database-url ... --release`.
+# The `.2.3` signing step (ADR-027): the per-binary digest manifest + the
+# Ed25519 signature — the release identity key generates on first use (the
+# dev placement: the releaser's local file, gitignored).
 release:
 	cargo build --release --bins
 	@ls -l target/release/rb target/release/rb-server target/release/rb-node target/release/rb-journal
+	@test -f release-key.pk8 || ./target/release/rb-release-manifest keygen
+	./target/release/rb-release-manifest generate --bin-dir target/release \
+		--bin rb --bin rb-server --bin rb-node --bin rb-journal \
+		--out target/release/release-manifest.json
+	./target/release/rb-release-manifest verify --bin-dir target/release \
+		--manifest target/release/release-manifest.json \
+		--sig target/release/release-manifest.json.sig
 
 hooks:
 	git config core.hooksPath .githooks

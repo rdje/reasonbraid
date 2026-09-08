@@ -14,5 +14,9 @@ docs/book/book/
 *.log
 .DS_Store
 
+# The release identity key (`.2.3`, ADR-027): the releaser's local PKCS8 —
+# never tracked; the signed manifest + the signature live under target/.
+release-key.pk8
+
 # Note: Cargo.lock is intentionally NOT ignored — binary/application projects should
 # commit it for reproducible builds. If this becomes a library-only workspace, add it.

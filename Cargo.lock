@@ -3448,6 +3448,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reasonbraid-release-tool"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "reasonbraid-server"
 version = "0.1.0"
 dependencies = [

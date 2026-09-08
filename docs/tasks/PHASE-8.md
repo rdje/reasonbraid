@@ -995,17 +995,66 @@ default.
   Children: `.4.1`–`.4.4`
 
   - ID: `PHASE-8.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the SDK contract — the versioned
       adapter/resolver surface: the `Adapter`
       contract promoted as the VERSIONED SDK (the
       pinned interface + the version token), the
-      resolver trait extracted from the internal
-      registry (the third-party shape), the
+      resolver SURFACE extracted from the internal
+      registry (the advertise type as the
+      third-party shape — the acquisition trait
+      rides the `.4.4` load side), the
       compatibility-matrix SCHEMA (the SDK version
       × the protocol profile × the platform × the
       qualification status).
     ADR: 027
+    Done:
+    - `SDK_VERSION = "1"` + the
+      `Adapter::sdk_version()` provided method (the
+      default keeps the three adapters
+      source-compatible; the harness refuses a
+      mismatch instead of guessing the semantics) —
+      the token is the matrix's first axis; the
+      bump invalidates the qualifications.
+    - The resolver surface moved to the SDK home:
+      `reasonbraid-adapter::resolver` (the
+      `ResolverAdvertise` type + the ADR-018
+      vocabulary consts + the `isolation_error`
+      validation) — the server's registry re-imports
+      the single shape (the dep promoted from
+      dev-dependencies). The acquisition-execution
+      trait is the named `.4.4` follow-on.
+    - The matrix schema accepted:
+      `docs/decisions/2026-09-08_sdk-compatibility-matrix-schema.md`
+      (top-level `answers:`): the six columns, the
+      measured-only fill rules (the explicit
+      `untested`, never blank), the fixture corpus
+      as the replay oracle — the `.4.2` fill rides
+      it.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.4`
+      census: the adapter contract shipped
+      unversioned (no token for the matrix to hang
+      on) and the resolver shape lived
+      server-internal (no third-party dependency
+      home). Evidence: `cargo test -p
+      reasonbraid-adapter --lib` → `test result: ok.
+      11 passed; 0 failed`.
+    - [x] **ADDRESSED** — the version token + the
+      provided method + the moved resolver surface
+      + the schema record. Evidence: `cargo test -p
+      reasonbraid-adapter --lib` → 11 passed;
+      `cargo build -p reasonbraid-server` → rc=0.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds;
+      the guard → 29 suites + the demo (the move is
+      type-only; the resolver suites re-derive).
+    - [x] **LESSON PROMOTED** — none new: the
+      dev-deps-vs-deps linkage lesson (the lib
+      cannot see a dev-only dependency — the
+      adapter dep moved to the main table) is the
+      known cargo rule, recorded here.
 
   - ID: `PHASE-8.4.2`
     Status: `proposed`
@@ -1053,9 +1102,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.4.1` | `proposed` | `.4` done — the census at the seams (the adapter contract + the harness ship; the versioned SDK surface + the matrix + the certification gate + the ladder's load side are the greenfield) → decomposed `.4.1` the SDK contract → `.4.2` the matrix → `.4.3` the certification → `.4.4` the allowlist; the SDK contract executes next |
+| 1 | `PHASE-8.4.2` | `proposed` | `.4.1` done — the SDK contract ships (the version token + the resolver surface in the SDK home + the matrix schema); the matrix fill executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.4.1` done — the SDK contract
+  (the `SDK_VERSION` token + the
+  `Adapter::sdk_version` method, the resolver
+  advertise moved to `reasonbraid-adapter::resolver`
+  — the SDK home — and the matrix schema record);
+  frontier → `.4.2`.
 
 - `2026-09-08`: `.4` done — the adapter/resolver
   SDK census at the seams (the adapter contract +

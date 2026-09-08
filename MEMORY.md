@@ -20,14 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.4.1`. **The `.1`, `.2`, and `.3` lanes are COMPLETE** (the
-  `.3` MCP surface: the ADR-024 contract + the rmcp pin + the
-  read/write tools + the listen-stream durability + the qualified
-  write gate + the live tool-path roundtrip); `.4` done (the
-  adapter/resolver SDK census → decomposed `.4.1`–`.4.4`).
-- **Next action:** execute `PHASE-8.4.1` — the SDK contract: the
-  versioned adapter surface + the resolver trait extraction + the
-  compatibility-matrix schema.
+  frontier `.4.2`. **The `.1`, `.2`, and `.3` lanes are COMPLETE**; `.4`
+  done (the adapter/resolver SDK census → decomposed `.4.1`–`.4.4`);
+  `.4.1` done (the SDK contract — the version token + the resolver
+  surface + the matrix schema).
+- **Next action:** execute `PHASE-8.4.2` — the compatibility matrix:
+  the measured rows (the dev adapters + the built-in resolvers × the
+  profiles × the toolchains), the fixture-backed re-derivation, the
+  unsupported cells named.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

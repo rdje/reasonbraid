@@ -34,6 +34,7 @@ mod codex;
 mod contract;
 mod fake;
 pub mod fixtures;
+pub mod resolver;
 
 pub mod bench;
 
@@ -42,6 +43,7 @@ pub use codex::CodexCliAdapter;
 pub use contract::{
     Adapter, AdapterCapabilities, AttemptEvent, AttemptHandle, AttemptResult, AttemptStream,
     CancellationOutcome, CancellationStrength, DispatchAck, InvokeOutcome, NormalizedUsage,
-    PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence,
+    PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence, SDK_VERSION,
 };
 pub use fake::{FakeAdapter, FixtureSpec, ScriptStep, StatusLookupSpec};
+pub use resolver::{ResolverAdvertise, EGRESS_CLASSES, SANDBOX_LEVELS};

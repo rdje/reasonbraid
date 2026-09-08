@@ -1,6 +1,12 @@
 //! The adapter contract (`ROADMAP.md` §11.2, `KICKOFF.md` §3 WP4): a narrow,
 //! vendor-neutral boundary between the node's supervision and a harness/provider.
 //!
+//! The contract is the SDK surface (`.4.1`): [`SDK_VERSION`] is the version
+//! token every adapter reports through [`Adapter::sdk_version`] — the first
+//! axis of the compatibility matrix (`docs/decisions/2026-09-08_sdk-compatibility-matrix-schema.md`).
+//! A change to the contract's types or semantics MUST bump the token; the
+//! harness + the matrix re-derive the qualification against the bump.
+//!
 //! # What the contract is FOR
 //!
 //! - **Capabilities are declared, not inferred** ([`AdapterCapabilities`]): streaming,
@@ -35,6 +41,11 @@ use std::pin::Pin;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// The adapter-contract SDK version token (`.4.1`): the matrix's first
+/// axis. Bump on ANY type/semantics change to the contract — the bump
+/// invalidates the previous qualifications (the matrix re-derives).
+pub const SDK_VERSION: &str = "1";
 
 /// One supervised run request: the run spec is opaque to the adapter (untouched
 /// content), plus the caller's deadline and a budget hint the WP5 reservation system
@@ -225,6 +236,13 @@ pub trait Adapter: Send + Sync {
     /// The adapter's declared behavior — the ONLY thing callers may assume about it.
     fn capabilities(&self) -> AdapterCapabilities;
 
+    /// The contract version this adapter implements (the SDK's token —
+    /// defaults to the crate's [`SDK_VERSION`]; the harness refuses a
+    /// mismatch instead of guessing the semantics).
+    fn sdk_version(&self) -> &'static str {
+        SDK_VERSION
+    }
+
     /// Dispatch one run. Returns a refusal BEFORE any provider contact, or a dispatch
     /// acknowledgement plus the streaming handle. Never blocks for the full result.
     async fn invoke(&self, request: &RunRequest, operation_id: &str) -> InvokeOutcome;
@@ -239,4 +257,33 @@ pub trait Adapter: Send + Sync {
     /// Normalize a raw provider usage receipt into the shared shape. Unknown or
     /// unmetered dimensions stay `None` (`§14.1`: recorded as unknown, not zero).
     fn normalize_usage(&self, raw_receipt: &Value) -> NormalizedUsage;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The SDK version token is the matrix's first axis: the pinned value
+    /// + every shipped adapter reports it (the harness refuses a mismatch).
+    #[test]
+    fn the_sdk_version_token_pins_the_contract() {
+        assert_eq!(SDK_VERSION, "1", "the token is the pinned contract version");
+        let fake = crate::fake::FakeAdapter::new(
+            vec![],
+            crate::fake::StatusLookupSpec::Unsupported,
+            AdapterCapabilities {
+                streaming: false,
+                cancellation: CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: PolicyInjectionMode::None,
+            },
+        );
+        assert_eq!(
+            fake.sdk_version(),
+            SDK_VERSION,
+            "the shipped adapter reports the contract's token"
+        );
+    }
 }

@@ -7,76 +7,16 @@
 //! fabricated into evidence. The dev profile's resolvers are the future
 //! packs (`.2`–`.4`): the registry ships the SHAPE with the explicit result
 //! measured.
+//!
+//! The advertise SHAPE is the SDK surface (`.4.1`): it lives in
+//! `reasonbraid-adapter::resolver` (the third-party dependency home) and is
+//! re-exported here so the server's callers keep the single path.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::PgPool;
 
-/// The ADR-018 sandbox ladder (the registry's allowed values).
-pub const SANDBOX_LEVELS: [&str; 4] = ["none", "process", "constrained_process", "vm_container"];
-
-/// The ADR-018 egress classes.
-pub const EGRESS_CLASSES: [&str; 4] = ["none", "loopback", "listed", "any"];
-
-/// The typed §12.2 advertise.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct ResolverAdvertise {
-    pub resolver_id: String,
-    pub schemes: Vec<String>,
-    #[serde(default)]
-    pub locator_patterns: Vec<String>,
-    #[serde(default)]
-    pub media_types: Vec<String>,
-    #[serde(default = "default_max_bytes")]
-    pub max_bytes: i64,
-    #[serde(default)]
-    pub abilities: Vec<String>,
-    #[serde(default)]
-    pub authentication_classes: Vec<String>,
-    pub egress_class: String,
-    pub sandbox_level: String,
-    #[serde(default = "default_deny")]
-    pub redirect_policy: String,
-    #[serde(default = "default_deny")]
-    pub archive_policy: String,
-    #[serde(default = "default_deny")]
-    pub subresource_policy: String,
-    #[serde(default = "default_deny")]
-    pub javascript_policy: String,
-    #[serde(default)]
-    pub snapshot_formats: Vec<String>,
-    #[serde(default)]
-    pub derivation_formats: Vec<String>,
-    #[serde(default = "default_latency")]
-    pub latency_range_ms: Value,
-    pub version: String,
-    #[serde(default)]
-    pub security_evidence: Value,
-}
-
-fn default_max_bytes() -> i64 {
-    10 * 1024 * 1024
-}
-fn default_deny() -> String {
-    "deny".to_string()
-}
-fn default_latency() -> Value {
-    serde_json::json!({ "min": 1000, "max": 60000 })
-}
-
-impl ResolverAdvertise {
-    /// The ADR-018 vocabulary validation.
-    pub fn isolation_error(&self) -> Option<&'static str> {
-        if !SANDBOX_LEVELS.contains(&self.sandbox_level.as_str()) {
-            return Some("the sandbox level is outside the ADR-018 ladder");
-        }
-        if !EGRESS_CLASSES.contains(&self.egress_class.as_str()) {
-            return Some("the egress class is outside the ADR-018 vocabulary");
-        }
-        None
-    }
-}
+pub use reasonbraid_adapter::resolver::{ResolverAdvertise, EGRESS_CLASSES, SANDBOX_LEVELS};
 
 /// Register (or replace) one resolver's advertise — the operator's verb (the
 /// future packs call it at their install).

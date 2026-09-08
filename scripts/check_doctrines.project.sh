@@ -20,4 +20,11 @@ set -uo pipefail
 #     echo "PROJECT: rustfmt drift — run 'cargo fmt --all'" >&2; exit 1
 #   fi
 
+# The SDK compatibility matrix (`.4.2`): the token + the evidence artifacts
+# must agree with the code — the matrix is evidence-bound, never prose-bound.
+if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then
+    scripts/check_compatibility_matrix.sh >&2
+    exit 1
+fi
+
 exit 0

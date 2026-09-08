@@ -4,6 +4,11 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The compatibility matrix: the evidence-bound fill (`PHASE-8.4.2`)
+
+- `docs/compatibility-matrix.md` — the 12 measured rows over the `.4.1` schema (the three dev adapters × the conformance suite, the real-provider live runs NAMED `untested`, the corpus row, the R0–R2 live-roundtrip rows, the gated R3/R5/RX named `untested`) — a cell comes from a run, never from a sibling.
+- `scripts/check_compatibility_matrix.sh` — the mechanical re-derivation (the matrix's sdk_version column carries the contract's CURRENT token; the cited evidence artifacts exist) — wired into the doctrine gate's project slot (`check_doctrines.project.sh`): the matrix is evidence-bound, never prose-bound. Frontier → `.4.3`.
+
 ## 2026-09-08 — The SDK contract: the version token + the resolver surface (`PHASE-8.4.1`)
 
 - `SDK_VERSION = "1"` + the `Adapter::sdk_version()` provided method in `crates/reasonbraid-adapter/src/contract.rs` (the default keeps the three adapters source-compatible; the harness refuses a mismatch instead of guessing the semantics) — the token is the compatibility matrix's first axis; a contract bump invalidates the qualifications.

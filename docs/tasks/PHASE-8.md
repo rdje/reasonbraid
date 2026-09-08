@@ -1057,7 +1057,7 @@ default.
       known cargo rule, recorded here.
 
   - ID: `PHASE-8.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the compatibility matrix — the measured
       rows (the three dev adapters + the built-in
       resolvers × the protocol profiles × the
@@ -1065,6 +1065,43 @@ default.
       re-derivation (the `.6.2` corpus as the
       replay oracle), the unsupported cells named.
     ADR: 027
+    Done:
+    - `docs/compatibility-matrix.md` — the filled
+      matrix over the `.4.1` schema: the 12 rows
+      (the three dev adapters × the conformance
+      suite, the real-provider live runs NAMED
+      untested, the corpus row, the R0–R2 packs'
+      live-roundtrip rows, the gated R3/R5/RX
+      named untested).
+    - `scripts/check_compatibility_matrix.sh` — the
+      mechanical re-derivation: the matrix's
+      sdk_version column carries the contract's
+      CURRENT token; the cited evidence artifacts
+      exist (the conformance suite's three test
+      names + the corpus manifest); wired into the
+      doctrine gate's project slot
+      (`check_doctrines.project.sh`) — the matrix
+      is evidence-bound, never prose-bound.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.4.1`
+      schema fixed the matrix's shape but nothing
+      filled it; the compatibility claims had no
+      evidence-bound artifact. Evidence: `bash
+      scripts/check_compatibility_matrix.sh` →
+      `compatibility-matrix: OK`; rc=0.
+    - [x] **ADDRESSED** — the 12 measured rows +
+      the named untested cells + the checker + the
+      gate wiring. Evidence: `make gate` → `===
+      all doctrines green ===` (the new check runs
+      inside).
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0 (the doc/script-only leaf — the Rust
+      tree is untouched since the `.4.1` guard);
+      `make deny` green; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      evidence-bound-artifact pattern (the corpus
+      oracle's permanence rules, applied to the
+      matrix) is the `.6.2` doctrine's known path.
 
   - ID: `PHASE-8.4.3`
     Status: `proposed`
@@ -1102,9 +1139,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.4.2` | `proposed` | `.4.1` done — the SDK contract ships (the version token + the resolver surface in the SDK home + the matrix schema); the matrix fill executes next |
+| 1 | `PHASE-8.4.3` | `proposed` | `.4.2` done — the compatibility matrix ships (the 12 evidence-bound rows + the gate-wired checker); the certification suite executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.4.2` done — the compatibility
+  matrix (the 12 rows over the `.4.1` schema, the
+  named untested cells, the gate-wired checker —
+  the evidence-bound artifact); frontier →
+  `.4.3`.
 
 - `2026-09-08`: `.4.1` done — the SDK contract
   (the `SDK_VERSION` token + the

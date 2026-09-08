@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The tenant-isolation census: the RLS + the quotas are the greenfield (`PHASE-7.1.3`)
+
+- The census at the seams, measured: `tenant_id` is the first-layer key on the identity/authority/budget/inbox/enrollment surface; `grep -rn "ROW LEVEL SECURITY" migrations/` → nothing (the named defense-in-depth is unshipped); `grep -rln "quota" crates/ migrations/` → no machinery; the quarantine rows (`quarantined_at` + `quarantine_reason`, migration 0010) already preserve the evidence in-place but the §16.11 rule is unarticulated. Decomposed: `.1.3.1` the RLS layer → `.1.3.2` the quotas → `.1.3.3` the quarantine-preserving-evidence rule.
+
 ## 2026-09-08 — The mTLS workload identity: the TLS 1.3-only mutual-auth transport (`PHASE-7.1.2`)
 
 - `ca::issue_serving_cert` (the ServerAuth-EKU serving leaf) + the `mtls` module: `build_server_config` (TLS 1.3-only, ring-pinned, the `WebPkiClientVerifier` over the deployment CA — the client MUST chain to it) and `build_client_config` (the CA root + the node leaf). The split holds: the transport verifies the CA membership; the fingerprint → the principal binding stays the application proof (`node_channel::verify_cert_proof` — the layered defense). The offline roundtrip proves both legs (the issued client connects + a byte; the cert-less client is refused at the transport). The production serve wiring stays the deployment-profile concern (named).

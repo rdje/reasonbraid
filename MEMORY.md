@@ -16,17 +16,21 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.3`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.3.1`.
   `.1.1` done (ADR-034 accepted — the per-surface qualification, the
   transport-context rule, the defense-in-depth isolation, the quota
   vocabulary); `.1.2` done (the mTLS workload identity — the TLS 1.3-only
   config pair + the serving leaf + the offline roundtrip: the CA-issued
   client connects, the cert-less client is refused at the transport; the
-  fingerprint → the principal binding stays the application proof).
-- **Next action:** execute `PHASE-7.1.3` — the tenant isolation + the
-  quotas/abuse: the RLS defense-in-depth (the second layer over the
-  tenant-scoped keys), the per-principal/tenant/resolver quotas riding the
-  Phase-2 budget machinery, the quarantine-preserving-evidence rule (§16.11).
+  fingerprint → the principal binding stays the application proof); `.1.3`
+  done (the census at the seams — RLS/quota machinery greenfield, the
+  quarantine evidence in-place) → decomposed `.1.3.1` (the RLS layer) →
+  `.1.3.2` (the quotas) → `.1.3.3` (the quarantine-evidence rule).
+- **Next action:** execute `PHASE-7.1.3.1` — the RLS defense-in-depth:
+  migration 0046's per-table RLS policies over the tenant-scoped keys (the
+  second layer — the application scoping is the first), the tenant-claim
+  connection wiring, the measured DB-level cross-tenant refusal; the policy
+  design rides a decision record.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

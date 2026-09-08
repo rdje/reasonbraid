@@ -157,13 +157,65 @@ reopens the applicable portions of G4–G7.
       (top-level `answers:`).
 
   - ID: `PHASE-7.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the tenant isolation + the quotas/abuse — the RLS
       defense-in-depth (the second layer over the
       tenant-scoped keys), the per-principal/tenant/
       resolver quotas riding the Phase-2 budget machinery,
       the quarantine-preserving-evidence rule (§16.11).
     Roadmap: §16.8, §16.11
+    Done (`2026-09-08`): the census at the seams —
+      decomposed (the vocabulary ships in ADR-034; the
+      machinery is the greenfield). Measured: `grep -c
+      "tenant_id" migrations/*.sql` → the first-layer key
+      on the identity/authority/budget/inbox/enrollment
+      surface (0001/0003–0009/0012/0016/0017/0020); RLS →
+      NOTHING (`grep -rn "ROW LEVEL SECURITY" migrations/`
+      → rc=1 — the named defense-in-depth is unshipped);
+      quotas → NOTHING (`grep -rln "quota" crates/
+      migrations/` → one fixture word, no machinery); the
+      quarantine rows preserve the evidence in-place
+      (`quarantined_at` + `quarantine_reason`, migration
+      0010) but the §16.11 rule is unarticulated. Children:
+      `.1.3.1` the RLS layer (the DB-level cross-tenant
+      refusal measured) → `.1.3.2` the quotas (the
+      per-principal/tenant/resolver ceilings riding the
+      Phase-2 budget machinery) → `.1.3.3` the
+      quarantine-preserving-evidence rule (the §16.11
+      contract articulated over the shipped quarantine).
+    Children: `.1.3.1`–`.1.3.3`
+
+  - ID: `PHASE-7.1.3.1`
+    Status: `proposed`
+    Goal: the RLS defense-in-depth — migration 0046: the
+      per-table RLS policies over the tenant-scoped keys
+      (the SECOND layer — the application scoping is the
+      first), the tenant-claim connection wiring, and the
+      measured DB-level cross-tenant refusal (a
+      foreign-tenant query refuses at the DATABASE, not the
+      application). The policy design + the claim pattern
+      ride a decision record.
+    Roadmap: §16.8
+
+  - ID: `PHASE-7.1.3.2`
+    Status: `proposed`
+    Goal: the quotas — the per-principal/tenant/resolver
+      quota tables + the reservation-path check riding the
+      Phase-2 budget machinery (the same in-transaction
+      claim pattern; a quota denial is a recorded budget
+      event, never silent), the §16.11 abuse vocabulary
+      bound per ADR-034.
+    Roadmap: §16.8, §16.11
+
+  - ID: `PHASE-7.1.3.3`
+    Status: `proposed`
+    Goal: the quarantine-preserving-evidence rule (§16.11)
+      — the articulated contract: the quarantine is a ROW
+      FACT (the evidence stays; the preservation survives
+      the disposition), the retention cleanup stays the
+      explicit operator action (the `.1.2.3` shape), no
+      quarantine path may delete the evidence it cites.
+    Roadmap: §16.11
 
   - ID: `PHASE-7.1.4`
     Status: `proposed`
@@ -202,10 +254,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.3` | `proposed` | `.1.2` done — the mTLS workload identity ships (the TLS 1.3-only config pair + the offline roundtrip proof); the tenant isolation + the quotas/abuse execute next |
+| 1 | `PHASE-7.1.3.1` | `proposed` | `.1.3` decomposed at the census seams (RLS/quota machinery greenfield, the quarantine evidence already in-place) — the RLS defense-in-depth executes first |
 
 ## Changelog
 
+- `2026-09-08`: `.1.3` done — the census at the seams
+  (the RLS + the quota machinery are the greenfield; the
+  quarantine rows already preserve the evidence) →
+  decomposed `.1.3.1` (the RLS layer) → `.1.3.2` (the
+  quotas) → `.1.3.3` (the quarantine-evidence rule);
+  frontier → `.1.3.1`.
 - `2026-09-08`: `.1.2` done — the mTLS workload identity
   (the §16.2 config pair + the serving leaf + the offline
   roundtrip: the CA-issued client connects, the cert-less

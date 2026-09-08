@@ -258,11 +258,76 @@ default.
       ripple is the known recurring lesson.
 
 - ID: `PHASE-8.2`
-  Status: `proposed`
+  Status: `done`
   Goal: current A2A interoperability for compatible task/message exchange
   ADR: 025
   Roadmap: §9.7
   Baseline: official `a2a-rs` crates published as of 2026-09-04; pin and revalidate
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured: NOTHING ships for A2A (the
+    §9.7 facade is the greenfield); the contract is
+    precise (the facade boundary — A2A is the
+    interoperability facade, never the governance
+    protocol; the semantic-losses map — the
+    authority/budget/evidence/decision-rule/lifecycle
+    each record their loss; the Agent Card confers
+    nothing; the official `a2a-lf`/`a2a-client-lf`/
+    `a2a-server-lf` crates + the `a2a-cli` exist on
+    crates.io (the 2026-09-04 baseline, re-checked —
+    the pre-1.0 compatibility must be DEMONSTRATED,
+    not inferred from SemVer; the exact versions pin at
+    the spike + the tested spec/conformance revision
+    records)); ADR-025 is reserved (no record).
+    Children: `.2.1` the census + ADR-025 → `.2.2` the
+    dependency census + the pin → `.2.3` the facade →
+    `.2.4` the compatibility demonstration + the
+    qualification.
+  Children: `.2.1`–`.2.4`
+
+  - ID: `PHASE-8.2.1`
+    Status: `proposed`
+    Goal: the census + ADR-025 — the A2A surface +
+      the version-profile contract: the facade
+      boundary (the message mapping where the
+      semantics align; the local governance stays),
+      the semantic-losses vocabulary (each lost
+      dimension names its loss), the version-pin +
+      the revalidation stance (the pre-1.0
+      compatibility demonstrated).
+    ADR: 025
+    Roadmap: §9.7
+
+  - ID: `PHASE-8.2.2`
+    Status: `proposed`
+    Goal: the dependency census + the pin — the
+      `a2a-lf` crate family's exact versions + the
+      supply-chain gate (the deny + the license
+      checks), the JSON-RPC/REST profile selection
+      (test only what the slice needs), the
+      `Cargo.lock` pin + the tested revision record.
+    Roadmap: §9.7
+
+  - ID: `PHASE-8.2.3`
+    Status: `proposed`
+    Goal: the A2A facade — the compatible task/message
+      exchange over the JSON-RPC/REST profile: the
+      incoming A2A messages map to the local commands
+      (the local grants/authorization ride every
+      effect), the external IDs + the signatures
+      preserved, the semantic losses recorded per
+      message.
+    Roadmap: §9.7
+
+  - ID: `PHASE-8.2.4`
+    Status: `proposed`
+    Goal: the compatibility demonstration + the
+      qualification — the a2a-cli (or the SDK's test
+      peer) roundtrip against the facade (the measured
+      exchange + the recorded semantic losses), the
+      tested spec/conformance revision, the
+      qualification record (the broad claims stay
+      gated; the gateway is deployable-off).
+    Roadmap: §9.7
 
 - ID: `PHASE-8.3`
   Status: `proposed`
@@ -289,10 +354,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.2` | `proposed` | `.1.4` done — the cross-domain receipts ship (the cross-reference, never the merge); **the `.1` lane is COMPLETE** — the A2A interoperability lane executes next |
+| 1 | `PHASE-8.2.1` | `proposed` | `.2` decomposed at the census seams (nothing ships for A2A; the §9.7 contract + the 2026-09-04 baseline re-checked; ADR-025 reserved) — the census + ADR-025 execute first |
 
 ## Changelog
 
+- `2026-09-08`: `.2` done — the A2A census at the
+  seams (the §9.7 facade is the greenfield; the
+  `a2a-lf` family re-checked on crates.io; ADR-025
+  reserved) → decomposed `.2.1` (the census +
+  ADR-025) → `.2.2` (the dependency pin) → `.2.3`
+  (the facade) → `.2.4` (the compatibility
+  demonstration); frontier → `.2.1`.
 - `2026-09-08`: `.1.4` done — the cross-domain audit
   receipts (migration 0049 + the in-transaction
   record + the read surface + the import wiring + the

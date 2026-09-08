@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The A2A census: the facade is the greenfield, the baseline re-checked (`PHASE-8.2`)
+
+- The census at the seams: nothing ships for A2A (the §9.7 facade is the greenfield); the contract is precise — the facade boundary (A2A is the interoperability facade, never the governance protocol), the semantic-losses map (the authority/budget/evidence/decision-rule/lifecycle each record their loss), the Agent Card confers nothing; the official `a2a-lf`/`a2a-client-lf`/`a2a-server-lf` crates + the `a2a-cli` exist on crates.io (the 2026-09-04 baseline re-checked — the pre-1.0 compatibility must be DEMONSTRATED, not inferred); ADR-025 is reserved. Decomposed: `.2.1` the census + ADR-025 → `.2.2` the dependency pin → `.2.3` the facade → `.2.4` the compatibility demonstration + the qualification.
+
 ## 2026-09-08 — The cross-domain audit receipts: the cross-reference, never the merge (`PHASE-8.1.4`)
 
 - Migration 0049 (`cross_domain_receipts` — the two tenants, the kind, the `remote_ref` (the remote domain's digest-pinned reference), the `local_ref` (the local record)) + `receipts.rs` (the in-transaction record — the receipt commits WITH the action) + the read surface (`GET /v1/audit/receipts?tenant_id=…`). The card import records the receipt (the remote_ref = the card's digest, the local_ref = the fresh role); the measured legs ride the cards suite (the guard's 27th). The receipts CROSS-REFERENCE: the remote reference verifies against the REMOTE domain's records, the local chain stays the local truth. The guard's first runs caught the receipts-FK purge ripple (the 18 lists). **The `.1` lane is COMPLETE** — frontier → `.2` (the A2A interoperability).

@@ -16,17 +16,19 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.4.1`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.4.2`.
   The `.1` lane is COMPLETE; the `.2` lane is COMPLETE; `.3` done (the
-  extraction criteria); `.4` done (the census: one runbook of the
-  thirteen, no load harness, the named game-day gaps) → decomposed
-  `.4.1` (the load harness) → `.4.2` (the runbook set) → `.4.3` (the
-  game-day catalogue + the pen-test record).
-- **Next action:** execute `PHASE-7.4.1` — the load harness: the
-  scripted concurrent command driver recording the ingress→commit p95,
-  the worker throughput, and the channel latency at the target
-  concurrency (the `.3` criteria's trigger measurements — the
-  reproducible measured run).
+  extraction criteria); `.4` done (the census) → decomposed; `.4.1` done
+  (the load harness — the measured run: p50 3.3ms / p95 7.9ms / 189.2
+  cmds/s at 8 workers, 0 failures).
+- **Next action:** execute `PHASE-7.4.2` — the §18.6 runbook set: the
+  remaining twelve families (the provider outage/ambiguous charge, the
+  credential compromise, the notification storm, the runaway budget,
+  the poisoned resource, the database failover, the object loss, the
+  Git/DB publication mismatch, the signing-key incident, the
+  cross-tenant exposure suspicion, the audit-chain break, the
+  rollback/suspension, the full DR) as the runbook records over the
+  shipped controls.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

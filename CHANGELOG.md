@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The load harness: the capacity feeder with the first measured run (`PHASE-7.4.1`)
+
+- `scripts/load_harness.sh`: the scripted concurrent driver — the server boots against the caller's database, then N `thread.contribute` commands at C workers (each a fresh request id + idempotency key — the full claim → authorize → validate → apply path). The per-request `status seconds` lines land in `target/load/latencies.txt`; the summary prints the p50/p95 + the throughput and the exit gates on every command committing. The MEASURED run: 200 commands at 8 workers → 1.057s wall, ingress→commit p50 0.0033s / p95 0.0079s, 189.2 commands/s, 0 failures (`target/load_harness_run.log`) — the `.3` criteria's first feed (the aggregate-write seam's trigger measurement). The worker-throughput + the channel-latency legs are the named follow-ons. The first run caught the bare-`wait` trap (it also joins the backgrounded server — the fix waits the worker PIDs only). Frontier → `.4.2`.
+
 ## 2026-09-08 — The capacity-and-incident census: the `.4` lane opens at the seams (`PHASE-7.4`)
 
 - The census, measured: the runbook set is ONE record of the §18.6 thirteen-family catalogue (`node-lost-replaced.md`); the load harness does not exist (the bench harness is the deliberation benchmark — the `.3` criteria's trigger measurements have no feeder); the game-days are the three shipped exercises (the replacement drill, the restore exercise, the demo's kill points) with the remaining families as the named gaps; the pen-test is EXTERNAL (the remediation rides its findings). Decomposed: `.4.1` the load harness → `.4.2` the runbook set → `.4.3` the game-day catalogue + the pen-test record.

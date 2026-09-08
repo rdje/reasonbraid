@@ -849,7 +849,7 @@ reopens the applicable portions of G4–G7.
   Children: `.4.1`–`.4.3`
 
   - ID: `PHASE-7.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the load harness — the capacity tests that
       feed the `.3` criteria: a scripted concurrent
       command driver recording the ingress→commit p95,
@@ -857,6 +857,56 @@ reopens the applicable portions of G4–G7.
       the target concurrency (the reproducible measured
       run — the CLAIM_VERIFICATION shape).
     Roadmap: §16.12
+    Done (`2026-09-08`): `scripts/load_harness.sh` — the
+      scripted CONCURRENT driver (the bash + curl + jq +
+      python3 stack, the demo's style): it boots the
+      server against the caller's database, enrolls the
+      bootstrap human, creates the load thread, then
+      fires N `thread.contribute` commands at C workers
+      (each request a fresh `req_<uuid>` request id + a
+      unique idempotency key — the FULL claim →
+      authorize → validate → apply path, the
+      ingress→commit measurement). The per-request
+      `status seconds` lines land in
+      `target/load/latencies.txt`; the summary prints
+      the p50/p95 + the throughput + the failures, and
+      the exit gates on every command committing (the
+      200s). The MEASURED run: 200 commands at 8
+      workers → 1.057s wall, ingress→commit p50 0.0033s
+      / p95 0.0079s, 189.2 commands/s, 0 failures
+      (`target/load_harness_run.log`) — the FIRST
+      `.3`-criteria feed (the aggregate-write seam's
+      trigger measurement: the ingress→commit p95 at
+      the target concurrency). The worker-throughput +
+      the channel-latency legs are the named follow-ons
+      (the harness's loop is the extension point — the
+      node-side poll rides the same concurrency
+      shape). The first run caught a real harness bug:
+      the bare `wait` also joined the backgrounded
+      SERVER (never exits) — the fix waits the WORKER
+      PIDs only (the comment records it).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.4` census:
+      no load harness (the `.3` criteria's trigger
+      measurements had no feeder); the harness is the
+      feeder. Evidence: `bash scripts/load_harness.sh
+      --database-url … --commands 200 --concurrency 8`
+      → rc=0, the PASS line.
+    - [x] **ADDRESSED** — the concurrent driver + the
+      recorded latencies + the summary + the exit gate.
+      Evidence: the measured run — `PASS: every command
+      committed (200) and the summary is recorded`;
+      ingress→commit p50 0.0033s / p95 0.0079s,
+      189.2 commands/s (`target/load_harness_run.log`).
+    - [x] **NO REGRESSION** — no server paths changed:
+      `make gate` → 13/13; the guard stays green from
+      `.2.3` (the harness is a standalone script, not a
+      guard suite — the guard wiring is the named
+      follow-on).
+    - [x] **LESSON PROMOTED** — `promotion: declined
+      (the bare-wait-joins-the-server trap is a
+      well-known bash wait semantics fact, recorded in
+      the harness's own comment)`.
 
   - ID: `PHASE-7.4.2`
     Status: `proposed`
@@ -897,10 +947,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.4.1` | `proposed` | `.4` decomposed at the census seams (one runbook of the thirteen, no load harness, the named game-day gaps) — the load harness executes first |
+| 1 | `PHASE-7.4.2` | `proposed` | `.4.1` done — the load harness ships (the measured run: p50 3.3ms / p95 7.9ms / 189.2 cmds/s at 8 workers — the first `.3`-criteria feed); the §18.6 runbook set executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.4.1` done — the load harness (the
+  concurrent driver + the measured run: 200 commands,
+  8 workers, p50 0.0033s / p95 0.0079s, 189.2
+  commands/s, 0 failures — the `.3` criteria's first
+  feed; the worker/channel legs are the named
+  follow-ons); frontier → `.4.2`.
 - `2026-09-08`: `.4` done — the census at the seams
   (the runbook set is one record of the thirteen; the
   load harness does not exist — the `.3` triggers have

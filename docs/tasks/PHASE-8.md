@@ -1233,8 +1233,76 @@ default.
       mechanical. **The `.4` lane is COMPLETE.**
 
 - ID: `PHASE-8.5`
-  Status: `proposed`
+  Status: `done`
   Goal: regional routing, store-and-forward for intermittent sites, export/import, documented exit path
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured — SHIPPED: the node-level
+    store-and-forward substrate (the outbox worker
+    + the durable per-node inbox with the cursor
+    resume + the lease/presence states + the
+    replay — the demo's crash/reconnect scenario),
+    the export seeds (the backup/restore scripts +
+    the guard's restore exercise; the portable
+    agent cards' digest-pinned export + the
+    four-rung import ladder), the exit-path seeds
+    (the §25.1 kill/pivot discipline + the
+    subtraction records + the unsupported matrix +
+    the rollback/failover runbooks). GREENFIELD:
+    the REGION machinery (the ADR-034 stance — the
+    regions are DECLARED; no region/export
+    machinery exists — the named deferral), the
+    SITE-level store-and-forward (the intermittent
+    cross-site delivery over the shipped substrate),
+    the tenant/site DATA export/import (the
+    backup/restore is the operator's tooling, not
+    the tenant surface), and the documented EXIT
+    PATH (the leave-ReasonBraid story as one
+    document). The Phase-5 routing policy is the
+    workflow-profile routing — a different domain,
+    not this lane's regional routing.
+  Children: `.5.1`–`.5.4`
+
+  - ID: `PHASE-8.5.1`
+    Status: `proposed`
+    Goal: the census + ADR-035 — the site/region
+      contract: the DECLARED region vocabulary (the
+      ADR-034 seeds), the site identity + the
+      region scope, the store-and-forward contract
+      (the intermittent-site delivery over the
+      shipped outbox/inbox), the export/import
+      vocabulary (the tenant-data shape), the
+      exit-path shape.
+    ADR: 035
+
+  - ID: `PHASE-8.5.2`
+    Status: `proposed`
+    Goal: the regional routing — the routing rules
+      over the declared regions (the region-scoped
+      delivery + the region-scoped visibility), the
+      measured refusal vocabulary (the undeclared
+      region, the cross-region policy).
+    ADR: 035
+
+  - ID: `PHASE-8.5.3`
+    Status: `proposed`
+    Goal: the store-and-forward — the
+      intermittent-site delivery over the shipped
+      substrate (the outbox + the inbox): the
+      site-level buffer + the reconnect flush + the
+      measured legs (the disconnected site
+      accumulates, the reconnect delivers).
+    ADR: 035
+
+  - ID: `PHASE-8.5.4`
+    Status: `proposed`
+    Goal: the export/import + the documented exit
+      path — the tenant-data export (the
+      digest-pinned bundle over the backup/restore
+      pattern) + the import ladder + the exit-path
+      runbook (the leave-ReasonBraid story: the
+      export → the verification → the local
+      continuation, the §25.1 wiring).
+    ADR: 035
 
 - ID: `PHASE-8.6`
   Status: `proposed`
@@ -1245,9 +1313,20 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.5` | `proposed` | `.4.4` done — the signed allowlist ships (the five-rung ladder + the ledger + the verbs + the 30th suite); **the `.4` lane is COMPLETE**; the regional-routing lane opens at its census at the seams |
+| 1 | `PHASE-8.5.1` | `proposed` | `.5` done — the census at the seams (the node-level substrate + the export/exit seeds ship; the region machinery + the site-level store-and-forward + the tenant export + the exit-path document are the greenfield) → decomposed `.5.1` the census + ADR-035 → `.5.2` the regional routing → `.5.3` the store-and-forward → `.5.4` the export/import + the exit path; the ADR-035 contract executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.5` done — the regional-routing
+  lane's census at the seams (the node-level
+  store-and-forward substrate + the export seeds +
+  the exit-path seeds ship; the region machinery +
+  the site-level store-and-forward + the tenant
+  export + the exit-path document are the
+  greenfield) → decomposed `.5.1` the census +
+  ADR-035 → `.5.2` the regional routing → `.5.3`
+  the store-and-forward → `.5.4` the export/import
+  + the exit path; frontier → `.5.1`.
 
 - `2026-09-08`: `.4.4` done — the signed
   allowlist (the five-rung ladder with the typed

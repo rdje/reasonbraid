@@ -4,6 +4,10 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The regional-routing census at the seams: the node-level substrate ships, the region machinery is the greenfield (`PHASE-8.5`)
+
+- The census (no code): SHIPPED — the node-level store-and-forward substrate (the outbox worker + the durable inbox with the cursor resume + the lease/presence states + the replay — the demo's crash/reconnect scenario), the export seeds (the backup/restore + the guard's restore exercise; the portable cards' export/import ladder), the exit-path seeds (the §25.1 kill/pivot + the subtraction records + the rollback/failover runbooks). GREENFIELD — the REGION machinery (the ADR-034 stance: the regions are DECLARED, no machinery — the named deferral), the SITE-level store-and-forward, the tenant/site DATA export/import, and the documented EXIT PATH. Decomposed: `.5.1` the census + ADR-035 → `.5.2` the regional routing → `.5.3` the store-and-forward → `.5.4` the export/import + the exit path. Frontier → `.5.1`.
+
 ## 2026-09-08 — The signed allowlist: the ADR-027 ladder's load side (`PHASE-8.4.4`)
 
 - `crates/reasonbraid-adapter/src/allowlist.rs` — the five-rung ladder (`verify_ladder`): the ordered, fail-closed verification (the allowlist membership → the record's self-digest → the release identity's Ed25519 over the canonical bytes — the ring provider → the SDK token → the capability ceilings) + the typed `RungRefusal` (each refusal names its rung) + the unit tests (the REAL signed pass + the per-rung refusals).

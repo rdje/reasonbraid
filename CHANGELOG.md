@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The MCP SDK census + the pin decision (`PHASE-8.3.2`)
+
+- The census (the crates.io checks): the OFFICIAL `mcp-server`/`mcp-client` crates are the STALE 0.1.0 (2025-02-27 — the abandoned early SDK; the "official" name no longer means the active line); the official SDK's ACTIVE home is **`rmcp` 3.2.0** (2026-08-31, Apache-2.0, Rust 1.88, the modelcontextprotocol/rust-sdk repository — the full feature map including the `reqwest-tls-no-provider` option for the workspace's provider rule). The pin: `rmcp = "=3.2.0"`, `default-features = false`, the explicit feature list lands with the `.3.3` read-half code; the protocol profile: the MCP 2026-07-28 baseline + the Streamable HTTP transport. No code. Frontier → `.3.3`.
+
 ## 2026-09-08 — ADR-024: the MCP surface — the same handlers, the read-first split, the listen stream is transport state (`PHASE-8.3.1`)
 
 - ADR-024 accepted (`docs/adr/024-mcp-interoperability-surface.md`, top-level `answers:`): the tools ARE the same command handlers (the MCP surface is the HTTP verbs' re-expression — never a new authority path; a tool no handler backs is NOT exposed); the READ/WRITE split (the read tools first; the write tools as the QUALIFIED profile — the enrolled principal, the per-verb local grants, the per-principal quota re-opens the `.1.3.2` `principal` scope, the audit; the remote metadata never grants authority, the tokens never enter the thread content); the listen stream is the EPHEMERAL transport state (the durable subscription/cursor/delivery-ids/dedup stay in REASONBRAID; the reconnect reauthorizes → recreates → reconciles → resumes from the OWN cursor → surfaces the possible-gap — never stronger than the upstream proves); the version profile (the official SDK, the tested release pin, the independent conformance fixtures). No code. Frontier → `.3.2`.

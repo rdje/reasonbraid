@@ -549,13 +549,49 @@ default.
       `.3.2`.
 
   - ID: `PHASE-8.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the SDK census + the pin — the official
       Rust MCP SDK's exact versions + the supply-chain
       gate, the protocol profile selection (the MCP
       2026-07-28 baseline), the `Cargo.lock` pin + the
       tested release record.
     Roadmap: §9.6
+    Done (`2026-09-08`): the census (the crates.io
+      checks) + the PIN DECISION recorded: the OFFICIAL
+      `mcp-server`/`mcp-client` crates are the STALE
+      0.1.0 (2025-02-27 — the abandoned early SDK); the
+      official SDK's ACTIVE home is **`rmcp` 3.2.0**
+      (2026-08-31, Apache-2.0, Rust 1.88, the
+      modelcontextprotocol/rust-sdk repository — the
+      full feature map: the
+      transport-streamable-http-server/client, the
+      auth family, and the `reqwest-tls-no-provider`
+      feature for the workspace's provider rule). The
+      pin: `rmcp = "=3.2.0"`, `default-features =
+      false`, the explicit feature list lands WITH the
+      `.3.3` read-half code (the macros + the server +
+      the transport the slice needs; the
+      `reqwest-tls-no-provider` where the reqwest
+      transport enters — the workspace single-provider
+      rule, the fourth occurrence of the trap). The
+      protocol profile: the MCP 2026-07-28 baseline +
+      the Streamable HTTP transport. No code changed.
+      Frontier → `.3.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §9.6
+      baseline demanded the official SDK + the exact
+      pin; the census fixed both AND caught the
+      official crates' staleness (the 0.1.0 trap —
+      the "official" name no longer means the active
+      line). Evidence: the crates.io API checks (the
+      version/feature/license records).
+    - [x] **ADDRESSED** — the rmcp 3.2.0 pin + the
+      no-default-features rule + the protocol profile.
+      Evidence: the recorded versions + the
+      feature-map analysis.
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; no dependency graph changed (the pin
+      lands with the `.3.3` read-half).
 
   - ID: `PHASE-8.3.3`
     Status: `proposed`
@@ -608,10 +644,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.2` | `proposed` | `.3.1` done — ADR-024 accepted (the same-handlers tools, the read/write split, the listen-stream durability); the SDK census + the pin execute next |
+| 1 | `PHASE-8.3.3` | `proposed` | `.3.2` done — the SDK census + the pin decision (the official crates are the stale 0.1.0; `rmcp` 3.2.0 is the active official line — the pin + the no-default-features rule); the read-half tools execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.3.2` done — the MCP SDK census +
+  the pin decision (the official `mcp-server`/
+  `mcp-client` are the stale 0.1.0; **`rmcp` 3.2.0**
+  is the official SDK's active line — the exact pin +
+  the no-default-features rule + the Streamable HTTP
+  profile); the pin lands with the `.3.3` read-half;
+  no code; frontier → `.3.3`.
 - `2026-09-08`: `.3.1` done — ADR-024 accepted
   (evidence-gated): the tools are the same handlers
   + the read/write split + the listen-stream

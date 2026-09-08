@@ -20,14 +20,17 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3.2`. **The `.1` lane is COMPLETE**; **the `.2` lane is
+  frontier `.3.3`. **The `.1` lane is COMPLETE**; **the `.2` lane is
   COMPLETE**; `.3` done (the MCP census) → decomposed; `.3.1` done
-  (ADR-024 accepted — the same-handlers tools, the read/write split,
-  the listen-stream durability).
-- **Next action:** execute `PHASE-8.3.2` — the MCP SDK census + the
-  pin: the official Rust MCP SDK's exact versions + the supply-chain
-  gate, the protocol profile selection (the MCP 2026-07-28 baseline),
-  the `Cargo.lock` pin + the tested release record.
+  (ADR-024); `.3.2` done (the SDK census + the pin: the official
+  crates are the stale 0.1.0, **`rmcp` 3.2.0** is the active official
+  line — the exact pin + the no-default-features rule).
+- **Next action:** execute `PHASE-8.3.3` — the MCP read-half tools +
+  the resources: the inspection verbs as the read-only MCP tools over
+  the cross-store corpus (the `get_thread`/`list_inbox`/
+  `get_policy_bundle` family + the timelines/evidence/policy-set
+  resources), the same command handlers as HTTP, the independent
+  conformance fixtures. The rmcp 3.2.0 pin lands WITH the code.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

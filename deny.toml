@@ -58,6 +58,9 @@ skip = [
     { name = "rand" },           # 0.8/0.9 + the chromiumoxide tree's — no crossing
     { name = "rand_chacha" },    # the rand-family split
     { name = "rand_core" },      # ditto
+    { name = "darling" },        # 0.20 (the derive_builder family) vs 0.24 (the rmcp-macros pin) — two proc-macro families each pin their darling, no crossing
+    { name = "darling_core" },   # ditto (the darling family's internals)
+    { name = "darling_macro" },  # ditto
     { name = "reqwest" },        # 0.12 (the server's) vs 0.13 (chromiumoxide's
                                  # own fetcher) — SEPARATE binaries, no types cross
 ]

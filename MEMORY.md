@@ -20,17 +20,17 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3.3`. **The `.1` lane is COMPLETE**; **the `.2` lane is
+  frontier `.3.4`. **The `.1` lane is COMPLETE**; **the `.2` lane is
   COMPLETE**; `.3` done (the MCP census) → decomposed; `.3.1` done
-  (ADR-024); `.3.2` done (the SDK census + the pin: the official
-  crates are the stale 0.1.0, **`rmcp` 3.2.0** is the active official
-  line — the exact pin + the no-default-features rule).
-- **Next action:** execute `PHASE-8.3.3` — the MCP read-half tools +
-  the resources: the inspection verbs as the read-only MCP tools over
-  the cross-store corpus (the `get_thread`/`list_inbox`/
-  `get_policy_bundle` family + the timelines/evidence/policy-set
-  resources), the same command handlers as HTTP, the independent
-  conformance fixtures. The rmcp 3.2.0 pin lands WITH the code.
+  (ADR-024); `.3.2` done (the rmcp pin); `.3.3` done (the read-half —
+  the `reasonbraid-mcp` crate + the three read tools + the conformance
+  fixtures).
+- **Next action:** execute `PHASE-8.3.4` — the MCP listen-stream
+  durability: the ReasonBraid-owned subscription + the cursor + the
+  delivery ids + the dedup state; the reconnect ritual (the
+  reauthorize → the recreate → the reconcile → the resume from the own
+  cursor → the possible-gap surface), never stronger than the upstream
+  proves.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The MCP read-half: the rmcp-pinned read tools + the conformance fixtures (`PHASE-8.3.3`)
+
+- The new `crates/reasonbraid-mcp` (the §9.6 name) over the **rmcp 3.2.0** exact pin (`default-features = false` + the explicit `macros`/`server`/`transport-async-rw` — the MCP 2026-07-28 baseline is the SDK's native target). The three READ tools (`get_thread`, `list_inbox`, `get_policy_bundle`) ride the SAME queries + the SAME authorization as the HTTP handlers (the principal rides the tool's argument — the dev-profile trust shape; the thread read runs the per-reader classification); the write tools stay OFF until the qualified profile. The conformance fixtures: the offline tests pin the tool ROUTER (exactly the three read tools — the write names refuse), the input SCHEMAS (the principal + the targets), and the principal wire-space bound. The supply-chain gate caught the darling split (the rmcp-macros' 0.24 vs the derive_builder family's 0.20 — the reviewed skip rows). The Streamable-HTTP transport + the live roundtrip ride `.3.4`. Frontier → `.3.4`.
+
 ## 2026-09-08 — The MCP SDK census + the pin decision (`PHASE-8.3.2`)
 
 - The census (the crates.io checks): the OFFICIAL `mcp-server`/`mcp-client` crates are the STALE 0.1.0 (2025-02-27 — the abandoned early SDK; the "official" name no longer means the active line); the official SDK's ACTIVE home is **`rmcp` 3.2.0** (2026-08-31, Apache-2.0, Rust 1.88, the modelcontextprotocol/rust-sdk repository — the full feature map including the `reqwest-tls-no-provider` option for the workspace's provider rule). The pin: `rmcp = "=3.2.0"`, `default-features = false`, the explicit feature list lands with the `.3.3` read-half code; the protocol profile: the MCP 2026-07-28 baseline + the Streamable HTTP transport. No code. Frontier → `.3.3`.

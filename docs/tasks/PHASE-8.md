@@ -594,7 +594,7 @@ default.
       lands with the `.3.3` read-half).
 
   - ID: `PHASE-8.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the read-half tools + the resources — the
       inspection verbs as the read-only MCP tools over
       the cross-store corpus (the `get_thread`/
@@ -603,6 +603,50 @@ default.
       same command handlers as HTTP, the independent
       conformance fixtures.
     Roadmap: §9.6
+    Done (`2026-09-08`): the read-half ships — the new
+      `crates/reasonbraid-mcp` (the §9.6 name!) over
+      the **rmcp 3.2.0** exact pin (`default-features
+      = false` + the explicit `macros`/`server`/
+      `transport-async-rw` — the `.3.2` decision; the
+      MCP 2026-07-28 baseline is the SDK's native
+      target). The three READ tools (`get_thread`,
+      `list_inbox`, `get_policy_bundle`) ride the
+      SAME queries + the SAME authorization as the
+      HTTP handlers (the principal rides the tool's
+      argument — the dev-profile trust shape; the
+      thread read runs the per-reader classification;
+      the inbox + the policy reads run the same
+      queries). The write tools stay OFF (the
+      qualified profile — `.3.5`). The conformance
+      fixtures: the offline tests pin the tool
+      ROUTER (exactly the three read tools — the
+      write names refuse) + the input SCHEMAS (the
+      principal + the target fields — the recorded
+      goldens) + the principal wire-space bound. The
+      supply-chain gate caught the darling split (the
+      rmcp-macros' darling 0.24 vs the derive_builder
+      family's 0.20 — the reviewed skip rows, the
+      documented proc-macro-family coexistence). The
+      Streamable-HTTP transport + the live roundtrip
+      ride `.3.4` (the listen-stream durability).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-024
+      read-half (the inspection verbs as the read
+      tools) had no machinery; the rmcp-pinned tools
+      land over the same queries/authorization.
+      Evidence: `cargo test -p reasonbraid-mcp` →
+      `test result: ok. 3 passed; 0 failed`.
+    - [x] **ADDRESSED** — the crate + the three tools
+      + the conformance fixtures. Evidence:
+      `cargo test -p reasonbraid-mcp` → 3 passed;
+      `make deny` → advisories/bans/licenses/sources
+      ok (the darling split reviewed + skipped).
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      duplicate-split review is the deny doctrine's
+      known path.
 
   - ID: `PHASE-8.3.4`
     Status: `proposed`
@@ -644,10 +688,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.3` | `proposed` | `.3.2` done — the SDK census + the pin decision (the official crates are the stale 0.1.0; `rmcp` 3.2.0 is the active official line — the pin + the no-default-features rule); the read-half tools execute next |
+| 1 | `PHASE-8.3.4` | `proposed` | `.3.3` done — the MCP read-half ships (the rmcp-pinned read tools + the conformance fixtures + the supply-chain review); the listen-stream durability executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.3.3` done — the MCP read-half
+  (the `reasonbraid-mcp` crate over the rmcp 3.2.0
+  pin + the three read tools over the same
+  queries/authorization + the conformance fixtures +
+  the darling-split review); the transport + the
+  live roundtrip ride `.3.4`; frontier → `.3.4`.
 - `2026-09-08`: `.3.2` done — the MCP SDK census +
   the pin decision (the official `mcp-server`/
   `mcp-client` are the stale 0.1.0; **`rmcp` 3.2.0**

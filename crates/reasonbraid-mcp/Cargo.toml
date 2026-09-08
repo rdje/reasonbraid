@@ -1,0 +1,29 @@
+# reasonbraid-mcp — the MCP read-half (`PHASE-8.3.3`, ADR-024, §9.6's
+# "behind reasonbraid-mcp"). The READ tools over the inspection verbs:
+# the same queries + the same authorization as the HTTP handlers, exposed
+# as MCP tools. The rmcp 3.2.0 exact pin (the `.3.2` census): the official
+# SDK's active line, the MCP 2026-07-28 baseline.
+[package]
+name = "reasonbraid-mcp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }
+reasonbraid-server = { path = "../reasonbraid-server", version = "0.1.0" }
+# The official SDK's active line — the exact pin, no default features
+# (the `.3.2` decision: the explicit list only; the reqwest transports
+# stay off until the transport profile is needed — the workspace
+# single-provider rule).
+rmcp = { version = "=3.2.0", default-features = false, features = ["macros", "server", "transport-async-rw"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "tls-none", "chrono"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

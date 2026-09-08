@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The G6–G7 evidence census: the ten rows with their citations (`PHASE-7.5.1`)
+
+- The per-row map (the guard of record: rc=0, 25 live suites + the demo; rc=0, 70 offline suites): (2) the enrollment/rotation/revocation/isolation — the channel/enrollment/replacement/mTLS/RLS suites; (3) the non-escalation + the confused-deputy — the four adversarial legs; (4) the SSRF/rebinding/redirect/archive-bomb — the ssrf + the fetcher + the extraction suites; (6) the dependency/SBOM/signing pipeline — the release-tool suite + `make release` rc=0 + deny/secret-scan green; (7) the restore + the compromised-key recovery — the backup/restore suite + the replacement drill + the signing-key runbook; (8) the rate-limit/breaker/storm — the quota + the budget + the storm controls; (10) the runbooks/disclosure — the thirteen-family catalogue + SECURITY.md. The three GAPS (the reviewed threat model, the prompt-injection suite, the pen-test) are the exposure's preconditions, each with its trigger. The §25.1 reading: the exit claims the HARDENING MACHINERY + the LAN profile. No code. Frontier → `.5.2`.
+
 ## 2026-09-08 — The G6–G7 census: seven of the ten lines ship, the three external gaps hold the kill/pivot (`PHASE-7.5`)
 
 - The census maps the §16.12 ten-line gate against the shipped lanes: SHIPPED — the authenticated enrollment/rotation/revocation/tenant-isolation tests, the non-escalation + the confused-deputy suite, the SSRF/rebinding/redirect/archive-bomb suite, the dependency/SBOM/provenance/signing pipeline, the restore + the compromised-key exercise, the rate-limit/breaker/storm tests, and the runbooks/contacts/evidence/disclosure. THE THREE EXTERNAL GAPS: the externally reviewed threat model, the prompt-injection action-boundary suite, and the penetration test. The §25.1 kill/pivot therefore HOLDS — the Internet exposure stays UNCLAIMED; the exit names the hardening machinery + the LAN profile with the three gaps as the exposure's preconditions. Decomposed: `.5.1` the evidence census → `.5.2` the gate package.

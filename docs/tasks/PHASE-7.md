@@ -1041,13 +1041,66 @@ reopens the applicable portions of G4–G7.
   Children: `.5.1`–`.5.2`
 
   - ID: `PHASE-7.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the G6–G7 evidence census — the ten-line map
       with the per-row evidence (the suite names + the
       guard counts), the three external gaps named as
       the exposure preconditions (each with its
       trigger), the §25.1 reading.
     Gate: G6, G7
+    Done (`2026-09-08`): the per-row evidence census
+      (the guard of record: `bash scripts/run_pg_tests.sh`
+      → rc=0, 25 suites + the demo `ALL acceptance
+      checks passed`; `cargo test --all` → rc=0, 70
+      suites):
+      (1) the externally reviewed threat model — GAP
+      (the trigger: the external review + the pen-test
+      precede the exposure profile); (2) the
+      authenticated enrollment/rotation/revocation +
+      the tenant isolation — SHIPPED (the node_channel
+      25 + the node_enrollment 4 + the node_replacement
+      1 + the mTLS 1 + the RLS 1 suites, the guard);
+      (3) the non-escalation + the confused-deputy —
+      SHIPPED (the escalation suite's four adversarial
+      legs, the `.2.7.1` record); (4) the
+      SSRF/DNS-rebinding/redirect/archive-bomb —
+      SHIPPED (the ssrf 4 + the fetcher 16 + the
+      extraction 9); (5) the prompt-injection
+      action-boundary suite — GAP (the §19.4 deferral's
+      named surface; the trigger: the exposure
+      profile); (6) the dependency/SBOM/provenance/
+      signing pipeline — SHIPPED (the release-tool 1 +
+      `make release` rc=0 with the signed manifest +
+      `make deny`/`make secret-scan` green); (7) the
+      backup restore + the compromised-key recovery —
+      SHIPPED (the backup_restore suite + the
+      replacement drill + the signing-key runbook);
+      (8) the rate-limit/cost-breaker/notification-
+      storm — SHIPPED (the quota 1 + the budget 9 +
+      the storm controls); (9) the penetration test —
+      GAP (the `.4.3` stance: the findings become the
+      leaves; the record stays empty until the test
+      runs); (10) the runbooks/contacts/evidence/
+      disclosure — SHIPPED (the thirteen-family
+      catalogue + SECURITY.md + the quarantine-evidence
+      rule). The §25.1 reading: the exit claims the
+      HARDENING MACHINERY + the LAN profile; the three
+      gaps are the exposure's preconditions, each with
+      its trigger — the kill/pivot holds until they
+      close. No code changed. Frontier → `.5.2`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the gate needs
+      the per-row evidence before the `.5.2` package;
+      the census fixes it (the ten rows with the suite
+      names + the guard counts). Evidence: `make gate`
+      → 13/13.
+    - [x] **ADDRESSED** — the ten-row map (the 7
+      shipped with the citations, the 3 gaps with the
+      triggers) + the §25.1 reading. Evidence: the
+      guard of record (the rc=0 25-suite + the demo,
+      the rc=0 70-suite offline).
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds.
 
   - ID: `PHASE-7.5.2`
     Status: `proposed`
@@ -1064,10 +1117,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.5.1` | `proposed` | `.5` decomposed at the census seams (7 of the 10 §16.12 lines ship; the 3 external gaps hold the §25.1 kill/pivot) — the evidence census executes first |
+| 1 | `PHASE-7.5.2` | `proposed` | `.5.1` done — the G6–G7 evidence census ships (the ten-row map: the 7 shipped with the citations, the 3 gaps with the triggers); the gate package executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.5.1` done — the G6–G7 evidence
+  census (the ten-row map with the per-row citations;
+  the three external gaps as the exposure
+  preconditions with their triggers; the §25.1
+  reading: the exit claims the hardening machinery +
+  the LAN profile); no code; frontier → `.5.2`.
 - `2026-09-08`: `.5` done — the G6–G7 census at the
   seams (the ten-line map: seven ship, three are the
   external gaps — the reviewed threat model, the

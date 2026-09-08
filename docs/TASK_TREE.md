@@ -58,6 +58,6 @@ on the same commit. One commit per completed leaf.
 | [`PHASE-4`](tasks/PHASE-4.md) | `done` | tree complete — the five pack lanes + the evidence pipeline; the G4 gate Met (the record + the subtraction + the manifest) | repo-local |
 | [`PHASE-5`](tasks/PHASE-5.md) | `done` | tree complete — the five lanes + the G5 gate **Met as a subtraction gate** (the lift claim withdrawn per §25.1; the record + the subtraction + the manifest); next executable work is `PHASE-6.1` | repo-local |
 | [`PHASE-6`](tasks/PHASE-6.md) | `done` | tree complete — the seven lanes + the G3 gate **Met as machinery, blocked as binding use** (the record + the subtraction + the Demo-B walk + the manifest); next executable work is `PHASE-7.1` | repo-local |
-| [`PHASE-7`](tasks/PHASE-7.md) | `active` | `.5.1` — the G6–G7 evidence census (the `.1`/`.2`/`.4` lanes COMPLETE; `.3` done; `.5` done: the ten-line census — seven ship, the three external gaps hold the kill/pivot → decomposed) | repo-local |
+| [`PHASE-7`](tasks/PHASE-7.md) | `active` | `.5.2` — the G6–G7 gate package (the `.1`/`.2`/`.4` lanes COMPLETE; `.3` done; `.5` done: the ten-line census → decomposed; `.5.1` done: the per-row evidence census) | repo-local |
 | [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |
 | [`PHASE-9`](tasks/PHASE-9.md) | `proposed` | `.1` — stable release | repo-local |

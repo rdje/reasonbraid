@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-034: the hardening contract (`PHASE-7.1.1`)
+
+- ADR-034 accepted (`docs/adr/034-internet-hardening.md`): the Internet capability is claimed per the QUALIFIED SURFACE (never in general); the transport is context, never identity (the certificate fingerprint is the principal); the isolation is defense in depth (the RLS is the second layer); the quotas bound the abuse over the budget machinery; the secrets/regions are declared profiles. No code.
+
 ## 2026-09-07 — The Internet-hardening lane is decomposed at the census seams (`PHASE-7.1`)
 
 - The `.1` block is LIFTED: the Phase-1 channel + the CA/certificate infra and the Phase-2 authority/budget ship; the per-principal quotas, the secret-manager integration, and the regional controls are the greenfield. Children: `.1.1` ADR-034 → `.1.2` the mTLS identity → `.1.3` the isolation + the quotas → `.1.4` the secrets + the regions.

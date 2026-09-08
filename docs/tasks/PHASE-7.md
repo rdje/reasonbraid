@@ -58,7 +58,7 @@ reopens the applicable portions of G4–G7.
     lane opens ADR-034. Frontier → `.1.1`.
 
   - ID: `PHASE-7.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-034 + the census — the hardening contract:
       the QUALIFIED-SURFACE rule (the Internet capability is
       claimed per the named feature set — the G6/G7 gates
@@ -69,6 +69,26 @@ reopens the applicable portions of G4–G7.
       quota/abuse vocabulary. No code.
     ADR: 034
     Roadmap: §16.2, §16.8, §16.11
+    Done (`2026-09-07`): ADR-034 accepted (evidence-gated) —
+      `docs/adr/034-internet-hardening.md` (top-level
+      `answers:`): the Internet capability is claimed per
+      the QUALIFIED SURFACE (the exit names the feature set;
+      an unqualified surface exposed by default is the typed
+      refusal — never "experimental-default"); the transport
+      is CONTEXT, never identity (the certificate
+      fingerprint is the principal; the reimaging/
+      incarnation separation is structural — a changed host
+      never inherits the history); the isolation is DEFENSE
+      IN DEPTH (the tenant-scoped keys are the first layer,
+      the RLS is the SECOND — never the only one; the
+      cross-tenant recruitment stays the explicit opt-in);
+      the quotas bound the abuse by the principal/tenant/
+      resolver/destination (the vocabulary rides the
+      Phase-2 budget machinery; the quarantine preserves the
+      evidence); the secrets and the regions are DECLARED
+      profiles (the external store is a configuration
+      choice; a classification without the controls is the
+      typed refusal). No code changed. Frontier → `.1.2`.
 
   - ID: `PHASE-7.1.2`
     Status: `proposed`
@@ -126,10 +146,14 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.1` | `proposed` | `.1` decomposed at the census seams (the block is LIFTED — the channel/CA + the authority/budget ship; the quotas/secrets/regions are the greenfield) — ADR-034 opens the lane |
+| 1 | `PHASE-7.1.2` | `proposed` | `.1.1` done — ADR-034 accepted (the per-surface qualification, the transport-context rule, the defense-in-depth isolation, the quota vocabulary); the mTLS workload identity executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.1.1` done — ADR-034 accepted (the
+  hardening contract: the per-surface qualification, the
+  transport-context rule, the defense-in-depth isolation,
+  the quota vocabulary); no code; frontier → `.1.2`.
 - `2026-09-07`: `.1` decomposed at the census seams — the block
   is LIFTED (the channel/CA + the authority/budget ship; the
   quotas/secrets/regions are the greenfield); children `.1.1`

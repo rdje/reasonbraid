@@ -1307,13 +1307,58 @@ default.
       promotion (the top-level `answers:` form).
 
   - ID: `PHASE-8.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the regional routing — the routing rules
       over the declared regions (the region-scoped
       delivery + the region-scoped visibility), the
       measured refusal vocabulary (the undeclared
       region, the cross-region policy).
     ADR: 035
+    Done:
+    - Migration `0053_site_regions.sql` — the
+      `site_regions` declarations + the
+      `region_pairs` allowlist (the cross-region
+      delivery rides the explicit pair row — the
+      ADR-027 pattern applied to the region
+      vocabulary); the dev profile declares
+      `dev-local`.
+    - `crates/reasonbraid-server/src/regions.rs` —
+      the routing machinery: `route` (the
+      same-region routes; the undeclared region
+      refuses with its OWN name; the unpaired
+      cross-region refuses until the pair lands) +
+      the `RegionRefusal` vocabulary + the
+      declare/pair/unpair helpers. The `.5.3`
+      store-and-forward consumes `route` through
+      the `regions_internal` seam.
+    - The registry surface — the tenant_admin-gated
+      verbs: `GET /v1/admin/regions` (the declared
+      + the pairs), `POST /v1/admin/regions` (the
+      declare), `POST /v1/admin/regions/{from}/
+      pair/{to}` + `/unpair/{to}` (the typed 400 on
+      the undeclared pair) + the live suite (the
+      guard's 31st: the routed same-region, the
+      per-refusal names, the pair/unpair cycle, the
+      non-admin 403).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-035
+      vocabulary (the declared regions + the pair
+      allowlist) had no machinery. Evidence: `cargo
+      test -p reasonbraid-server --test regions` →
+      `test result: ok. 2 passed; 0 failed`.
+    - [x] **ADDRESSED** — the migration + the
+      routing module + the verbs + the suite.
+      Evidence: the guard → rc=0, 32 ok-lines (the
+      30 suites + the crate lines + the regions
+      suite), the demo → `ALL acceptance checks
+      passed`.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      pair-allowlist pattern is the ADR-027
+      ladder's known shape applied to the region
+      vocabulary.
 
   - ID: `PHASE-8.5.3`
     Status: `proposed`
@@ -1345,9 +1390,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.5.2` | `proposed` | `.5.1` done — ADR-035 accepted (the declared-region + the store-and-forward + the export/exity vocabulary); the regional-routing machinery executes next |
+| 1 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.5.2` done — the regional routing
+  (migration 0053's declarations + the pair
+  allowlist, the `regions` module's `route` + the
+  typed refusals, the admin-gated declare/pair/
+  unpair/list verbs + the 31st suite); frontier →
+  `.5.3`.
 
 - `2026-09-08`: `.5.1` done — ADR-035 accepted
   (the site/region contract: the declared regions,

@@ -466,6 +466,9 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/admin/adapters/{adapter_id}/revoke",
             post(revoke_adapter),
         )
+        .route("/v1/admin/regions", get(list_regions).post(declare_region))
+        .route("/v1/admin/regions/{from}/pair/{to}", post(pair_regions))
+        .route("/v1/admin/regions/{from}/unpair/{to}", post(unpair_regions))
         .route("/v1/audit/receipts", get(list_cross_domain_receipts))
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
@@ -6306,7 +6309,7 @@ async fn admin_metrics(
 /// caller holds `tenant_admin` in ANY of their active grants (the same
 /// process-global gate the metrics surface uses — the ledger is
 /// tenant-less).
-async fn require_allowlist_admin(
+async fn require_admin_any_tenant(
     pool: &PgPool,
     principal: &GrantSubject,
 ) -> Result<(), ControlApiError> {
@@ -6335,7 +6338,7 @@ async fn list_adapters(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_allowlist_admin(&state.pool, &principal).await?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
     let rows: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT adapter_id, added_by, reason, added_at FROM adapter_allowlist ORDER BY adapter_id",
     )
@@ -6364,7 +6367,7 @@ async fn allow_adapter(
     Json(req): Json<AllowAdapterRequest>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_allowlist_admin(&state.pool, &principal).await?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
     sqlx::query(
         "INSERT INTO adapter_allowlist (adapter_id, added_by, reason) VALUES ($1, $2, $3) \
          ON CONFLICT (adapter_id) DO NOTHING",
@@ -6387,12 +6390,82 @@ async fn revoke_adapter(
     Path(adapter_id): Path<String>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_allowlist_admin(&state.pool, &principal).await?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
     sqlx::query("DELETE FROM adapter_allowlist WHERE adapter_id = $1")
         .bind(&adapter_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({ "adapter_id": adapter_id, "revoked": true })))
+}
+
+/// `GET /v1/admin/regions` — the declared regions + the pair rows (the
+/// ADR-035 routing registry).
+async fn list_regions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
+    let regions: Vec<String> =
+        sqlx::query_scalar("SELECT region_id FROM site_regions ORDER BY region_id")
+            .fetch_all(&state.pool)
+            .await?;
+    let pairs: Vec<(String, String)> = sqlx::query_as(
+        "SELECT from_region, to_region FROM region_pairs ORDER BY from_region, to_region",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(json!({
+        "regions": regions,
+        "pairs": pairs.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect::<Vec<_>>(),
+    })))
+}
+
+/// `POST /v1/admin/regions` — declare one region (the body carries the
+/// region id; the declaration is the fail-closed seam).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeclareRegionRequest {
+    region: String,
+}
+
+async fn declare_region(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<DeclareRegionRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
+    crate::regions::declare(&state.pool, &req.region).await?;
+    Ok(Json(json!({ "region": req.region, "declared": true })))
+}
+
+/// `POST /v1/admin/regions/{from}/pair/{to}` — the cross-region pair
+/// allowlist row (an undeclared region refuses with the typed 400).
+async fn pair_regions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((from, to)): Path<(String, String)>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
+    crate::regions::pair(&state.pool, &from, &to)
+        .await
+        .map_err(|refusal| ControlApiError::invalid_command(refusal.to_string()))?;
+    Ok(Json(json!({ "from": from, "to": to, "paired": true })))
+}
+
+/// `POST /v1/admin/regions/{from}/unpair/{to}` — remove the pair row
+/// (the NEXT cross-region delivery refuses).
+async fn unpair_regions(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((from, to)): Path<(String, String)>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_admin_any_tenant(&state.pool, &principal).await?;
+    crate::regions::unpair(&state.pool, &from, &to).await?;
+    Ok(Json(json!({ "from": from, "to": to, "unpaired": true })))
 }
 
 /// `GET /v1/admin/usage?tenant_id=…` — the usage-reconciliation surface

@@ -4,6 +4,12 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The regional routing: the declared regions + the pair allowlist (`PHASE-8.5.2`)
+
+- Migration `0053_site_regions.sql` — the `site_regions` declarations + the `region_pairs` allowlist (the cross-region delivery rides the explicit pair row — the ADR-027 pattern applied to the region vocabulary); the dev profile declares `dev-local`.
+- `crates/reasonbraid-server/src/regions.rs` — the routing machinery: `route` (the same-region routes; the undeclared region refuses with its OWN name; the unpaired cross-region refuses until the pair lands) + the `RegionRefusal` vocabulary + the declare/pair/unpair helpers; the `.5.3` store-and-forward consumes `route` through the `regions_internal` seam.
+- The registry surface — the tenant_admin-gated `GET /v1/admin/regions` / `POST /v1/admin/regions` / `POST /v1/admin/regions/{from}/pair/{to}` + `/unpair/{to}` verbs + the guard's 31st suite (the routed same-region, the per-refusal names, the pair/unpair cycle, the non-admin 403). Frontier → `.5.3`.
+
 ## 2026-09-08 — ADR-035: the site/region contract — the declared regions, the store-and-forward over the shipped substrate, the export is the exit path (`PHASE-8.5.1`)
 
 - ADR-035 accepted (`docs/adr/035-site-region-contract.md`, top-level `answers:`): the regions are DECLARED (the declaration is the fail-closed seam — an undeclared region refuses at the routing boundary); the store-and-forward rides the SHIPPED outbox/inbox substrate (the site-level pairing — the buffered rows persist for a disconnected site, the reconnect flushes in order, the possible-gap surfaces); the export is the exit path's machinery (the digest-pinned signed bundle + the ordered import ladder — the portable cards' four-rung pattern applied to the tenant data); the exit path is the documented runbook, never an emergency invention. No code. Frontier → `.5.2`.

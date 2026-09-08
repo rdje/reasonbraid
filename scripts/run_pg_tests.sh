@@ -49,6 +49,9 @@ export DATABASE_URL="postgres://postgres@127.0.0.1:$PORT/reasonbraid_test?sslmod
 echo "== running reasonbraid-server PostgreSQL integration tests against 127.0.0.1:$PORT/reasonbraid_test =="
 cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api --test node_work --test aggregate_library --test identity_store --test node_enrollment --test node_inbox --test invitations --test backup_restore --test migration_upgrade --test escalation --test node_replacement --test profiles --test evaluation --test routing --test policy --test rls --test quota --test quarantine --test classification --test federation --test cards --test mcp_listen --test mcp_write -- --nocapture
 
+echo "== running the reasonbraid-mcp crate tests (the live tool-path roundtrip rides the DATABASE_URL) =="
+cargo test -p reasonbraid-mcp -- --nocapture
+
 echo "== running the reasonbraid-cli end-to-end suite (real rb binary, in-process control API) =="
 cargo test -p reasonbraid-cli --test cli_end_to_end -- --nocapture
 

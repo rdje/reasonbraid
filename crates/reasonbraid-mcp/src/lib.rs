@@ -603,4 +603,476 @@ mod tests {
             "outside the wire space refuses"
         );
     }
+
+    // ── The live tool-path roundtrip (`.3.5.3`) ─────────────────────────
+
+    /// The live pool + the purge (the DATABASE_URL gate — the guard runs
+    /// this; the offline sweep skips it).
+    async fn live_pool() -> Option<sqlx::PgPool> {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("SKIP: DATABASE_URL is unset — the live tool roundtrip needs the guard");
+                return None;
+            }
+        };
+        let pool = sqlx::PgPool::connect(&url)
+            .await
+            .expect("connect to DATABASE_URL");
+        sqlx::migrate!("../../migrations")
+            .run(&pool)
+            .await
+            .expect("apply migrations");
+        for table in [
+            "policy_outcomes",
+            "policy_corrections",
+            "policy_drift",
+            "deployment_assignments",
+            "deployment_targets",
+            "policy_publications",
+            "policy_projections",
+            "policy_approvals",
+            "policy_decisions",
+            "policy_proposals",
+            "policy_versions",
+            "routing_resolutions",
+            "evaluation_runs",
+            "evaluation_corpora",
+            "profile_versions",
+            "agent_profiles",
+            "outbox_delivery",
+            "outbox",
+            "node_events",
+            "node_inbox",
+            "budget_reservations",
+            "budget_ceilings",
+            "spend_breakers",
+            "authorization_records",
+            "authority_grants",
+            "enrollments",
+            "enrollment_boundaries",
+            "node_enroll_audit",
+            "node_keys",
+            "node_certificates",
+            "server_ca",
+            "node_leases",
+            "node_enrollment_tokens",
+            "runs",
+            "incarnations",
+            "nodes",
+            "hosts",
+            "recruitment_panels",
+            "recruitment_responses",
+            "recruitment_offers",
+            "recruitment_calls",
+            "agent_roles",
+            "human_principals",
+            "resource_references",
+            "quota_events",
+            "usage_quotas",
+            "federation_agreements",
+            "cross_domain_receipts",
+            "mcp_listen_state",
+            "tenants",
+            "idempotency",
+            "event_log",
+            "aggregate_state",
+        ] {
+            sqlx::query(&format!("DELETE FROM {table}"))
+                .execute(&pool)
+                .await
+                .expect("purge table");
+        }
+        Some(pool)
+    }
+
+    struct LiveServer {
+        addr: std::net::SocketAddr,
+        _handle: tokio::task::JoinHandle<()>,
+    }
+
+    impl LiveServer {
+        async fn start(pool: &sqlx::PgPool) -> Self {
+            let router = reasonbraid_server::api_router(pool.clone());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind the ephemeral port");
+            let addr = listener.local_addr().unwrap();
+            let handle = tokio::spawn(async move {
+                axum::serve(listener, router).await.expect("serve");
+            });
+            Self {
+                addr,
+                _handle: handle,
+            }
+        }
+
+        fn base(&self) -> String {
+            format!("http://{}", self.addr)
+        }
+    }
+
+    async fn enroll(
+        client: &reqwest::Client,
+        base: &str,
+        body: serde_json::Value,
+    ) -> (u16, serde_json::Value) {
+        let response = client
+            .post(format!("{base}/v1/enrollments"))
+            .json(&body)
+            .send()
+            .await
+            .expect("the enroll request");
+        let status = response.status().as_u16();
+        (status, response.json().await.expect("the enroll json"))
+    }
+
+    async fn command(
+        client: &reqwest::Client,
+        base: &str,
+        path: &str,
+        principal_id: &str,
+        envelope: &reasonbraid_core::CommandEnvelope,
+    ) -> (u16, serde_json::Value) {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header(reasonbraid_server::PRINCIPAL_HEADER, principal_id)
+            .json(envelope)
+            .send()
+            .await
+            .expect("the command request");
+        let status = response.status().as_u16();
+        let text = response.text().await.expect("the command body");
+        let body =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text }));
+        (status, body)
+    }
+
+    async fn post(
+        client: &reqwest::Client,
+        base: &str,
+        path: &str,
+        principal_id: &str,
+        body: &serde_json::Value,
+    ) -> (u16, serde_json::Value) {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header(reasonbraid_server::PRINCIPAL_HEADER, principal_id)
+            .json(body)
+            .send()
+            .await
+            .expect("the post request");
+        let status = response.status().as_u16();
+        let text = response.text().await.expect("the post body");
+        let body =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text }));
+        (status, body)
+    }
+
+    fn envelope(
+        operation: &str,
+        key: &str,
+        body: serde_json::Value,
+    ) -> reasonbraid_core::CommandEnvelope {
+        reasonbraid_core::CommandEnvelope {
+            protocol_version: reasonbraid_core::PROTOCOL_VERSION.to_string(),
+            operation: operation.to_string(),
+            request_id: reasonbraid_core::RequestId::new(),
+            idempotency_key: key.to_string(),
+            expected_aggregate_version: None,
+            body,
+            authority_context: None,
+            client_context: reasonbraid_core::ClientContext::default(),
+        }
+    }
+
+    fn text_of(result: &rmcp::model::CallToolResult) -> String {
+        match &result.content[0] {
+            rmcp::model::ContentBlock::Text(t) => t.text.clone(),
+            other => panic!("the tool result is not text: {other:?}"),
+        }
+    }
+
+    /// The live roundtrip: the granted `respond` through the TOOL handler
+    /// lands the effect + the quota use; the ungranted + the unconfigured
+    /// refusals surface as the typed tool errors; the `join_call` + the
+    /// `propose_policy_change` ride the same handlers.
+    #[tokio::test]
+    async fn the_write_tools_roundtrip_the_qualified_gate_live() {
+        let Some(pool) = live_pool().await else {
+            return;
+        };
+        let server = LiveServer::start(&pool).await;
+        let client = reqwest::Client::new();
+        let base = server.base();
+
+        let (status, human) = enroll(
+            &client,
+            &base,
+            serde_json::json!({ "kind": "human", "name": "mcp-tool-human" }),
+        )
+        .await;
+        assert_eq!(status, 200, "the human enrolls: {human}");
+        let human_id = human["principal_id"].as_str().unwrap().to_string();
+        let tenant = human["tenant_id"].as_str().unwrap().to_string();
+        let (status, role) = enroll(
+            &client,
+            &base,
+            serde_json::json!({
+                "kind": "role",
+                "name": "mcp-tool-writer",
+                "tenant_id": tenant,
+                "actions": ["thread_contribute", "thread_invitation_respond"],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the writer enrolls: {role}");
+        let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+        let (status, created) = command(
+            &client,
+            &base,
+            "/v1/threads",
+            &human_id,
+            &envelope(
+                "thread.create",
+                "k-create",
+                serde_json::json!({
+                    "tenant_id": tenant,
+                    "subject": "the mcp tool roundtrip",
+                    "objective": "the same handlers through the tools",
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "create: {created}");
+        let thread_id = created["thread_id"].as_str().unwrap().to_string();
+        let (status, invited) = command(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}/commands"),
+            &human_id,
+            &envelope(
+                "thread.invite",
+                "k-invite",
+                serde_json::json!({ "tenant_id": tenant, "agent_role": role_id }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "invite: {invited}");
+        let (status, accepted) = command(
+            &client,
+            &base,
+            &format!("/v1/threads/{thread_id}/commands"),
+            &role_id,
+            &envelope(
+                "thread.accept_invitation",
+                "k-accept",
+                serde_json::json!({ "tenant_id": tenant }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "accept: {accepted}");
+
+        // 1. The granted respond through the TOOL handler.
+        let tools = McpTools { pool: pool.clone() };
+        let result = tools
+            .respond(Parameters(RespondParams {
+                principal: role_id.clone(),
+                tenant_id: tenant.clone(),
+                thread_id: thread_id.clone(),
+                payload: ContributePayload {
+                    content: "the tool path lands".into(),
+                    kind: "claim".into(),
+                    evidence_refs: vec![],
+                },
+            }))
+            .await
+            .expect("the tool handler runs");
+        assert_ne!(
+            result.is_error,
+            Some(true),
+            "the granted write is not an error: {result:?}"
+        );
+        let text = text_of(&result);
+        assert!(
+            text.contains("\"status\":200"),
+            "the respond reports the effect: {text}"
+        );
+        let uses: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM quota_events q \
+             JOIN usage_quotas u ON u.quota_id = q.quota_id \
+             WHERE u.tenant_id = $1 AND u.scope_kind = 'principal' AND u.scope_id = $2 \
+             AND q.kind = 'use'",
+        )
+        .bind(&tenant)
+        .bind(&role_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the use count");
+        assert!(uses >= 1, "the tool-path write counted the quota use");
+
+        // 2. The ungranted role → the handler's OWN authz refusal, surfaced
+        //    as the typed tool error.
+        let (status, ghost) = enroll(
+            &client,
+            &base,
+            serde_json::json!({ "kind": "role", "name": "mcp-tool-ghost", "tenant_id": tenant, "actions": [] }),
+        )
+        .await;
+        assert_eq!(status, 200, "the ghost enrolls: {ghost}");
+        let ghost_id = ghost["principal_id"].as_str().unwrap().to_string();
+        let result = tools
+            .respond(Parameters(RespondParams {
+                principal: ghost_id,
+                tenant_id: tenant.clone(),
+                thread_id: thread_id.clone(),
+                payload: ContributePayload {
+                    content: "the ungranted tool write".into(),
+                    kind: "claim".into(),
+                    evidence_refs: vec![],
+                },
+            }))
+            .await
+            .expect("the ungranted handler runs");
+        assert_eq!(result.is_error, Some(true), "the ungranted is an error");
+        assert!(
+            text_of(&result).contains("handler:unauthorized"),
+            "the ungranted surfaces the typed refusal: {}",
+            text_of(&result)
+        );
+
+        // 3. The unconfigured quota → the fail-closed tool error.
+        sqlx::query(
+            "DELETE FROM quota_events USING usage_quotas \
+             WHERE quota_events.quota_id = usage_quotas.quota_id \
+             AND usage_quotas.tenant_id = $1 AND usage_quotas.scope_kind = 'principal' \
+             AND usage_quotas.scope_id = $2",
+        )
+        .bind(&tenant)
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("clear the writer's events");
+        sqlx::query(
+            "DELETE FROM usage_quotas \
+             WHERE tenant_id = $1 AND scope_kind = 'principal' AND scope_id = $2",
+        )
+        .bind(&tenant)
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("remove the writer's quota");
+        let result = tools
+            .respond(Parameters(RespondParams {
+                principal: role_id.clone(),
+                tenant_id: tenant.clone(),
+                thread_id: thread_id.clone(),
+                payload: ContributePayload {
+                    content: "the unconfigured tool write".into(),
+                    kind: "claim".into(),
+                    evidence_refs: vec![],
+                },
+            }))
+            .await
+            .expect("the unconfigured handler runs");
+        assert_eq!(result.is_error, Some(true), "the unconfigured is an error");
+        assert!(
+            text_of(&result).contains("quota_unconfigured"),
+            "the unconfigured surfaces the fail-closed refusal: {}",
+            text_of(&result)
+        );
+
+        // 4. The join_call + the propose_policy_change ride the same
+        //    handlers through the tools. The writer's quota row returns
+        //    first (the binding restored).
+        sqlx::query(
+            "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+             VALUES ($1, $2, 'principal', $3, 1000, 3600)",
+        )
+        .bind(format!("quo_{role_id}_writes"))
+        .bind(&tenant)
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("restore the writer's quota");
+
+        let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+        let (status, opened) = post(
+            &client,
+            &base,
+            "/v1/calls",
+            &human_id,
+            &serde_json::json!({
+                "tenant_id": tenant,
+                "thread_id": thread_id,
+                "expression": { "scope": "tenant", "capabilities": [], "presence_states": ["available"] },
+                "min_participants": 1,
+                "max_participants": 2,
+                "join_deadline": deadline,
+                "expires_at": expiry,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the call opens: {opened}");
+        let call_id = opened["call_id"].as_str().unwrap().to_string();
+        let result = tools
+            .join_call(Parameters(JoinCallParams {
+                principal: role_id.clone(),
+                tenant_id: tenant.clone(),
+                call_id,
+                kind: "decline".into(),
+                reason: Some("the tool declines".into()),
+            }))
+            .await
+            .expect("the join_call handler runs");
+        assert_ne!(result.is_error, Some(true), "the decline is not an error");
+        assert!(
+            text_of(&result).contains("\"decline\""),
+            "the decline rides the handler: {}",
+            text_of(&result)
+        );
+
+        let grant_id = format!("grt_{human_id}");
+        let (status, registered) = post(
+            &client,
+            &base,
+            "/v1/policies",
+            &human_id,
+            &serde_json::json!({
+                "policy_id": "mcp-tool-pol",
+                "version": "1.0.0",
+                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "lifecycle": "draft",
+                "title": "the mcp tool policy",
+                "intent": "the proposal surface",
+                "domain": "deliberation",
+                "risk_class": "low",
+                "owning_authority": grant_id,
+                "clauses": [ { "id": "c1", "statement": "every write rides a local grant" } ],
+                "applicability": [ { "layer": "organization", "target": "*" } ],
+                "exceptions": [],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the policy registers: {registered}");
+        let result = tools
+            .propose_policy_change(Parameters(ProposePolicyChangeParams {
+                principal: role_id,
+                tenant_id: tenant,
+                proposal_id: "prp_mcp_tool_1".into(),
+                policy_id: "mcp-tool-pol".into(),
+                policy_version: "1.0.0".into(),
+                thread_id,
+            }))
+            .await
+            .expect("the propose handler runs");
+        assert_ne!(result.is_error, Some(true), "the proposal is not an error");
+        assert!(
+            text_of(&result).contains("prp_mcp_tool_1"),
+            "the proposal rides the handler: {}",
+            text_of(&result)
+        );
+    }
 }

@@ -4,6 +4,10 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The MCP write tools demonstrated live: the tool-path roundtrip (`PHASE-8.3.5.3`)
+
+- The live tool-path roundtrip (`the_write_tools_roundtrip_the_qualified_gate_live` in the crate's tests, DATABASE_URL-gated): the granted `respond` through the TOOL HANDLER (the `McpTools` method over the rmcp tool shape) lands the effect + the quota use; the ungranted role's refusal surfaces as the typed tool error (`handler:unauthorized`); the unconfigured quota surfaces the fail-closed (`quota_unconfigured`); the `join_call` decline + the `propose_policy_change` ride the same handlers through the tools — the compatibility demonstrated at the tool path, never inferred. The guard now runs `cargo test -p reasonbraid-mcp` (the live leg rides the guard's DATABASE_URL; the offline sweep skips it). **The `.3` lane (the MCP surface) is COMPLETE.** Frontier → `.4`.
+
 ## 2026-09-08 — The three MCP write tools: the qualified profile's tool layer (`PHASE-8.3.5.2`)
 
 - The `McpTools` handle (the `ReadTools` rename — the handle now carries the write half) in `crates/reasonbraid-mcp`: the three write tools with the typed schemas — `respond` (the principal + the tenant + the thread + the minimal `ContributePayload` WITHOUT the tenant — the seam injects it), `join_call` (the kind + the optional decline reason), `propose_policy_change` (the flat ProposalInput fields). NO schema names a token field — the tokens never enter the thread content; the remote MCP metadata never grants authority. The handlers call the `.3.5.1` seam (`mcp_write_internal`) and surface the gate's typed refusals as the tool errors (the family + the message); the per-verb LOCAL grants + the audit ride the handlers.

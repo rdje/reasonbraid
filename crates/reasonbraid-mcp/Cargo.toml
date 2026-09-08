@@ -27,3 +27,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# The live roundtrip's HTTP bootstrap (the server crate's TLS profile —
+# the workspace single-provider rule) + the test router's server.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+axum = "0.8"

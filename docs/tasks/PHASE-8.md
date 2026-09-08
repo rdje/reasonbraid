@@ -906,7 +906,7 @@ default.
       writes.
 
   - ID: `PHASE-8.3.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the live demonstration — the measured
       write roundtrip through the TOOL path (the
       six-tool router + the write-schema goldens +
@@ -918,6 +918,48 @@ default.
       the same-handler demonstration, never the
       inferred compatibility.
     Roadmap: §9.6
+    Done:
+    - The live tool-path roundtrip
+      (`the_write_tools_roundtrip_the_qualified_gate_live`
+      in the crate's tests, DATABASE_URL-gated): the
+      granted `respond` through the TOOL HANDLER (the
+      `McpTools` method over the rmcp tool shape)
+      lands the effect + the quota use; the
+      ungranted role's refusal surfaces as the typed
+      tool error (`handler:unauthorized`); the
+      unconfigured quota surfaces the fail-closed
+      (`quota_unconfigured`); the `join_call`
+      decline + the `propose_policy_change` ride the
+      same handlers through the tools.
+    - The guard now runs `cargo test -p
+      reasonbraid-mcp` (the live leg rides the
+      guard's DATABASE_URL; the offline sweep skips
+      it) — the run_pg_tests.sh append.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the tools +
+      the gate shipped demonstrated only at the seam
+      (the `.3.5.1` suite); the tool layer's
+      delegation was unmeasured. Evidence: `cargo
+      test -p reasonbraid-mcp` → `test result: ok. 5
+      passed; 0 failed` (the live leg gated
+      offline).
+    - [x] **ADDRESSED** — the live roundtrip (the
+      tool handler → the qualified gate → the SAME
+      handler → the effect + the recorded use; the
+      typed refusals through the tool errors).
+      Evidence: `bash scripts/run_pg_tests.sh` →
+      rc=0, `grep -c "test result: ok."` → 31
+      (the 29 suites + the crate's live + the
+      doc-tests); the demo → `ALL acceptance checks
+      passed`.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      tool-path demonstration is the A2A lane's
+      wire-demonstration discipline applied to MCP
+      (the compatibility demonstrated, never
+      inferred). **The `.3` lane is COMPLETE.**
 
 - ID: `PHASE-8.4`
   Status: `proposed`
@@ -937,9 +979,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.5.3` | `proposed` | `.3.5.2` done — the three write tools ship (the `McpTools` handle + the typed schemas + the six-tool router fixtures + the token exclusion); the live tool-path roundtrip executes next |
+| 1 | `PHASE-8.4` | `proposed` | `.3.5.3` done — the live tool-path roundtrip ships; **the `.3` lane (the MCP surface) is COMPLETE**; the adapter/resolver SDK lane opens at its census at the seams (the ADR-027 machinery + the compatibility matrix are the greenfield) |
 
 ## Changelog
+
+- `2026-09-08`: `.3.5.3` done — the live
+  tool-path roundtrip (the granted write through
+  the TOOL handler + the typed refusals + the
+  join_call/propose rides; the guard now runs the
+  crate's DATABASE_URL-gated live leg) — **the
+  `.3` lane (the MCP surface) is COMPLETE**;
+  frontier → `.4`.
 
 - `2026-09-08`: `.3.5.2` done — the three MCP
   write tools (the `McpTools` handle — the

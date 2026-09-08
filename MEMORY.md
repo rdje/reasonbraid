@@ -20,16 +20,13 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3.5.3`. **The `.1` and `.2` lanes are COMPLETE**; `.3`
-  done (the MCP census) → decomposed; `.3.1` ADR-024; `.3.2` the rmcp
-  pin; `.3.3` the read-half; `.3.4` the listen-stream durability;
-  `.3.5` the write-half census → decomposed `.3.5.1`–`.3.5.3`;
-  `.3.5.1` done (the qualified gate + the quota binding); `.3.5.2`
-  done (the three write tools).
-- **Next action:** execute `PHASE-8.3.5.3` — the live tool-path
-  roundtrip: the granted write lands through the TOOL handler (the
-  effect + the audit + the quota use); the qualified-gate refusals
-  pinned; the same-handler demonstration.
+  frontier `.4`. **The `.1`, `.2`, and `.3` lanes are COMPLETE** (the
+  `.3` MCP surface: the ADR-024 contract + the rmcp pin + the
+  read/write tools + the listen-stream durability + the qualified
+  write gate + the live tool-path roundtrip).
+- **Next action:** execute `PHASE-8.4` — the adapter/resolver SDK
+  lane: the census at the seams (the ADR-027 machinery + the
+  compatibility matrix + the certification suite are the greenfield).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -3490,9 +3490,11 @@ dependencies = [
 name = "reasonbraid-mcp"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chrono",
  "reasonbraid-core",
  "reasonbraid-server",
+ "reqwest 0.12.28",
  "rmcp",
  "serde",
  "serde_json",

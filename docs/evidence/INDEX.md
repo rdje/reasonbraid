@@ -13,3 +13,4 @@ for an ADR. Numbers published here follow `docs/CLAIM_VERIFICATION.md`.
 - `2026-09-07_phase5-evidence-manifest.md` — the G5 clause map (`PHASE-5.6.2`)
 - `2026-09-07_demonstration-b.md` — the §26.2 nine-step walk over the shipped machinery (`PHASE-6.7.2`)
 - `2026-09-07_phase6-evidence-manifest.md` — the G3 clause map (`PHASE-6.7.2`)
+- `2026-09-08_phase7-evidence-manifest.md` — the G6–G7 guard of record (the ten-line census's numbers + the per-lane evidence + the three named preconditions) (`PHASE-7.5.2`)

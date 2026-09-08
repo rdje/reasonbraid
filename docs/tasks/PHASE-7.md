@@ -3,7 +3,10 @@
 ## Metadata
 
 - Tree ID: `PHASE-7`
-- Status: `active`
+- Status: `done` (the tree is COMPLETE — the exit package ships
+  `2026-09-08`: G6–G7 NOT MET for the Internet exposure, Met as
+  the hardening-machinery exit for the LAN profile; the exposure
+  stays the UNCLAIMED profile per the §25.1 kill/pivot)
 - Roadmap lane: Phase 7 (`ROADMAP.md` §20.9); Trust track (scoped)
 - Created: `2026-09-05`
 - Estimate: 18–32 engineer-weeks plus external review
@@ -1103,7 +1106,7 @@ reopens the applicable portions of G4–G7.
       13/13; `make book` builds.
 
   - ID: `PHASE-7.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the G6–G7 gate package — the gate record (the
       honest outcome: the Internet capability is NOT
       claimed; the hardening machinery + the LAN
@@ -1112,15 +1115,59 @@ reopens the applicable portions of G4–G7.
       withdrawn/unsupported claims), the explicit
       unsupported matrix, the evidence manifest.
     Gate: G6, G7
+    Done (`2026-09-08`): the gate package publishes:
+      `docs/decisions/2026-09-08_phase7-gate-record.md`
+      (**G6–G7 NOT MET for the Internet exposure — Met
+      as the hardening-machinery exit for the LAN
+      profile; the exposure stays UNCLAIMED** — the
+      §25.1 kill/pivot holds by design: the phase never
+      exposed anything; the seven shipped lines cite
+      the guard, the three external gaps are the named
+      preconditions), `docs/decisions/2026-09-08_phase7-subtraction-record.md`
+      (the S-1…S-12 not-built list, each with its
+      trigger — the exposure, the review, the
+      prompt-injection suite, the pen-test, the app
+      role, the external stores, the confidential
+      evaluator, the scaling, the dependency SBOM, the
+      export disposition, the regions, the
+      scale/human game days), the explicit unsupported
+      matrix (the gate record's list), and
+      `docs/evidence/2026-09-08_phase7-evidence-manifest.md`
+      (the guard of record: rc=0 25 live suites + the
+      demo, rc=0 70 offline suites, the load-harness
+      run, the signed release). **PHASE 7 IS CLOSED** —
+      the tree's exit package ships; the Internet
+      profile's qualification is the named follow-on
+      (the three preconditions), never a claim.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.5` lane's
+      exit needs the gate package (the `.1.8.2`/
+      `.6.2`/`.7.2` pattern); the three external gaps
+      make the honest outcome the machinery-exit, not
+      the exposure claim. Evidence: `make gate` → 13/13
+      (the records + the INDEX rows green).
+    - [x] **ADDRESSED** — the gate record (the outcome +
+      the matrix), the subtraction record (S-1…S-12),
+      the evidence manifest. Evidence: the records'
+      `answers:` + the guard of record cited inside.
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds; the guard of record
+      stands (the `.5.1` census's runs).
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.5.2` | `proposed` | `.5.1` done — the G6–G7 evidence census ships (the ten-row map: the 7 shipped with the citations, the 3 gaps with the triggers); the gate package executes next |
+| — | (none) | `done` | **the PHASE-7 tree is COMPLETE** — the exit package ships (the gate record: G6–G7 NOT MET for the Internet exposure, Met as the hardening-machinery exit; the subtraction record; the unsupported matrix; the evidence manifest); the next executable work is `PHASE-8.1` |
 
 ## Changelog
 
+- `2026-09-08`: `.5.2` done — the G6–G7 gate package
+  (the gate record: NOT MET for the exposure, Met as
+  the hardening-machinery exit for the LAN profile;
+  the subtraction record S-1…S-12; the unsupported
+  matrix; the evidence manifest); **PHASE 7 IS CLOSED**
+  — the tree is COMPLETE.
 - `2026-09-08`: `.5.1` done — the G6–G7 evidence
   census (the ten-row map with the per-row citations;
   the three external gaps as the exposure

@@ -12,20 +12,16 @@
 ## Current state
 
 - **Project:** ReasonBraid (working name, not legally cleared).
-- **Phases 0–6 CLOSED** (Phase 0's exit gate — ADR-002 signed; Phase 1's
-  G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
-  six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
-  gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.5.2`.
-  The `.1`, `.2`, and `.4` lanes are COMPLETE; `.3` done; `.5` done (the
-  ten-line census) → decomposed; `.5.1` done (the per-row evidence
-  census: the 7 shipped with the citations, the 3 external gaps with
-  the triggers).
-- **Next action:** execute `PHASE-7.5.2` — the G6–G7 gate package: the
-  gate record (the honest outcome: the Internet capability is NOT
-  claimed; the hardening machinery + the LAN profile ship), the §19.8
-  subtraction record, the explicit unsupported matrix, the evidence
-  manifest.
+- **Phases 0–7 CLOSED.** Phase 7's exit: G6–G7 NOT MET for the
+  Internet exposure, Met as the hardening-machinery exit for the LAN
+  profile (the exposure stays UNCLAIMED per the §25.1 kill/pivot —
+  the three external preconditions: the reviewed threat model, the
+  prompt-injection suite, the pen-test). The gate record + the
+  subtraction (S-1…S-12) + the unsupported matrix + the evidence
+  manifest ship.
+- **Active tree:** none in Phase 7 (the tree is COMPLETE). The next
+  executable work is `PHASE-8.1` (the federation/interop lane — the
+  `PHASE-8` tree is `proposed`; opening it is the director's go).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

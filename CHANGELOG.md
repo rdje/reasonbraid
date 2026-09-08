@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The declared-profile contract: the registry is the only seam (`PHASE-7.1.4.1`)
+
+- `docs/decisions/2026-09-08_declared-profiles-secrets-classification.md` (top-level `answers:`): the secret store is a DECLARED PROFILE — the registry is the only seam, the shipped `dev_database` (the plaintext rows + the hashed node secret) is the honest dev stance named, and the undeclared store is the typed `secret_store_unconfigured` refusal. Each classification control refuses at ITS decision point: the evaluator control at the dispatch (no confidential-qualified evaluator in the dev profile → the typed refusal), the retention at the sweep; the region/export controls have no decision point yet — the named deferrals. The confidential classification stays creatable (the controls refuse the provider use, never the thread). No code. Frontier → `.1.4.2`.
+
 ## 2026-09-08 — The secrets-and-classification census: the declared profiles are the greenfield (`PHASE-7.1.4`)
 
 - The census at the seams, measured: the dev profile's secrets are the plaintext rows (`server_ca`, the enrollment tokens) + the HASHED node secret (`node_keys` — the handshake compares the digest); no store interface. The `Classification` (general/confidential) is RECORDED-ONLY — the Phase-1 deferral stands, and the ADR-034 "silent general" is the shipped state. No region/export machinery; the snapshot `retention_class` is a free string, never classification-driven. Decomposed: `.1.4.1` the declared-profile contract → `.1.4.2` the secret-store profiles → `.1.4.3` the classification-driven controls (the dev subset).

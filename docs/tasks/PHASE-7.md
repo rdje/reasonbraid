@@ -426,7 +426,7 @@ reopens the applicable portions of G4–G7.
     Children: `.1.4.1`–`.1.4.3`
 
   - ID: `PHASE-7.1.4.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the declared-profile contract — the decision
       record: the secret-store profile vocabulary (the
       shipped `dev_database` profile, the external stores
@@ -439,6 +439,25 @@ reopens the applicable portions of G4–G7.
       the typed refusal, never a silent general") + the
       named deferrals with their triggers.
     Roadmap: §16.8
+    Decision: `docs/decisions/2026-09-08_declared-profiles-secrets-classification.md`
+    Done (`2026-09-08`): the contract accepted —
+      `docs/decisions/2026-09-08_declared-profiles-secrets-classification.md`
+      (top-level `answers:`): the registry is the ONLY
+      seam (every secret read routes through the declared
+      profile; the shipped `dev_database` is the honest
+      dev stance, named; the external store arrives as a
+      configuration change); each classification control
+      refuses at ITS decision point (the evaluator control
+      at the DISPATCH — the dev profile registers no
+      confidential-qualified evaluator, so the dispatch is
+      the typed refusal; the retention control at the
+      SWEEP — the snapshot retention_class gains the
+      confidential tier; the export + the region controls
+      have no decision point in the dev profile — the
+      named deferrals with their triggers); the
+      confidential classification stays CREATABLE (the
+      controls refuse the PROVIDER use, never the thread).
+      No code changed. Frontier → `.1.4.2`.
 
   - ID: `PHASE-7.1.4.2`
     Status: `proposed`
@@ -492,10 +511,15 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.4.1` | `proposed` | `.1.4` decomposed at the census seams (the secrets are the plaintext dev rows, the classification is recorded-only, no region/export machinery) — the declared-profile contract executes first |
+| 1 | `PHASE-7.1.4.2` | `proposed` | `.1.4.1` done — the declared-profile contract accepted (the registry is the only seam; each control refuses at its decision point); the secret-store declared profiles execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.4.1` done — the declared-profile
+  contract accepted (the decision record: the secret-store
+  profile vocabulary + the classification-controls
+  mapping + the named deferrals); no code; frontier →
+  `.1.4.2`.
 - `2026-09-08`: `.1.4` done — the census at the seams
   (the dev secrets are the plaintext rows + the hashed
   node secret; the classification is RECORDED-ONLY — the

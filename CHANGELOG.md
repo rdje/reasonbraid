@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The capacity-and-incident census: the `.4` lane opens at the seams (`PHASE-7.4`)
+
+- The census, measured: the runbook set is ONE record of the §18.6 thirteen-family catalogue (`node-lost-replaced.md`); the load harness does not exist (the bench harness is the deliberation benchmark — the `.3` criteria's trigger measurements have no feeder); the game-days are the three shipped exercises (the replacement drill, the restore exercise, the demo's kill points) with the remaining families as the named gaps; the pen-test is EXTERNAL (the remediation rides its findings). Decomposed: `.4.1` the load harness → `.4.2` the runbook set → `.4.3` the game-day catalogue + the pen-test record.
+
 ## 2026-09-08 — The coordinator extraction criteria: nothing scales until a measurement names the bottleneck (`PHASE-7.3`)
 
 - The census: the coordinator is the deliberate SINGLE-WRITER design (ADR-002's named property); the measurements are catalogue-named-not-instantiated (the only empirical number is SLO-5, the issuance baseline). The record (`docs/decisions/2026-09-08_coordinator-extraction-criteria.md`, top-level `answers:`) makes the mandate mechanical: the extraction trigger is a MEASUREMENT, never a hunch — five seams (the aggregate writes, the outbox worker, the node channel, the CA issuance, the evaluation) each name their `.4` trigger measurement + their horizontal form over the shipped machinery (the claim keys, the lease/fencing, the node keying — a re-arrangement, never a rebuild); zero extractions today. No code. Frontier → `.4`.

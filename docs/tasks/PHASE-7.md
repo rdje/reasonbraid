@@ -829,9 +829,62 @@ reopens the applicable portions of G4–G7.
     13/13; `make book` builds; no code paths changed.
 
 - ID: `PHASE-7.4`
-  Status: `proposed`
+  Status: `done`
   Goal: capacity/load tests, incident exercises, penetration-test remediation, production runbooks
   Roadmap: §16.12, §18.6
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured: the RUNBOOK set is ONE record
+    of the §18.6 catalogue (`node-lost-replaced.md` —
+    the thirteen families are the catalogue); the LOAD
+    harness does not exist (the bench harness is the
+    deliberation benchmark, not a capacity test — the
+    `.3` criteria's trigger measurements have no
+    feeder); the game-days are the replacement drill +
+    the restore exercise + the demo's kill points (the
+    named gaps: the remaining families); the pen-test is
+    EXTERNAL (not run — the remediation rides its
+    findings). Children: `.4.1` the load harness → `.4.2`
+    the runbook set → `.4.3` the game-day catalogue +
+    the pen-test record.
+  Children: `.4.1`–`.4.3`
+
+  - ID: `PHASE-7.4.1`
+    Status: `proposed`
+    Goal: the load harness — the capacity tests that
+      feed the `.3` criteria: a scripted concurrent
+      command driver recording the ingress→commit p95,
+      the worker throughput, and the channel latency at
+      the target concurrency (the reproducible measured
+      run — the CLAIM_VERIFICATION shape).
+    Roadmap: §16.12
+
+  - ID: `PHASE-7.4.2`
+    Status: `proposed`
+    Goal: the §18.6 runbook set — the remaining twelve
+      families (the provider outage/ambiguous charge,
+      the credential compromise, the notification storm,
+      the runaway budget, the poisoned resource, the
+      database failover, the object loss, the Git/DB
+      publication mismatch, the signing-key incident,
+      the cross-tenant exposure suspicion, the
+      audit-chain break, the rollback/suspension, the
+      full DR) as the runbook records over the shipped
+      controls (the §18.6 shape: the detection, the
+      authority, the safe first actions, the diagnostics,
+      the containment, the recovery, the evidence, the
+      communication, the closure tests).
+    Roadmap: §18.6
+
+  - ID: `PHASE-7.4.3`
+    Status: `proposed`
+    Goal: the game-day catalogue + the pen-test record
+      — the exercise mapping (which games exist — the
+      replacement drill, the restore exercise, the
+      demo's kill points — vs the named gaps) + the
+      pen-test remediation stance (the findings become
+      the backlog items with owners; the remediation
+      rides the external test's findings).
+    Roadmap: §16.12, §18.6
 
 - ID: `PHASE-7.5`
   Status: `proposed`
@@ -844,10 +897,18 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.4` | `proposed` | `.3` done — the extraction-criteria record ships (five seams, five trigger measurements, zero extractions — the measurement-gated rule); the capacity/load + the incident lane executes next |
+| 1 | `PHASE-7.4.1` | `proposed` | `.4` decomposed at the census seams (one runbook of the thirteen, no load harness, the named game-day gaps) — the load harness executes first |
 
 ## Changelog
 
+- `2026-09-08`: `.4` done — the census at the seams
+  (the runbook set is one record of the thirteen; the
+  load harness does not exist — the `.3` triggers have
+  no feeder; the game-days are the three shipped
+  exercises; the pen-test is external) → decomposed
+  `.4.1` (the load harness) → `.4.2` (the runbook set)
+  → `.4.3` (the game-day catalogue + the pen-test
+  record); frontier → `.4.1`.
 - `2026-09-08`: `.3` done — the coordinator extraction
   criteria (the measurement-gated seam map: the five
   seams name their `.4` trigger measurements + their

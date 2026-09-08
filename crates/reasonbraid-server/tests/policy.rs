@@ -42,6 +42,11 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "policy_outcomes",
+        "policy_corrections",
+        "policy_drift",
+        "deployment_assignments",
+        "deployment_targets",
         "policy_publications",
         "policy_projections",
         "policy_approvals",
@@ -2492,4 +2497,432 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     assert_eq!(deployments.len(), 1, "{deployments:?}");
     assert_eq!(deployments[0]["desired_digest"], json!(projection_digest));
     assert_eq!(deployments[0]["observed_digest"], json!(projection_digest));
+}
+
+#[tokio::test]
+async fn the_drift_corrections_and_outcomes_ride_the_records() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cr-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain to the effective publication + the target + the assignment
+    // (the same path the `.5.2` test drives).
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "cr-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "cr",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the corrected clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "cr-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "cr",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "cr-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "cr-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    for (publication_id, effective) in [("cr-pub-1", true), ("cr-pub-2", true)] {
+        let proposal_id = format!("{publication_id}-prop");
+        let decision_id = format!("{publication_id}-dec");
+        let approval_id = format!("{publication_id}-app");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-proposals",
+            &human_id,
+            &json!({
+                "proposal_id": proposal_id,
+                "policy_id": "cr-policy",
+                "policy_version": "1.0.0",
+                "thread_id": thread_id,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the proposal registers");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-decisions",
+            &human_id,
+            &json!({
+                "decision_id": decision_id,
+                "proposal_id": proposal_id,
+                "rule": "majority",
+                "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                "verdict_event_id": verdict_event,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the decision records");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-approvals",
+            &human_id,
+            &json!({
+                "approval_id": approval_id,
+                "proposal_id": proposal_id,
+                "decision_id": decision_id,
+                "approver": human_id,
+                "grant_id": grant_id,
+                "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the approval records");
+        let (status, projection) = post(
+            &client,
+            &base,
+            "/v1/policy-projections",
+            &human_id,
+            &json!({
+                "projection_id": format!("{publication_id}-proj"),
+                "target": "generic",
+                "resolution": {
+                    "policies": [ { "policy_id": "cr-policy", "version": "1.0.0" } ],
+                    "target": { "layer": "organization", "target": "*" },
+                },
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the projection records");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/policy-publications",
+            &human_id,
+            &json!({
+                "publication_id": publication_id,
+                "proposal_id": proposal_id,
+                "decision_id": decision_id,
+                "approval_id": approval_id,
+                "projection_id": format!("{publication_id}-proj"),
+                "manifest_digest": projection["digest"],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the publication stages");
+        if effective {
+            let (status, _) = post(
+                &client,
+                &base,
+                &format!("/v1/policy-publications/{publication_id}/effective"),
+                &human_id,
+                &json!({ "git_object_ids": ["abc123", "def456"] }),
+            )
+            .await;
+            assert_eq!(status, 200, "the publication marks effective");
+        }
+    }
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({ "target_id": "cr-target", "target_type": "repository", "owning_authority": grant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the target registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "cr-target",
+            "publication_id": "cr-pub-1",
+            "wave": 1,
+            "desired_ref": "abc123",
+            "desired_digest": DIGEST,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the assignment records");
+
+    // 1. The drift: the categorized pair.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &human_id,
+        &json!({
+            "drift_id": "cr-drift-1",
+            "target_id": "cr-target",
+            "publication_id": "cr-pub-1",
+            "category": "pending_rollout",
+            "desired_digest": DIGEST,
+            "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the drift records");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &human_id,
+        &json!({
+            "drift_id": "cr-drift-bad",
+            "target_id": "cr-target",
+            "publication_id": "cr-pub-1",
+            "category": "vibes",
+            "desired_digest": DIGEST,
+            "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown category refuses: {refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &human_id,
+        &json!({
+            "drift_id": "cr-drift-ghost",
+            "target_id": "ghost",
+            "publication_id": "cr-pub-1",
+            "category": "pending_rollout",
+            "desired_digest": DIGEST,
+            "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost assignment refuses: {refused}");
+
+    // 2. The corrections: the §4.7 operations with the authority proof.
+    // The suspension REQUIRES the expiry (the expiring rule).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-suspend-noexpiry",
+            "publication_id": "cr-pub-1",
+            "operation": "suspension",
+            "authority_grant": grant_id,
+            "reason": "the adverse outcome",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the expiry-less suspension refuses: {refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("expires_at"),
+        "{refused}"
+    );
+    let (status, suspended) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-suspend",
+            "publication_id": "cr-pub-1",
+            "operation": "suspension",
+            "authority_grant": grant_id,
+            "expires_at": "2026-09-15T00:00:00Z",
+            "reason": "the adverse outcome",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the suspension records: {suspended}");
+
+    // The RETRACTION preserves the original (the correction is a NEW row,
+    // the publication stays readable).
+    let (status, retracted) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-retract",
+            "publication_id": "cr-pub-1",
+            "operation": "retraction",
+            "authority_grant": grant_id,
+            "reason": "the owners withdrew",
+            "remediation": "revert to the previous publication",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the retraction records: {retracted}");
+    let (_status, publications) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert!(
+        publications
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["publication_id"] == json!("cr-pub-1")),
+        "the original survives the retraction"
+    );
+
+    // The SUPERSESSION links the old/new.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-supersede-nolink",
+            "publication_id": "cr-pub-2",
+            "operation": "supersession",
+            "authority_grant": grant_id,
+            "reason": "the replacement",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the link-less supersession refuses: {refused}");
+    let (status, superseded) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-supersede",
+            "publication_id": "cr-pub-2",
+            "operation": "supersession",
+            "authority_grant": grant_id,
+            "supersedes": "cr-pub-1",
+            "reason": "the replacement",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the supersession records: {superseded}");
+
+    // The ghost authority refuses (the §4.7 proof).
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "cr-ghost",
+            "publication_id": "cr-pub-1",
+            "operation": "retraction",
+            "authority_grant": "grt_ghost",
+            "reason": "nope",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the ghost authority refuses: {refused}");
+
+    // 3. The outcomes: the §15.11 link.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &json!({
+            "outcome_id": "cr-out-1",
+            "publication_id": "cr-pub-1",
+            "kind": "observation",
+            "review_trigger": "drift",
+            "note": "the target lagged the desired digest",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the outcome records");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &json!({
+            "outcome_id": "cr-out-bad",
+            "publication_id": "cr-pub-1",
+            "kind": "vibes",
+            "note": "nope",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown outcome kind refuses: {refused}");
+
+    // 4. The lists.
+    let (status, corrections) = get(&client, &base, "/v1/policy-corrections", &human_id).await;
+    assert_eq!(status, 200, "the corrections read: {corrections}");
+    assert_eq!(corrections.as_array().unwrap().len(), 3, "{corrections:?}");
+    let (status, outcomes) = get(&client, &base, "/v1/policy-outcomes", &human_id).await;
+    assert_eq!(status, 200, "the outcomes read: {outcomes}");
+    assert_eq!(outcomes.as_array().unwrap().len(), 1, "{outcomes:?}");
 }

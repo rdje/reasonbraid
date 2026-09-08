@@ -752,7 +752,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       list. Frontier → `.5.3`.
 
   - ID: `PHASE-6.5.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the drift + the corrections — the drift records
       (the §15.10 six categories over the desired vs the
       observed digest), the §4.7 operations (the
@@ -762,6 +762,34 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       waiver — the time-bounded), the outcome records
       (§15.11).
     Roadmap: §15.10–15.11, §4.7
+    Done (`2026-09-07`): the drift + the corrections landed
+      per ADR-021 — migration 0044 (`policy_drift`: the
+      categorized pair over the assignment; the
+      `policy_corrections`: the §4.7 operation + the
+      AUTHORITY PROOF (the grant re-check) + the
+      operation-specific fields; the `policy_outcomes`: the
+      §15.11 link + the kind + the review trigger);
+      `crates/reasonbraid-server/src/corrections.rs` (NEW):
+      the `record_drift` (the six-category vocabulary, the
+      assignment must exist), the `record_correction` (the
+      four-operation vocabulary; the authority grant
+      active — the §4.7 proof; the suspension/waiver
+      REQUIRE the expiry — the expiring rule; the
+      supersession REQUIRES the linked old; the RETRACTION
+      never deletes — the correction is a NEW row; the
+      expiry parses to the typed DateTime — the raw-string
+      bind trap the first live pass caught), the
+      `record_outcome` (the six-kind vocabulary), the
+      lists; the api: `POST`/`GET /v1/policy-drift` +
+      `POST`/`GET /v1/policy-corrections` + `POST`/`GET
+      /v1/policy-outcomes`. Measured (policy 10): the
+      categorized drift + the two refusals, the
+      expiry-less-suspension refusal + the suspension, the
+      RETRACTION with the surviving original, the
+      link-less-supersession refusal + the supersession,
+      the ghost-authority refusal, the outcome + the
+      unknown-kind refusal, the lists. **`.5` COMPLETE** —
+      frontier → `.6`.
 
 - ID: `PHASE-6.6`
   Status: `proposed`
@@ -778,10 +806,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.5.3` | `proposed` | `.5.2` done — the deployment records + the waves (the authority-checked targets, the effective-publication chain gate, the observed-pair receipts; policy 9); the drift + the corrections execute next |
+| 1 | `PHASE-6.6` | `proposed` | `.5.3` done — the drift + the corrections (the six categories, the §4.7 operations with the authority proofs, the preserving retraction, the outcome records; policy 10) — **the `.5` lane (the target deployment) is COMPLETE**; the outcome-monitoring lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.3` done — the drift + the corrections
+  (migration 0044: the six categories, the §4.7 operations
+  with the authority proofs, the preserving retraction, the
+  outcome records); policy 10; **`.5` COMPLETE** — frontier
+  → `.6`.
 - `2026-09-07`: `.5.2` done — the deployment records
   (migration 0043: the authority-checked targets, the
   desired/observed pair, the effective-publication chain
@@ -1369,6 +1402,58 @@ the assign + the record_receipt + the list),
   commit.
 - [x] **FIX** — `0043_policy_deployments.sql`,
   `src/deployments.rs`, `src/lib.rs`, `src/api.rs`,
+  `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.5.3)
+
+The CODE change owned by this leaf:
+`migrations/0044_policy_drift_corrections.sql` (NEW — the
+drift + the corrections + the outcomes tables),
+`crates/reasonbraid-server/src/corrections.rs` (NEW — the
+vocabularies + the record_drift + the record_correction +
+the record_outcome + the lists),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/src/api.rs` (the six verbs),
+`crates/reasonbraid-server/tests/policy.rs` (the new test +
+the purge additions) — `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: no
+  drift/correction/outcome record existed (the `.5` census —
+  the lane stopped at the receipts).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_drift\|policy_corrections\|CorrectionInput" dba9285
+  -- crates/ migrations/` → rc=1 (nothing before this leaf).
+  The fix point is the ADR-021 correction half: the six-way
+  drift, the §4.7 operations with the authority proofs, the
+  outcome links.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_drift_corrections_and_outcomes_ride_the_records` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 10 tests … ok`) — the categorized drift +
+  the two refusals, the expiry-less-suspension refusal + the
+  suspension, the RETRACTION with the surviving original,
+  the link-less-supersession refusal + the supersession, the
+  ghost-authority refusal, the outcome + the unknown-kind
+  refusal, the lists. The first live passes caught the
+  purge gap (the three tables leaked) + the raw-string
+  TIMESTAMPTZ bind (the mislabeled duplicate — the expiry
+  now parses to the typed DateTime) — fixed.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 63 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg535_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit.
+- [x] **FIX** — `0044_policy_drift_corrections.sql`,
+  `src/corrections.rs`, `src/lib.rs`, `src/api.rs`,
   `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the

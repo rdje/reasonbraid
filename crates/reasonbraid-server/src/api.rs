@@ -516,6 +516,18 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(record_deployment_receipt),
         )
         .route(
+            "/v1/policy-drift",
+            post(record_policy_drift).get(list_policy_drift),
+        )
+        .route(
+            "/v1/policy-corrections",
+            post(record_policy_correction).get(list_policy_corrections),
+        )
+        .route(
+            "/v1/policy-outcomes",
+            post(record_policy_outcome).get(list_policy_outcomes),
+        )
+        .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
         )
@@ -2782,6 +2794,113 @@ async fn record_deployment_receipt(
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
+}
+
+/// `POST /v1/policy-drift` — record one drift observation (`.5.3`): the
+/// categorized desired/observed pair.
+async fn record_policy_drift(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::corrections::DriftInput>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no drift",
+        ));
+    }
+    match crate::corrections::record_drift(&state.pool, &input).await {
+        Ok(()) => Ok(Json(json!({ "drift_id": input.drift_id }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-drift` — the drift records, newest first.
+async fn list_policy_drift(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no drift",
+        ));
+    }
+    Ok(Json(crate::corrections::list_drift(&state.pool).await?))
+}
+
+/// `POST /v1/policy-corrections` — record one correction (`.5.3`): the
+/// §4.7 operation + the authority proof (the retraction never deletes).
+async fn record_policy_correction(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::corrections::CorrectionInput>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no correction",
+        ));
+    }
+    match crate::corrections::record_correction(&state.pool, &input).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-corrections` — the corrections, newest first.
+async fn list_policy_corrections(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no corrections",
+        ));
+    }
+    Ok(Json(
+        crate::corrections::list_corrections(&state.pool).await?,
+    ))
+}
+
+/// `POST /v1/policy-outcomes` — record one outcome (`.5.3`): the §15.11
+/// link with the kind + the review trigger.
+async fn record_policy_outcome(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(input): Json<crate::corrections::OutcomeInput>,
+) -> Result<Json<serde_json::Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal records no outcome",
+        ));
+    }
+    match crate::corrections::record_outcome(&state.pool, &input).await {
+        Ok(()) => Ok(Json(json!({ "outcome_id": input.outcome_id }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
+}
+
+/// `GET /v1/policy-outcomes` — the outcomes, newest first.
+async fn list_policy_outcomes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no outcomes",
+        ));
+    }
+    Ok(Json(crate::corrections::list_outcomes(&state.pool).await?))
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

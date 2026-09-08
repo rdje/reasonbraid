@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The drift and the corrections land — the `.5` lane is COMPLETE (`PHASE-6.5.3`)
+
+- Migration 0044: the drift records (the six §15.10 categories over the desired/observed pair), the §4.7 corrections (the authority-grant re-check; the suspension/waiver REQUIRE the expiry; the supersession links the old; the retraction NEVER deletes — the correction is a new row), and the §15.11 outcome records. The verbs: `POST`/`GET /v1/policy-drift`, `/v1/policy-corrections`, `/v1/policy-outcomes`. Measured: policy 10. **The `.5` lane (the target deployment) is COMPLETE.**
+
 ## 2026-09-07 — The deployment records land (`PHASE-6.5.2`)
 
 - Migration 0043: the authority-checked targets (the closed type vocabulary), the per-target assignments over the EFFECTIVE publication (the chain gate) with the DESIRED pair (the ref + the digest), and the receipt attesting the OBSERVED digest + the state — the drift's comparison input. The verbs: `POST`/`GET /v1/deployment-targets`, `POST`/`GET /v1/deployments`, `POST /v1/deployments/{target}/{publication}/receipt`. Measured: policy 9.

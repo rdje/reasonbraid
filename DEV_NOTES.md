@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — A local build directory does not localize compiler and package stores
+
+- The environment census measured different volume IDs for the repository versus ambient Cargo/TMPDIR. The new launcher overrides standard writable stores and selects the installed pinned compiler directly, avoiding shared rustup mutation. Cache seeding verifies locked archive hashes, copies only required index/archive data and preserves ambiguous shared source ownership. Five locality/integrity controls pass; offline metadata resolves entirely inside the repository.
+- promotion: promoted → `docs/decisions/2026-09-09_repository-local-command-environment.md`; owner `SIGNOFF-REPAIR.2.1`.
+
+
 ## _(2026-09-09)_ — Shared registry authority must have its own grant scope
 
 - The full source read found `require_admin_any_tenant` granting global adapter/region mutation authority from a tenant grant without boundary validation. Existing success fixtures encode that scope error. The selected repair is explicit site authority, protected issuance, actual-boundary validation and atomic mutation/audit with revocation serialization. Runtime reproduction remains pending.

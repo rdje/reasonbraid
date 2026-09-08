@@ -1,5 +1,6 @@
 # Makefile — standard commands. `make gate` = the doctrine enforcer; `make check` = Rust.
 SHELL := /usr/bin/env bash
+PROJECT_RUN := python3 -B scripts/project_env.py
 
 .PHONY: help gate check fmt clippy test deny secret-scan book demo dev release hooks bootstrap update-scaffold
 
@@ -20,43 +21,43 @@ help:
 	@echo "make update-scaffold - pull the latest ReasonBraid spine (set URL=<reasonbraid-repo>)"
 
 gate:
-	scripts/check_doctrines.sh
+	$(PROJECT_RUN) scripts/check_doctrines.sh
 
 check:
-	cargo fmt --all -- --check
-	cargo clippy --all-targets --all-features -- -D warnings
-	cargo test --all
+	$(PROJECT_RUN) cargo fmt --all -- --check
+	$(PROJECT_RUN) cargo clippy --all-targets --all-features -- -D warnings
+	$(PROJECT_RUN) cargo test --all
 
 fmt:
-	cargo fmt --all
+	$(PROJECT_RUN) cargo fmt --all
 
 clippy:
-	cargo clippy --all-targets --all-features -- -D warnings
+	$(PROJECT_RUN) cargo clippy --all-targets --all-features -- -D warnings
 
 test:
-	cargo test --all
+	$(PROJECT_RUN) cargo test --all
 
 # Supply-chain checks (wired into .github/workflows/supply-chain.yml — see docs/ci.md).
 deny:
-	cargo deny check
+	$(PROJECT_RUN) cargo deny check
 
 secret-scan:
-	gitleaks detect --source . --redact
+	$(PROJECT_RUN) gitleaks detect --source . --redact
 
 book:
-	mdbook build docs/book
+	$(PROJECT_RUN) mdbook build docs/book
 
 # The WP6 two-host demonstration (.6.2): the full crash/reconnect scenario with
 # real kill points and a grep-verified acceptance bundle. Runs the server suites +
 # CLI e2e first; the evidence lands under target/demo/<run-id>/.
 demo:
-	RB_DEMO=1 bash scripts/run_pg_tests.sh
+	RB_DEMO=1 $(PROJECT_RUN) bash scripts/run_pg_tests.sh
 
 # The one-command development environment (PHASE-1.7.1): ephemeral on-volume
 # PostgreSQL + rb-server in the foreground; Ctrl-C tears everything down.
 # `bash scripts/dev.sh --check` is the self-verification beat.
 dev:
-	scripts/dev.sh
+	$(PROJECT_RUN) scripts/dev.sh
 
 # The local/LAN deployment package (PHASE-1.7.2): the four self-contained
 # binaries (migrations + the console embed at compile time). The LAN runbook
@@ -66,22 +67,22 @@ dev:
 # Ed25519 signature — the release identity key generates on first use (the
 # dev placement: the releaser's local file, gitignored).
 release:
-	cargo build --release --bins
+	$(PROJECT_RUN) cargo build --release --bins
 	@ls -l target/release/rb target/release/rb-server target/release/rb-node target/release/rb-journal
-	@test -f release-key.pk8 || ./target/release/rb-release-manifest keygen
-	./target/release/rb-release-manifest generate --bin-dir target/release \
+	@$(PROJECT_RUN) bash -c 'test -f release-key.pk8 || ./target/release/rb-release-manifest keygen'
+	$(PROJECT_RUN) ./target/release/rb-release-manifest generate --bin-dir target/release \
 		--bin rb --bin rb-server --bin rb-node --bin rb-journal \
 		--out target/release/release-manifest.json
-	./target/release/rb-release-manifest verify --bin-dir target/release \
+	$(PROJECT_RUN) ./target/release/rb-release-manifest verify --bin-dir target/release \
 		--manifest target/release/release-manifest.json \
 		--sig target/release/release-manifest.json.sig
 
 hooks:
-	git config core.hooksPath .githooks
+	$(PROJECT_RUN) git config core.hooksPath .githooks
 	@echo "git hooks activated (core.hooksPath=.githooks)"
 
 bootstrap:
-	scripts/bootstrap.sh
+	$(PROJECT_RUN) scripts/bootstrap.sh
 
 update-scaffold:
-	scripts/update_scaffold.sh $(URL)
+	$(PROJECT_RUN) scripts/update_scaffold.sh $(URL)

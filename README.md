@@ -17,6 +17,8 @@ Execution and repair ownership: [`docs/TASK_TREE.md`](docs/TASK_TREE.md).
 
 ## Quick start
 
+Requires Python 3.11+ and the pinned Rust toolchain; the book requires mdBook.
+
 ```bash
 git config core.hooksPath .githooks
 make check    # fmt, clippy -D warnings, tests

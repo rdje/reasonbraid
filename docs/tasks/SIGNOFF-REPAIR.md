@@ -38,11 +38,13 @@ The registry decision is explicit site-operator authority, issued only through o
 
 ### SIGNOFF-REPAIR.2.1 — Repository-local execution environment
 
-- Status: `pending`.
+- Status: `done`.
 - Sources / owned surfaces: `Makefile, scripts, Cargo configuration`.
 - Goal and acceptance: Derive caches, scratch, build and tool stores from the current repository; identify required read-only system/toolchain dependencies; inventory off-volume project data and use copy/verify/use/delete only for proven ownership.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Bounded implementation: a repository-derived command launcher, Makefile integration, verified seeding of the locked Cargo archives/index into a local cache, focused locality/escape/corruption controls, and documented usage. This establishes the execution environment used by subsequent repairs. Remaining direct script/CI entrypoints and intrinsic worker storage behavior are explicitly owned by `.11.2`, `.11.3`, `.7.3` and `.4.2`.
+- Measured cause: CARGO_HOME/RUSTUP_HOME unset; default Cargo store and TMPDIR on device `16777232`, repository and target on `16777244`. Cargo.lock has 484 crates.io packages. Shared Cargo registry is approximately 984 MiB and is not uniquely project-owned: copy the required records, never delete the shared source. Installed Rust 1.98.0, Homebrew PostgreSQL/Python/mdBook are read-only toolchain exceptions.
+- Verification: 5 launcher controls passed; offline metadata resolved 496 local packages; core tests 49 passed / 0 failed / 1 intentionally ignored schema writer. See acceptance below.
+- Commit: `REASONBRAID-REPAIR-0002`.
 
 ### SIGNOFF-REPAIR.2.2 — Disposable PostgreSQL verification
 
@@ -308,14 +310,20 @@ The registry decision is explicit site-operator authority, issued only through o
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+## Current commit acceptance — SIGNOFF-REPAIR.2.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — the environment census (`python3 -B`, `os.stat` and selected environment names, rc=0) found unset CARGO_HOME/RUSTUP_HOME and off-volume TMPDIR: device `16777232` versus repository `16777244`. `make -n check` previously invoked ambient Cargo. Root-local target alone did not control dependency or temporary stores.
+- [x] **ADDRESSED (verified)** — `python3 -B scripts/tests/test_project_env.py` ran 5 tests, `OK`, rc=0: default override/relocation, symlink-store refusal, verified source-preserving copy, corrupt archive refusal and symlink-index refusal. The actual seed verified 932 files / 98,176,507 bytes; `cargo metadata --offline --locked --format-version 1` through the launcher resolved 496 packages, outside_repository 0, rc=0. A real child proved local cwd/temp/cache and literal argv preservation. `make -n check book demo release` confirms launcher wiring.
+- [x] **NO REGRESSION** — `python3 -B scripts/project_env.py cargo test --offline --locked -p reasonbraid-core` compiled and ran: `test result: ok. 49 passed; 0 failed; 1 ignored` (the existing schema writer); doc-tests 0, rc=0. No Rust source changed. `make book` rc=0; `git diff --check` rc=0. The commit hook runs the staged doctrine gate; full CI remains pre-push work.
+- [x] **FIX / LOCKSTEP** — the launcher, integrity tests, Makefile integration and ignored local stores ship with README prerequisites, TOOLBOX invocation, deployment-book examples, decision/index, memory, live status and changelog updates. Remaining direct-entrypoint and intrinsic runtime locality issues retain their owning leaves; this is not a blanket locality qualification.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.2.1` | `pending` | local execution prerequisites |
-| 2 | `SIGNOFF-REPAIR.2.2` | `pending` | safe focused runtime reproductions |
-| 3 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
-| 4 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
+| 1 | `SIGNOFF-REPAIR.2.2` | `pending` | safe focused runtime reproductions |
+| 2 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
+| 3 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
 
 ## Evidence routing
 
@@ -339,5 +347,7 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.2.1`: `REASONBRAID-REPAIR-0002 (leaf SIGNOFF-REPAIR.2.1): localize command stores and verify Cargo cache seeding`.
 
 - `SIGNOFF-REPAIR.1`: `REASONBRAID-REPAIR-0001 (leaf SIGNOFF-REPAIR.1): record corrective census and site authority decision`.

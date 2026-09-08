@@ -4,6 +4,42 @@ The Phase 1 deployment package (`.1.7.2`) is **four self-contained binaries**
 and a runbook. This chapter is the product view; the operator surface is the
 `deploy/README.md` runbook in the repository.
 
+## Repository-local development and verification
+
+Development now requires Python 3.11+ and an installed toolchain matching
+`rust-toolchain.toml`. Makefile build/check/dev/book commands use
+`scripts/project_env.py` to derive writable stores from the current repository.
+Build output stays in `target/`; Cargo packages, temporary files, XDG data and CLI
+state live under ignored `.project-data/`. A symlink or volume escape in those
+store paths is refused. Moving the checkout does not require editing saved paths.
+
+Inspect the selected paths or run a focused command:
+
+```bash
+python3 -B scripts/project_env.py --print
+python3 -B scripts/project_env.py cargo test --locked --offline -p reasonbraid-core
+make book
+```
+
+To initialize a local Cargo cache from a complete existing cache:
+
+```bash
+python3 -B scripts/project_env.py --seed-cargo-cache "$HOME/.cargo"
+```
+
+That explicit source is read-only. Locked archives are hash-checked before use;
+credentials and global Cargo configuration are not copied. Shared source data is
+retained. If the source is incomplete, use the launcher with `cargo fetch --locked`
+when network access is available. Installed compiler, Python, database and mdBook
+binaries remain documented read-only toolchain inputs.
+
+Invoke direct diagnostic scripts through the launcher too, for example
+`python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh`. That existing
+script runs the broad suite; focused PostgreSQL selection is the next repair.
+The launcher controls default stores; explicit output paths and worker-specific
+storage remain subject to the same-volume policy. It is not a filesystem sandbox.
+Details and verification: `docs/decisions/2026-09-09_repository-local-command-environment.md`.
+
 ## The four binaries
 
 ```bash

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Repository-local command environment (`SIGNOFF-REPAIR.2.1`)
+
+Added a launcher and Makefile integration for repository-derived Cargo, build,
+temporary, XDG and CLI stores. Locked cache seeding verifies archives and index
+copies without deleting shared sources. Installed tools remain read-only inputs.
+Validation: five focused controls; offline locked metadata (496 local packages);
+core tests 49 passed, 1 intentional ignored schema writer; book built; staged
+doctrine gate runs in the commit hook.
+
 ## 2026-09-09 — Corrective ownership and site-authority decision (`SIGNOFF-REPAIR.1`)
 
 Completed the required roadmap, tracked-codebase and mdBook read before editing.

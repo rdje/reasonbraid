@@ -1401,7 +1401,7 @@ Runtime reproduction is pending in the corrective tree.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.2.1` | `pending` | corrective prerequisite; repository-local execution setup, then authority repairs |
+| 1 | `SIGNOFF-REPAIR.2.2` | `pending` | corrective prerequisite; focused disposable PG verification, then authority repairs |
 | 2 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
 
 ## Changelog

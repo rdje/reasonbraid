@@ -1,5 +1,6 @@
 # Rust build output
 /target
+/.project-data
 **/*.rs.bk
 
 # Commit workflow scratch (must stay untracked — see COMMIT.md)

@@ -16,20 +16,17 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4.3`.
-  `.1.1` done (ADR-034 accepted); `.1.2` done (the mTLS workload identity);
-  the `.1.3` lane COMPLETE (the RLS layer, the quotas, the
-  quarantine-evidence rule); `.1.4` done (the census) → decomposed;
-  `.1.4.1` done (the declared-profile contract); `.1.4.2` done (the
-  secret-store registry + the store-routed CA read + the boot-time typed
-  refusal).
-- **Next action:** execute `PHASE-7.1.4.3` — the classification-driven
-  controls (the dev subset): the evaluator-access decision at the DISPATCH
-  (a confidential thread's work delivery refuses without a
-  confidential-qualified evaluator profile — the typed refusal, never a
-  silent general); the retention/export vocabulary wired where the
-  machinery exists (the snapshot retention_class); the region control
-  stays the named deferral.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.2`
+  (the public-node enrollment + the quarantine — `docs/tasks/PHASE-7.md`).
+  The `.1` lane is COMPLETE: `.1.1` ADR-034 accepted; `.1.2` the mTLS
+  workload identity; `.1.3` the RLS layer + the quotas + the
+  quarantine-evidence rule; `.1.4` the declared secret-store profiles +
+  the classification-driven dispatch control (the confidential delivery is
+  the typed refusal until a qualified evaluator registers).
+- **Next action:** execute `PHASE-7.2` — open the lane at the census seams:
+  the public-node enrollment + the quarantine, the revocation propagation,
+  the signed software updates, the SBOM/provenance, the disclosure process
+  (ADR-027, ROADMAP §16.10/§16.12; backlog 40).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

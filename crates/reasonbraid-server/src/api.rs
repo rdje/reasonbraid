@@ -148,6 +148,17 @@ impl ControlApiError {
         }
     }
 
+    /// The thread's classification lacks a qualified evaluator (`.1.4.3`,
+    /// the evaluator-access control) — the delivery refuses until the
+    /// deployment registers a qualified profile.
+    pub fn classification_unqualified(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "classification_unqualified",
+            message: message.into(),
+        }
+    }
+
     pub fn internal() -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -176,6 +187,7 @@ impl ControlApiError {
             "protocol_incompatible" => StatusCode::BAD_REQUEST,
             "quota_exceeded" => StatusCode::TOO_MANY_REQUESTS,
             "quota_unconfigured" => StatusCode::SERVICE_UNAVAILABLE,
+            "classification_unqualified" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -5182,6 +5194,20 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
+    // The evaluator-access control (`.1.4.3`, the `.1.4.1` contract): the
+    // dispatch is the DECISION POINT — a confidential thread's work delivery
+    // requires a confidential-qualified evaluator profile, and the dev
+    // registry qualifies none. The typed refusal aborts the delivery in this
+    // transaction (the accept/challenge rolls back cleanly) — never a silent
+    // general (ADR-034).
+    let classification = spec.projection.classification;
+    if !classification.has_qualified_evaluator() {
+        return Err(ControlApiError::classification_unqualified(format!(
+            "the thread's `{}` classification has no qualified evaluator \
+             profile in this deployment — the dispatch refuses until one is registered",
+            classification.as_str()
+        )));
+    }
     let (reservation, denial) = match budget::create_reservation_in_tx(
         &mut *tx,
         &spec.projection.ceiling_id,

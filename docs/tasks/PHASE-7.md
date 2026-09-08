@@ -525,7 +525,7 @@ reopens the applicable portions of G4–G7.
       answers).
 
   - ID: `PHASE-7.1.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the classification-driven controls (the dev
       subset) — the evaluator-access decision at the
       DISPATCH: a confidential thread's work delivery
@@ -535,6 +535,60 @@ reopens the applicable portions of G4–G7.
       machinery exists (the snapshot retention_class);
       the region control stays the named deferral.
     Roadmap: §16.8
+    Done (`2026-09-08`): the evaluator-access control
+      binds at the dispatch — `Classification` gains
+      `as_str` + `has_qualified_evaluator` (the registry:
+      the dev built-ins qualify for `general` ONLY —
+      `confidential` has no qualified evaluator, the
+      named state); `dispatch_work_in_tx` (the single
+      choke point — the accept + the challenge + the
+      auto-initiation paths) refuses the confidential
+      delivery FIRST, in-transaction (the command rolls
+      back cleanly — no accept, no work item — the
+      `.6.2` invitation-iff-work invariant holds); the
+      wire gains `classification_unqualified` (409, in
+      the status map so the stored rejection replays the
+      original status). The thread itself stays CREATABLE
+      + inspectable (the control refuses the PROVIDER
+      use, never the thread — the `.1.4.1` contract).
+      The measured suite (`tests/classification.rs`, LIVE
+      — the guard's 25th): the confidential accept
+      refuses with the typed code + no work item lands;
+      the general thread's accept still dispatches; the
+      classification stays the recorded fact. The
+      retention/export vocabulary: the census found NO
+      decision point (no thread-classified data enters
+      the snapshot store — the `.1.4.1` "binds at the
+      sweep" is revised: the retention binding awaits
+      the confidential-data pipeline) — the named
+      deferral with its trigger, alongside the region
+      control. **The `.1.4` lane is COMPLETE.**
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the confidential
+      classification was RECORDED-ONLY (the Phase-1
+      deferral) — the dispatch treated it as general
+      (ADR-034's forbidden "silent general"); the control
+      lands at the dispatch's single choke point.
+      Evidence: `cargo test -p reasonbraid-server --lib
+      threads::tests::the_evaluator` → `test result: ok.
+      1 passed` (the registry) + the live suite →
+      `test result: ok. 1 passed; 0 failed`.
+    - [x] **ADDRESSED** — `has_qualified_evaluator` +
+      the dispatch gate + `classification_unqualified`
+      (409) + the measured legs (the refusal, the
+      no-work-item invariant, the general dispatch
+      intact). Evidence:
+      `target/pg_classification_guard.log`.
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 25 suites + the demo `ALL acceptance checks
+      passed` (`target/pg_classification_guard.log`);
+      `cargo test --all` → rc=0, 68 suites
+      (`target/classification_offline.log`); clippy/fmt
+      clean; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — none new: the leaf
+      executes the `.1.4.1` contract; the retention-
+      decision-point revision is recorded in the Done
+      notes (the trigger-named deferral).
 
 - ID: `PHASE-7.2`
   Status: `proposed`
@@ -564,10 +618,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.4.3` | `proposed` | `.1.4.2` done — the secret-store declared profiles ship (the registry + the store-routed CA read + the boot-time typed refusal); the classification-driven controls execute next |
+| 1 | `PHASE-7.2` | `proposed` | `.1.4.3` done — the classification-driven controls ship (the dispatch gate + the measured refusal); **the `.1` lane is COMPLETE** — the public-node enrollment + the quarantine lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.4.3` done — the classification-driven
+  controls (the evaluator-access dispatch gate — the
+  confidential delivery refuses with the typed code, the
+  general dispatch intact, the thread stays creatable; the
+  retention/export/region deferrals revised + named);
+  **the `.1` lane is COMPLETE**; frontier → `.2`.
 - `2026-09-08`: `.1.4.2` done — the secret-store declared
   profiles (the registry + the store-routed CA read + the
   boot-time resolution + the typed undeclared refusal +

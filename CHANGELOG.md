@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The classification-driven controls: the confidential dispatch refuses (`PHASE-7.1.4.3`)
+
+- The evaluator-access control binds at the dispatch (the single choke point — the accept/challenge/auto-initiation paths): `Classification::has_qualified_evaluator` (the dev registry qualifies `general` only), the in-transaction gate, and the typed `classification_unqualified` (409, in the status map so the stored rejection replays the original status). A confidential thread stays creatable + inspectable — the control refuses the PROVIDER use, never the thread. The measured suite (the guard's 25th): the confidential accept refuses with the typed code + no work item lands (the invitation-iff-work invariant holds); the general dispatch stays intact. The retention/export/region controls: the census found no decision point for the retention (no thread-classified data enters the snapshot store) — the `.1.4.1` "binds at the sweep" is revised to the trigger-named deferral. **The `.1` lane is COMPLETE** — frontier → `.2` (the public-node enrollment + the quarantine).
+
 ## 2026-09-08 — The secret-store declared profiles: the registry is the seam (`PHASE-7.1.4.2`)
 
 - `secret_store.rs`: the declared registry — `DECLARED_PROFILES` (the shipped `dev_database`), `SecretStore::resolve` (the boot-time seam; the undeclared name is the typed refusal naming itself + the declared set), `load_ca_material` (the CA row read THROUGH the store). `ca::ensure_server_ca_with_store` routes the CA material through the resolved profile (the inline SELECT is gone — one read path); the `ensure_server_ca` convenience keeps the tests on the SAME implementation. `rb-server` gains `--secret-store-profile` (default `dev_database`), resolved once before the CA load — the undeclared profile refuses the boot, never a silent fallback. The external stores join as new registry entries (the named extension point). Measured: the offline unit suite (the resolution + the refusal, 3/3); the read-through routing rides every live suite + the demo. Frontier → `.1.4.3`.

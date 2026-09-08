@@ -112,6 +112,27 @@ pub enum Classification {
     Confidential,
 }
 
+impl Classification {
+    /// The wire name (the snake_case registry form).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Classification::General => "general",
+            Classification::Confidential => "confidential",
+        }
+    }
+
+    /// The evaluator-access control (`.1.4.3`, the `.1.4.1` contract):
+    /// whether the deployment's evaluator registry qualifies a profile for
+    /// THIS classification. The dev registry qualifies its built-ins for
+    /// `general` only — `confidential` has NO qualified evaluator, so the
+    /// dispatch is the typed refusal (ADR-034: a classification without the
+    /// controls is never a silent general). A future confidential-qualified
+    /// profile flips this arm by joining the registry.
+    pub fn has_qualified_evaluator(self) -> bool {
+        matches!(self, Classification::General)
+    }
+}
+
 /// The workflow profile (ADR-016, `PHASE-5.1.2`): the VALIDATED reference
 /// to a registered profile — the id string, defaulting to `quick_advice`
 /// at the create boundary.
@@ -1771,6 +1792,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The evaluator-access registry (`.1.4.3`): the dev registry qualifies
+    /// `general` only — `confidential` has NO qualified evaluator, so the
+    /// dispatch refuses (never a silent general).
+    #[test]
+    fn the_evaluator_registry_qualifies_general_only() {
+        assert!(Classification::General.has_qualified_evaluator());
+        assert!(
+            !Classification::Confidential.has_qualified_evaluator(),
+            "the dev registry registers no confidential-qualified evaluator"
+        );
+        assert_eq!(Classification::Confidential.as_str(), "confidential");
+        assert_eq!(Classification::General.as_str(), "general");
+    }
 
     /// The close fold validates BOTH core edges: a closed thread rejects a second
     /// close, and the projection lands on `closed` with the reason preserved.

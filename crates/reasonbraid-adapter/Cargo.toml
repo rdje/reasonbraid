@@ -30,7 +30,7 @@ clap = { version = "4", features = ["derive"] }
 # adapter's child-process supervision (io-util for line reading, process for the
 # child, rt for the stderr-drain task). The contract itself is runtime-free;
 # macros + rt-multi-thread serve the rb-bench binary's async main.
-tokio = { version = "1", features = ["sync", "io-util", "process", "rt", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["sync", "io-util", "process", "rt", "macros", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

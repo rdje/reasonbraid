@@ -3536,6 +3536,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "reasonbraid-adapter",
  "ring",
  "serde",
  "serde_json",

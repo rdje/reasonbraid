@@ -65,6 +65,36 @@ enum Cmd {
         #[arg(long)]
         sig: PathBuf,
     },
+    /// Sign/verify a certification record (the `.4.3` qualification
+    /// report — the ADR-027 identity over the adapter certification).
+    Certify {
+        #[command(subcommand)]
+        certify: CertifyCmd,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CertifyCmd {
+    /// Sign a certification record: the self-digest re-derives first
+    /// (a record whose digest lies is refused before any signature),
+    /// then the canonical bytes are written back + signed.
+    Sign {
+        #[arg(long, default_value = "release-key.pk8")]
+        key: PathBuf,
+        /// The qualification record JSON.
+        #[arg(long)]
+        record: PathBuf,
+    },
+    /// Verify a certification record: the signature over the record's
+    /// exact bytes + the self-digest re-derivation.
+    Verify {
+        #[arg(long, default_value = "release-key.pk8")]
+        key: PathBuf,
+        #[arg(long)]
+        record: PathBuf,
+        #[arg(long)]
+        sig: PathBuf,
+    },
 }
 
 /// The manifest — the canonical field order; `binaries` is the SORTED map
@@ -211,5 +241,80 @@ fn main() -> Result<(), String> {
             );
             Ok(())
         }
+        Cmd::Certify { certify } => match certify {
+            CertifyCmd::Sign { key, record } => {
+                let bytes = std::fs::read(&record)
+                    .map_err(|e| format!("read the record {}: {e}", record.display()))?;
+                let report: reasonbraid_adapter::CertificationReport =
+                    serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("the record parses: {e}"))?;
+                if !report.digest_verifies() {
+                    return Err(format!(
+                        "the record {} fails its self-digest — a lying record is refused before any signature",
+                        record.display()
+                    ));
+                }
+                if !report.sdk_version_matches() {
+                    return Err(format!(
+                        "the record's contract version {} drifts from the SDK token — refuse",
+                        report.sdk_version
+                    ));
+                }
+                // The canonical re-serialization (the byte-identical
+                // regeneration contract) is the signed + stored form.
+                let canonical = serde_json::to_vec(&report)
+                    .map_err(|e| format!("the record serializes: {e}"))?;
+                let signing_key = load_key(&key)?;
+                let signature = signing_key.sign(&canonical);
+                std::fs::write(&record, &canonical)
+                    .map_err(|e| format!("write the record {}: {e}", record.display()))?;
+                let sig_path = std::path::PathBuf::from(format!("{}.sig", record.display()));
+                std::fs::write(&sig_path, hex(signature.as_ref()))
+                    .map_err(|e| format!("write the signature {}: {e}", sig_path.display()))?;
+                eprintln!(
+                    "the record {} is signed (the signature at {})",
+                    record.display(),
+                    sig_path.display()
+                );
+                Ok(())
+            }
+            CertifyCmd::Verify { key, record, sig } => {
+                let bytes = std::fs::read(&record)
+                    .map_err(|e| format!("read the record {}: {e}", record.display()))?;
+                let report: reasonbraid_adapter::CertificationReport =
+                    serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("the record parses: {e}"))?;
+                let sig_hex = std::fs::read_to_string(&sig)
+                    .map_err(|e| format!("read the signature {}: {e}", sig.display()))?;
+                let sig_bytes: Vec<u8> = (0..sig_hex.trim().len())
+                    .step_by(2)
+                    .map(|i| {
+                        u8::from_str_radix(&sig_hex.trim()[i..i + 2], 16)
+                            .map_err(|e| format!("the signature is not hex: {e}"))
+                    })
+                    .collect::<Result<_, _>>()?;
+                let key_pair = load_key(&key)?;
+                use ring::signature::KeyPair;
+                let public = key_pair.public_key();
+                ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public.as_ref())
+                    .verify(&bytes, &sig_bytes)
+                    .map_err(|_| "the signature does not verify".to_string())?;
+                if !report.digest_verifies() {
+                    return Err("the record fails its self-digest".to_string());
+                }
+                if !report.sdk_version_matches() {
+                    return Err(format!(
+                        "the record's contract version {} drifts from the SDK token",
+                        report.sdk_version
+                    ));
+                }
+                eprintln!(
+                    "the record {} verifies (the signature + the self-digest, scenario {})",
+                    record.display(),
+                    report.scenario
+                );
+                Ok(())
+            }
+        },
     }
 }

@@ -37,7 +37,12 @@ pub mod fixtures;
 pub mod resolver;
 
 pub mod bench;
+pub mod certification;
 
+pub use certification::{
+    certify, dev_six_box_evidence, BoxStatus, CertificationReport, CheckResult,
+    ConformanceScenario, SixBoxEvidence, SixBoxRecord, Trigger, Verdict,
+};
 pub use claude::ClaudeCliAdapter;
 pub use codex::CodexCliAdapter;
 pub use contract::{

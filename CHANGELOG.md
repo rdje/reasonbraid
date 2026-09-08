@@ -4,6 +4,12 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The certification suite: the report-producing run + the third-party demonstration (`PHASE-8.4.3`)
+
+- `crates/reasonbraid-adapter/src/certification.rs` — the REPORT-producing certification: the six §19.4 invariants as the typed pass/refusal results, the fail-closed verdict (ANY refusal refuses the whole certification — never a partial trust; the first refusal is named), the six-box gate (the conformance box mirrors the verdict — the caller cannot self-attest it), the digest-pinned record (`sha256:<hex>` over the canonical JSON — the self-digest re-derives + the SDK token checks).
+- The conformance harness re-expresses through the certification; the THIRD-PARTY demonstration (`tests/third_party_certification.rs`): the honest vendor adapter certifies (the record round-trips); the lying vendor adapter gets the typed `usage_accounting_honesty` refusal.
+- The release tool's `certify` verb (sign/verify): the record's self-digest re-derives BEFORE any signature, the canonical bytes are the signed + stored form, the verify re-checks the signature + the digest + the SDK token. The adapter crate's tokio `time` feature gap (surfaced by the tool's standalone build) is fixed. Frontier → `.4.4`.
+
 ## 2026-09-08 — The compatibility matrix: the evidence-bound fill (`PHASE-8.4.2`)
 
 - `docs/compatibility-matrix.md` — the 12 measured rows over the `.4.1` schema (the three dev adapters × the conformance suite, the real-provider live runs NAMED `untested`, the corpus row, the R0–R2 live-roundtrip rows, the gated R3/R5/RX named `untested`) — a cell comes from a run, never from a sibling.

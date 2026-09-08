@@ -1104,7 +1104,7 @@ default.
       matrix) is the `.6.2` doctrine's known path.
 
   - ID: `PHASE-8.4.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the certification suite — the
       third-party certification run: the harness's
       six §19.4 invariants + the book's six-box
@@ -1113,6 +1113,63 @@ default.
       qualification record), the fail-closed
       refusal vocabulary.
     ADR: 027
+    Done:
+    - `crates/reasonbraid-adapter/src/certification.rs`
+      — the REPORT-producing certification: the
+      six §19.4 invariants as the typed
+      pass/refusal results, the fail-closed
+      verdict (ANY refusal refuses the whole
+      certification — never a partial trust; the
+      first refusal is named), the six-box gate
+      (the conformance box mirrors the verdict —
+      the caller cannot self-attest it; the rest
+      ride the submitted evidence), the
+      digest-pinned record (`sha256:<hex>` over
+      the canonical JSON — the self-digest
+      re-derives + the SDK token checks).
+    - The conformance harness re-expresses through
+      the certification (the tests assert the
+      verdict + the digest + the token); the
+      THIRD-PARTY demonstration
+      (`tests/third_party_certification.rs`): the
+      honest vendor adapter certifies (the record
+      round-trips); the lying vendor adapter gets
+      the typed `usage_accounting_honesty`
+      refusal.
+    - The release tool's `certify` verb
+      (sign/verify): the record's self-digest
+      re-derives BEFORE any signature (a lying
+      record refuses), the canonical bytes are the
+      signed + stored form, the verify re-checks
+      the signature + the digest + the SDK token.
+      (The adapter crate's tokio `time` feature
+      gap surfaced by the tool's build — added.)
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the
+      conformance harness was panic-based (the
+      dev-three qualification only); a
+      third-party adapter had no report-producing
+      certification surface. Evidence: `cargo test
+      -p reasonbraid-adapter --test
+      third_party_certification` → `test result:
+      ok. 2 passed; 0 failed`.
+    - [x] **ADDRESSED** — the certification
+      module + the harness re-expression + the
+      third-party demonstration + the tool's
+      certify verb. Evidence: `cargo test -p
+      reasonbraid-adapter --lib --test
+      adapter_conformance --test
+      third_party_certification` → 11 + 3 + 2
+      passed; `cargo build -p
+      reasonbraid-release-tool` → rc=0.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      tokio feature-gap lesson (the standalone
+      consumer exposes the missing `time` feature
+      the unified build hid) is the known feature
+      unification rule, recorded here.
 
   - ID: `PHASE-8.4.4`
     Status: `proposed`
@@ -1139,9 +1196,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.4.3` | `proposed` | `.4.2` done — the compatibility matrix ships (the 12 evidence-bound rows + the gate-wired checker); the certification suite executes next |
+| 1 | `PHASE-8.4.4` | `proposed` | `.4.3` done — the certification suite ships (the report-producing run + the third-party demonstration + the signed record verb); the ADR-027 load side executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.4.3` done — the certification
+  suite (the report-producing certification with
+  the fail-closed verdict + the six-box gate, the
+  third-party demonstration — the honest vendor
+  certifies, the lying one gets the typed refusal
+  — and the release tool's `certify` sign/verify
+  verb); frontier → `.4.4`.
 
 - `2026-09-08`: `.4.2` done — the compatibility
   matrix (the 12 rows over the `.4.1` schema, the

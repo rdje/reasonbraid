@@ -20,14 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.4.3`. **The `.1`, `.2`, and `.3` lanes are COMPLETE**; `.4`
+  frontier `.4.4`. **The `.1`, `.2`, and `.3` lanes are COMPLETE**; `.4`
   done (the adapter/resolver SDK census → decomposed `.4.1`–`.4.4`);
   `.4.1` done (the SDK contract); `.4.2` done (the compatibility
-  matrix — the evidence-bound rows + the gate-wired checker).
-- **Next action:** execute `PHASE-8.4.3` — the certification suite:
-  the third-party certification run (the six §19.4 invariants + the
-  six-box gate over a THIRD-PARTY adapter) + the signed qualification
-  record.
+  matrix); `.4.3` done (the certification suite).
+- **Next action:** execute `PHASE-8.4.4` — the signed plugin
+  registry/allowlist: the ADR-027 ladder's LOAD side (the allowlist
+  ledger rows + the five-rung verification at the adapter-load path +
+  the typed per-rung refusals).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

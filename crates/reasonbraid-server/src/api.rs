@@ -527,6 +527,12 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/policy-outcomes",
             post(record_policy_outcome).get(list_policy_outcomes),
         )
+        .route("/v1/policy-reviews", get(list_policy_reviews))
+        .route("/v1/policy-reviews/schedule", post(schedule_policy_reviews))
+        .route(
+            "/v1/policy-reviews/{review_id}/done",
+            post(mark_policy_review_done),
+        )
         .route(
             "/v1/policies/{policy_id}/{version}/impact",
             get(policy_impact),
@@ -2901,6 +2907,57 @@ async fn list_policy_outcomes(
         ));
     }
     Ok(Json(crate::corrections::list_outcomes(&state.pool).await?))
+}
+
+/// `POST /v1/policy-reviews/schedule` — evaluate the DUE reviews (`.6`):
+/// the outcomes' named triggers + the drift + the repeated waivers, one
+/// due review per (publication, trigger).
+async fn schedule_policy_reviews(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::reviews::StoredReview>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal schedules no reviews",
+        ));
+    }
+    Ok(Json(crate::reviews::schedule_reviews(&state.pool).await?))
+}
+
+/// `GET /v1/policy-reviews` — the reviews, newest first.
+async fn list_policy_reviews(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::reviews::StoredReview>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no reviews",
+        ));
+    }
+    Ok(Json(crate::reviews::list_reviews(&state.pool).await?))
+}
+
+/// `POST /v1/policy-reviews/{id}/done` — the due → done transition.
+async fn mark_policy_review_done(
+    State(state): State<Arc<ApiState>>,
+    Path(review_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<crate::reviews::StoredReview>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
+    if !enrolled {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal marks nothing done",
+        ));
+    }
+    match crate::reviews::mark_done(&state.pool, &review_id).await {
+        Ok(row) => Ok(Json(row)),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
 }
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────

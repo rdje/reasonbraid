@@ -56,6 +56,7 @@ pub mod reconciler;
 mod recruitment;
 mod resolvers;
 mod resources;
+pub mod reviews;
 pub mod routing;
 pub mod snapshots;
 pub mod ssrf;

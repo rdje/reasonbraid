@@ -792,9 +792,29 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       frontier → `.6`.
 
 - ID: `PHASE-6.6`
-  Status: `proposed`
+  Status: `done`
   Goal: outcome monitoring and scheduled review triggers
   Roadmap: §15.11
+  Done (`2026-09-07`): the scheduled reviews landed —
+    migration 0045 (`policy_reviews`: the review + the
+    trigger + the due/done status);
+    `crates/reasonbraid-server/src/reviews.rs` (NEW): the
+    seven-trigger §15.11 vocabulary, the `schedule_reviews`
+    (the DUE evaluation over the `.5.3` records — the
+    outcomes' named triggers + the drift occurrences + the
+    repeated waivers; ONE due review per (publication,
+    trigger) — the dedupe; the schedule is idempotent — the
+    repeated run adds nothing), the `mark_done` (the due →
+    done transition), the list; the `.6` back-fill: the
+    outcome's `review_trigger` now rides the vocabulary (the
+    unknown trigger is the typed refusal at the
+    registration); the api: `POST
+    /v1/policy-reviews/schedule` + `GET /v1/policy-reviews`
+    + `POST /v1/policy-reviews/{id}/done`. Measured (policy
+    11): the drift + the repeated-waiver triggers schedule
+    the two due reviews, the unknown-trigger refusal, the
+    idempotent re-schedule (the dedupe), the done transition
+    + the re-done refusal, the list. Frontier → `.7`.
 
 - ID: `PHASE-6.7`
   Status: `proposed`
@@ -806,10 +826,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.6` | `proposed` | `.5.3` done — the drift + the corrections (the six categories, the §4.7 operations with the authority proofs, the preserving retraction, the outcome records; policy 10) — **the `.5` lane (the target deployment) is COMPLETE**; the outcome-monitoring lane executes next |
+| 1 | `PHASE-6.7` | `proposed` | `.6` done — the scheduled reviews (the seven triggers, the deduped idempotent schedule, the done transition; policy 11); the G3 exit + Demonstration B executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.6` done — the scheduled reviews (migration
+  0045: the seven §15.11 triggers, the deduped idempotent
+  schedule, the due/done transition, the outcome-trigger
+  vocabulary back-fill); policy 11; frontier → `.7`.
 - `2026-09-07`: `.5.3` done — the drift + the corrections
   (migration 0044: the six categories, the §4.7 operations
   with the authority proofs, the preserving retraction, the
@@ -1453,6 +1477,59 @@ the purge additions) — `\.rs$` + `(^|/)migrations/`.
   `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
   commit.
 - [x] **FIX** — `0044_policy_drift_corrections.sql`,
+  `src/corrections.rs`, `src/lib.rs`, `src/api.rs`,
+  `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.6)
+
+The CODE change owned by this leaf:
+`migrations/0045_policy_reviews.sql` (NEW — the review table),
+`crates/reasonbraid-server/src/reviews.rs` (NEW — the
+vocabulary + the schedule + the mark_done + the list),
+`crates/reasonbraid-server/src/corrections.rs` (the outcome
+trigger back-fill), `crates/reasonbraid-server/src/lib.rs`
+(the module), `crates/reasonbraid-server/src/api.rs` (the
+three verbs), `crates/reasonbraid-server/tests/policy.rs`
+(the new test) — `\.rs$` + `(^|/)migrations/`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  `.5.3` outcomes carried the trigger NAMES but nothing
+  evaluated the due-ness (the `.6` census — the scheduled
+  reviews were the greenfield).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
+  "policy_reviews\|schedule_reviews\|REVIEW_TRIGGERS" 814cc31
+  -- crates/ migrations/` → rc=1 (nothing before this leaf).
+  The fix point is the §15.11 schedule: the seven-trigger
+  evaluation + the dedupe + the done transition.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `DATABASE_URL=… cargo test -p
+  reasonbraid-server --test policy
+  the_scheduled_reviews_evaluate_the_triggers` →
+  `test result: ok. 1 passed` (also inside the full live
+  suite: `running 11 tests … ok`) — the drift + the
+  repeated-waiver triggers schedule the two due reviews, the
+  unknown-trigger refusal, the idempotent re-schedule (the
+  dedupe), the done transition + the re-done refusal, the
+  list.
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 63 suites;
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg536_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit. The first offline pass hit the pre-existing
+  extract-fixture FLAKE (the `write_input` pid+nanos path
+  under `/tmp` collided under the parallel load — the PDF
+  read the wrong bytes; the re-run passed 7/7; the live
+  guard stayed green). Recorded as the §19.7 observation —
+  the quarantine (the owner + the expiry + the visible risk)
+  rides a MAINT leaf, not this one.
+- [x] **FIX** — `0045_policy_reviews.sql`, `src/reviews.rs`,
   `src/corrections.rs`, `src/lib.rs`, `src/api.rs`,
   `tests/policy.rs`.
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's

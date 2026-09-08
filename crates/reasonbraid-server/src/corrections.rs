@@ -300,6 +300,16 @@ pub async fn record_outcome(pool: &PgPool, input: &OutcomeInput) -> Result<(), C
     if !OUTCOME_KINDS.contains(&input.kind.as_str()) {
         return Err(CorrectionError::UnknownKind(input.kind.clone()));
     }
+    // `.6`: the review trigger rides the §15.11 vocabulary (the schedule's
+    // seven names) — the `.6` back-fill tightens the `.5.3` free string.
+    if let Some(trigger) = input.review_trigger.as_deref() {
+        if !crate::reviews::REVIEW_TRIGGERS.contains(&trigger) {
+            return Err(CorrectionError::UnknownKind(format!(
+                "review trigger `{trigger}` (the vocabulary: {})",
+                crate::reviews::REVIEW_TRIGGERS.join(", ")
+            )));
+        }
+    }
     publication_exists(pool, &input.publication_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_outcomes \

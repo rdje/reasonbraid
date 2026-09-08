@@ -2926,3 +2926,301 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     assert_eq!(status, 200, "the outcomes read: {outcomes}");
     assert_eq!(outcomes.as_array().unwrap().len(), 1, "{outcomes:?}");
 }
+
+#[tokio::test]
+async fn the_scheduled_reviews_evaluate_the_triggers() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rv-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // The chain to a STAGED publication (the outcomes only require the
+    // existence).
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &human_id,
+        &json!({
+            "policy_id": "rv-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "rv",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the reviewed clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "rv-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "rv",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+    let (status, _) = command(
+        "rv-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "rv-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    let proposal_id = "rv-prop";
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &human_id,
+        &json!({
+            "proposal_id": proposal_id,
+            "policy_id": "rv-policy",
+            "policy_version": "1.0.0",
+            "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the proposal registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &human_id,
+        &json!({
+            "decision_id": "rv-dec",
+            "proposal_id": proposal_id,
+            "rule": "majority",
+            "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the decision records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &human_id,
+        &json!({
+            "approval_id": "rv-app",
+            "proposal_id": proposal_id,
+            "decision_id": "rv-dec",
+            "approver": human_id,
+            "grant_id": grant_id,
+            "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the approval records");
+    let (status, projection) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "rv-proj",
+            "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "rv-policy", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the projection records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "rv-pub",
+            "proposal_id": proposal_id,
+            "decision_id": "rv-dec",
+            "approval_id": "rv-app",
+            "projection_id": "rv-proj",
+            "manifest_digest": projection["digest"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publication stages");
+
+    // 1. The outcomes + the waiver feed the triggers. The OUTCOME's
+    // trigger rides the §15.11 vocabulary (the `.6` back-fill).
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &json!({
+            "outcome_id": "rv-out-1",
+            "publication_id": "rv-pub",
+            "kind": "observation",
+            "review_trigger": "drift",
+            "note": "the target lagged",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the outcome records");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &json!({
+            "outcome_id": "rv-out-bad",
+            "publication_id": "rv-pub",
+            "kind": "observation",
+            "review_trigger": "vibes",
+            "note": "nope",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the unknown trigger refuses: {refused}");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({
+            "correction_id": "rv-waiver",
+            "publication_id": "rv-pub",
+            "operation": "waiver",
+            "authority_grant": grant_id,
+            "expires_at": "2026-09-15T00:00:00Z",
+            "reason": "the bounded exception",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the waiver records");
+
+    // 2. The schedule: the drift trigger (the outcome) + the
+    // repeated_waiver trigger (the waiver) → two due reviews.
+    let (status, scheduled) = post(
+        &client,
+        &base,
+        "/v1/policy-reviews/schedule",
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the schedule evaluates: {scheduled}");
+    let scheduled = scheduled.as_array().unwrap();
+    assert_eq!(scheduled.len(), 2, "{scheduled:?}");
+    let triggers: Vec<&str> = scheduled
+        .iter()
+        .map(|r| r["trigger"].as_str().unwrap())
+        .collect();
+    assert!(triggers.contains(&"drift"), "{triggers:?}");
+    assert!(triggers.contains(&"repeated_waiver"), "{triggers:?}");
+
+    // 3. The schedule is IDEMPOTENT (the dedupe: the second run adds
+    // nothing).
+    let (status, again) = post(
+        &client,
+        &base,
+        "/v1/policy-reviews/schedule",
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the second schedule: {again}");
+    assert_eq!(again.as_array().unwrap().len(), 0, "the dedupe holds");
+
+    // 4. The done transition + the re-done refusal.
+    let review_id = scheduled[0]["review_id"].as_str().unwrap().to_string();
+    let (status, done) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-reviews/{review_id}/done"),
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the review marks done: {done}");
+    assert_eq!(done["status"], json!("done"));
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-reviews/{review_id}/done"),
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 400, "the re-done refuses: {refused}");
+
+    // 5. The list.
+    let (status, reviews) = get(&client, &base, "/v1/policy-reviews", &human_id).await;
+    assert_eq!(status, 200, "the reviews read: {reviews}");
+    let reviews = reviews.as_array().unwrap();
+    assert_eq!(reviews.len(), 2, "{reviews:?}");
+    assert!(
+        reviews.iter().any(|r| r["status"] == json!("done")),
+        "the done review rides the list"
+    );
+}

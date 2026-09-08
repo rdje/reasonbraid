@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The scheduled reviews land (`PHASE-6.6`)
+
+- Migration 0045: the seven §15.11 review triggers, the DUE evaluation over the `.5.3` records (one due review per (publication, trigger) — the dedupe; the schedule is idempotent), the due → done transition, and the outcome-trigger vocabulary back-fill (an unknown trigger is now the typed refusal at the outcome registration). The verbs: `POST /v1/policy-reviews/schedule`, `GET /v1/policy-reviews`, `POST /v1/policy-reviews/{id}/done`. Measured: policy 11.
+
 ## 2026-09-07 — The drift and the corrections land — the `.5` lane is COMPLETE (`PHASE-6.5.3`)
 
 - Migration 0044: the drift records (the six §15.10 categories over the desired/observed pair), the §4.7 corrections (the authority-grant re-check; the suspension/waiver REQUIRE the expiry; the supersession links the old; the retraction NEVER deletes — the correction is a new row), and the §15.11 outcome records. The verbs: `POST`/`GET /v1/policy-drift`, `/v1/policy-corrections`, `/v1/policy-outcomes`. Measured: policy 10. **The `.5` lane (the target deployment) is COMPLETE.**

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-08)_ — PHASE-7.1.3.3: the disposition destroyed the evidence the rule exists to protect — the prune had no quarantine exclusion
+
+- **A dead-lettered row is acknowledged BY DEFINITION** (the node delivered it, then reported it dead) — so the retention's `acknowledged_at IS NOT NULL AND acknowledged_at <= cutoff` delete swept the quarantined rows away once old enough. The §16.11 rule ("the quarantine preserves the evidence") was therefore unenforced exactly where it mattered: the age-based disposition. The fix is one predicate — `AND quarantined_at IS NULL` — and the census-driven contract (`docs/decisions/2026-09-08_quarantine-preserves-evidence.md`) articulates the rest: the quarantine is a ROW FACT; the retention never deletes it; the replay re-arm clears the MARK, never the evidence.
+- promotion: promoted → `docs/decisions/2026-09-08_quarantine-preserves-evidence.md` (top-level `answers:`). **Frontier `PHASE-7.1.4` (the `.1.3` lane is COMPLETE).**
+
 ## _(2026-09-08)_ — PHASE-7.1.3.2: the app and the schema move together — a new schema dependency breaks the migration_upgrade seed's "API writes the OLD schema" premise
 
 - **The upgrade test's seed phase couples the app version to the schema version.** The quota leaf made the enroll path write the NEW migration's tables (`usage_quotas`), so the `migration_upgrade` suite's seed — "the REAL API against all-but-last migrations" — failed with `relation "usage_quotas" does not exist`. The honest fix: the pre-upgrade database holds the OLD app's writes, so the seed writes the PRE-UPGRADE SCHEMA'S OWN SHAPE (raw rows: the tenant + the functional dev boundary, wire names replicated exactly) and the post-upgrade API check stays. The lesson: a leaf that adds a schema dependency to an app path must re-check the upgrade test's seed premise — the "API-seeds-the-old-schema" trick only works while the app writes only the old schema's tables.

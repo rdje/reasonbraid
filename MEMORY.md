@@ -16,18 +16,20 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.3.3`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4`.
   `.1.1` done (ADR-034 accepted); `.1.2` done (the mTLS workload identity);
-  `.1.3` done (the census → decomposed); `.1.3.1` done (the RLS
-  defense-in-depth: the fail-closed command-core policies + the measured
-  probe-role refusal); `.1.3.2` done (the quotas: migration 0047's windowed
-  per-key ceilings + the recorded use/denial events + the per-tenant invite
-  binding + the fail-closed unconfigured stance).
-- **Next action:** execute `PHASE-7.1.3.3` — the
-  quarantine-preserving-evidence rule (§16.11): the articulated contract —
-  the quarantine is a ROW FACT (the evidence stays), the retention cleanup
-  stays the explicit operator action (the `.1.2.3` shape), no quarantine
-  path may delete the evidence it cites.
+  `.1.3` lane COMPLETE: the census → `.1.3.1` (the RLS defense-in-depth:
+  the fail-closed command-core policies + the measured probe-role refusal),
+  `.1.3.2` (the quotas: the windowed per-key ceilings + the recorded
+  denials + the invite binding), `.1.3.3` (the quarantine-preserving-
+  evidence rule: the prune's quarantine exclusion + the articulated
+  contract).
+- **Next action:** execute `PHASE-7.1.4` — the secret-manager integration +
+  the regional/data-class controls: the external secret-store interface
+  (the DECLARED profiles — the external store is a configuration choice,
+  never an ambient dependency), the classification-driven
+  region/retention/export decisions (the §16.8 thread-classification
+  controls — a classification without the controls is the typed refusal).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

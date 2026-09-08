@@ -1262,9 +1262,11 @@ async fn inspect_node_inbox(
     }))
 }
 
-/// The `POST /v1/nodes/inbox/prune` body: the retention window — DELIVERED rows
-/// (acknowledged by the node) at least this old are deleted. Cleanup is an
-/// explicit, measured operator action; nothing sweeps on its own.
+/// The `POST /v1/nodes/inbox/prune` body: the retention window — DELIVERED
+/// rows (acknowledged by the node) at least this old are deleted. A
+/// QUARANTINED row is never prunable (§16.11, `.1.3.3`): the preservation
+/// survives the disposition. Cleanup is an explicit, measured operator
+/// action; nothing sweeps on its own.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PruneInboxRequest {
@@ -1302,9 +1304,14 @@ async fn prune_node_inbox(
         .bind(&req.node_id)
         .fetch_one(&mut *tx)
         .await?;
+    // The preservation rule (§16.11, `.1.3.3`): the retention NEVER deletes
+    // a quarantined row — the quarantine fact survives the disposition. A
+    // dead-lettered row is delivered (acknowledged) by definition, so
+    // WITHOUT the exclusion the age-based sweep would destroy the evidence.
     let deleted = sqlx::query(
         "DELETE FROM node_inbox \
-         WHERE node_id = $1 AND acknowledged_at IS NOT NULL AND acknowledged_at <= $2",
+         WHERE node_id = $1 AND acknowledged_at IS NOT NULL AND acknowledged_at <= $2 \
+           AND quarantined_at IS NULL",
     )
     .bind(&req.node_id)
     .bind(cutoff)

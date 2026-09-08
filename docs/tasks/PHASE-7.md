@@ -339,7 +339,7 @@ reopens the applicable portions of G4–G7.
       `promotion: declined (the upgrade-boundary fact is per-slice history, recorded in the migration_upgrade test it shapes)`
 
   - ID: `PHASE-7.1.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the quarantine-preserving-evidence rule (§16.11)
       — the articulated contract: the quarantine is a ROW
       FACT (the evidence stays; the preservation survives
@@ -347,6 +347,59 @@ reopens the applicable portions of G4–G7.
       explicit operator action (the `.1.2.3` shape), no
       quarantine path may delete the evidence it cites.
     Roadmap: §16.11
+    Done (`2026-09-08`): the census measured every
+      quarantine path: the explicit + the dead-letter
+      auto-quarantine are UPDATE-only row facts
+      (`quarantined_at` + `quarantine_reason`), the replay
+      re-arm clears the MARK (the delivery state), never
+      the row — and the RETENTION path held the gap: the
+      prune deleted EVERY old acknowledged row, and a
+      dead-lettered row is acknowledged BY DEFINITION —
+      the disposition destroyed the evidence. FIXED: the
+      prune's DELETE gains `AND quarantined_at IS NULL`
+      (the preservation survives the disposition). The
+      contract articulates the rule in
+      `docs/decisions/2026-09-08_quarantine-preserves-evidence.md`
+      (top-level `answers:`): the quarantine is a ROW FACT;
+      the retention never deletes a quarantined row; the
+      re-arm is a disposition (the mark clears), never a
+      destruction (the row + the payload + the events
+      stay); the prune stays the ONLY age-based removal,
+      operator-invoked, with the measured receipt. The
+      measured suite (`tests/quarantine.rs`, LIVE — the
+      guard's 24th): the old-acked quarantined row (with
+      its reason) SURVIVES the prune; the old-acked
+      non-quarantined row prunes; the recent row stays;
+      the receipt matches (before 3 / deleted 1 / after 2).
+      The archive/export disposition (moving the evidence,
+      never deleting it) is the named deferral with the
+      Internet-profile trigger.
+    Decision: `docs/decisions/2026-09-08_quarantine-preserves-evidence.md`
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §16.11 rule
+      was unarticulated and the prune lacked the
+      quarantine exclusion (a dead-lettered row is
+      acknowledged by definition → the age sweep deleted
+      the evidence). Evidence: the quarantine suite —
+      `cargo test -p reasonbraid-server --test quarantine`
+      → `test result: ok. 1 passed; 0 failed`.
+    - [x] **ADDRESSED** — the prune's `AND quarantined_at
+      IS NULL` + the articulated contract (the decision
+      record). Evidence: the suite's legs (the
+      quarantined row + its reason survive; the sweep
+      still removes its target; the receipt matches) —
+      `target/pg_quarantine_guard.log`.
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 24 suites + the demo `ALL acceptance checks
+      passed` (`target/pg_quarantine_guard.log`);
+      `cargo test --all` → rc=0, 67 suites
+      (`target/quarantine_offline.log`); clippy/fmt clean;
+      `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — the retention-vs-evidence
+      gap (the disposition destroyed the evidence the rule
+      exists to protect):
+      `docs/decisions/2026-09-08_quarantine-preserves-evidence.md`
+      (top-level `answers:`).
 
   - ID: `PHASE-7.1.4`
     Status: `proposed`
@@ -385,10 +438,17 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.3.3` | `proposed` | `.1.3.2` done — the quota machinery ships (migration 0047 + the in-tx check + the recorded denials + the invite-storm binding + the measured suite); the quarantine-preserving-evidence rule executes next |
+| 1 | `PHASE-7.1.4` | `proposed` | `.1.3.3` done — the quarantine-preserving-evidence rule ships (the prune's quarantine exclusion + the articulated contract + the measured suite); **the `.1.3` lane is COMPLETE** — the secret-manager integration + the regional/data-class controls execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.3.3` done — the
+  quarantine-preserving-evidence rule (the census found
+  the retention gap — the prune deleted acknowledged
+  dead-lettered rows; the `AND quarantined_at IS NULL`
+  exclusion + the articulated contract + the measured
+  survival legs); **the `.1.3` lane is COMPLETE**;
+  frontier → `.1.4`.
 - `2026-09-08`: `.1.3.2` done — the quotas (migration
   0047's windowed per-key ceilings + the recorded
   use/denial events; the fail-closed unconfigured stance +

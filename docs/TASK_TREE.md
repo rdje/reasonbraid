@@ -58,6 +58,6 @@ on the same commit. One commit per completed leaf.
 | [`PHASE-4`](tasks/PHASE-4.md) | `done` | tree complete — the five pack lanes + the evidence pipeline; the G4 gate Met (the record + the subtraction + the manifest) | repo-local |
 | [`PHASE-5`](tasks/PHASE-5.md) | `done` | tree complete — the five lanes + the G5 gate **Met as a subtraction gate** (the lift claim withdrawn per §25.1; the record + the subtraction + the manifest); next executable work is `PHASE-6.1` | repo-local |
 | [`PHASE-6`](tasks/PHASE-6.md) | `done` | tree complete — the seven lanes + the G3 gate **Met as machinery, blocked as binding use** (the record + the subtraction + the Demo-B walk + the manifest); next executable work is `PHASE-7.1` | repo-local |
-| [`PHASE-7`](tasks/PHASE-7.md) | `active` | `.1.3.3` — the quarantine-preserving-evidence rule (`.1.1` done: ADR-034; `.1.2` done: the mTLS identity; `.1.3` done: the census → decomposed; `.1.3.1` done: the RLS layer; `.1.3.2` done: the quotas — the recorded-denial invite binding) | repo-local |
+| [`PHASE-7`](tasks/PHASE-7.md) | `active` | `.1.4` — the secret-manager integration + the regional/data-class controls (`.1.1` done: ADR-034; `.1.2` done: the mTLS identity; the `.1.3` lane COMPLETE — the RLS layer, the quotas, the quarantine-evidence rule) | repo-local |
 | [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |
 | [`PHASE-9`](tasks/PHASE-9.md) | `proposed` | `.1` — stable release | repo-local |

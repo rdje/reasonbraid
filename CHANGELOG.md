@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The quarantine preserves the evidence: the retention never deletes a quarantined row (`PHASE-7.1.3.3`)
+
+- The census found the retention gap: a dead-lettered row is acknowledged BY DEFINITION, so the prune's age-based delete swept the quarantined rows — the disposition destroyed the evidence the §16.11 rule exists to protect. Fixed: the prune gains `AND quarantined_at IS NULL`. The contract (`docs/decisions/2026-09-08_quarantine-preserves-evidence.md`, top-level `answers:`): the quarantine is a ROW FACT; the retention never deletes it; the replay re-arm clears the mark (the delivery state), never the evidence; the prune stays the only age-based removal with the measured receipt. The measured suite (`tests/quarantine.rs`, the guard's 24th) proves the quarantined row + its reason survive while the sweep still removes its target. **The `.1.3` lane is COMPLETE** — frontier → `.1.4`.
+
 ## 2026-09-08 — The quotas: windowed per-key ceilings with recorded denials (`PHASE-7.1.3.2`)
 
 - Migration 0047: `usage_quotas` (the per-key WINDOWED ceilings — the tenant/principal/resolver/destination scopes, the ceiling + the window) + `quota_events` (the recorded uses AND denials — a refusal is never silent). The check rides the budget-machinery pattern: the in-tx `quota::check_in_tx` records a `use` under the ceiling and a `denial` + the typed refusal at it; the events commit with the guarded action. Fail-closed: a scope with no quota is the typed `quota_unconfigured` (503); the migration backfills the dev default (1000 invites/hour) and the enroll path creates it in the tenant's own transaction.

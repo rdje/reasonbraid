@@ -285,7 +285,7 @@ default.
   Children: `.2.1`–`.2.4`
 
   - ID: `PHASE-8.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the census + ADR-025 — the A2A surface +
       the version-profile contract: the facade
       boundary (the message mapping where the
@@ -296,6 +296,25 @@ default.
       compatibility demonstrated).
     ADR: 025
     Roadmap: §9.7
+    Done (`2026-09-08`): ADR-025 accepted
+      (evidence-gated) — `docs/adr/025-a2a-interoperability-surface.md`
+      (top-level `answers:`): the FACADE boundary (A2A
+      maps the compatible semantics; the message is an
+      INPUT the local machinery evaluates — the local
+      grants authorize, the local budgets bound, the
+      local policy digests decide; the Agent Card
+      confers nothing); the semantic losses are
+      RECORDED per exchange (the authority, the
+      budget, the evidence, the decision rule, the
+      policy lifecycle — each names its loss, never a
+      silent merge); the version profile (the
+      JSON-RPC/REST first, the exact crate versions
+      pin at `.2.2`, the tested conformance revision
+      records, the pre-1.0 compatibility DEMONSTRATED
+      by the `.2.4` roundtrip — never inferred); the
+      qualification precedes the broad claims, the
+      gateway is deployable-off. No code changed.
+      Frontier → `.2.2`.
 
   - ID: `PHASE-8.2.2`
     Status: `proposed`
@@ -354,10 +373,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.2.1` | `proposed` | `.2` decomposed at the census seams (nothing ships for A2A; the §9.7 contract + the 2026-09-04 baseline re-checked; ADR-025 reserved) — the census + ADR-025 execute first |
+| 1 | `PHASE-8.2.2` | `proposed` | `.2.1` done — ADR-025 accepted (the facade + the recorded losses + the demonstrated-compatibility stance); the dependency census + the pin execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.1` done — ADR-025 accepted
+  (evidence-gated): the facade boundary + the
+  recorded semantic losses + the version-pin/
+  demonstrated-compatibility stance; no code;
+  frontier → `.2.2`.
 - `2026-09-08`: `.2` done — the A2A census at the
   seams (the §9.7 facade is the greenfield; the
   `a2a-lf` family re-checked on crates.io; ADR-025

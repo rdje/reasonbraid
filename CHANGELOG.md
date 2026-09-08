@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — ADR-025: the A2A facade with recorded semantic losses (`PHASE-8.2.1`)
+
+- ADR-025 accepted (`docs/adr/025-a2a-interoperability-surface.md`, top-level `answers:`): the facade boundary (A2A maps the compatible semantics; the message is an INPUT the local machinery evaluates — the local grants authorize, the local budgets bound, the local policy digests decide; the Agent Card confers nothing); the semantic losses are RECORDED per exchange (the authority/budget/evidence/decision-rule/lifecycle — never a silent merge); the version profile (the JSON-RPC/REST first, the exact crate versions pin, the tested conformance revision records, the pre-1.0 compatibility DEMONSTRATED by the roundtrip — never inferred); the qualification precedes the broad claims, the gateway deployable-off. No code. Frontier → `.2.2`.
+
 ## 2026-09-08 — The A2A census: the facade is the greenfield, the baseline re-checked (`PHASE-8.2`)
 
 - The census at the seams: nothing ships for A2A (the §9.7 facade is the greenfield); the contract is precise — the facade boundary (A2A is the interoperability facade, never the governance protocol), the semantic-losses map (the authority/budget/evidence/decision-rule/lifecycle each record their loss), the Agent Card confers nothing; the official `a2a-lf`/`a2a-client-lf`/`a2a-server-lf` crates + the `a2a-cli` exist on crates.io (the 2026-09-04 baseline re-checked — the pre-1.0 compatibility must be DEMONSTRATED, not inferred); ADR-025 is reserved. Decomposed: `.2.1` the census + ADR-025 → `.2.2` the dependency pin → `.2.3` the facade → `.2.4` the compatibility demonstration + the qualification.

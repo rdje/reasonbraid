@@ -20,15 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.2.1`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
-  census: the §9.7 facade is the greenfield, the `a2a-lf` family
-  re-checked, ADR-025 reserved) → decomposed `.2.1` (the census +
-  ADR-025) → `.2.2` (the dependency pin) → `.2.3` (the facade) →
-  `.2.4` (the qualification).
-- **Next action:** execute `PHASE-8.2.1` — the census + ADR-025 (the
-  A2A surface + the version-profile contract): the facade boundary, the
-  semantic-losses vocabulary, the version-pin + the revalidation
-  stance.
+  frontier `.2.2`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
+  census) → decomposed; `.2.1` done (ADR-025 accepted — the facade +
+  the recorded losses + the demonstrated-compatibility stance).
+- **Next action:** execute `PHASE-8.2.2` — the A2A dependency census +
+  the pin: the `a2a-lf` crate family's exact versions + the
+  supply-chain gate (the deny + the license checks), the JSON-RPC/REST
+  profile selection, the `Cargo.lock` pin + the tested revision
+  record.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

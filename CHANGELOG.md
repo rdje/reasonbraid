@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The quotas: windowed per-key ceilings with recorded denials (`PHASE-7.1.3.2`)
+
+- Migration 0047: `usage_quotas` (the per-key WINDOWED ceilings — the tenant/principal/resolver/destination scopes, the ceiling + the window) + `quota_events` (the recorded uses AND denials — a refusal is never silent). The check rides the budget-machinery pattern: the in-tx `quota::check_in_tx` records a `use` under the ceiling and a `denial` + the typed refusal at it; the events commit with the guarded action. Fail-closed: a scope with no quota is the typed `quota_unconfigured` (503); the migration backfills the dev default (1000 invites/hour) and the enroll path creates it in the tenant's own transaction.
+- The shipped binding: the per-tenant INVITE bound (the invitation-storm surface — `thread.invite` checks before dispatching; the refusal rides the commit-on-refusal pattern so the denial row survives). The wire gains `quota_exceeded` (429) + `quota_unconfigured` (503). The principal/resolver/destination bindings are the named deferrals. The migration_upgrade seed now writes the pre-upgrade schema's own shape (the new enroll depends on the new schema). Frontier → `.1.3.3`.
+
 ## 2026-09-08 — The RLS defense-in-depth: the fail-closed tenant claim on the command core (`PHASE-7.1.3.1`)
 
 - Migration 0046: `ENABLE` + `FORCE ROW LEVEL SECURITY` on `aggregate_state`/`event_log`/`idempotency` with `USING/WITH CHECK (tenant_id = current_setting('app.tenant_id', true))` — fail-closed (the unset claim matches no row). The claim is the transaction-local `app.tenant_id` GUC, set as the first statement of the command transaction (`agg::claim_in_tx` + `agg::apply_fresh_in_tx`) and via the `rls::with_tenant_claim` wrapper for the inspection reads (api.rs) + the policy-lane EXISTS checks (lifecycle.rs, now tenant-threaded).

@@ -264,7 +264,7 @@ reopens the applicable portions of G4–G7.
       (top-level `answers:`).
 
   - ID: `PHASE-7.1.3.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the quotas — the per-principal/tenant/resolver
       quota tables + the reservation-path check riding the
       Phase-2 budget machinery (the same in-transaction
@@ -272,6 +272,71 @@ reopens the applicable portions of G4–G7.
       event, never silent), the §16.11 abuse vocabulary
       bound per ADR-034.
     Roadmap: §16.8, §16.11
+    Done (`2026-09-08`): migration 0047 — `usage_quotas`
+      (the per-key WINDOWED ceilings: `scope_kind` ∈
+      tenant/principal/resolver/destination, the ceiling +
+      the window, UNIQUE per key) + `quota_events` (the
+      recorded uses AND denials — the audit). The check
+      rides the budget-machinery pattern: `quota.rs`'s
+      in-tx `check_in_tx` counts the window's uses, records
+      a `use` under the ceiling, records a `denial` + the
+      typed refusal at it; the events commit WITH the
+      guarded action (a rolled-back invite rolls its use
+      back). FAIL-CLOSED: a scope with no quota row is the
+      typed `quota_unconfigured` (503) — the surface
+      refuses until a bound exists (ADR-034's "never
+      silent"); the migration BACKFILLS the dev default
+      (1000 invites/hour) for existing tenants, and the
+      enroll path creates it in the tenant's OWN
+      transaction (a tenant exists with its bounds). The
+      SHIPPED binding: the per-tenant INVITE bound (the
+      invitation-storm surface) — `thread.invite` checks
+      before dispatching; the quota refusal rides the
+      authorization-denied pattern (the rejection stores +
+      the denial row COMMITS — never a silent rollback);
+      the wire gains `quota_exceeded` (429) +
+      `quota_unconfigured` (503). The NAMED deferrals (each
+      with its trigger): the principal/resolver/destination
+      bindings (the Internet profile's fetch + the public
+      enrollment surfaces). The guard's migration_upgrade
+      seed now writes the pre-upgrade schema's OWN shape
+      (the new enroll depends on the new schema — the
+      honest upgrade boundary, recorded in the test).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the abuse
+      vocabulary was unbound (the `.1.3` census: no quota
+      machinery; ADR-034 names the invitation storms); the
+      bound lands on the invite dispatch — the only
+      storm-capable shipped surface — riding the budget
+      machinery's in-tx + recorded-denial pattern.
+      Evidence: `cargo test -p reasonbraid-server --test
+      quota` → `test result: ok. 1 passed; 0 failed` (the
+      ceiling crossing, the recorded denial, the window
+      slide, the fail-closed unconfigured stance).
+    - [x] **ADDRESSED** — migration 0047 + `quota.rs` +
+      the `thread.invite` gate + the enroll default + the
+      backfill; the refusal is a recorded event (the
+      denial row) and the stored rejection replays with
+      the original 429/503. Evidence: the quota suite's
+      legs (uses == the accepted invites; denials == 1;
+      the slide releases; the unconfigured refusal
+      records nothing) — `target/pg_quota_guard8.log`.
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 23 suites + the demo `ALL acceptance checks
+      passed` (`target/pg_quota_guard8.log`); the
+      FK-purge ripple (the quota tables reference
+      `tenants`) fixed across all 14 purge lists + the CLI
+      e2e; `cargo test --all` → rc=0, 66 suites
+      (`target/quota_offline.log`); clippy/fmt clean;
+      `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — the upgrade-boundary
+      coupling (the new app's enroll depends on the new
+      schema — the migration_upgrade seed rides the
+      pre-upgrade schema's raw shape): recorded in the
+      test's own header (the test IS the re-derivation
+      point); the quota design itself rides the ADR-034
+      contract, already accepted.
+      `promotion: declined (the upgrade-boundary fact is per-slice history, recorded in the migration_upgrade test it shapes)`
 
   - ID: `PHASE-7.1.3.3`
     Status: `proposed`
@@ -320,10 +385,18 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.3.2` | `proposed` | `.1.3.1` done — the RLS defense-in-depth ships (migration 0046 + the claim wiring + the measured DB-level cross-tenant refusal); the quotas execute next |
+| 1 | `PHASE-7.1.3.3` | `proposed` | `.1.3.2` done — the quota machinery ships (migration 0047 + the in-tx check + the recorded denials + the invite-storm binding + the measured suite); the quarantine-preserving-evidence rule executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.3.2` done — the quotas (migration
+  0047's windowed per-key ceilings + the recorded
+  use/denial events; the fail-closed unconfigured stance +
+  the backfill + the enroll default; the per-tenant invite
+  binding with the commit-on-refusal pattern; the
+  measured storm/denial/slide/unconfigured legs); the
+  principal/resolver/destination bindings named with their
+  triggers; frontier → `.1.3.3`.
 - `2026-09-08`: `.1.3.1` done — the RLS defense-in-depth
   (migration 0046: the fail-closed policies on the command
   core; the transaction-local claim; the measured

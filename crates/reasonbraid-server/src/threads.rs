@@ -641,6 +641,11 @@ pub enum ThreadError {
     /// The stored projection does not parse (the database was modified outside the
     /// supported surface — the "no database surgery" acceptance's failure mode).
     CorruptState(String),
+    /// The quota check refused the command (`.1.3.2`): the recorded denial
+    /// rides the caller's transaction — the refusal is never silent. The
+    /// carried error names the exact verdict (exceeded vs unconfigured vs a
+    /// storage failure).
+    QuotaRefused(crate::quota::QuotaError),
 }
 
 impl std::fmt::Display for ThreadError {
@@ -678,6 +683,9 @@ impl std::fmt::Display for ThreadError {
             }
             ThreadError::CorruptState(detail) => {
                 write!(f, "the stored thread state is corrupt: {detail}")
+            }
+            ThreadError::QuotaRefused(e) => {
+                write!(f, "the quota refused the command: {e}")
             }
         }
     }
@@ -1091,6 +1099,20 @@ where
                 _ => {}
             }
             let now = Utc::now();
+            // The per-tenant INVITE quota (`.1.3.2`, ADR-034 §16.11): the
+            // invitation-storm bound — the check rides THIS transaction (a
+            // use/denial event commits with the invitation; a refusal is a
+            // recorded event, never silent; the unconfigured scope refuses
+            // fail-closed).
+            crate::quota::check_in_tx(
+                &mut *tx,
+                &tenant_id.to_string(),
+                crate::quota::SCOPE_TENANT,
+                &tenant_id.to_string(),
+                now,
+            )
+            .await
+            .map_err(ThreadError::QuotaRefused)?;
             let expires_at = body
                 .expires_in_seconds
                 .map(|secs| now + ChronoDuration::seconds(secs));

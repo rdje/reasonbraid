@@ -77,6 +77,8 @@ async fn pool() -> Option<PgPool> {
         "agent_roles",
         "human_principals",
         "resource_references",
+        "quota_events",
+        "usage_quotas",
         "tenants",
         "idempotency",
         "event_log",

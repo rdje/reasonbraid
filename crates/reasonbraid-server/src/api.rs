@@ -128,6 +128,26 @@ impl ControlApiError {
         }
     }
 
+    /// The quota window's ceiling is reached (`.1.3.2`) — the denial is
+    /// recorded; the client may retry after the window slides.
+    pub fn quota_exceeded(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "quota_exceeded",
+            message: message.into(),
+        }
+    }
+
+    /// The scope has NO configured quota (`.1.3.2`, fail-closed) — the
+    /// surface refuses until the operator declares a bound.
+    pub fn quota_unconfigured(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "quota_unconfigured",
+            message: message.into(),
+        }
+    }
+
     pub fn internal() -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -154,6 +174,8 @@ impl ControlApiError {
             "scope_hidden" => StatusCode::NOT_FOUND,
             "idempotency_mismatch" => StatusCode::CONFLICT,
             "protocol_incompatible" => StatusCode::BAD_REQUEST,
+            "quota_exceeded" => StatusCode::TOO_MANY_REQUESTS,
+            "quota_unconfigured" => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -244,6 +266,18 @@ impl From<threads::ThreadError> for ControlApiError {
                 eprintln!("control api: corrupt stored thread state: {detail}");
                 ControlApiError::internal()
             }
+            threads::ThreadError::QuotaRefused(q) => match q {
+                crate::quota::QuotaError::Unconfigured { .. } => {
+                    ControlApiError::quota_unconfigured(q.to_string())
+                }
+                crate::quota::QuotaError::Exceeded { .. } => {
+                    ControlApiError::quota_exceeded(q.to_string())
+                }
+                crate::quota::QuotaError::Storage(detail) => {
+                    eprintln!("control api: quota storage failure: {detail}");
+                    ControlApiError::internal()
+                }
+            },
         }
     }
 }
@@ -748,6 +782,9 @@ async fn enroll(
             .bind(tenant_id.to_string())
             .execute(&mut *tx)
             .await?;
+        // The tenant's default quotas (`.1.3.2`): the invite-storm bound
+        // rides the SAME transaction — a tenant exists with its bounds.
+        crate::quota::insert_defaults_in_tx(&mut *tx, &tenant_id.to_string()).await?;
         authority::insert_boundary_in_tx(&mut *tx, &b).await?;
         boundary = Some(b);
     }
@@ -4951,7 +4988,12 @@ async fn run_thread_command(
             operation,
             body,
         } => {
-            let prepared = threads::prepare_thread_command(
+            // The quota refusal (`.1.3.2`) is a RECORDED denial: the event
+            // row must COMMIT even though the command is refused — the
+            // authorization-denied pattern (store the rejection + commit),
+            // never a silent rollback. Other domain refusals keep their
+            // rollback semantics (the tx drops; the redelivery re-validates).
+            let prepared = match threads::prepare_thread_command(
                 &mut *tx,
                 tenant_id,
                 thread_id,
@@ -4959,7 +5001,18 @@ async fn run_thread_command(
                 &principal.id_string(),
                 body,
             )
-            .await?;
+            .await
+            {
+                Ok(p) => p,
+                Err(threads::ThreadError::QuotaRefused(q)) => {
+                    let err = ControlApiError::from(threads::ThreadError::QuotaRefused(q));
+                    store_rejection(&mut *tx, tenant_id, idempotency_key, &err.failure_result())
+                        .await?;
+                    tx.commit().await?;
+                    return Err(err);
+                }
+                Err(e) => return Err(e.into()),
+            };
             (*thread_id, prepared)
         }
     };

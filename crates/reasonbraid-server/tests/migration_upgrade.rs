@@ -1,8 +1,11 @@
 //! Migration upgrade test (`PHASE-2.4.2`; ROADMAP §17.6): the
 //! upgrade-an-EXISTING-database path — every other suite migrates a FRESH
-//! database, this one applies all but the LAST migration, seeds data through
-//! the real API, applies the rest, and asserts the data + the behavior
-//! survive. Skips offline (no DATABASE_URL).
+//! database, this one applies all but the LAST migration, seeds the
+//! pre-upgrade data in the PRE-UPGRADE SCHEMA'S OWN SHAPE (`.1.3.2`: the new
+//! app's enroll writes the NEW schema's quota tables, so the seed can no
+//! longer ride the API — the pre-upgrade database holds the OLD app's
+//! writes), applies the rest, and asserts the data + the behavior survive.
+//! Skips offline (no DATABASE_URL).
 
 use std::sync::OnceLock;
 
@@ -72,8 +75,82 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
         .await
         .expect("apply all but the last migration");
 
-    // 2. Seed data through the REAL API (the enroll path writes tenants,
-    //    boundaries, grants — the rows the last migration must not disturb).
+    // 2. The pre-upgrade data, in the PRE-UPGRADE schema's shape (the rows
+    //    the OLD app wrote — the tenant + the dev boundary; `.1.3.2`: the
+    //    NEW app's enroll depends on the NEW schema's quota tables, so the
+    //    seed rides raw SQL, not the API).
+    let tenant = "ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed the tenant");
+    sqlx::query(
+        "INSERT INTO enrollment_boundaries \
+         (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
+          permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
+          valid_from, expires_at, charter_digest, policy_version, status) \
+         VALUES ($1, $2, 'dev-root', 'dev-operator', $3, $4, 'low', $5, false, 0, \
+                 now(), now() + interval '365 days', 'dev-charter-000', 'dev-authz-1', 'active')",
+    )
+    .bind(format!("bnd_{tenant}"))
+    .bind(tenant)
+    .bind(json!([
+        "thread_create",
+        "thread_invite",
+        "thread_contribute",
+        "thread_inspect",
+        "thread_close",
+        "thread_cancel",
+        "thread_invitation_respond",
+        "thread_advance_round",
+        "tenant_admin",
+    ]))
+    .bind(json!(["deliberation"]))
+    .bind(json!({ "amount": 1000.0 }))
+    .execute(&pool)
+    .await
+    .expect("seed the boundary");
+    let seeded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(seeded, 1, "the pre-upgrade data seeded the tenant");
+
+    // 3. THE upgrade: the remaining migration(s) over the existing data.
+    migrator
+        .run(&pool)
+        .await
+        .expect("apply the remaining migrations");
+
+    // 4. The data survived — and the upgrade backfilled the tenant's quota
+    //    (migration 0047: a tenant exists WITH its bounds).
+    let tenants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(&pool)
+        .await
+        .expect("count after upgrade");
+    assert_eq!(tenants, 1, "the tenant row survived the upgrade");
+    let boundaries: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM enrollment_boundaries WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .expect("boundaries after upgrade");
+    assert_eq!(boundaries, 1, "the boundary row survived the upgrade");
+    let quotas: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM usage_quotas WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(&pool)
+        .await
+        .expect("quotas after upgrade");
+    assert_eq!(
+        quotas, 1,
+        "the upgrade backfilled the tenant's default quota"
+    );
+
+    // 5. The API behavior survives (the post-upgrade surface works over the
+    //    upgraded database): the role enroll path still answers.
     let server = {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -87,44 +164,6 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
         format!("http://{addr}")
     };
     let client = reqwest::Client::new();
-    let (status, alice) = enroll(
-        &client,
-        &server,
-        json!({ "kind": "human", "name": "upgrade-alice" }),
-    )
-    .await;
-    assert_eq!(status, 200, "enroll: {alice}");
-    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
-    let seeded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants WHERE tenant_id = $1")
-        .bind(&tenant)
-        .fetch_one(&pool)
-        .await
-        .expect("count");
-    assert_eq!(seeded, 1, "the API seeded the tenant");
-
-    // 3. THE upgrade: the remaining migration(s) over the existing data.
-    migrator
-        .run(&pool)
-        .await
-        .expect("apply the remaining migrations");
-
-    // 4. The data survived.
-    let tenants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants WHERE tenant_id = $1")
-        .bind(&tenant)
-        .fetch_one(&pool)
-        .await
-        .expect("count after upgrade");
-    assert_eq!(tenants, 1, "the tenant row survived the upgrade");
-    let boundaries: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM enrollment_boundaries WHERE tenant_id = $1")
-            .bind(&tenant)
-            .fetch_one(&pool)
-            .await
-            .expect("boundaries after upgrade");
-    assert_eq!(boundaries, 1, "the boundary row survived the upgrade");
-
-    // 5. The API behavior survives (the post-upgrade surface works over the
-    //    upgraded database): the role enroll path still answers.
     let (status, role) = enroll(
         &client,
         &server,

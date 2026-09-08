@@ -16,16 +16,14 @@
   Phase 1's G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured
   + the §19.8 subtraction record; Phase 3's six lanes shipped; Phase 4's
   seven lanes shipped — the resource packs, the evidence pipeline, G4 Met).
-- **Active tree:** `PHASE-6` → frontier `.7.2` (**PHASE 5 CLOSED**; the G3 evidence census ships — the nine Demo-B steps map the machinery).. The `.1` lane (the workflow
+- **Active tree:** `PHASE-7` → frontier `.1` (**PHASE 5 + 6 CLOSED**: the G3 gate Met as machinery, blocked as binding use — the binding claim withdrawn per §25.1).. The `.1` lane (the workflow
   profiles), the `.2` lane (the blind-first deliberation), the `.3` lane
   (the moderator/synthesizer constraints), and the `.4` lane (the
   evaluation service) are COMPLETE — the `.5` lane (the routing policy)
   runs: `.5.1` done (ADR-031), `.5.2` next, then `.5.3`, then `.6`.
-- **Next action:** execute `PHASE-6.7.2` — the G3 gate package: the
-  gate record (the G3 outcome + the evidence manifest), the §19.8
-  subtraction record (the deferred binding-policy claim), the
-  Demonstration B record (the nine-step walk), the Phase-6 tree
-  close.
+- **Next action:** execute `PHASE-7.1` — the Internet hardening
+  (`docs/tasks/PHASE-7.md`, proposed). Decompose at the census seams
+  first (PHASE 6 CLOSED).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

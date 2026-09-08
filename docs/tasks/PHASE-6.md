@@ -3,7 +3,7 @@
 ## Metadata
 
 - Tree ID: `PHASE-6`
-- Status: `proposed`
+- Status: `done`
 - Roadmap lane: Phase 6 (`ROADMAP.md` §20.8); Governance track
 - Created: `2026-09-05`
 - Estimate: 18–30 engineer-weeks plus governance review
@@ -903,7 +903,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       `.7.2`.
 
   - ID: `PHASE-6.7.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the G3 gate package — the gate record (the G3
       outcome + the evidence manifest), the §19.8
       subtraction record (the deferred binding-policy
@@ -912,15 +912,39 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       machinery), the Phase-6 tree close.
     Gate: G3; G7 publication portion
     Roadmap: §19.6 (G3), §19.8, §26.2, §25.1
+    Done (`2026-09-07`): the G3 gate package landed — the
+      gate record (`docs/decisions/2026-09-07_phase6-gate-
+      record.md`): **G3 Met as machinery, blocked as
+      binding use** (the tests green per the clause map; the
+      BLOCKER — the binding policy USE — discharged by
+      subtraction: the exit claims the machinery, the
+      owners' acceptance is the OPEN §25.1 condition; four
+      named deferrals); the §19.8 subtraction record
+      (`2026-09-07_phase6-subtraction-record.md`: the
+      withdrawn binding claim, the deferred remote
+      publication + the G7 portion, the demonstration-grade
+      narrowing); the Demonstration B record
+      (`docs/evidence/2026-09-07_demonstration-b.md`: the
+      nine-step §26.2 walk over the shipped machinery with
+      each step's records + tests); the evidence manifest
+      (`docs/evidence/2026-09-07_phase6-evidence-
+      manifest.md`: the G3 clause map). **PHASE 6 IS
+      CLOSED** — frontier → `PHASE-7.1`.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.7.2` | `proposed` | `.7.1` done — the G3 evidence census (the nine Demo-B steps each name their records + their tests; the clause map covers the shipped lanes; the §25.1 binding-use reading); the G3 gate package executes next |
+| 1 | `PHASE-7.1` | `proposed` | `.7.2` done — the G3 gate package (**G3 Met as machinery, blocked as binding use**: the tests green, the binding claim withdrawn per §25.1, the Demo-B walk, the subtraction record) — **PHASE 6 IS CLOSED**; the Internet-hardening lane (`PHASE-7`) executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.7.2` done — the G3 gate package (the
+  gate record: **G3 Met as machinery, blocked as binding
+  use** — the claim withdrawn per §25.1; the §19.8
+  subtraction record; the Demonstration B walk; the
+  evidence manifest). **PHASE 6 IS CLOSED** — frontier →
+  `PHASE-7.1`.
 - `2026-09-07`: `.7.1` done — the G3 evidence census (the
   nine Demo-B steps → the shipped machinery; the clause map;
   the §25.1 binding-use reading — the exit claims the

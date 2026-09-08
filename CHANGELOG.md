@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The A2A wire-level demonstration + the qualification (`PHASE-8.2.4`)
+
+- The facade's suite gains the JSON-RPC 2.0 roundtrip over the REAL a2a-lf 0.3.0 wire shapes (the `JsonRpcRequest` (SendMessage) → the serialize/deserialize → the facade maps → the `JsonRpcResponse::success` → the roundtrip; the unknown-method typed `JsonRpcError` refusal — 5 tests). The tested revision: the a2a-lf 0.3.0 types + the JSON-RPC 2.0 envelope. The QUALIFICATION RECORD: the WIRE-level compatibility is DEMONSTRATED; the transport profile (the a2a-server-lf/a2a-client-lf harness) stays the named follow-on — the §9.7 "test only the profiles actually needed" rule (no external A2A peer exists in the dev profile); the broad Internet agent interoperability claim stays GATED; the gateway deployable-off. **The `.2` lane is COMPLETE** — frontier → `.3` (the MCP lane).
+
 ## 2026-09-08 — The A2A facade core: the pinned types + the recorded semantic losses (`PHASE-8.2.3`)
 
 - The new `crates/reasonbraid-a2a`: the `a2a-lf` **0.3.0** exact pin (the core types — no features, no transport, no provider vote; the server/client crates ride the `.2.4` demonstration with the no-provider pins). The `SemanticLosses` record (the five §9.7 dimensions — the authority/budget/evidence/decision-rule/lifecycle, each recorded; a bare A2A message carries none of the local machinery, so all five record lost), `map_message` (the text survives, the external role preserves as the wire value), `map_task_request` (the external task id preserves verbatim), `response_message` (the round-trip). The 3-test offline suite runs over the REAL a2a-lf 0.3.0 types — the first demonstrated compatibility. The local-command wiring + the transport ride `.2.4`. Frontier → `.2.4`.

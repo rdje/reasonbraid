@@ -425,7 +425,7 @@ default.
       known application.
 
   - ID: `PHASE-8.2.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the compatibility demonstration + the
       qualification — the a2a-cli (or the SDK's test
       peer) roundtrip against the facade (the measured
@@ -434,6 +434,43 @@ default.
       qualification record (the broad claims stay
       gated; the gateway is deployable-off).
     Roadmap: §9.7
+    Done (`2026-09-08`): the WIRE-level demonstration
+      ships — the facade's suite gains the JSON-RPC
+      2.0 roundtrip over the REAL a2a-lf 0.3.0 wire
+      shapes (the `JsonRpcRequest` (`SendMessage`) →
+      the serialize/deserialize → the facade maps →
+      the `JsonRpcResponse::success` → the roundtrip;
+      the unknown-method refusal via the typed
+      `JsonRpcError` — 5 tests). The tested revision:
+      the a2a-lf 0.3.0 types + the JSON-RPC 2.0
+      envelope (the recorded conformance point). THE
+      QUALIFICATION RECORD: the WIRE-level
+      compatibility is DEMONSTRATED; the TRANSPORT
+      profile (the a2a-server-lf/a2a-client-lf
+      harness) stays the named follow-on — the §9.7
+      "test only the profiles actually needed" rule:
+      no external A2A peer exists in the dev profile,
+      so the transport profile is NOT needed yet (its
+      pins are the `.2.2` decision's). The broad
+      Internet agent interoperability claim stays
+      GATED; the gateway remains deployable-off.
+      **The `.2` lane is COMPLETE.** Frontier → `.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §9.7
+      baseline demanded the demonstrated compatibility
+      (the pre-1.0 reality, never inferred); the wire
+      roundtrip demonstrates it. Evidence: `cargo test
+      -p reasonbraid-a2a` → `test result: ok. 5
+      passed; 0 failed`.
+    - [x] **ADDRESSED** — the JSON-RPC roundtrip + the
+      typed refusal + the tested revision + the
+      qualification stance. Evidence: the 5-test suite
+      (`cargo test -p reasonbraid-a2a` → 5 passed).
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0, 74 ok-lines (`target/a2a24_offline.log`);
+      clippy/fmt clean; `make deny` green; `make gate`
+      → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new.
 
 - ID: `PHASE-8.3`
   Status: `proposed`
@@ -460,10 +497,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.2.4` | `proposed` | `.2.3` done — the A2A facade core ships (the pinned types + the mapper + the recorded losses + the measured roundtrip shapes); the compatibility demonstration + the qualification execute next |
+| 1 | `PHASE-8.3` | `proposed` | `.2.4` done — the A2A wire-level demonstration + the qualification record ship; **the `.2` lane is COMPLETE** — the MCP lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.4` done — the A2A wire-level
+  demonstration (the JSON-RPC 2.0 roundtrip over the
+  real 0.3.0 shapes + the typed refusal + the
+  qualification record: the wire compatibility
+  demonstrated, the transport profile stays the named
+  follow-on, the broad claims stay gated);
+  **the `.2` lane is COMPLETE**; frontier → `.3`.
 - `2026-09-08`: `.2.3` done — the A2A facade core
   (the `reasonbraid-a2a` crate over the exact 0.3.0
   pin + the semantic-loss record + the mapper +

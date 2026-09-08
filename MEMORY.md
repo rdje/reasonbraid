@@ -20,16 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.2.4`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
-  census) → decomposed; `.2.1` done (ADR-025); `.2.2` done (the pin);
-  `.2.3` done (the facade core — the `reasonbraid-a2a` crate over the
-  exact 0.3.0 pin + the semantic-loss record).
-- **Next action:** execute `PHASE-8.2.4` — the A2A compatibility
-  demonstration + the qualification: the a2a-cli (or the SDK's test
-  peer) roundtrip against the facade (the measured exchange + the
-  recorded semantic losses), the tested spec/conformance revision, the
-  qualification record (the broad claims stay gated; the gateway
-  deployable-off).
+  frontier `.3` (the MCP lane — ADR-024). **The `.1` lane is COMPLETE**;
+  **the `.2` lane is COMPLETE** (ADR-025, the pin, the facade core, the
+  wire-level demonstration + the qualification record).
+- **Next action:** execute `PHASE-8.3` — open the MCP lane at the census
+  seams: the MCP servers/clients for the tool/resource exposure (the
+  ReasonBraid-owned durable continuation of the listen streams — ADR-024;
+  the baseline: the MCP 2026-07-28 spec, the `subscriptions/listen`
+  non-auto-resume).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -16,17 +16,21 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.2`
-  (the public-node enrollment + the quarantine — `docs/tasks/PHASE-7.md`).
-  The `.1` lane is COMPLETE: `.1.1` ADR-034 accepted; `.1.2` the mTLS
-  workload identity; `.1.3` the RLS layer + the quotas + the
-  quarantine-evidence rule; `.1.4` the declared secret-store profiles +
-  the classification-driven dispatch control (the confidential delivery is
-  the typed refusal until a qualified evaluator registers).
-- **Next action:** execute `PHASE-7.2` — open the lane at the census seams:
-  the public-node enrollment + the quarantine, the revocation propagation,
-  the signed software updates, the SBOM/provenance, the disclosure process
-  (ADR-027, ROADMAP §16.10/§16.12; backlog 40).
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.2.1`.
+  The `.1` lane is COMPLETE (ADR-034, the mTLS identity, the RLS layer,
+  the quotas, the quarantine-evidence rule, the declared secret-store
+  profiles, the classification controls). The `.2` lane opened at the
+  census seams: the quarantine + the revocation propagation ship (the LAN
+  forms); ADR-027 reserved; the SBOM/disclosure/public-enrollment are the
+  greenfield → decomposed `.2.1` (the census + ADR-027) → `.2.2` (the
+  disclosure policy) → `.2.3` (the SBOM + the signed artifacts) → `.2.4`
+  (the public-enrollment contract).
+- **Next action:** execute `PHASE-7.2.1` — the census + ADR-027: the
+  signing-and-distribution contract (the release-identity key hierarchy,
+  the digest-pinned manifest + the signature scheme, the adapter
+  allowlist/capability-manifest vocabulary over the shipped ledger; the
+  distribution channel + the reproducible builders are the named
+  deferrals).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

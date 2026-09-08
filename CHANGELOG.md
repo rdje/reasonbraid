@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The software-supply-chain census: the `.2` lane opens at the seams (`PHASE-7.2`)
+
+- The census, measured: the quarantine + the revocation propagation ship in their LAN forms (the `.2.4` two-way quarantine, the `.1.3.3` evidence rule, the cert revocation + the epoch fence); ADR-027 ("plugin/adapter signing and distribution") is RESERVED with no record; the SBOM/provenance, the signed updates, and the disclosure policy are the greenfield (no SECURITY.md); the public-enrollment surface is the greenfield BY DESIGN (the `.5` kill/pivot forbids exposing remote enrollment with an incomplete gate). Decomposed: `.2.1` the census + ADR-027 → `.2.2` the disclosure + the supported-version policy → `.2.3` the SBOM + the signed release artifacts → `.2.4` the public-enrollment contract.
+
 ## 2026-09-08 — The classification-driven controls: the confidential dispatch refuses (`PHASE-7.1.4.3`)
 
 - The evaluator-access control binds at the dispatch (the single choke point — the accept/challenge/auto-initiation paths): `Classification::has_qualified_evaluator` (the dev registry qualifies `general` only), the in-transaction gate, and the typed `classification_unqualified` (409, in the status map so the stored rejection replays the original status). A confidential thread stays creatable + inspectable — the control refuses the PROVIDER use, never the thread. The measured suite (the guard's 25th): the confidential accept refuses with the typed code + no work item lands (the invitation-iff-work invariant holds); the general dispatch stays intact. The retention/export/region controls: the census found no decision point for the retention (no thread-classified data enters the snapshot store) — the `.1.4.1` "binds at the sweep" is revised to the trigger-named deferral. **The `.1` lane is COMPLETE** — frontier → `.2` (the public-node enrollment + the quarantine).

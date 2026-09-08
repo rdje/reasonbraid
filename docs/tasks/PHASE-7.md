@@ -591,11 +591,70 @@ reopens the applicable portions of G4–G7.
       notes (the trigger-named deferral).
 
 - ID: `PHASE-7.2`
-  Status: `proposed`
+  Status: `done`
   Goal: public-node enrollment and quarantine, revocation propagation, signed software updates, SBOM/provenance, disclosure process
   Backlog: 40
   ADR: 027
   Roadmap: §16.10, §16.12
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured: the QUARANTINE ships (the
+    two-way `.2.4` + the `.1.3.3` evidence rule); the
+    REVOCATION PROPAGATION ships in its LAN form (the
+    cert revocation + the suspended presence + the
+    epoch fence at the dispatch); the SIGNED UPDATES +
+    the SBOM/provenance are the greenfield (ADR-027 is
+    RESERVED, no record); the DISCLOSURE policy is the
+    greenfield (no SECURITY.md); the PUBLIC enrollment
+    surface is the greenfield BY DESIGN (the `.5`
+    kill/pivot forbids exposing remote enrollment with
+    an incomplete gate — the enrollment POLICY is the
+    dev-profile deliverable, the exposure is not).
+    Children: `.2.1` the census + ADR-027 → `.2.2` the
+    disclosure + the supported-version policy → `.2.3`
+    the SBOM + the signed release artifacts → `.2.4`
+    the public-enrollment contract.
+  Children: `.2.1`–`.2.4`
+
+  - ID: `PHASE-7.2.1`
+    Status: `proposed`
+    Goal: the census + ADR-027 — the signing-and-
+      distribution contract: the release-identity key
+      hierarchy, the digest-pinned manifest + the
+      signature scheme, the adapter allowlist/
+      capability-manifest vocabulary (the verification
+      ladder over the shipped ledger); the distribution
+      channel + the reproducible builders are the named
+      deferrals.
+    ADR: 027
+    Roadmap: §16.10
+
+  - ID: `PHASE-7.2.2`
+    Status: `proposed`
+    Goal: the disclosure + the supported-version policy
+      (SECURITY.md): the reporting path, the vetting +
+      the embargo vocabulary, the supported versions
+      (the §16.10 "before public beta" line) — the
+      process record, linked from the README.
+    Roadmap: §16.10
+
+  - ID: `PHASE-7.2.3`
+    Status: `proposed`
+    Goal: the SBOM + the signed release artifacts — the
+      release pipeline generates the per-binary SBOM +
+      the signed manifest (`make release` gains the
+      step; the local release identity is the dev
+      stance — the protected identity is the named
+      deferral).
+    Roadmap: §16.10
+
+  - ID: `PHASE-7.2.4`
+    Status: `proposed`
+    Goal: the public-enrollment contract — the §16.10
+      enrollment policy (the vetting steps, the
+      quarantine-on-suspicion trigger, the revocation
+      propagation over the shipped machinery); the
+      EXPOSURE itself stays the `.5` kill/pivot gate.
+    Roadmap: §16.10, §16.12
 
 - ID: `PHASE-7.3`
   Status: `proposed`
@@ -618,10 +677,18 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.2` | `proposed` | `.1.4.3` done — the classification-driven controls ship (the dispatch gate + the measured refusal); **the `.1` lane is COMPLETE** — the public-node enrollment + the quarantine lane executes next |
+| 1 | `PHASE-7.2.1` | `proposed` | `.2` decomposed at the census seams (the quarantine + the revocation propagation ship; the signing/SBOM/disclosure/public-enrollment are the greenfield) — the census + ADR-027 execute first |
 
 ## Changelog
 
+- `2026-09-08`: `.2` done — the census at the seams
+  (the quarantine + the revocation propagation ship in
+  their LAN forms; ADR-027 reserved; the SBOM/disclosure/
+  public-enrollment are the greenfield) → decomposed
+  `.2.1` (the census + ADR-027) → `.2.2` (the
+  disclosure policy) → `.2.3` (the SBOM + the signed
+  artifacts) → `.2.4` (the public-enrollment contract);
+  frontier → `.2.1`.
 - `2026-09-08`: `.1.4.3` done — the classification-driven
   controls (the evaluator-access dispatch gate — the
   confidential delivery refuses with the typed code, the

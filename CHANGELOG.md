@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The §18.6 runbook set: the thirteen-family catalogue completes (`PHASE-7.4.2`)
+
+- The twelve remaining runbooks land in `docs/runbooks/` — the provider outage/ambiguous charge, the credential compromise, the notification storm, the runaway budget, the poisoned resource, the database failover/loss, the object loss, the Git/DB publication mismatch, the signing-key incident, the cross-tenant exposure suspicion, the audit-chain break, and the rollback/suspension/DR — each in the §18.6 shape over the SHIPPED controls (the real verbs, surfaces, and guard suites as the closure tests) with the honest limits stated: the failover record names the missing failover machinery (the restore path IS the control), the signing-key record rides the `.2.3` manifest tool, the cross-tenant detection is the re-derivation probe, the audit-chain record names the ADR-022 deferral. No code. Frontier → `.4.3`.
+
 ## 2026-09-08 — The load harness: the capacity feeder with the first measured run (`PHASE-7.4.1`)
 
 - `scripts/load_harness.sh`: the scripted concurrent driver — the server boots against the caller's database, then N `thread.contribute` commands at C workers (each a fresh request id + idempotency key — the full claim → authorize → validate → apply path). The per-request `status seconds` lines land in `target/load/latencies.txt`; the summary prints the p50/p95 + the throughput and the exit gates on every command committing. The MEASURED run: 200 commands at 8 workers → 1.057s wall, ingress→commit p50 0.0033s / p95 0.0079s, 189.2 commands/s, 0 failures (`target/load_harness_run.log`) — the `.3` criteria's first feed (the aggregate-write seam's trigger measurement). The worker-throughput + the channel-latency legs are the named follow-ons. The first run caught the bare-`wait` trap (it also joins the backgrounded server — the fix waits the worker PIDs only). Frontier → `.4.2`.

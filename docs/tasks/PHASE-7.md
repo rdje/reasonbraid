@@ -909,7 +909,7 @@ reopens the applicable portions of G4–G7.
       the harness's own comment)`.
 
   - ID: `PHASE-7.4.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the §18.6 runbook set — the remaining twelve
       families (the provider outage/ambiguous charge,
       the credential compromise, the notification storm,
@@ -924,6 +924,38 @@ reopens the applicable portions of G4–G7.
       the containment, the recovery, the evidence, the
       communication, the closure tests).
     Roadmap: §18.6
+    Done (`2026-09-08`): the twelve records land in
+      `docs/runbooks/` (the full thirteen-family
+      catalogue with the existing
+      `node-lost-replaced.md`), each in the §18.6 shape
+      over the SHIPPED controls (the real verbs + the
+      real surfaces + the real guard suites as the
+      closure tests) with the honest limits stated:
+      the database-failover record names the missing
+      failover machinery (the restore path IS the
+      control); the signing-key record rides the `.2.3`
+      manifest tool (the re-key + the re-sign over the
+      unchanged digests); the cross-tenant record's
+      detection is the RE-DERIVATION probe (the rls
+      suite's own legs); the audit-chain record names
+      the ADR-022 chain-verification deferral and
+      rides the structural checks that exist. No code
+      changed. Frontier → `.4.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.4` census:
+      the runbook set was one record of the §18.6
+      thirteen-family catalogue; the twelve records
+      complete it. Evidence: `ls docs/runbooks/` → 13
+      records; each carries the §18.6 sections.
+    - [x] **ADDRESSED** — the twelve families, each
+      mapped to the shipped verbs/surfaces/guard
+      suites + the honest limits. Evidence: `git grep
+      -c "Closure tests" docs/runbooks/` → 13 (the
+      closure-test section everywhere); `make gate` →
+      13/13.
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds; no code paths
+      changed.
 
   - ID: `PHASE-7.4.3`
     Status: `proposed`
@@ -947,10 +979,15 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.4.2` | `proposed` | `.4.1` done — the load harness ships (the measured run: p50 3.3ms / p95 7.9ms / 189.2 cmds/s at 8 workers — the first `.3`-criteria feed); the §18.6 runbook set executes next |
+| 1 | `PHASE-7.4.3` | `proposed` | `.4.2` done — the §18.6 runbook set completes (the thirteen-family catalogue over the shipped controls); the game-day catalogue + the pen-test record executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.4.2` done — the §18.6 runbook set
+  (the twelve remaining families over the shipped
+  controls, each with the honest limits stated — the
+  thirteen-family catalogue complete); no code;
+  frontier → `.4.3`.
 - `2026-09-08`: `.4.1` done — the load harness (the
   concurrent driver + the measured run: 200 commands,
   8 workers, p50 0.0033s / p95 0.0079s, 189.2

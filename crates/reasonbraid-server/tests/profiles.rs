@@ -3720,11 +3720,18 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
             }
         };
 
-    // The temporary snapshot with a PASSED horizon.
+    // The temporary snapshot with a PASSED horizon + the fresh one with a
+    // FUTURE horizon — the dates are RELATIVE to now (the `.4.3.3`
+    // clock-crossing repair: the hardcoded horizons went stale at the
+    // midnight boundary and the freshness list grew an extra row).
+    let horizon = |offset_days: i64| {
+        let day = chrono::Utc::now().date_naive() + chrono::Duration::days(offset_days);
+        format!("{}T00:00:00Z", day.format("%Y-%m-%d"))
+    };
     let temporary = submit_snapshot(
         b"the temporary bytes",
         "temporary".to_owned(),
-        Some("2026-09-06T00:00:00Z".to_owned()),
+        Some(horizon(-1)),
     )
     .await;
     let temporary_id = temporary["snapshot_id"].as_str().unwrap().to_string();
@@ -3732,7 +3739,7 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
     let fresh = submit_snapshot(
         b"the fresh standard bytes",
         "standard".to_owned(),
-        Some("2026-09-08T00:00:00Z".to_owned()),
+        Some(horizon(1)),
     )
     .await;
     let fresh_id = fresh["snapshot_id"].as_str().unwrap().to_string();

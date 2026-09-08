@@ -57,7 +57,7 @@ on the same commit. One commit per completed leaf.
 | [`PHASE-3`](tasks/PHASE-3.md) | `done` | tree complete — the directory, the presence, the matching, the recruitment, the subscriptions, the dependence indicators; next executable work is `PHASE-4.1` | repo-local |
 | [`PHASE-4`](tasks/PHASE-4.md) | `done` | tree complete — the five pack lanes + the evidence pipeline; the G4 gate Met (the record + the subtraction + the manifest) | repo-local |
 | [`PHASE-5`](tasks/PHASE-5.md) | `done` | tree complete — the five lanes + the G5 gate **Met as a subtraction gate** (the lift claim withdrawn per §25.1; the record + the subtraction + the manifest); next executable work is `PHASE-6.1` | repo-local |
-| [`PHASE-6`](tasks/PHASE-6.md) | `active` | `.4.3.3` — the reconciliation matrix + the kill-point tests (`.4.3.2` done: the Git publication half — the gix publisher) | repo-local |
+| [`PHASE-6`](tasks/PHASE-6.md) | `active` | `.5` — the target-deployment lane (the `.4` lane COMPLETE: the signed publication + the reconciliation) | repo-local |
 | [`PHASE-7`](tasks/PHASE-7.md) | `proposed` | `.1` — Internet hardening | repo-local |
 | [`PHASE-8`](tasks/PHASE-8.md) | `proposed` | `.1` — federation/interop | repo-local |
 | [`PHASE-9`](tasks/PHASE-9.md) | `proposed` | `.1` — stable release | repo-local |

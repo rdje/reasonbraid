@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The reconciliation matrix lands — the `.4` lane is COMPLETE (`PHASE-6.4.3.3`)
+
+- The `reconciler` module: the pure `reconcile` function over (the DB state, the observed Git state, the expected id) → the six §15.8 actions (the idempotent retry, the verify-and-advance, the stop-and-alert, the freeze-and-repair, the **quarantine-and-adjudicate — never a silent promote**, the out-of-band alert); the kill-point tests map every matrix row + prove the idempotency (the same pair yields the same action). Measured: reconciler 3. **The `.4` lane (the signed canonical publication) is COMPLETE.**
+
 ## 2026-09-07 — The Git publication half lands (`PHASE-6.4.3.2`)
 
 - The `publisher` module (the gix plumbing — no CLI): the blobs + the filename-sorted tree + the root commit, the staging branch, the fetch-back verification (the re-derived digest), the IMMUTABLE publication ref (the written-once — the re-publish is the typed refusal), and the EFFECTIVE channel via the compare-and-swap (the stale expectation is the typed `CasMismatch`). The `POST /v1/policy-publications/{id}/publish` verb drives the half and marks the record effective with the ref ids. Measured: publisher 2 + policy 8.

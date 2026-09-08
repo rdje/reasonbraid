@@ -42,6 +42,7 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "policy_publications",
         "policy_projections",
         "policy_approvals",
         "policy_decisions",

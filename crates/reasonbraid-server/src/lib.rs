@@ -50,6 +50,7 @@ mod profiles;
 pub mod projections;
 pub mod publications;
 pub mod publisher;
+pub mod reconciler;
 mod recruitment;
 mod resolvers;
 mod resources;

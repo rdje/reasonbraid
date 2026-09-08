@@ -627,7 +627,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       refusals. Frontier → `.4.3.3`.
 
   - ID: `PHASE-6.4.3.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the reconciliation matrix + the kill-point tests —
       the six §15.8 rules over (the DB state, the Git
       state) → the action, the idempotent reconciler (the
@@ -636,6 +636,24 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       failed/later-appearing quarantine — never a silent
       promote).
     Roadmap: §15.8
+    Done (`2026-09-07`): the reconciliation matrix landed per
+      ADR-020 — `crates/reasonbraid-server/src/reconciler.rs`
+      (NEW): the PURE `reconcile` over (the DB state, the
+      observed Git state, the expected immutable id) → the
+      six §15.8 actions (the `RetryStagedWrite`, the
+      `VerifyAndAdvance`, the `StopSecurityAlert`, the
+      `FreezeAndRepair`, the `QuarantineAndAdjudicate` —
+      NEVER a silent promote, the `OutOfBandAlert`, the
+      `Consistent`); the tests (`tests/reconciler.rs`,
+      offline): the six matrix rows map to their actions
+      (the effective/moved → the freeze; the failed/
+      later-appearing → the quarantine), the consistent
+      pairs are quiet, the IDEMPOTENCY (the repeated
+      observation of the same pair yields the same action —
+      the reconciler converges, never flips). Measured
+      (reconciler 3): the matrix mapping, the quiet
+      consistency, the repeat proof. **`.4` COMPLETE** —
+      frontier → `.5`.
 
 - ID: `PHASE-6.5`
   Status: `proposed`
@@ -658,10 +676,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.4.3.3` | `proposed` | `.4.3.2` done — the Git publication half (the gix publisher: the sorted tree, the fetch-back, the written-once immutable, the CAS effective; publisher 2 + policy 8); the reconciliation matrix + the kill-point tests execute next |
+| 1 | `PHASE-6.5` | `proposed` | `.4.3.3` done — the reconciliation matrix (the six §15.8 rules, the idempotent pure function, the never-silent-promote; reconciler 3) — **the `.4` lane (the signed publication) is COMPLETE**; the target-deployment lane executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.4.3.3` done — the reconciliation matrix
+  (the six §15.8 rules as the pure idempotent function, the
+  never-silent-promote); reconciler 3; **`.4` COMPLETE** —
+  frontier → `.5`.
 - `2026-09-07`: `.4.3.2` done — the Git publication half
   (the gix publisher: the ref writes + the fetch-back + the
   written-once immutable + the CAS effective channel; the
@@ -1133,6 +1155,56 @@ policy.rs` (the live test) — `\.rs$`.
 - [x] **FIX** — `src/publisher.rs`, `src/publications.rs`,
   `src/projections.rs`, `src/lib.rs`, `src/api.rs`,
   `tests/publisher.rs`, `tests/policy.rs`.
+- [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
+  logs above, `docs/TASK_TREE.md` frontier — same commit (the
+  KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES
+  heading).
+
+
+## Acceptance Checklist (PHASE-6.4.3.3)
+
+The CODE change owned by this leaf:
+`crates/reasonbraid-server/src/reconciler.rs` (NEW — the pure
+`reconcile` + the state/action vocabulary),
+`crates/reasonbraid-server/src/lib.rs` (the module),
+`crates/reasonbraid-server/tests/reconciler.rs` (NEW — the
+offline suite) — `\.rs$`.
+
+- [x] **REPRODUCE / ISSUE** — the pre-leaf surface: the
+  §15.8 reconciler existed nowhere (the `.4.3` census — the
+  write half shipped, the matrix's rules did not).
+- [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c "pub fn
+  reconcile\|QuarantineAndAdjudicate" f53d73d --
+  crates/reasonbraid-server/` → rc=1 (nothing before this
+  leaf). The fix point is the ADR-020 matrix: the pure
+  function over (the DB state, the Git state) → the action.
+- [x] **ADDRESSED (verified)** — measured before→after. Before:
+  the grep above. After: `cargo test -p reasonbraid-server
+  --test reconciler` → `test result: ok. 3 passed` — the six
+  matrix rows map to their actions (the staged/absent retry,
+  the staged/matching advance, the staged/conflicting stop,
+  the effective/moved freeze, the failed/later-appearing
+  QUARANTINE — never a silent promote, the no-record/
+  out-of-band alert), the consistent pairs are quiet, the
+  idempotency (the repeated observation of the same pair
+  yields the same action — the reconciler converges, never
+  flips).
+- [x] **NO REGRESSION** — `cargo test --all` → rc=0, 63 suites
+  (the reconciler suite added one);
+  `bash scripts/run_pg_tests.sh` → rc=0, 21 live suites + the
+  demo `ALL acceptance checks passed`
+  (`target/pg533_guard.log`);
+  `cargo clippy --all --all-targets -- -D warnings` → rc=0;
+  `cargo fmt --all -- --check` → rc=0; `make gate` → 13/13 at
+  commit. The first live pass caught the MIDNIGHT boundary:
+  the Phase-4 retention test's HARDCODED horizons went stale
+  at the clock's 2026-09-07 → 2026-09-08 crossing (the
+  freshness list grew an extra row) — the horizons are now
+  DATE-RELATIVE (the `now ± 1 day` computation), a test-
+  robustness repair recorded here.
+- [x] **FIX** — `src/reconciler.rs`, `src/lib.rs`,
+  `tests/reconciler.rs`, `tests/profiles.rs` (the horizon
+  repair).
 - [x] **LOCKSTEP** — CHANGELOG, MEMORY, LIVE_STATUS, this tree's
   logs above, `docs/TASK_TREE.md` frontier — same commit (the
   KNOWLEDGE_MAP regen produced no diff; no new DEV_NOTES

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The coordinator extraction criteria: nothing scales until a measurement names the bottleneck (`PHASE-7.3`)
+
+- The census: the coordinator is the deliberate SINGLE-WRITER design (ADR-002's named property); the measurements are catalogue-named-not-instantiated (the only empirical number is SLO-5, the issuance baseline). The record (`docs/decisions/2026-09-08_coordinator-extraction-criteria.md`, top-level `answers:`) makes the mandate mechanical: the extraction trigger is a MEASUREMENT, never a hunch — five seams (the aggregate writes, the outbox worker, the node channel, the CA issuance, the evaluation) each name their `.4` trigger measurement + their horizontal form over the shipped machinery (the claim keys, the lease/fencing, the node keying — a re-arrangement, never a rebuild); zero extractions today. No code. Frontier → `.4`.
+
 ## 2026-09-08 — The public-enrollment contract: the vetting is re-derivation, the exposure stays a qualified profile (`PHASE-7.2.4`)
 
 - `docs/decisions/2026-09-08_public-enrollment-contract.md` (top-level `answers:`): the enrollment is a STAGED vetting ladder (the identity claim → the capability declaration → the operator's acceptance → the cert issuance; the public form adds ONE stage — the claim VETTING, re-derived never trusted); the suspicion → the quarantine is the OPERATOR's typed action over the shipped machinery (the §16.11 counters + the quarantine verb + the evidence rule — the policy connects them, nothing new builds); the revocation propagation inherits the shipped ladder verbatim; the exposure is a QUALIFIED profile under the `.5` gate (ADR-034's qualified-surface rule — never an experimental default). **The `.2` lane is COMPLETE** — frontier → `.3`.

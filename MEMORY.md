@@ -16,15 +16,16 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.3`
-  (the horizontally scalable coordinator workers — ADR-002's extraction
-  criteria). The `.1` lane is COMPLETE. The `.2` lane is COMPLETE:
-  ADR-027, SECURITY.md, the signed release manifests
-  (`rb-release-manifest`), the public-enrollment contract.
-- **Next action:** execute `PHASE-7.3` — open the lane at the census
-  seams: the horizontally scalable coordinator workers, only where the
-  measurements require them (ADR-002's extraction criteria — the load
-  measurements first, the extraction second).
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.4`
+  (the capacity/load tests, the incident exercises, the pen-test
+  remediation, the production runbooks). The `.1` lane is COMPLETE; the
+  `.2` lane is COMPLETE; `.3` done (the coordinator extraction criteria —
+  the measurement-gated seam map, zero extractions today).
+- **Next action:** execute `PHASE-7.4` — open the lane at the census
+  seams: the capacity/load tests (the `.3` record's trigger measurements:
+  the ingress→commit p95, the worker throughput, the channel latency),
+  the incident exercises, the penetration-test remediation, the
+  production runbooks (ROADMAP §16.12/§18.6).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

@@ -793,9 +793,40 @@ reopens the applicable portions of G4–G7.
       13/13; `make book` builds; no code paths changed.
 
 - ID: `PHASE-7.3`
-  Status: `proposed`
+  Status: `done`
   Goal: horizontally scalable coordinator workers only where measurements require them
   ADR: 002 (extraction criteria)
+  Decision: `docs/decisions/2026-09-08_coordinator-extraction-criteria.md`
+  Done (`2026-09-08`): the census at the seams —
+    the coordinator is the deliberate SINGLE-WRITER
+    design (ADR-002's named property); the measurements
+    are catalogue-named-not-instantiated (the SLO
+    record: the ingress→commit, the worker throughput,
+    the channel latency are named families with no
+    workload measurement — the ONE empirical number is
+    SLO-5, the issuance baseline). The extraction
+    criteria record (`docs/decisions/2026-09-08_coordinator-extraction-criteria.md`,
+    top-level `answers:`) turns the mandate mechanical:
+    the extraction trigger is a MEASUREMENT (never a
+    hunch) — five seams (the aggregate write path, the
+    outbox worker, the node channel, the CA issuance,
+    the evaluation) each name their trigger measurement
+    from the `.4` load harness + their horizontal form
+    over the shipped machinery (the claim keys, the
+    lease/fencing, the node keying — a re-arrangement,
+    never a rebuild); zero extractions today. No code
+    changed. Frontier → `.4`.
+  Acceptance:
+  - [x] **ROOT CAUSE (WHY + WHERE)** — the single-writer
+    is a deliberate, named design (ADR-002); the lane's
+    mandate needs the criteria that gate the extraction
+    — the record fixes them. Evidence: `make gate` →
+    13/13 (the record + the INDEX row green).
+  - [x] **ADDRESSED** — the measurement-gated seam map
+    (five seams, five triggers, the reuse forms).
+    Evidence: the record's `answers:`.
+  - [x] **NO REGRESSION** — docs-only: `make gate` →
+    13/13; `make book` builds; no code paths changed.
 
 - ID: `PHASE-7.4`
   Status: `proposed`
@@ -813,10 +844,15 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.3` | `proposed` | `.2.4` done — the public-enrollment contract ships (the vetting ladder + the suspicion-to-quarantine mapping + the qualified-profile stance); **the `.2` lane is COMPLETE** — the scalable-coordinator lane executes next |
+| 1 | `PHASE-7.4` | `proposed` | `.3` done — the extraction-criteria record ships (five seams, five trigger measurements, zero extractions — the measurement-gated rule); the capacity/load + the incident lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.3` done — the coordinator extraction
+  criteria (the measurement-gated seam map: the five
+  seams name their `.4` trigger measurements + their
+  reuse forms; zero extractions today); no code;
+  frontier → `.4`.
 - `2026-09-08`: `.2.4` done — the public-enrollment
   contract (the staged vetting ladder, the
   suspicion-to-quarantine policy over the shipped

@@ -648,13 +648,50 @@ reopens the applicable portions of G4–G7.
       `.2.2`.
 
   - ID: `PHASE-7.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the disclosure + the supported-version policy
       (SECURITY.md): the reporting path, the vetting +
       the embargo vocabulary, the supported versions
       (the §16.10 "before public beta" line) — the
       process record, linked from the README.
     Roadmap: §16.10
+    Done (`2026-09-08`): `SECURITY.md` lands (the
+      disclosure + the supported-version policy): the
+      reporting path names the ACCOUNTABLE OWNER (the
+      release/security gates' owner — no invented public
+      channel: the repo is PRIVATE, the ADR-001 gate);
+      the vetting rides the claim-verification
+      discipline (a report is re-derived, never trusted);
+      the embargo is the honest private-repo shape (the
+      fix ships with its leaf + its regression test +
+      its disclosure note; nothing is announced because
+      nothing is public); the supported versions: the
+      dev line is the only line — the window (the
+      latest + the previous minor) begins at the first
+      public release, together with the disclosure
+      channel + the CVE pipeline (the public-beta
+      trigger). The README's Status block + the
+      "Where to read more" table updated (the security
+      row + the Phase-7 status — the stale Phase-6.1
+      line fixed in the same commit, the lockstep).
+      No code changed. Frontier → `.2.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §16.10
+      "before public beta" line had no process record
+      (the census: no SECURITY.md); the policy lands as
+      the record with the honest limits stated (no
+      invented channels). Evidence: `git grep -c
+      "disclosure" SECURITY.md` → the vocabulary
+      present; the README links it.
+    - [x] **ADDRESSED** — the reporting path (the
+      accountable owner), the vetting/embargo
+      vocabulary, the supported-version window + the
+      honest-limits list; the README status + the link.
+      Evidence: `make gate` → 13/13 (the
+      README-STABILITY + the routing checks green).
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; `make book` builds; no code paths changed
+      (the guard stays green from `.2.1`).
 
   - ID: `PHASE-7.2.3`
     Status: `proposed`
@@ -696,10 +733,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.2.2` | `proposed` | `.2.1` done — ADR-027 accepted (the release identity + the digest-pinned manifest + the fail-closed adapter ladder); the disclosure + the supported-version policy execute next |
+| 1 | `PHASE-7.2.3` | `proposed` | `.2.2` done — SECURITY.md lands (the disclosure + the supported-version policy + the README lockstep fix); the SBOM + the signed release artifacts execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.2` done — SECURITY.md (the
+  disclosure path over the accountable owner, the
+  re-derivation vetting, the honest embargo, the
+  supported-version window at the public beta) + the
+  README status/link lockstep fix; no code; frontier →
+  `.2.3`.
 - `2026-09-08`: `.2.1` done — ADR-027 accepted
   (evidence-gated): the release identity + the
   digest-pinned manifest + the ordered fail-closed

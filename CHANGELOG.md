@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The disclosure + the supported-version policy (`PHASE-7.2.2`)
+
+- `SECURITY.md` lands: the reporting path names the ACCOUNTABLE OWNER (no invented public channel — the repo is private, the ADR-001 gate); the vetting rides the claim-verification discipline (a report is re-derived, never trusted); the embargo is the honest private-repo shape (the fix ships with its leaf + its regression test + its disclosure note); the supported-version window (the latest + the previous minor) begins at the first public release together with the disclosure channel + the CVE pipeline. The README's stale Status block (Phase 6.1) is fixed to the Phase-7 state + the security row added. No code. Frontier → `.2.3`.
+
 ## 2026-09-08 — ADR-027: the signing-and-distribution contract (`PHASE-7.2.1`)
 
 - ADR-027 accepted (`docs/adr/027-signing-and-distribution.md`, top-level `answers:`): ONE Ed25519 release identity per channel (the dev placement — the releaser's key; the protected identities + the reproducible builders are the named deferrals); the release MANIFEST is the single verification unit (the per-binary `sha256:<hex>` digests + the manifest digest + the Ed25519 signature over the canonical JSON — the ring provider); the downloaded-adapter verification is the ORDERED, FAIL-CLOSED ladder (allowlist → digest → signature → API compatibility → capability manifest — a failure refuses at its rung); the shipped dev adapters satisfy the ladder by construction. No code. Frontier → `.2.2`.

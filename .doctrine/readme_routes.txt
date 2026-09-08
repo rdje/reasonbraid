@@ -13,6 +13,7 @@ KICKOFF.md|frozen_legacy|Phase 0 execution companion; content identity once the 
 CLAUDE.md|reader_navigation|one-line bootstrap pointer contract (E1); MEMORY-ARCH doctrine verifies the pointer|repo-local (scaffold)
 AGENTS.md|reader_navigation|one-line bootstrap pointer contract (E1); MEMORY-ARCH doctrine verifies the pointer|repo-local (scaffold)
 docs/CLAIM_VERIFICATION.md|reader_navigation|adopted portable standard; revisions only via the §17 upstream re-check plus deliberate local review (no append pressure)|director
+SECURITY.md|reader_navigation|the disclosure + supported-version policy record (the `.2.2` leaf); revisions ride task-tree leaves, never append pressure|director
 README_POLICY.md|hot_live|governed by itself: revisions only via deliberate local review (no auto-sync); the guard refuses when this file is absent|director
 scripts/update_scaffold.sh|reader_navigation|explicit scaffold pull tool; never an overflow destination|repo-local (scaffold)
 docs/tasks/|author_overflow|partitioned task collection: bounded index `docs/TASK_TREE.md` (one row per tree) + per-tree changelog and verification discipline; trees close when exhausted|repo-local

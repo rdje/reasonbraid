@@ -11,11 +11,12 @@ publication. Model output stays untrusted until deterministic rules accept it.
 
 ## Status
 
-Phases 0–5 complete: the G5 gate closed as a subtraction gate — the
-deliberation machinery ships and measures, and the quality claims narrow
-per `ROADMAP.md` §25.1 (the gate + subtraction records under
-`docs/decisions/`). The frontier is `PHASE-6.1` (the semantic policy
-lane). Work is owned by task-trees under `docs/tasks/`.
+Phases 0–6 closed (the G3 gate recorded as machinery-blocked-binding-use);
+Phase 7 — the Internet-qualified operation — runs: the `.1` hardening lane
+is complete (the mTLS identity, the RLS layer, the quotas, the quarantine
+evidence rule, the secret-store profiles, the classification controls),
+the `.2` supply-chain lane is open (frontier `PHASE-7.2.2`). Work is
+owned by task-trees under `docs/tasks/`.
 
 ## Quick start
 
@@ -36,6 +37,7 @@ make dev      # one-command dev environment (ephemeral PG + rb-server)
 | Phase 0 execution | `KICKOFF.md` |
 | Agent bootstrap | `CLAUDE.md` / `AGENTS.md` |
 | Claim checks | `docs/CLAIM_VERIFICATION.md` |
+| Security reporting / support | `SECURITY.md` |
 
 This landing page is governed by [`README_POLICY.md`](README_POLICY.md) and
 capped (line and byte) by the `README-STABILITY` doctrine. The repo keeps the

@@ -722,7 +722,7 @@ default.
       regression.
 
   - ID: `PHASE-8.3.5`
-    Status: `proposed`
+    Status: `done`
     Goal: the write-half profile — the write tools
       (`respond`/`join_call`/`propose_policy_change`)
       as the QUALIFIED capability profile: the
@@ -730,6 +730,77 @@ default.
       the per-principal quota binding (the `.1.3.2`
       named deferral re-opens) + the audit — never
       the ambient authority.
+    Roadmap: §9.6
+    Done (`2026-09-08`): the census at the seams —
+      decomposed. Measured: the three write handlers
+      SHIP — `respond` rides `thread.contribute` over
+      the thread-command pipeline (the idempotency →
+      the `thread_contribute` authz → the domain →
+      the audit), `join_call` rides the call-respond
+      verb (the enrolled-ROLE-only gate + the
+      eligibility re-resolution),
+      `propose_policy_change` rides the
+      policy-proposal verb (the enrolled-principal
+      gate + `register_proposal`); the per-verb
+      LOCAL grants ship (the GrantAction vocabulary
+      + the enrolled-presence gates); the audit rides
+      the same pipelines. THE GAPS: (1) no MCP write
+      seam — the qualified profile's re-expression
+      (the enrolled principal → the per-verb local
+      grant → the per-principal quota → the SAME
+      domain handler, never the ambient authority) is
+      the greenfield; (2) the per-principal quota is
+      UNBOUND — the machinery ships scope-generic
+      (`SCOPE_PRINCIPAL` in the vocabulary,
+      `check_in_tx` fail-closed) but no row creator +
+      no caller: the `.1.3.2` named deferral's
+      trigger FIRES; (3) the write tools are OFF —
+      the router refuses the three write names (the
+      `.3.3` fixtures pin exactly three tools).
+      Children: `.3.5.1` the qualified gate + the
+      quota binding → `.3.5.2` the three write tools
+      → `.3.5.3` the fixtures + the live
+      demonstration.
+  Children: `.3.5.1`–`.3.5.3`
+
+  - ID: `PHASE-8.3.5.1`
+    Status: `proposed`
+    Goal: the qualified write gate + the quota
+      binding (the `.1.3.2` re-open): the server-side
+      seam (the `mcp_write` module — the enrolled
+      principal → the per-verb LOCAL grant → the
+      per-principal quota in the caller's transaction
+      → the SAME domain handler), the principal-scope
+      row creator at the principal-creation paths +
+      migration 0051's backfill (the 0047 pattern),
+      the live suite (the guard's 29th: the granted
+      write lands + the audit + the quota use; the
+      ungranted → the typed refusal; the unconfigured
+      → the fail-closed).
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.5.2`
+    Status: `proposed`
+    Goal: the three write tools — `respond`/
+      `join_call`/`propose_policy_change` in
+      `reasonbraid-mcp` over the `.3.5.1` gate: the
+      schemas (the principal + the tenant + the
+      targets + the payloads; the token fields
+      EXCLUDED — the tokens never enter the thread
+      content), the tools delegate to the SAME domain
+      handlers through the qualified gate.
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.5.3`
+    Status: `proposed`
+    Goal: the conformance fixtures + the live
+      demonstration — the six-tool router (the `.3.3`
+      fixtures update: the write names no longer
+      refuse), the write-schema goldens, the
+      qualified-gate refusals pinned, and the
+      measured write roundtrip through the tool path
+      (the same-handler demonstration, never the
+      inferred compatibility).
     Roadmap: §9.6
 
 - ID: `PHASE-8.4`
@@ -750,9 +821,22 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.5` | `proposed` | `.3.4` done — the MCP listen-stream durability ships (the durable state table + the in-transaction dedup/cursor machine + the pure resume plan + the live suite); the write-half profile executes next |
+| 1 | `PHASE-8.3.5.1` | `proposed` | `.3.5` done — the census at the seams (the three write handlers ship; the qualified gate seam + the unbound principal quota + the OFF write tools are the gaps) → decomposed `.3.5.1` the gate + the quota binding → `.3.5.2` the tools → `.3.5.3` the fixtures + the live demonstration; the qualified gate executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.3.5` done — the MCP write-half
+  census at the seams (the three write handlers
+  ship — `respond` over the thread-command pipeline,
+  `join_call` over the call-respond verb,
+  `propose_policy_change` over the policy-proposal
+  verb; the gaps: the qualified gate seam, the
+  unbound `principal` quota — the `.1.3.2` trigger
+  FIRES — and the OFF write tools) → decomposed
+  `.3.5.1` the qualified gate + the quota binding →
+  `.3.5.2` the three write tools → `.3.5.3` the
+  fixtures + the live demonstration; frontier →
+  `.3.5.1`.
 
 - `2026-09-08`: `.3.4` done — the MCP
   listen-stream durability (migration 0050's

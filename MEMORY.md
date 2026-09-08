@@ -1,42 +1,22 @@
-# MEMORY — resume pointer (layer A; overwrite-only, keep ≤ ~50 lines)
-
-> The bounded layer-A resume pointer (see `MEMORY_ARCHITECTURE.md`). OVERWRITE the
-> "Current state" block each update — never append history here.
+# MEMORY — resume pointer
 
 ## How to resume
 
-1. Read `README.md`, `MEMORY_ARCHITECTURE.md`, `TOOLBOX.md`, `DOCTRINE_ENFORCEMENT.md`.
-2. Open the active task-tree below → its Current Frontier → continue from the next action.
-3. Scope/gates: `ROADMAP.md`. Phase 7 execution: the `PHASE-7` tree under `docs/tasks/`.
+1. Read `CLAUDE.md`, `README.md`, `MEMORY_ARCHITECTURE.md`, `TOOLBOX.md`, `DOCTRINE_ENFORCEMENT.md`, `COMMIT.md`.
+2. Open `docs/tasks/SIGNOFF-REPAIR.md` and its Current Frontier.
+3. Source-review records: `docs/tasks/artifacts/signoff_review/INDEX.md`.
 
 ## Current state
 
-- **Project:** ReasonBraid (working name, not legally cleared).
-- **Phases 0–7 CLOSED.** Phase 7's exit: G6–G7 NOT MET for the
-  Internet exposure, Met as the hardening-machinery exit for the LAN
-  profile (the exposure stays UNCLAIMED per the §25.1 kill/pivot —
-  the three external preconditions: the reviewed threat model, the
-  prompt-injection suite, the pen-test). The gate record + the
-  subtraction (S-1…S-12) + the unsupported matrix + the evidence
-  manifest ship.
-- **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.5.3`. **The `.1`–`.4` lanes are COMPLETE**; `.5` done (the
-  regional-routing census → decomposed `.5.1`–`.5.4`); `.5.1` done
-  (ADR-035); `.5.2` done (the regional routing).
-- **Next action:** execute `PHASE-8.5.3` — the store-and-forward: the
-  intermittent-site delivery over the shipped substrate (the outbox +
-  the inbox), consuming the `.5.2` routing.
-- **Latest commit:** derive on read with `git log -1 --oneline`.
-- **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
-  drain race, `MAINT-3` toolchain pin — all closed).
-- **In-flight uncommitted work:** none.
-- **Push cadence:** every ~300 commits (director, 2026-09-06); run full CI before each push.
-- **Local dev deps (2026-09-06):** `postgresql@16`, `cargo-deny`, `gitleaks`,
-  `mdbook` — plus `jq` for the demo script; `codex` (0.153.4) AND `claude`
-  (2.1.263, Claude Code) for env-gated real runs.
-- **Blockers:** none. Director-owned open items: license choice (`Cargo.toml` says
-  `MIT OR Apache-2.0`, no `LICENSE` file); ADR-001 name clearance (repo stays private).
-- **Dating anomaly (flagged):** the machine clock crossed midnight mid-session
-  (2026-09-07 → 2026-09-08); new records use the machine date — the historical
-  anomaly stands (some prior-session records dated 2026-09-07 inside
-  2026-09-06 commits).
+- **Project:** ReasonBraid; working name uncleared, repository remains private.
+- **Active tree:** `SIGNOFF-REPAIR`; leaf `.1` complete: full-read census, repair ownership, site-authority decision and corrected progress pointers.
+- **Next action:** execute `.2.1` repository-local execution environment, `.2.2` disposable PG verification, `.3.1` tenant-bound revocation, `.3.2` site registry authority.
+- **Architecture decision:** shared mutations require explicit site-operator grants issued through protected deployment tooling; tenant enrollment cannot mint them. Design accepted, implementation pending (`docs/decisions/2026-09-09_site-operator-authority.md`).
+- **Roadmap:** Phase 0–7 historical execution records exist; current qualification is under corrective review. Phase 8 remains incomplete. Resume `PHASE-8.5.3` after its corrective prerequisites, then `.5.4`, `.6`, and later executable work.
+- **Defects:** open source-review findings owned by the repair tree; runtime reproduction pending. No zero-defect claim.
+- **Latest commit:** derive with `git log -1 --oneline`; review baseline `9c2d2ba`.
+- **In-flight uncommitted work:** none after the `.1` commit; no background verification job.
+- **Reading complete:** roadmap, all 284 tracked non-Markdown files (3,276,496-character corpus), and all mdBook sources, before the first repository edit.
+- **PNT:** continue through executable work; commit every bounded leaf; full CI before pushes. Push cadence approximately 300 commits; baseline ahead 269.
+- **Storage:** all project output/cache/temp stores must be repository-derived on its volume. `.2.1` owns setup and migration; do not run Cargo with ambient home caches meanwhile.
+- **External gates:** G6/G7 Internet qualification, license choice and ADR-001 public-name clearance remain open; they do not block local repairs.

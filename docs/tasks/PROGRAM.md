@@ -17,7 +17,7 @@ post-LAN track has a named owner. This tree does not implement product code.
 
 ## Non-Goals
 
-- Executing Phase 0–9 work (owned by the `PHASE-*` trees).
+- Executing product work (owned by `PHASE-*` and `SIGNOFF-REPAIR`).
 - Un-freezing v0.4.1 or writing v0.5.0.
 - Hosting day-to-day Phase 0 issues (that is `KICKOFF.md` + `PHASE-0`).
 
@@ -34,16 +34,21 @@ post-LAN track has a named owner. This tree does not implement product code.
 
 | Phase | Tree | Status | Estimate (eng-wk) | Depends on | Exit |
 | --- | --- | --- | --- | --- | --- |
-| 0 | `PHASE-0` | `active` | 8–14 | `RB-SEED` done | G0 for identity/authority/thread/delivery/budget |
-| 1 | `PHASE-1` | `active` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
+| 0 | `PHASE-0` | `done` | 8–14 | `RB-SEED` done | G0 for identity/authority/thread/delivery/budget |
+| 1 | `PHASE-1` | `done` | 14–22 | Phase 0 contracts | G1–G2; Demonstration A |
 | 2 | `PHASE-2` | `done` | 12–20 | Phase 1 | authority non-escalation (the adversarial suite); restore + node replacement (the exercises); no silent unknown-retry (the six-leg inventory) — CLOSED 2026-09-07 |
 | 3 | `PHASE-3` | `done` | 12–19 | stable identity, inbox, grants | recruit without enumerating the network — CLOSED 2026-09-07 |
-| 4 | `PHASE-4` | `active` | 16–27 | authz, budgets, object store, observability | G4 |
-| 5 | `PHASE-5` | `proposed` | 15–26 + evaluators | evidence provenance, workflows | G5 on declared domains |
-| 6 | `PHASE-6` | `proposed` | 18–30 + governance review | authority, deliberation, Git/object, correction | G3; reconstructable policy lifecycle |
-| 7 | `PHASE-7` | `proposed` | 18–32 + external review | Phase 1 + applicable Phase 2; not Phases 3–6 if disabled | G6–G7 for a named profile |
-| 8 | `PHASE-8` | `proposed` | 16–30 | stable trust and compatibility | G8 |
+| 4 | `PHASE-4` | `done` | 16–27 | authz, budgets, object store, observability | G4 |
+| 5 | `PHASE-5` | `done` | 15–26 + evaluators | evidence provenance, workflows | G5 on declared domains |
+| 6 | `PHASE-6` | `done` | 18–30 + governance review | authority, deliberation, Git/object, correction | G3; reconstructable policy lifecycle |
+| 7 | `PHASE-7` | `done` | 18–32 + external review | Phase 1 + applicable Phase 2; not Phases 3–6 if disabled | G6–G7 for a named profile |
+| 8 | `PHASE-8` | `active` | 16–30 | stable trust and compatibility | G8 |
 | 9 | `PHASE-9` | `proposed` | 12–24 after beta | sustained operational evidence | G9 |
+
+The phase states above record historical execution closure. Current qualification
+is under `SIGNOFF-REPAIR`; see `LIVE_STATUS.md`. Source findings reopen affected
+guarantees without erasing historical evidence. The repair tree owns the full-read
+census and is the current executable prerequisite for `PHASE-8.5.3`.
 
 After Phase 1, phase numbers are work packages on parallel tracks, not a
 mandatory single-file sequence (`ROADMAP.md` §20.1.1).
@@ -135,7 +140,7 @@ No ADR is approved merely because the roadmap names a candidate technology.
 - ID: `PROGRAM`
   Status: `active`
   Goal: keep the v0.4.1 map complete
-  Children: `PHASE-0` … `PHASE-9` (separate files)
+  Children: `PHASE-0` … `PHASE-9`, `SIGNOFF-REPAIR` (separate files)
 
 - ID: `PROGRAM.1`
   Status: `done`
@@ -148,7 +153,7 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `PHASE-1.1.1` (the `PHASE-0` tree is complete; ADR-002 signed) |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.2.1`; return to `PHASE-8.5.3` after corrective prerequisites |
 
 ## Decisions
 

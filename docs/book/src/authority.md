@@ -1,62 +1,68 @@
 # Authority
 
-The control plane is model-neutral: Rust — not an LLM — decides what is
-authorized (`ROADMAP.md` §4). This chapter describes the Phase 0 development
-authority model: the enrollment ceiling, the scoped grants under it, and the
-audit record every command leaves.
+ReasonBraid's required model separates identity, enrollment boundaries and grants.
+The development control API trusts the supplied principal header. A known identity
+is not, by itself, authority to mutate a target.
 
-## The ceiling and the subset rule
+The full source review found gaps between this contract and several current API
+paths. [Current qualification and repairs](qualification-review.md) names those
+limits and their repair owners. The description below distinguishes the existing
+thread-command machinery from the selected administrative repair.
 
-An **enrollment boundary** (`§4.4`) is the root/parent-granted ceiling for a
-tenant: permitted actions, domains, a risk ceiling, a spend ceiling, whether
-delegation is allowed, and a validity window. A **grant** is a scoped mandate
-under one boundary.
+## Enrollment boundaries and grants
 
-The subset rule is deterministic and enforced twice:
+An enrollment boundary defines permitted actions, domains, risk, spend, delegation
+and a validity window. A grant names a subject, action set, selector, validity
+window and parent boundary. The core evaluator checks the supplied grant against
+the supplied boundary and returns an allowed or denied decision.
 
-- at **grant creation** — a grant whose actions, risk, spend, delegation, or
-  window exceeds its boundary is refused and never stored;
-- at **every evaluation** — the stored grant is re-checked against the stored
-  boundary before any decision.
+The server's current grant selection and boundary lookup require correction:
+the actual referenced boundary must be used, a later unrelated grant must not
+hide another applicable grant, and tenant-target actions must reject thread-only
+selectors. These are owned by `SIGNOFF-REPAIR.3.3`. Delegation and cached admission
+decisions exist; their depth, consent and freshness constraints are under `.3.4`.
 
-Tenant membership alone grants **nothing**: a principal without an active
-grant is denied, and administrative authority (`tenant_admin`) is never
-implied by other actions.
+## Thread commands and audit
 
-## Scoped commands
+Thread creation targets a tenant. Invitation, contribution, inspection, close,
+cancel and invitation-response actions target a thread. The normal command path
+combines authorization with state, event, idempotency and outbox writes in a
+PostgreSQL transaction. Rejected commands preserve their rejection/audit according
+to that path's transaction handling. Exact committed replays preserve historical
+results; they are not a fresh authorization to mutate another target.
 
-A grant's selector is tenant-wide or a named thread set, and each action has a
-target shape: `thread_create` targets the tenant; `thread_invite`,
-`thread_contribute`, `thread_inspect`, `thread_close`, `thread_cancel`, and
-`thread_invitation_respond` (the `.1.3.1` accept/decline gate — every invited
-role's default carries it; the invitation itself is the real capability)
-target a thread that must be inside the selector. Out-of-scope targets are
-denied with the reason recorded.
-
-## The audit record
-
-Every command — accepted or refused — writes an `authorization_records` row:
+The authorization record contains:
 
 ```text
-record_id · tenant · actor · subject (if delegated) · boundary · grant
-action · target · decision (allowed | denied + reason)
-policy_digest · policy_version · decided_at
+record_id · tenant · actor · delegated subject · boundary · grant
+action · target · decision · reason · policy_digest · policy_version · time
 ```
 
-The digest is SHA-256 over a documented field-order input (boundary id,
-charter digest, policy version, grant id, subject, action, target, decision),
-so the record names exactly which policy produced it — and identical inputs
-always digest identically. An accepted command's audit record commits in the
-SAME transaction as its state, event, idempotency, and outbox writes; a
-denied command commits its denial record and writes nothing else.
+The current digest covers selected identifiers and decision fields. It is not a
+content digest of every field of the boundary and grant. The review must reconcile
+that limitation with any stronger policy-binding claim. Administrative handlers do
+not all use the thread-command transaction; their audit and revocation serialization
+are explicit corrective work, not guarantees inferred from the command core.
 
-## Honest limits (Phase 0)
+## Administrative authority
 
-- Development credentials: no certificate issuer; the caller supplies a
-  resolved actor. Authentication arrives with the real identity work.
-- Direct grants only — delegation chains are Phase 2 (the boundary records
-  the permitted depth).
-- The dev trust store is the control plane's own PostgreSQL; policy engines
-  (OPA/Cedar, §16.4) remain Phase 2 candidates.
-- `.5.2` adds the other half of WP5: no provider dispatch without an
-  applicable budget reservation.
+Tenant administration is intended to remain tenant-scoped. The approved frozen
+boundary carve-out allows an otherwise eligible tenant administrator to inspect its
+own tenant after boundary revocation. It does not grant authority over other tenants.
+
+The shared adapter and region registries currently use an any-tenant-admin check.
+The accepted replacement is a distinct site-operator grant, issued through protected
+deployment tooling, with a live operator-controlled parent boundary. Tenant enrollment
+cannot mint site authority. Each mutation and its audit must serialize with revocation.
+Implementation is pending `SIGNOFF-REPAIR.3.2`; the decision is
+`docs/decisions/2026-09-09_site-operator-authority.md`.
+
+For example, an administrator of tenant A must not revoke tenant B's grant, prune
+B's inbox or declare a shared site region merely by supplying A's tenant identifier.
+These refusal cases must prove unchanged protected rows and epochs, alongside a
+successful correctly authorized control. The current source does not enforce that
+uniformly; `.3.1`, `.3.2` and `.3.5` own the repairs.
+
+Site authority and workload certificate checks do not replace production caller
+authentication. The development header trust and the open external G6/G7 gates remain
+material deployment limits.

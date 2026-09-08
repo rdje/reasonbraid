@@ -25,6 +25,17 @@ default.
 - Fully decentralized federation in the first Internet-capable release (already a v1 non-goal; this phase is post-v1 unless a narrower interop slice is pulled forward).
 - Letting an A2A Agent Card confer ReasonBraid enrollment or governance authority.
 
+## Current qualification correction
+
+`SIGNOFF-REPAIR` owns the source-review findings discovered after the historical
+`.5.2` closure. Shared adapter/region mutations currently use an any-tenant-admin
+check without boundary validation; the accepted replacement is explicit site
+operator authority (`docs/decisions/2026-09-09_site-operator-authority.md`).
+MCP authorization/continuation, A2A transport, federation and adapter certification
+also have source-review records. Their previous test results retain provenance;
+they do not close the untested guarantees. Repairs precede extending delivery.
+Runtime reproduction is pending in the corrective tree.
+
 ## Task Tree
 
 - ID: `PHASE-8.1`
@@ -1390,7 +1401,8 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
+| 1 | `SIGNOFF-REPAIR.2.1` | `pending` | corrective prerequisite; repository-local execution setup, then authority repairs |
+| 2 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
 
 ## Changelog
 

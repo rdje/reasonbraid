@@ -18,6 +18,7 @@ README_POLICY.md|hot_live|governed by itself: revisions only via deliberate loca
 scripts/update_scaffold.sh|reader_navigation|explicit scaffold pull tool; never an overflow destination|repo-local (scaffold)
 docs/tasks/|author_overflow|partitioned task collection: bounded index `docs/TASK_TREE.md` (one row per tree) + per-tree changelog and verification discipline; trees close when exhausted|repo-local
 docs/TASK_TREE.md|author_overflow|bounded index, one row per active tree; TABLE-ARITY and TASK-TREE-OWNERSHIP doctrines enforce its shape|repo-local
+LIVE_STATUS.md|reader_navigation|current status table, overwritten rather than appended; historical detail in phase tasks and git; containment enforcement owned by SIGNOFF-REPAIR.11.4|repo-local
 CHANGELOG.md|append_only_history|query-first (git log is the access path; CHANGELOG is a digest) + 96,000-byte rotation threshold enforced by the README-STABILITY guard (the 48,495-byte baseline is recorded as governed debt); rotation = git history|repo-local
 COMMIT.md|reader_navigation|the exact commit workflow (spine doctrine); changes are deliberate spine maintenance, never an overflow destination|repo-local (scaffold)
 docs/adr/|author_overflow|one ADR per file + `docs/adr/INDEX.md` entry; supersede, never mutate; ADRs are accepted only by the recorded authority|repo-local

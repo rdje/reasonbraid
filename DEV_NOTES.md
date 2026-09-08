@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Shared registry authority must have its own grant scope
+
+- The full source read found `require_admin_any_tenant` granting global adapter/region mutation authority from a tenant grant without boundary validation. Existing success fixtures encode that scope error. The selected repair is explicit site authority, protected issuance, actual-boundary validation and atomic mutation/audit with revocation serialization. Runtime reproduction remains pending.
+- promotion: promoted → `docs/decisions/2026-09-09_site-operator-authority.md`. Owner: `SIGNOFF-REPAIR.1`; implementation `.3.2`.
+
+
 ## _(2026-09-08)_ — PHASE-7.1.3.3: the disposition destroyed the evidence the rule exists to protect — the prune had no quarantine exclusion
 
 - **A dead-lettered row is acknowledged BY DEFINITION** (the node delivered it, then reported it dead) — so the retention's `acknowledged_at IS NOT NULL AND acknowledged_at <= cutoff` delete swept the quarantined rows away once old enough. The §16.11 rule ("the quarantine preserves the evidence") was therefore unenforced exactly where it mattered: the age-based disposition. The fix is one predicate — `AND quarantined_at IS NULL` — and the census-driven contract (`docs/decisions/2026-09-08_quarantine-preserves-evidence.md`) articulates the rest: the quarantine is a ROW FACT; the retention never deletes it; the replay re-arm clears the MARK, never the evidence.

@@ -12,6 +12,16 @@
 
 > This version integrates the strongest parts of both predecessors. It retains v0.2.0’s typed architecture, deterministic governance, security model, resource abstraction, and verification depth. It retains v0.3.0’s specification maturity ladder, early evaluation, consent, cost control, approval-throughput design, policy correction, and PostgreSQL/Git recovery work. It removes or replaces five unsafe ideas: response similarity as “independence,” cost as correctness, universally weaker retraction authority, impossible no-duplicate-charge recovery, and globally atomic multi-repository rollout.
 
+### Current execution and security correction
+
+`LIVE_STATUS.md` and `docs/tasks/PROGRAM.md` carry current progress. The full
+source review is owned by `docs/tasks/SIGNOFF-REPAIR.md`, before extending
+`PHASE-8.5.3`. Shared registry mutations require explicit site-operator authority
+under the accepted security correction
+`docs/decisions/2026-09-09_site-operator-authority.md`; implementation is pending.
+Historical phase closures do not supersede the open corrective findings or the
+G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
+
 ### 0.4.1 execution-baseline errata
 
 This is a bounded correction release, not another architecture expansion. Relative to v0.4.0 it:

@@ -1,4 +1,4 @@
-# Roadmap and Phase 0
+# Roadmap and progress
 
 ReasonBraid is planned from two companion files at the repository root:
 
@@ -37,7 +37,12 @@ governance), not a mandatory single-file sequence.
 | 8 | Federation and interoperability | G8 |
 | 9 | Stable product release | G9 |
 
-## Phase 1 — complete (G1–G2 Met)
+## Historical phase records
+
+The following closures record earlier execution and evidence. Current corrective
+qualification is described in [Current qualification and repairs](qualification-review.md).
+
+## Phase 1 — historical G1–G2 close
 
 The trustworthy LAN vertical slice (`ROADMAP.md` §20.3) is **complete**:
 Demonstration A passed **30/30** acceptance checks with real kill points
@@ -51,7 +56,7 @@ ships (`docs/decisions/2026-09-07_phase1-subtraction-record.md`), and the
 evidence manifest is `docs/evidence/2026-09-07_phase1-evidence-manifest.md`.
 Execution is recorded in `docs/tasks/PHASE-1.md` (`done`).
 
-## Phase 2 — complete
+## Phase 2 — historical close
 
 Phase 2 hardened delivery, identity, and recovery (`ROADMAP.md` §20.4):
 the workload certificate lifecycle, the scoped grants, the delegated
@@ -59,13 +64,13 @@ authority context, the revocation, and the cached-decision rules — with the
 exit line's properties measured (tracked in `docs/tasks/PHASE-2.md`,
 `done`).
 
-## Phase 3 — complete
+## Phase 3 — historical close
 
 Phase 3 shipped the directory, the presence, the two-stage matching, the
 recruitment protocol, the subscriptions, and the dependence indicators
 (tracked in `docs/tasks/PHASE-3.md`, `done`).
 
-## Phase 4 — complete (G4 Met)
+## Phase 4 — historical G4 close
 
 The universal resource + evidence pipeline (`ROADMAP.md` §20.6) is
 **complete**: the packs R0 (safe HTTPS) + R1 (public Git) + R2 (the
@@ -80,6 +85,15 @@ evidence manifest is
 `docs/evidence/2026-09-07_phase4-evidence-manifest.md`. Execution is
 recorded in `docs/tasks/PHASE-4.md` (`done`).
 
-## Phase 5 (current)
+## Current execution
 
-The frontier is `PHASE-5.1` (tracked in `docs/tasks/PHASE-5.md`).
+Phases 5–7 have historical exit records: G5 withdrew the quality-lift claim;
+G3 completed machinery while binding use remained gated; G6/G7 did not qualify
+Internet exposure. Phase 8 has reached regional routing; store-and-forward,
+export/import and G8 remain incomplete. Phase 9 has not started.
+
+The current frontier is `SIGNOFF-REPAIR.2.1`, followed by local verification setup
+and authority repairs. The full-read source census and its repair leaves are in
+`docs/tasks/SIGNOFF-REPAIR.md`. Resume `PHASE-8.5.3` after the corrective prerequisites.
+Current statuses are summarized in `LIVE_STATUS.md`; `docs/tasks/PROGRAM.md` maps
+the complete frozen roadmap to execution trees.

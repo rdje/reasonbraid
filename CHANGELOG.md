@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Corrective ownership and site-authority decision (`SIGNOFF-REPAIR.1`)
+
+Completed the required roadmap, tracked-codebase and mdBook read before editing.
+Recorded the source census and bounded repair leaves, selected explicit site-operator
+authority for shared registries, and corrected progress pointers and qualification
+limits. The former live status carried 42,374 bytes in 18 lines and omitted separate
+Phases 5–7/9 rows; its history remains in git and phase records. This is documentation
+and design work; implementation and runtime reproduction remain pending.
+Validation: mdBook built; 13 doctrine checks passed; diff whitespace clean; owner/phase omission controls detected. Runtime tests remain pending.
+
 > Entries older than `2026-09-06` are rotated into the git history (the
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.

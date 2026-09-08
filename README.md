@@ -11,12 +11,9 @@ publication. Model output stays untrusted until deterministic rules accept it.
 
 ## Status
 
-Phases 0–6 closed (the G3 gate recorded as machinery-blocked-binding-use);
-Phase 7 — the Internet-qualified operation — runs: the `.1` hardening lane
-is complete (the mTLS identity, the RLS layer, the quotas, the quarantine
-evidence rule, the secret-store profiles, the classification controls),
-the `.2` supply-chain lane is open (frontier `PHASE-7.2.2`). Work is
-owned by task-trees under `docs/tasks/`.
+Corrective verification is active before the next Phase 8 delivery slice.
+Current progress and qualification limits: [`LIVE_STATUS.md`](LIVE_STATUS.md).
+Execution and repair ownership: [`docs/TASK_TREE.md`](docs/TASK_TREE.md).
 
 ## Quick start
 

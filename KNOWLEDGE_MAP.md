@@ -27,6 +27,7 @@
 - [`PHASE-9.md`](docs/tasks/PHASE-9.md)
 - [`PROGRAM.md`](docs/tasks/PROGRAM.md)
 - [`RB-SEED.md`](docs/tasks/RB-SEED.md)
+- [`SIGNOFF-REPAIR.md`](docs/tasks/SIGNOFF-REPAIR.md)
 
 ## Decision records
 
@@ -106,3 +107,4 @@
 - [`2026-09-08_rls-tenant-claim.md`](docs/decisions/2026-09-08_rls-tenant-claim.md)
 - [`2026-09-08_sdk-compatibility-matrix-schema.md`](docs/decisions/2026-09-08_sdk-compatibility-matrix-schema.md)
 - [`2026-09-08_tls13-refusals-are-read-side.md`](docs/decisions/2026-09-08_tls13-refusals-are-read-side.md)
+- [`2026-09-09_site-operator-authority.md`](docs/decisions/2026-09-09_site-operator-authority.md)

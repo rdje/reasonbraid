@@ -616,7 +616,7 @@ reopens the applicable portions of G4–G7.
   Children: `.2.1`–`.2.4`
 
   - ID: `PHASE-7.2.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the census + ADR-027 — the signing-and-
       distribution contract: the release-identity key
       hierarchy, the digest-pinned manifest + the
@@ -627,6 +627,25 @@ reopens the applicable portions of G4–G7.
       deferrals.
     ADR: 027
     Roadmap: §16.10
+    Done (`2026-09-08`): ADR-027 accepted (evidence-gated)
+      — `docs/adr/027-signing-and-distribution.md`
+      (top-level `answers:`): ONE Ed25519 release
+      identity per channel (the dev placement — the
+      releaser's key, the ADR-007 stance; the protected
+      identities + the reproducible builders are the
+      named deferrals); the release MANIFEST is the
+      single verification unit (the per-binary
+      `sha256:<hex>` digests + the manifest digest + the
+      Ed25519 signature over the canonical JSON — the
+      ring provider, the workspace rule); the
+      downloaded-adapter verification is the ORDERED,
+      FAIL-CLOSED ladder (allowlist → digest → signature
+      → API compatibility → capability manifest — a
+      failure refuses AT its rung, never a partial
+      trust); the shipped dev adapters satisfy the
+      ladder by construction (the ledger rows + the
+      pinned interfaces). No code changed. Frontier →
+      `.2.2`.
 
   - ID: `PHASE-7.2.2`
     Status: `proposed`
@@ -677,10 +696,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.2.1` | `proposed` | `.2` decomposed at the census seams (the quarantine + the revocation propagation ship; the signing/SBOM/disclosure/public-enrollment are the greenfield) — the census + ADR-027 execute first |
+| 1 | `PHASE-7.2.2` | `proposed` | `.2.1` done — ADR-027 accepted (the release identity + the digest-pinned manifest + the fail-closed adapter ladder); the disclosure + the supported-version policy execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.1` done — ADR-027 accepted
+  (evidence-gated): the release identity + the
+  digest-pinned manifest + the ordered fail-closed
+  adapter-verification ladder; the distribution channel +
+  the reproducible builders named as the deferrals; no
+  code; frontier → `.2.2`.
 - `2026-09-08`: `.2` done — the census at the seams
   (the quarantine + the revocation propagation ship in
   their LAN forms; ADR-027 reserved; the SBOM/disclosure/

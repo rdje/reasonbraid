@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — ADR-027: the signing-and-distribution contract (`PHASE-7.2.1`)
+
+- ADR-027 accepted (`docs/adr/027-signing-and-distribution.md`, top-level `answers:`): ONE Ed25519 release identity per channel (the dev placement — the releaser's key; the protected identities + the reproducible builders are the named deferrals); the release MANIFEST is the single verification unit (the per-binary `sha256:<hex>` digests + the manifest digest + the Ed25519 signature over the canonical JSON — the ring provider); the downloaded-adapter verification is the ORDERED, FAIL-CLOSED ladder (allowlist → digest → signature → API compatibility → capability manifest — a failure refuses at its rung); the shipped dev adapters satisfy the ladder by construction. No code. Frontier → `.2.2`.
+
 ## 2026-09-08 — The software-supply-chain census: the `.2` lane opens at the seams (`PHASE-7.2`)
 
 - The census, measured: the quarantine + the revocation propagation ship in their LAN forms (the `.2.4` two-way quarantine, the `.1.3.3` evidence rule, the cert revocation + the epoch fence); ADR-027 ("plugin/adapter signing and distribution") is RESERVED with no record; the SBOM/provenance, the signed updates, and the disclosure policy are the greenfield (no SECURITY.md); the public-enrollment surface is the greenfield BY DESIGN (the `.5` kill/pivot forbids exposing remote enrollment with an incomplete gate). Decomposed: `.2.1` the census + ADR-027 → `.2.2` the disclosure + the supported-version policy → `.2.3` the SBOM + the signed release artifacts → `.2.4` the public-enrollment contract.

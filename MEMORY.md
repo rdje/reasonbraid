@@ -16,20 +16,20 @@
   G1–G2 Met + Demonstration A 30/30; Phase 2's exit line measured; Phase 3's
   six lanes shipped; Phase 4's G4 Met; Phase 5's G5 Met as a subtraction
   gate; Phase 6's G3 Met as machinery, blocked as binding use).
-- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4`.
+- **Active tree:** `PHASE-7` (the Internet-hardening lane) → frontier `.1.4.1`.
   `.1.1` done (ADR-034 accepted); `.1.2` done (the mTLS workload identity);
-  `.1.3` lane COMPLETE: the census → `.1.3.1` (the RLS defense-in-depth:
-  the fail-closed command-core policies + the measured probe-role refusal),
-  `.1.3.2` (the quotas: the windowed per-key ceilings + the recorded
-  denials + the invite binding), `.1.3.3` (the quarantine-preserving-
-  evidence rule: the prune's quarantine exclusion + the articulated
-  contract).
-- **Next action:** execute `PHASE-7.1.4` — the secret-manager integration +
-  the regional/data-class controls: the external secret-store interface
-  (the DECLARED profiles — the external store is a configuration choice,
-  never an ambient dependency), the classification-driven
-  region/retention/export decisions (the §16.8 thread-classification
-  controls — a classification without the controls is the typed refusal).
+  the `.1.3` lane COMPLETE (the RLS layer, the quotas, the
+  quarantine-evidence rule); `.1.4` done (the census: the dev secrets are
+  the plaintext rows + the hashed node secret; the classification is
+  RECORDED-ONLY — the "silent general"; no region/export machinery) →
+  decomposed `.1.4.1` (the declared-profile contract) → `.1.4.2` (the
+  secret-store profiles) → `.1.4.3` (the classification controls).
+- **Next action:** execute `PHASE-7.1.4.1` — the declared-profile contract
+  (the decision record): the secret-store profile vocabulary (the shipped
+  `dev_database` profile, the external stores as the configuration choice,
+  the undeclared-store typed refusal) + the classification-controls mapping
+  (each control refuses at ITS decision point — ADR-034's "never a silent
+  general") + the named deferrals with their triggers.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

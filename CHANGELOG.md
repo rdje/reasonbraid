@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The secrets-and-classification census: the declared profiles are the greenfield (`PHASE-7.1.4`)
+
+- The census at the seams, measured: the dev profile's secrets are the plaintext rows (`server_ca`, the enrollment tokens) + the HASHED node secret (`node_keys` — the handshake compares the digest); no store interface. The `Classification` (general/confidential) is RECORDED-ONLY — the Phase-1 deferral stands, and the ADR-034 "silent general" is the shipped state. No region/export machinery; the snapshot `retention_class` is a free string, never classification-driven. Decomposed: `.1.4.1` the declared-profile contract → `.1.4.2` the secret-store profiles → `.1.4.3` the classification-driven controls (the dev subset).
+
 ## 2026-09-08 — The quarantine preserves the evidence: the retention never deletes a quarantined row (`PHASE-7.1.3.3`)
 
 - The census found the retention gap: a dead-lettered row is acknowledged BY DEFINITION, so the prune's age-based delete swept the quarantined rows — the disposition destroyed the evidence the §16.11 rule exists to protect. Fixed: the prune gains `AND quarantined_at IS NULL`. The contract (`docs/decisions/2026-09-08_quarantine-preserves-evidence.md`, top-level `answers:`): the quarantine is a ROW FACT; the retention never deletes it; the replay re-arm clears the mark (the delivery state), never the evidence; the prune stays the only age-based removal with the measured receipt. The measured suite (`tests/quarantine.rs`, the guard's 24th) proves the quarantined row + its reason survive while the sweep still removes its target. **The `.1.3` lane is COMPLETE** — frontier → `.1.4`.

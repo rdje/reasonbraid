@@ -402,12 +402,66 @@ reopens the applicable portions of G4–G7.
       (top-level `answers:`).
 
   - ID: `PHASE-7.1.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the secret-manager integration + the regional/
       data-class controls — the external secret-store
       interface (the declared profiles), the
       classification-driven region/retention/export
       decisions (the §16.8 thread-classification controls).
+    Roadmap: §16.8
+    Done (`2026-09-08`): the census at the seams —
+      decomposed. Measured: the dev profile's secrets are
+      the plaintext rows (`server_ca`'s ca_der/key_der,
+      the enrollment tokens) + the HASHED node secret
+      (`node_keys` — `Sha256::digest` at the handshake) —
+      no store interface; the `Classification`
+      (general/confidential) is RECORDED-ONLY (the Phase-1
+      deferral stands — the ADR-034 "silent general" is
+      the shipped state); no region/export machinery; the
+      snapshot store's `retention_class` is a free string,
+      never classification-driven. Children: `.1.4.1` the
+      declared-profile contract → `.1.4.2` the
+      secret-store declared profiles → `.1.4.3` the
+      classification-driven controls (the dev subset).
+    Children: `.1.4.1`–`.1.4.3`
+
+  - ID: `PHASE-7.1.4.1`
+    Status: `proposed`
+    Goal: the declared-profile contract — the decision
+      record: the secret-store profile vocabulary (the
+      shipped `dev_database` profile, the external stores
+      as the CONFIGURATION choice, the undeclared-store
+      typed refusal) + the classification-controls mapping
+      (each control refuses at ITS decision point: the
+      evaluator control at the dispatch, the retention at
+      the sweep, the region/export at their triggers —
+      ADR-034's "a classification without the controls is
+      the typed refusal, never a silent general") + the
+      named deferrals with their triggers.
+    Roadmap: §16.8
+
+  - ID: `PHASE-7.1.4.2`
+    Status: `proposed`
+    Goal: the secret-store declared profiles — the profile
+      registry with the shipped `dev_database` profile (the
+      plaintext dev rows — the ADR-007 stance, honest);
+      the CA/node-key reads route through the declared
+      profile (the store is a configuration choice, never
+      an ambient dependency — mechanical); the
+      undeclared-profile request is the typed refusal;
+      the measured suite.
+    Roadmap: §16.8
+
+  - ID: `PHASE-7.1.4.3`
+    Status: `proposed`
+    Goal: the classification-driven controls (the dev
+      subset) — the evaluator-access decision at the
+      DISPATCH: a confidential thread's work delivery
+      refuses without a confidential-qualified evaluator
+      profile (the typed refusal, never a silent general);
+      the retention/export vocabulary wired where the
+      machinery exists (the snapshot retention_class);
+      the region control stays the named deferral.
     Roadmap: §16.8
 
 - ID: `PHASE-7.2`
@@ -438,10 +492,17 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.4` | `proposed` | `.1.3.3` done — the quarantine-preserving-evidence rule ships (the prune's quarantine exclusion + the articulated contract + the measured suite); **the `.1.3` lane is COMPLETE** — the secret-manager integration + the regional/data-class controls execute next |
+| 1 | `PHASE-7.1.4.1` | `proposed` | `.1.4` decomposed at the census seams (the secrets are the plaintext dev rows, the classification is recorded-only, no region/export machinery) — the declared-profile contract executes first |
 
 ## Changelog
 
+- `2026-09-08`: `.1.4` done — the census at the seams
+  (the dev secrets are the plaintext rows + the hashed
+  node secret; the classification is RECORDED-ONLY — the
+  shipped "silent general"; no region/export machinery) →
+  decomposed `.1.4.1` (the declared-profile contract) →
+  `.1.4.2` (the secret-store profiles) → `.1.4.3` (the
+  classification controls); frontier → `.1.4.1`.
 - `2026-09-08`: `.1.3.3` done — the
   quarantine-preserving-evidence rule (the census found
   the retention gap — the prune deleted acknowledged

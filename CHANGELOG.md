@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The target-deployment lane is decomposed at the census seams (`PHASE-6.5`)
+
+- The deployment lane is the greenfield (no target/wave/receipt/drift/correction record exists); the `.4` effective publications + the digests are the inputs. Children: `.5.1` ADR-021 → `.5.2` the deployment records + the waves → `.5.3` the drift + the corrections.
+
 ## 2026-09-07 — The reconciliation matrix lands — the `.4` lane is COMPLETE (`PHASE-6.4.3.3`)
 
 - The `reconciler` module: the pure `reconcile` function over (the DB state, the observed Git state, the expected id) → the six §15.8 actions (the idempotent retry, the verify-and-advance, the stop-and-alert, the freeze-and-repair, the **quarantine-and-adjudicate — never a silent promote**, the out-of-band alert); the kill-point tests map every matrix row + prove the idempotency (the same pair yields the same action). Measured: reconciler 3. **The `.4` lane (the signed canonical publication) is COMPLETE.**

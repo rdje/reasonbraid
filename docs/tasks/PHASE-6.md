@@ -656,10 +656,69 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       frontier → `.5`.
 
 - ID: `PHASE-6.5`
-  Status: `proposed`
+  Status: `done`
   Goal: canary target deployment, PR/apply adapters, receipts, drift, waivers, suspension, supersession, retraction
   ADR: 021
   Roadmap: §15.9–15.11, §4.7
+  Children: `.5.1`–`.5.3` (decomposed `2026-09-07` at the census
+    seams): `.5.1` ADR-021 + the census (the deployment
+    contract: the per-target waves — the deployment is NOT
+    globally atomic, the desired/observed states, the receipt
+    + the drift vocabulary, the §4.7 correction authorities)
+    → `.5.2` the deployment records + the waves (the targets,
+    the desired/observed states, the canary assignments, the
+    receipts) → `.5.3` the drift + the corrections (the six
+    §15.10 drift categories, the §4.7 operations — the
+    suspension/supersession/retraction/waiver, the outcome
+    records).
+  Done (`2026-09-07`): the census at the seams. The
+    deployment lane is a GREENFIELD: no target record, no
+    wave, no receipt, no drift category, no correction
+    record exists (`git grep -c "deployment_target\|waiver\|
+    retraction" HEAD -- crates/reasonbraid-server/src/` →
+    rc=1). The INPUTS ship: the `.4` effective publications
+    (the immutable refs + the digests — the desired-publication
+    half), the lifecycle records (the `.2` chain), the
+    Phase-4 receipt shapes. The §23 queue's 021 (the target
+    deployment authority + the receipts) is THIS leaf's ADR.
+    Frontier → `.5.1`.
+
+  - ID: `PHASE-6.5.1`
+    Status: `proposed`
+    Goal: ADR-021 + the census — the deployment contract:
+      the per-target waves (the deployment is NOT globally
+      atomic — the §15.9 rule), the desired/observed state
+      pair per target, the receipt (the digest attestation),
+      the drift vocabulary (the §15.10 six categories), the
+      §4.7 correction authorities (the suspension/
+      supersession/retraction/waiver — the reversal is
+      technically fast, the authority is not universally
+      lower). No code.
+    ADR: 021
+    Roadmap: §15.9–15.11, §4.7
+
+  - ID: `PHASE-6.5.2`
+    Status: `proposed`
+    Goal: the deployment records + the waves — the target
+      rows (the id + the type + the authority), the
+      desired/observed state pair, the canary wave
+      assignments (the target → the publication + the wave
+      number), the receipts (the per-target digest
+      attestation — the record references the effective
+      publication's ref id).
+    Roadmap: §15.9
+
+  - ID: `PHASE-6.5.3`
+    Status: `proposed`
+    Goal: the drift + the corrections — the drift records
+      (the §15.10 six categories over the desired vs the
+      observed digest), the §4.7 operations (the
+      suspension — the fast scoped expiring, the
+      supersession — the linked old/new, the retraction —
+      the preserved original + the effective time, the
+      waiver — the time-bounded), the outcome records
+      (§15.11).
+    Roadmap: §15.10–15.11, §4.7
 
 - ID: `PHASE-6.6`
   Status: `proposed`
@@ -676,10 +735,16 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.5` | `proposed` | `.4.3.3` done — the reconciliation matrix (the six §15.8 rules, the idempotent pure function, the never-silent-promote; reconciler 3) — **the `.4` lane (the signed publication) is COMPLETE**; the target-deployment lane executes next |
+| 1 | `PHASE-6.5.1` | `proposed` | `.5` decomposed at the census seams (the deployment lane is the greenfield — the `.4` effective publications + the digests are the inputs) — ADR-021 opens the lane |
 
 ## Changelog
 
+- `2026-09-07`: `.5` decomposed at the census seams — the
+  deployment lane is the greenfield (no target/wave/receipt/
+  drift/correction record exists; the `.4` effective
+  publications are the inputs); children `.5.1` (ADR-021 +
+  the census) → `.5.2` (the deployment records + the waves)
+  → `.5.3` (the drift + the corrections); frontier → `.5.1`.
 - `2026-09-07`: `.4.3.3` done — the reconciliation matrix
   (the six §15.8 rules as the pure idempotent function, the
   never-silent-promote); reconciler 3; **`.4` COMPLETE** —

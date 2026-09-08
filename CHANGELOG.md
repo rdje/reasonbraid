@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — ADR-026: the federation trust agreement (`PHASE-8.1.1`)
+
+- ADR-026 accepted (`docs/adr/026-federation-trust-agreement.md`, top-level `answers:`): the federation is EXPLICIT — the agreement record is the single capability source (no record, no cross-domain effect, never a transitive default); the remote domain NEVER authorizes local effects (the remote agreement vouches for the remote half, the local grant acts locally — the §25 kill line as the invariant); the visibility rides the shipped scopes + the opt-in; the remote recruitment is the agreement-scoped opt-in; the cross-domain receipts CROSS-REFERENCE, never merge; the portable cards verify through the ADR-027 five-rung ladder. No code. Frontier → `.1.2`.
+
 ## 2026-09-08 — The federation lane opens: the `.1` block lifts (`PHASE-8.1`)
 
 - The census at the seams: the block ("stable trust and compatibility contracts") LIFTS — the trust contracts (the workload identity, the `.2.4` enrollment policy, the revocation drill, the audit groundwork) and the compatibility contracts (the wire envelopes, the ADR-027 adapter ladder) ship + are measured by the Phase-7 guard of record. The lane's five pieces split: the visibility scopes ship in their intra-tenant form (the network-pseudonym class + the ADR-034 explicit opt-in), the remote recruitment, the portable cards, and the cross-domain receipts are the greenfield; ADR-026 is reserved. Decomposed: `.1.1` the census + ADR-026 → `.1.2` the visibility + the recruitment → `.1.3` the portable cards → `.1.4` the receipts. The PHASE-8 tree is `active` — frontier → `.1.1`.

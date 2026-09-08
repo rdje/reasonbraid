@@ -55,7 +55,7 @@ default.
   Children: `.1.1`–`.1.4`
 
   - ID: `PHASE-8.1.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the census + ADR-026 — the federation
       trust-agreement contract: the explicit agreement
       shape (a federated domain is a NAMED trust, never
@@ -66,6 +66,26 @@ default.
       vocabulary over the shipped machinery.
     ADR: 026
     Roadmap: §6.6
+    Done (`2026-09-08`): ADR-026 accepted
+      (evidence-gated) — `docs/adr/026-federation-trust-agreement.md`
+      (top-level `answers:`): the federation is
+      EXPLICIT — the agreement record is the single
+      capability source (no record, no cross-domain
+      effect; never a transitive default); the remote
+      domain NEVER authorizes local effects — the
+      remote agreement vouches for the remote half,
+      the local grant acts locally (the §25 kill line
+      as the invariant); the visibility rides the
+      shipped scopes + the opt-in (no agreement → the
+      network pseudonym only); the remote recruitment
+      is the agreement-scoped opt-in; the receipts
+      CROSS-REFERENCE (the remote domain's own
+      digest-pinned records), never merge (the local
+      chain stays the local truth — the ADR-022
+      groundwork's federation form); the portable cards
+      verify through the ADR-027 five-rung ladder
+      before they confer anything. No code changed.
+      Frontier → `.1.2`.
 
   - ID: `PHASE-8.1.2`
     Status: `proposed`
@@ -127,10 +147,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.1.1` | `proposed` | `.1` decomposed at the census seams (the block LIFTS — the trust + the compatibility contracts ship + are measured; ADR-026 is the greenfield) — the census + ADR-026 execute first |
+| 1 | `PHASE-8.1.2` | `proposed` | `.1.1` done — ADR-026 accepted (the explicit agreement, the local-grant rule, the cross-reference receipts, the ladder-verified cards); the visibility + the remote recruitment execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.1` done — ADR-026 accepted
+  (evidence-gated): the federation is explicit + the
+  local grant is the only authority that acts locally
+  + the receipts cross-reference + the cards verify
+  through the ADR-027 ladder; no code; frontier →
+  `.1.2`.
 - `2026-09-08`: the tree opens — `.1` done (the census
   at the seams: the block LIFTS — the trust +
   compatibility contracts ship + are measured; the

@@ -153,13 +153,57 @@ default.
       doctrine + the `.1.3.2` boundary note).
 
   - ID: `PHASE-8.1.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the portable agent cards/profiles — the
       export/import shape (the digest-pinned portable
       form of the §10.1 profile + the capability
       declaration), the ADR-027 verification ladder
       applied to the imported card.
     Roadmap: §6.6
+    Done (`2026-09-08`): the portable card ships —
+      `cards.rs` (the `AgentCard` — the origin identity
+      + the §10.1 profile + the canonical field order +
+      the `sha256:<hex>` digest) + the two routes: the
+      EXPORT (`GET /v1/profiles/{role_id}/card` — the
+      role itself or the tenant admin mints the
+      portable form) and the IMPORT (`POST
+      /v1/profiles/cards/import` — the ADR-027 ladder:
+      the digest rung (the re-derivation of the
+      canonical bytes), the compatibility rung (the
+      `agent-card/1` schema), the allowlist rung (the
+      EFFECTIVE recruitment agreement with the origin —
+      the `.1.2` machinery's `has_effective_recruitment_agreement`),
+      the capability rung (the fresh local role + the
+      boundary-checked DEFAULT grant — the card's
+      self-asserted capabilities NEVER confer authority,
+      the ADR-026 invariant — + the imported profile
+      through the content-addressed write path). The
+      measured suite (`tests/cards.rs`, LIVE — the
+      guard's 27th): the export, the no-agreement
+      403, the tampered-card digest refusal, the
+      unknown-schema refusal, the clean import (the
+      fresh local role + the imported profile), the
+      default-grant-only invariant. The guard's first
+      runs caught the profile-FK purge gaps (the
+      profile tables joined three more lists).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-026
+      card clause had no machinery (the portable form +
+      the ladder); the digest-pinned canonical card +
+      the four rungs land. Evidence: `cargo test -p
+      reasonbraid-server --test cards` → `test result:
+      ok. 1 passed; 0 failed`.
+    - [x] **ADDRESSED** — the export + the import
+      ladder + the measured legs. Evidence: `bash
+      scripts/run_pg_tests.sh` → rc=0, 27 suites
+      (`target/pg_cards_guard5.log`).
+    - [x] **NO REGRESSION** — the guard → rc=0, 27
+      suites + the demo `ALL acceptance checks passed`
+      (`target/pg_cards_guard5.log`); `cargo test --all`
+      → rc=0, 72 suites (`target/cards_offline.log`);
+      clippy/fmt clean; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — none new: the FK-purge
+      ripple is the known recurring lesson.
 
   - ID: `PHASE-8.1.4`
     Status: `proposed`
@@ -202,10 +246,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.1.3` | `proposed` | `.1.2` done — the federation machinery ships (the agreement pairing + the verbs + the measured visibility widening); the portable agent cards/profiles execute next |
+| 1 | `PHASE-8.1.4` | `proposed` | `.1.3` done — the portable cards ship (the digest-pinned export + the four-rung import + the measured suite); the cross-domain audit receipts execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.3` done — the portable agent
+  cards (the canonical digest-pinned export + the
+  four-rung import ladder — the digest, the schema,
+  the agreement-allowlist, the local-grant capability
+  — + the measured suite); frontier → `.1.4`.
 - `2026-09-08`: `.1.2` done — the federation
   machinery (migration 0048's agreement pairing + the
   propose/accept/revoke verbs + the effective-pair

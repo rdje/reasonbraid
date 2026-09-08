@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The portable agent cards: the digest-pinned export + the four-rung import (`PHASE-8.1.3`)
+
+- `cards.rs` (the `AgentCard` — the origin identity + the §10.1 profile + the canonical field order + the `sha256:<hex>` digest) + the two routes: the EXPORT (`GET /v1/profiles/{role_id}/card` — the role or its tenant admin mints the portable form) and the IMPORT (`POST /v1/profiles/cards/import` — the ADR-027 ladder: the digest rung (the re-derivation), the compatibility rung (`agent-card/1`), the allowlist rung (the EFFECTIVE recruitment agreement — the `.1.2` machinery), the capability rung (the fresh local role + the boundary-checked DEFAULT grant — the card's self-asserted capabilities never confer authority — + the imported profile via the content-addressed path). The measured suite (the guard's 27th) proves the export, the refusals, the clean import, and the default-grant-only invariant. The guard's first runs caught the profile-FK purge gaps. Frontier → `.1.4`.
+
 ## 2026-09-08 — The federation machinery: the named agreement widens exactly what it names (`PHASE-8.1.2`)
 
 - Migration 0048 (`federation_agreements` — the NAMED pairing with the `directory_visibility` + the `recruitment` scopes and the proposed/accepted/revoked state) + `federation.rs` (the propose/accept/revoke verbs + the EFFECTIVE check: BOTH directions accepted AND both carry the scope) + the three tenant_admin-gated routes. The widening binds at the reader-classification seam: a network reader under the effective directory-visibility agreement reads the TENANT view; no agreement (or a one-sided/revoked one) stays the pseudonym; a third tenant never inherits. The measured suite (the guard's 26th) proves the five legs; the recruitment scope ships as the vocabulary (the call-panel widening is the named deferral). The guard's first runs caught the FK-purge ripple (the table joined all 15 purge lists) + the migration-boundary move. Frontier → `.1.3`.

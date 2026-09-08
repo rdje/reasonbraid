@@ -93,3 +93,24 @@ pub async fn has_effective_directory_agreement(
     .await?;
     Ok(pair == (true, true))
 }
+
+/// The EFFECTIVE recruitment agreement (the card import's allowlist
+/// rung): BOTH directions accepted AND both rows carry `recruitment`.
+pub async fn has_effective_recruitment_agreement(
+    pool: &PgPool,
+    tenant_a: &str,
+    tenant_b: &str,
+) -> Result<bool, sqlx::Error> {
+    let pair: (bool, bool) = sqlx::query_as(
+        "SELECT \
+             COALESCE((SELECT recruitment FROM federation_agreements \
+                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted'), false), \
+             COALESCE((SELECT recruitment FROM federation_agreements \
+                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted'), false)",
+    )
+    .bind(tenant_a)
+    .bind(tenant_b)
+    .fetch_one(pool)
+    .await?;
+    Ok(pair == (true, true))
+}

@@ -63,6 +63,8 @@ async fn pool() -> Option<PgPool> {
         "authority_grants",
         "enrollments",
         "enrollment_boundaries",
+        "profile_versions",
+        "agent_profiles",
         "agent_roles",
         "human_principals",
         "idempotency",

@@ -470,6 +470,8 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/calls/{call_id}/close", post(close_call))
         .route("/v1/calls/{call_id}", get(inspect_call))
         .route("/v1/profiles/{role_id}", put(put_profile).get(get_profile))
+        .route("/v1/profiles/{role_id}/card", get(get_profile_card))
+        .route("/v1/profiles/cards/import", post(import_profile_card))
         .route(
             "/v1/profiles/{role_id}/versions",
             get(list_profile_versions),
@@ -4509,6 +4511,151 @@ async fn get_profile(
         "written_by": current.written_by,
         "written_at": current.written_at.to_rfc3339(),
         "profile": profile,
+    })))
+}
+
+// ── The portable agent cards (PHASE-8.1.3; ADR-026/027) ────────────────────────
+
+/// `GET /v1/profiles/{role_id}/card` — mint the digest-pinned portable
+/// card (the FULL profile + the origin identity). Only the role itself or
+/// its tenant admin (the Full class) exports the portable form.
+async fn get_profile_card(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(role_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(class) = classify_reader(&state.pool, &principal, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    };
+    if class != crate::profiles::ReaderClass::Full {
+        return Err(ControlApiError::unauthorized(
+            "only the role itself or its tenant admin exports the portable card",
+        ));
+    }
+    let Some(current) = crate::profiles::current_profile(&state.pool, &role_id).await? else {
+        return Err(ControlApiError::not_found(format!(
+            "no profile for `{role_id}`"
+        )));
+    };
+    let profile: crate::profiles::AgentProfile =
+        serde_json::from_value(current.profile).map_err(|e| {
+            ControlApiError::internal_with_log(format!("stored profile no longer parses: {e}"))
+        })?;
+    let origin_tenant = role_tenant(&state.pool, &role_id)
+        .await?
+        .ok_or_else(|| ControlApiError::not_found(format!("no role `{role_id}`")))?;
+    let card = crate::cards::AgentCard {
+        schema_version: crate::cards::CARD_SCHEMA_VERSION.to_string(),
+        origin_tenant_id: origin_tenant,
+        origin_role_id: role_id,
+        profile,
+        exported_at: Utc::now().to_rfc3339(),
+    };
+    let digest = crate::cards::digest_of(&card)
+        .map_err(|e| ControlApiError::internal_with_log(format!("the card digests: {e}")))?;
+    Ok(Json(json!({ "card": card, "digest": digest })))
+}
+
+/// The card import body: the importing tenant + the card + the digest the
+/// card claims (the re-derivation rung).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportCardRequest {
+    pub tenant_id: TenantId,
+    pub card: crate::cards::AgentCard,
+    pub digest: String,
+}
+
+/// `POST /v1/profiles/cards/import` — the ADR-027 ladder over the card:
+/// the digest rung (the re-derivation), the compatibility rung (the
+/// schema), the allowlist rung (the EFFECTIVE recruitment agreement with
+/// the origin), and the capability rung (the fresh local role under the
+/// importing boundary's default grant — the card's self-asserted
+/// capabilities NEVER confer authority; the local grant is the only
+/// authority that acts, the ADR-026 invariant).
+async fn import_profile_card(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<ImportCardRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    // The pure rungs first — no storage before the card proves itself.
+    crate::cards::verify_pure_rungs(&req.card, &req.digest)
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    // The allowlist rung: the effective recruitment agreement with the origin.
+    if !crate::federation::has_effective_recruitment_agreement(
+        &state.pool,
+        &req.tenant_id.to_string(),
+        &req.card.origin_tenant_id,
+    )
+    .await?
+    {
+        return Err(ControlApiError::unauthorized(format!(
+            "no effective federation agreement with the origin tenant `{}` — the import refuses",
+            req.card.origin_tenant_id
+        )));
+    }
+    // The capability rung + the local identity: the fresh role, the default
+    // grant under the importing boundary (the boundary-checked evaluation),
+    // and the enrollment row — the enroll's role-branch shape.
+    let boundary = authority::load_active_boundary_for_tenant(&state.pool, &req.tenant_id)
+        .await?
+        .ok_or_else(|| {
+            ControlApiError::invalid_command(
+                "the tenant has no active enrollment boundary — the import refuses",
+            )
+        })?;
+    let role = GrantSubject::Role(AgentRoleId::new());
+    let role_id = role.id_string();
+    let grant = dev_grant(
+        &boundary,
+        HumanPrincipalId::new(),
+        role.clone(),
+        vec![
+            GrantAction::ThreadContribute,
+            GrantAction::ThreadInvitationRespond,
+        ],
+    );
+    let mut tx = state.pool.begin().await?;
+    authority::create_grant_in_tx(&mut *tx, &grant)
+        .await
+        .map_err(|GrantRefused { violations }| {
+            ControlApiError::invalid_command(format!(
+                "the imported role's grant exceeds the importing boundary: {}",
+                violations
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ))
+        })?;
+    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3)")
+        .bind(&role_id)
+        .bind(req.tenant_id.to_string())
+        .bind(req.card.profile.display_label.clone())
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, 'role', $3)",
+    )
+    .bind(&role_id)
+    .bind(req.tenant_id.to_string())
+    .bind(req.card.profile.display_label.clone())
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    // The profile from the card (the content-addressed write path).
+    crate::profiles::write_profile(&state.pool, &role_id, &role_id, &req.card.profile)
+        .await
+        .map_err(|e| {
+            ControlApiError::internal_with_log(format!("the imported profile fails to write: {e}"))
+        })?;
+    Ok(Json(json!({
+        "role_id": role_id,
+        "origin_tenant_id": req.card.origin_tenant_id,
+        "origin_role_id": req.card.origin_role_id,
     })))
 }
 

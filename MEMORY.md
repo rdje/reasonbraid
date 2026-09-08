@@ -20,14 +20,15 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.1.3`. `.1` done (the census — the block LIFTS) →
+  frontier `.1.4`. `.1` done (the census — the block LIFTS) →
   decomposed; `.1.1` done (ADR-026); `.1.2` done (the agreement
-  machinery: migration 0048's pairing + the verbs + the measured
-  visibility widening).
-- **Next action:** execute `PHASE-8.1.3` — the portable agent
-  cards/profiles: the export/import shape (the digest-pinned portable
-  form of the §10.1 profile + the capability declaration), the
-  ADR-027 verification ladder applied to the imported card.
+  machinery); `.1.3` done (the portable cards — the digest-pinned
+  export + the four-rung import).
+- **Next action:** execute `PHASE-8.1.4` — the cross-domain audit
+  receipts: the receipt shape over the shipped audit linkage (the
+  ADR-022 groundwork's federation form: the remote domain's receipt
+  references its OWN digest-pinned records; the local chain stays the
+  local truth — the cross-reference, never the merge).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

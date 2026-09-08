@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The federation machinery: the named agreement widens exactly what it names (`PHASE-8.1.2`)
+
+- Migration 0048 (`federation_agreements` — the NAMED pairing with the `directory_visibility` + the `recruitment` scopes and the proposed/accepted/revoked state) + `federation.rs` (the propose/accept/revoke verbs + the EFFECTIVE check: BOTH directions accepted AND both carry the scope) + the three tenant_admin-gated routes. The widening binds at the reader-classification seam: a network reader under the effective directory-visibility agreement reads the TENANT view; no agreement (or a one-sided/revoked one) stays the pseudonym; a third tenant never inherits. The measured suite (the guard's 26th) proves the five legs; the recruitment scope ships as the vocabulary (the call-panel widening is the named deferral). The guard's first runs caught the FK-purge ripple (the table joined all 15 purge lists) + the migration-boundary move. Frontier → `.1.3`.
+
 ## 2026-09-08 — ADR-026: the federation trust agreement (`PHASE-8.1.1`)
 
 - ADR-026 accepted (`docs/adr/026-federation-trust-agreement.md`, top-level `answers:`): the federation is EXPLICIT — the agreement record is the single capability source (no record, no cross-domain effect, never a transitive default); the remote domain NEVER authorizes local effects (the remote agreement vouches for the remote half, the local grant acts locally — the §25 kill line as the invariant); the visibility rides the shipped scopes + the opt-in; the remote recruitment is the agreement-scoped opt-in; the cross-domain receipts CROSS-REFERENCE, never merge; the portable cards verify through the ADR-027 five-rung ladder. No code. Frontier → `.1.2`.

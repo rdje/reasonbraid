@@ -434,6 +434,18 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/nodes/inbox", get(inspect_node_inbox))
         .route("/v1/nodes/inbox/prune", post(prune_node_inbox))
         .route("/v1/nodes/revoke", post(revoke_node))
+        .route(
+            "/v1/federation-agreements",
+            post(propose_federation_agreement),
+        )
+        .route(
+            "/v1/federation-agreements/accept",
+            post(accept_federation_agreement),
+        )
+        .route(
+            "/v1/federation-agreements/revoke",
+            post(revoke_federation_agreement),
+        )
         .route("/v1/admin/grants/{grant_id}/revoke", post(revoke_grant))
         .route(
             "/v1/admin/boundaries/{boundary_id}/revoke",
@@ -1420,6 +1432,93 @@ async fn revoke_node(
         revoked_certificates: result.rows_affected() as i64,
         revoked_at: revoked_at.to_rfc3339(),
     }))
+}
+
+// ── The federation trust agreements (PHASE-8.1.2; ADR-026) ─────────────────────
+
+/// The agreement body: one DIRECTION of the named tenant-to-tenant pairing
+/// (the EFFECTIVE agreement is the both-sides accepted pair).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FederationAgreementRequest {
+    pub tenant_id: TenantId,
+    pub remote_tenant_id: TenantId,
+    #[serde(default)]
+    pub directory_visibility: bool,
+    #[serde(default)]
+    pub recruitment: bool,
+}
+
+/// `POST /v1/federation-agreements` — propose one direction. A proposal
+/// widens NOTHING by itself (the pairing needs the remote side's own row).
+async fn propose_federation_agreement(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<FederationAgreementRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    let agreement_id = crate::federation::propose(
+        &state.pool,
+        &req.tenant_id.to_string(),
+        &req.remote_tenant_id.to_string(),
+        req.directory_visibility,
+        req.recruitment,
+    )
+    .await?;
+    Ok(Json(
+        json!({ "agreement_id": agreement_id, "status": "proposed" }),
+    ))
+}
+
+/// The accept/revoke body: the direction this tenant records.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FederationAgreementAction {
+    pub tenant_id: TenantId,
+    pub remote_tenant_id: TenantId,
+}
+
+/// `POST /v1/federation-agreements/accept` — accept the remote side's
+/// proposal (this tenant's own row). The effect engages only when BOTH
+/// rows are accepted.
+async fn accept_federation_agreement(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<FederationAgreementAction>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    let rows = crate::federation::accept(
+        &state.pool,
+        &req.tenant_id.to_string(),
+        &req.remote_tenant_id.to_string(),
+    )
+    .await?;
+    if rows == 0 {
+        return Err(ControlApiError::invalid_transition(
+            "no PROPOSED agreement in this direction to accept (the remote side must propose first)",
+        ));
+    }
+    Ok(Json(json!({ "status": "accepted" })))
+}
+
+/// `POST /v1/federation-agreements/revoke` — revoke this tenant's
+/// direction (the fallback: the network pseudonym).
+async fn revoke_federation_agreement(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<FederationAgreementAction>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
+    let rows = crate::federation::revoke(
+        &state.pool,
+        &req.tenant_id.to_string(),
+        &req.remote_tenant_id.to_string(),
+    )
+    .await?;
+    Ok(Json(json!({ "revoked": rows })))
 }
 
 // ── The operator's offline-known enumeration (PHASE-3.2.2; backlog 27) ─────────
@@ -4344,6 +4443,16 @@ async fn classify_reader(
                 return Ok(Some(crate::profiles::ReaderClass::Full));
             }
         }
+        return Ok(Some(crate::profiles::ReaderClass::Tenant));
+    }
+    // The federation agreement (`.1.2`, ADR-026): a network reader whose
+    // tenant holds the EFFECTIVE (both-sides accepted) directory-visibility
+    // agreement with the profile's tenant reads the TENANT view — the
+    // explicit opt-in; no agreement (or a revoked/one-sided one) stays the
+    // network pseudonym. The widening never widens beyond the tenant view.
+    if crate::federation::has_effective_directory_agreement(pool, &reader_tenant, &role_tenant)
+        .await?
+    {
         return Ok(Some(crate::profiles::ReaderClass::Tenant));
     }
     Ok(Some(crate::profiles::ReaderClass::Network))

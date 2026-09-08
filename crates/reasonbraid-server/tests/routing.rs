@@ -80,6 +80,7 @@ async fn pool() -> Option<PgPool> {
         "resource_references",
         "quota_events",
         "usage_quotas",
+        "federation_agreements",
         "tenants",
         "idempotency",
         "event_log",

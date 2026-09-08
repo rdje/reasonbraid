@@ -88,7 +88,7 @@ default.
       Frontier → `.1.2`.
 
   - ID: `PHASE-8.1.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the tenant-to-tenant visibility + the remote
       recruitment — the explicit opt-in machinery over
       the shipped visibility scopes + the recruitment
@@ -96,6 +96,61 @@ default.
       class; the cross-tenant recruitment rides the
       explicit agreement, never the default).
     Roadmap: §6.6
+    Done (`2026-09-08`): migration 0048 —
+      `federation_agreements` (the NAMED pairing: the
+      agreement_id, the two tenants, the
+      `directory_visibility` + the `recruitment` scope
+      columns, the proposed/accepted/revoked state);
+      `federation.rs` — the propose/accept/revoke verbs
+      + the EFFECTIVE check (BOTH directions accepted
+      AND both carry the scope); the API gains the
+      three tenant_admin-gated routes; the visibility
+      widening binds at `classify_reader`: a network
+      reader whose tenant holds the effective
+      directory-visibility agreement reads the TENANT
+      view (exactly what the agreement names — never
+      beyond); no agreement (or a one-sided/revoked
+      one) stays the network pseudonym; a THIRD tenant
+      never inherits (the transitive-default refusal).
+      The recruitment scope column ships as the
+      vocabulary — the cross-tenant CALL-panel widening
+      is the named deferral (the trigger: the call
+      machinery's remote-panel surface). The measured
+      suite (`tests/federation.rs`, LIVE — the guard's
+      26th): the no-agreement network view, the
+      one-sided no-widening, the typed 409 (the accept
+      without a proposal), the both-sides TENANT view,
+      the revocation fallback, the third-tenant
+      refusal. The guard's first runs caught the
+      FK-purge ripple (the federation table joined all
+      15 purge lists) + the migration-boundary move
+      (the migration_upgrade test's quota-backfill
+      assertion dropped — the boundary is the moving
+      prefix, the survival assertions are the
+      boundary-independent truth).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-026
+      contract (the explicit agreement as the single
+      capability source) had no machinery; the
+      widening binds at the reader-classification seam
+      (the single choke point for the profile reads).
+      Evidence: `cargo test -p reasonbraid-server
+      --test federation` → `test result: ok. 1 passed;
+      0 failed`.
+    - [x] **ADDRESSED** — the migration + the verbs +
+      the effective-pair check + the widening + the
+      measured legs. Evidence: `bash scripts/run_pg_tests.sh`
+      → rc=0, 26 suites (`target/pg_federation_guard6.log`).
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 26 suites + the demo `ALL acceptance
+      checks passed` (`target/pg_federation_guard6.log`);
+      `cargo test --all` → rc=0, 71 suites
+      (`target/federation_offline.log`); clippy/fmt
+      clean; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — none new: the
+      FK-purge ripple + the migration-boundary move
+      are the known recurring lessons (the purge-list
+      doctrine + the `.1.3.2` boundary note).
 
   - ID: `PHASE-8.1.3`
     Status: `proposed`
@@ -147,10 +202,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.1.2` | `proposed` | `.1.1` done — ADR-026 accepted (the explicit agreement, the local-grant rule, the cross-reference receipts, the ladder-verified cards); the visibility + the remote recruitment execute next |
+| 1 | `PHASE-8.1.3` | `proposed` | `.1.2` done — the federation machinery ships (the agreement pairing + the verbs + the measured visibility widening); the portable agent cards/profiles execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.2` done — the federation
+  machinery (migration 0048's agreement pairing + the
+  propose/accept/revoke verbs + the effective-pair
+  visibility widening at the reader-classification
+  seam + the measured suite; the recruitment
+  widening is the named deferral); frontier → `.1.3`.
 - `2026-09-08`: `.1.1` done — ADR-026 accepted
   (evidence-gated): the federation is explicit + the
   local grant is the only authority that acts locally

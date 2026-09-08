@@ -649,7 +649,7 @@ default.
       known path.
 
   - ID: `PHASE-8.3.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the listen-stream durability — the
       ReasonBraid-owned subscription + the cursor +
       the delivery ids + the dedup state; the
@@ -658,6 +658,68 @@ default.
       cursor → the possible-gap surface), never
       stronger than the upstream proves.
     Roadmap: §9.6
+    Done:
+    - migration `0050_mcp_listen_state.sql` — the
+      durable state table (the tenant + the
+      subscription + the last cursor + the last
+      delivery id + the 64-id dedup window + the
+      updated stamp).
+    - `crates/reasonbraid-server/src/mcp_listen.rs`
+      — the state machine: `record_delivery_in_tx`
+      (the FOR UPDATE dedup check → the replay SKIP
+      with the cursor unchanged; the first delivery
+      registers the state; the accepted delivery
+      advances the cursor + trims the window — the
+      caller's transaction commits the state WITH
+      the delivery's effects), `listen_state` (the
+      reconnect's input), the pure `resume_plan`
+      (the resume is ALWAYS the OWN cursor; the
+      possible-gap flag names the no-replay
+      condition — never stronger than the upstream
+      proves) + its unit test.
+    - The lib seam `mcp_listen_internal` carries the
+      four names (the `.3.5` transport consumes the
+      same path); the re-export also resolves the
+      guard's build warnings (the pub-in-private-mod
+      items used only by tests → dead-code) —
+      `cargo clippy -p reasonbraid-server
+      --all-targets` → 0 warnings.
+    - The live suite `tests/mcp_listen.rs` (the
+      guard's 28th): the first delivery registers →
+      the duplicate id is the replay SKIP → the next
+      delivery advances the cursor → the state reads
+      back; the FK-purge ripple handled (the new
+      table in the purge list before `tenants`).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-024
+      listen-stream contract had no durable
+      machinery: the transport state was ephemeral,
+      so a reconnect lost the cursor + the dedup (the
+      replay re-delivered; the resume could only
+      guess). Evidence: `cargo test -p
+      reasonbraid-server --lib` → `test result: ok.
+      66 passed; 0 failed`; the guard's mcp_listen
+      suite → `test result: ok. 1 passed; 0 failed`.
+    - [x] **ADDRESSED** — the durable table + the
+      in-transaction machine + the pure resume plan
+      + the live suite. Evidence: `bash
+      scripts/run_pg_tests.sh` → rc=0, `grep -c
+      "test result: ok."` → 28 suites; the demo →
+      `ALL acceptance checks passed`.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean (the two build warnings
+      fixed via the seam re-export); `make deny`
+      green; `make gate` → 13/13; `make book`
+      builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      dead-code-on-the-unwired-plan lesson is the
+      known re-export path. Recorded here, not
+      promoted: the demo's fixed 20s first-boot wait
+      flaked ONCE under the peak machine load (the
+      failed run's own server.log shows both listens
+      + every downstream beat; the re-run passed) —
+      the pre-existing load sensitivity, not a
+      regression.
 
   - ID: `PHASE-8.3.5`
     Status: `proposed`
@@ -688,9 +750,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.4` | `proposed` | `.3.3` done — the MCP read-half ships (the rmcp-pinned read tools + the conformance fixtures + the supply-chain review); the listen-stream durability executes next |
+| 1 | `PHASE-8.3.5` | `proposed` | `.3.4` done — the MCP listen-stream durability ships (the durable state table + the in-transaction dedup/cursor machine + the pure resume plan + the live suite); the write-half profile executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.3.4` done — the MCP
+  listen-stream durability (migration 0050's
+  durable state + the in-transaction dedup/cursor
+  machine + the pure resume plan + the live suite
+  (the guard's 28th) + the seam re-export fix);
+  frontier → `.3.5`.
 
 - `2026-09-08`: `.3.3` done — the MCP read-half
   (the `reasonbraid-mcp` crate over the rmcp 3.2.0

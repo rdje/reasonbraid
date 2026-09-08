@@ -1,0 +1,131 @@
+//! The MCP listen-stream DURABLE state (`PHASE-8.3.4`, ADR-024, §9.6):
+//! the listen stream is the EPHEMERAL transport state; the durable state
+//! — the subscription, the last accepted ReasonBraid cursor, the delivery
+//! ids, the deduplication — stays in REASONBRAID. The reconnect resumes
+//! from the OWN cursor and surfaces the possible-gap when the upstream
+//! offers no replay (never stronger than the upstream can prove).
+
+use sqlx::PgPool;
+
+/// The dedup window's size (the recent delivery ids kept per subscription).
+pub const DEDUP_WINDOW: usize = 64;
+
+/// Record one accepted delivery: the dedup check (the delivery id seen
+/// → the replay SKIP, the cursor unchanged) and the cursor advance. The
+/// caller's transaction commits the state WITH the delivery's effects.
+pub async fn record_delivery_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    subscription_id: &str,
+    delivery_id: &str,
+    cursor: i64,
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let row: Option<(i64, serde_json::Value)> = sqlx::query_as(
+        "SELECT last_cursor, dedup_window FROM mcp_listen_state \
+         WHERE tenant_id = $1 AND subscription_id = $2 FOR UPDATE",
+    )
+    .bind(tenant_id)
+    .bind(subscription_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((_last, window)) = row else {
+        // The first delivery registers the state (the cursor starts HERE).
+        sqlx::query(
+            "INSERT INTO mcp_listen_state \
+             (tenant_id, subscription_id, last_cursor, last_delivery, dedup_window, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, now())",
+        )
+        .bind(tenant_id)
+        .bind(subscription_id)
+        .bind(cursor)
+        .bind(delivery_id)
+        .bind(serde_json::json!([delivery_id]))
+        .execute(&mut *tx)
+        .await?;
+        return Ok(true);
+    };
+    let seen: Vec<String> = serde_json::from_value(window).unwrap_or_default();
+    if seen.iter().any(|d| d == delivery_id) {
+        return Ok(false); // the replay skip — the cursor unchanged
+    }
+    let mut next = seen.clone();
+    next.push(delivery_id.to_string());
+    next.truncate(DEDUP_WINDOW);
+    sqlx::query(
+        "UPDATE mcp_listen_state \
+         SET last_cursor = $1, last_delivery = $2, dedup_window = $3, updated_at = now() \
+         WHERE tenant_id = $4 AND subscription_id = $5",
+    )
+    .bind(cursor)
+    .bind(delivery_id)
+    .bind(serde_json::to_value(&next).expect("the window serializes"))
+    .bind(tenant_id)
+    .bind(subscription_id)
+    .execute(&mut *tx)
+    .await?;
+    Ok(true)
+}
+
+/// The reconnect's resume plan: the resume is ALWAYS from the OWN
+/// cursor; the possible-gap flag names the honest condition when the
+/// upstream offers no replay (the deliveries between the own cursor and
+/// the upstream's state may be lost — the continuation is never
+/// advertised as stronger than the upstream can prove).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResumePlan {
+    /// The cursor the delivery resumes from (the OWN last cursor).
+    pub resume_from: i64,
+    /// Whether the upstream offers a replay (false → the possible-gap).
+    pub upstream_replay: bool,
+    /// The possible-gap condition to surface to the operator.
+    pub possible_gap: bool,
+}
+
+/// Compute the resume plan for a reconnected listen stream.
+pub fn resume_plan(own_cursor: i64, upstream_replay: bool) -> ResumePlan {
+    ResumePlan {
+        resume_from: own_cursor,
+        upstream_replay,
+        possible_gap: !upstream_replay,
+    }
+}
+
+/// Read the durable state for a subscription (the reconnect's input).
+pub async fn listen_state(
+    pool: &PgPool,
+    tenant_id: &str,
+    subscription_id: &str,
+) -> Result<Option<(i64, Option<String>)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT last_cursor, last_delivery FROM mcp_listen_state \
+         WHERE tenant_id = $1 AND subscription_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(subscription_id)
+    .fetch_optional(pool)
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The resume plan is always the OWN cursor; the gap flag rides the
+    /// upstream's replay capability.
+    #[test]
+    fn the_resume_plan_is_the_own_cursor_and_the_gap_is_honest() {
+        let with_replay = resume_plan(42, true);
+        assert_eq!(with_replay.resume_from, 42);
+        assert!(!with_replay.possible_gap, "the replay closes the gap");
+        let without_replay = resume_plan(42, false);
+        assert_eq!(without_replay.resume_from, 42);
+        assert!(
+            without_replay.possible_gap,
+            "no replay → the possible-gap surfaces"
+        );
+    }
+}

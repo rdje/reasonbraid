@@ -1,16 +1,12 @@
 # CHANGELOG.md
 
-> Entries older than this session's `.4` lane (the R0–R2 pack history) are
-> rotated into the git history (the README-STABILITY rotation threshold) —
-> `git log --follow CHANGELOG.md` carries the full record.
-
-# CHANGELOG.md
-
 > Entries older than `2026-09-06` are rotated into the git history (the
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
-# CHANGELOG.md
+## 2026-09-08 — The MCP listen-stream durability: the durable state stays in ReasonBraid (`PHASE-8.3.4`)
+
+- The ADR-024 listen-stream contract's machinery (migration `0050_mcp_listen_state.sql` + `crates/reasonbraid-server/src/mcp_listen.rs`): the listen stream is the EPHEMERAL transport state; the durable state — the subscription, the last accepted ReasonBraid cursor, the delivery ids, the 64-id dedup window — stays in REASONBRAID. `record_delivery_in_tx` does the FOR UPDATE dedup check (the replay SKIP leaves the cursor unchanged; the first delivery registers; the accepted delivery advances) in the caller's transaction, so the state commits WITH the delivery's effects. The reconnect ritual: reauthorize → recreate → reconcile → resume from the OWN cursor via the pure `resume_plan` (the possible-gap flag names the no-replay condition — never stronger than the upstream proves). The lib seam `mcp_listen_internal` carries the four names for the `.3.5` transport (the re-export also resolved the guard's build warnings — the pub-in-private-mod dead-code lint). The live suite `tests/mcp_listen.rs` (the guard's 28th): the register → the duplicate-skip → the cursor-advance → the state-read legs; the FK-purge ripple handled. Frontier → `.3.5`.
 
 ## 2026-09-08 — The MCP read-half: the rmcp-pinned read tools + the conformance fixtures (`PHASE-8.3.3`)
 

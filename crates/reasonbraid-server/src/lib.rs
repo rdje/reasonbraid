@@ -45,6 +45,13 @@ pub mod fetcher;
 pub mod git;
 pub mod lifecycle;
 mod matching;
+mod mcp_listen;
+/// The test seam for the listen-state machinery (the `.3.4` suite).
+pub mod mcp_listen_internal {
+    pub use crate::mcp_listen::{
+        listen_state as state, record_delivery_in_tx as record, resume_plan, ResumePlan,
+    };
+}
 pub mod mediated;
 pub mod mtls;
 mod node_channel;

@@ -36,9 +36,11 @@ mod fake;
 pub mod fixtures;
 pub mod resolver;
 
+mod allowlist;
 pub mod bench;
 pub mod certification;
 
+pub use allowlist::{capabilities_within, verify_ladder, AllowedCapabilities, RungRefusal};
 pub use certification::{
     certify, dev_six_box_evidence, BoxStatus, CertificationReport, CheckResult,
     ConformanceScenario, SixBoxEvidence, SixBoxRecord, Trigger, Verdict,

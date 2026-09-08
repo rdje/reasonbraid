@@ -21,6 +21,9 @@ serde_json = "1"
 # The WP7 benchmark hashes its versioned corpus/prompt files so a report can prove
 # which inputs produced it (re-derive, never trust a copy).
 sha2 = "0.10"
+# The allowlist ladder's signature rung (`.4.4`, the ADR-027 Ed25519 —
+# the ring provider, the workspace single-provider rule).
+ring = "0.17"
 # The WP7 graders parse REQUIRED confidence/citation shapes from untrusted answer
 # text with fixed patterns — no backtracking hazards, deterministic scoring.
 regex = "1"

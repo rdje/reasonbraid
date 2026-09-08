@@ -461,6 +461,11 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         )
         .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/admin/usage", get(admin_usage))
+        .route("/v1/admin/adapters", get(list_adapters).post(allow_adapter))
+        .route(
+            "/v1/admin/adapters/{adapter_id}/revoke",
+            post(revoke_adapter),
+        )
         .route("/v1/audit/receipts", get(list_cross_domain_receipts))
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
@@ -6295,6 +6300,99 @@ async fn admin_metrics(
         .map(|(k, v)| (k, json!(v)))
         .collect();
     Ok(Json(Value::Object(snapshot)))
+}
+
+/// The allowlist ledger's admin gate (the `.4.4` rung-1 registry): the
+/// caller holds `tenant_admin` in ANY of their active grants (the same
+/// process-global gate the metrics surface uses — the ledger is
+/// tenant-less).
+async fn require_allowlist_admin(
+    pool: &PgPool,
+    principal: &GrantSubject,
+) -> Result<(), ControlApiError> {
+    let holds_admin: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS( \
+             SELECT 1 FROM authority_grants \
+             WHERE subject_id = $1 AND status = 'active' \
+               AND actions ? 'tenant_admin' \
+               AND valid_from <= now() AND (expires_at IS NULL OR expires_at > now()))",
+    )
+    .bind(principal.id_string())
+    .fetch_one(pool)
+    .await?;
+    if !holds_admin.unwrap_or(false) {
+        return Err(ControlApiError::unauthorized(
+            "the allowlist ledger is tenant_admin-gated",
+        ));
+    }
+    Ok(())
+}
+
+/// `GET /v1/admin/adapters` — the allowlist rows (the ADR-027 ladder's
+/// rung-1 ledger).
+async fn list_adapters(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_allowlist_admin(&state.pool, &principal).await?;
+    let rows: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT adapter_id, added_by, reason, added_at FROM adapter_allowlist ORDER BY adapter_id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        json!({ "adapters": rows.into_iter().map(|(id, by, reason, at)| json!({
+            "adapter_id": id, "added_by": by, "reason": reason, "added_at": at,
+        })).collect::<Vec<_>>() }),
+    ))
+}
+
+/// `POST /v1/admin/adapters` — allow one adapter id (the body carries
+/// the recorded reason; an existing row is the idempotent no-op — the
+/// reason stays the original's).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AllowAdapterRequest {
+    adapter_id: String,
+    reason: String,
+}
+
+async fn allow_adapter(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<AllowAdapterRequest>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_allowlist_admin(&state.pool, &principal).await?;
+    sqlx::query(
+        "INSERT INTO adapter_allowlist (adapter_id, added_by, reason) VALUES ($1, $2, $3) \
+         ON CONFLICT (adapter_id) DO NOTHING",
+    )
+    .bind(&req.adapter_id)
+    .bind(principal.id_string())
+    .bind(&req.reason)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(
+        json!({ "adapter_id": req.adapter_id, "allowed": true }),
+    ))
+}
+
+/// `POST /v1/admin/adapters/{adapter_id}/revoke` — remove the row (the
+/// NEXT ladder run refuses at rung 1 — never a silent untrust).
+async fn revoke_adapter(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(adapter_id): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    require_allowlist_admin(&state.pool, &principal).await?;
+    sqlx::query("DELETE FROM adapter_allowlist WHERE adapter_id = $1")
+        .bind(&adapter_id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(json!({ "adapter_id": adapter_id, "revoked": true })))
 }
 
 /// `GET /v1/admin/usage?tenant_id=…` — the usage-reconciliation surface

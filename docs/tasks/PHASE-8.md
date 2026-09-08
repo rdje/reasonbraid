@@ -1172,7 +1172,7 @@ default.
       unification rule, recorded here.
 
   - ID: `PHASE-8.4.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the signed plugin registry/allowlist —
       the ADR-027 ladder's LOAD side: the allowlist
       ledger rows + the five-rung verification at
@@ -1182,6 +1182,55 @@ default.
       typed per-rung refusals, the registry
       surface.
     ADR: 027
+    Done:
+    - `crates/reasonbraid-adapter/src/allowlist.rs`
+      — the five-rung ladder (`verify_ladder`):
+      the ordered, fail-closed verification (the
+      allowlist membership → the record's
+      self-digest → the release identity's Ed25519
+      over the canonical bytes (the ring provider)
+      → the SDK token → the capability ceilings) +
+      the typed `RungRefusal` (each refusal names
+      its rung) + the unit tests (the REAL signed
+      pass + the per-rung refusals).
+    - Migration `0052_adapter_allowlist.sql` — the
+      rung-1 ledger (the adapter_id + the added_by
+      + the recorded reason + the stamp) with the
+      dev three seeded BY CONSTRUCTION.
+    - The registry surface — the tenant_admin-gated
+      verbs: `GET /v1/admin/adapters` (the list),
+      `POST /v1/admin/adapters` (the allow with the
+      recorded reason, the idempotent no-op),
+      `POST /v1/admin/adapters/{id}/revoke` (the
+      next ladder run refuses at rung 1) + the live
+      suite (the guard's 30th: the seeded list, the
+      allow/re-allow/revoke, the non-admin 403).
+    - The load-path WIRING is the named follow-on:
+      no download mechanism exists (the `.2.3`
+      distribution-channel deferral) — the ladder +
+      the ledger + the verbs ship measured; the
+      first downloaded adapter rides them.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the
+      ADR-027 ladder existed as the vocabulary; the
+      verification machinery + the durable ledger +
+      the operator's surface were the greenfield
+      (the `.4` census's fourth gap). Evidence:
+      `cargo test -p reasonbraid-adapter --lib` →
+      `test result: ok. 13 passed; 0 failed`.
+    - [x] **ADDRESSED** — the ladder + the typed
+      refusals + the ledger + the verbs. Evidence:
+      `cargo test -p reasonbraid-server --test
+      allowlist` → `test result: ok. 2 passed; 0
+      failed` (the live legs).
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds;
+      the guard → the 30 suites + the demo.
+    - [x] **LESSON PROMOTED** — none new: the
+      per-rung typed-refusal pattern is the
+      ADR-027 ladder's own vocabulary, made
+      mechanical. **The `.4` lane is COMPLETE.**
 
 - ID: `PHASE-8.5`
   Status: `proposed`
@@ -1196,9 +1245,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.4.4` | `proposed` | `.4.3` done — the certification suite ships (the report-producing run + the third-party demonstration + the signed record verb); the ADR-027 load side executes next |
+| 1 | `PHASE-8.5` | `proposed` | `.4.4` done — the signed allowlist ships (the five-rung ladder + the ledger + the verbs + the 30th suite); **the `.4` lane is COMPLETE**; the regional-routing lane opens at its census at the seams |
 
 ## Changelog
+
+- `2026-09-08`: `.4.4` done — the signed
+  allowlist (the five-rung ladder with the typed
+  per-rung refusals + the 0052 ledger + the
+  admin-gated allow/revoke/list verbs + the 30th
+  suite) — **the `.4` lane is COMPLETE**;
+  frontier → `.5`.
 
 - `2026-09-08`: `.4.3` done — the certification
   suite (the report-producing certification with

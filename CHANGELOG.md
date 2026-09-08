@@ -4,6 +4,12 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The signed allowlist: the ADR-027 ladder's load side (`PHASE-8.4.4`)
+
+- `crates/reasonbraid-adapter/src/allowlist.rs` — the five-rung ladder (`verify_ladder`): the ordered, fail-closed verification (the allowlist membership → the record's self-digest → the release identity's Ed25519 over the canonical bytes — the ring provider → the SDK token → the capability ceilings) + the typed `RungRefusal` (each refusal names its rung) + the unit tests (the REAL signed pass + the per-rung refusals).
+- Migration `0052_adapter_allowlist.sql` — the rung-1 ledger (the adapter_id + the added_by + the recorded reason + the stamp) with the dev three seeded BY CONSTRUCTION; the registry surface — the tenant_admin-gated `GET /v1/admin/adapters` / `POST /v1/admin/adapters` (the idempotent allow) / `POST /v1/admin/adapters/{id}/revoke` verbs + the guard's 30th suite.
+- The load-path WIRING is the named follow-on (no download mechanism exists — the `.2.3` distribution-channel deferral); the ladder + the ledger + the verbs ship measured. **The `.4` lane is COMPLETE.** Frontier → `.5`.
+
 ## 2026-09-08 — The certification suite: the report-producing run + the third-party demonstration (`PHASE-8.4.3`)
 
 - `crates/reasonbraid-adapter/src/certification.rs` — the REPORT-producing certification: the six §19.4 invariants as the typed pass/refusal results, the fail-closed verdict (ANY refusal refuses the whole certification — never a partial trust; the first refusal is named), the six-box gate (the conformance box mirrors the verdict — the caller cannot self-attest it), the digest-pinned record (`sha256:<hex>` over the canonical JSON — the self-digest re-derives + the SDK token checks).

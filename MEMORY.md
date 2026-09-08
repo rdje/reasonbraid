@@ -20,14 +20,14 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3.5.1`. **The `.1` and `.2` lanes are COMPLETE**; `.3`
+  frontier `.3.5.2`. **The `.1` and `.2` lanes are COMPLETE**; `.3`
   done (the MCP census) → decomposed; `.3.1` ADR-024; `.3.2` the rmcp
   pin; `.3.3` the read-half; `.3.4` the listen-stream durability;
-  `.3.5` the write-half census → decomposed `.3.5.1`–`.3.5.3`.
-- **Next action:** execute `PHASE-8.3.5.1` — the qualified write gate
-  + the quota binding (the `.1.3.2` re-open): the `mcp_write` seam,
-  the principal-scope row creator + migration 0051's backfill, the
-  live suite.
+  `.3.5` the write-half census → decomposed `.3.5.1`–`.3.5.3`;
+  `.3.5.1` done (the qualified gate + the quota binding).
+- **Next action:** execute `PHASE-8.3.5.2` — the three write tools
+  (`respond`/`join_call`/`propose_policy_change`) in `reasonbraid-mcp`
+  over the `.3.5.1` gate: the schemas + the same-handler delegation.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

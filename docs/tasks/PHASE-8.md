@@ -764,7 +764,7 @@ default.
   Children: `.3.5.1`–`.3.5.3`
 
   - ID: `PHASE-8.3.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the qualified write gate + the quota
       binding (the `.1.3.2` re-open): the server-side
       seam (the `mcp_write` module — the enrolled
@@ -778,6 +778,68 @@ default.
       ungranted → the typed refusal; the unconfigured
       → the fail-closed).
     Roadmap: §9.6
+    Done:
+    - `crates/reasonbraid-server/src/mcp_write.rs`
+      — the qualified gate (`gate`: the enrollment
+      binding via the SAME `reader_tenant` the HTTP
+      handlers run → the per-principal quota via the
+      SAME `check_in_tx` fail-closed machinery — the
+      exhaustion denial COMMITS its row; the quota
+      counts the ADMITTED CALLS, never the domain
+      effects) + the three same-handler delegates
+      (`respond` over the thread-command pipeline —
+      the idempotency → the `thread_contribute` grant
+      → the domain → the audit, with the deterministic
+      replay key + the tenant injection; `join_call`
+      over the extracted `respond_to_call_core`;
+      `propose_policy_change` over
+      `register_proposal`). The per-verb LOCAL grants
+      + the audit ride the handlers — never a new
+      authority path.
+    - The `.1.3.2` re-open: migration 0051's
+      principal-scope backfill (the 0047 pattern) +
+      the row creator at the enroll + the
+      card-import paths (the identity row implies
+      its quota row — the fail-closed check never
+      meets a new principal unbound).
+    - The api.rs seam exposures: `run_thread_command`
+      returns `(StatusCode, Value)` (the three HTTP
+      call sites wrap); `respond_to_call_core`
+      extracted; `request_hash`/`CommandTarget`/
+      `reader_tenant` pub(crate). The lib seam
+      `mcp_write_internal` carries the gate + the
+      three delegates for the `.3.5.2` tools.
+    - The live suite `tests/mcp_write.rs` (the
+      guard's 29th): the four measured legs; the
+      FK-purge ripple handled (`mcp_listen_state`
+      added to the purge list — the `.3.4` table).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-024
+      write-half had no qualified seam: the write
+      tools were OFF (the router refused the names)
+      and the per-principal quota was UNBOUND (the
+      `.1.3.2` deferral — the machinery shipped
+      scope-generic, no row creator + no caller).
+      Evidence: the guard's mcp_write suite →
+      `test result: ok. 4 passed; 0 failed`; `cargo
+      test --all` → rc=0.
+    - [x] **ADDRESSED** — the gate + the three
+      same-handler delegates + the 0051 backfill +
+      the row creators. Evidence: `bash
+      scripts/run_pg_tests.sh` → rc=0, `grep -c
+      "test result: ok."` → 29 suites; the demo →
+      `ALL acceptance checks passed`.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      FK-purge ripple (the new suite needed the
+      `.3.4` table in its purge list) is the known
+      recurring doctrine; the audit-record
+      actor-handle (not the subject id) and the
+      enroll `actions` override (the explicit list
+      REPLACES the default grant set) are recorded
+      here, not promoted.
 
   - ID: `PHASE-8.3.5.2`
     Status: `proposed`
@@ -821,9 +883,18 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.5.1` | `proposed` | `.3.5` done — the census at the seams (the three write handlers ship; the qualified gate seam + the unbound principal quota + the OFF write tools are the gaps) → decomposed `.3.5.1` the gate + the quota binding → `.3.5.2` the tools → `.3.5.3` the fixtures + the live demonstration; the qualified gate executes next |
+| 1 | `PHASE-8.3.5.2` | `proposed` | `.3.5.1` done — the qualified write gate + the quota binding ship (the `mcp_write` seam + the 0051 backfill + the row creators + the 29th suite); the three write tools execute next |
 
 ## Changelog
+
+- `2026-09-08`: `.3.5.1` done — the qualified
+  write gate + the quota binding (the `mcp_write`
+  seam — the enrollment binding + the
+  per-principal quota + the three same-handler
+  delegates; migration 0051's principal backfill +
+  the enroll/card-import row creators; the
+  `run_thread_command` seam refactor; the 29th
+  suite); frontier → `.3.5.2`.
 
 - `2026-09-08`: `.3.5` done — the MCP write-half
   census at the seams (the three write handlers

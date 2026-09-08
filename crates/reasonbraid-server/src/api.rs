@@ -343,7 +343,7 @@ fn delegation_from_envelope(
 
 /// The canonical idempotency request hash: operation + presented principal +
 /// canonical (struct-field-order) body JSON, SHA-256 hex.
-fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> String {
+pub(crate) fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> String {
     let input = format!(
         "{operation}\n{}\n{}",
         principal.describe(),
@@ -896,6 +896,16 @@ async fn enroll(
                 .await?;
         }
     }
+
+    // The MCP write gate's per-principal quota (`.3.5.1`): the identity row
+    // implies its quota row — the fail-closed check refuses an unbound
+    // principal, so the bound must exist from the principal's creation.
+    crate::quota::insert_principal_default_in_tx(
+        &mut *tx,
+        &tenant_id.to_string(),
+        &principal.id_string(),
+    )
+    .await?;
 
     sqlx::query(
         "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, $3, $4)",
@@ -3603,7 +3613,7 @@ async fn create_thread_auto(
         },
     )
     .await?;
-    Ok(response)
+    Ok(json_response(response.0, response.1))
 }
 
 /// The call-open body (the §10.5 spec; the expression rides typed).
@@ -3801,13 +3811,27 @@ async fn respond_to_call(
     Json(response): Json<crate::recruitment::RecruitmentResponse>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let GrantSubject::Role(role) = &principal else {
+    let value = respond_to_call_core(&state.pool, &principal, &call_id, &response).await?;
+    Ok(Json(value))
+}
+
+/// The call-respond core — the SAME handler the MCP `join_call` tool rides
+/// (the `.3.5.1` write seam calls this after its qualified gate: the
+/// enrolled-ROLE check + the eligibility re-resolution + the response
+/// record — never a new authority path).
+pub(crate) async fn respond_to_call_core(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    call_id: &str,
+    response: &crate::recruitment::RecruitmentResponse,
+) -> Result<Value, ControlApiError> {
+    let GrantSubject::Role(role) = principal else {
         return Err(ControlApiError::unauthorized(
             "only an enrolled role responds to a call",
         ));
     };
     let respondent = role.to_string();
-    let Some(call) = crate::recruitment::call(&state.pool, &call_id).await? else {
+    let Some(call) = crate::recruitment::call(pool, call_id).await? else {
         return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
     };
     if call.status != "open" {
@@ -3833,7 +3857,7 @@ async fn respond_to_call(
     // ineligible (or unwilling) declaring why, and must not be refused.
     let participation = matches!(response.kind(), "join" | "conditional_join");
     if participation {
-        let Some((candidate, _state)) = respondent_candidate(&state.pool, &respondent).await else {
+        let Some((candidate, _state)) = respondent_candidate(pool, &respondent).await else {
             return Err(ControlApiError::unauthorized(
                 "the respondent has no enrolled node/profile",
             ));
@@ -3846,12 +3870,12 @@ async fn respond_to_call(
             )));
         }
     }
-    crate::recruitment::record_response(&state.pool, &call_id, &respondent, &response).await?;
-    Ok(Json(json!({
+    crate::recruitment::record_response(pool, call_id, &respondent, response).await?;
+    Ok(json!({
         "call_id": call_id,
         "respondent": respondent,
         "response": response.kind(),
-    })))
+    }))
 }
 
 /// `POST /v1/calls/{call_id}/close` — the initiator (or the tenant owner)
@@ -4398,7 +4422,7 @@ fn profile_error(e: sqlx::Error, role_id: &str) -> ControlApiError {
 }
 
 /// The reader's tenant (their identity row), when enrolled.
-async fn reader_tenant(
+pub(crate) async fn reader_tenant(
     pool: &PgPool,
     principal: &GrantSubject,
 ) -> Result<Option<String>, sqlx::Error> {
@@ -4637,6 +4661,10 @@ async fn import_profile_card(
         .bind(req.tenant_id.to_string())
         .bind(req.card.profile.display_label.clone())
         .execute(&mut *tx)
+        .await?;
+    // The imported role's per-principal quota (`.3.5.1`) — the identity row
+    // implies its quota row (the fail-closed write gate).
+    crate::quota::insert_principal_default_in_tx(&mut *tx, &req.tenant_id.to_string(), &role_id)
         .await?;
     sqlx::query(
         "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, 'role', $3)",
@@ -5158,7 +5186,7 @@ async fn inspect_breakers(
 // ── Thread commands ──────────────────────────────────────────────────────────────
 
 /// One prepared command's execution target inside the shared transaction flow.
-enum CommandTarget<'a> {
+pub(crate) enum CommandTarget<'a> {
     /// `thread.create` — pure preparation; the thread id is server-assigned.
     Create {
         body: &'a CreateBody,
@@ -5179,7 +5207,7 @@ enum CommandTarget<'a> {
 /// claim → authorize → prepare → apply (+ ceiling for create). Every step commits
 /// or rolls back together; a rejection stores its failure result in the idempotency
 /// row so a replay reproduces the ORIGINAL status and body.
-async fn run_thread_command(
+pub(crate) async fn run_thread_command(
     pool: &PgPool,
     tenant_id: &TenantId,
     principal: &GrantSubject,
@@ -5187,7 +5215,7 @@ async fn run_thread_command(
     idempotency_key: &str,
     request_hash: &str,
     target: CommandTarget<'_>,
-) -> Result<Response, ControlApiError> {
+) -> Result<(StatusCode, Value), ControlApiError> {
     let mut tx = pool.begin().await?;
 
     // 1. Idempotency claim: a replay returns the ORIGINAL stored result verbatim —
@@ -5217,7 +5245,7 @@ async fn run_thread_command(
             if let Some(obj) = body.as_object_mut() {
                 obj.insert("replayed".to_string(), json!(true));
             }
-            return Ok(json_response(status, body));
+            return Ok((status, body));
         }
         ClaimOutcome::Fresh => {}
     }
@@ -5418,7 +5446,7 @@ async fn run_thread_command(
     }
     tx.commit().await?;
 
-    Ok(json_response(StatusCode::OK, prepared.result))
+    Ok((StatusCode::OK, prepared.result))
 }
 
 /// The admission decision metadata a dispatched work item carries (`.1.5.2`,
@@ -5824,7 +5852,7 @@ async fn create_thread(
         action: GrantAction::ThreadCreate,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    run_thread_command(
+    let response = run_thread_command(
         &state.pool,
         &tenant_id,
         &principal,
@@ -5836,7 +5864,8 @@ async fn create_thread(
             workflow_steps,
         },
     )
-    .await
+    .await?;
+    Ok(json_response(response.0, response.1))
 }
 
 #[derive(Debug, Deserialize)]
@@ -5994,7 +6023,7 @@ async fn thread_command(
             thread_id,
         },
     };
-    run_thread_command(
+    let response = run_thread_command(
         &state.pool,
         &tenant_id,
         &principal,
@@ -6007,7 +6036,8 @@ async fn thread_command(
             body: &envelope.body,
         },
     )
-    .await
+    .await?;
+    Ok(json_response(response.0, response.1))
 }
 
 // ── Inspection (the `.6.1` acceptance: no database surgery) ─────────────────────

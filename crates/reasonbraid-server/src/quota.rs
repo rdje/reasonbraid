@@ -30,6 +30,11 @@ pub const SCOPE_KINDS: [&str; 4] = [
 pub const DEV_DEFAULT_INVITE_CEILING: i64 = 1000;
 pub const DEV_DEFAULT_WINDOW_SECS: i64 = 3600;
 
+/// The dev-profile default bound for the MCP write gate's per-principal
+/// scope (`.3.5.1`): 1000 write calls per hour — the call-volume bound,
+/// generous for the demo, still a bound.
+pub const DEV_DEFAULT_PRINCIPAL_CEILING: i64 = 1000;
+
 /// A quota refusal — always a recorded fact in `quota_events` before the
 /// `Exceeded`/`Unconfigured` error is returned.
 #[derive(Debug)]
@@ -96,6 +101,35 @@ where
     .bind(tenant_id)
     .bind(SCOPE_TENANT)
     .bind(DEV_DEFAULT_INVITE_CEILING)
+    .bind(DEV_DEFAULT_WINDOW_SECS)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Insert the dev-profile default quota for a NEW principal (the
+/// principal-creation paths — the enroll + the card-import — call this in
+/// their identity-insert transaction; the `.3.5.1` MCP write gate checks
+/// this scope fail-closed: an unbound principal is the typed
+/// `quota_unconfigured` refusal).
+pub(crate) async fn insert_principal_default_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    principal_id: &str,
+) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(format!("quo_{principal_id}_writes"))
+    .bind(tenant_id)
+    .bind(SCOPE_PRINCIPAL)
+    .bind(principal_id)
+    .bind(DEV_DEFAULT_PRINCIPAL_CEILING)
     .bind(DEV_DEFAULT_WINDOW_SECS)
     .execute(&mut *tx)
     .await?;

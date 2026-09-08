@@ -52,6 +52,12 @@ pub mod mcp_listen_internal {
         listen_state as state, record_delivery_in_tx as record, resume_plan, ResumePlan,
     };
 }
+mod mcp_write;
+/// The seam for the MCP write gate (the `.3.5.2` tools + the live suite
+/// consume this — the same pattern as `mcp_listen_internal`).
+pub mod mcp_write_internal {
+    pub use crate::mcp_write::{gate, join_call, propose_policy_change, respond, WriteRefused};
+}
 pub mod mediated;
 pub mod mtls;
 mod node_channel;

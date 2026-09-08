@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The Internet-hardening lane is decomposed at the census seams (`PHASE-7.1`)
+
+- The `.1` block is LIFTED: the Phase-1 channel + the CA/certificate infra and the Phase-2 authority/budget ship; the per-principal quotas, the secret-manager integration, and the regional controls are the greenfield. Children: `.1.1` ADR-034 → `.1.2` the mTLS identity → `.1.3` the isolation + the quotas → `.1.4` the secrets + the regions.
+
 ## 2026-09-07 — The G3 gate package — PHASE 6 IS CLOSED (`PHASE-6.7.2`)
 
 - **G3 Met as machinery, blocked as binding use**: the authority/consent/quorum/publication/correction tests are green (the clause map); the BLOCKER — the binding policy use — is discharged by subtraction per §25.1 (the exit claims the machinery; the owners' acceptance stays the open condition). The §19.8 subtraction record, the Demonstration B nine-step walk, and the evidence manifest land. The frontier moves to `PHASE-7.1` (the Internet-hardening lane).

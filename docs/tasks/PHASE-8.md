@@ -962,9 +962,83 @@ default.
       inferred). **The `.3` lane is COMPLETE.**
 
 - ID: `PHASE-8.4`
-  Status: `proposed`
+  Status: `done`
   Goal: adapter/resolver SDK, compatibility matrix, certification suite, signed plugin registry or allowlist
   ADR: 027
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured — SHIPPED: the adapter
+    CONTRACT (`crates/reasonbraid-adapter/src/
+    contract.rs` — the `Adapter` trait + the
+    RunRequest/AdapterCapabilities/DispatchAck/
+    NormalizedUsage/AttemptStream types), the three
+    dev adapters (the fake + the codex + the
+    claude), the conformance harness + the
+    failure-fixture corpus (the §19.4
+    six-invariant suite), the qualification
+    checklist (the book's six-box gate), the
+    resolver REGISTRY (`resolvers.rs` — the
+    server-internal §12.2 filter-then-rank, NO
+    public third-party trait), the ADR-027 signing
+    machinery (the `rb-release-manifest` tool + the
+    five-rung ladder vocabulary). GREENFIELD: the
+    VERSIONED SDK surface (the adapter contract is
+    crate-internal; the resolver side has no public
+    contract), the compatibility MATRIX (no
+    document maps the SDK version × the profiles ×
+    the platforms), the third-party CERTIFICATION
+    gate (the harness qualifies the DEV adapters
+    only), the ADR-027 ladder's LOAD-side
+    verification (the allowlist rungs exist as the
+    vocabulary + the dev-by-construction
+    satisfaction; the downloaded-adapter check
+    machinery does not).
+  Children: `.4.1`–`.4.4`
+
+  - ID: `PHASE-8.4.1`
+    Status: `proposed`
+    Goal: the SDK contract — the versioned
+      adapter/resolver surface: the `Adapter`
+      contract promoted as the VERSIONED SDK (the
+      pinned interface + the version token), the
+      resolver trait extracted from the internal
+      registry (the third-party shape), the
+      compatibility-matrix SCHEMA (the SDK version
+      × the protocol profile × the platform × the
+      qualification status).
+    ADR: 027
+
+  - ID: `PHASE-8.4.2`
+    Status: `proposed`
+    Goal: the compatibility matrix — the measured
+      rows (the three dev adapters + the built-in
+      resolvers × the protocol profiles × the
+      toolchains), the fixture-backed
+      re-derivation (the `.6.2` corpus as the
+      replay oracle), the unsupported cells named.
+    ADR: 027
+
+  - ID: `PHASE-8.4.3`
+    Status: `proposed`
+    Goal: the certification suite — the
+      third-party certification run: the harness's
+      six §19.4 invariants + the book's six-box
+      gate applied to a THIRD-PARTY adapter, the
+      evidence bundle (the manifest-signed
+      qualification record), the fail-closed
+      refusal vocabulary.
+    ADR: 027
+
+  - ID: `PHASE-8.4.4`
+    Status: `proposed`
+    Goal: the signed plugin registry/allowlist —
+      the ADR-027 ladder's LOAD side: the allowlist
+      ledger rows + the five-rung verification at
+      the adapter-load path (the allowlist → the
+      digest → the signature → the API
+      compatibility → the capability manifest), the
+      typed per-rung refusals, the registry
+      surface.
+    ADR: 027
 
 - ID: `PHASE-8.5`
   Status: `proposed`
@@ -979,9 +1053,20 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.4` | `proposed` | `.3.5.3` done — the live tool-path roundtrip ships; **the `.3` lane (the MCP surface) is COMPLETE**; the adapter/resolver SDK lane opens at its census at the seams (the ADR-027 machinery + the compatibility matrix are the greenfield) |
+| 1 | `PHASE-8.4.1` | `proposed` | `.4` done — the census at the seams (the adapter contract + the harness ship; the versioned SDK surface + the matrix + the certification gate + the ladder's load side are the greenfield) → decomposed `.4.1` the SDK contract → `.4.2` the matrix → `.4.3` the certification → `.4.4` the allowlist; the SDK contract executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.4` done — the adapter/resolver
+  SDK census at the seams (the adapter contract +
+  the harness + the fixtures + the resolver
+  registry + the ADR-027 signing vocabulary ship;
+  the versioned SDK surface, the compatibility
+  matrix, the certification gate, and the ladder's
+  load side are the greenfield) → decomposed
+  `.4.1` the SDK contract → `.4.2` the matrix →
+  `.4.3` the certification → `.4.4` the allowlist;
+  frontier → `.4.1`.
 
 - `2026-09-08`: `.3.5.3` done — the live
   tool-path roundtrip (the granted write through

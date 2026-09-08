@@ -4,6 +4,10 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The adapter/resolver SDK census at the seams: the contract ships, the versioned surface is the greenfield (`PHASE-8.4`)
+
+- The census (no code): SHIPPED — the adapter CONTRACT (`crates/reasonbraid-adapter/src/contract.rs`: the `Adapter` trait + the contract types), the three dev adapters, the §19.4 conformance harness + the failure-fixture corpus, the six-box qualification checklist, the server-internal resolver registry (`resolvers.rs`), the ADR-027 signing machinery (`rb-release-manifest` + the five-rung ladder vocabulary). GREENFIELD — the VERSIONED SDK surface (the adapter contract is crate-internal; the resolver side has no public trait), the compatibility MATRIX, the third-party CERTIFICATION gate, and the ADR-027 ladder's LOAD-side verification (the rungs exist as the vocabulary; the downloaded-adapter check machinery does not). Decomposed: `.4.1` the SDK contract → `.4.2` the matrix → `.4.3` the certification → `.4.4` the allowlist. Frontier → `.4.1`.
+
 ## 2026-09-08 — The MCP write tools demonstrated live: the tool-path roundtrip (`PHASE-8.3.5.3`)
 
 - The live tool-path roundtrip (`the_write_tools_roundtrip_the_qualified_gate_live` in the crate's tests, DATABASE_URL-gated): the granted `respond` through the TOOL HANDLER (the `McpTools` method over the rmcp tool shape) lands the effect + the quota use; the ungranted role's refusal surfaces as the typed tool error (`handler:unauthorized`); the unconfigured quota surfaces the fail-closed (`quota_unconfigured`); the `join_call` decline + the `propose_policy_change` ride the same handlers through the tools — the compatibility demonstrated at the tool path, never inferred. The guard now runs `cargo test -p reasonbraid-mcp` (the live leg rides the guard's DATABASE_URL; the offline sweep skips it). **The `.3` lane (the MCP surface) is COMPLETE.** Frontier → `.4`.

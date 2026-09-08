@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G3 evidence census (`PHASE-6.7.1`)
+
+- The nine Demonstration-B steps each map to the shipped machinery with their records + their tests (the proposal → the `.2` records; the recruitment → Phase 3; the evidence → Phase 4; the deliberation → Phase 5; the decision + the separate approval → the `.2` chain; the projections → the `.3` compiler; the crash-surviving publication → the `.4` machine; the canary → the `.5` waves; the correction → the `.5.3` operations); the G3 clause map covers the lanes; the §25.1 reading: the exit claims the MACHINERY, never the real owners' acceptance (the kill/pivot stays open). No code.
+
 ## 2026-09-07 — The G3-exit lane is decomposed at the census seams (`PHASE-6.7`)
 
 - The G3 gate maps over the SHIPPED lanes (the authority/consent/quorum — the `.2` decisions/approvals; the publication — the `.4` machine + the reconciliation; the correction — the `.5.3` §4.7 operations); Demonstration B's nine steps walk the machinery. Children: `.7.1` the evidence census → `.7.2` the gate package.

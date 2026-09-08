@@ -853,7 +853,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     kill/pivot line). Frontier → `.7.1`.
 
   - ID: `PHASE-6.7.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the G3 evidence census — the claim/evidence
       mapping: the nine Demonstration-B steps → the shipped
       machinery (each step names its records + its tests),
@@ -862,6 +862,45 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       §25.1 gate reading (the real-owner acceptance is the
       kill/pivot condition, not the exit's claim). No code.
     Roadmap: §26.2, §19.6 (G3), §25.1
+    Done (`2026-09-07`): the G3 evidence census landed. THE
+      NINE Demo-B STEPS → THE SHIPPED MACHINERY: (1) the
+      agent-initiated proposal → the `.2` proposal records
+      (policy 3); (2) the directory recruitment without the
+      prior knowledge → Phase 3's recruitment protocol
+      (profiles 12/13-era suites); (3) the HTTPS + Git
+      evidence → Phase 4's R0/R1 packs + the snapshots
+      (profiles 15/16); (4) the challenge + the minority
+      report + the impact map + the rollout recommendation →
+      the Phase-5 deliberation (the challenge verb, the
+      minority report riding the close — profiles 28) + the
+      `.1.3` impact maps (policy 2); (5) the decision rule +
+      the SEPARATE human approval → the `.2` decision +
+      approval records (the frozen electorate + the grant
+      re-check — policy 4); (6) the byte-reproducible
+      projections with the explicit loss → the `.3` compiler
+      (the byte-identical + the declared unrepresentable —
+      compiler 8); (7) the crash-surviving publication →
+      the `.4` nine-step machine + the CAS + the
+      reconciliation (policy 7/8 + publisher 2 + reconciler
+      3); (8) the canary deployment + the coverage → the
+      `.5.2` per-target waves + the receipts (policy 9);
+      (9) the adverse outcome → the suspension + the
+      supersession + the historical queries → the `.5.3`
+      corrections (policy 10) + the audit reconstruction.
+      THE G3 CLAUSE MAP (§19.6: the authority/consent/
+      quorum/publication/correction): the authority → the
+      `.2` grant re-checks + the `.1.2` ownership (policy
+      4/1); the consent → the invitation-response machinery
+      (the Phase-1 suites); the quorum → the electorate
+      snapshots (policy 3); the publication → the `.4`
+      lane; the correction → the `.5.3` lane. THE §25.1
+      READING: the G3 blocker is the BINDING POLICY USE —
+      the exit claims the MACHINERY + the records, NOT the
+      real owners' acceptance (the kill/pivot condition
+      stays open: no binding governance ships until the
+      owners accept the authority/correction model — the
+      `.7.2` subtraction names it). No code. Frontier →
+      `.7.2`.
 
   - ID: `PHASE-6.7.2`
     Status: `proposed`
@@ -878,10 +917,15 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.7.1` | `proposed` | `.7` decomposed at the census seams (the G3 gate maps over the shipped lanes — the authority/quorum (`.2`), the publication (`.4`), the correction (`.5.3`); the Demo-B nine steps walk the machinery) — the evidence census executes first |
+| 1 | `PHASE-6.7.2` | `proposed` | `.7.1` done — the G3 evidence census (the nine Demo-B steps each name their records + their tests; the clause map covers the shipped lanes; the §25.1 binding-use reading); the G3 gate package executes next |
 
 ## Changelog
 
+- `2026-09-07`: `.7.1` done — the G3 evidence census (the
+  nine Demo-B steps → the shipped machinery; the clause map;
+  the §25.1 binding-use reading — the exit claims the
+  machinery, never the owners' acceptance); no code;
+  frontier → `.7.2`.
 - `2026-09-07`: `.7` decomposed at the census seams — the G3
   gate maps over the shipped lanes (the authority/quorum,
   the publication, the correction); the Demo-B nine steps

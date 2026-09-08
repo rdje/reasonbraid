@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The A2A dependency census + the pin decision (`PHASE-8.2.2`)
+
+- The census (the crates.io checks): `a2a-lf` 0.3.0, `a2a-server-lf` 0.4.3, `a2a-client-lf` 0.2.3 — all Apache-2.0, Rust 1.85, the a2aproject/a2a-rs family. The profile: the JSON-RPC/REST (the protocol binding factory's default — the only profile the slice needs). THE SUPPLY-CHAIN FINDING: the crates' DEFAULT features enable `rustls-tls` (= `reqwest/rustls` → the aws-lc-rs provider) — a provider vote, the workspace single-provider rule's third occurrence; the `.2.3` facade must pin `default-features = false` + `rustls-no-provider` + the ring-pinned rustls explicitly. The Cargo.toml/lock additions ride the `.2.3` facade (the pin lands WITH the use); the conformance revision records at the `.2.4` roundtrip. No code. Frontier → `.2.3`.
+
 ## 2026-09-08 — ADR-025: the A2A facade with recorded semantic losses (`PHASE-8.2.1`)
 
 - ADR-025 accepted (`docs/adr/025-a2a-interoperability-surface.md`, top-level `answers:`): the facade boundary (A2A maps the compatible semantics; the message is an INPUT the local machinery evaluates — the local grants authorize, the local budgets bound, the local policy digests decide; the Agent Card confers nothing); the semantic losses are RECORDED per exchange (the authority/budget/evidence/decision-rule/lifecycle — never a silent merge); the version profile (the JSON-RPC/REST first, the exact crate versions pin, the tested conformance revision records, the pre-1.0 compatibility DEMONSTRATED by the roundtrip — never inferred); the qualification precedes the broad claims, the gateway deployable-off. No code. Frontier → `.2.2`.

@@ -20,14 +20,16 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.2.2`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
-  census) → decomposed; `.2.1` done (ADR-025 accepted — the facade +
-  the recorded losses + the demonstrated-compatibility stance).
-- **Next action:** execute `PHASE-8.2.2` — the A2A dependency census +
-  the pin: the `a2a-lf` crate family's exact versions + the
-  supply-chain gate (the deny + the license checks), the JSON-RPC/REST
-  profile selection, the `Cargo.lock` pin + the tested revision
-  record.
+  frontier `.2.3`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
+  census) → decomposed; `.2.1` done (ADR-025); `.2.2` done (the pin
+  decision: a2a-lf 0.3.0, a2a-server-lf 0.4.3, a2a-client-lf 0.2.3 —
+  the no-provider feature rule, the default features vote aws-lc-rs).
+- **Next action:** execute `PHASE-8.2.3` — the A2A facade: the
+  compatible task/message exchange over the JSON-RPC/REST profile (the
+  incoming A2A messages map to the local commands — the local
+  grants/authorization ride every effect, the external IDs + the
+  signatures preserved, the semantic losses recorded per message);
+  the crate additions land WITH the use (the no-provider pin).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

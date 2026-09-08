@@ -317,7 +317,7 @@ default.
       Frontier → `.2.2`.
 
   - ID: `PHASE-8.2.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the dependency census + the pin — the
       `a2a-lf` crate family's exact versions + the
       supply-chain gate (the deny + the license
@@ -325,6 +325,42 @@ default.
       (test only what the slice needs), the
       `Cargo.lock` pin + the tested revision record.
     Roadmap: §9.7
+    Done (`2026-09-08`): the census (crates.io, the
+      2026-09-08 check) + the PIN DECISION recorded:
+      `a2a-lf` → **0.3.0** (the 2026-05-12 release,
+      Apache-2.0, Rust 1.85); `a2a-server-lf` →
+      **0.4.3** (2026-08-28, Apache-2.0);
+      `a2a-client-lf` → **0.2.3** (2026-08-28,
+      Apache-2.0); the profile: the JSON-RPC/REST
+      (the protocol binding factory's default — the
+      ONLY profile the slice needs). THE SUPPLY-CHAIN
+      FINDING (the workspace rule, the `.4.3.2`
+      lesson, third occurrence): the crates' DEFAULT
+      features enable `rustls-tls` (= `reqwest/rustls`
+      → the aws-lc-rs provider) — a provider vote; the
+      `.2.3` facade MUST pin `default-features = false`
+      + the `rustls-no-provider` feature + the
+      workspace's ring-pinned `rustls` explicitly (the
+      two-provider union never enters the graph). The
+      `Cargo.toml`/`Cargo.lock` additions ride the
+      `.2.3` facade (the pin lands WITH the use — no
+      phantom dependencies); the tested
+      conformance revision records at the `.2.4`
+      roundtrip. No code changed. Frontier → `.2.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §9.7
+      baseline demanded the exact versions + the
+      revalidation; the census fixed them AND caught
+      the provider-vote trap in the default features.
+      Evidence: the crates.io API checks (the
+      version/feature/license records).
+    - [x] **ADDRESSED** — the three exact pins + the
+      profile choice + the no-provider feature
+      decision. Evidence: the recorded versions +
+      the feature-map analysis above.
+    - [x] **NO REGRESSION** — docs-only: `make gate` →
+      13/13; no dependency graph changed (the pin
+      lands with the `.2.3` facade).
 
   - ID: `PHASE-8.2.3`
     Status: `proposed`
@@ -373,10 +409,18 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.2.2` | `proposed` | `.2.1` done — ADR-025 accepted (the facade + the recorded losses + the demonstrated-compatibility stance); the dependency census + the pin execute next |
+| 1 | `PHASE-8.2.3` | `proposed` | `.2.2` done — the dependency census + the pin decision (the three exact versions + the no-provider feature rule); the A2A facade executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.2` done — the A2A dependency
+  census + the pin decision (a2a-lf 0.3.0,
+  a2a-server-lf 0.4.3, a2a-client-lf 0.2.3,
+  Apache-2.0; the JSON-RPC/REST profile; the
+  no-provider feature rule — the default features
+  vote aws-lc-rs, the workspace rule's third
+  occurrence); the pin lands with the `.2.3` facade;
+  no code; frontier → `.2.3`.
 - `2026-09-08`: `.2.1` done — ADR-025 accepted
   (evidence-gated): the facade boundary + the
   recorded semantic losses + the version-pin/

@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The mTLS workload identity: the TLS 1.3-only mutual-auth transport (`PHASE-7.1.2`)
+
+- `ca::issue_serving_cert` (the ServerAuth-EKU serving leaf) + the `mtls` module: `build_server_config` (TLS 1.3-only, ring-pinned, the `WebPkiClientVerifier` over the deployment CA — the client MUST chain to it) and `build_client_config` (the CA root + the node leaf). The split holds: the transport verifies the CA membership; the fingerprint → the principal binding stays the application proof (`node_channel::verify_cert_proof` — the layered defense). The offline roundtrip proves both legs (the issued client connects + a byte; the cert-less client is refused at the transport). The production serve wiring stays the deployment-profile concern (named).
+- The first test draft hit a real TLS 1.3 asymmetry — the client's `connect()` completes before the server's `certificate_required` alert arrives, so the refusal is read-side, never connect-side — promoted to `docs/decisions/2026-09-08_tls13-refusals-are-read-side.md` (the future TLS tests' contract). Frontier → `.1.3`.
+
 ## 2026-09-07 — ADR-034: the hardening contract (`PHASE-7.1.1`)
 
 - ADR-034 accepted (`docs/adr/034-internet-hardening.md`): the Internet capability is claimed per the QUALIFIED SURFACE (never in general); the transport is context, never identity (the certificate fingerprint is the principal); the isolation is defense in depth (the RLS is the second layer); the quotas bound the abuse over the budget machinery; the secrets/regions are declared profiles. No code.

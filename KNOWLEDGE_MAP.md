@@ -96,3 +96,4 @@
 - [`2026-09-07_verification-set-coverage.md`](docs/decisions/2026-09-07_verification-set-coverage.md)
 - [`2026-09-07_workload-identity-issuance.md`](docs/decisions/2026-09-07_workload-identity-issuance.md)
 - [`2026-09-07_workspace-single-rustls-provider.md`](docs/decisions/2026-09-07_workspace-single-rustls-provider.md)
+- [`2026-09-08_tls13-refusals-are-read-side.md`](docs/decisions/2026-09-08_tls13-refusals-are-read-side.md)

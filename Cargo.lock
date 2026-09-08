@@ -3467,6 +3467,7 @@ dependencies = [
  "reasonbraid-policy-compiler",
  "reqwest 0.12.28",
  "ring",
+ "rustls",
  "rustls-pki-types",
  "rustls-webpki",
  "serde",
@@ -3475,6 +3476,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "tokio-rustls",
  "url",
  "x509-parser",
 ]

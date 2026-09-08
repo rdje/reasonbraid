@@ -193,3 +193,21 @@ pub fn verify_signature(point: &[u8], message: &[u8], signature: &[u8]) -> Resul
     key.verify(message, signature)
         .map_err(|_| "the proof signature did not verify".to_string())
 }
+
+/// Issue the SERVER's serving leaf (`.1.2`, §16.2): a CA-signed cert with
+/// the server-auth EKU — the mTLS acceptor presents it. The leaf is
+/// long-lived (the serving identity, not the workload identity).
+pub fn issue_serving_cert(ca: &ServerCa, dns_name: &str) -> (Vec<u8>, Vec<u8>) {
+    let key = KeyPair::generate().expect("serving key generation");
+    let mut params = CertificateParams::new(vec![dns_name.to_string()]).expect("serving params");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, format!("server:{dns_name}"));
+    params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
+    let now = now_offset();
+    params.not_before = now - time::Duration::seconds(5);
+    params.not_after = now + time::Duration::days(365);
+    let cert = params.signed_by(&key, &ca.issuer).expect("serving sign");
+    (cert.der().to_vec(), key.serialize_der())
+}

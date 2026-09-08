@@ -44,6 +44,7 @@ pub mod git;
 pub mod lifecycle;
 mod matching;
 pub mod mediated;
+pub mod mtls;
 mod node_channel;
 mod outbox;
 pub mod policy;

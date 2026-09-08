@@ -91,7 +91,7 @@ reopens the applicable portions of G4–G7.
       typed refusal). No code changed. Frontier → `.1.2`.
 
   - ID: `PHASE-7.1.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the mTLS workload identity — the transport
       hardening: the cert-fingerprint → the principal
       binding at the channel (the TLS 1.3 default, the
@@ -99,6 +99,62 @@ reopens the applicable portions of G4–G7.
       reimaging/incarnation separation (a changed host never
       inherits the history).
     Roadmap: §16.2
+    Done (`2026-09-08`): the mTLS transport shipped as the
+      §16.2 config pair (the production serve wiring stays
+      the deployment-profile concern — NAMED, not hidden):
+      `ca::issue_serving_cert` (the ServerAuth-EKU serving
+      leaf), `mtls::build_server_config` (TLS 1.3-only,
+      ring-pinned, the `WebPkiClientVerifier` over the CA
+      root — the client MUST chain to the deployment CA),
+      `mtls::build_client_config` (the CA root + the node's
+      leaf). The split holds per the census: the transport
+      verifies the CA membership; the fingerprint → the
+      principal binding stays the APPLICATION proof
+      (`node_channel::verify_cert_proof`) — the layered
+      defense, never the transport alone. The offline
+      roundtrip proves both legs: the CA-issued client
+      completes the mutual handshake + a byte; the
+      cert-less client is refused at the transport (the
+      server's accept errors + the client's first read
+      delivers the alert/EOF, never data). The FIRST test
+      draft failed on a real TLS 1.3 asymmetry — the
+      client's connect() completes before the server's
+      certificate_required alert arrives, so the refusal is
+      read-side, never connect-side — promoted to
+      `docs/decisions/2026-09-08_tls13-refusals-are-read-side.md`
+      (top-level `answers:`) as the future TLS tests'
+      contract. Frontier → `.1.3`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the transport
+      hardening is the mTLS config pair + the serving leaf:
+      `rustls` 0.23 pinned ring (the workspace provider
+      rule), TLS 1.3-only per §16.2; the client verifier is
+      `WebPkiClientVerifier` over the deployment CA — the
+      proof is the OFFLINE roundtrip (loopback TLS, no
+      Postgres) in `tests/mtls.rs`: the issued leg
+      completes, the cert-less leg is refused at the
+      transport. Evidence: `cargo test -p reasonbraid-server
+      --test mtls` → `test result: ok. 1 passed; 0 failed`.
+    - [x] **ADDRESSED** — the certificate is CONTEXT, never
+      identity (ADR-034): the transport checks the CA
+      membership only; the principal binding (fingerprint →
+      node) remains the application's `verify_cert_proof`
+      — the two layers measured separately (the channel
+      suite + this transport suite). Evidence: the client
+      refused at the transport carries NO cert at all; the
+      roundtrip's accepted client presents the CA-issued
+      leaf. `cargo test --all` → the full offline sweep
+      rc=0.
+    - [x] **NO REGRESSION** — `cargo test -p
+      reasonbraid-server --test mtls` → `test result: ok.
+      1 passed; 0 failed`; `cargo test --all` → rc=0, 64
+      offline suites (63 + the new mtls suite)
+      (`target/mtls_offline.log`); `cargo clippy
+      --all-targets -- -D warnings` → clean; `cargo fmt
+      --all -- --check` → rc=0; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — the TLS 1.3
+      connect-side-refusal trap: `docs/decisions/2026-09-08_tls13-refusals-are-read-side.md`
+      (top-level `answers:`).
 
   - ID: `PHASE-7.1.3`
     Status: `proposed`
@@ -146,10 +202,16 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.2` | `proposed` | `.1.1` done — ADR-034 accepted (the per-surface qualification, the transport-context rule, the defense-in-depth isolation, the quota vocabulary); the mTLS workload identity executes next |
+| 1 | `PHASE-7.1.3` | `proposed` | `.1.2` done — the mTLS workload identity ships (the TLS 1.3-only config pair + the offline roundtrip proof); the tenant isolation + the quotas/abuse execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.2` done — the mTLS workload identity
+  (the §16.2 config pair + the serving leaf + the offline
+  roundtrip: the CA-issued client connects, the cert-less
+  client is refused at the transport; the TLS 1.3
+  connect-side-refusal trap promoted to a decision record);
+  frontier → `.1.3`.
 - `2026-09-07`: `.1.1` done — ADR-034 accepted (the
   hardening contract: the per-surface qualification, the
   transport-context rule, the defense-in-depth isolation,

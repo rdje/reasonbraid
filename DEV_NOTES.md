@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-08)_ — PHASE-7.1.2: TLS 1.3 refusals are read-side, never connect-side — the cert-less client's connect() can succeed
+
+- **The client's Finished races the server's alert.** The `.1.2` mTLS roundtrip's first draft asserted the refusal on the cert-less client's `TlsConnector::connect` — and the test failed: the connect returned `Ok` while the SERVER's accept returned the certificate-required error. TLS 1.3's ordering explains it: the client sends its Finished and considers the handshake complete BEFORE the server's `certificate_required` alert arrives. The refusal surfaces on the server's accept AND on the client's first read (the alert/EOF — never a data byte); a connect-side assertion is structurally unsound.
+- **The mTLS transport ships as the §16.2 config pair** (`mtls::build_server_config` — TLS 1.3-only, ring-pinned, the `WebPkiClientVerifier` over the deployment CA — + `mtls::build_client_config` + `ca::issue_serving_cert`). The split holds: the transport verifies the CA membership; the fingerprint → the principal binding stays the application proof (`node_channel::verify_cert_proof`) — the layered defense. The offline roundtrip (loopback TLS, no Postgres) proves both legs.
+- promotion: promoted → `docs/decisions/2026-09-08_tls13-refusals-are-read-side.md` (top-level `answers:` — the future TLS tests' contract). **Frontier `PHASE-7.1.3`.**
+
 ## _(2026-09-07)_ — PHASE-4.3.2: the rustls-provider rule strikes a THIRD time — the transport BACKEND feature is the trap
 
 - **A library's backend feature is a provider vote.** gix's `blocking-http-transport-reqwest-rust-tls` sounds aligned (reqwest + rustls) but enables reqwest's PLAIN `rustls` feature — which compiles rustls with its DEFAULT provider (aws-lc-rs) — re-creating the two-provider ambiguity the workspace decision forbids. The fix is the gix-transport `http-client` feature WITHOUT any backend: it gives the `Http` trait + `new_http` and nothing else — the classified wrapper IS the backend, so no second provider ever enters the union. The rule, sharpened: EVERY new transport/library feature must be checked against `cargo tree -e features -i rustls` for the ring-only invariant BEFORE the build.

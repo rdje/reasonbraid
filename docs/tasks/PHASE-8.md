@@ -473,11 +473,96 @@ default.
     - [x] **LESSON PROMOTED** — none new.
 
 - ID: `PHASE-8.3`
-  Status: `proposed`
+  Status: `done`
   Goal: MCP servers/clients for tool/resource exposure; ReasonBraid owns durable continuation of listen streams
   ADR: 024
   Roadmap: §9.6
   Baseline: MCP 2026-07-28; `subscriptions/listen` does not auto-resume
+  Done (`2026-09-08`): the census at the seams —
+    decomposed. Measured: NOTHING ships for MCP (the
+    §9.6 surface is the greenfield); the contract is
+    precise (the TOOL vocabulary — `ask_network`/
+    `get_thread`/`respond`/`join_call`/`list_inbox`/
+    `propose_policy_change`/`get_policy_bundle` — maps
+    to the SAME command handlers as HTTP; the
+    resources — the thread timelines, the evidence,
+    the authorized policy sets; the client role; the
+    remote metadata never grants authority; the
+    listen-stream contract: the stream is the
+    EPHEMERAL transport state, the durable
+    subscription/cursor/delivery-ids/dedup stay in
+    REASONBRAID, the reconnect reauthorizes +
+    recreates + reconciles + resumes from the own
+    cursor + surfaces the possible-gap — never
+    stronger than the upstream proves); ADR-024 is
+    reserved (no record). THE PARKING-LOT ENTRY (the
+    director's 2026-09-08 brainstorm) is this lane's
+    trigger: the READ half first (the inspection verbs
+    as the read-only tools over the cross-store
+    corpus), the WRITE half as the qualified
+    capability profile (the grant-scoped principal +
+    the per-principal quota — the `.1.3.2` named
+    deferral re-opens). Children: `.3.1` the census +
+    ADR-024 → `.3.2` the SDK census + the pin → `.3.3`
+    the read-half tools + the resources → `.3.4` the
+    listen-stream durability → `.3.5` the write-half
+    profile.
+  Children: `.3.1`–`.3.5`
+
+  - ID: `PHASE-8.3.1`
+    Status: `proposed`
+    Goal: the census + ADR-024 — the MCP surface +
+      the version-profile contract: the tool
+      vocabulary + the same-handlers mapping, the
+      resource vocabulary, the listen-stream
+      durability contract (the ephemeral transport
+      state + the ReasonBraid-owned durable state),
+      the version-pin + the conformance-fixture
+      stance.
+    ADR: 024
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.2`
+    Status: `proposed`
+    Goal: the SDK census + the pin — the official
+      Rust MCP SDK's exact versions + the supply-chain
+      gate, the protocol profile selection (the MCP
+      2026-07-28 baseline), the `Cargo.lock` pin + the
+      tested release record.
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.3`
+    Status: `proposed`
+    Goal: the read-half tools + the resources — the
+      inspection verbs as the read-only MCP tools over
+      the cross-store corpus (the `get_thread`/
+      `list_inbox`/`get_policy_bundle` family + the
+      timelines/evidence/policy-set resources), the
+      same command handlers as HTTP, the independent
+      conformance fixtures.
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.4`
+    Status: `proposed`
+    Goal: the listen-stream durability — the
+      ReasonBraid-owned subscription + the cursor +
+      the delivery ids + the dedup state; the
+      reconnect ritual (the reauthorize → the recreate
+      → the reconcile → the resume from the own
+      cursor → the possible-gap surface), never
+      stronger than the upstream proves.
+    Roadmap: §9.6
+
+  - ID: `PHASE-8.3.5`
+    Status: `proposed`
+    Goal: the write-half profile — the write tools
+      (`respond`/`join_call`/`propose_policy_change`)
+      as the QUALIFIED capability profile: the
+      grant-scoped principal + the per-verb grants +
+      the per-principal quota binding (the `.1.3.2`
+      named deferral re-opens) + the audit — never
+      the ambient authority.
+    Roadmap: §9.6
 
 - ID: `PHASE-8.4`
   Status: `proposed`
@@ -497,10 +582,18 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3` | `proposed` | `.2.4` done — the A2A wire-level demonstration + the qualification record ship; **the `.2` lane is COMPLETE** — the MCP lane executes next |
+| 1 | `PHASE-8.3.1` | `proposed` | `.3` decomposed at the census seams (the §9.6 surface is the greenfield; the parking-lot trigger fires — the read-first, the write-half as the qualified profile); the census + ADR-024 execute first |
 
 ## Changelog
 
+- `2026-09-08`: `.3` done — the MCP census at the
+  seams (the §9.6 tool/resource vocabulary + the
+  listen-stream contract; ADR-024 reserved; the
+  parking-lot trigger fires) → decomposed `.3.1` (the
+  census + ADR-024) → `.3.2` (the SDK pin) → `.3.3`
+  (the read-half) → `.3.4` (the listen-stream
+  durability) → `.3.5` (the write-half profile);
+  frontier → `.3.1`.
 - `2026-09-08`: `.2.4` done — the A2A wire-level
   demonstration (the JSON-RPC 2.0 roundtrip over the
   real 0.3.0 shapes + the typed refusal + the

@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The MCP census: the parking-lot trigger fires (`PHASE-8.3`)
+
+- The census at the seams: nothing ships for MCP (the §9.6 surface is the greenfield); the contract is precise — the tool vocabulary (`ask_network`/`get_thread`/`respond`/`join_call`/`list_inbox`/`propose_policy_change`/`get_policy_bundle`) maps to the SAME command handlers as HTTP, the resources (the timelines/evidence/policy sets), the client role, the listen-stream contract (the ephemeral transport state + the ReasonBraid-owned durable subscription/cursor/dedup — the reconnect reauthorizes + recreates + reconciles + resumes from the own cursor + surfaces the possible-gap); ADR-024 is reserved. The parking-lot entry (the director's 2026-09-08 brainstorm) is this lane's trigger: the READ half first, the WRITE half as the qualified capability profile (the grant-scoped principal + the per-principal quota — the `.1.3.2` named deferral re-opens). Decomposed: `.3.1` the census + ADR-024 → `.3.2` the SDK pin → `.3.3` the read-half → `.3.4` the listen-stream durability → `.3.5` the write-half profile.
+
 ## 2026-09-08 — The A2A wire-level demonstration + the qualification (`PHASE-8.2.4`)
 
 - The facade's suite gains the JSON-RPC 2.0 roundtrip over the REAL a2a-lf 0.3.0 wire shapes (the `JsonRpcRequest` (SendMessage) → the serialize/deserialize → the facade maps → the `JsonRpcResponse::success` → the roundtrip; the unknown-method typed `JsonRpcError` refusal — 5 tests). The tested revision: the a2a-lf 0.3.0 types + the JSON-RPC 2.0 envelope. The QUALIFICATION RECORD: the WIRE-level compatibility is DEMONSTRATED; the transport profile (the a2a-server-lf/a2a-client-lf harness) stays the named follow-on — the §9.7 "test only the profiles actually needed" rule (no external A2A peer exists in the dev profile); the broad Internet agent interoperability claim stays GATED; the gateway deployable-off. **The `.2` lane is COMPLETE** — frontier → `.3` (the MCP lane).

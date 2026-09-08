@@ -20,14 +20,18 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.3` (the MCP lane — ADR-024). **The `.1` lane is COMPLETE**;
-  **the `.2` lane is COMPLETE** (ADR-025, the pin, the facade core, the
-  wire-level demonstration + the qualification record).
-- **Next action:** execute `PHASE-8.3` — open the MCP lane at the census
-  seams: the MCP servers/clients for the tool/resource exposure (the
-  ReasonBraid-owned durable continuation of the listen streams — ADR-024;
-  the baseline: the MCP 2026-07-28 spec, the `subscriptions/listen`
-  non-auto-resume).
+  frontier `.3.1`. **The `.1` lane is COMPLETE**; **the `.2` lane is
+  COMPLETE**; `.3` done (the MCP census — the parking-lot trigger fires:
+  the read-first, the write-half as the qualified profile) → decomposed
+  `.3.1` (the census + ADR-024) → `.3.2` (the SDK pin) → `.3.3` (the
+  read-half) → `.3.4` (the listen-stream durability) → `.3.5` (the
+  write-half profile).
+- **Next action:** execute `PHASE-8.3.1` — the census + ADR-024 (the
+  MCP surface + the version-profile contract): the tool vocabulary +
+  the same-handlers mapping, the resource vocabulary, the listen-stream
+  durability contract (the ephemeral transport state + the
+  ReasonBraid-owned durable state), the version-pin + the
+  conformance-fixture stance.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

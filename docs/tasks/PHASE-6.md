@@ -684,7 +684,7 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     Frontier → `.5.1`.
 
   - ID: `PHASE-6.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: ADR-021 + the census — the deployment contract:
       the per-target waves (the deployment is NOT globally
       atomic — the §15.9 rule), the desired/observed state
@@ -696,6 +696,24 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
       lower). No code.
     ADR: 021
     Roadmap: §15.9–15.11, §4.7
+    Done (`2026-09-07`): ADR-021 accepted (evidence-gated) —
+      `docs/adr/021-target-deployment.md` (top-level
+      `answers:`): the deployment is PER-TARGET WAVES, never
+      globally atomic (the desired/observed pair per target;
+      "release complete" = the explicit target-coverage
+      threshold + the named exceptions); the receipt attests
+      the DIGEST (the observed state, never the hope — the
+      drift's comparison input); the drift is the six-way
+      §15.10 vocabulary (the unverifiable load is the
+      `policy_application_unverified` report, never a
+      guess); the §4.7 correction authorities stay distinct
+      (the suspension fast-scoped-expiring, the retraction
+      preserving the original + the effective time, the
+      supersession linking the old/new, the waiver
+      time-bounded — the reversal is fast, the authority is
+      NOT universally lower); the outcome record links the
+      policy to what happened after (§15.11). No code
+      changed. Frontier → `.5.2`.
 
   - ID: `PHASE-6.5.2`
     Status: `proposed`
@@ -735,10 +753,14 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.5.1` | `proposed` | `.5` decomposed at the census seams (the deployment lane is the greenfield — the `.4` effective publications + the digests are the inputs) — ADR-021 opens the lane |
+| 1 | `PHASE-6.5.2` | `proposed` | `.5.1` done — ADR-021 accepted (the per-target waves, the digest-attesting receipts, the six-way drift, the distinct correction authorities); the deployment records + the waves execute next |
 
 ## Changelog
 
+- `2026-09-07`: `.5.1` done — ADR-021 accepted (the
+  deployment contract: the per-target waves, the
+  digest-attesting receipts, the six-way drift, the distinct
+  correction authorities); no code; frontier → `.5.2`.
 - `2026-09-07`: `.5` decomposed at the census seams — the
   deployment lane is the greenfield (no target/wave/receipt/
   drift/correction record exists; the `.4` effective

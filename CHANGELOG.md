@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — ADR-021: the target-deployment contract (`PHASE-6.5.1`)
+
+- ADR-021 accepted (`docs/adr/021-target-deployment.md`): the deployment is per-target waves, never globally atomic; the receipt attests the digest (never the hope); the drift is the six-way §15.10 vocabulary; the §4.7 correction authorities stay distinct (the reversal is fast, the authority is not universally lower). No code.
+
 ## 2026-09-07 — The target-deployment lane is decomposed at the census seams (`PHASE-6.5`)
 
 - The deployment lane is the greenfield (no target/wave/receipt/drift/correction record exists); the `.4` effective publications + the digests are the inputs. Children: `.5.1` ADR-021 → `.5.2` the deployment records + the waves → `.5.3` the drift + the corrections.

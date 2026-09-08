@@ -47,6 +47,7 @@ async fn pool() -> Option<PgPool> {
         .expect("apply migrations");
     for table in [
         "federation_agreements",
+        "cross_domain_receipts",
         "quota_events",
         "usage_quotas",
         "outbox_delivery",
@@ -349,5 +350,51 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
     assert_eq!(
         grant_actions, 2,
         "the card conferred only the default grant pair (the ADR-026 invariant)"
+    );
+
+    // 8. The cross-domain receipt (`.1.4`): the remote reference is the
+    //    card's digest, the local reference is the fresh role — the
+    //    receipt CROSS-REFERENCES, never merges the chains.
+    let receipt: Option<(String, String)> = sqlx::query_as(
+        "SELECT remote_ref, local_ref FROM cross_domain_receipts \
+         WHERE tenant_id = $1 AND kind = 'card_import'",
+    )
+    .bind(&tenant_b)
+    .fetch_optional(&pool)
+    .await
+    .expect("read the receipt");
+    let Some((remote_ref, local_ref)) = receipt else {
+        panic!("the import must record its cross-domain receipt");
+    };
+    assert_eq!(
+        remote_ref, digest,
+        "the remote reference is the card's digest"
+    );
+    assert_eq!(
+        local_ref, local_role,
+        "the local reference is the fresh role"
+    );
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/audit/receipts?tenant_id={tenant_b}"),
+        &b_admin,
+    )
+    .await;
+    assert_eq!(status, 200, "the receipts read: {listed}");
+    let listed_kinds: Vec<String> = listed["receipts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["kind"].as_str().map(|k| k.to_string()))
+        .collect();
+    assert_eq!(
+        listed_kinds.iter().filter(|k| k.as_str() == "card_import").count(),
+        1,
+        "the read surface returns the card-import receipt"
+    );
+    assert!(
+        listed_kinds.iter().any(|k| k.as_str() == "agreement"),
+        "the read surface also carries the agreement receipts"
     );
 }

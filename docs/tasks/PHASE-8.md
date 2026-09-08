@@ -206,13 +206,56 @@ default.
       ripple is the known recurring lesson.
 
   - ID: `PHASE-8.1.4`
-    Status: `proposed`
+    Status: `done`
     Goal: the cross-domain audit receipts — the
       receipt shape over the shipped audit linkage (the
       ADR-022 groundwork's federation form: the remote
       domain's receipt references its OWN records; the
       local chain stays the local truth).
     Roadmap: §6.6
+    Done (`2026-09-08`): migration 0049 —
+      `cross_domain_receipts` (the receipt_id, the two
+      tenants, the kind (`card_import` | `agreement`),
+      the `remote_ref` — the remote domain's
+      digest-pinned reference, the `local_ref` — the
+      local record it attached to); `receipts.rs` — the
+      in-transaction record (the receipt commits WITH
+      the cross-domain action, never a follow-up) + the
+      read surface; the card IMPORT records the receipt
+      in its transaction (the remote_ref = the card's
+      digest, the local_ref = the fresh role); the read
+      surface (`GET /v1/audit/receipts?tenant_id=…`,
+      the tenant_admin gate) lists the tenant's
+      receipts. The receipts CROSS-REFERENCE, never
+      merge: the remote reference is verifiable against
+      the REMOTE domain's records; the local chain
+      stays the local truth (the ADR-022 groundwork's
+      federation form). The measured legs ride the
+      cards suite (the guard's 27th — the receipt row
+      after the import + the read surface). The
+      guard's first runs caught the receipts-FK purge
+      ripple (the table joined the 18 tenant-purging
+      lists). **The `.1` lane is COMPLETE.** Frontier →
+      `.2`.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-026
+      receipt clause (the cross-reference, never the
+      merge) had no machinery; the receipt rides the
+      cross-domain actions' transactions. Evidence:
+      `cargo test -p reasonbraid-server --test cards`
+      → `test result: ok. 1 passed; 0 failed` (the
+      extended receipt legs).
+    - [x] **ADDRESSED** — the migration + the record +
+      the read + the import wiring. Evidence: `bash
+      scripts/run_pg_tests.sh` → rc=0, 27 suites
+      (`target/pg_receipts_guard3.log`).
+    - [x] **NO REGRESSION** — the guard → rc=0, 27
+      suites + the demo `ALL acceptance checks passed`
+      (`target/pg_receipts_guard3.log`); `cargo test
+      --all` → rc=0, 72 suites (`target/receipts_offline.log`);
+      clippy/fmt clean; `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — none new: the FK-purge
+      ripple is the known recurring lesson.
 
 - ID: `PHASE-8.2`
   Status: `proposed`
@@ -246,10 +289,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.1.4` | `proposed` | `.1.3` done — the portable cards ship (the digest-pinned export + the four-rung import + the measured suite); the cross-domain audit receipts execute next |
+| 1 | `PHASE-8.2` | `proposed` | `.1.4` done — the cross-domain receipts ship (the cross-reference, never the merge); **the `.1` lane is COMPLETE** — the A2A interoperability lane executes next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.4` done — the cross-domain audit
+  receipts (migration 0049 + the in-transaction
+  record + the read surface + the import wiring + the
+  measured legs); **the `.1` lane is COMPLETE**;
+  frontier → `.2`.
 - `2026-09-08`: `.1.3` done — the portable agent
   cards (the canonical digest-pinned export + the
   four-rung import ladder — the digest, the schema,

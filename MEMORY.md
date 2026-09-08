@@ -20,15 +20,13 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.1.4`. `.1` done (the census — the block LIFTS) →
-  decomposed; `.1.1` done (ADR-026); `.1.2` done (the agreement
-  machinery); `.1.3` done (the portable cards — the digest-pinned
-  export + the four-rung import).
-- **Next action:** execute `PHASE-8.1.4` — the cross-domain audit
-  receipts: the receipt shape over the shipped audit linkage (the
-  ADR-022 groundwork's federation form: the remote domain's receipt
-  references its OWN digest-pinned records; the local chain stays the
-  local truth — the cross-reference, never the merge).
+  frontier `.2` (the A2A interoperability — ADR-025). **The `.1` lane is
+  COMPLETE**: ADR-026, the agreement machinery, the portable cards, the
+  cross-domain receipts.
+- **Next action:** execute `PHASE-8.2` — open the A2A lane at the census
+  seams: the current A2A interoperability for the compatible
+  task/message exchange (ADR-025; the baseline: the official `a2a-rs`
+  crates published as of 2026-09-04 — pin + revalidate).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

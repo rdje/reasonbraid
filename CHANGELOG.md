@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The cross-domain audit receipts: the cross-reference, never the merge (`PHASE-8.1.4`)
+
+- Migration 0049 (`cross_domain_receipts` — the two tenants, the kind, the `remote_ref` (the remote domain's digest-pinned reference), the `local_ref` (the local record)) + `receipts.rs` (the in-transaction record — the receipt commits WITH the action) + the read surface (`GET /v1/audit/receipts?tenant_id=…`). The card import records the receipt (the remote_ref = the card's digest, the local_ref = the fresh role); the measured legs ride the cards suite (the guard's 27th). The receipts CROSS-REFERENCE: the remote reference verifies against the REMOTE domain's records, the local chain stays the local truth. The guard's first runs caught the receipts-FK purge ripple (the 18 lists). **The `.1` lane is COMPLETE** — frontier → `.2` (the A2A interoperability).
+
 ## 2026-09-08 — The portable agent cards: the digest-pinned export + the four-rung import (`PHASE-8.1.3`)
 
 - `cards.rs` (the `AgentCard` — the origin identity + the §10.1 profile + the canonical field order + the `sha256:<hex>` digest) + the two routes: the EXPORT (`GET /v1/profiles/{role_id}/card` — the role or its tenant admin mints the portable form) and the IMPORT (`POST /v1/profiles/cards/import` — the ADR-027 ladder: the digest rung (the re-derivation), the compatibility rung (`agent-card/1`), the allowlist rung (the EFFECTIVE recruitment agreement — the `.1.2` machinery), the capability rung (the fresh local role + the boundary-checked DEFAULT grant — the card's self-asserted capabilities never confer authority — + the imported profile via the content-addressed path). The measured suite (the guard's 27th) proves the export, the refusals, the clean import, and the default-grant-only invariant. The guard's first runs caught the profile-FK purge gaps. Frontier → `.1.4`.

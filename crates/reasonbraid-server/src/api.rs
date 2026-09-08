@@ -461,6 +461,7 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         )
         .route("/v1/admin/breakers/reset", post(reset_breaker))
         .route("/v1/admin/usage", get(admin_usage))
+        .route("/v1/audit/receipts", get(list_cross_domain_receipts))
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
         .route("/v1/directory/presence", get(directory_presence))
@@ -4645,6 +4646,19 @@ async fn import_profile_card(
     .bind(req.card.profile.display_label.clone())
     .execute(&mut *tx)
     .await?;
+    // The cross-domain receipt (`.1.4`, ADR-026): the remote reference is
+    // the card's digest (the remote domain's own re-derivable record);
+    // the local reference is the fresh role — the receipt CROSS-REFERENCES,
+    // it never merges the chains.
+    crate::receipts::record_in_tx(
+        &mut *tx,
+        &req.tenant_id.to_string(),
+        &req.card.origin_tenant_id,
+        crate::receipts::KIND_CARD_IMPORT,
+        &req.digest,
+        &role_id,
+    )
+    .await?;
     tx.commit().await?;
     // The profile from the card (the content-addressed write path).
     crate::profiles::write_profile(&state.pool, &role_id, &role_id, &req.card.profile)
@@ -6261,6 +6275,23 @@ async fn admin_metrics(
 /// reserved, per dimension, floored), and the denials with their reasons —
 /// plus the per-thread breakdown. tenant_admin-gated (the read carve-out's
 /// surface), read-only.
+/// `GET /v1/audit/receipts?tenant_id=…` — the tenant's cross-domain
+/// receipts (the read surface, tenant_admin-gated): each receipt names
+/// the remote domain's digest-pinned reference + the local record it
+/// attached to — the cross-reference, never the merged chain.
+async fn list_cross_domain_receipts(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    authorize_tenant_admin(&state.pool, &principal, q.tenant_id).await?;
+    let receipts = crate::receipts::list(&state.pool, &q.tenant_id.to_string()).await?;
+    Ok(Json(
+        json!({ "tenant_id": q.tenant_id.to_string(), "receipts": receipts }),
+    ))
+}
+
 async fn admin_usage(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,

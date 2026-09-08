@@ -36,21 +36,37 @@ pub async fn propose(
 }
 
 /// Accept the REMOTE side's proposal (this tenant's own row). The effect
-/// of the agreement engages only when BOTH rows are accepted.
+/// of the agreement engages only when BOTH rows are accepted. The
+/// acceptance records the cross-domain receipt (`.1.4`, ADR-026): the
+/// remote reference is the remote tenant, the local reference is the
+/// agreement — the cross-reference, never the merged chain.
 pub async fn accept(
     pool: &PgPool,
     tenant_id: &str,
     remote_tenant_id: &str,
 ) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     let rows = sqlx::query(
         "UPDATE federation_agreements SET status = 'accepted', accepted_at = now() \
          WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'proposed'",
     )
     .bind(tenant_id)
     .bind(remote_tenant_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?
     .rows_affected();
+    if rows > 0 {
+        crate::receipts::record_in_tx(
+            &mut *tx,
+            tenant_id,
+            remote_tenant_id,
+            crate::receipts::KIND_AGREEMENT,
+            remote_tenant_id,
+            &format!("fed_{tenant_id}_{remote_tenant_id}"),
+        )
+        .await?;
+    }
+    tx.commit().await?;
     Ok(rows)
 }
 

@@ -56,6 +56,7 @@ pub mod projections;
 pub mod publications;
 pub mod publisher;
 mod quota;
+mod receipts;
 pub mod reconciler;
 mod recruitment;
 mod resolvers;

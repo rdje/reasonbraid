@@ -112,9 +112,12 @@ impl std::fmt::Display for LifecycleError {
     }
 }
 
-/// Register one proposal (the draft stage).
+/// Register one proposal (the draft stage). The thread reference is checked
+/// under the CALLER's tenant claim (`.1.3.1`): a proposal may only name a
+/// thread of the caller's tenant — the RLS layer enforces the read.
 pub async fn register_proposal(
     pool: &PgPool,
+    tenant_id: &str,
     input: &ProposalInput,
 ) -> Result<StoredProposal, LifecycleError> {
     let policy: Option<bool> = sqlx::query_scalar(
@@ -128,12 +131,18 @@ pub async fn register_proposal(
     if !policy.unwrap_or(false) {
         return Err(LifecycleError::UnknownPolicy(input.policy_id.clone()));
     }
-    let thread: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM aggregate_state \
-         WHERE aggregate_id = $1 AND aggregate_type = 'thread')",
-    )
-    .bind(&input.thread_id)
-    .fetch_one(pool)
+    let thread_ref = input.thread_id.clone();
+    let thread: Option<bool> = crate::rls::with_tenant_claim(pool, tenant_id, |tx| {
+        Box::pin(async move {
+            sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM aggregate_state \
+                 WHERE aggregate_id = $1 AND aggregate_type = 'thread')",
+            )
+            .bind(&thread_ref)
+            .fetch_one(&mut *tx)
+            .await
+        })
+    })
     .await
     .map_err(|_| LifecycleError::UnknownThread(input.thread_id.clone()))?;
     if !thread.unwrap_or(false) {
@@ -166,10 +175,12 @@ pub async fn register_proposal(
 }
 
 /// Record one decision (the draft → decided transition). The verdict must be
-/// a verdict-kind contribution of the PROPOSAL's thread; the electorate
-/// snapshot freezes the participants at the action time.
+/// a verdict-kind contribution of the PROPOSAL's thread — checked under the
+/// CALLER's tenant claim (`.1.3.1`); the electorate snapshot freezes the
+/// participants at the action time.
 pub async fn record_decision(
     pool: &PgPool,
+    tenant_id: &str,
     input: &DecisionInput,
 ) -> Result<StoredDecision, LifecycleError> {
     let proposal: Option<(String, String)> =
@@ -196,14 +207,21 @@ pub async fn record_decision(
     if participants == 0 {
         return Err(LifecycleError::EmptyElectorate);
     }
-    let verdict: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM event_log \
-         WHERE event_id = $1 AND aggregate_id = $2 AND event_type = 'thread.contribution_submitted' \
-         AND body ->> 'kind' = 'verdict')",
-    )
-    .bind(&input.verdict_event_id)
-    .bind(&thread_id)
-    .fetch_one(pool)
+    let verdict_ref = input.verdict_event_id.clone();
+    let thread_ref = thread_id.clone();
+    let verdict: Option<bool> = crate::rls::with_tenant_claim(pool, tenant_id, |tx| {
+        Box::pin(async move {
+            sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM event_log \
+                 WHERE event_id = $1 AND aggregate_id = $2 AND event_type = 'thread.contribution_submitted' \
+                 AND body ->> 'kind' = 'verdict')",
+            )
+            .bind(&verdict_ref)
+            .bind(&thread_ref)
+            .fetch_one(&mut *tx)
+            .await
+        })
+    })
     .await
     .map_err(|_| LifecycleError::UnknownVerdict(input.verdict_event_id.clone()))?;
     if !verdict.unwrap_or(false) {

@@ -172,6 +172,11 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
 {
+    // The RLS tenant claim (`.1.3.1`): the FIRST statement of the transaction —
+    // every later read/write on the protected tables (idempotency, event_log,
+    // aggregate_state) sees this tenant's rows, and a claim-less transaction
+    // sees none (fail-closed). Idempotent: the apply step sets it again.
+    crate::rls::set_tenant_claim(&mut *tx, tenant_id).await?;
     let claim = sqlx::query(
         "INSERT INTO idempotency (tenant_id, idempotency_key, request_hash, response_result) \
          VALUES ($1, $2, $3, 'null'::jsonb) \
@@ -225,6 +230,11 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
 {
+    // The RLS tenant claim (`.1.3.1`): set at the apply entry too — the
+    // `tx::apply_command` path reaches the protected tables WITHOUT a prior
+    // claim step, so this is its first statement. Idempotent with the claim
+    // step's set (same value, same transaction).
+    crate::rls::set_tenant_claim(&mut *tx, cmd.tenant_id).await?;
     // 1. Lock the aggregate row so writers to the SAME aggregate serialize, then
     //    derive the next ordered version. `None` = the aggregate has no row yet
     //    (revision 0, `FOR UPDATE` takes no row lock — the (tenant, aggregate)

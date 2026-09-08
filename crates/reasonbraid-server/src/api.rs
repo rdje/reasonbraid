@@ -2400,13 +2400,12 @@ async fn register_policy_proposal(
     Json(input): Json<crate::lifecycle::ProposalInput>,
 ) -> Result<Json<crate::lifecycle::StoredProposal>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal registers no proposal",
         ));
-    }
-    match crate::lifecycle::register_proposal(&state.pool, &input).await {
+    };
+    match crate::lifecycle::register_proposal(&state.pool, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -2435,13 +2434,12 @@ async fn record_policy_decision(
     Json(input): Json<crate::lifecycle::DecisionInput>,
 ) -> Result<Json<crate::lifecycle::StoredDecision>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no decision",
         ));
-    }
-    match crate::lifecycle::record_decision(&state.pool, &input).await {
+    };
+    match crate::lifecycle::record_decision(&state.pool, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -5723,13 +5721,21 @@ async fn get_thread(
             thread_id,
         },
         |pool| async move {
-            let row: Option<(String, Value)> = sqlx::query_as(
-                "SELECT aggregate_id, state FROM aggregate_state \
-             WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
-            )
-            .bind(tenant_id.to_string())
-            .bind(thread_id.to_string())
-            .fetch_optional(&pool)
+            let tenant = tenant_id.to_string();
+            let thread = thread_id.to_string();
+            let claim = tenant.clone();
+            let row: Option<(String, Value)> = crate::rls::with_tenant_claim(&pool, &claim, |tx| {
+                Box::pin(async move {
+                    sqlx::query_as(
+                        "SELECT aggregate_id, state FROM aggregate_state \
+                     WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
+                    )
+                    .bind(tenant)
+                    .bind(thread)
+                    .fetch_optional(&mut *tx)
+                    .await
+                })
+            })
             .await?;
             match row {
                 Some((_, state_json)) => {
@@ -5790,17 +5796,25 @@ async fn get_events(
         },
         |pool| async move {
             let after = q.after.unwrap_or(0);
+            let tenant = tenant_id.to_string();
+            let thread = thread_id.to_string();
+            let claim = tenant.clone();
             type Row = (String, String, i64, DateTime<Utc>, Value);
-            let rows: Vec<Row> = sqlx::query_as(
-                "SELECT event_id, event_type, aggregate_version, committed_at, body \
-             FROM event_log \
-             WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_version > $3 \
-             ORDER BY aggregate_version",
-            )
-            .bind(tenant_id.to_string())
-            .bind(thread_id.to_string())
-            .bind(after)
-            .fetch_all(&pool)
+            let rows: Vec<Row> = crate::rls::with_tenant_claim(&pool, &claim, |tx| {
+                Box::pin(async move {
+                    sqlx::query_as(
+                        "SELECT event_id, event_type, aggregate_version, committed_at, body \
+                 FROM event_log \
+                 WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_version > $3 \
+                 ORDER BY aggregate_version",
+                    )
+                    .bind(tenant)
+                    .bind(thread)
+                    .bind(after)
+                    .fetch_all(&mut *tx)
+                    .await
+                })
+            })
             .await?;
             let mut events: Vec<Value> = rows
                 .into_iter()
@@ -6222,12 +6236,19 @@ async fn list_threads(
         &principal,
         ResourceTarget::Tenant { tenant_id },
         |pool| async move {
-            let rows: Vec<(String, Value)> = sqlx::query_as(
-                "SELECT aggregate_id, state FROM aggregate_state \
-             WHERE tenant_id = $1 AND aggregate_type = 'thread' ORDER BY aggregate_id",
-            )
-            .bind(tenant_id.to_string())
-            .fetch_all(&pool)
+            let tenant = tenant_id.to_string();
+            let claim = tenant.clone();
+            let rows: Vec<(String, Value)> = crate::rls::with_tenant_claim(&pool, &claim, |tx| {
+                Box::pin(async move {
+                    sqlx::query_as(
+                        "SELECT aggregate_id, state FROM aggregate_state \
+                     WHERE tenant_id = $1 AND aggregate_type = 'thread' ORDER BY aggregate_id",
+                    )
+                    .bind(tenant)
+                    .fetch_all(&mut *tx)
+                    .await
+                })
+            })
             .await?;
             let threads: Vec<Value> = rows
                 .into_iter()

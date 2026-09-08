@@ -12,6 +12,11 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The RLS defense-in-depth: the fail-closed tenant claim on the command core (`PHASE-7.1.3.1`)
+
+- Migration 0046: `ENABLE` + `FORCE ROW LEVEL SECURITY` on `aggregate_state`/`event_log`/`idempotency` with `USING/WITH CHECK (tenant_id = current_setting('app.tenant_id', true))` — fail-closed (the unset claim matches no row). The claim is the transaction-local `app.tenant_id` GUC, set as the first statement of the command transaction (`agg::claim_in_tx` + `agg::apply_fresh_in_tx`) and via the `rls::with_tenant_claim` wrapper for the inspection reads (api.rs) + the policy-lane EXISTS checks (lifecycle.rs, now tenant-threaded).
+- The measured proof (`tests/rls.rs`, live — the guard's 22nd suite): a non-superuser probe role reads ZERO rows unset, sees only its tenant's rows under the claim, and a foreign-tenant INSERT is refused at the DATABASE. The honest limits + deferrals ride `docs/decisions/2026-09-08_rls-tenant-claim.md`: the dev profile's superuser bypasses RLS (the binding role change rides the deployment profile), the outbox stays exempt (the worker's cross-tenant queue), the remaining 19 tenant-keyed tables stay on the application layer. Frontier → `.1.3.2`.
+
 ## 2026-09-08 — The tenant-isolation census: the RLS + the quotas are the greenfield (`PHASE-7.1.3`)
 
 - The census at the seams, measured: `tenant_id` is the first-layer key on the identity/authority/budget/inbox/enrollment surface; `grep -rn "ROW LEVEL SECURITY" migrations/` → nothing (the named defense-in-depth is unshipped); `grep -rln "quota" crates/ migrations/` → no machinery; the quarantine rows (`quarantined_at` + `quarantine_reason`, migration 0010) already preserve the evidence in-place but the §16.11 rule is unarticulated. Decomposed: `.1.3.1` the RLS layer → `.1.3.2` the quotas → `.1.3.3` the quarantine-preserving-evidence rule.

@@ -186,7 +186,7 @@ reopens the applicable portions of G4–G7.
     Children: `.1.3.1`–`.1.3.3`
 
   - ID: `PHASE-7.1.3.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the RLS defense-in-depth — migration 0046: the
       per-table RLS policies over the tenant-scoped keys
       (the SECOND layer — the application scoping is the
@@ -196,6 +196,72 @@ reopens the applicable portions of G4–G7.
       application). The policy design + the claim pattern
       ride a decision record.
     Roadmap: §16.8
+    Done (`2026-09-08`): the RLS layer lands on the COMMAND
+      CORE (the enablement set matches the wired set):
+      migration 0046 enables + FORCES the policies on
+      `aggregate_state`/`event_log`/`idempotency` (the
+      aggregate head, the audit trail, the replay
+      protection) — `USING/WITH CHECK (tenant_id =
+      current_setting('app.tenant_id', true))`, fail-closed
+      (the unset claim matches no row). The claim is the
+      TRANSACTION-LOCAL `app.tenant_id` GUC: `rls.rs`
+      (`set_tenant_claim` + the boxed-future
+      `with_tenant_claim` read wrapper); the two write
+      entries (`agg::claim_in_tx`, `agg::apply_fresh_in_tx`)
+      set it as the transaction's FIRST statement (the
+      in-tx validation helpers inherit it); the three
+      inspection reads in `api.rs` + the two policy-lane
+      EXISTS checks in `lifecycle.rs` (now tenant-threaded
+      through the handlers) route through the wrapper. The
+      measured proof (`tests/rls.rs`, LIVE, joined the
+      guard — 22 suites): the NON-superuser probe role
+      (superusers bypass RLS unconditionally — the dev
+      profile connects as postgres, so the layer is proven
+      as it will bind) reads ZERO rows unset (fail-closed),
+      sees only its tenant's rows under the claim, and a
+      foreign-tenant INSERT is REFUSED by the WITH CHECK at
+      the DATABASE (nothing stored). The NAMED deferrals:
+      the deployment-profile role change that BINDS the
+      layer (the non-superuser app role + the grants — the
+      `.1.4` serve-wiring profile), the outbox exemption
+      (the worker's cross-tenant queue), and the remaining
+      19 tenant-keyed tables (the per-family wiring is
+      follow-on) — each with the trigger, in the decision
+      record.
+    Decision: `docs/decisions/2026-09-08_rls-tenant-claim.md`
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the §16.8
+      defense-in-depth was unshipped (the `.1.3` census:
+      `grep -rn "ROW LEVEL SECURITY" migrations/` → rc=1);
+      the layer lands on the command core because the
+      enablement set must equal the wired set (a claim-less
+      path sees NOTHING under the fail-closed policy — the
+      wiring census: 4 modules touch the three tables, the
+      worker's outbox stays exempt). Evidence: `cargo test
+      -p reasonbraid-server --test rls` →
+      `test result: ok. 1 passed; 0 failed` (the probe-role
+      refusal legs).
+    - [x] **ADDRESSED** — migration 0046 + the claim wiring
+      (`agg`'s two entries set the transaction-local GUC
+      first; the pool-direct reads route through
+      `with_tenant_claim`); the measured refusal: the unset
+      claim reads 0 rows, the foreign claim reads 0 of the
+      other tenant's rows, the foreign INSERT is refused at
+      the DATABASE. Evidence: the rls suite's legs (the
+      guard log `target/pg_rls_guard4.log`); the demo stays
+      green (the superuser connection bypasses RLS — the
+      named dev-profile stance).
+    - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh`
+      → rc=0, 22 suites + the demo `ALL acceptance checks
+      passed` (`target/pg_rls_guard4.log`);
+      `cargo test --all` → rc=0, 65 suites (64 + the rls
+      suite's offline skip — `test result: ok. 0 passed`)
+      (`target/rls_offline.log`); clippy/fmt clean;
+      `make gate` → 13/13.
+    - [x] **LESSON PROMOTED** — the superuser-bypass +
+      transaction-local-claim design:
+      `docs/decisions/2026-09-08_rls-tenant-claim.md`
+      (top-level `answers:`).
 
   - ID: `PHASE-7.1.3.2`
     Status: `proposed`
@@ -254,10 +320,17 @@ reopens the applicable portions of G4–G7.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-7.1.3.1` | `proposed` | `.1.3` decomposed at the census seams (RLS/quota machinery greenfield, the quarantine evidence already in-place) — the RLS defense-in-depth executes first |
+| 1 | `PHASE-7.1.3.2` | `proposed` | `.1.3.1` done — the RLS defense-in-depth ships (migration 0046 + the claim wiring + the measured DB-level cross-tenant refusal); the quotas execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.1.3.1` done — the RLS defense-in-depth
+  (migration 0046: the fail-closed policies on the command
+  core; the transaction-local claim; the measured
+  probe-role refusal — the unset claim sees nothing, the
+  foreign-tenant write is refused at the DATABASE); the
+  role-change/outbox/19-table deferrals named with their
+  triggers; frontier → `.1.3.2`.
 - `2026-09-08`: `.1.3` done — the census at the seams
   (the RLS + the quota machinery are the greenfield; the
   quarantine rows already preserve the evidence) →

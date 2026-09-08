@@ -4,6 +4,11 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — The three MCP write tools: the qualified profile's tool layer (`PHASE-8.3.5.2`)
+
+- The `McpTools` handle (the `ReadTools` rename — the handle now carries the write half) in `crates/reasonbraid-mcp`: the three write tools with the typed schemas — `respond` (the principal + the tenant + the thread + the minimal `ContributePayload` WITHOUT the tenant — the seam injects it), `join_call` (the kind + the optional decline reason), `propose_policy_change` (the flat ProposalInput fields). NO schema names a token field — the tokens never enter the thread content; the remote MCP metadata never grants authority. The handlers call the `.3.5.1` seam (`mcp_write_internal`) and surface the gate's typed refusals as the tool errors (the family + the message); the per-verb LOCAL grants + the audit ride the handlers.
+- The conformance fixtures: the six-tool router (exactly the three reads + the three writes — the `.3.3` write-names-refuse pin is superseded), the write-schema goldens, the token-exclusion check. The advanced contribution fields + the extended response vocabulary are the named follow-on (the minimal demonstration profile). Frontier → `.3.5.3`.
+
 ## 2026-09-08 — The MCP write-half's qualified gate + the quota binding: the same handlers, the call-volume bound (`PHASE-8.3.5.1`)
 
 - The `mcp_write` seam (`crates/reasonbraid-server/src/mcp_write.rs`): the qualified gate adds ONLY the controls ADR-024 names — the ENROLLMENT binding (the tool's principal must be the tenant's recorded principal, via the SAME `reader_tenant` the HTTP handlers run) and the PER-PRINCIPAL QUOTA (the `.1.3.2` `principal` scope, re-opened: the SAME fail-closed `check_in_tx`; the quota counts the ADMITTED CALLS; an exhaustion denial COMMITS its row — a refusal is never silent). The three delegates ride the SAME handlers: `respond` over the thread-command pipeline (the idempotency → the `thread_contribute` grant → the domain → the audit, with the deterministic replay key + the seam-injected tenant), `join_call` over the extracted `respond_to_call_core`, `propose_policy_change` over `register_proposal` — the per-verb LOCAL grants + the audit ride the handlers, never a new authority path.

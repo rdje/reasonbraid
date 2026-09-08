@@ -842,7 +842,7 @@ default.
       here, not promoted.
 
   - ID: `PHASE-8.3.5.2`
-    Status: `proposed`
+    Status: `done`
     Goal: the three write tools — `respond`/
       `join_call`/`propose_policy_change` in
       `reasonbraid-mcp` over the `.3.5.1` gate: the
@@ -852,17 +852,71 @@ default.
       content), the tools delegate to the SAME domain
       handlers through the qualified gate.
     Roadmap: §9.6
+    Done:
+    - The `McpTools` handle (the `ReadTools` rename —
+      the handle now carries the write half): the
+      three write tools with the typed schemas —
+      `respond` (the principal + the tenant + the
+      thread + the minimal `ContributePayload`
+      WITHOUT the tenant — the seam injects it),
+      `join_call` (the kind + the optional decline
+      reason), `propose_policy_change` (the flat
+      ProposalInput fields). NO schema names a token
+      field — the tokens never enter the thread
+      content; the remote metadata never grants
+      authority.
+    - The handlers call the `.3.5.1` seam
+      (`mcp_write_internal`) + surface the gate's
+      typed refusals as the tool errors (the family +
+      the message); the per-verb LOCAL grants + the
+      audit ride the handlers.
+    - The conformance fixtures: the six-tool router
+      (exactly the three reads + the three writes —
+      the `.3.3` write-names-refuse fixture is
+      superseded), the write-schema goldens, the
+      token-exclusion check. The advanced
+      contribution fields + the extended response
+      vocabulary are the named follow-on (the minimal
+      demonstration profile).
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-024
+      write tools were OFF (the `.3.3` fixtures
+      pinned exactly three tools) while the `.3.5.1`
+      gate awaited its consumer. Evidence: `cargo
+      test -p reasonbraid-mcp` → `test result: ok. 4
+      passed; 0 failed`.
+    - [x] **ADDRESSED** — the three tools + the
+      typed schemas + the seam delegation + the
+      fixtures (the six-tool router + the write
+      goldens + the token exclusion). Evidence:
+      `cargo test -p reasonbraid-mcp` → 4 passed;
+      `cargo clippy -p reasonbraid-mcp
+      --all-targets` → 0 warnings.
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0; clippy/fmt clean; `make deny` green;
+      `make gate` → 13/13; `make book` builds. (The
+      server crate is untouched since the `.3.5.1`
+      guard — the 29-suite baseline stands; the
+      crate's offline tests + the sweep carry this
+      change.)
+    - [x] **LESSON PROMOTED** — none new: the
+      schema-payload boundary (the tool's minimal
+      typed payload vs the handler's full body) is
+      the read-half's known pattern, applied to the
+      writes.
 
   - ID: `PHASE-8.3.5.3`
     Status: `proposed`
-    Goal: the conformance fixtures + the live
-      demonstration — the six-tool router (the `.3.3`
-      fixtures update: the write names no longer
-      refuse), the write-schema goldens, the
-      qualified-gate refusals pinned, and the
-      measured write roundtrip through the tool path
-      (the same-handler demonstration, never the
-      inferred compatibility).
+    Goal: the live demonstration — the measured
+      write roundtrip through the TOOL path (the
+      six-tool router + the write-schema goldens +
+      the token exclusion shipped with `.3.5.2`):
+      the granted write lands through the tool
+      handler → the effect + the audit + the quota
+      use; the qualified-gate refusals pinned (the
+      ungranted, the unconfigured, the exhausted);
+      the same-handler demonstration, never the
+      inferred compatibility.
     Roadmap: §9.6
 
 - ID: `PHASE-8.4`
@@ -883,9 +937,17 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.3.5.2` | `proposed` | `.3.5.1` done — the qualified write gate + the quota binding ship (the `mcp_write` seam + the 0051 backfill + the row creators + the 29th suite); the three write tools execute next |
+| 1 | `PHASE-8.3.5.3` | `proposed` | `.3.5.2` done — the three write tools ship (the `McpTools` handle + the typed schemas + the six-tool router fixtures + the token exclusion); the live tool-path roundtrip executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.3.5.2` done — the three MCP
+  write tools (the `McpTools` handle — the
+  `respond`/`join_call`/`propose_policy_change`
+  schemas with the token fields EXCLUDED — over
+  the `.3.5.1` seam; the six-tool router fixtures
+  supersede the `.3.3` write-names-refuse pin);
+  frontier → `.3.5.3`.
 
 - `2026-09-08`: `.3.5.1` done — the qualified
   write gate + the quota binding (the `mcp_write`

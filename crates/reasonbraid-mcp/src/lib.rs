@@ -1,20 +1,23 @@
-//! The MCP read-half (`PHASE-8.3.3`, ADR-024, §9.6): the READ tools over
-//! the inspection verbs — the SAME queries + the SAME authorization as
-//! the HTTP handlers, exposed as MCP tools. The write tools (`respond`,
-//! `join_call`, `propose_policy_change`) stay OFF until the qualified
-//! profile (`.3.5`) — a tool no handler backs is not exposed.
+//! The MCP tools (`PHASE-8.3.3` + `PHASE-8.3.5.2`, ADR-024, §9.6): the
+//! READ tools over the inspection verbs — the SAME queries + the SAME
+//! authorization as the HTTP handlers — and the WRITE tools (`respond`,
+//! `join_call`, `propose_policy_change`) over the `.3.5.1` qualified
+//! gate: the enrollment binding + the per-principal quota, then the SAME
+//! domain handlers (a tool no handler backs is not exposed; the remote
+//! MCP metadata never grants authority).
 //!
 //! The principal rides the tool's argument (the dev profile's trust
 //! shape — the same principal the HTTP header carries); every read runs
 //! the reader classification (the per-reader visibility the HTTP surface
-//! enforces).
+//! enforces); every write rides the qualified gate. The tool payloads
+//! EXCLUDE the token fields — the tokens never enter the thread content.
 
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 
-/// The read tool's shared handle: the pool + the principal (the dev
-/// profile's trust shape — the same principal the HTTP header carries).
+/// The tools' shared handle: the pool (the dev-profile trust shape —
+/// the same principal the HTTP header carries, per tool argument).
 #[derive(Clone)]
-pub struct ReadTools {
+pub struct McpTools {
     pub pool: sqlx::PgPool,
 }
 
@@ -51,8 +54,75 @@ pub struct GetPolicyBundleParams {
     pub tenant_id: String,
 }
 
+/// `respond` — the thread contribution (the qualified write profile).
+/// The payload is the contribute body WITHOUT the tenant (the seam
+/// injects it) — and WITHOUT any token field (the tokens never enter
+/// the thread content).
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RespondParams {
+    /// The caller's principal id (the dev-profile trust header's value).
+    pub principal: String,
+    /// The tenant id.
+    pub tenant_id: String,
+    /// The thread id.
+    pub thread_id: String,
+    /// The contribution payload: the content + the kind + the evidence
+    /// refs (the handler's ContributeBody minus the tenant).
+    pub payload: ContributePayload,
+}
+
+/// The contribution payload (the minimal demonstration profile — the
+/// advanced contribution fields ride the named follow-on).
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ContributePayload {
+    /// The contribution's content.
+    pub content: String,
+    /// The contribution kind (the handler's vocabulary).
+    pub kind: String,
+    /// The cited evidence references.
+    #[serde(default)]
+    pub evidence_refs: Vec<serde_json::Value>,
+}
+
+/// `join_call` — the call response (the qualified write profile): the
+/// response kind + the optional decline reason (the minimal profile of
+/// the handler's response vocabulary).
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct JoinCallParams {
+    /// The caller's principal id (the dev-profile trust header's value).
+    pub principal: String,
+    /// The tenant id.
+    pub tenant_id: String,
+    /// The call id.
+    pub call_id: String,
+    /// The response kind (the handler's vocabulary — `join`, `decline`,
+    /// `observe`, …).
+    pub kind: String,
+    /// The decline reason (only the `decline` kind carries it).
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// `propose_policy_change` — the policy proposal (the qualified write
+/// profile): the lifecycle's ProposalInput fields, flat.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ProposePolicyChangeParams {
+    /// The caller's principal id (the dev-profile trust header's value).
+    pub principal: String,
+    /// The tenant id.
+    pub tenant_id: String,
+    /// The proposal id.
+    pub proposal_id: String,
+    /// The policy id to change.
+    pub policy_id: String,
+    /// The policy version to change.
+    pub policy_version: String,
+    /// The deliberation thread the proposal references.
+    pub thread_id: String,
+}
+
 #[tool_router(server_handler)]
-impl ReadTools {
+impl McpTools {
     /// Read one thread's current projection — the same classification the
     /// HTTP `GET /v1/threads/{id}` applies (the per-reader visibility).
     #[tool(
@@ -133,6 +203,107 @@ impl ReadTools {
                 serde_json::json!({ "tenant_id": args.tenant_id, "policies": docs }).to_string(),
             ),
         ]))
+    }
+
+    /// Contribute to a thread — the qualified write profile: the
+    /// enrollment binding + the per-principal quota, then the SAME
+    /// thread-command handler the HTTP verb runs (the per-verb grant +
+    /// the audit ride the handler).
+    #[tool(
+        description = "Contribute to a thread (the qualified write profile: the gate, then the same thread-command handler)"
+    )]
+    async fn respond(
+        &self,
+        Parameters(args): Parameters<RespondParams>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let principal = crate::principal(&args.principal)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
+        let payload = serde_json::to_value(&args.payload)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+        match reasonbraid_server::mcp_write_internal::respond(
+            &self.pool,
+            &args.tenant_id,
+            &principal,
+            &args.thread_id,
+            payload,
+        )
+        .await
+        {
+            Ok(result) => Ok(rmcp::model::CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(result.to_string()),
+            ])),
+            Err(refused) => Ok(rmcp::model::CallToolResult::error(vec![
+                rmcp::model::ContentBlock::text(format!("{}: {}", refused.family, refused.message)),
+            ])),
+        }
+    }
+
+    /// Respond to a call — the qualified write profile: the gate, then
+    /// the SAME call-respond handler (the enrolled-role check + the
+    /// eligibility re-resolution ride the handler).
+    #[tool(
+        description = "Respond to a recruitment call (the qualified write profile: the gate, then the same call-respond handler)"
+    )]
+    async fn join_call(
+        &self,
+        Parameters(args): Parameters<JoinCallParams>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let principal = crate::principal(&args.principal)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
+        let response = match args.kind.as_str() {
+            "decline" => serde_json::json!({ "kind": "decline", "reason": args.reason }),
+            other => serde_json::json!({ "kind": other }),
+        };
+        match reasonbraid_server::mcp_write_internal::join_call(
+            &self.pool,
+            &args.tenant_id,
+            &principal,
+            &args.call_id,
+            response,
+        )
+        .await
+        {
+            Ok(result) => Ok(rmcp::model::CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(result.to_string()),
+            ])),
+            Err(refused) => Ok(rmcp::model::CallToolResult::error(vec![
+                rmcp::model::ContentBlock::text(format!("{}: {}", refused.family, refused.message)),
+            ])),
+        }
+    }
+
+    /// Propose a policy change — the qualified write profile: the gate,
+    /// then the SAME lifecycle registration the HTTP verb runs.
+    #[tool(
+        description = "Propose a policy change (the qualified write profile: the gate, then the same lifecycle registration)"
+    )]
+    async fn propose_policy_change(
+        &self,
+        Parameters(args): Parameters<ProposePolicyChangeParams>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let principal = crate::principal(&args.principal)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
+        let input = serde_json::json!({
+            "proposal_id": args.proposal_id,
+            "policy_id": args.policy_id,
+            "policy_version": args.policy_version,
+            "thread_id": args.thread_id,
+        });
+        match reasonbraid_server::mcp_write_internal::propose_policy_change(
+            &self.pool,
+            &args.tenant_id,
+            &principal,
+            input,
+        )
+        .await
+        {
+            Ok(result) => Ok(rmcp::model::CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(result.to_string()),
+            ])),
+            Err(refused) => Ok(rmcp::model::CallToolResult::error(vec![
+                rmcp::model::ContentBlock::text(format!("{}: {}", refused.family, refused.message)),
+            ])),
+        }
     }
 }
 
@@ -309,41 +480,37 @@ pub mod server {
 mod tests {
     use super::*;
 
-    /// The read tools' router lists exactly the three read tools — the
-    /// write tools stay OFF until the qualified profile.
+    /// The router lists exactly the six tools — the three reads + the
+    /// three qualified writes (a tool no handler backs is not exposed).
     #[test]
-    fn the_tool_router_lists_the_read_tools_only() {
-        let router = ReadTools::tool_router();
+    fn the_tool_router_lists_the_six_tools() {
+        let router = McpTools::tool_router();
         let names: Vec<String> = router
             .list_all()
             .iter()
             .map(|t| t.name.to_string())
             .collect();
-        assert!(
-            names.contains(&"get_thread".to_string()),
-            "get_thread: {names:?}"
-        );
-        assert!(
-            names.contains(&"list_inbox".to_string()),
-            "list_inbox: {names:?}"
-        );
-        assert!(
-            names.contains(&"get_policy_bundle".to_string()),
-            "get_policy_bundle: {names:?}"
-        );
-        for forbidden in ["respond", "join_call", "propose_policy_change"] {
+        for expected in [
+            "get_thread",
+            "list_inbox",
+            "get_policy_bundle",
+            "respond",
+            "join_call",
+            "propose_policy_change",
+        ] {
             assert!(
-                !names.contains(&forbidden.to_string()),
-                "the write tool `{forbidden}` must stay OFF: {names:?}"
+                names.contains(&expected.to_string()),
+                "the tool `{expected}` lists: {names:?}"
             );
         }
+        assert_eq!(names.len(), 6, "exactly the six tools: {names:?}");
     }
 
     /// The conformance goldens: each read tool's input schema names the
     /// principal + its target fields (the dev-profile trust shape).
     #[test]
     fn the_tool_schemas_carry_the_principal_and_the_targets() {
-        let router = ReadTools::tool_router();
+        let router = McpTools::tool_router();
         let get_thread = router.get("get_thread").expect("get_thread");
         let schema = get_thread.input_schema.clone();
         let schema = serde_json::to_value(schema).expect("the schema serializes");
@@ -362,6 +529,67 @@ mod tests {
                 properties.contains_key(field),
                 "list_inbox names `{field}`: {properties:?}"
             );
+        }
+    }
+
+    /// The write schemas: the principal + the targets ride the top
+    /// level; the payloads name the handler's fields; NO schema names a
+    /// token field (the tokens never enter the thread content).
+    #[test]
+    fn the_write_schemas_name_the_targets_and_exclude_the_tokens() {
+        let router = McpTools::tool_router();
+
+        let respond = router.get("respond").expect("respond");
+        let schema = serde_json::to_value(respond.input_schema.clone()).expect("the schema");
+        let properties = schema["properties"].as_object().expect("the properties");
+        for field in ["principal", "tenant_id", "thread_id", "payload"] {
+            assert!(
+                properties.contains_key(field),
+                "respond names `{field}`: {properties:?}"
+            );
+        }
+
+        let join_call = router.get("join_call").expect("join_call");
+        let schema = serde_json::to_value(join_call.input_schema.clone()).expect("the schema");
+        let properties = schema["properties"].as_object().expect("the properties");
+        for field in ["principal", "tenant_id", "call_id", "kind"] {
+            assert!(
+                properties.contains_key(field),
+                "join_call names `{field}`: {properties:?}"
+            );
+        }
+
+        let propose = router
+            .get("propose_policy_change")
+            .expect("propose_policy_change");
+        let schema = serde_json::to_value(propose.input_schema.clone()).expect("the schema");
+        let properties = schema["properties"].as_object().expect("the properties");
+        for field in [
+            "principal",
+            "tenant_id",
+            "proposal_id",
+            "policy_id",
+            "policy_version",
+            "thread_id",
+        ] {
+            assert!(
+                properties.contains_key(field),
+                "propose_policy_change names `{field}`: {properties:?}"
+            );
+        }
+
+        // The token exclusion: no write schema names a token/authorization
+        // field — the remote MCP metadata never grants authority.
+        for name in ["respond", "join_call", "propose_policy_change"] {
+            let tool = router.get(name).expect(name);
+            let schema = serde_json::to_value(tool.input_schema.clone()).expect("the schema");
+            let text = schema.to_string();
+            for forbidden in ["token", "access_token", "authorization", "credential"] {
+                assert!(
+                    !text.to_lowercase().contains(forbidden),
+                    "the `{name}` schema names `{forbidden}`: {text}"
+                );
+            }
         }
     }
 

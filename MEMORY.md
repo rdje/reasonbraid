@@ -20,13 +20,12 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.5.1`. **The `.1`–`.4` lanes are COMPLETE** (the federation,
-  the A2A facade, the MCP surface, the adapter/resolver SDK); `.5`
-  done (the regional-routing census → decomposed `.5.1`–`.5.4`).
-- **Next action:** execute `PHASE-8.5.1` — the census + ADR-035: the
-  site/region contract (the declared region vocabulary, the
-  store-and-forward contract, the export/import vocabulary, the
-  exit-path shape).
+  frontier `.5.2`. **The `.1`–`.4` lanes are COMPLETE**; `.5` done (the
+  regional-routing census → decomposed `.5.1`–`.5.4`); `.5.1` done
+  (ADR-035 — the site/region contract).
+- **Next action:** execute `PHASE-8.5.2` — the regional routing: the
+  routing rules over the declared regions (the region-scoped delivery
+  + the region-scoped visibility), the measured refusal vocabulary.
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

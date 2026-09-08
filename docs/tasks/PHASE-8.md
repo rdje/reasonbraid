@@ -1263,7 +1263,7 @@ default.
   Children: `.5.1`–`.5.4`
 
   - ID: `PHASE-8.5.1`
-    Status: `proposed`
+    Status: `done`
     Goal: the census + ADR-035 — the site/region
       contract: the DECLARED region vocabulary (the
       ADR-034 seeds), the site identity + the
@@ -1273,6 +1273,38 @@ default.
       vocabulary (the tenant-data shape), the
       exit-path shape.
     ADR: 035
+    Done:
+    - ADR-035 accepted (`docs/adr/
+      035-site-region-contract.md`, top-level
+      `answers:`): the regions are DECLARED (the
+      declaration is the fail-closed seam — an
+      undeclared region refuses at the routing
+      boundary); the store-and-forward rides the
+      SHIPPED substrate (the site-level pairing
+      over the outbox + the inbox — the buffered
+      rows persist for a disconnected site, the
+      reconnect flushes in order, the possible-gap
+      surfaces); the export is the exit path's
+      machinery (the digest-pinned signed bundle +
+      the ordered import ladder — the portable
+      cards' four-rung pattern applied to the
+      tenant data); the exit path is the documented
+      runbook, never an emergency invention.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the `.5`
+      census: the region/export vocabulary was the
+      ADR-034 named deferral (no contract fixed the
+      shape). Evidence: `make gate` → `=== all
+      doctrines green ===`; `git grep -c
+      "regions are DECLARED"` → rc=0.
+    - [x] **ADDRESSED** — the ADR-035 record + the
+      index row. Evidence: `make gate` → `=== all
+      doctrines green ===`.
+    - [x] **NO REGRESSION** — no code changed (the
+      decisions-only leaf); `cargo test --all` →
+      rc=0 (the `.4.4` baseline).
+    - [x] **LESSON PROMOTED** — the ADR IS the
+      promotion (the top-level `answers:` form).
 
   - ID: `PHASE-8.5.2`
     Status: `proposed`
@@ -1313,9 +1345,15 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.5.1` | `proposed` | `.5` done — the census at the seams (the node-level substrate + the export/exit seeds ship; the region machinery + the site-level store-and-forward + the tenant export + the exit-path document are the greenfield) → decomposed `.5.1` the census + ADR-035 → `.5.2` the regional routing → `.5.3` the store-and-forward → `.5.4` the export/import + the exit path; the ADR-035 contract executes next |
+| 1 | `PHASE-8.5.2` | `proposed` | `.5.1` done — ADR-035 accepted (the declared-region + the store-and-forward + the export/exity vocabulary); the regional-routing machinery executes next |
 
 ## Changelog
+
+- `2026-09-08`: `.5.1` done — ADR-035 accepted
+  (the site/region contract: the declared regions,
+  the store-and-forward over the shipped substrate,
+  the export-is-the-exit-path ladder); frontier →
+  `.5.2`.
 
 - `2026-09-08`: `.5` done — the regional-routing
   lane's census at the seams (the node-level

@@ -4,6 +4,10 @@
 > README-STABILITY rotation threshold) — `git log --follow CHANGELOG.md`
 > carries the full record.
 
+## 2026-09-08 — ADR-035: the site/region contract — the declared regions, the store-and-forward over the shipped substrate, the export is the exit path (`PHASE-8.5.1`)
+
+- ADR-035 accepted (`docs/adr/035-site-region-contract.md`, top-level `answers:`): the regions are DECLARED (the declaration is the fail-closed seam — an undeclared region refuses at the routing boundary); the store-and-forward rides the SHIPPED outbox/inbox substrate (the site-level pairing — the buffered rows persist for a disconnected site, the reconnect flushes in order, the possible-gap surfaces); the export is the exit path's machinery (the digest-pinned signed bundle + the ordered import ladder — the portable cards' four-rung pattern applied to the tenant data); the exit path is the documented runbook, never an emergency invention. No code. Frontier → `.5.2`.
+
 ## 2026-09-08 — The regional-routing census at the seams: the node-level substrate ships, the region machinery is the greenfield (`PHASE-8.5`)
 
 - The census (no code): SHIPPED — the node-level store-and-forward substrate (the outbox worker + the durable inbox with the cursor resume + the lease/presence states + the replay — the demo's crash/reconnect scenario), the export seeds (the backup/restore + the guard's restore exercise; the portable cards' export/import ladder), the exit-path seeds (the §25.1 kill/pivot + the subtraction records + the rollback/failover runbooks). GREENFIELD — the REGION machinery (the ADR-034 stance: the regions are DECLARED, no machinery — the named deferral), the SITE-level store-and-forward, the tenant/site DATA export/import, and the documented EXIT PATH. Decomposed: `.5.1` the census + ADR-035 → `.5.2` the regional routing → `.5.3` the store-and-forward → `.5.4` the export/import + the exit path. Frontier → `.5.1`.

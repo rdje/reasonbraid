@@ -204,6 +204,11 @@ default.
       clippy/fmt clean; `make gate` → 13/13.
     - [x] **LESSON PROMOTED** — none new: the FK-purge
       ripple is the known recurring lesson.
+    Follow-up (`2026-09-08`): the `.2.3` verification
+      chain's `cargo fmt --all` reformatted the receipt
+      assertions this leaf's suite landed — the fmt-only
+      normalization commits under this leaf (the
+      post-commit fmt sweep).
 
   - ID: `PHASE-8.1.4`
     Status: `done`

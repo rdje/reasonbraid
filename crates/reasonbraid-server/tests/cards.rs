@@ -389,7 +389,10 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
         .filter_map(|r| r["kind"].as_str().map(|k| k.to_string()))
         .collect();
     assert_eq!(
-        listed_kinds.iter().filter(|k| k.as_str() == "card_import").count(),
+        listed_kinds
+            .iter()
+            .filter(|k| k.as_str() == "card_import")
+            .count(),
         1,
         "the read surface returns the card-import receipt"
     );

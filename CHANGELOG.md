@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-07 — The G3-exit lane is decomposed at the census seams (`PHASE-6.7`)
+
+- The G3 gate maps over the SHIPPED lanes (the authority/consent/quorum — the `.2` decisions/approvals; the publication — the `.4` machine + the reconciliation; the correction — the `.5.3` §4.7 operations); Demonstration B's nine steps walk the machinery. Children: `.7.1` the evidence census → `.7.2` the gate package.
+
 ## 2026-09-07 — The scheduled reviews land (`PHASE-6.6`)
 
 - Migration 0045: the seven §15.11 review triggers, the DUE evaluation over the `.5.3` records (one due review per (publication, trigger) — the dedupe; the schedule is idempotent), the due → done transition, and the outcome-trigger vocabulary back-fill (an unknown trigger is now the typed refusal at the outcome registration). The verbs: `POST /v1/policy-reviews/schedule`, `GET /v1/policy-reviews`, `POST /v1/policy-reviews/{id}/done`. Measured: policy 11.

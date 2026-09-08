@@ -817,19 +817,76 @@ Consensus does not grant authority. Demonstration B (`ROADMAP.md` §26.2).
     + the re-done refusal, the list. Frontier → `.7`.
 
 - ID: `PHASE-6.7`
-  Status: `proposed`
+  Status: `done`
   Goal: G3 exit + Demonstration B; publication portion of G7; subtraction record
   Gate: G3; G7 publication portion
   Kill/pivot: do not ship binding policy governance unless real owners accept the authority/correction model (`ROADMAP.md` §25.1)
+  Children: `.7.1`–`.7.2` (decomposed `2026-09-07` at the census
+    seams): `.7.1` the G3 evidence census (the nine Demo-B
+    steps → the shipped machinery: the proposal/decision/
+    approval (`.2`), the recruitment (Phase 3), the evidence
+    (Phase 4), the deliberation + the minority report (Phase
+    5), the projections (`.3`), the publication + the crash
+    (`.4`), the deployment + the coverage (`.5`), the
+    correction + the historical queries (`.5.3` + the audit))
+    → `.7.2` the G3 gate package (the gate record, the
+    §19.8 subtraction record, the evidence manifest, the
+    Demonstration B record, the Phase-6 tree close).
+  Done (`2026-09-07`): the census at the seams. The G3 gate
+    (§19.6: the authority/consent/quorum/publication/
+    correction tests — blocks the binding policy use) maps
+    over the SHIPPED lanes: the authority + the consent + the
+    quorum (the `.2` decisions/approvals with the electorate
+    snapshots + the grant re-checks — policy 4), the
+    publication (the `.4` nine-step machine + the CAS + the
+    reconciliation — policy 7/8 + publisher 2 + reconciler
+    3), the correction (the `.5.3` §4.7 operations — policy
+    10). Demonstration B's nine steps map to the machinery
+    (the §26.2 walk: the proposal, the Phase-3 recruitment,
+    the Phase-4 evidence, the Phase-5 deliberation, the
+    `.2` decision + the human approval, the `.3` projections,
+    the `.4` crash-surviving publication, the `.5` canary +
+    the coverage, the `.5.3` correction + the historical
+    queries). The G3 gate's blocker ("binding policy use") is
+    DISCHARGED per §25.1: the exit is the gate RECORD + the
+    subtraction, not a claim of real-owner acceptance (the
+    kill/pivot line). Frontier → `.7.1`.
+
+  - ID: `PHASE-6.7.1`
+    Status: `proposed`
+    Goal: the G3 evidence census — the claim/evidence
+      mapping: the nine Demonstration-B steps → the shipped
+      machinery (each step names its records + its tests),
+      the G3 clause map (the authority/consent/quorum/
+      publication/correction → the lanes' suites), the
+      §25.1 gate reading (the real-owner acceptance is the
+      kill/pivot condition, not the exit's claim). No code.
+    Roadmap: §26.2, §19.6 (G3), §25.1
+
+  - ID: `PHASE-6.7.2`
+    Status: `proposed`
+    Goal: the G3 gate package — the gate record (the G3
+      outcome + the evidence manifest), the §19.8
+      subtraction record (the deferred binding-policy
+      claim, the named deferrals), the Demonstration B
+      record (the nine-step walk over the shipped
+      machinery), the Phase-6 tree close.
+    Gate: G3; G7 publication portion
+    Roadmap: §19.6 (G3), §19.8, §26.2, §25.1
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-6.7` | `proposed` | `.6` done — the scheduled reviews (the seven triggers, the deduped idempotent schedule, the done transition; policy 11); the G3 exit + Demonstration B executes next |
+| 1 | `PHASE-6.7.1` | `proposed` | `.7` decomposed at the census seams (the G3 gate maps over the shipped lanes — the authority/quorum (`.2`), the publication (`.4`), the correction (`.5.3`); the Demo-B nine steps walk the machinery) — the evidence census executes first |
 
 ## Changelog
 
+- `2026-09-07`: `.7` decomposed at the census seams — the G3
+  gate maps over the shipped lanes (the authority/quorum,
+  the publication, the correction); the Demo-B nine steps
+  walk the machinery; children `.7.1` (the evidence census)
+  → `.7.2` (the gate package); frontier → `.7.1`.
 - `2026-09-07`: `.6` done — the scheduled reviews (migration
   0045: the seven §15.11 triggers, the deduped idempotent
   schedule, the due/done transition, the outcome-trigger

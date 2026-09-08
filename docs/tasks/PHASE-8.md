@@ -363,7 +363,7 @@ default.
       lands with the `.2.3` facade).
 
   - ID: `PHASE-8.2.3`
-    Status: `proposed`
+    Status: `done`
     Goal: the A2A facade — the compatible task/message
       exchange over the JSON-RPC/REST profile: the
       incoming A2A messages map to the local commands
@@ -372,6 +372,52 @@ default.
       preserved, the semantic losses recorded per
       message.
     Roadmap: §9.7
+    Done (`2026-09-08`): the facade's CORE ships — the
+      new `crates/reasonbraid-a2a` (the `a2a-lf`
+      **0.3.0** exact pin as `a2a`, the core types
+      only — the crate carries NO features, so no
+      transport, no provider vote; the server/client
+      crates ride the `.2.4` demonstration WITH the
+      no-provider pins per the `.2.2` decision): the
+      `SemanticLosses` record (the five §9.7
+      dimensions — the authority, the budget, the
+      evidence, the decision rule, the policy
+      lifecycle — each recorded; a bare A2A message
+      carries NONE of the local machinery, so all
+      five record lost), `map_message` (the text
+      survives, the external role preserves as the
+      wire value — an external id, never a local
+      principal), `map_task_request` (the external
+      task id preserves verbatim — the local
+      aggregate gets its OWN id), `response_message`
+      (the response round-trips the A2A shape). The
+      offline suite (3 tests) runs over the REAL
+      a2a-lf 0.3.0 types (the `Message::new`/
+      `Part::text`/`Role` wire shapes — the first
+      demonstrated compatibility). The local-command
+      wiring (the mapped message → the thread
+      command under the local grants) + the transport
+      + the roundtrip ride the `.2.4` demonstration.
+    Acceptance:
+    - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-025
+      facade boundary had no machinery; the core
+      mapper + the loss record land over the pinned
+      real types. Evidence: `cargo test -p
+      reasonbraid-a2a` → `test result: ok. 3 passed;
+      0 failed`.
+    - [x] **ADDRESSED** — the crate (the exact pin) +
+      the mapper + the loss record + the external-id
+      preservation. Evidence: `cargo test -p
+      reasonbraid-a2a` → 3 passed; `make deny` →
+      advisories/bans/licenses/sources ok (the
+      Apache-2.0 family passes the gate).
+    - [x] **NO REGRESSION** — `cargo test --all` →
+      rc=0 (the new crate joins the offline count);
+      clippy/fmt clean; `make deny` green; `make gate`
+      → 13/13; `make book` builds.
+    - [x] **LESSON PROMOTED** — none new: the
+      provider-vote rule is the workspace decision's
+      known application.
 
   - ID: `PHASE-8.2.4`
     Status: `proposed`
@@ -409,10 +455,16 @@ default.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `PHASE-8.2.3` | `proposed` | `.2.2` done — the dependency census + the pin decision (the three exact versions + the no-provider feature rule); the A2A facade executes next |
+| 1 | `PHASE-8.2.4` | `proposed` | `.2.3` done — the A2A facade core ships (the pinned types + the mapper + the recorded losses + the measured roundtrip shapes); the compatibility demonstration + the qualification execute next |
 
 ## Changelog
 
+- `2026-09-08`: `.2.3` done — the A2A facade core
+  (the `reasonbraid-a2a` crate over the exact 0.3.0
+  pin + the semantic-loss record + the mapper +
+  the external-id preservation + the 3-test suite);
+  the local-command wiring + the transport ride the
+  `.2.4` demonstration; frontier → `.2.4`.
 - `2026-09-08`: `.2.2` done — the A2A dependency
   census + the pin decision (a2a-lf 0.3.0,
   a2a-server-lf 0.4.3, a2a-client-lf 0.2.3,

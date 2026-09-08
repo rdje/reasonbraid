@@ -12,6 +12,10 @@
 
 # CHANGELOG.md
 
+## 2026-09-08 — The A2A facade core: the pinned types + the recorded semantic losses (`PHASE-8.2.3`)
+
+- The new `crates/reasonbraid-a2a`: the `a2a-lf` **0.3.0** exact pin (the core types — no features, no transport, no provider vote; the server/client crates ride the `.2.4` demonstration with the no-provider pins). The `SemanticLosses` record (the five §9.7 dimensions — the authority/budget/evidence/decision-rule/lifecycle, each recorded; a bare A2A message carries none of the local machinery, so all five record lost), `map_message` (the text survives, the external role preserves as the wire value), `map_task_request` (the external task id preserves verbatim), `response_message` (the round-trip). The 3-test offline suite runs over the REAL a2a-lf 0.3.0 types — the first demonstrated compatibility. The local-command wiring + the transport ride `.2.4`. Frontier → `.2.4`.
+
 ## 2026-09-08 — The A2A dependency census + the pin decision (`PHASE-8.2.2`)
 
 - The census (the crates.io checks): `a2a-lf` 0.3.0, `a2a-server-lf` 0.4.3, `a2a-client-lf` 0.2.3 — all Apache-2.0, Rust 1.85, the a2aproject/a2a-rs family. The profile: the JSON-RPC/REST (the protocol binding factory's default — the only profile the slice needs). THE SUPPLY-CHAIN FINDING: the crates' DEFAULT features enable `rustls-tls` (= `reqwest/rustls` → the aws-lc-rs provider) — a provider vote, the workspace single-provider rule's third occurrence; the `.2.3` facade must pin `default-features = false` + `rustls-no-provider` + the ring-pinned rustls explicitly. The Cargo.toml/lock additions ride the `.2.3` facade (the pin lands WITH the use); the conformance revision records at the `.2.4` roundtrip. No code. Frontier → `.2.3`.

@@ -1,0 +1,21 @@
+# reasonbraid-a2a — the A2A interoperability facade (`PHASE-8.2.3`, ADR-025).
+# The CORE types only (the `a2a-lf` 0.3.0 pin — the exact version, the
+# `.2.2` census). The transport crates (a2a-server-lf/a2a-client-lf) ride
+# the `.2.4` demonstration WITH the no-provider feature pins (their defaults
+# vote aws-lc-rs — the workspace single-provider rule).
+[package]
+name = "reasonbraid-a2a"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The A2A v1 wire-compatible types (imported as `a2a` — the crate family's
+# convention). The exact 0.3.0 pin (the `.2.2` census); the core crate has
+# NO features (the pure types — no transport, no provider vote).
+a2a = { package = "a2a-lf", version = "=0.3.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

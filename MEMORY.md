@@ -20,16 +20,16 @@
   subtraction (S-1…S-12) + the unsupported matrix + the evidence
   manifest ship.
 - **Active tree:** `PHASE-8` (the federation/interoperability lane) →
-  frontier `.2.3`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
-  census) → decomposed; `.2.1` done (ADR-025); `.2.2` done (the pin
-  decision: a2a-lf 0.3.0, a2a-server-lf 0.4.3, a2a-client-lf 0.2.3 —
-  the no-provider feature rule, the default features vote aws-lc-rs).
-- **Next action:** execute `PHASE-8.2.3` — the A2A facade: the
-  compatible task/message exchange over the JSON-RPC/REST profile (the
-  incoming A2A messages map to the local commands — the local
-  grants/authorization ride every effect, the external IDs + the
-  signatures preserved, the semantic losses recorded per message);
-  the crate additions land WITH the use (the no-provider pin).
+  frontier `.2.4`. **The `.1` lane is COMPLETE**; `.2` done (the A2A
+  census) → decomposed; `.2.1` done (ADR-025); `.2.2` done (the pin);
+  `.2.3` done (the facade core — the `reasonbraid-a2a` crate over the
+  exact 0.3.0 pin + the semantic-loss record).
+- **Next action:** execute `PHASE-8.2.4` — the A2A compatibility
+  demonstration + the qualification: the a2a-cli (or the SDK's test
+  peer) roundtrip against the facade (the measured exchange + the
+  recorded semantic losses), the tested spec/conformance revision, the
+  qualification record (the broad claims stay gated; the gateway
+  deployable-off).
 - **Latest commit:** derive on read with `git log -1 --oneline`.
 - **Defects:** 0 tracked leaves outstanding (`MAINT-1` §13 locality, `MAINT-2`
   drain race, `MAINT-3` toolchain pin — all closed).

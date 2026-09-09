@@ -3586,3 +3586,201 @@ async fn the_metrics_surface_counts_match_the_records() {
     .expect("denied rows");
     assert_eq!(denied_rows, 1, "the record agrees with the counter");
 }
+
+/// Snapshot every provisional enrollment table; authorization records are not
+/// enrollment effects and are tested at their separate admission boundary.
+async fn enrollment_storage_snapshot(pool: &PgPool) -> Vec<Value> {
+    let mut snapshot = Vec::new();
+    for table in [
+        "tenants",
+        "enrollment_boundaries",
+        "authority_grants",
+        "human_principals",
+        "agent_roles",
+        "usage_quotas",
+        "enrollments",
+    ] {
+        snapshot.push(sqlx::query_scalar::<_, Value>(&format!(
+            "SELECT coalesce(jsonb_agg(row ORDER BY row::text), '[]'::jsonb) FROM (SELECT to_jsonb(t) AS row FROM {table} t) s"))
+            .fetch_one(pool).await.unwrap());
+    }
+    snapshot
+}
+
+#[tokio::test]
+async fn enrollment_grant_storage_failure_is_internal_and_atomic() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &server.base(),
+        json!({"kind":"human", "name":"grant-fault-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    // Exercise bootstrap's provisional tenant/boundary/quotas as well as the
+    // existing-tenant role path. Restore DDL before inspecting either outcome.
+    let requests = [
+        json!({"kind":"human", "name":"grant-fault-new"}),
+        json!({"kind":"role", "name":"grant-fault-role", "tenant_id":human["tenant_id"]}),
+    ];
+    let before = enrollment_storage_snapshot(&pool).await;
+    sqlx::query("CREATE FUNCTION rb_test_refuse_enrollment_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'owned enrollment grant fault'; END $$")
+        .execute(&pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER rb_test_enrollment_grant_fault BEFORE INSERT ON authority_grants FOR EACH ROW EXECUTE FUNCTION rb_test_refuse_enrollment_grant()")
+        .execute(&pool).await.unwrap();
+    let mut outcomes = Vec::new();
+    for body in &requests {
+        outcomes.push(
+            client
+                .post(format!("{}/v1/enrollments", server.base()))
+                .json(body)
+                .send()
+                .await,
+        );
+    }
+    sqlx::query("DROP TRIGGER rb_test_enrollment_grant_fault ON authority_grants")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DROP FUNCTION rb_test_refuse_enrollment_grant()")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after = enrollment_storage_snapshot(&pool).await;
+    for body in &requests {
+        let (status, body) = enroll(&client, &server.base(), body.clone()).await;
+        assert_eq!(status, 200, "recovery: {body}");
+    }
+    assert_eq!(
+        before, after,
+        "failed grant insertion leaves no enrollment effects"
+    );
+    for outcome in outcomes {
+        let response = outcome.expect("storage faults produce HTTP responses");
+        let status = response.status().as_u16();
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(
+            status, 500,
+            "storage failure is not a policy refusal: {body}"
+        );
+        assert_eq!(
+            body,
+            json!({"code":"dependency_unavailable", "message":"internal server error"})
+        );
+    }
+}
+
+#[tokio::test]
+async fn corrupt_active_enrollment_boundary_returns_internal_error() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &server.base(),
+        json!({"kind":"human", "name":"corrupt-grant-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap();
+    let actions: Value = sqlx::query_scalar(
+        "SELECT permitted_actions FROM enrollment_boundaries WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let before = enrollment_storage_snapshot(&pool).await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(tenant)
+        .bind(json!(["unknown_owned_fixture_action"]))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let request = json!({"kind":"role", "name":"corrupt-grant-role", "tenant_id":tenant});
+    let outcome = client
+        .post(format!("{}/v1/enrollments", server.base()))
+        .json(&request)
+        .send()
+        .await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(tenant)
+        .bind(actions)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after = enrollment_storage_snapshot(&pool).await;
+    let (status, body) = enroll(&client, &server.base(), request).await;
+    assert_eq!(status, 200, "recovery: {body}");
+    assert_eq!(
+        before, after,
+        "corrupt authority cannot create a partial enrollment"
+    );
+    let response = outcome.expect("malformed stored authority must not panic the handler");
+    assert_eq!(response.status().as_u16(), 500);
+    assert_eq!(
+        response.json::<Value>().await.unwrap(),
+        json!({"code":"dependency_unavailable", "message":"internal server error"})
+    );
+}
+
+#[tokio::test]
+async fn enrollment_structural_grant_refusal_remains_a_bad_request() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &server.base(),
+        json!({"kind":"human", "name":"narrow-grant-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap();
+    let actions: Value = sqlx::query_scalar(
+        "SELECT permitted_actions FROM enrollment_boundaries WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let before = enrollment_storage_snapshot(&pool).await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(tenant)
+        .bind(json!(["tenant_admin"]))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let request = json!({"kind":"role", "name":"narrow-grant-role", "tenant_id":tenant});
+    let outcome = client
+        .post(format!("{}/v1/enrollments", server.base()))
+        .json(&request)
+        .send()
+        .await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(tenant)
+        .bind(actions)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after = enrollment_storage_snapshot(&pool).await;
+    let (status, body) = enroll(&client, &server.base(), request).await;
+    assert_eq!(status, 200, "recovery: {body}");
+    assert_eq!(before, after, "structural refusal has no enrollment effect");
+    let response = outcome.unwrap();
+    assert_eq!(response.status().as_u16(), 400);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "invalid_command");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("the dev grant exceeds its boundary: "),
+        "{body}"
+    );
+}

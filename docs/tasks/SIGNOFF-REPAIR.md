@@ -372,9 +372,42 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.3.3.4.3 — Guard tenant boundary and grant issuance
 
-- Status: `pending`; follows `.2`.
+- Status: `active`; predecessor a74ca85 committed with all thirteen doctrines green; brief zero/untracked, clean tree and consumed escalated job census handoff: OK. Refine bounded service/writer/enrollment children from the qualified primitive before product edits.
 - Owns: standalone create_boundary/create_grant and internal insertion executors, dev enrollment bootstrap/existing-tenant insertion, exclusive guard from before authority reads through commit, actual-parent live issuance checks and checked storage refusal. Preserve structural subset rules, scheduled grants and documented dev-trusted issuer semantics; caller/issuer policy remains `.3.5`.
 - Acceptance: boundary revocation ordered first refuses later issuance; issuance ordered first completes before revocation; future grants still obey parent ceilings; new-tenant bootstrap and standalone authority fixtures work without implicit identity creation. Missing/corrupt parent storage must not masquerade as a structural violation. Import's complete local transaction is `.11` below.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.4.3.1 — Distinguish grant refusal from unavailable storage
+
+- Status: `done`; final 56 live controls and focused strict lint pass; every result/shutdown consumed and all four owned clusters absent. Commit workflow REPAIR-0022 closes this child; next `.3.2` activates only after clean/brief/census verification.
+- Owns: explicit public non-exhaustive GrantCreateError separating missing parent, structural GrantRefused and original SQLx storage failure; create_grant and internal executor error propagation; checked active-boundary decoding; enrollment/card-import HTTP error mapping; lib exports, focused authority/API/card controls and book/live compatibility documentation. Files: crates/reasonbraid-server/src/{authority.rs,api.rs,lib.rs}, tests/{authority.rs,command_api.rs,cards.rs} as needed. No guard integration or parent-liveness policy in this child.
+- Source evidence: create_grant discards pool errors, load-by-ID errors and INSERT errors into BoundaryViolation prose; both HTTP consumers turn them into invalid-command 400. load_active_boundary_for_tenant uses expect on stored boundary decoding. Reproduce original error loss and injected HTTP storage/corruption behavior before correction. Missing parent must stay distinguishable from corrupted/unavailable storage; neither is a structural ceiling proof.
+- API contract: keep GrantRefused and its violation list for actual subset failures; create_grant returns GrantCreateError. Preserve structural HTTP 400 and valid behavior; storage/corruption returns the existing safe internal-error 500 with no partial grant/identity/receipt/profile writes. Document the Rust return-type migration. Preserve original SQL errors as Error::source; avoid leaking their details in HTTP bodies. Restore fault fixtures before assertions and verify recovery.
+- [x] **ROOT CAUSE:** `python3 -B scripts/project_env.py python3 -B scripts/run_pg_tests.py authority command_api cards` and separate command_api/cards baseline invocations returned rc=101: authority 18 pass / 3 fail, HTTP 30 pass / 2 fail, cards 0 pass / 1 fail. Grant creation discarded original insert/pool/decode errors; corrupt existing parent was described as missing; enrollment panicked on active-parent decode; both HTTP consumers mislabeled grant INSERT failure as a structural 400. Restored fixtures and exact snapshots establish the observed refusal had no provisional effects. Evidence: docs/tasks/artifacts/signoff_review/grant-error-qualification.md.
+- [x] **ADDRESSED:** `python3 -B scripts/project_env.py python3 -B scripts/run_pg_tests.py authority command_api cards` returned rc=0: 22 authority + 33 HTTP + one composite card control = 56 live tests. Original 23505/PoolClosed/Protocol sources survive; missing parent stays typed and recovers; malformed active data returns safe 500; bootstrap/role/import grant faults preserve exact effect snapshots and recover; real structural 400 prose survives for enrollment and import. Public non-exhaustive GrantCreateError and the Rust migration are documented. Run-7_vfc8bu and all three failed baseline clusters are absent after consumed shutdown/census.
+- [x] **NO REGRESSION:** `python3 -B scripts/project_env.py cargo clippy --locked -p reasonbraid-server --lib --test authority --test command_api --test cards -- -D warnings` returned rc=0; selected cargo check, cargo fmt --all --check and git diff --check returned rc=0. The same 56-test live run retains existing authority, receipt/audit, revocation and card-ladder behavior. `python3 -B scripts/project_env.py mdbook build docs/book` returned rc=0 and five generated authority-page contract/example/scope markers passed. Full CI is reserved for the push/selected broader gate.
+- Lockstep: authority book adds HTTP cases and Rust return-type migration; roadmap/frontier, qualification review, source evidence index, MEMORY, LIVE_STATUS, CHANGELOG and DEV_NOTES updated. LIVE_STATUS categories unchanged; README commands/layout/objective unchanged.
+- promotion: declined (bounded error classification and checked-decoding repair within the existing authority/transaction policy; no new cross-cutting authority decision); owner SIGNOFF-REPAIR.3.3.4.3.1.
+- Commit: REASONBRAID-REPAIR-0022.
+
+###### SIGNOFF-REPAIR.3.3.4.3.2 — Guard standalone authority repositories and status writers
+
+- Status: `pending`; follows `.3.1`.
+- Owns: production wiring of the qualified private transaction owner, public standalone boundary/grant creation and shared active-boundary read, tenant-bound grant/boundary status services and their epoch updates. Exclusive guard before reads/target locks and through commit; actual named parent must be active/live at current database issuance time after waits, while scheduled grants retain structural subset behavior. Preserve standalone namespaces without identity rows, foreign/missing and repeated-revoke no-op contracts. Qualify both writer/issuance orders, queued parent expiry, malformed storage, rollback and recovery.
+- Scope boundary: coordinating status services is necessary before claiming issuance/revocation ordering; the later `.8` still owns joining HTTP caller admission, reason and final effect in that same transaction. Node-certificate epoch writers remain `.10`/`.4.1`. Existing enrollment/import executors must be explicitly identified as temporary unordered bridges until their own integrations, never silently described as guarded. No dead-code suppression to hide an unused guard mode.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.4.3.3 — Guard development enrollment as one transaction
+
+- Status: `pending`; follows `.3.2`.
+- Owns: fresh/existing-tenant enrollment through the guard before replay/authority/identity/quota writes; database time after waits, active-boundary lookup on the same context, grant/identity/quota/enrollment rollback and concurrent replay behavior. Preserve dev-trusted issuer policy and existing successful response shape; caller/issuer policy repair remains `.3.5`.
+- Acceptance: observed revocation/issuance ordering and queued expiry; no orphan identity/grant/quota on storage refusal; concurrent same-name enrollment has one identity and honest replay. Frozen/new/foreign tenant and original snapshot controls. Card import's complete identity/grant/profile/receipt transaction remains `.11`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.4.3.4 — Reconcile authority writer coverage
+
+- Status: `pending`; follows `.3.3`.
+- Owns: repeat writer/caller census, remove obsolete bridges where consumers have migrated, identify the remaining import/node-epoch paths with their exact owners and qualify the selected authority/enrollment/upgrade compatibility set. Book and source claims name the integrated service paths; no complete administrative-effect or repository-wide cancellation claim.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.3.3.4.4 — Order thread commands against authority changes
@@ -807,10 +840,11 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.3` | `pending` | integrate authority writers after qualified primitives |
-| 2 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 3 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.4.3.2` | `pending` | guard standalone authority repositories and status writers |
+| 2 | `SIGNOFF-REPAIR.3.3.4.3.3`–`.3.4` | `pending` | guarded enrollment and coverage |
+| 3 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 4 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 5 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -834,6 +868,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.3.1`: `REASONBRAID-REPAIR-0022 (leaf SIGNOFF-REPAIR.3.3.4.3.1): preserve grant creation failures and safe HTTP responses`.
 
 - `SIGNOFF-REPAIR.3.3.4.2`: `REASONBRAID-REPAIR-0021 (leaf SIGNOFF-REPAIR.3.3.4.2): qualify tenant guards and migration delivery`.
 

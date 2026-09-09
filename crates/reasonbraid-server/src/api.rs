@@ -47,7 +47,8 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::authority::{
-    self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantRefused,
+    self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError,
+    GrantRefused,
 };
 use crate::budget;
 use crate::node_channel;
@@ -157,6 +158,27 @@ impl ControlApiError {
             status: StatusCode::CONFLICT,
             code: "classification_unqualified",
             message: message.into(),
+        }
+    }
+
+    /// Retain caller-specific structural refusal prose while keeping missing
+    /// authority and unavailable storage out of the violation list.
+    fn grant_creation(error: GrantCreateError, refusal_context: &str) -> Self {
+        match error {
+            GrantCreateError::MissingBoundary { boundary_id } => {
+                Self::invalid_command(format!("boundary `{boundary_id}` does not exist"))
+            }
+            GrantCreateError::Refused(GrantRefused { violations }) => {
+                Self::invalid_command(format!(
+                    "{refusal_context}: {}",
+                    violations
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ))
+            }
+            GrantCreateError::Storage(error) => error.into(),
         }
     }
 
@@ -871,15 +893,8 @@ async fn enroll(
     let grant = dev_grant(&boundary_ref, issuer, principal.clone(), actions);
     authority::create_grant_in_tx(&mut *tx, &grant)
         .await
-        .map_err(|GrantRefused { violations }| {
-            ControlApiError::invalid_command(format!(
-                "the dev grant exceeds its boundary: {}",
-                violations
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ))
+        .map_err(|error| {
+            ControlApiError::grant_creation(error, "the dev grant exceeds its boundary")
         })?;
 
     // The identity record (PHASE-1.1.2, migrations/0007): the principal's row in
@@ -4667,15 +4682,11 @@ async fn import_profile_card(
     let mut tx = state.pool.begin().await?;
     authority::create_grant_in_tx(&mut *tx, &grant)
         .await
-        .map_err(|GrantRefused { violations }| {
-            ControlApiError::invalid_command(format!(
-                "the imported role's grant exceeds the importing boundary: {}",
-                violations
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ))
+        .map_err(|error| {
+            ControlApiError::grant_creation(
+                error,
+                "the imported role's grant exceeds the importing boundary",
+            )
         })?;
     sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3)")
         .bind(&role_id)

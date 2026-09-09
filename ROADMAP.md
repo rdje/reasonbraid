@@ -21,7 +21,9 @@ under the accepted security correction
 `docs/decisions/2026-09-09_site-operator-authority.md`; the service, protected CLI
 and seven HTTP registry operations are implemented with matched runtime controls.
 Tenant guard primitives and migration delivery are qualified under
-`SIGNOFF-REPAIR.3.3.4.2`; application transaction/effect integration starts at `.3`.
+`SIGNOFF-REPAIR.3.3.4.2`; grant error classification is qualified under `.3.3.4.3.1`
+with 56 live controls and strict lint. Standalone authority/status writer guard
+integration is next at `.3.3.4.3.2`; remaining application/effect paths stay owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
 

@@ -25,7 +25,7 @@ use reasonbraid_core::{
 };
 use reasonbraid_server::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
-    AuthorizationOutcome, AuthorizedApplyError, Command, CommandAuthz,
+    AuthorizationOutcome, AuthorizedApplyError, Command, CommandAuthz, GrantCreateError,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -463,6 +463,9 @@ async fn a_grant_cannot_exceed_the_boundary() {
         TargetSelector::TenantWide,
     );
     let err = create_grant(&pool, &overreaching).await.unwrap_err();
+    let GrantCreateError::Refused(err) = err else {
+        panic!("expected a structural refusal, got {err:?}");
+    };
     assert!(err
         .violations
         .iter()
@@ -478,6 +481,9 @@ async fn a_grant_cannot_exceed_the_boundary() {
     let mut risky = risky;
     risky.risk_ceiling = RiskClass::High;
     let err = create_grant(&pool, &risky).await.unwrap_err();
+    let GrantCreateError::Refused(err) = err else {
+        panic!("expected a structural refusal, got {err:?}");
+    };
     assert!(err.violations.iter().any(|v| v.detail.contains("risk")));
 
     let count: i64 =
@@ -510,6 +516,9 @@ async fn a_grant_cannot_borrow_a_foreign_tenants_boundary() {
         TargetSelector::TenantWide,
     );
     let err = create_grant(&pool, &grt).await.unwrap_err();
+    let GrantCreateError::Refused(err) = err else {
+        panic!("expected a structural refusal, got {err:?}");
+    };
     assert!(err.violations.iter().any(|v| v.field == "grant.tenant_id"));
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM authority_grants WHERE grant_id = $1")
@@ -1376,4 +1385,163 @@ async fn inspection_evidence_readback_keeps_frozen_source_and_refuses_contradict
             .unwrap(),
         valid
     );
+}
+
+/// The public repository preserves diagnostic SQL errors rather than inventing
+/// structural ceiling violations. Each case reaches a different fallible step.
+#[tokio::test]
+async fn grant_creation_preserves_insert_errors() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000160";
+    let parent = boundary(
+        tenant,
+        vec![GrantAction::ThreadContribute],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &parent).await.unwrap();
+    let candidate = grant(
+        &parent.boundary_id,
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000160",
+        vec![GrantAction::ThreadContribute],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &candidate).await.unwrap();
+    let before: serde_json::Value =
+        sqlx::query_scalar("SELECT to_jsonb(g) FROM authority_grants g WHERE grant_id = $1")
+            .bind(&candidate.grant_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let error = create_grant(&pool, &candidate).await.unwrap_err();
+    let after: serde_json::Value =
+        sqlx::query_scalar("SELECT to_jsonb(g) FROM authority_grants g WHERE grant_id = $1")
+            .bind(&candidate.grant_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        before, after,
+        "duplicate insertion cannot overwrite the original grant"
+    );
+    let source = std::error::Error::source(&error).and_then(|e| e.downcast_ref::<sqlx::Error>());
+    assert_eq!(
+        source
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(|e| e.code())
+            .as_deref(),
+        Some("23505"),
+        "preserve the original unique violation: {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn grant_creation_preserves_corrupt_parent_errors() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000161";
+    let parent = boundary(
+        tenant,
+        vec![GrantAction::ThreadContribute],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &parent).await.unwrap();
+    let candidate = grant(
+        &parent.boundary_id,
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000161",
+        vec![GrantAction::ThreadContribute],
+        TargetSelector::TenantWide,
+    );
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = '[\"unknown_owned_fixture_action\"]'::jsonb WHERE boundary_id = $1")
+        .bind(&parent.boundary_id).execute(&pool).await.unwrap();
+    let outcome = create_grant(&pool, &candidate).await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE boundary_id = $1")
+        .bind(&parent.boundary_id)
+        .bind(serde_json::to_value(&parent.permitted_actions).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authority_grants WHERE grant_id = $1")
+            .bind(&candidate.grant_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    create_grant(&pool, &candidate)
+        .await
+        .expect("recovery with the repaired parent");
+    assert_eq!(count, 0, "corrupted authority produces no grant");
+    let error = outcome.unwrap_err();
+    let source = std::error::Error::source(&error).and_then(|e| e.downcast_ref::<sqlx::Error>());
+    assert!(
+        matches!(source, Some(sqlx::Error::Protocol(_))),
+        "preserve malformed storage: {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn grant_creation_preserves_pool_errors() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000162";
+    let candidate = grant(
+        "bnd_missing",
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000162",
+        vec![GrantAction::ThreadContribute],
+        TargetSelector::TenantWide,
+    );
+    pool.close().await;
+    let error = create_grant(&pool, &candidate).await.unwrap_err();
+    let source = std::error::Error::source(&error).and_then(|e| e.downcast_ref::<sqlx::Error>());
+    assert!(
+        matches!(source, Some(sqlx::Error::PoolClosed)),
+        "preserve acquisition failure: {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn grant_creation_distinguishes_a_missing_parent_and_recovers() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000163";
+    let parent = boundary(
+        tenant,
+        vec![GrantAction::ThreadContribute],
+        RiskClass::Low,
+        false,
+    );
+    let candidate = grant(
+        &parent.boundary_id,
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000163",
+        vec![GrantAction::ThreadContribute],
+        TargetSelector::TenantWide,
+    );
+    let error = create_grant(&pool, &candidate).await.unwrap_err();
+    assert!(
+        std::error::Error::source(&error).is_none(),
+        "absence is neither SQL unavailability nor a ceiling violation"
+    );
+    match error {
+        GrantCreateError::MissingBoundary { boundary_id } => {
+            assert_eq!(boundary_id, parent.boundary_id)
+        }
+        other => panic!("missing parent must be explicit: {other:?}"),
+    }
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authority_grants WHERE grant_id = $1")
+            .bind(&candidate.grant_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 0);
+    create_boundary(&pool, &parent).await.unwrap();
+    create_grant(&pool, &candidate)
+        .await
+        .expect("recovery after the parent is created");
 }

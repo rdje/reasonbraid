@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Storage failure is not a proved policy refusal
+
+- The repository baseline discarded SQLSTATE 23505, PoolClosed and malformed-parent Protocol errors into GrantRefused, even describing a corrupt existing parent as missing. Enrollment's active-parent decoder also panicked, dropping HTTP; both enrollment and card import mapped injected grant INSERT failures to misleading structural 400 responses. The repair uses public non-exhaustive GrantCreateError with original storage sources, checked active-parent decoding and a shared contextual HTTP mapper. Actual missing authority, structural violations and safe internal errors remain distinct.
+- All 56 live authority/HTTP/card controls and focused strict lint pass. Exact seven-table enrollment/import snapshots stay unchanged under the injected grant failures, fixture restoration precedes outcome assertions, genuine structural 400 responses remain, and recovery succeeds. This proves those grant-insertion failure boundaries, not complete import atomicity or tenant writer ordering. All results/shutdown are consumed and four owned clusters absent. The book documents the Rust return-type migration. Evidence: docs/tasks/artifacts/signoff_review/grant-error-qualification.md.
+- promotion: declined (bounded error classification and checked decoding within the established authority policy; ordering and full effects retain their existing decision/owners); owner `SIGNOFF-REPAIR.3.3.4.3.1`.
+
 ## _(2026-09-09)_ — Transaction ownership starts before BEGIN acknowledgment
 
 - A fixed delayed-BEGIN control reproduced the same SQLx 0.8.6 backend returning to the pool still idle in transaction after cancellation. The outer lease now exists before awaiting setup and permits reuse only after acknowledged commit; cancellation/error discards the connection. Controls verify backend exit, provisional anchor/effect rollback and healthy-commit reuse with local settings reset. An observed deferred COMMIT can still succeed after the operation deadline, so the result preserves uncertainty and never automatically retries. Final qualification passes fourteen primitive controls, three upgrades and eighteen existing authority controls; all four focused strict lint commands pass. Results and shutdown are consumed, with every owned cluster removed.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Distinct grant creation failures (`SIGNOFF-REPAIR.3.3.4.3.1`)
+
+GrantCreateError now distinguishes missing parents, actual structural refusals and
+original SQLx storage failures. Enrollment and card import return safe HTTP 500
+for storage failure; malformed active-boundary data no longer panics the handler.
+Actual ceiling violations retain their contextual HTTP 400 responses. The book
+documents the public Rust return-type migration. All 56 live authority/HTTP/card
+controls and focused strict lint pass, including exact failure snapshots and
+recovery. All results/shutdown consumed and four owned clusters removed. Guard
+integration and complete import transaction work retain their following owners.
+
 ## 2026-09-09 — Qualified tenant guard foundation (`SIGNOFF-REPAIR.3.3.4.2`)
 
 Migration 0056 preserves all legacy authority/identity rows and adds full-tenant

@@ -97,6 +97,48 @@ impl std::fmt::Display for GrantRefused {
 
 impl std::error::Error for GrantRefused {}
 
+/// Failure to create a grant. Only [`Self::Refused`] describes a proved
+/// structural ceiling violation; missing or malformed authority is distinct.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum GrantCreateError {
+    /// The named parent was absent when read. No grant was inserted.
+    MissingBoundary { boundary_id: String },
+    /// The supplied grant exceeds its actual parent's structural ceiling.
+    Refused(GrantRefused),
+    /// Connection, query, insertion or stored-data decoding failed. The
+    /// original SQLx error remains available through [`std::error::Error::source`].
+    Storage(sqlx::Error),
+}
+
+impl std::fmt::Display for GrantCreateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingBoundary { boundary_id } => {
+                write!(f, "boundary `{boundary_id}` does not exist")
+            }
+            Self::Refused(error) => std::fmt::Display::fmt(error, f),
+            Self::Storage(_) => f.write_str("grant creation storage failure"),
+        }
+    }
+}
+
+impl std::error::Error for GrantCreateError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::MissingBoundary { .. } => None,
+            Self::Refused(error) => Some(error),
+            Self::Storage(error) => Some(error),
+        }
+    }
+}
+
+impl From<sqlx::Error> for GrantCreateError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
 /// The typed failure of [`apply_authorized_command`].
 #[derive(Debug)]
 pub enum AuthorizedApplyError {
@@ -203,14 +245,10 @@ where
 }
 
 /// Create a grant — REFUSED (no row) when it exceeds its boundary in any dimension
-/// (§4.4: "a grant cannot exceed the enrollment ceiling").
-pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), GrantRefused> {
-    let mut conn = pool.acquire().await.map_err(|_| GrantRefused {
-        violations: vec![reasonbraid_core::BoundaryViolation {
-            field: "grant",
-            detail: format!("grant `{}` could not be stored", grant.grant_id),
-        }],
-    })?;
+/// (§4.4: "a grant cannot exceed the enrollment ceiling"). Missing parents and
+/// storage failures are separate from [`GrantRefused`]; see [`GrantCreateError`].
+pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), GrantCreateError> {
+    let mut conn = pool.acquire().await?;
     create_grant_in_tx(&mut *conn, grant).await
 }
 
@@ -219,22 +257,22 @@ pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), G
 pub(crate) async fn create_grant_in_tx<'e, E>(
     mut tx: E,
     grant: &AuthorityGrant,
-) -> Result<(), GrantRefused>
+) -> Result<(), GrantCreateError>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
     let boundary = load_boundary_by_id_in_tx(&mut *tx, &grant.boundary_id)
         .await
-        .map_err(|_| GrantRefused {
-            violations: vec![reasonbraid_core::BoundaryViolation {
-                field: "boundary_id",
-                detail: format!("boundary `{}` does not exist", grant.boundary_id),
-            }],
+        .map_err(|error| match error {
+            sqlx::Error::RowNotFound => GrantCreateError::MissingBoundary {
+                boundary_id: grant.boundary_id.clone(),
+            },
+            error => GrantCreateError::Storage(error),
         })?;
     let violations = grant_exceeds_boundary(&boundary, grant);
     if !violations.is_empty() {
-        return Err(GrantRefused { violations });
+        return Err(GrantCreateError::Refused(GrantRefused { violations }));
     }
 
     let (subject_kind, subject_id) = subject_parts(&grant.subject);
@@ -262,13 +300,7 @@ where
     .bind(grant.expires_at)
     .bind(grant.status.as_str())
     .execute(&mut *tx)
-    .await
-    .map_err(|_| GrantRefused {
-        violations: vec![reasonbraid_core::BoundaryViolation {
-            field: "grant",
-            detail: format!("grant `{}` could not be stored", grant.grant_id),
-        }],
-    })?;
+    .await?;
     Ok(())
 }
 
@@ -431,7 +463,11 @@ pub(crate) async fn load_active_boundary_for_tenant(
     .bind(tenant_id.to_string())
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|r| boundary_from_row(r).expect("stored boundary parses")))
+    row.map(|row| {
+        boundary_from_row(row)
+            .ok_or_else(|| sqlx::Error::Protocol("stored enrollment boundary is malformed".into()))
+    })
+    .transpose()
 }
 
 // ── Evaluation ──────────────────────────────────────────────────────────────────

@@ -65,6 +65,75 @@ reads and the exact tenant-scoped receipt lookup now commit inspection admission
 and expose receipts as described below. Delegation depth, consent and cached-decision freshness remain `.3.4`;
 tenant authority/effect transaction ordering remains `.3.3.4`.
 
+## Grant creation failures
+
+Grant creation distinguishes a missing parent, a structural ceiling violation and
+unavailable or malformed storage. A database failure does not prove that a grant
+exceeds its boundary. Enrollment and card import use these outcomes:
+
+| Condition | HTTP result | Effect |
+| --- | --- | --- |
+| The requested role actions exceed the actual parent ceiling | 400 `invalid_command`, with the enrollment/import violation details | No grant or enrollment/import effect from that refusal. |
+| The named parent is missing, or no active enrollment boundary exists | 400 `invalid_command`, identifying the missing authority | No new grant. |
+| A grant INSERT fails, or the stored boundary cannot be decoded | 500 `dependency_unavailable`, `internal server error` | The request refuses; internal storage details stay out of the response. |
+| The boundary and requested grant are valid and storage succeeds | Existing successful enrollment/import response | The normal successful path continues. |
+
+For example, an enrollment INSERT failure returns:
+
+```json
+{"code":"dependency_unavailable","message":"internal server error"}
+```
+
+It no longer says that the grant exceeds its boundary. An active boundary with
+malformed stored actions produces the same safe error instead of dropping the HTTP
+connection through a handler panic. Correcting the storage fault permits a fresh
+request; this error classification does not introduce automatic retries.
+
+**Rust API migration:** `create_grant` now returns `Result<(), GrantCreateError>`.
+Code that accessed `error.violations` must first match
+`GrantCreateError::Refused(refusal)` and then inspect `refusal.violations`.
+`GrantRefused` remains exported for actual structural ceiling failures.
+
+```rust
+use reasonbraid_server::{create_grant, GrantCreateError};
+
+// Within an async caller, with an owned pool and a candidate AuthorityGrant:
+match create_grant(&pool, &candidate).await {
+    Ok(()) => { /* the repository call succeeded */ }
+    Err(GrantCreateError::Refused(refusal)) => {
+        for violation in refusal.violations {
+            eprintln!("{violation}");
+        }
+    }
+    Err(GrantCreateError::MissingBoundary { boundary_id }) => {
+        eprintln!("missing parent: {boundary_id}");
+    }
+    Err(GrantCreateError::Storage(error)) => {
+        // Preserve diagnostics in the trusted caller; do not return them over HTTP.
+        eprintln!("storage unavailable: {error}");
+    }
+    Err(error) => {
+        // The enum is non-exhaustive; handle future failures without claiming success.
+        eprintln!("grant creation failed: {error}");
+    }
+}
+```
+
+Storage failures also retain the original SQLx error through
+`std::error::Error::source`, including unique violations, closed pools and malformed
+data. Missing parents are a distinct outcome, with no invented structural
+violation or SQL unavailability cause.
+
+All 56 live authority/HTTP/card controls and focused strict lint pass under
+`SIGNOFF-REPAIR.3.3.4.3.1`; all results and shutdown are consumed, and the four
+owned verification clusters are absent.
+
+The matched grant-insertion fault controls check complete enrollment/import table
+snapshots and recovery. They do not establish atomicity for every later card-import
+step: complete import transaction integration remains `SIGNOFF-REPAIR.3.3.4.11`.
+Tenant guard integration and issuance-time parent liveness remain the following
+children of `.3.3.4.3`; development issuer policy is unchanged.
+
 ## Subject JSON and delegation inputs
 
 Core authority payloads represent the subject explicitly. For example:

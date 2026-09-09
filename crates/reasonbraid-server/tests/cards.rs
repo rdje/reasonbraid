@@ -303,6 +303,129 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
     .await;
     assert_eq!(status, 400, "the unknown schema refuses: {refused}");
 
+    // A failed grant INSERT is a storage failure, with no imported identity,
+    // grant, quota, enrollment, profile or cross-domain receipt left behind.
+    let mut before = Vec::new();
+    let tables = [
+        "authority_grants",
+        "agent_roles",
+        "usage_quotas",
+        "enrollments",
+        "agent_profiles",
+        "profile_versions",
+        "cross_domain_receipts",
+    ];
+    for table in tables {
+        before.push(sqlx::query_scalar::<_, Value>(&format!(
+            "SELECT coalesce(jsonb_agg(row ORDER BY row::text), '[]'::jsonb) FROM (SELECT to_jsonb(t) AS row FROM {table} t) s"))
+            .fetch_one(&pool).await.unwrap());
+    }
+    sqlx::query("CREATE FUNCTION rb_test_refuse_import_grant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'owned import grant fault'; END $$")
+        .execute(&pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER rb_test_import_grant_fault BEFORE INSERT ON authority_grants FOR EACH ROW EXECUTE FUNCTION rb_test_refuse_import_grant()")
+        .execute(&pool).await.unwrap();
+    let outcome = client
+        .post(format!("{base}/v1/profiles/cards/import"))
+        .header(PRINCIPAL_HEADER, &b_admin)
+        .json(&import_body(card.clone(), &digest))
+        .send()
+        .await;
+    sqlx::query("DROP TRIGGER rb_test_import_grant_fault ON authority_grants")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DROP FUNCTION rb_test_refuse_import_grant()")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut after = Vec::new();
+    for table in tables {
+        after.push(sqlx::query_scalar::<_, Value>(&format!(
+            "SELECT coalesce(jsonb_agg(row ORDER BY row::text), '[]'::jsonb) FROM (SELECT to_jsonb(t) AS row FROM {table} t) s"))
+            .fetch_one(&pool).await.unwrap());
+    }
+    assert_eq!(before, after, "grant failure must leave no partial import");
+    let response = outcome.expect("storage faults produce HTTP responses");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(
+        status, 500,
+        "storage failure is not a policy refusal: {body}"
+    );
+    assert_eq!(
+        body,
+        json!({"code":"dependency_unavailable", "message":"internal server error"})
+    );
+
+    // A structurally valid administrator may still request an import whose
+    // default role actions exceed the importing boundary. Preserve that 400.
+    let admin_grant = human_b["grant_id"].as_str().unwrap();
+    let parent_actions: Value = sqlx::query_scalar(
+        "SELECT permitted_actions FROM enrollment_boundaries WHERE tenant_id = $1",
+    )
+    .bind(&tenant_b)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let admin_actions: Value =
+        sqlx::query_scalar("SELECT actions FROM authority_grants WHERE grant_id = $1")
+            .bind(admin_grant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(&tenant_b)
+        .bind(json!(["tenant_admin"]))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE authority_grants SET actions = $2 WHERE grant_id = $1")
+        .bind(admin_grant)
+        .bind(json!(["tenant_admin"]))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let outcome = client
+        .post(format!("{base}/v1/profiles/cards/import"))
+        .header(PRINCIPAL_HEADER, &b_admin)
+        .json(&import_body(card.clone(), &digest))
+        .send()
+        .await;
+    sqlx::query("UPDATE enrollment_boundaries SET permitted_actions = $2 WHERE tenant_id = $1")
+        .bind(&tenant_b)
+        .bind(parent_actions)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE authority_grants SET actions = $2 WHERE grant_id = $1")
+        .bind(admin_grant)
+        .bind(admin_actions)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut after = Vec::new();
+    for table in tables {
+        after.push(sqlx::query_scalar::<_, Value>(&format!(
+            "SELECT coalesce(jsonb_agg(row ORDER BY row::text), '[]'::jsonb) FROM (SELECT to_jsonb(t) AS row FROM {table} t) s"))
+            .fetch_one(&pool).await.unwrap());
+    }
+    assert_eq!(
+        before, after,
+        "structural refusal must leave no partial import"
+    );
+    let response = outcome.unwrap();
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["code"], "invalid_command");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("the imported role's grant exceeds the importing boundary: "),
+        "{body}"
+    );
+
     // 6. The clean import lands the local role + the imported profile.
     let (status, imported) = post(
         &client,

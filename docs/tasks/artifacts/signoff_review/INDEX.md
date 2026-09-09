@@ -30,3 +30,4 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 ## Focused corrective follow-ups
 
 - [Tenant authority/effect paths](docs/tasks/artifacts/signoff_review/tenant-authority-paths.md), owner `SIGNOFF-REPAIR.3.3.4.1`, source baseline `1ba6184`: 42 direct named-call locations plus transitive/mutation and alternate-gate coverage. The selected guard/effect contract has bounded implementation owners; this source census is not runtime ordering qualification.
+- [Tenant guard qualification](docs/tasks/artifacts/signoff_review/tenant-guard-qualification.md), owner `SIGNOFF-REPAIR.3.3.4.2`: migration, guard/connection ownership, observed waits, cancelled-BEGIN reproduction/repair and commit uncertainty; application integration remains subsequent children.

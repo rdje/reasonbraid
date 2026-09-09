@@ -3,11 +3,13 @@ answers:
   - How will tenant authority revocation be ordered against protected local effects?
   - Why does tenant authority need a dedicated guard instead of locking the identity row?
   - How will admission evidence differ from the final administrative mutation outcome?
+  - How are tenant transaction deadlines and cancellation before BEGIN acknowledgment handled?
+  - How does an incremental build detect newly added embedded migrations?
 ---
 # Keep tenant authority stable through the protected local transaction
 
-- Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`.
-- Status: selected implementation contract; no guard or final-effect implementation yet.
+- Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`, foundation child `.2`.
+- Status: primitive migration/transaction owner qualified in `.2`; application integration and final-effect implementation remain subsequent children.
 - Source census: `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` at `1ba6184`.
 - Preserves: actual-parent selection, valid frozen-tenant inspection, exact receipt readback and the `.3.1` foreign-target/no-op corrections.
 
@@ -72,7 +74,43 @@ transaction deadline. No network/provider, user-input or filesystem workflow wai
 belongs inside the guarded local transaction. Cancellation/rollback and commit
 acknowledgment uncertainty need explicit refusal semantics; never fabricate a
 receipt or automatically retry an operation whose commit outcome is unknown.
-The foundation child chooses and tests concrete timeout values before integration.
+The foundation child implements ceilings of 5 seconds for lock waits, 10 seconds
+per statement and 15 seconds for the whole operation, including pool acquisition
+and commit. Internal policies may shorten these values in whole milliseconds,
+with lock <= statement <= total, but cannot enlarge or disable them. One to eight
+predeclared entries bound acquisition; duplicate keys take the strongest mode.
+
+### Connection ownership begins before BEGIN acknowledgment
+
+The matched delayed-BEGIN control reproduced SQLx 0.8.6 returning the same backend
+still idle in transaction after setup cancellation. An outer connection lease now
+exists before that await; only acknowledged successful commit permits pooling.
+Errors, deadlines and cancellation discard the connection. Healthy commit retains
+reuse, with local timeout settings reset. A pre-commit health query rejects a
+callback that swallowed a SQL error rather than accepting aborted COMMIT as success.
+
+Connection closure/rollback finishes asynchronously. It cannot prove an already
+sent COMMIT failed: the deferred-commit control observes COMMIT/PgSleep, receives
+CommitDeadline, then finds the original committed row through readback. The runner
+therefore distinguishes pre-commit storage/deadline and unconfirmed commit outcomes
+and never returns the callback's success value after a failed acknowledgment.
+The fixed delayed-BEGIN injection is test-only; production BEGIN is not configurable.
+Matched results, exact failed-cluster cleanup and per-control limits are preserved
+in `docs/tasks/artifacts/signoff_review/tenant-guard-qualification.md`.
+
+## Migration delivery is a build dependency
+
+A final compatibility run reproduced a stale authority executable returning
+VersionMissing(56), before any policy assertion. The migration and newly compiled
+guard/upgrade tests were current, but adding the file alone had not invalidated
+that older executable. Stable SQLx tracks existing included SQL files; each crate
+must additionally declare its migration directory to Cargo. All four embedding
+crates now do so: server/MCP/CLI watch root migrations, while node watches its
+separate journal schema. Build scripts derive the current root from Cargo at
+execution; no persisted checkout path, nightly flag, dependency upgrade or cache
+purge is needed. Qualification checks actual rebuild/cache behavior on directory
+entry addition/removal and reruns the previously stale compatibility target.
+([SQLx migration recompilation](https://docs.rs/sqlx/0.8.6/sqlx/macro.migrate.html))
 
 ## Evidence and compatibility
 

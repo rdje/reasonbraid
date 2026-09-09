@@ -18,7 +18,10 @@
 source review is owned by `docs/tasks/SIGNOFF-REPAIR.md`, before extending
 `PHASE-8.5.3`. Shared registry mutations require explicit site-operator authority
 under the accepted security correction
-`docs/decisions/2026-09-09_site-operator-authority.md`; implementation is pending.
+`docs/decisions/2026-09-09_site-operator-authority.md`; the service, protected CLI
+and seven HTTP registry operations are implemented with matched runtime controls.
+Tenant guard primitives and migration delivery are qualified under
+`SIGNOFF-REPAIR.3.3.4.2`; application transaction/effect integration starts at `.3`.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
 

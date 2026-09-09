@@ -60,7 +60,9 @@ grep -E "$code_re" "$tmp/staged.txt" > "$tmp/code.txt" 2>/dev/null || true
 # treating it as a leaf makes the doctrine block every commit that edits the template. Found by
 # this check refusing its own commit: a FALSE POSITIVE, unlike the two refusals before it, which
 # were correct. The same exclusion exists in the layer-C check in this repo (INDEX/TEMPLATE).
-grep -E '^docs/tasks/.*\.md$' "$tmp/staged.txt" | grep -vE '(^|/)TEMPLATE\.md$' \
+# A tree is docs/tasks/<TREE-ID>.md (TASK_TREE_README.md). Nested evidence is
+# neither another owning tree nor a substitute for staging the real owner.
+grep -E '^docs/tasks/[^/]+\.md$' "$tmp/staged.txt" | grep -vE '(^|/)TEMPLATE\.md$' \
   > "$tmp/leaves.txt" 2>/dev/null || true
 if [ ! -s "$tmp/leaves.txt" ]; then
   {

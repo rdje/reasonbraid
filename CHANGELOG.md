@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Qualified tenant guard foundation (`SIGNOFF-REPAIR.3.3.4.2`)
+
+Migration 0056 preserves all legacy authority/identity rows and adds full-tenant
+coordination anchors. The private runner owns the connection before BEGIN and
+keeps shared/exclusive guards through a bounded callback and commit. Matched
+controls reproduce and repair cancelled-BEGIN pooling; commit acknowledgment
+timeouts retain uncertainty even when PostgreSQL later commits. All four crates
+embedding migrations now track directory additions/removals, correcting a cached
+executable that omitted the new schema. The 28-command dependency probe passes;
+final qualification passes 35 controls (34 live / one pure) and four-crate focused
+strict lint. Seven checker controls also repair recursive acceptance-owner
+selection without letting nested evidence replace a real task tree. All results
+consumed, clusters and temporary probes removed. This
+qualifies primitives; application authority/effect integration starts next.
+
 ## 2026-09-09 — Tenant transaction repair contract (`SIGNOFF-REPAIR.3.3.4.1`)
 
 Trace 42 direct authority call locations across 101 tracked Rust sources and

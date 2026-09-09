@@ -50,6 +50,11 @@ own build gates, format checks, invariant proofs, etc.
 
 ## The task-acceptance checklist (every code-change leaf must pass)
 
+A task-tree owner is a direct `docs/tasks/<TREE-ID>.md` file, as defined in
+`docs/TASK_TREE_README.md`. Nested evidence files may accompany that owner; they
+neither need ownership checklists of their own nor substitute for the real tree.
+The blank `TEMPLATE.md` remains excluded.
+
 A code change cannot commit until its owning task-tree leaf records all six:
 
 - [ ] **REPRODUCE / ISSUE** — the problem, shown (not asserted).

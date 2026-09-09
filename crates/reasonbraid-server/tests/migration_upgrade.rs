@@ -17,6 +17,138 @@ use sqlx::migrate::Migrator;
 
 static UPGRADE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
+/// The coordination namespace must cover identity and standalone authority
+/// stores without inventing identity rows or rewriting historical evidence.
+#[tokio::test]
+async fn tenant_guard_upgrade_preserves_namespaces_and_backfills_exactly_once() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    sqlx::query("DROP SCHEMA public CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("CREATE SCHEMA public")
+        .execute(&pool)
+        .await
+        .unwrap();
+    through(55).run(&pool).await.unwrap();
+    let identity = "ten_00000000-0000-7000-8000-000000000151";
+    let boundary = "ten_00000000-0000-7000-8000-000000000152";
+    let grant = "ten_00000000-0000-7000-8000-000000000153";
+    let evidence = "ten_00000000-0000-7000-8000-000000000154";
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind(identity)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO enrollment_boundaries \
+        (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
+         permitted_domains, risk_ceiling, delegable, max_delegation_depth, valid_from, \
+         expires_at, charter_digest, policy_version, status) \
+        VALUES ('bnd_guard_upgrade', $1, 'legacy-root', 'legacy-owner', '[\"tenant_admin\"]', \
+                '[]', 'low', false, 0, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', 'legacy-charter', 'legacy', 'revoked')")
+        .bind(boundary).execute(&pool).await.unwrap();
+    // This legacy grant's tenant differs from its parent's tenant. The current
+    // evaluator refuses that relationship; a coordination migration must still
+    // preserve both namespaces and all fields rather than repair or omit evidence.
+    sqlx::query("INSERT INTO authority_grants \
+        (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+         risk_ceiling, delegable, valid_from, expires_at, status) \
+        VALUES ('grt_guard_upgrade', 'bnd_guard_upgrade', $1, \
+                'hpr_00000000-0000-7000-8000-000000000151', 'role', \
+                'rol_00000000-0000-7000-8000-000000000151', '[\"tenant_admin\"]', \
+                '{\"kind\":\"tenant_wide\"}', 'low', false, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', 'revoked')")
+        .bind(grant).execute(&pool).await.unwrap();
+    for (id, tenant) in [
+        ("authz_00000000-0000-7000-8000-000000000151", identity),
+        ("authz_00000000-0000-7000-8000-000000000154", evidence),
+    ] {
+        sqlx::query(
+            "INSERT INTO authorization_records \
+            (record_id, tenant_id, actor, action, target_kind, target_tenant, decision, reason, \
+             policy_digest, policy_version, decided_at) \
+            VALUES ($1, $2, 'agt_00000000-0000-7000-8000-000000000151', 'tenant_admin', \
+                    'tenant', $2, 'denied', 'historical refusal', 'legacy-digest', 'legacy', \
+                    '2026-09-09T00:00:00Z')",
+        )
+        .bind(id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let tables = [
+        "tenants",
+        "enrollment_boundaries",
+        "authority_grants",
+        "authorization_records",
+    ];
+    let mut before = Vec::new();
+    for table in tables {
+        let rows: Vec<Value> = sqlx::query_scalar(&format!(
+            "SELECT to_jsonb(r) FROM {table} r ORDER BY to_jsonb(r)::text COLLATE \"C\""
+        ))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        before.push(rows);
+    }
+    through(56).run(&pool).await.unwrap();
+    let present: Option<String> =
+        sqlx::query_scalar("SELECT to_regclass('public.tenant_authority_guards')::text")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        present.is_some(),
+        "the tenant authority guard migration is present"
+    );
+    let anchors: Vec<String> = sqlx::query_scalar(
+        "SELECT tenant_id FROM tenant_authority_guards ORDER BY tenant_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(anchors, [identity, boundary, grant, evidence]);
+    for (table, expected) in tables.into_iter().zip(before) {
+        let actual: Vec<Value> = sqlx::query_scalar(&format!(
+            "SELECT to_jsonb(r) FROM {table} r ORDER BY to_jsonb(r)::text COLLATE \"C\""
+        ))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            actual, expected,
+            "all {table} rows and fields remain unchanged"
+        );
+    }
+    through(56).run(&pool).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tenant_authority_guards")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 4, "migration replay does not duplicate anchors");
+}
+
 async fn guard() -> tokio::sync::MutexGuard<'static, ()> {
     UPGRADE_LOCK
         .get_or_init(|| tokio::sync::Mutex::new(()))

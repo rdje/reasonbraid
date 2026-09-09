@@ -92,10 +92,14 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.4.2`: tenant guard primitives and
-transaction ownership. The preceding source census/design maps 42 named-call
-locations and their transitive effect paths into bounded implementation children;
-the guard and final effect evidence are not yet implemented.
+The current frontier is `SIGNOFF-REPAIR.3.3.4.3`: integrate authority writers after
+the qualified guard/connection owner and migration delivery. The source census
+maps 42 named-call locations and their transitive effect paths into bounded
+children. Foundation qualification passes 35 controls (34 live / one pure),
+28 migration-directory rebuild/cache checks and four-crate strict lint. This
+includes the repaired cancelled-BEGIN pooling defect and the previously stale
+authority executable. All results/shutdown are consumed and owned clusters/probes
+removed. Application guard and final-effect integration remain subsequent work.
 Exact scoped receipt readback passes 18 live authority tests
 and 30 HTTP tests, with strict lint and all results/shutdown consumed.
 The seven HTTP inspection receipt producers pass 45 live authority/API tests,

@@ -6,7 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
-| [2026-09-09_tenant-authority-transaction-order.md](docs/decisions/2026-09-09_tenant-authority-transaction-order.md) | decision | planned tenant guard modes, transaction ownership, lock/time order and final administrative effect evidence |
+| [2026-09-09_tenant-authority-transaction-order.md](docs/decisions/2026-09-09_tenant-authority-transaction-order.md) | decision | tenant guard modes, bounded connection/transaction ownership and cancelled-BEGIN repair; application/final-effect integration remains staged |
 | [2026-09-09_authorization-evaluation-provenance.md](docs/decisions/2026-09-09_authorization-evaluation-provenance.md) | decision | explicit evaluation provenance, honest legacy records, strict readback and bounded inspection-receipt rollout |
 | [2026-09-09_frozen-tenant-read-eligibility.md](docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md) | decision | frozen own-tenant reads ignore boundary status only; actual parent, scope, ceilings and half-open validity still bind |
 | [2026-09-09_command-authority-selection.md](docs/decisions/2026-09-09_command-authority-selection.md) | decision | bounded candidate pages, actual grant parents and honest delegated authority-source audit references |

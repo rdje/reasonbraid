@@ -357,7 +357,7 @@ with the mutation. That effect audit, and serialization against revocation of th
 acting administrator's own authority, remain `.3.3`. The target-row lock described
 here does not establish those separate guarantees.
 
-### Planned transaction repair
+### Tenant transaction foundation and remaining integration
 
 The selected contract in `SIGNOFF-REPAIR.3.3.4.1` keeps a shared tenant-authority
 guard through an ordinary protected local transaction and an exclusive guard
@@ -367,14 +367,64 @@ The guard comes before lease, idempotency and domain locks; live decision time i
 sampled after earlier waits. Final administrative effect evidence will remain
 distinct from admission, with the mutation and its required evidence in one commit.
 
-This is a design, with implementation still pending. Its source census covers
-42 direct named-call locations across 101 tracked Rust source files, plus the
-transitive HTTP/MCP/node/state-service and authority-table mutation cross-check.
-The child plan separately qualifies guard primitives, authority writers, command
-and node transactions, inspections, effect records and administrative families.
+Migration 0056 and the private guard owner are implemented under
+`SIGNOFF-REPAIR.3.3.4.2`. The isolated tests compile that exact source; no application
+path uses it yet. The source census covers 42 direct named-call locations across
+101 tracked Rust source files, plus the transitive HTTP/MCP/node/state-service and
+authority-table mutation cross-check. Subsequent children integrate authority
+writers, command and node transactions, inspections, effect records and
+administrative families. Those application ordering guarantees remain pending.
 The exact scope and remaining policy owners are recorded in
 `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` and
 `docs/decisions/2026-09-09_tenant-authority-transaction-order.md`.
+
+The guard accepts one to eight predeclared tenant/mode entries. Duplicate entries
+take the strongest mode; full keys are sorted before locking. It cannot upgrade
+an existing shared guard. A guarded executor checks its tenant and required mode,
+while the caller remains responsible for actual permission and tenant-bound SQL.
+Backfilled and newly created anchors confer no identity or authority.
+
+| Example within the qualified primitive | Behavior |
+| --- | --- |
+| Two shared operations for tenant A | Both can hold the guard together. |
+| An exclusive operation for A while a shared operation holds A | Wait until the shared operation finishes; a second remaining shared holder still excludes it. |
+| An exclusive operation for B while A is occupied | B can progress independently. |
+| An operation declares B shared, A shared, then A exclusive | Acquire A exclusive before B shared, irrespective of input order. |
+| A callback records a domain refusal and returns it as its result | Commit that refusal value and its local evidence together. |
+| A callback encounters a SQL error or is cancelled | Do not return success; discard the connection and roll back unfinished work. Cleanup is asynchronous. |
+
+The default lock limit is 5 seconds, the statement limit 10 seconds, and the whole
+operation limit 15 seconds, including pool acquisition and commit. Internal limits
+may be shorter, never longer or disabled. An operation samples database time when
+it evaluates authority, after preceding waits. The guard itself does not freeze
+time or prove that a later response was delivered before expiry.
+
+The cancellation control found a setup gap before SQLx acknowledged BEGIN: the
+same backend was returned to the pool still inside a transaction. The owner now
+holds the connection before that await and permits reuse only after an acknowledged
+successful commit. Tests check replacement of the cancelled backend and normal
+reuse/reset after healthy commit. A commit acknowledgment deadline remains
+**unconfirmed**, because PostgreSQL can still finish a COMMIT already sent. The
+control observes that exact case and reads back the one original row; the runner
+does not retry or invent a success receipt. This primitive creates no new HTTP
+receipt or final-effect API; those interfaces retain their separately owned work.
+
+All four crates that embed migrations now declare their migration directory as a
+build dependency. This addresses the observed cached executable that lacked 0056
+after an ordinary incremental build. The guard migration preserves every original
+identity, boundary, grant and authorization row; even an invalid historical
+grant/parent relationship is preserved as evidence, without inferring permission.
+Qualification and exact failure/cleanup records are in
+`docs/tasks/artifacts/signoff_review/tenant-guard-qualification.md`.
+The final foundation gate passes 35 controls (13 live guard, one pure limits,
+three upgrades and 18 existing authority), 28 migration rebuild/cache checks and
+four-crate strict lint. All results and shutdown are consumed; owned clusters and
+temporary probes are removed. This is qualification of the named primitive and
+migration behavior, with application integration still pending.
+Seven additional commit-checker controls ensure nested evidence files can accompany
+their real owning task tree and cannot replace that tree. They also preserve
+refusals for missing/unchecked boxes and unrelated evidence. This corrects file
+selection; broader doctrine accuracy remains under `.11.2`.
 
 Foreign inbox operations and shared registry mutations require their own corrected
 authority checks and unchanged-state controls under `.3.5` and `.3.2`.

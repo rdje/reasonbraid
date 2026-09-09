@@ -53,8 +53,9 @@ If no candidate is usable, the audit references the first refused candidate and
 its actual parent. If the authority source has no candidate, both references are
 absent and the policy version is `no-policy`; a delegated denial cannot borrow
 the caller's grant. Malformed candidate storage returns a storage error rather than
-a fabricated authority decision. The audit schema and digest input format remain
-unchanged. These lookups do not establish transaction-wide revocation ordering.
+a fabricated authority decision. That selection repair retained the audit schema;
+the later evaluation-provenance field is described below. The digest input format
+remains unchanged. These lookups do not establish transaction-wide revocation ordering.
 
 The separate frozen-tenant administrative read path now uses the same candidate
 selection with a boundary-status exception described below. Under `.3.3.3.2.1`,
@@ -129,6 +130,73 @@ content digest of every field of the boundary and grant. The review must reconci
 that limitation with any stronger policy-binding claim. Administrative handlers do
 not all use the thread-command transaction; their audit and revocation serialization
 are explicit corrective work, not guarantees inferred from the command core.
+
+### Evaluation provenance and historical records
+
+Authorization records now carry an explicit `evaluation` object, including the
+existing thread-audit response. Under `SIGNOFF-REPAIR.3.3.3.2.2.1`, final code
+passes 51 core units, seven metadata/subject controls, 42 live authority/HTTP tests
+and strict lint. Prior fixed/latest-upgrade controls passed; the implementation
+is committed with the final upgrade confirmation still pending. The leaf remains
+active until that result and shutdown are consumed and closure is committed.
+
+| `evaluation.kind` | Meaning |
+| --- | --- |
+| `legacy_unspecified` | The producer did not record which evaluation path it used. |
+| `boundary_checked` | Ordinary evaluation required an active actual boundary; this includes ordinary reads. |
+| `tenant_admin_inspection` | Metadata for a named direct own-tenant read using the boundary-status exception; HTTP production is the next child. |
+
+For example, new ordinary records contain:
+
+```json
+{"evaluation":{"kind":"boundary_checked"}}
+```
+
+Historical rows and old writers receive `legacy_unspecified` through migration
+0055. Historical core JSON that omits evaluation decodes with that same meaning;
+no action is used to guess its prior intent. Newly serialized records include the
+field. Older strict readers that reject unknown fields must upgrade before
+consuming them. The migration preserves the other historical fields unchanged.
+
+The inspection metadata names the direct human/role principal and inspection,
+retaining the selected parent's actual status and grant selector. Source references
+remain in the enclosing record. Absent authority sources carry absent references
+and absent status/scope evidence. A planned exact receipt lookup has a typed
+record ID in its inspection name; this type declaration does not expose a new
+HTTP endpoint yet.
+
+The metadata shape reserved for an inspection admission is explicit, for example:
+
+```json
+{
+  "kind": "tenant_admin_inspection",
+  "principal": {"kind": "human", "id": "hpr_00000000-0000-7000-8000-000000000141"},
+  "inspection": {"kind": "grants"},
+  "boundary_status": "revoked",
+  "grant_selector": {"kind": "tenant_wide"}
+}
+```
+
+This is an evaluation value, not a complete record or a grant. Its HTTP producer
+is the next child. A missing-source refusal uses null status and selector instead
+of borrowing evidence from another tenant boundary or the caller's other grant.
+
+Record readback validates typed IDs, nullable field pairs, decision and target
+discriminants, and complete evaluation metadata. Malformed records return a
+storage failure; the reader does not guess a denial, drop a subject or panic.
+Evaluation, inspection names and shared target selectors require JSON objects.
+For example, `{"kind":"tenant_wide","threads":["thr_…"]}` is refused rather than
+discarding the named threads; `["tenant_wide"]` is also refused. Canonical
+tenant-wide and named-thread selector objects retain their existing shape and
+schema. Duplicate and unknown metadata members are errors.
+The existing thread-audit view uses the same decoder. Its inventory remains the
+existing unpaginated thread view; this change adds no general audit list.
+
+Evaluation provenance describes admission. It does not prove an effect or that
+the entire response reached the caller. The existing policy digest does not bind
+this additional field or every source fact. Explicit HTTP inspection receipts
+and tenant-scoped receipt lookup are the following two children; ordering and
+effect audits remain `.3.3.4`.
 
 ## Administrative authority
 

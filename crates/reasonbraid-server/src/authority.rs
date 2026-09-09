@@ -24,7 +24,7 @@
 use chrono::{DateTime, Utc};
 use reasonbraid_core::{
     boundary_active_at, delegation_scope_is_subset, grant_active_at, grant_exceeds_boundary,
-    policy_digest, ActorPrincipalId, AuthorityGrant, AuthorizationDecisionRecord,
+    policy_digest, ActorPrincipalId, AuthorityGrant, AuthorizationEvaluation,
     AuthorizationRecordId, BoundaryStatus, Decision, EnrollmentAuthorityBoundary, GrantAction,
     GrantStatus, GrantSubject, ResourceTarget, RiskClass, TargetSelector,
 };
@@ -35,7 +35,11 @@ use crate::tx::{self, ApplyError, Command, CommandOutcome};
 
 #[cfg(test)]
 mod evaluation_tests;
+mod records;
 mod selection;
+
+pub use records::load_authorization_record;
+pub(crate) use records::load_thread_authorization_records;
 
 /// The authorization context of one command: the authenticated actor, the grant
 /// holder (the actor, or the delegating subject's principal), the delegated subject
@@ -702,8 +706,8 @@ where
         "INSERT INTO authorization_records \
          (record_id, tenant_id, actor, subject_kind, subject_id, boundary_id, grant_id, action, \
           target_kind, target_tenant, target_thread, decision, reason, policy_digest, \
-          policy_version, decided_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+          policy_version, decided_at, evaluation) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(&record_id)
     .bind(&tenant)
@@ -726,6 +730,9 @@ where
             .unwrap_or("no-policy"),
     )
     .bind(at)
+    .bind(sqlx::types::Json(
+        AuthorizationEvaluation::BoundaryChecked {},
+    ))
     .execute(&mut *pool)
     .await?;
 
@@ -760,97 +767,6 @@ pub async fn apply_authorized_command(
             Err(AuthorizedApplyError::Denied { reason, record_id })
         }
     }
-}
-
-/// The audit record assembled from a stored row (the acceptance's "every command
-/// records…" is verified by reading it back).
-pub async fn load_authorization_record(
-    pool: &PgPool,
-    record_id: &str,
-) -> Result<Option<AuthorizationDecisionRecord>, sqlx::Error> {
-    type Row = (
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        String,
-        String,
-        DateTime<Utc>,
-    );
-    let row: Option<Row> = sqlx::query_as(
-        "SELECT record_id, tenant_id, actor, subject_kind, subject_id, boundary_id, grant_id, \
-                action, target_kind, target_tenant, target_thread, decision, reason, \
-                policy_digest, policy_version, decided_at \
-         FROM authorization_records WHERE record_id = $1",
-    )
-    .bind(record_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(
-        |(
-            record_id,
-            tenant_id,
-            actor,
-            subject_kind,
-            subject_id,
-            boundary_id,
-            grant_id,
-            action,
-            target_kind,
-            target_tenant,
-            target_thread,
-            decision,
-            reason,
-            policy_digest,
-            policy_version,
-            decided_at,
-        )| {
-            let decision = match decision.as_str() {
-                "allowed" => Decision::Allowed,
-                _ => Decision::Denied {
-                    reason: reason.unwrap_or_default(),
-                },
-            };
-            let target = match target_kind.as_str() {
-                "thread" => ResourceTarget::Thread {
-                    tenant_id: target_tenant.parse().expect("stored tenant id parses"),
-                    thread_id: target_thread
-                        .as_deref()
-                        .expect("thread target has a thread id")
-                        .parse()
-                        .expect("stored thread id parses"),
-                },
-                _ => ResourceTarget::Tenant {
-                    tenant_id: target_tenant.parse().expect("stored tenant id parses"),
-                },
-            };
-            AuthorizationDecisionRecord {
-                record_id: record_id.parse().expect("stored record id parses"),
-                tenant_id: tenant_id.parse().expect("stored tenant id parses"),
-                actor: actor.parse().expect("stored actor id parses"),
-                subject: subject_kind
-                    .as_deref()
-                    .and_then(|k| subject_from_parts(k, subject_id.as_deref().unwrap_or_default())),
-                boundary_id,
-                grant_id,
-                action: action.parse::<GrantAction>().expect("stored action parses"),
-                target,
-                decision,
-                policy_digest,
-                policy_version,
-                decided_at,
-            }
-        },
-    ))
 }
 
 // ── Revocation write paths (`.1.3.2`; the epoch bump is `.1.5.2`, ADR-008) ──

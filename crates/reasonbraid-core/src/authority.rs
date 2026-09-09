@@ -203,7 +203,7 @@ impl ResourceTarget {
 
 /// Which resources a grant's actions reach: everything in the tenant, or a named
 /// thread set.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TargetSelector {
     TenantWide,
@@ -583,6 +583,9 @@ impl Decision {
     }
 }
 
+mod evaluation;
+pub use evaluation::{AuthorizationEvaluation, TenantAdminInspection};
+
 /// The audit record every command leaves (§4.5/§5 WP5 acceptance): actor, subject if
 /// delegated, the grant and boundary the decision referenced, the decision itself,
 /// and the policy digest + version it was evaluated against.
@@ -601,6 +604,10 @@ pub struct AuthorizationDecisionRecord {
     pub action: GrantAction,
     pub target: ResourceTarget,
     pub decision: Decision,
+    /// Missing in historical JSON means unspecified provenance, never an inferred
+    /// write or a frozen inspection. New serializers always include this field.
+    #[serde(default)]
+    pub evaluation: AuthorizationEvaluation,
     pub policy_digest: String,
     pub policy_version: String,
     pub decided_at: DateTime<Utc>,

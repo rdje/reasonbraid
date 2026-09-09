@@ -442,6 +442,7 @@ async fn full_flow_inspects_state_through_the_api_only() {
     );
     for record in audit["records"].as_array().unwrap() {
         assert_eq!(record["decision"], json!("allowed"));
+        assert_eq!(record["evaluation"], json!({"kind":"boundary_checked"}));
         assert_eq!(record["policy_digest"].as_str().unwrap().len(), 64);
     }
 

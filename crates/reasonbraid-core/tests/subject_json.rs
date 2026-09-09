@@ -84,6 +84,7 @@ fn enclosing_grants_audits_and_delegation_constraints_round_trip_real_subjects()
             action: GrantAction::ThreadInspect,
             target: reasonbraid_core::ResourceTarget::Tenant { tenant_id: tenant },
             decision: Decision::Allowed,
+            evaluation: reasonbraid_core::AuthorizationEvaluation::BoundaryChecked {},
             policy_digest: "fixture-digest".into(),
             policy_version: "fixture-v1".into(),
             decided_at: at,

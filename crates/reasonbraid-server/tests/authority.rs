@@ -1206,4 +1206,174 @@ async fn record_readback_round_trips_through_the_core_type() {
         thread_target(tenant, "thr_00000000-0000-7000-8000-000000000109")
     );
     assert_eq!(record.record_id.to_string(), record_id);
+    assert_eq!(
+        serde_json::to_value(&record).unwrap()["evaluation"],
+        json!({"kind":"boundary_checked"}),
+        "the record identifies its evaluation path explicitly"
+    );
+}
+
+#[tokio::test]
+async fn malformed_stored_records_refuse_without_guessing_or_panicking() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000135";
+    let ctx = authz(
+        "agt_00000000-0000-7000-8000-000000000135",
+        GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000135".parse().unwrap()),
+        None,
+        GrantAction::TenantAdmin,
+        tenant_target(tenant),
+    );
+    let mut failures = Vec::new();
+    for mutation in [
+        "decision = 'unknown_decision'",
+        "target_kind = 'unknown_target'",
+        "subject_kind = 'unknown_subject', subject_id = 'hpr_00000000-0000-7000-8000-000000000135'",
+        "subject_kind = 'human', subject_id = NULL",
+        "subject_kind = NULL, subject_id = 'hpr_00000000-0000-7000-8000-000000000135'",
+        "actor = 'not-an-actor'",
+        "action = 'unknown_action'",
+        "target_tenant = 'not-a-tenant'",
+        "target_kind = 'thread', target_thread = NULL",
+        "decision = 'allowed', reason = 'contradictory denial reason'",
+    ] {
+        let AuthorizationOutcome::Denied { record_id, .. } =
+            authorize(&pool, &ctx, Utc::now()).await.unwrap()
+        else {
+            panic!("the fixture has no grant");
+        };
+        assert!(load_authorization_record(&pool, &record_id)
+            .await
+            .unwrap()
+            .is_some());
+        sqlx::query(&format!(
+            "UPDATE authorization_records SET {mutation} WHERE record_id = $1"
+        ))
+        .bind(&record_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let reader_pool = pool.clone();
+        let result =
+            tokio::spawn(async move { load_authorization_record(&reader_pool, &record_id).await })
+                .await;
+        match result {
+            Ok(Err(sqlx::Error::Protocol(_))) => {}
+            Ok(other) => failures.push(format!("{mutation}: fabricated readback {other:?}")),
+            Err(error) => failures.push(format!("{mutation}: reader panicked: {error}")),
+        }
+    }
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 10, "record reads do not fabricate extra evidence");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test]
+async fn inspection_evidence_readback_keeps_frozen_source_and_refuses_contradictions() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000136";
+    let principal =
+        GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000136".parse().unwrap());
+    let ctx = authz(
+        &reasonbraid_core::actor_handle_for_subject(&principal).to_string(),
+        principal.clone(),
+        None,
+        GrantAction::TenantAdmin,
+        tenant_target(tenant),
+    );
+    let AuthorizationOutcome::Denied { record_id, .. } =
+        authorize(&pool, &ctx, Utc::now()).await.unwrap()
+    else {
+        panic!("fixture has no authority");
+    };
+    // This child tests stored evidence interpretation. The next child owns
+    // producing such evidence through the actual HTTP inspection path.
+    let absent = reasonbraid_core::AuthorizationEvaluation::TenantAdminInspection {
+        principal,
+        inspection: reasonbraid_core::TenantAdminInspection::Grants {},
+        boundary_status: None,
+        grant_selector: None,
+    };
+    sqlx::query("UPDATE authorization_records SET evaluation = $1 WHERE record_id = $2")
+        .bind(sqlx::types::Json(&absent))
+        .bind(&record_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let decoded = load_authorization_record(&pool, &record_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(decoded.evaluation, absent);
+    assert!(decoded.boundary_id.is_none() && decoded.grant_id.is_none());
+    let mut frozen = serde_json::to_value(absent).unwrap();
+    frozen["boundary_status"] = json!("revoked");
+    frozen["grant_selector"] = json!({"kind":"tenant_wide"});
+    sqlx::query("UPDATE authorization_records SET evaluation = $1, boundary_id = 'bnd_readback', grant_id = 'grt_readback', decision = 'allowed', reason = NULL WHERE record_id = $2")
+        .bind(&frozen).bind(&record_id).execute(&pool).await.unwrap();
+    let valid = load_authorization_record(&pool, &record_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(serde_json::to_value(&valid).unwrap()["evaluation"], frozen);
+    assert_eq!(valid.boundary_id.as_deref(), Some("bnd_readback"));
+    assert_eq!(valid.grant_id.as_deref(), Some("grt_readback"));
+    assert_ne!(
+        valid.evaluation,
+        reasonbraid_core::AuthorizationEvaluation::BoundaryChecked {}
+    );
+    let mut contradictions = Vec::new();
+    for (field, value) in [
+        ("boundary_status", json!(null)),
+        ("grant_selector", json!(null)),
+        ("grant_selector", json!({"kind":"threads","threads":[]})),
+        (
+            "principal",
+            json!({"kind":"role","id":"rol_00000000-0000-7000-8000-000000000137"}),
+        ),
+    ] {
+        let mut invalid = frozen.clone();
+        invalid[field] = value;
+        contradictions.push(invalid);
+    }
+    for invalid in contradictions {
+        sqlx::query("UPDATE authorization_records SET evaluation = $1 WHERE record_id = $2")
+            .bind(&invalid)
+            .bind(&record_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                load_authorization_record(&pool, &record_id).await,
+                Err(sqlx::Error::Protocol(_))
+            ),
+            "{invalid}"
+        );
+    }
+    sqlx::query("UPDATE authorization_records SET evaluation = $1, action = 'thread_inspect' WHERE record_id = $2")
+        .bind(&frozen).bind(&record_id).execute(&pool).await.unwrap();
+    assert!(matches!(
+        load_authorization_record(&pool, &record_id).await,
+        Err(sqlx::Error::Protocol(_))
+    ));
+    sqlx::query("UPDATE authorization_records SET action = 'tenant_admin' WHERE record_id = $1")
+        .bind(&record_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        load_authorization_record(&pool, &record_id)
+            .await
+            .unwrap()
+            .unwrap(),
+        valid
+    );
 }

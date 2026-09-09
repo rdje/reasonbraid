@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Audit decoding must preserve uncertainty and reject invented facts
+
+- The record loader's baseline produced six guessed records and four panics from ten malformed rows. Named row decoding now validates stored decisions, target/subject pairs, typed IDs and explicit evaluation metadata. Legacy provenance stays unspecified; new ordinary records say boundary_checked, which describes the evaluator and includes ordinary reads. Controls also reproduced Serde's unit-marker field discard and sequence alternatives, including shared TargetSelector inputs. Map-only entrypoints, duplicate-preserving MapAccess and private empty-struct wire markers retain valid JSON/schema while refusing those forms. Final code passes 51 core units, seven metadata/subject controls, 42 live authority/HTTP tests and strict lint; commit-first preserves it with final upgrade confirmation pending. HTTP inspection receipts and scoped readback remain the next two children.
+- promotion: promoted → `docs/decisions/2026-09-09_authorization-evaluation-provenance.md`; owner `SIGNOFF-REPAIR.3.3.3.2.2.1`.
+
 ## _(2026-09-09)_ — A freeze exception removes one check, not the authority boundary
 
 - The historical read helper ignored parent ceilings and scope and selected only the newest grant. Matched live controls reproduced 84 invalid allowances and seven incorrect denials across seven routes. Dedicated read evaluation now ignores only actual boundary status while retaining structural binding, ceilings and half-open validity; normal commands keep their status check. All 40 live tests, ten pure controls and strict lint pass; all results consumed and the owned cluster removed. Explicit inspection auditing remains the next leaf so an allowed tenant_admin record cannot masquerade as write authority under a frozen parent.

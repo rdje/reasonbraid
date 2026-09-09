@@ -6768,40 +6768,26 @@ async fn get_audit(
             thread_id,
         },
         |pool| async move {
-            type Row = (
-                String,
-                String,
-                String,
-                String,
-                Option<String>,
-                String,
-                DateTime<Utc>,
-            );
-            let rows: Vec<Row> = sqlx::query_as(
-                "SELECT record_id, actor, action, decision, reason, policy_digest, decided_at \
-             FROM authorization_records \
-             WHERE tenant_id = $1 AND target_kind = 'thread' AND target_thread = $2 \
-             ORDER BY decided_at",
-            )
-            .bind(tenant_id.to_string())
-            .bind(thread_id.to_string())
-            .fetch_all(&pool)
-            .await?;
+            let rows =
+                authority::load_thread_authorization_records(&pool, tenant_id, thread_id).await?;
             let records: Vec<Value> = rows
                 .into_iter()
-                .map(
-                    |(record_id, actor, action, decision, reason, policy_digest, decided_at)| {
-                        json!({
-                            "record_id": record_id,
-                            "actor": actor,
-                            "action": action,
-                            "decision": decision,
-                            "reason": reason,
-                            "policy_digest": policy_digest,
-                            "decided_at": decided_at,
-                        })
-                    },
-                )
+                .map(|record| {
+                    let reason = match &record.decision {
+                        reasonbraid_core::Decision::Allowed => None,
+                        reasonbraid_core::Decision::Denied { reason } => Some(reason),
+                    };
+                    json!({
+                        "record_id": record.record_id,
+                        "actor": record.actor,
+                        "action": record.action,
+                        "decision": record.decision.as_str(),
+                        "reason": reason,
+                        "policy_digest": record.policy_digest,
+                        "decided_at": record.decided_at,
+                        "evaluation": record.evaluation,
+                    })
+                })
                 .collect();
             Ok(json!({
                 "thread_id": thread_id.to_string(),

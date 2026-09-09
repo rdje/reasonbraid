@@ -168,3 +168,152 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
     assert_eq!(status, 200, "the role enrolls after the upgrade: {role}");
     assert!(role["principal_id"].as_str().unwrap().starts_with("rol_"));
 }
+
+/// Pin the provenance transition itself: future migrations must not silently
+/// move this test's historical schema or turn a fresh-schema pass into an upgrade.
+#[tokio::test]
+async fn evaluation_provenance_upgrade_preserves_legacy_records_without_inference() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    sqlx::query("DROP SCHEMA public CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("CREATE SCHEMA public")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    assert!(migrator.migrations.iter().any(|m| m.version == 55));
+    through(54).run(&pool).await.unwrap();
+    let tenant = "ten_00000000-0000-7000-8000-000000000141";
+    let actor = "agt_00000000-0000-7000-8000-000000000141";
+    let old_insert = "INSERT INTO authorization_records \
+        (record_id, tenant_id, actor, action, target_kind, target_tenant, decision, reason, \
+         policy_digest, policy_version, decided_at) \
+        VALUES ($1, $2, $3, 'tenant_admin', 'tenant', $2, $4, $5, \
+                'historical-digest', 'historical-policy', '2026-09-09T00:00:00Z')";
+    let allowed = "authz_00000000-0000-7000-8000-000000000141";
+    let denied = "authz_00000000-0000-7000-8000-000000000142";
+    for (id, decision, reason) in [
+        (allowed, "allowed", None),
+        (denied, "denied", Some("historical refusal")),
+    ] {
+        sqlx::query(old_insert)
+            .bind(id)
+            .bind(tenant)
+            .bind(actor)
+            .bind(decision)
+            .bind(reason)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let before: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(r) FROM authorization_records r ORDER BY record_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    through(55).run(&pool).await.unwrap();
+    let after: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(r) FROM authorization_records r ORDER BY record_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before.len(), 2);
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "upgrade retains the exact row count"
+    );
+    for (old, mut upgraded) in before.into_iter().zip(after) {
+        assert_eq!(
+            upgraded.as_object_mut().unwrap().remove("evaluation"),
+            Some(json!({"kind":"legacy_unspecified"}))
+        );
+        assert_eq!(upgraded, old, "every historical field survives unchanged");
+    }
+    for id in [allowed, denied] {
+        let record = reasonbraid_server::load_authorization_record(&pool, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            record.evaluation,
+            reasonbraid_core::AuthorizationEvaluation::LegacyUnspecified {}
+        );
+    }
+    let old_writer = "authz_00000000-0000-7000-8000-000000000143";
+    sqlx::query(old_insert)
+        .bind(old_writer)
+        .bind(tenant)
+        .bind(actor)
+        .bind("denied")
+        .bind("old writer after upgrade")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let record = reasonbraid_server::load_authorization_record(&pool, old_writer)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        record.evaluation,
+        reasonbraid_core::AuthorizationEvaluation::LegacyUnspecified {}
+    );
+    for invalid in [json!(null), json!([]), json!({}), json!({"kind":"unknown"})] {
+        let error =
+            sqlx::query("UPDATE authorization_records SET evaluation = $1 WHERE record_id = $2")
+                .bind(invalid)
+                .bind(old_writer)
+                .execute(&pool)
+                .await
+                .unwrap_err();
+        assert_eq!(
+            error.as_database_error().and_then(|e| e.code()).as_deref(),
+            Some("23514")
+        );
+    }
+    // The database constrains the discriminator; typed readback also constrains
+    // the complete shape. Unknown fields may not be silently erased.
+    sqlx::query("UPDATE authorization_records SET evaluation = $1 WHERE record_id = $2")
+        .bind(json!({"kind":"boundary_checked","fabricated":true}))
+        .bind(old_writer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        reasonbraid_server::load_authorization_record(&pool, old_writer).await,
+        Err(sqlx::Error::Protocol(_))
+    ));
+    sqlx::query("UPDATE authorization_records SET evaluation = DEFAULT WHERE record_id = $1")
+        .bind(old_writer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        reasonbraid_server::load_authorization_record(&pool, old_writer)
+            .await
+            .unwrap()
+            .unwrap(),
+        record
+    );
+}

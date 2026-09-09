@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Explicit audit evaluation provenance (`SIGNOFF-REPAIR.3.3.3.2.2.1`)
+
+Authorization records add a closed evaluation object. Migration 0055 preserves
+legacy rows as legacy_unspecified; new ordinary writers explicitly record
+boundary_checked, including ordinary reads. Exact and thread-audit readback
+refuse malformed evidence without guessing fields or panicking. Core JSON without
+provenance remains readable; old strict consumers of newly serialized records
+must upgrade. Map-only evaluation/inspection and shared selector decoders reject
+discarded fields, duplicates and sequence alternatives while preserving valid
+JSON and schema. Final code passes 51 core units, seven metadata/subject controls,
+42 live authority/HTTP tests and strict lint. The existing digest format is
+unchanged. Commit-first preserves the implementation with the final upgrade
+confirmation pending; frozen-inspection HTTP receipts and scoped exact receipt
+lookup are separately owned next.
+
 ## 2026-09-09 — Bound frozen-tenant inspection (`SIGNOFF-REPAIR.3.3.3.2.1`)
 
 Seven administrative GET routes retain inspection through active, suspended or

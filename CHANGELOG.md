@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Actual-parent command authority (`SIGNOFF-REPAIR.3.3.3.1`)
+
+Normal commands select usable caller/delegated grants through deterministic
+32-row pages and each grant's actual parent. Requested delegation scope participates
+in selection. Denial records preserve the authority source; absent sources carry
+no grant or parent. Malformed stored candidates fail with a storage error. Six
+pure evaluator controls, all 37 live authority/command API tests and strict
+focused lint pass. All results are consumed and the owned cluster removed. Frozen-admin reads and revocation serialization remain separate repairs.
+
 ## 2026-09-09 — Verified changelog rotation (`SIGNOFF-REPAIR.11.4.1`)
 
 Retain the ten recent corrective-review records and rotate 120 older entries

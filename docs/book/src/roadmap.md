@@ -92,8 +92,10 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.3`: actual-parent and usable-grant
-selection, followed by atomic tenant effect auditing. Bound authority evaluation
+The current frontier is `SIGNOFF-REPAIR.3.3.3.2`: frozen-admin read selection,
+followed by atomic tenant effect auditing. Actual-parent command selection is
+complete with 37 live authority/command API tests, six evaluator controls and strict
+focused lint passed; all results are consumed and the owned cluster removed. Bound authority evaluation
 is corrected; 51 core unit + 3 subject tests, six evaluator controls, 32 live
 authority/command API tests and strict core/server lint pass. All results are
 consumed and the owned cluster stopped/removed.

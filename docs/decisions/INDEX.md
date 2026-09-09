@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_command-authority-selection.md](docs/decisions/2026-09-09_command-authority-selection.md) | decision | bounded candidate pages, actual grant parents and honest delegated authority-source audit references |
 | [2026-09-09_changelog-rotation.md](docs/decisions/2026-09-09_changelog-rotation.md) | decision | exact Git snapshot and lossless record-boundary rotation under the unchanged changelog cap |
 | [2026-09-09_bound-authority-evaluation.md](docs/decisions/2026-09-09_bound-authority-evaluation.md) | decision | grant/parent/tenant/subject binding, half-open validity and action-target selector coverage |
 | [2026-09-09_core-subject-json.md](docs/decisions/2026-09-09_core-subject-json.md) | decision | explicit core kind/id subjects with strict map parsing; preserve envelope strings and split database fields |

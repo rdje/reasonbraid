@@ -41,11 +41,24 @@ cross the grant's tenant boundary.
 These evaluation corrections are implemented under `SIGNOFF-REPAIR.3.3.2`;
 51 core unit + 3 subject tests, all six evaluator controls, 32 live authority/command API
 tests and strict core/server lint pass. The owned verification cluster stopped
-and was removed. The server's database loading and candidate
-selection remain `.3.3.3`: resolve each grant's actual parent and do not let a
-later ineligible grant hide a usable one. The separate frozen-tenant administrative
-read helper also needs these structural checks while preserving its approved
-boundary-status exception. Delegation depth, consent and cached-decision freshness
+and was removed. Normal command candidate loading is verified under `.3.3.3.1`: all 37 live
+authority/command API tests, six evaluator controls and strict focused lint pass. It reads active grants in pages of 32 rows, ordered by
+newest validity start and then bytewise grant ID. Each candidate is checked against
+its own parent; the first usable grant wins. A newer future, expired or narrower
+grant does not itself remove older authority. Requested delegation scope is part
+of selecting the delegated source, and the caller still needs its own usable grant.
+There is no arbitrary total candidate cutoff; page size bounds buffered row count.
+
+If no candidate is usable, the audit references the first refused candidate and
+its actual parent. If the authority source has no candidate, both references are
+absent and the policy version is `no-policy`; a delegated denial cannot borrow
+the caller's grant. Malformed candidate storage returns a storage error rather than
+a fabricated authority decision. The audit schema and digest input format remain
+unchanged. These lookups do not establish transaction-wide revocation ordering.
+
+The separate frozen-tenant administrative read helper remains `.3.3.3.2`; it
+needs structural and candidate checks while preserving its approved boundary-status
+exception. Delegation depth, consent and cached-decision freshness
 remain `.3.4`; tenant authority/effect transaction ordering remains `.3.3.4`.
 
 ## Subject JSON and delegation inputs

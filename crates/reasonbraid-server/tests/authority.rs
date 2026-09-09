@@ -248,10 +248,8 @@ async fn tenant_membership_alone_grants_nothing_and_denials_are_audited() {
         }
     );
     assert!(record.grant_id.is_none(), "no grant was referenced");
-    assert_eq!(
-        record.boundary_id.as_deref(),
-        Some("bnd_00000000-0000-7000-8000-000000000101")
-    );
+    assert_eq!(record.boundary_id, None, "no grant selected a parent");
+    assert_eq!(record.policy_version, "no-policy");
 
     // The same denial through the command path: audited, and NOTHING was applied.
     let err = apply_authorized_command(
@@ -614,6 +612,360 @@ async fn thread_scoped_grants_cannot_authorize_tenant_wide_requests() {
     }
 }
 
+#[tokio::test]
+async fn replacement_boundaries_never_reparent_a_grant_or_its_denial_record() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000130";
+    let original = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &original).await.unwrap();
+    let grt = grant(
+        &original.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000130",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &grt).await.unwrap();
+    let context = authz(
+        "agt_00000000-0000-7000-8000-000000000130",
+        grt.subject.clone(),
+        None,
+        GrantAction::ThreadInspect,
+        tenant_target(tenant),
+    );
+    assert!(matches!(
+        authorize(&pool, &context, Utc::now()).await.unwrap(),
+        AuthorizationOutcome::Allowed { .. }
+    ));
+    sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE boundary_id = $1")
+        .bind(&original.boundary_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut replacement = original.clone();
+    replacement.boundary_id.push_str("_replacement");
+    replacement.policy_version = "replacement-policy".into();
+    create_boundary(&pool, &replacement).await.unwrap();
+    let AuthorizationOutcome::Denied { record_id, .. } =
+        authorize(&pool, &context, Utc::now()).await.unwrap()
+    else {
+        panic!("an unrelated active boundary rearmed the revoked parent's grant");
+    };
+    let record = load_authorization_record(&pool, &record_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.grant_id.as_deref(), Some(grt.grant_id.as_str()));
+    assert_eq!(
+        record.boundary_id.as_deref(),
+        Some(original.boundary_id.as_str())
+    );
+    assert_eq!(record.policy_version, original.policy_version);
+    let mut revoked = original;
+    revoked.status = BoundaryStatus::Revoked;
+    assert_eq!(
+        record.policy_digest,
+        policy_digest(
+            Some(&revoked),
+            Some(&grt),
+            Some(&grt.subject),
+            context.action,
+            &context.target,
+            &record.decision
+        )
+    );
+}
+
+#[tokio::test]
+async fn newer_ineligible_grants_do_not_shadow_usable_authority_across_pages() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000131";
+    let b = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect, GrantAction::ThreadContribute],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &b).await.unwrap();
+    let now = Utc::now();
+    let mut usable = grant(
+        &b.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000131",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    usable.valid_from = now - Duration::days(10);
+    create_grant(&pool, &usable).await.unwrap();
+    // More than two 32-row pages, with timestamp ties and distinct grant IDs.
+    for index in 0..70 {
+        let mut other = usable.clone();
+        other.grant_id = format!("grt_shadow_{index:03}");
+        other.valid_from = now - Duration::hours(1);
+        match index % 4 {
+            0 => other.valid_from = now + Duration::hours(1),
+            1 => other.expires_at = now - Duration::minutes(1),
+            2 => other.actions = vec![GrantAction::ThreadContribute],
+            3 => other.selector = TargetSelector::Threads { threads: vec![] },
+            _ => unreachable!(),
+        }
+        create_grant(&pool, &other).await.unwrap();
+    }
+    let mut tied = usable.clone();
+    tied.grant_id.push_str("_also");
+    create_grant(&pool, &tied).await.unwrap();
+    let context = authz(
+        "agt_00000000-0000-7000-8000-000000000131",
+        usable.subject.clone(),
+        None,
+        GrantAction::ThreadInspect,
+        tenant_target(tenant),
+    );
+    for _ in 0..2 {
+        let AuthorizationOutcome::Allowed { record_id, .. } =
+            authorize(&pool, &context, now).await.unwrap()
+        else {
+            panic!("ineligible newer grants hid the usable grant");
+        };
+        let record = load_authorization_record(&pool, &record_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.grant_id.as_deref(), Some(usable.grant_id.as_str()));
+        assert_eq!(record.boundary_id.as_deref(), Some(b.boundary_id.as_str()));
+    }
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&usable.grant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let AuthorizationOutcome::Allowed { record_id, .. } =
+        authorize(&pool, &context, now).await.unwrap()
+    else {
+        panic!("revoking the first usable grant hid the remaining tied grant");
+    };
+    let record = load_authorization_record(&pool, &record_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.grant_id.as_deref(), Some(tied.grant_id.as_str()));
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&tied.grant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        authorize(&pool, &context, now).await.unwrap(),
+        AuthorizationOutcome::Denied { .. }
+    ));
+}
+
+#[tokio::test]
+async fn delegated_selection_includes_the_whole_requested_scope() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000132";
+    let b = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect],
+        RiskClass::Low,
+        true,
+    );
+    create_boundary(&pool, &b).await.unwrap();
+    let caller = grant(
+        &b.boundary_id,
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000132",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &caller).await.unwrap();
+    let mut source = grant(
+        &b.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000232",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    source.valid_from -= Duration::days(1);
+    source.delegable = true;
+    create_grant(&pool, &source).await.unwrap();
+    let thread = "thr_00000000-0000-7000-8000-000000000132";
+    let mut narrow = source.clone();
+    narrow.grant_id.push_str("_narrow");
+    narrow.valid_from += Duration::hours(1);
+    narrow.selector = TargetSelector::Threads {
+        threads: vec![thread.parse().unwrap()],
+    };
+    create_grant(&pool, &narrow).await.unwrap();
+    let mut context = authz(
+        "agt_00000000-0000-7000-8000-000000000132",
+        caller.subject,
+        Some(source.subject.clone()),
+        GrantAction::ThreadInspect,
+        thread_target(tenant, thread),
+    );
+    context.delegation_scope = Some(TargetSelector::TenantWide);
+    let AuthorizationOutcome::Allowed { record_id, .. } =
+        authorize(&pool, &context, Utc::now()).await.unwrap()
+    else {
+        panic!("a narrower newer source hid the usable delegated authority");
+    };
+    let record = load_authorization_record(&pool, &record_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.subject, Some(source.subject.clone()));
+    assert_eq!(record.grant_id.as_deref(), Some(source.grant_id.as_str()));
+    assert_eq!(record.boundary_id.as_deref(), Some(b.boundary_id.as_str()));
+    context.delegation_scope = Some(TargetSelector::Threads { threads: vec![] });
+    assert!(matches!(
+        authorize(&pool, &context, Utc::now()).await.unwrap(),
+        AuthorizationOutcome::Denied { .. }
+    ));
+}
+
+#[tokio::test]
+async fn absent_authority_sources_do_not_borrow_caller_or_tenant_audit_references() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000133";
+    let b = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &b).await.unwrap();
+    let caller = grant(
+        &b.boundary_id,
+        tenant,
+        "rol_00000000-0000-7000-8000-000000000133",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &caller).await.unwrap();
+    let absent = GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000133".parse().unwrap());
+    for delegated in [false, true] {
+        let context = authz(
+            "agt_00000000-0000-7000-8000-000000000133",
+            if delegated {
+                caller.subject.clone()
+            } else {
+                absent.clone()
+            },
+            delegated.then(|| absent.clone()),
+            GrantAction::ThreadInspect,
+            tenant_target(tenant),
+        );
+        let AuthorizationOutcome::Denied { record_id, .. } =
+            authorize(&pool, &context, Utc::now()).await.unwrap()
+        else {
+            panic!("absent source allowed")
+        };
+        let record = load_authorization_record(&pool, &record_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            record.grant_id, None,
+            "a missing source cannot borrow the caller's grant"
+        );
+        assert_eq!(
+            record.boundary_id, None,
+            "a missing source has no selected parent"
+        );
+        assert_eq!(record.policy_version, "no-policy");
+    }
+}
+
+#[tokio::test]
+async fn malformed_stored_authority_returns_an_error_without_fabricated_audit() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000134";
+    let b = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &b).await.unwrap();
+    let grt = grant(
+        &b.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000134",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    create_grant(&pool, &grt).await.unwrap();
+    let context = authz(
+        "agt_00000000-0000-7000-8000-000000000134",
+        grt.subject.clone(),
+        None,
+        GrantAction::ThreadInspect,
+        tenant_target(tenant),
+    );
+    sqlx::query("UPDATE authority_grants SET selector = $1 WHERE grant_id = $2")
+        .bind(json!({"kind":"unknown_selector"}))
+        .bind(&grt.grant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(authorize(&pool, &context, Utc::now()).await.is_err());
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 0, "corrupt storage is not an authority decision");
+    sqlx::query("UPDATE authority_grants SET selector = $1 WHERE grant_id = $2")
+        .bind(serde_json::to_value(&grt.selector).unwrap())
+        .bind(&grt.grant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        authorize(&pool, &context, Utc::now()).await.unwrap(),
+        AuthorizationOutcome::Allowed { .. }
+    ));
+    sqlx::query(
+        "UPDATE enrollment_boundaries SET max_delegation_depth = -1 WHERE boundary_id = $1",
+    )
+    .bind(&b.boundary_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(authorize(&pool, &context, Utc::now()).await.is_err());
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        count, 1,
+        "malformed parent adds no fabricated audit to the earlier valid record"
+    );
+    sqlx::query("UPDATE enrollment_boundaries SET max_delegation_depth = 1 WHERE boundary_id = $1")
+        .bind(&b.boundary_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        authorize(&pool, &context, Utc::now()).await.unwrap(),
+        AuthorizationOutcome::Allowed { .. }
+    ));
+}
+
 /// Scope: a thread-scoped grant reaches only its threads; tenant boundaries bind
 /// every evaluation; thread_create targets the tenant.
 #[tokio::test]
@@ -745,15 +1097,14 @@ async fn a_tenant_without_a_boundary_is_denied() {
     let AuthorizationOutcome::Denied { reason, record_id } = outcome else {
         panic!("no boundary means no authority");
     };
-    assert!(
-        reason.contains("no active enrollment boundary"),
-        "got: {reason}"
-    );
+    assert!(reason.contains("no applicable grant"), "got: {reason}");
     let record = load_authorization_record(&pool, &record_id)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(record.boundary_id, None);
+    assert_eq!(record.grant_id, None);
+    assert_eq!(record.policy_version, "no-policy");
 }
 
 /// Two identical evaluations produce identical digests; the record ids differ (each

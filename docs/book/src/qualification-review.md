@@ -47,7 +47,7 @@ measured revocation controls above. Each row has executable repair ownership rat
 
 | Surface | Current limitation identified in source | Repair leaves |
 | --- | --- | --- |
-| Authority and administration | Foreign grant/boundary mutation and shared site-registry authority are corrected with matched controls. Core subject serialization is reproduced and corrected with direct/enclosing and live compatibility controls; bound evaluation passes core/evaluator controls, 32 live authority/command API tests and strict lint. Effect auditing, caller/target paths and actual-parent grant selection remain. | `.3.1`–`.3.5` |
+| Authority and administration | Foreign grant/boundary mutation and shared site-registry authority are corrected with matched controls. Core subject serialization is reproduced and corrected with direct/enclosing and live compatibility controls; bound evaluation passes core/evaluator controls, 32 live authority/command API tests and strict lint. Actual-parent command selection passes 37 live tests, six evaluator controls and strict lint; effect auditing, caller/target paths and frozen-admin read selection remain. | `.3.1`–`.3.5` |
 | Node recovery and budgets | Receipt identity, cursor retention, result durability, uncertain retry, settlement and concurrency guarantees need additional enforcement and proof. | `.4.1`–`.4.5` |
 | Directory and recruitment | Candidate visibility and call/thread binding are incomplete; automatic creation reuses a fixed idempotency key. | `.5.1`–`.5.3` |
 | MCP and A2A | MCP reads do not uniformly enforce target authority; listen dedup needs correction. A2A qualification currently demonstrates serialization rather than an independent transport peer. | `.6.1`–`.6.3` |

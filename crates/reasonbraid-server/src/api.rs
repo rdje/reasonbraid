@@ -1552,18 +1552,23 @@ async fn list_node_presence(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type Row = (
-        String,
-        bool,
-        bool,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<i64>,
-    );
-    let rows: Vec<Row> = sqlx::query_as(
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::NodesPresence {},
+        |pool| async move {
+            type Row = (
+                String,
+                bool,
+                bool,
+                Option<chrono::DateTime<chrono::Utc>>,
+                Option<chrono::DateTime<chrono::Utc>>,
+                Option<i64>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
         "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
@@ -1571,9 +1576,9 @@ async fn list_node_presence(
          FROM node_presence np WHERE np.tenant_id = $1 ORDER BY np.node_id",
     )
     .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
+    .fetch_all(&pool)
     .await?;
-    let nodes: Vec<Value> = rows
+            let nodes: Vec<Value> = rows
         .into_iter()
         .map(
             |(node_id, online, suspended, last_seen_at, lease_expires_at, concurrency)| {
@@ -1589,10 +1594,13 @@ async fn list_node_presence(
             },
         )
         .collect();
-    Ok(Json(json!({
-        "tenant_id": q.tenant_id.to_string(),
-        "nodes": nodes,
-    })))
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "nodes": nodes,
+            })))
+        },
+    )
+    .await
 }
 
 // ── The resolver capability registry (PHASE-4.1.3; backlog 31) ──────────────────────
@@ -4874,23 +4882,42 @@ async fn revoke_boundary(
     })))
 }
 
-/// The admin READ authorization: an eligible own-tenant grant may inspect after
-/// its actual boundary is suspended or revoked. Only the boundary's status check
-/// is excepted; parent, subject, tenant, ceilings, scope and validity still bind.
-async fn authorize_tenant_admin_read(
-    pool: &PgPool,
+/// Admit and record a named own-tenant inspection before running its query.
+/// Both allow and deny responses name a committed record. If the query later
+/// fails, its response retains the real admission receipt; failed authority/audit
+/// storage cannot advertise an unconfirmed receipt.
+async fn inspect_tenant_admin<F, Fut>(
+    state: &ApiState,
     principal: &GrantSubject,
     tenant_id: TenantId,
-) -> Result<(), ControlApiError> {
-    match authority::check_tenant_admin_read(pool, principal, tenant_id, Utc::now()).await? {
-        reasonbraid_core::Decision::Allowed => Ok(()),
-        reasonbraid_core::Decision::Denied { reason } => {
+    inspection: reasonbraid_core::TenantAdminInspection,
+    read: F,
+) -> Result<Response, ControlApiError>
+where
+    F: FnOnce(PgPool) -> Fut,
+    Fut: std::future::Future<Output = Result<Json<Value>, ControlApiError>>,
+{
+    let outcome =
+        authority::authorize_tenant_admin_inspection(&state.pool, principal, tenant_id, inspection)
+            .await?;
+    let (record_id, response) = match outcome {
+        AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
-            Err(ControlApiError::unauthorized(format!(
-                "authorization denied: {reason}"
-            )))
+            let response = ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            ))
+            .into_response();
+            (record_id, response)
         }
-    }
+        AuthorizationOutcome::Allowed { record_id, .. } => {
+            let response = match read(state.pool.clone()).await {
+                Ok(body) => body.into_response(),
+                Err(error) => error.into_response(),
+            };
+            (record_id, response)
+        }
+    };
+    Ok(([("x-reasonbraid-authorization", record_id)], response).into_response())
 }
 
 /// The tenant's grants, newest first — the inspection surface the revocation
@@ -4899,44 +4926,60 @@ async fn list_grants(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type Row = (
-        String,
-        String,
-        String,
-        Value,
-        String,
-        DateTime<Utc>,
-        DateTime<Utc>,
-    );
-    let rows: Vec<Row> = sqlx::query_as(
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Grants {},
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                String,
+                Value,
+                String,
+                DateTime<Utc>,
+                DateTime<Utc>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
         "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at \
          FROM authority_grants WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
+    .fetch_all(&pool)
     .await?;
-    let grants: Vec<Value> = rows
-        .into_iter()
-        .map(
-            |(grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at)| {
-                json!({
-                    "grant_id": grant_id,
-                    "subject_kind": subject_kind,
-                    "subject_id": subject_id,
-                    "actions": actions,
-                    "status": status,
-                    "valid_from": valid_from.to_rfc3339(),
-                    "expires_at": expires_at.to_rfc3339(),
-                })
-            },
-        )
-        .collect();
-    Ok(Json(
-        json!({ "tenant_id": q.tenant_id.to_string(), "grants": grants }),
-    ))
+            let grants: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(
+                        grant_id,
+                        subject_kind,
+                        subject_id,
+                        actions,
+                        status,
+                        valid_from,
+                        expires_at,
+                    )| {
+                        json!({
+                            "grant_id": grant_id,
+                            "subject_kind": subject_kind,
+                            "subject_id": subject_id,
+                            "actions": actions,
+                            "status": status,
+                            "valid_from": valid_from.to_rfc3339(),
+                            "expires_at": expires_at.to_rfc3339(),
+                        })
+                    },
+                )
+                .collect();
+            Ok(Json(
+                json!({ "tenant_id": q.tenant_id.to_string(), "grants": grants }),
+            ))
+        },
+    )
+    .await
 }
 
 /// The tenant's enrollment boundaries — the same inspection contract.
@@ -4944,34 +4987,42 @@ async fn list_boundaries(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type Row = (String, String, String, DateTime<Utc>, DateTime<Utc>);
-    let rows: Vec<Row> = sqlx::query_as(
-        "SELECT boundary_id, status, target_owner, valid_from, expires_at \
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Boundaries {},
+        |pool| async move {
+            type Row = (String, String, String, DateTime<Utc>, DateTime<Utc>);
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT boundary_id, status, target_owner, valid_from, expires_at \
          FROM enrollment_boundaries WHERE tenant_id = $1 ORDER BY valid_from DESC",
+            )
+            .bind(q.tenant_id.to_string())
+            .fetch_all(&pool)
+            .await?;
+            let boundaries: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(boundary_id, status, target_owner, valid_from, expires_at)| {
+                        json!({
+                            "boundary_id": boundary_id,
+                            "status": status,
+                            "target_owner": target_owner,
+                            "valid_from": valid_from.to_rfc3339(),
+                            "expires_at": expires_at.to_rfc3339(),
+                        })
+                    },
+                )
+                .collect();
+            Ok(Json(
+                json!({ "tenant_id": q.tenant_id.to_string(), "boundaries": boundaries }),
+            ))
+        },
     )
-    .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
-    .await?;
-    let boundaries: Vec<Value> = rows
-        .into_iter()
-        .map(
-            |(boundary_id, status, target_owner, valid_from, expires_at)| {
-                json!({
-                    "boundary_id": boundary_id,
-                    "status": status,
-                    "target_owner": target_owner,
-                    "valid_from": valid_from.to_rfc3339(),
-                    "expires_at": expires_at.to_rfc3339(),
-                })
-            },
-        )
-        .collect();
-    Ok(Json(
-        json!({ "tenant_id": q.tenant_id.to_string(), "boundaries": boundaries }),
-    ))
+    .await
 }
 
 /// The tenant's incarnations (`.1.6.1`; deferral #4's first half) — the §8.1
@@ -4981,46 +5032,63 @@ async fn list_incarnations(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type Row = (
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<Value>,
-        Option<DateTime<Utc>>,
-        Option<DateTime<Utc>>,
-    );
-    let rows: Vec<Row> = sqlx::query_as(
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Incarnations {},
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<Value>,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
         "SELECT incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to \
          FROM incarnations WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
+    .fetch_all(&pool)
     .await?;
-    let incarnations: Vec<Value> = rows
-        .into_iter()
-        .map(
-            |(incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to)| {
-                json!({
-                    "incarnation_id": incarnation_id,
-                    "role_id": role_id,
-                    "provider": provider,
-                    "model": model,
-                    "harness": harness,
-                    "config": config,
-                    "valid_from": valid_from.map(|d| d.to_rfc3339()),
-                    "valid_to": valid_to.map(|d| d.to_rfc3339()),
-                })
-            },
-        )
-        .collect();
-    Ok(Json(
-        json!({ "tenant_id": q.tenant_id.to_string(), "incarnations": incarnations }),
-    ))
+            let incarnations: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(
+                        incarnation_id,
+                        role_id,
+                        provider,
+                        model,
+                        harness,
+                        config,
+                        valid_from,
+                        valid_to,
+                    )| {
+                        json!({
+                            "incarnation_id": incarnation_id,
+                            "role_id": role_id,
+                            "provider": provider,
+                            "model": model,
+                            "harness": harness,
+                            "config": config,
+                            "valid_from": valid_from.map(|d| d.to_rfc3339()),
+                            "valid_to": valid_to.map(|d| d.to_rfc3339()),
+                        })
+                    },
+                )
+                .collect();
+            Ok(Json(
+                json!({ "tenant_id": q.tenant_id.to_string(), "incarnations": incarnations }),
+            ))
+        },
+    )
+    .await
 }
 
 /// The tenant's runs (`.1.6.2`; deferral #4's second half) — each run links its
@@ -5030,35 +5098,43 @@ async fn list_runs(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type Row = (String, String, String, Option<String>, DateTime<Utc>);
-    let rows: Vec<Row> = sqlx::query_as(
-        "SELECT r.run_id, r.incarnation_id, i.role_id, r.attempt_id, r.created_at \
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Runs {},
+        |pool| async move {
+            type Row = (String, String, String, Option<String>, DateTime<Utc>);
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT r.run_id, r.incarnation_id, i.role_id, r.attempt_id, r.created_at \
          FROM runs r JOIN incarnations i ON i.incarnation_id = r.incarnation_id \
          WHERE r.tenant_id = $1 ORDER BY r.created_at DESC",
+            )
+            .bind(q.tenant_id.to_string())
+            .fetch_all(&pool)
+            .await?;
+            let runs: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(run_id, incarnation_id, role_id, attempt_id, created_at)| {
+                        json!({
+                            "run_id": run_id,
+                            "incarnation_id": incarnation_id,
+                            "role_id": role_id,
+                            "attempt_id": attempt_id,
+                            "created_at": created_at.to_rfc3339(),
+                        })
+                    },
+                )
+                .collect();
+            Ok(Json(
+                json!({ "tenant_id": q.tenant_id.to_string(), "runs": runs }),
+            ))
+        },
     )
-    .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
-    .await?;
-    let runs: Vec<Value> = rows
-        .into_iter()
-        .map(
-            |(run_id, incarnation_id, role_id, attempt_id, created_at)| {
-                json!({
-                    "run_id": run_id,
-                    "incarnation_id": incarnation_id,
-                    "role_id": role_id,
-                    "attempt_id": attempt_id,
-                    "created_at": created_at.to_rfc3339(),
-                })
-            },
-        )
-        .collect();
-    Ok(Json(
-        json!({ "tenant_id": q.tenant_id.to_string(), "runs": runs }),
-    ))
+    .await
 }
 
 /// The spend-breaker verbs (`.3.2`, backlog 23; tenant_admin): arm (declare
@@ -5128,34 +5204,42 @@ async fn inspect_breakers(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-    type BreakerRow = (
-        serde_json::Value,
-        Option<DateTime<Utc>>,
-        Option<String>,
-        DateTime<Utc>,
-    );
-    let row: Option<BreakerRow> = sqlx::query_as(
-        "SELECT threshold, tripped_at, tripped_reason, armed_at \
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Breakers {},
+        |pool| async move {
+            type BreakerRow = (
+                serde_json::Value,
+                Option<DateTime<Utc>>,
+                Option<String>,
+                DateTime<Utc>,
+            );
+            let row: Option<BreakerRow> = sqlx::query_as(
+                "SELECT threshold, tripped_at, tripped_reason, armed_at \
              FROM spend_breakers WHERE tenant_id = $1",
+            )
+            .bind(q.tenant_id.to_string())
+            .fetch_optional(&pool)
+            .await?;
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "breaker": row.map(
+                    |(threshold, tripped_at, tripped_reason, armed_at)| json!({
+                        "threshold": threshold,
+                        "tripped": tripped_at.is_some(),
+                        "tripped_at": tripped_at.map(|d| d.to_rfc3339()),
+                        "tripped_reason": tripped_reason,
+                        "armed_at": armed_at.to_rfc3339(),
+                    })
+                ),
+            })))
+        },
     )
-    .bind(q.tenant_id.to_string())
-    .fetch_optional(&state.pool)
-    .await?;
-    Ok(Json(json!({
-        "tenant_id": q.tenant_id.to_string(),
-        "breaker": row.map(
-            |(threshold, tripped_at, tripped_reason, armed_at)| json!({
-                "threshold": threshold,
-                "tripped": tripped_at.is_some(),
-                "tripped_at": tripped_at.map(|d| d.to_rfc3339()),
-                "tripped_reason": tripped_reason,
-                "armed_at": armed_at.to_rfc3339(),
-            })
-        ),
-    })))
+    .await
 }
 
 // ── Thread commands ──────────────────────────────────────────────────────────────
@@ -6513,124 +6597,133 @@ async fn admin_usage(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin_read(&state.pool, &principal, q.tenant_id).await?;
-
-    type Row = (
-        String,
-        Value,
-        Option<Value>,
-        String,
-        Option<String>,
-        Option<DateTime<Utc>>,
-    );
-    let rows: Vec<Row> = sqlx::query_as(
-        "SELECT thread_id, dimensions, usage, status, reason, expires_at \
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Usage {},
+        |pool| async move {
+            type Row = (
+                String,
+                Value,
+                Option<Value>,
+                String,
+                Option<String>,
+                Option<DateTime<Utc>>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT thread_id, dimensions, usage, status, reason, expires_at \
          FROM budget_reservations WHERE tenant_id = $1 ORDER BY created_at",
-    )
-    .bind(q.tenant_id.to_string())
-    .fetch_all(&state.pool)
-    .await?;
+            )
+            .bind(q.tenant_id.to_string())
+            .fetch_all(&pool)
+            .await?;
 
-    let mut tenant_held = BudgetDimensions::default();
-    let mut tenant_settled = BudgetDimensions::default();
-    let mut tenant_overrun = BudgetDimensions::default();
-    let mut tenant_denied = 0usize;
-    let mut denial_reasons: Vec<&str> = Vec::new();
-    let mut threads: std::collections::BTreeMap<
-        String,
-        (BudgetDimensions, BudgetDimensions, BudgetDimensions, usize),
-    > = std::collections::BTreeMap::new();
+            let mut tenant_held = BudgetDimensions::default();
+            let mut tenant_settled = BudgetDimensions::default();
+            let mut tenant_overrun = BudgetDimensions::default();
+            let mut tenant_denied = 0usize;
+            let mut denial_reasons: Vec<&str> = Vec::new();
+            let mut threads: std::collections::BTreeMap<
+                String,
+                (BudgetDimensions, BudgetDimensions, BudgetDimensions, usize),
+            > = std::collections::BTreeMap::new();
 
-    for (thread_id, dimensions, usage, status, reason, expires_at) in &rows {
-        let reserved: BudgetDimensions =
-            serde_json::from_value(dimensions.clone()).expect("stored dims parse");
-        let (held, settled, overrun, denied) =
-            threads.entry(thread_id.clone()).or_insert_with(|| {
-                (
-                    BudgetDimensions::default(),
-                    BudgetDimensions::default(),
-                    BudgetDimensions::default(),
-                    0,
-                )
-            });
-        match status.as_str() {
-            "active" if expires_at.is_some_and(|e| e > Utc::now()) => {
-                *held = held.add(&reserved);
-                tenant_held = tenant_held.add(&reserved);
-            }
-            "settled" => {
-                let used: BudgetDimensions = usage
-                    .as_ref()
-                    .map(|u| serde_json::from_value(u.clone()).expect("stored usage parses"))
-                    .unwrap_or_default();
-                *settled = settled.add(&used);
-                tenant_settled = tenant_settled.add(&used);
-                // The overrun per dimension = used minus reserved, floored at
-                // None (an unused remainder is NOT a negative overrun).
-                let over = BudgetDimensions {
-                    calls: used
-                        .calls
-                        .zip(reserved.calls)
-                        .map(|(u, r)| u.saturating_sub(r)),
-                    input_tokens: used
-                        .input_tokens
-                        .zip(reserved.input_tokens)
-                        .map(|(u, r)| u.saturating_sub(r)),
-                    output_tokens: used
-                        .output_tokens
-                        .zip(reserved.output_tokens)
-                        .map(|(u, r)| u.saturating_sub(r)),
-                    wall_clock_seconds: used
-                        .wall_clock_seconds
-                        .zip(reserved.wall_clock_seconds)
-                        .map(|(u, r)| u.saturating_sub(r)),
-                };
-                *overrun = overrun.add(&over);
-                tenant_overrun = tenant_overrun.add(&over);
-            }
-            "denied" => {
-                *denied += 1;
-                tenant_denied += 1;
-                if let Some(reason) = reason.as_deref() {
-                    denial_reasons.push(reason);
+            for (thread_id, dimensions, usage, status, reason, expires_at) in &rows {
+                let reserved: BudgetDimensions =
+                    serde_json::from_value(dimensions.clone()).expect("stored dims parse");
+                let (held, settled, overrun, denied) =
+                    threads.entry(thread_id.clone()).or_insert_with(|| {
+                        (
+                            BudgetDimensions::default(),
+                            BudgetDimensions::default(),
+                            BudgetDimensions::default(),
+                            0,
+                        )
+                    });
+                match status.as_str() {
+                    "active" if expires_at.is_some_and(|e| e > Utc::now()) => {
+                        *held = held.add(&reserved);
+                        tenant_held = tenant_held.add(&reserved);
+                    }
+                    "settled" => {
+                        let used: BudgetDimensions = usage
+                            .as_ref()
+                            .map(|u| {
+                                serde_json::from_value(u.clone()).expect("stored usage parses")
+                            })
+                            .unwrap_or_default();
+                        *settled = settled.add(&used);
+                        tenant_settled = tenant_settled.add(&used);
+                        // The overrun per dimension = used minus reserved, floored at
+                        // None (an unused remainder is NOT a negative overrun).
+                        let over = BudgetDimensions {
+                            calls: used
+                                .calls
+                                .zip(reserved.calls)
+                                .map(|(u, r)| u.saturating_sub(r)),
+                            input_tokens: used
+                                .input_tokens
+                                .zip(reserved.input_tokens)
+                                .map(|(u, r)| u.saturating_sub(r)),
+                            output_tokens: used
+                                .output_tokens
+                                .zip(reserved.output_tokens)
+                                .map(|(u, r)| u.saturating_sub(r)),
+                            wall_clock_seconds: used
+                                .wall_clock_seconds
+                                .zip(reserved.wall_clock_seconds)
+                                .map(|(u, r)| u.saturating_sub(r)),
+                        };
+                        *overrun = overrun.add(&over);
+                        tenant_overrun = tenant_overrun.add(&over);
+                    }
+                    "denied" => {
+                        *denied += 1;
+                        tenant_denied += 1;
+                        if let Some(reason) = reason.as_deref() {
+                            denial_reasons.push(reason);
+                        }
+                    }
+                    _ => {} // released/expired: nothing held, nothing settled
                 }
             }
-            _ => {} // released/expired: nothing held, nothing settled
-        }
-    }
 
-    let dims_to_json = |d: BudgetDimensions| {
-        json!({
-            "calls": d.calls,
-            "input_tokens": d.input_tokens,
-            "output_tokens": d.output_tokens,
-            "wall_clock_seconds": d.wall_clock_seconds,
-        })
-    };
-    Ok(Json(json!({
-        "tenant_id": q.tenant_id.to_string(),
-        "aggregate": {
-            "held": dims_to_json(tenant_held),
-            "settled": dims_to_json(tenant_settled),
-            "overrun": dims_to_json(tenant_overrun),
-            "denied": tenant_denied,
-            "denial_reasons": denial_reasons,
-        },
-        "threads": threads
-            .into_iter()
-            .map(|(thread_id, (held, settled, overrun, denied))| {
+            let dims_to_json = |d: BudgetDimensions| {
                 json!({
-                    "thread_id": thread_id,
-                    "held": dims_to_json(held),
-                    "settled": dims_to_json(settled),
-                    "overrun": dims_to_json(overrun),
-                    "denied": denied,
+                    "calls": d.calls,
+                    "input_tokens": d.input_tokens,
+                    "output_tokens": d.output_tokens,
+                    "wall_clock_seconds": d.wall_clock_seconds,
                 })
-            })
-            .collect::<Vec<_>>(),
-    })))
+            };
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "aggregate": {
+                    "held": dims_to_json(tenant_held),
+                    "settled": dims_to_json(tenant_settled),
+                    "overrun": dims_to_json(tenant_overrun),
+                    "denied": tenant_denied,
+                    "denial_reasons": denial_reasons,
+                },
+                "threads": threads
+                    .into_iter()
+                    .map(|(thread_id, (held, settled, overrun, denied))| {
+                        json!({
+                            "thread_id": thread_id,
+                            "held": dims_to_json(held),
+                            "settled": dims_to_json(settled),
+                            "overrun": dims_to_json(overrun),
+                            "denied": denied,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            })))
+        },
+    )
+    .await
 }
 
 /// `GET /v1/threads/{thread_id}/budget` — the budget read surface (`PHASE-1.6.1`,

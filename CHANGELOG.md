@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Committed administrative inspection receipts (`SIGNOFF-REPAIR.3.3.3.2.2.2`)
+
+Seven administrative reads commit explicit allow/deny admissions with their actual
+principal, named purpose, parent status and grant scope. Responses carry
+x-reasonbraid-authorization while successful bodies retain their shape. Audit
+failure refuses admission without protected data or an unconfirmed receipt; a
+later response-query failure retains its real committed receipt. Ordinary records
+remain boundary_checked. All 45 live authority/API tests, ten pure evaluator tests
+and strict lint pass; all results and cluster shutdown consumed. No schema change,
+delivery guarantee or revocation serialization is claimed. Scoped receipt lookup
+remains the next child.
+
 ## 2026-09-09 — Explicit audit evaluation provenance (`SIGNOFF-REPAIR.3.3.3.2.2.1`)
 
 Authorization records add a closed evaluation object. Migration 0055 preserves

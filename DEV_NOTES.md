@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Inspection receipts identify committed admission, including query failure
+
+- Seven HTTP reads previously returned 14 eligible human/role responses and seven authority denials without any inspection record. A scoped audit-insert fault had no effect because the helper never wrote evidence. The helper now shares selected-record persistence with normal authorization, supplies explicit inspection provenance, and commits before fetching the response. Audit failure refuses access; a later query failure retains the actual committed receipt. The two fault controls restore their owned DDL and prove recovery. All 45 live authority/API tests, ten pure controls and strict lint pass; final results and shutdown are consumed.
+- promotion: declined (integration of the existing evaluation-provenance decision, updated with the receipt and failure contract); owner `SIGNOFF-REPAIR.3.3.3.2.2.2`.
+
 ## _(2026-09-09)_ — Audit decoding must preserve uncertainty and reject invented facts
 
 - The record loader's baseline produced six guessed records and four panics from ten malformed rows. Named row decoding now validates stored decisions, target/subject pairs, typed IDs and explicit evaluation metadata. Legacy provenance stays unspecified; new ordinary records say boundary_checked, which describes the evaluator and includes ordinary reads. Controls also reproduced Serde's unit-marker field discard and sequence alternatives, including shared TargetSelector inputs. Map-only entrypoints, duplicate-preserving MapAccess and private empty-struct wire markers retain valid JSON/schema while refusing those forms. Final code passes 51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint. Final confirmation/shutdown is consumed, the owned cluster removed, and REPAIR-0017 closes implementation 305ed26. HTTP inspection receipts and scoped readback remain the next two children.

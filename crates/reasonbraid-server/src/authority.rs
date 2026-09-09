@@ -463,15 +463,21 @@ fn evaluate_tenant_admin_read(
     evaluate(projected.as_ref(), grant, authz, at)
 }
 
-/// Eligibility for the seven existing own-tenant administrative read surfaces.
-/// This read-only transaction does not cover subsequent response queries or
-/// serialize revocation. Explicit inspection auditing is a separate repair.
-pub(crate) async fn check_tenant_admin_read(
+/// Commit the admission for a named, direct own-tenant inspection. The actual
+/// parent status and selected scope describe the read exception explicitly.
+/// This transaction does not cover response queries or serialize revocation.
+pub(crate) async fn authorize_tenant_admin_inspection(
     pool: &PgPool,
     principal: &GrantSubject,
     tenant_id: reasonbraid_core::TenantId,
-    at: DateTime<Utc>,
-) -> Result<Decision, sqlx::Error> {
+    inspection: reasonbraid_core::TenantAdminInspection,
+) -> Result<AuthorizationOutcome, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    // Sample the database clock after acquiring the transaction's connection;
+    // time spent waiting for the pool is not part of this decision's validity.
+    let at: DateTime<Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
+        .fetch_one(&mut *tx)
+        .await?;
     let authz = CommandAuthz {
         actor: reasonbraid_core::actor_handle_for_subject(principal),
         principal: principal.clone(),
@@ -480,10 +486,6 @@ pub(crate) async fn check_tenant_admin_read(
         action: GrantAction::TenantAdmin,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION READ ONLY")
-        .execute(&mut *tx)
-        .await?;
     let selected = selection::select_authority_in_tx(
         &mut *tx,
         &authz,
@@ -491,8 +493,15 @@ pub(crate) async fn check_tenant_admin_read(
         selection::EvaluationUse::TenantAdminRead,
     )
     .await?;
+    let evaluation = AuthorizationEvaluation::TenantAdminInspection {
+        principal: principal.clone(),
+        inspection,
+        boundary_status: selected.boundary.as_ref().map(|boundary| boundary.status),
+        grant_selector: selected.grant.as_ref().map(|grant| grant.selector.clone()),
+    };
+    let outcome = record_selection_in_tx(&mut *tx, &authz, at, selected, evaluation).await?;
     tx.commit().await?;
-    Ok(selected.decision)
+    Ok(outcome)
 }
 
 /// The deterministic evaluation: which decision does the dev profile reach for this
@@ -621,8 +630,6 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    let tenant = authz.target.tenant_id().to_string();
-
     // Caller permission and delegated authority each choose a usable grant with
     // its own parent. The record continues to name the delegated authority source;
     // an absent source cannot borrow the caller's grant or a tenant-level boundary.
@@ -667,6 +674,30 @@ where
             .await?
         }
     };
+    record_selection_in_tx(
+        &mut *pool,
+        authz,
+        at,
+        selected,
+        AuthorizationEvaluation::BoundaryChecked {},
+    )
+    .await
+}
+
+/// The common durable record writer. Evaluation provenance is supplied by the
+/// closed entrypoints; selected source references and policy inputs stay paired.
+async fn record_selection_in_tx<E>(
+    mut pool: E,
+    authz: &CommandAuthz,
+    at: DateTime<Utc>,
+    selected: selection::AuthoritySelection,
+    evaluation: AuthorizationEvaluation,
+) -> Result<AuthorizationOutcome, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let tenant = authz.target.tenant_id().to_string();
     let selection::AuthoritySelection {
         boundary,
         grant,
@@ -730,9 +761,7 @@ where
             .unwrap_or("no-policy"),
     )
     .bind(at)
-    .bind(sqlx::types::Json(
-        AuthorizationEvaluation::BoundaryChecked {},
-    ))
+    .bind(sqlx::types::Json(evaluation))
     .execute(&mut *pool)
     .await?;
 

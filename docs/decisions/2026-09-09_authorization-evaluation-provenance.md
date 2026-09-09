@@ -7,7 +7,7 @@ answers:
 # Record the evaluation path explicitly without inventing historical intent
 
 - Owner: `SIGNOFF-REPAIR.3.3.3.2.2`, with three bounded implementation children.
-- Status: `.2.2.1` complete; implementation 305ed26 and qualification closure REPAIR-0017. Final code passes 51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint. All results and owned-cluster shutdown are consumed; HTTP receipt production/readback are the next two children.
+- Status: `.2.2.1` complete in 305ed26 and qualification closure dec4d3c (51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint). `.2.2.2` implements the seven HTTP receipt producers with 45 live authority/API tests, ten pure controls and strict lint passed. All results and owned-cluster shutdown are consumed; scoped readback remains `.2.2.3`.
 - Predecessor: `docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md`.
 
 Add a closed `evaluation` object to authorization records. `legacy_unspecified`
@@ -53,11 +53,17 @@ and schema stay the same; tenant-wide inputs with discarded thread fields and
 sequence alternatives are refused. Remaining tagged authority codecs are separately
 owned by `.3.4`, without a blanket strictness claim for every exported type.
 
-After the provenance child commits, `.2.2.2` will persist the seven HTTP inspection
-admissions and return committed record IDs in response headers, including denials.
-Audit failure will refuse admission. `.2.2.3` will add one tenant-scoped receipt
-lookup, gated and audited as an explicit eighth inspection purpose. There is no
-unbounded audit-list expansion in this work.
+The seven HTTP inspection routes now commit admissions and return record IDs in
+`x-reasonbraid-authorization`, including authority denials. The common record writer
+takes explicit evaluation from the normal or inspection entrypoint. Inspection
+samples database clock_timestamp after acquiring its connection and retains the
+selected parent's original status and grant selector. It commits before response
+queries; successful body shapes remain unchanged. Extraction and authority/audit
+storage failures have no confirmed receipt. A later response-query failure retains
+its already committed receipt with a safe storage-error response. The owned HTTP
+controls force both failure boundaries and verify recovery. `.2.2.3` will add one
+tenant-scoped receipt lookup, gated and audited as an explicit eighth inspection
+purpose. There is no unbounded audit-list expansion in this work.
 
 A record describes admission under a named evaluator. It does not prove a domain
 effect, delivery of every response byte, or transaction/revocation serialization.

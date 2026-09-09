@@ -2236,6 +2236,322 @@ const TENANT_INSPECTION_ROUTES: [&str; 7] = [
     "usage",
 ];
 
+const INSPECTION_RECEIPT_HEADER: &str = "x-reasonbraid-authorization";
+
+async fn get_with_inspection_receipt(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+) -> (u16, Value, Option<String>) {
+    let response = client
+        .get(format!("{base}{path}"))
+        .header(PRINCIPAL_HEADER, principal)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get(INSPECTION_RECEIPT_HEADER)
+        .map(|value| value.to_str().unwrap().to_string());
+    (status, response.json().await.unwrap(), receipt)
+}
+
+#[tokio::test]
+async fn administrative_inspections_commit_named_human_role_and_denial_receipts() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"receipt-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({"kind":"role","name":"receipt-role","tenant_id":tenant}),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let (status, outsider) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"receipt-outsider"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{outsider}");
+    sqlx::query("UPDATE authority_grants SET actions = '[\"tenant_admin\"]' WHERE grant_id = $1")
+        .bind(role["grant_id"].as_str().unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut failures = Vec::new();
+    let mut receipt_ids = std::collections::BTreeSet::new();
+    for (kind, identity, allowed) in [
+        ("human", &owner, true),
+        ("role", &role, true),
+        ("human", &outsider, false),
+    ] {
+        let principal = identity["principal_id"].as_str().unwrap();
+        for route in TENANT_INSPECTION_ROUTES {
+            let before: chrono::DateTime<chrono::Utc> =
+                sqlx::query_scalar("SELECT clock_timestamp()")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            let (status, body, receipt) = get_with_inspection_receipt(
+                &client,
+                &base,
+                &format!("/v1/admin/{route}?tenant_id={tenant}"),
+                principal,
+            )
+            .await;
+            assert_eq!(
+                status,
+                if allowed { 200 } else { 403 },
+                "{kind}/{route}: {body}"
+            );
+            if !allowed {
+                assert!(body.get("tenant_id").is_none());
+            }
+            let Some(receipt) = receipt else {
+                failures.push(format!(
+                    "{kind}/{route}/{allowed}: missing committed receipt"
+                ));
+                continue;
+            };
+            assert!(
+                receipt_ids.insert(receipt.clone()),
+                "one fresh admission per request"
+            );
+            // A separate pooled read sees the committed record after HTTP returns.
+            let record = reasonbraid_server::load_authorization_record(&pool, &receipt)
+                .await
+                .unwrap()
+                .expect("the response names a durable record");
+            let after: chrono::DateTime<chrono::Utc> =
+                sqlx::query_scalar("SELECT clock_timestamp()")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert!(before <= record.decided_at && record.decided_at <= after);
+            assert_eq!(record.tenant_id.to_string(), tenant);
+            assert_eq!(
+                record.decision == reasonbraid_core::Decision::Allowed,
+                allowed
+            );
+            assert!(
+                record.subject.is_none(),
+                "inspection is direct, never delegated"
+            );
+            assert_eq!(record.action, reasonbraid_core::GrantAction::TenantAdmin);
+            assert_eq!(
+                record.boundary_id.as_deref(),
+                allowed.then(|| owner["boundary_id"].as_str().unwrap())
+            );
+            assert_eq!(
+                record.grant_id.as_deref(),
+                allowed.then(|| identity["grant_id"].as_str().unwrap())
+            );
+            assert_eq!(
+                serde_json::to_value(record.evaluation).unwrap(),
+                json!({
+                    "kind":"tenant_admin_inspection",
+                    "principal":{"kind":kind,"id":principal},
+                    "inspection":{"kind":route.replace('/', "_")},
+                    "boundary_status":if allowed { json!("revoked") } else { Value::Null },
+                    "grant_selector":if allowed { json!({"kind":"tenant_wide"}) } else { Value::Null },
+                })
+            );
+        }
+    }
+    let (status, _, receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        "not-a-principal",
+    )
+    .await;
+    assert_eq!(status, 401);
+    assert!(
+        receipt.is_none(),
+        "extraction cannot invent an admission receipt"
+    );
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    if count != 21 {
+        failures.push(format!("expected 21 committed admissions, got {count}"));
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test]
+async fn inspection_audit_failure_refuses_reads_and_recovers_without_fabricated_receipts() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"receipt-fault-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let (status, outsider) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"receipt-fault-outsider"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{outsider}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    sqlx::query("CREATE FUNCTION rb_test_refuse_inspection_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.evaluation->>'kind' = 'tenant_admin_inspection' THEN RAISE EXCEPTION 'owned inspection audit fault'; END IF; RETURN NEW; END $$")
+        .execute(&pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER rb_test_inspection_audit_fault BEFORE INSERT ON authorization_records FOR EACH ROW EXECUTE FUNCTION rb_test_refuse_inspection_audit()")
+        .execute(&pool).await.unwrap();
+    // The fault is scoped to inspection evidence; ordinary authority still records
+    // boundary_checked and a real protected state marker is available to the read.
+    let response = client
+        .post(format!("{base}/v1/admin/breakers"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({"tenant_id":tenant,"threshold":{"calls":10}}))
+        .send()
+        .await
+        .unwrap();
+    let normal_status = response.status().as_u16();
+    let normal_body: Value = response.json().await.unwrap();
+    let mut failures = Vec::new();
+    if normal_status != 200 {
+        failures.push(format!(
+            "normal admission failed: {normal_status} {normal_body}"
+        ));
+    }
+    for caller in [principal, outsider["principal_id"].as_str().unwrap()] {
+        for route in TENANT_INSPECTION_ROUTES {
+            let (status, body, receipt) = get_with_inspection_receipt(
+                &client,
+                &base,
+                &format!("/v1/admin/{route}?tenant_id={tenant}"),
+                caller,
+            )
+            .await;
+            if status != 500
+                || body["code"] != "dependency_unavailable"
+                || body.get("tenant_id").is_some()
+                || receipt.is_some()
+            {
+                failures.push(format!(
+                    "audit fault {route}: {status}, receipt={receipt:?}"
+                ));
+            }
+        }
+    }
+    let counts: (i64, i64) = sqlx::query_as("SELECT count(*), count(*) FILTER (WHERE evaluation->>'kind' = 'boundary_checked') FROM authorization_records WHERE tenant_id = $1")
+        .bind(tenant).fetch_one(&pool).await.unwrap();
+    if counts != (1, 1) {
+        failures.push(format!("audit fault changed evidence: {counts:?}"));
+    }
+    // Restore the owned fault before assertions can finish this test.
+    sqlx::query("DROP TRIGGER rb_test_inspection_audit_fault ON authorization_records")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DROP FUNCTION rb_test_refuse_inspection_audit()")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body, receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/breakers?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200, "recovery: {body}");
+    assert_eq!(body["breaker"]["threshold"]["calls"], 10);
+    if receipt.is_none() {
+        failures.push("recovery has no committed receipt".into());
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test]
+async fn failed_response_query_retains_its_real_committed_inspection_admission() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"read-delivery-fault"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    // The first runs query cannot resolve its column. Renaming retains all data;
+    // restore it immediately after the response, before inspecting the outcome.
+    sqlx::query("ALTER TABLE runs RENAME COLUMN created_at TO created_at_inspection_fault")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body, receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/runs?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    sqlx::query("ALTER TABLE runs RENAME COLUMN created_at_inspection_fault TO created_at")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, 500, "{body}");
+    assert_eq!(body["code"], "dependency_unavailable");
+    assert!(body.get("tenant_id").is_none());
+    let receipt = receipt.expect("failed delivery still names its committed admission");
+    let record = reasonbraid_server::load_authorization_record(&pool, &receipt)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.decision, reasonbraid_core::Decision::Allowed);
+    assert_eq!(
+        serde_json::to_value(record.evaluation).unwrap()["inspection"],
+        json!({"kind":"runs"})
+    );
+    let (status, _, recovered_receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/runs?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_ne!(recovered_receipt.as_deref(), Some(receipt.as_str()));
+    assert!(recovered_receipt.is_some());
+}
+
 /// The approved freeze exception is a direct own-tenant read, never a write.
 #[tokio::test]
 async fn tenant_inspection_survives_only_boundary_status_freezes() {

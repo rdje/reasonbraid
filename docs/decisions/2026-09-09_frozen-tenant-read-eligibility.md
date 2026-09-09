@@ -33,12 +33,13 @@ grants, boundaries, incarnations, runs, breakers and usage. Their response shape
 remain unchanged. Thread inspection/audit, cross-domain receipts, process metrics
 and site registries use other gates; this decision gives them no new authority.
 
-This child replaces the eligibility check in a read-only transaction. It neither
-shares a response-query snapshot nor serializes revocation with response delivery.
-It also preserves the existing lack of an inspection authorization record. The
-following child `.3.3.3.2.2` owns explicit inspection-purpose evidence: an allowed
-tenant_admin action alone would misrepresent a read exception as write authority.
-Transaction/effect ordering remains `.3.3.4`. These limits prevent treating an
-eligibility decision as a complete administrative audit or delivery guarantee.
+The original eligibility child used a read-only transaction and retained the
+historical absence of inspection records. That implementation is superseded by
+`.3.3.3.2.2.2`: the same eligibility rules now commit explicit inspection-purpose
+evidence and return a receipt before fetching response data. An allowed tenant_admin
+action alone cannot identify the exception; the evaluation field records its
+purpose and actual parent status. The admission transaction still does not share
+a response-query snapshot or serialize revocation with delivery. Transaction/effect
+ordering remains `.3.3.4`; an admission receipt is not a delivery guarantee.
 
 The owning leaf records the matched baseline, corrected controls and commit.

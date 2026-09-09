@@ -60,8 +60,9 @@ remains unchanged. These lookups do not establish transaction-wide revocation or
 The separate frozen-tenant administrative read path now uses the same candidate
 selection with a boundary-status exception described below. Under `.3.3.3.2.1`,
 all 40 live authority/command API tests, ten pure controls and strict focused lint
-pass; all results are consumed and the owned cluster removed. Explicit inspection audit provenance remains
-`.3.3.3.2.2`. Delegation depth, consent and cached-decision freshness remain `.3.4`;
+pass; all results are consumed and the owned cluster removed. The seven reads now
+commit inspection admissions and expose receipts as described below; exact scoped
+receipt lookup remains `.3.3.3.2.2.3`. Delegation depth, consent and cached-decision freshness remain `.3.4`;
 tenant authority/effect transaction ordering remains `.3.3.4`.
 
 ## Subject JSON and delegation inputs
@@ -144,7 +145,7 @@ REPAIR-0017 completes implementation 305ed26.
 | --- | --- |
 | `legacy_unspecified` | The producer did not record which evaluation path it used. |
 | `boundary_checked` | Ordinary evaluation required an active actual boundary; this includes ordinary reads. |
-| `tenant_admin_inspection` | Metadata for a named direct own-tenant read using the boundary-status exception; HTTP production is the next child. |
+| `tenant_admin_inspection` | Admission for a named direct own-tenant read using the boundary-status exception, including authority denials. |
 
 For example, new ordinary records contain:
 
@@ -165,7 +166,7 @@ and absent status/scope evidence. A planned exact receipt lookup has a typed
 record ID in its inspection name; this type declaration does not expose a new
 HTTP endpoint yet.
 
-The metadata shape reserved for an inspection admission is explicit, for example:
+The metadata for an inspection admission is explicit, for example:
 
 ```json
 {
@@ -177,8 +178,8 @@ The metadata shape reserved for an inspection admission is explicit, for example
 }
 ```
 
-This is an evaluation value, not a complete record or a grant. Its HTTP producer
-is the next child. A missing-source refusal uses null status and selector instead
+This is an evaluation value, not a complete record or a grant. A missing-source
+refusal uses null status and selector instead
 of borrowing evidence from another tenant boundary or the caller's other grant.
 
 Record readback validates typed IDs, nullable field pairs, decision and target
@@ -194,9 +195,9 @@ existing unpaginated thread view; this change adds no general audit list.
 
 Evaluation provenance describes admission. It does not prove an effect or that
 the entire response reached the caller. The existing policy digest does not bind
-this additional field or every source fact. Explicit HTTP inspection receipts
-and tenant-scoped receipt lookup are the following two children; ordering and
-effect audits remain `.3.3.4`.
+this additional field or every source fact. The seven HTTP reads now return
+admission receipts; exact tenant-scoped receipt lookup remains `.3.3.3.2.2.3`.
+Ordering and effect audits remain `.3.3.4`.
 
 ## Administrative authority
 
@@ -230,11 +231,38 @@ grant. A grant limited to one thread cannot list these tenant-wide inventories.
 A newer future-dated grant does not hide Alice's eligible older grant. Bob's
 administrator grant in another tenant cannot inspect Alice's inventory.
 
-The gate uses a read-only transaction; response queries follow separately. It does
-not promise a shared response snapshot or revocation serialization. These seven
-reads still lack an inspection authorization record in this child; `.3.3.3.2.2`
-adds distinguishable read-purpose evidence. Ordinary write admission records are
-not evidence that these reads were audited. Thread/audit inspection, cross-domain
+Each attributable allow or authority denial commits a `tenant_admin_inspection`
+record before returning protected data. The record keeps the actual selected
+parent status and grant scope, so a read allowed under a revoked parent remains
+distinguishable from ordinary boundary-checked admission. Decision time comes
+from the database clock after acquiring the transaction connection.
+
+Use `curl -i` to retain the receipt, for example:
+
+```bash
+curl -i "$RB_URL/v1/admin/grants?tenant_id=$TENANT_ID" \
+  -H "x-reasonbraid-principal: $PRINCIPAL_ID"
+```
+
+Both successful reads and authority denials carry
+`x-reasonbraid-authorization: authz_…`, naming their committed admission. Successful
+JSON bodies retain their existing shape. A denied read remains HTTP 403 with code
+`unauthorized`, and its message also names the record. These are trusted dev-profile
+principal headers; they do not establish Internet authentication.
+
+| Failure point | Response and receipt |
+| --- | --- |
+| Request/principal extraction | Existing extraction refusal; no admission receipt. |
+| Authority selection or audit persistence | HTTP 500 `dependency_unavailable`; no protected response or unconfirmed receipt. |
+| Response query after the admission commits | HTTP 500 `dependency_unavailable` with the real committed admission receipt. |
+
+The response queries run after the admission transaction commits. A receipt proves
+that admission was recorded; it does not promise a shared response snapshot,
+revocation serialization or delivery of the response. Under
+`SIGNOFF-REPAIR.3.3.3.2.2.2`, 45 live authority/API tests, ten pure evaluator tests
+and strict lint pass, including all seven routes, human/role admissions, denials,
+audit-insert failure and a later query failure with recovery. All results and
+owned-cluster shutdown are consumed. Thread/audit inspection, cross-domain
 receipts and process metrics retain their separate gates; the exception does not
 extend to them or to site registries.
 

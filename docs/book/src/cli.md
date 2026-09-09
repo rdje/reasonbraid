@@ -228,8 +228,9 @@ authorization records its refusal. A revoked boundary freezes writes under it;
 own-tenant inspection remains available only with a structurally valid, unexpired
 tenant-wide administrator grant. The exception ignores boundary status alone,
 retaining parent ceilings and both validity windows. These administrative reads
-still lack explicit inspection audit records; the authority chapter names the
-seven affected routes and the owned follow-up.
+commit explicit inspection admissions before fetching their response. Their HTTP
+responses carry `x-reasonbraid-authorization`; use `curl -i` to retain it. The
+authority chapter documents the seven routes, failure cases and receipt limits.
 
 A grant or boundary outside the acting tenant returns 404 without changing the
 foreign target or its tenant's revocation epoch. A repeated grant revocation returns

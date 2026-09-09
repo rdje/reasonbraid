@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Matching permissions do not establish the authority source
+
+- The evaluator must bind the actual parent, tenant and subject before relying on a grant. Tenant-wide targets also require tenant-wide selectors; a thread list is a broader read than one thread. Validity excludes expiration. The core baseline reproduced unrelated-parent acceptance and exact-expiration liveness; the server baseline reproduced target/scope/parent/expiration failures. Corrected core/evaluator and 11 live authority controls plus strict lint pass; command API confirmation remains pending.
+- promotion: promoted → `docs/decisions/2026-09-09_bound-authority-evaluation.md`; owner `SIGNOFF-REPAIR.3.3.2`.
+
 ## _(2026-09-09)_ — Test the exported authority type rather than an illustrative JSON shape
 
 - The core subject serializer failed because an internally tagged enum wrapped primitive string IDs. Hand-built site/envelope JSON hid that failure; direct and enclosing-type controls reproduced it. Core subjects now have explicit kind/id objects with map-only input and typed ID validation, while the established command-envelope string and split database fields remain distinct contracts. The old token-size inequality measured an invented fixed increment, so its comparative claim is withdrawn and tracked for real evidence.

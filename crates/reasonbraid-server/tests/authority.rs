@@ -491,6 +491,129 @@ async fn a_grant_cannot_exceed_the_boundary() {
     assert_eq!(count, 0, "refused grants are never stored");
 }
 
+#[tokio::test]
+async fn a_grant_cannot_borrow_a_foreign_tenants_boundary() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000120";
+    let foreign = "ten_00000000-0000-7000-8000-000000000121";
+    let boundary = boundary(
+        tenant,
+        vec![GrantAction::ThreadInspect],
+        RiskClass::Low,
+        false,
+    );
+    create_boundary(&pool, &boundary).await.unwrap();
+    let mut grt = grant(
+        &boundary.boundary_id,
+        foreign,
+        "hpr_00000000-0000-7000-8000-000000000120",
+        vec![GrantAction::ThreadInspect],
+        TargetSelector::TenantWide,
+    );
+    let err = create_grant(&pool, &grt).await.unwrap_err();
+    assert!(err.violations.iter().any(|v| v.field == "grant.tenant_id"));
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authority_grants WHERE grant_id = $1")
+            .bind(&grt.grant_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 0, "a refused foreign grant leaves no stored row");
+    grt.tenant_id = boundary.tenant_id;
+    create_grant(&pool, &grt).await.unwrap();
+}
+
+#[tokio::test]
+async fn thread_scoped_grants_cannot_authorize_tenant_wide_requests() {
+    let _guard = authority_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000122";
+    let actions = vec![
+        GrantAction::ThreadCreate,
+        GrantAction::ThreadCreateAuto,
+        GrantAction::TenantAdmin,
+        GrantAction::ThreadInspect,
+    ];
+    let boundary = boundary(tenant, actions.clone(), RiskClass::Low, false);
+    create_boundary(&pool, &boundary).await.unwrap();
+    let thread = "thr_00000000-0000-7000-8000-000000000122";
+    let mut grt = grant(
+        &boundary.boundary_id,
+        tenant,
+        "hpr_00000000-0000-7000-8000-000000000122",
+        actions.clone(),
+        TargetSelector::Threads {
+            threads: vec![thread.parse().unwrap()],
+        },
+    );
+    create_grant(&pool, &grt).await.unwrap();
+    for action in &actions {
+        let context = authz(
+            "agt_00000000-0000-7000-8000-000000000122",
+            grt.subject.clone(),
+            None,
+            *action,
+            tenant_target(tenant),
+        );
+        let AuthorizationOutcome::Denied { record_id, .. } =
+            authorize(&pool, &context, Utc::now()).await.unwrap()
+        else {
+            panic!("thread selector authorized tenant-wide {action}");
+        };
+        let record = load_authorization_record(&pool, &record_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.grant_id.as_deref(), Some(grt.grant_id.as_str()));
+        assert!(matches!(record.decision, Decision::Denied { .. }));
+        assert_eq!(
+            record.policy_digest,
+            policy_digest(
+                Some(&boundary),
+                Some(&grt),
+                Some(&grt.subject),
+                *action,
+                &context.target,
+                &record.decision
+            )
+        );
+    }
+    let context = authz(
+        "agt_00000000-0000-7000-8000-000000000122",
+        grt.subject.clone(),
+        None,
+        GrantAction::ThreadInspect,
+        thread_target(tenant, thread),
+    );
+    assert!(matches!(
+        authorize(&pool, &context, Utc::now()).await.unwrap(),
+        AuthorizationOutcome::Allowed { .. }
+    ));
+    // Independent positive control: widen the stored fixture selector explicitly.
+    // This is a test-store mutation, not an administrative API or implicit upgrade.
+    grt.selector = TargetSelector::TenantWide;
+    sqlx::query("UPDATE authority_grants SET selector = $1 WHERE grant_id = $2")
+        .bind(serde_json::to_value(&grt.selector).unwrap())
+        .bind(&grt.grant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for action in actions {
+        let context = authz(
+            "agt_00000000-0000-7000-8000-000000000122",
+            grt.subject.clone(),
+            None,
+            action,
+            tenant_target(tenant),
+        );
+        assert!(matches!(
+            authorize(&pool, &context, Utc::now()).await.unwrap(),
+            AuthorizationOutcome::Allowed { .. }
+        ));
+    }
+}
+
 /// Scope: a thread-scoped grant reaches only its threads; tenant boundaries bind
 /// every evaluation; thread_create targets the tenant.
 #[tokio::test]

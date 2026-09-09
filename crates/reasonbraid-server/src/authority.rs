@@ -33,6 +33,9 @@ use sqlx::PgPool;
 
 use crate::tx::{self, ApplyError, Command, CommandOutcome};
 
+#[cfg(test)]
+mod evaluation_tests;
+
 /// The authorization context of one command: the authenticated actor, the grant
 /// holder (the actor, or the delegating subject's principal), the delegated subject
 /// when delegation applies, and the requested action/target.
@@ -455,6 +458,17 @@ fn evaluate(
             reason: "the grant is revoked or outside its validity window".to_string(),
         };
     }
+    let expected_subject = authz.delegate_subject.as_ref().unwrap_or(&authz.principal);
+    if &grant.subject != expected_subject {
+        return Decision::Denied {
+            reason: "the grant does not belong to the evaluated subject".to_string(),
+        };
+    }
+    if *authz.target.tenant_id() != grant.tenant_id {
+        return Decision::Denied {
+            reason: "the target tenant is outside the grant's scope".to_string(),
+        };
+    }
     if !grant.actions.contains(&authz.action) {
         return Decision::Denied {
             reason: format!(
@@ -463,38 +477,31 @@ fn evaluate(
             ),
         };
     }
-    match (&authz.target, &grant.selector) {
-        (ResourceTarget::Tenant { .. }, _) => {}
-        (
-            ResourceTarget::Thread {
-                tenant_id,
-                thread_id,
-            },
-            TargetSelector::TenantWide,
-        ) if *tenant_id == grant.tenant_id => {}
-        (
-            ResourceTarget::Thread {
-                tenant_id,
-                thread_id,
-            },
-            TargetSelector::Threads { threads },
-        ) if *tenant_id == grant.tenant_id && threads.contains(thread_id) => {}
-        (ResourceTarget::Thread { .. }, _) => {
-            return Decision::Denied {
-                reason: "the target thread is outside the grant's scope".to_string(),
-            };
+    let target_kind_allowed = match authz.action {
+        GrantAction::ThreadCreate | GrantAction::ThreadCreateAuto | GrantAction::TenantAdmin => {
+            matches!(authz.target, ResourceTarget::Tenant { .. })
         }
-    }
-    if *authz.target.tenant_id() != grant.tenant_id {
+        GrantAction::ThreadInspect => true,
+        GrantAction::ThreadInvite
+        | GrantAction::ThreadContribute
+        | GrantAction::ThreadClose
+        | GrantAction::ThreadCancel
+        | GrantAction::ThreadInvitationRespond
+        | GrantAction::ThreadAdvanceRound => {
+            matches!(authz.target, ResourceTarget::Thread { .. })
+        }
+    };
+    if !target_kind_allowed {
         return Decision::Denied {
-            reason: "the target tenant is outside the grant's scope".to_string(),
+            reason: format!(
+                "action `{}` does not support this target kind",
+                authz.action
+            ),
         };
     }
-    if authz.action == GrantAction::ThreadCreate
-        && matches!(authz.target, ResourceTarget::Thread { .. })
-    {
+    if !delegation_scope_is_subset(&target_to_selector(&authz.target), &grant.selector) {
         return Decision::Denied {
-            reason: "thread_create targets the tenant, not a thread".to_string(),
+            reason: "the target is outside the grant's scope".to_string(),
         };
     }
     // Defense in depth: the subset rule is enforced at grant creation AND re-checked

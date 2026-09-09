@@ -16,11 +16,36 @@ and a validity window. A grant names a subject, action set, selector, validity
 window and parent boundary. The core evaluator checks the supplied grant against
 the supplied boundary and returns an allowed or denied decision.
 
-The server's current grant selection and boundary lookup require correction:
-the actual referenced boundary must be used, a later unrelated grant must not
-hide another applicable grant, and tenant-target actions must reject thread-only
-selectors. These are owned by `SIGNOFF-REPAIR.3.3`. Delegation and cached admission
-decisions exist; their depth, consent and freshness constraints are under `.3.4`.
+The supplied grant must name the supplied boundary and belong to the same tenant.
+Its actions, risk, explicit spend limits, delegation flag and validity window must
+fit the boundary. The evaluator also requires the grant's subject to match the
+principal being evaluated (the delegated subject for the authority-source check).
+The caller's own permission remains a separate check in delegated requests.
+
+Validity windows are nonempty and include the start but exclude expiration:
+`valid_from <= decision_time < expires_at`. A grant ending at 12:00:00 has no
+authority at 12:00:00. An active status alone cannot extend that window.
+
+| Action | Supported target | Required selector coverage |
+| --- | --- | --- |
+| `thread_create`, `thread_create_auto`, `tenant_admin` | Tenant | `tenant_wide` |
+| `thread_inspect` for listing all tenant threads | Tenant | `tenant_wide` |
+| `thread_inspect` for one thread | Thread | `tenant_wide` or a set containing that thread |
+| Invite, contribute, close, cancel, respond to an invitation, advance a round | Thread | `tenant_wide` or a set containing that thread |
+
+For example, an inspection grant selecting only thread A can inspect A but cannot
+list every thread in the tenant. Adding `tenant_admin` to that thread-scoped grant
+does not grant tenant-wide administration. A tenant-wide selector still cannot
+cross the grant's tenant boundary.
+
+These evaluation corrections are implemented under `SIGNOFF-REPAIR.3.3.2`;
+51 core unit + 3 subject tests, all six evaluator controls, 11 live authority
+tests and strict core/server lint pass. The command API confirmation is in progress. The server's database loading and candidate
+selection remain `.3.3.3`: resolve each grant's actual parent and do not let a
+later ineligible grant hide a usable one. The separate frozen-tenant administrative
+read helper also needs these structural checks while preserving its approved
+boundary-status exception. Delegation depth, consent and cached-decision freshness
+remain `.3.4`; tenant authority/effect transaction ordering remains `.3.3.4`.
 
 ## Subject JSON and delegation inputs
 
@@ -68,8 +93,9 @@ comparison before any comparative claim is restored.
 
 ## Thread commands and audit
 
-Thread creation targets a tenant. Invitation, contribution, inspection, close,
-cancel and invitation-response actions target a thread. The normal command path
+Thread creation targets a tenant. Invitation, contribution, close, cancel,
+invitation-response and round-advancement actions target a thread. Inspection
+supports either a selected thread or the tenant-wide listing described above. The normal command path
 combines authorization with state, event, idempotency and outbox writes in a
 PostgreSQL transaction. Rejected commands preserve their rejection/audit according
 to that path's transaction handling. Exact committed replays preserve historical

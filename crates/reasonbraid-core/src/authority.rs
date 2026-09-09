@@ -5,7 +5,8 @@
 //!
 //! # The invariant this module enforces
 //!
-//! **A grant can never exceed its boundary** ([`grant_exceeds_boundary`]): actions,
+//! **A grant can never exceed its boundary** ([`grant_exceeds_boundary`]): parent
+//! identity and tenant must match; actions,
 //! risk ceiling, spend limits, delegation, and the validity window must each be a
 //! subset of the applicable boundary. Tenant membership alone grants nothing — a
 //! mandate exists only through a grant that names it, and administrative authority
@@ -162,8 +163,9 @@ impl RiskClass {
     }
 }
 
-/// A resource a command targets. `ThreadCreate` targets the tenant; the other actions
-/// target a thread.
+/// A resource a command targets. Creation and tenant administration target the
+/// tenant. Inspection supports a thread or the tenant's thread listing; other
+/// thread actions target a thread.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResourceTarget {
@@ -411,13 +413,38 @@ fn spend_within(ceiling: &Value, limits: &Value) -> bool {
 }
 
 /// The deterministic subset check: every dimension of the grant must fit inside the
-/// boundary. An empty result means the grant is within the ceiling — the temporal
-/// window INCLUDED (a grant may not outlive its boundary).
+/// named boundary in the same tenant. An empty result means the grant is within
+/// the ceiling, including a nonempty validity window contained in its parent's.
 pub fn grant_exceeds_boundary(
     boundary: &EnrollmentAuthorityBoundary,
     grant: &AuthorityGrant,
 ) -> Vec<BoundaryViolation> {
     let mut violations = Vec::new();
+
+    if grant.boundary_id != boundary.boundary_id {
+        violations.push(BoundaryViolation {
+            field: "grant.boundary_id",
+            detail: "the grant does not name the supplied boundary".to_string(),
+        });
+    }
+    if grant.tenant_id != boundary.tenant_id {
+        violations.push(BoundaryViolation {
+            field: "grant.tenant_id",
+            detail: "the grant and its boundary belong to different tenants".to_string(),
+        });
+    }
+    if boundary.valid_from >= boundary.expires_at {
+        violations.push(BoundaryViolation {
+            field: "boundary.validity_window",
+            detail: "the boundary's validity window must be nonempty".to_string(),
+        });
+    }
+    if grant.valid_from >= grant.expires_at {
+        violations.push(BoundaryViolation {
+            field: "grant.validity_window",
+            detail: "the grant's validity window must be nonempty".to_string(),
+        });
+    }
 
     if boundary.status != BoundaryStatus::Active {
         violations.push(BoundaryViolation {
@@ -496,14 +523,16 @@ pub fn grant_exceeds_boundary(
 
 /// Time- and status-based liveness at evaluation time (separate from the structural
 /// subset rule, which is checked at grant creation AND re-checked at evaluation).
+/// Validity includes the start and excludes expiration: [valid_from, expires_at).
 pub fn boundary_active_at(boundary: &EnrollmentAuthorityBoundary, at: DateTime<Utc>) -> bool {
     boundary.status == BoundaryStatus::Active
         && at >= boundary.valid_from
-        && at <= boundary.expires_at
+        && at < boundary.expires_at
 }
 
+/// The grant's status and half-open validity window at the decision instant.
 pub fn grant_active_at(grant: &AuthorityGrant, at: DateTime<Utc>) -> bool {
-    grant.status == GrantStatus::Active && at >= grant.valid_from && at <= grant.expires_at
+    grant.status == GrantStatus::Active && at >= grant.valid_from && at < grant.expires_at
 }
 
 /// The development profile's actor handle for a presented principal
@@ -677,6 +706,64 @@ mod tests {
         );
         let g = grant(vec![GrantAction::ThreadContribute], RiskClass::Low, false);
         assert!(grant_exceeds_boundary(&b, &g).is_empty());
+    }
+
+    #[test]
+    fn grants_are_bound_to_the_named_boundary_and_its_tenant() {
+        let b = boundary(
+            vec![GrantAction::ThreadInspect],
+            RiskClass::Low,
+            false,
+            None,
+        );
+        let g = grant(vec![GrantAction::ThreadInspect], RiskClass::Low, false);
+        assert!(grant_exceeds_boundary(&b, &g).is_empty());
+        let mut unrelated = b.clone();
+        unrelated.boundary_id = "bnd_unrelated".into();
+        assert!(grant_exceeds_boundary(&unrelated, &g)
+            .iter()
+            .any(|v| v.field == "grant.boundary_id"));
+        let mut foreign = b;
+        foreign.tenant_id = TenantId::new();
+        assert!(grant_exceeds_boundary(&foreign, &g)
+            .iter()
+            .any(|v| v.field == "grant.tenant_id"));
+    }
+
+    #[test]
+    fn authority_windows_are_nonempty_and_expiration_is_exclusive() {
+        let b = boundary(
+            vec![GrantAction::ThreadInspect],
+            RiskClass::Low,
+            false,
+            None,
+        );
+        let g = grant(vec![GrantAction::ThreadInspect], RiskClass::Low, false);
+        let tick = chrono::Duration::nanoseconds(1);
+        for (at, live) in [
+            (b.valid_from - tick, false),
+            (b.valid_from, true),
+            (b.expires_at - tick, true),
+            (b.expires_at, false),
+            (b.expires_at + tick, false),
+        ] {
+            assert_eq!(boundary_active_at(&b, at), live, "boundary at {at}");
+            assert_eq!(grant_active_at(&g, at), live, "grant at {at}");
+        }
+        for end in [g.valid_from, g.valid_from - tick] {
+            let mut invalid = g.clone();
+            invalid.expires_at = end;
+            assert!(grant_exceeds_boundary(&b, &invalid)
+                .iter()
+                .any(|v| v.field == "grant.validity_window"));
+            assert!(!grant_active_at(&invalid, invalid.valid_from));
+        }
+        let mut empty = b;
+        empty.expires_at = empty.valid_from;
+        assert!(grant_exceeds_boundary(&empty, &g)
+            .iter()
+            .any(|v| v.field == "boundary.validity_window"));
+        assert!(!boundary_active_at(&empty, empty.valid_from));
     }
 
     /// The subset rule: actions, risk, delegation, and the temporal window are each

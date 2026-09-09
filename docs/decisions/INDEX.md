@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_bound-authority-evaluation.md](docs/decisions/2026-09-09_bound-authority-evaluation.md) | decision | grant/parent/tenant/subject binding, half-open validity and action-target selector coverage |
 | [2026-09-09_core-subject-json.md](docs/decisions/2026-09-09_core-subject-json.md) | decision | explicit core kind/id subjects with strict map parsing; preserve envelope strings and split database fields |
 | [2026-09-09_operator-cli-locality.md](docs/decisions/2026-09-09_operator-cli-locality.md) | decision | explicit loopback operator target, repository-volume preflight and no home credential fallback; `SIGNOFF-REPAIR.3.2.2` |
 | [2026-09-09_operator-role-query-freshness.md](docs/decisions/2026-09-09_operator-role-query-freshness.md) | decision | fresh text-protocol operator checks after a measured stale prepared-membership result; `SIGNOFF-REPAIR.3.2.1` |

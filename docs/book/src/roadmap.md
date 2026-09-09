@@ -93,7 +93,9 @@ Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
 The current frontier is `SIGNOFF-REPAIR.3.3.2`: bound authority evaluation,
-followed by actual-parent/usable-grant selection and atomic tenant effect auditing.
+whose core/evaluator/live authority checks and strict lint pass, with command API
+confirmation pending. Actual-parent/usable-grant selection and atomic tenant effect
+auditing follow.
 Core subject serialization is corrected; 49 unit + 3 subject controls and 40 live
 compatibility tests pass. The site service, protected operator CLI and all seven registry HTTP
 operations are implemented and verified: the selected security run passed 58

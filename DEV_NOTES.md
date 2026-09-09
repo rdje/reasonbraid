@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Rotate a ledger only after proving exact historical retrieval
+
+- The changelog approached its existing cap at 95,038 bytes. Its existing policy already names Git history as the terminal. The transition preserves ten corrective records verbatim and retires 120 historical records through an exact predecessor; recovered retained bytes plus the Git suffix reconstruct every original byte. Altered-content and missing-object controls detect failure. The live digest is 8,462 bytes at this capture; no cap increased and no broader containment adoption is claimed.
+- promotion: promoted → `docs/decisions/2026-09-09_changelog-rotation.md`; owner `SIGNOFF-REPAIR.11.4.1`.
+
 ## _(2026-09-09)_ — Matching permissions do not establish the authority source
 
 - The evaluator must bind the actual parent, tenant and subject before relying on a grant. Tenant-wide targets also require tenant-wide selectors; a thread list is a broader read than one thread. Validity excludes expiration. The core baseline reproduced unrelated-parent acceptance and exact-expiration liveness; the server baseline reproduced target/scope/parent/expiration failures. Corrected core/evaluator controls, all 32 live authority/command API tests and strict lint pass. The runner stopped/removed its cluster.

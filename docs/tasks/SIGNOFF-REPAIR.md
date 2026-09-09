@@ -463,11 +463,36 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
-- Status: `pending`.
+- Status: `active`; first containment transition `.11.4.1` executes before further authority appends.
 - Sources / owned surfaces: `live docs, book, task records, external ledger, CI`.
 - Goal and acceptance: Partition oversized live status/history, review adopted containment requirements, reconcile all phase/gate claims with measured behavior, refresh dependency evidence, and make pre-push CI discover every required live suite without counting skips as passes.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.11.4.1 — Rotate the changelog through its existing Git terminal
+
+- Status: `done`; activated from clean `25ed7d1`, brief zero/untracked and project-job census handoff: OK, rc=0. This is a prerequisite to further changelog appends before returning to `.3.3.3`.
+- Owns: CHANGELOG ledger rotation at complete records; exact predecessor identity/retrieval and lossless coverage controls; live memory/status, book contributor navigation and decision/task synchronization. No runtime code, threshold increase, new archive collection or donor-doctrine adoption in this child.
+- Authority: local README_POLICY.md adoption and `.doctrine/readme_routes.txt` already select Git history as the changelog rotation terminal, with 96,000-byte enforcement. The current file is 95,038 bytes at the completed authority closure. Keep recent corrective-review entries and replace older chronology with an exact immutable Git retrieval pointer; preserve all source bytes in the reachable predecessor before removing them from the working digest.
+- Consumer census: the guard reads CHANGELOG size/existence, commit workflow requires current change summaries, and historical references use the file as a ledger. Tracked-text searches found no CHANGELOG heading anchors, line-address consumers or parser of individual entries. The existing file already has a query-first Git-history rotation notice. The full source and its older retrieval notice remain addressable through the predecessor.
+- Donor review: the director-authorized fsmgen adoption guide now covers derived-state truth, bounded registries, lossless transitions and exact retrieval. This repository has the local README policy's partial containment mechanism but no root LIVE_DOCUMENT_SIZE_CONTAINMENT.md. The donor is read-only reference material, not automatically authoritative here. This child applies the already adopted Git rotation contract; `.11.4.2` owns review/adoption of the broader package and remaining enforcement gaps.
+- Acceptance: exact pre-rotation bytes match the committed Git blob; retained and retired whole-record segments reconstruct it byte-for-byte with measured counts/hashes; altered-content and wrong-identity controls refuse. Current digest remains below the unchanged cap, and the book explains exact history retrieval and historical-claim limits. Commit before returning to authority work.
+- Verification: source `25ed7d184203e2d8701800558b785b30c75bb4d0:CHANGELOG.md` equals the pre-edit working file and independent blob `0bc51d581f9158ebafcef94cfb6717464722c6cb`, rc=0. Original 95,038 bytes / 646 lines / 130 dated records splits at byte 6,968 into 10 retained and 120 retired records; recovered live retained bytes + exact Git suffix reconstruct the full original byte-for-byte, rc=0. Truncation/changed-content controls alter its digest; missing Git object refuses. Complete SHA-256 f9cd2167b141cc7537b6eef9fffedfb7274b80915fdfa6604fdb4cdf30a9d8b0; segment identities/counts in the indexed decision. New digest 8,462 bytes / 139 lines / maximum line 145 bytes. README-STABILITY and self-test pass, rc=0 (unchanged 96,000 cap); an 8,000-byte falsification override refuses, rc=1, without file mutation. Book build, rendered exact retrieval/claim-limit inspection and diff check pass, rc=0. Full git-ls-files text census includes hidden files: the two non-Markdown CHANGELOG readers are the existing guard and route registry. A broad reader-pattern probe initially failed (rc=1) because unbounded sed matched censused in historical DEV_NOTES prose; source inspection established the false positive. Calibrated word/command boundaries detect synthetic cat and anchor controls and reject that prose; real candidate census is empty, rc=0. No entry-specific reader needs rewriting. No Rust/runtime code changed, so no Rust or live DB suite was run.
+- Commit: `REASONBRAID-REPAIR-0013` (this commit).
+
+#### SIGNOFF-REPAIR.11.4.2 — Complete containment inventory and enforcement review
+
+- Status: `pending`.
+- Owns: broader donor-package review and deliberate local adoption if appropriate; complete document/route utility census, lifecycle and pressure controls, exact-current-state derivation/verifiers, archive retrieval and collection bounds. Preserve existing owner decisions and do not infer complete adoption from the README-only guard.
+- Acceptance: each adopted contract has local data and executed positive/negative checks; any migration retains exact retrieval and does not raise caps to accommodate growth.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.11.4.3 — Reconcile historical qualification and verification coverage
+
+- Status: `pending`.
+- Owns: remaining historical phase/gate claims, dependency evidence refresh, external ledger and pre-push suite discovery after the concrete repair leaves complete.
+- Acceptance: claims trace to actual consumed evidence; skipped or missing suites are not passes; no unsupported production qualification remains in live views.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
 
@@ -512,6 +537,13 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — core all-target strict Clippy passed, rc=0 (33.21s), and server/lib/authority/command_api strict Clippy passed, rc=0 (1m26s). `cargo fmt --all --check`, `git diff --check`, `make book` and rendered target-table/validity/limits inspection passed, rc=0. Core schema/subject/actor/digest controls pass; one explicit schema-writing utility is intentionally ignored. The guarded authority + command_api confirmation passed all 32 tests (11 + 21), rc=0, including frozen-tenant reads and delegated commands. The result and shutdown receipt are consumed; the owned cluster is absent. The escalated project-job census reported handoff: OK, rc=0. Final book rendering and completed-result/limit inspection passed, rc=0. Implementation commit d7406e0 passed all 13 doctrines.
 - [x] **FIX / LOCKSTEP** — grant/parent/tenant identity, subject, nonempty half-open validity and action-target selector checks are implemented. Live negative/positive controls passed, rc=0; the indexed bound-authority decision promotes the contract. Book examples and explicit remaining actual-parent loader, frozen-read helper, delegation and effect-serialization limits are synchronized with live records. README commands/layout are unchanged; no full CI or push and no production qualification category advance.
 
+## Current commit acceptance — SIGNOFF-REPAIR.11.4.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — Git source and working-file census measured CHANGELOG at 95,038 bytes / 130 records against its adopted 96,000-byte rotation cap, rc=0. Chronological growth is the pressure source; local policy already chooses Git history. The broader donor guide review finds partial README-route containment, not a root live-document doctrine; remaining adoption/enforcement is owned by `.11.4.2`.
+- [x] **ADDRESSED (verified)** — the new 8,462-byte digest retains ten exact records and names immutable retrieval for 120 older records. Recovered retained bytes plus the independently retrieved Git suffix reconstruct all 95,038 original bytes, rc=0. SHA-256 identities and complete-record counts are durable in the indexed decision. Truncation, altered-content and missing-object negative controls were detected, rc=0.
+- [x] **NO REGRESSION** — README-STABILITY and --self-test passed, rc=0; the lower-cap control returned rc=1 as expected without mutation. `make book`, rendered retrieval/qualification-limit inspection and `git diff --check` passed, rc=0. The calibrated tracked consumer census returned no entry-specific reader, rc=0. No threshold or runtime behavior changed; broader enforcement work remains `.11.4.2`.
+- [x] **FIX / LOCKSTEP** — the recent digest, exact-history note, book introduction, indexed decision, live status, DEV_NOTES and resume pointer are synchronized. Independent Git object retrieval passed, rc=0. Return to `.3.3.3` after this clean prerequisite; no production qualification category advances.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
@@ -542,6 +574,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.1`: `REASONBRAID-REPAIR-0013 (leaf SIGNOFF-REPAIR.11.4.1): rotate changelog with verified history retrieval`.
 
 - `SIGNOFF-REPAIR.3.3.2` closure: `REASONBRAID-REPAIR-0012 (leaf SIGNOFF-REPAIR.3.3.2): record completed tenant authority qualification`.
 

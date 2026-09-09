@@ -108,6 +108,7 @@
 - [`2026-09-08_sdk-compatibility-matrix-schema.md`](docs/decisions/2026-09-08_sdk-compatibility-matrix-schema.md)
 - [`2026-09-08_tls13-refusals-are-read-side.md`](docs/decisions/2026-09-08_tls13-refusals-are-read-side.md)
 - [`2026-09-09_bound-authority-evaluation.md`](docs/decisions/2026-09-09_bound-authority-evaluation.md)
+- [`2026-09-09_changelog-rotation.md`](docs/decisions/2026-09-09_changelog-rotation.md)
 - [`2026-09-09_core-subject-json.md`](docs/decisions/2026-09-09_core-subject-json.md)
 - [`2026-09-09_disposable-postgresql-runner.md`](docs/decisions/2026-09-09_disposable-postgresql-runner.md)
 - [`2026-09-09_disposable-test-pool-ownership.md`](docs/decisions/2026-09-09_disposable-test-pool-ownership.md)

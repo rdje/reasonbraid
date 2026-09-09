@@ -2225,6 +2225,206 @@ async fn revoking_the_boundary_suspends_the_ceiling() {
     assert_eq!(boundaries["boundaries"][0]["status"], json!("revoked"));
 }
 
+const TENANT_INSPECTION_ROUTES: [&str; 7] = [
+    "nodes/presence",
+    "grants",
+    "boundaries",
+    "incarnations",
+    "runs",
+    "breakers",
+    "usage",
+];
+
+/// The approved freeze exception is a direct own-tenant read, never a write.
+#[tokio::test]
+async fn tenant_inspection_survives_only_boundary_status_freezes() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, alice) =
+        enroll(&client, &base, json!({"kind":"human", "name":"read-owner"})).await;
+    assert_eq!(status, 200, "{alice}");
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human", "name":"read-outsider"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{bob}");
+    let tenant = alice["tenant_id"].as_str().unwrap();
+    let principal = alice["principal_id"].as_str().unwrap();
+    let outsider = bob["principal_id"].as_str().unwrap();
+    let grant = alice["grant_id"].as_str().unwrap();
+    let mut active_responses = Vec::new();
+    for boundary_status in ["active", "suspended", "revoked"] {
+        sqlx::query("UPDATE enrollment_boundaries SET status = $2 WHERE tenant_id = $1")
+            .bind(tenant)
+            .bind(boundary_status)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (i, route) in TENANT_INSPECTION_ROUTES.iter().enumerate() {
+            let path = format!("/v1/admin/{route}?tenant_id={tenant}");
+            let (status, body) = get(&client, &base, &path, principal).await;
+            assert_eq!(status, 200, "{boundary_status} {route}: {body}");
+            assert_eq!(body["tenant_id"], tenant, "{route}: {body}");
+            if boundary_status == "active" {
+                active_responses.push(body);
+            } else if *route == "boundaries" {
+                assert_eq!(body["boundaries"][0]["status"], boundary_status);
+                let mut expected = active_responses[i].clone();
+                expected["boundaries"][0]["status"] = json!(boundary_status);
+                assert_eq!(body, expected);
+            } else {
+                assert_eq!(body, active_responses[i], "response shape/data: {route}");
+            }
+            let (status, denied) = get(&client, &base, &path, outsider).await;
+            assert_eq!(status, 403, "foreign admin {route}: {denied}");
+            assert!(
+                denied.get("tenant_id").is_none(),
+                "no protected response: {denied}"
+            );
+        }
+        if boundary_status != "active" {
+            let (status, denied) = admin_revoke(
+                &client,
+                &base,
+                &format!("/v1/admin/grants/{grant}/revoke"),
+                principal,
+                tenant,
+            )
+            .await;
+            assert_eq!(status, 403, "a read exception cannot revoke: {denied}");
+            let stored: String =
+                sqlx::query_scalar("SELECT status FROM authority_grants WHERE grant_id = $1")
+                    .bind(grant)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(stored, "active", "the refused write has no grant effect");
+        }
+    }
+}
+
+/// Legacy-invalid storage must not turn the status-only exception into a bypass.
+#[tokio::test]
+async fn tenant_inspection_rejects_invalid_grants_and_actual_parents() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, outsider) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human", "name":"foreign-parent"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{outsider}");
+    let cases = [
+        ("thread selector", "UPDATE authority_grants SET selector = '{\"kind\":\"threads\",\"threads\":[]}' WHERE tenant_id = $1", 403),
+        ("foreign parent", "UPDATE authority_grants SET boundary_id = (SELECT boundary_id FROM enrollment_boundaries WHERE tenant_id <> $1 ORDER BY boundary_id LIMIT 1) WHERE tenant_id = $1", 403),
+        ("widened actions", "UPDATE enrollment_boundaries SET permitted_actions = '[\"tenant_admin\"]' WHERE tenant_id = $1", 403),
+        ("widened risk", "UPDATE authority_grants SET risk_ceiling = 'high' WHERE tenant_id = $1", 403),
+        ("widened spend", "UPDATE authority_grants SET spend_limits = '{\"amount\":1001}' WHERE tenant_id = $1", 403),
+        ("widened delegation", "UPDATE authority_grants SET delegable = true WHERE tenant_id = $1", 403),
+        ("grant precedes parent", "UPDATE authority_grants SET valid_from = valid_from - interval '1 day' WHERE tenant_id = $1", 403),
+        ("grant outlives parent", "UPDATE authority_grants SET expires_at = expires_at + interval '1 day' WHERE tenant_id = $1", 403),
+        ("expired grant", "UPDATE authority_grants SET expires_at = now() - interval '1 day' WHERE tenant_id = $1", 403),
+        ("future grant", "UPDATE authority_grants SET valid_from = now() + interval '1 day' WHERE tenant_id = $1", 403),
+        ("revoked grant", "UPDATE authority_grants SET status = 'revoked' WHERE tenant_id = $1", 403),
+        ("expired parent", "UPDATE enrollment_boundaries SET expires_at = now() - interval '1 day' WHERE tenant_id = $1", 403),
+        ("future parent", "UPDATE enrollment_boundaries SET valid_from = now() + interval '1 day' WHERE tenant_id = $1", 403),
+        ("malformed selector", "UPDATE authority_grants SET selector = 'null' WHERE tenant_id = $1", 500),
+        ("malformed parent", "UPDATE enrollment_boundaries SET max_delegation_depth = -1 WHERE tenant_id = $1", 500),
+    ];
+    let mut failures = Vec::new();
+    for (label, mutation, expected) in cases {
+        let (status, owner) = enroll(&client, &base, json!({"kind":"human", "name":label})).await;
+        assert_eq!(status, 200, "{owner}");
+        let tenant = owner["tenant_id"].as_str().unwrap();
+        let principal = owner["principal_id"].as_str().unwrap();
+        let path = format!("/v1/admin/grants?tenant_id={tenant}");
+        assert_eq!(
+            get(&client, &base, &path, principal).await.0,
+            200,
+            "eligible control: {label}"
+        );
+        // Freeze the actual original parent before corrupting the fixture. The
+        // foreign-parent case deliberately points at a different tenant's parent.
+        sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE tenant_id = $1")
+            .bind(tenant)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            sqlx::query(mutation)
+                .bind(tenant)
+                .execute(&pool)
+                .await
+                .unwrap()
+                .rows_affected(),
+            1,
+            "{label}"
+        );
+        for route in TENANT_INSPECTION_ROUTES {
+            let path = format!("/v1/admin/{route}?tenant_id={tenant}");
+            let (status, body) = get(&client, &base, &path, principal).await;
+            if status != expected || body.get("tenant_id").is_some() {
+                failures.push(format!(
+                    "{label}/{route}: expected {expected} without protected data, got {status}"
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test]
+async fn tenant_inspection_selects_an_eligible_older_grant() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human", "name":"read-fallback"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    // More than a candidate page, all newer but not yet valid.
+    sqlx::query(
+        "INSERT INTO authority_grants SELECT 'grt_read_future_' || n, boundary_id, tenant_id, \
+         issuer, subject_kind, subject_id, actions, selector, risk_ceiling, spend_limits, \
+         delegable, valid_from + interval '1 day', expires_at, status \
+         FROM authority_grants CROSS JOIN generate_series(1, 35) n WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut failures = Vec::new();
+    for route in TENANT_INSPECTION_ROUTES {
+        let path = format!("/v1/admin/{route}?tenant_id={tenant}");
+        let (status, body) = get(&client, &base, &path, principal).await;
+        if status != 200 || body["tenant_id"] != tenant {
+            failures.push(format!("{route}: expected 200, got {status}: {body}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// A command envelope carrying the `.1.4.2` delegation context (the scope is
 /// either exactly `thread` or tenant-wide — the caller's own attenuation).
 fn envelope_with_delegation(

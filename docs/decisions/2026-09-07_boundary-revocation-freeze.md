@@ -2,6 +2,14 @@
 
 - Date: 2026-09-07 · Leaf: `PHASE-2.1.3.2` · Decision record
 
+**2026-09-09 corrective refinement:** the historical implementation below omitted
+the entire ceiling, which the matched HTTP controls reproduced as an authority
+bypass. `docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md` supersedes that
+implementation rule: ignore only the actual parent's status; retain identity,
+tenant, subject, scope, every ceiling and half-open validity. The approved
+own-tenant inspection exception remains. Its explicit audit provenance is
+separately owned by `SIGNOFF-REPAIR.3.3.3.2.2`.
+
 ## Context
 
 The `.1.3.2` boundary-revocation tests surfaced a real governance-semantics

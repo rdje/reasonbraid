@@ -3,6 +3,13 @@ use super::*;
 
 const CANDIDATE_PAGE_SIZE: usize = 32;
 
+/// The frozen-read exception is available only to its dedicated entrypoint.
+#[derive(Clone, Copy)]
+pub(super) enum EvaluationUse {
+    Command,
+    TenantAdminRead,
+}
+
 pub(super) struct AuthoritySelection {
     pub(super) boundary: Option<EnrollmentAuthorityBoundary>,
     pub(super) grant: Option<AuthorityGrant>,
@@ -29,6 +36,7 @@ pub(super) async fn select_authority_in_tx<E>(
     mut conn: E,
     authz: &CommandAuthz,
     at: DateTime<Utc>,
+    purpose: EvaluationUse,
 ) -> Result<AuthoritySelection, sqlx::Error>
 where
     E: std::ops::DerefMut,
@@ -64,7 +72,12 @@ where
             })?;
             cursor = Some((grant.valid_from, grant.grant_id.clone()));
             let boundary = load_boundary_by_id_in_tx(&mut *conn, &grant.boundary_id).await?;
-            let mut decision = evaluate(Some(&boundary), Some(&grant), authz, at);
+            let mut decision = match purpose {
+                EvaluationUse::Command => evaluate(Some(&boundary), Some(&grant), authz, at),
+                EvaluationUse::TenantAdminRead => {
+                    evaluate_tenant_admin_read(Some(&boundary), Some(&grant), authz, at)
+                }
+            };
             if decision == Decision::Allowed && authz.delegate_subject.is_some() {
                 if let Some(scope) = &authz.delegation_scope {
                     if !delegation_scope_is_subset(&target_to_selector(&authz.target), scope)

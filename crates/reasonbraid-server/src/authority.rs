@@ -432,6 +432,65 @@ pub(crate) async fn load_active_boundary_for_tenant(
 
 // ── Evaluation ──────────────────────────────────────────────────────────────────
 
+/// The narrowly approved inspection exception ignores only boundary status. The
+/// original boundary remains unchanged for source attribution. Even a malformed
+/// internal context cannot use this purpose for delegation or another target.
+fn evaluate_tenant_admin_read(
+    boundary: Option<&EnrollmentAuthorityBoundary>,
+    grant: Option<&AuthorityGrant>,
+    authz: &CommandAuthz,
+    at: DateTime<Utc>,
+) -> Decision {
+    if authz.action != GrantAction::TenantAdmin
+        || !matches!(authz.target, ResourceTarget::Tenant { .. })
+        || authz.delegate_subject.is_some()
+        || authz.delegation_scope.is_some()
+    {
+        return Decision::Denied {
+            reason: "the frozen-read exception requires direct tenant administration inspection"
+                .into(),
+        };
+    }
+    let projected = boundary.map(|boundary| {
+        let mut projected = boundary.clone();
+        projected.status = BoundaryStatus::Active;
+        projected
+    });
+    evaluate(projected.as_ref(), grant, authz, at)
+}
+
+/// Eligibility for the seven existing own-tenant administrative read surfaces.
+/// This read-only transaction does not cover subsequent response queries or
+/// serialize revocation. Explicit inspection auditing is a separate repair.
+pub(crate) async fn check_tenant_admin_read(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    tenant_id: reasonbraid_core::TenantId,
+    at: DateTime<Utc>,
+) -> Result<Decision, sqlx::Error> {
+    let authz = CommandAuthz {
+        actor: reasonbraid_core::actor_handle_for_subject(principal),
+        principal: principal.clone(),
+        delegate_subject: None,
+        delegation_scope: None,
+        action: GrantAction::TenantAdmin,
+        target: ResourceTarget::Tenant { tenant_id },
+    };
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    let selected = selection::select_authority_in_tx(
+        &mut *tx,
+        &authz,
+        at,
+        selection::EvaluationUse::TenantAdminRead,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(selected.decision)
+}
+
 /// The deterministic evaluation: which decision does the dev profile reach for this
 /// context, and why.
 fn evaluate(
@@ -573,9 +632,20 @@ where
                 action: authz.action,
                 target: authz.target.clone(),
             };
-            let caller_selection =
-                selection::select_authority_in_tx(&mut *pool, &caller, at).await?;
-            let mut source = selection::select_authority_in_tx(&mut *pool, authz, at).await?;
+            let caller_selection = selection::select_authority_in_tx(
+                &mut *pool,
+                &caller,
+                at,
+                selection::EvaluationUse::Command,
+            )
+            .await?;
+            let mut source = selection::select_authority_in_tx(
+                &mut *pool,
+                authz,
+                at,
+                selection::EvaluationUse::Command,
+            )
+            .await?;
             if let Decision::Denied { reason } = caller_selection.decision {
                 source.decision = Decision::Denied {
                     reason: format!("the caller's own authority failed: {reason}"),
@@ -583,7 +653,15 @@ where
             }
             source
         }
-        None => selection::select_authority_in_tx(&mut *pool, authz, at).await?,
+        None => {
+            selection::select_authority_in_tx(
+                &mut *pool,
+                authz,
+                at,
+                selection::EvaluationUse::Command,
+            )
+            .await?
+        }
     };
     let selection::AuthoritySelection {
         boundary,

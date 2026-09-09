@@ -223,10 +223,13 @@ boundary bnd_ten_… revoked (at 2026-09-07T…Z)
  inspect boundaries --as alice
 ```
 
-A revoked grant loses its authority at the next decision (the refusal is
-audited); a revoked boundary freezes the tenant.s WRITES — every grant under
-it is refused — while the inspection lists stay open (the freeze never blinds
-the operator).
+A revoked grant loses its authority at the next decision. Normal command
+authorization records its refusal. A revoked boundary freezes writes under it;
+own-tenant inspection remains available only with a structurally valid, unexpired
+tenant-wide administrator grant. The exception ignores boundary status alone,
+retaining parent ceilings and both validity windows. These administrative reads
+still lack explicit inspection audit records; the authority chapter names the
+seven affected routes and the owned follow-up.
 
 A grant or boundary outside the acting tenant returns 404 without changing the
 foreign target or its tenant's revocation epoch. A repeated grant revocation returns

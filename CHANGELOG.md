@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Bound frozen-tenant inspection (`SIGNOFF-REPAIR.3.3.3.2.1`)
+
+Seven administrative GET routes retain inspection through active, suspended or
+revoked actual boundary status while enforcing parent/tenant/subject binding,
+whole-grant ceilings, tenant-wide selectors and nonempty half-open validity.
+Usable older grants survive newer ineligible candidates. Response shapes remain
+compatible; normal writes retain their boundary-status gate. All 40 live
+authority/command API tests, ten pure evaluator controls and strict focused lint
+pass. All results consumed and the owned cluster removed. Explicit inspection
+audit provenance remains the next owned leaf.
+
 ## 2026-09-09 — Actual-parent command authority (`SIGNOFF-REPAIR.3.3.3.1`)
 
 Normal commands select usable caller/delegated grants through deterministic

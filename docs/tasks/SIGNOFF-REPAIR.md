@@ -252,9 +252,29 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.3.3.3.2 — Preserve frozen-tenant reads with structurally valid authority
 
-- Status: `pending`.
+- Status: `active`; split structural read authorization from unambiguous inspection audit provenance.
 - Owns: the separate administrative read helper's actual-parent, tenant/subject, action/selector and validity checks; usable-grant selection and attributable inspection evidence, preserving the approved boundary-status exception.
 - Acceptance: an eligible own-tenant administrator can inspect after its actual boundary is frozen; foreign, widened, expired and wrong-parent authority cannot inspect, and an ineligible newer grant does not shadow valid inspection authority. No read exception authorizes a write or site registry operation.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.3.2.1 — Bound frozen-tenant read eligibility
+
+- Status: `done`; predecessor `5fd86df` was committed, tree clean, brief zero/untracked and project-job census handoff: OK, rc=0 before activation.
+- Owns: the existing authorize_tenant_admin_read helper, read-only candidate-selection entrypoint/mode, pure and live HTTP controls, and related book/decision/live/task synchronization. Reuse actual-parent bounded candidate selection. Ignore only the actual boundary's Active/Suspended/Revoked status for this approved read exception; retain parent/tenant/subject binding, whole-grant ceilings, nonempty half-open validity and TenantWide selector. No delegation or mutation may enter the exception.
+- Source/route census: exactly seven callers use this helper: GET admin nodes/presence, grants, boundaries, incarnations, runs, breakers and usage. It currently checks only one newest active grant's action and inclusive time window, without parent/selector checks, and writes no authorization record. Thread/audit inspection, cross-domain receipts and process metrics use other gates; do not silently extend the freeze exception to those surfaces.
+- Acceptance: all seven own-tenant read surfaces work for eligible active/suspended/revoked actual boundaries; foreign/malformed/widened/out-of-window/revoked grants refuse without exposing protected responses. A newer ineligible grant does not shadow a usable one. Existing administrative writes and site registries remain fenced by their normal authority paths. The API response shapes stay compatible.
+- Audit scope: this child preserves the current lack of an inspection decision record rather than emit an ambiguous allowed tenant_admin record under a revoked boundary. The following `.3.3.3.2.2` owns explicit inspection provenance and its API/readback controls. Do not claim this child completes administrative audit coverage.
+- Implementation/control plan before code: extend `crates/reasonbraid-server/tests/command_api.rs` with a seven-route status/response control, isolated invalid stored-grant/parent cases and newer-ineligible candidate fallback. Run these against the unchanged helper first. Add pure status-only exception and misuse/window/binding controls in `authority/evaluation_tests.rs`; add a private closed evaluation-purpose enum in `authority/selection.rs`, an exact direct tenant-read entrypoint in `authority.rs`, and replace only the existing API read helper. Normal command callers explicitly select command evaluation. The read entrypoint uses a read-only transaction and does not claim that subsequent response queries share its snapshot or serialize revocation. Preserve actual parent status in selected metadata. Fix inaccurate audit/source comments encountered on these seven callers; explicit inspection auditing remains the next child.
+- Baseline: `python3 -B scripts/project_env.py env CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh command_api` on the unchanged helper returned rc=101, run-7cnflvxj: 22 passed, two failed; build 8.93s, execution 13.42s. All seven routes allowed twelve invalid-authority variants: thread selector, foreign parent, widened actions/risk/spend/delegability, grant preceding/outliving its parent, expired/future parent and malformed selector/parent. All seven also refused usable older authority behind 35 future candidates. Revoked/expired/future grant refusals and the status-only freeze/unchanged-response/foreign-admin/refused-write positive-control test already passed. The baseline proves 84 invalid allowances and seven incorrect denials, not a failure in the existing status exception itself.
+- Baseline cleanup: consumed stopped runner held 1,608 files / 51,667,584 bytes on device 16777244. command-1.log SHA-256 e1f07847ed4459530cfac563b7a4e3ca27303f8aa66784bfd2d42302a281fb2b; postgres.log dfa770459f0702b0a419d8bd42ede49841640b3ac53a1a04233ef4e793764221. Exact receipt/path/device, both unchanged hashes, absent postmaster.pid, no symlinks and no matching PostgreSQL process verified. Only run-7cnflvxj removed; residue absent, rc=0.
+- Corrected verification: run-z64y07g2 returned rc=0: all 40 live tests passed (16 authority + 24 command_api), zero failed/ignored. Authority built in 1m01s including build-lock waiting and executed in 0.26s; command API built in 9.94s and executed in 20.70s. The runner stopped/removed its cluster. Ten pure evaluator controls passed, rc=0 (9.91s build, 0.00s execution); strict server/lib/authority/command_api Clippy passed, rc=0 (35.93s). All tool results consumed. Formatting/diff checks, book build and rendered authority/CLI/roadmap/qualification contract inspection passed, rc=0. The escalated project-job census returned handoff: OK, rc=0. The staged doctrine gate runs in the commit hook. No full CI or push; no production qualification category advance.
+- Commit: `REASONBRAID-REPAIR-0015` (this commit).
+
+###### SIGNOFF-REPAIR.3.3.3.2.2 — Distinguishable inspection authority audit
+
+- Status: `pending`.
+- Owns: an explicit read-inspection purpose in durable authority evidence, exact source references, API/readback/documentation and compatibility of historical records. Choose a bounded schema/API slice before implementation; the present authorization record's tenant_admin action alone cannot distinguish the frozen-read exception from a write allowance.
+- Acceptance: inspection allow/deny decisions are attributable and visibly distinguishable from write authority, including actual frozen-parent status and the granted scope. Historical records keep honest provenance; audit failure refuses inspection admission. A record describes authorization, not successful delivery of every response byte. Preserve `.3.3.3.2.1` eligibility and no authority expansion.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.3.3.4 — Tenant authority serialization and effect auditing
@@ -278,6 +298,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - Status: `pending`.
 - Sources / owned surfaces: `api.rs node inbox/prune/quarantine/replay, breaker, enrollment, admin services`.
+- Additional source-owned surface from the read-path census: admin_metrics still queries any active tenant-admin grant directly and returns process-global telemetry. It omits actual-boundary and selector checks and is not one of the seven repaired site registry operations or seven frozen-own-tenant read callers. This leaf owns runtime reproduction, explicit authority for the shared operational read surface, scope/liveness controls and book correction; source observation only until reproduced. Do not infer that registry_inspect already authorizes metrics or widen an action silently.
 - Goal and acceptance: Use real target ownership inside the mutation transaction; replace foreign/nonexistent-node success fixtures and prove foreign reads/writes leave all affected rows unchanged; retain the approved own-tenant frozen-admin read carve-out.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
@@ -488,7 +509,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
-- Status: `active`; first containment transition `.11.4.1` executes before further authority appends.
+- Status: `active`; `.11.4.1` rotation is complete, and broader containment/claim reconciliation remain `.11.4.2`–`.11.4.3`.
 - Sources / owned surfaces: `live docs, book, task records, external ledger, CI`.
 - Goal and acceptance: Partition oversized live status/history, review adopted containment requirements, reconcile all phase/gate claims with measured behavior, refresh dependency evidence, and make pre-push CI discover every required live suite without counting skips as passes.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -576,11 +597,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — the six pure evaluator controls passed, rc=0. Strict server/lib/authority/command_api Clippy passed, rc=0 (45.34s); final authority-test Clippy passed, rc=0 (4.91s). `cargo fmt --all --check`, `git diff --check`, `make book` and rendered selection/absence/serialization-limit inspection passed, rc=0. Existing command, delegation, replay, revocation and frozen-read compatibility tests pass. All results are consumed; the owned final cluster stopped/removed, and earlier consumed failure clusters were safely removed with hashes/counts recorded above. The escalated project-job census returned handoff: OK, rc=0; no result remains pending. No full CI or push.
 - [x] **FIX / LOCKSTEP** — candidate selection is a bounded-page module with explicit bytewise keyset ordering; the transactional authorizer chooses caller and source separately and never substitutes a false parent/grant. Independent live record/digest controls passed, rc=0. Book, indexed decision, live records and task frontiers distinguish completed command selection from pending frozen-admin reads, delegation policy and effect serialization. README commands/layout and the audit schema remain unchanged; no production qualification category advance.
 
+## Current commit acceptance — SIGNOFF-REPAIR.3.3.3.2.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — unchanged-helper `scripts/run_pg_tests.sh command_api` returned rc=101: 22 passed, two failed. The helper omitted actual-parent, ceiling and selector checks and used only the newest grant; 84 invalid allowances and seven incorrect denials were observed across seven routes. Eligible active/suspended/revoked, foreign-principal and frozen-write controls passed, separating the defect from the approved status exception.
+- [x] **ADDRESSED (verified)** — corrected `scripts/run_pg_tests.sh authority command_api` passed all 40 tests, rc=0. All fifteen invalid-authority cases now refuse protected responses across seven routes; fallback traverses 35 future candidates. Eligible response bodies remain identical across boundary statuses except the reported boundary status; foreign reads refuse and frozen write attempts leave the grant active.
+- [x] **NO REGRESSION** — ten pure evaluator tests and strict server/lib/authority/command_api Clippy passed, rc=0. Pure controls cover human/role subjects, every ceiling, binding, exact validity endpoints, empty windows and rejection of other actions/targets/delegation. `cargo fmt --all --check`, `git diff --check` and `make book` passed, rc=0. All verification jobs are consumed; the corrected cluster stopped/removed and the consumed baseline removed after exact receipt/hash/process proof. Normal authority, delegation, replay and revocation controls pass in the 40-test run. No full CI or push.
+- [x] **FIX / LOCKSTEP** — a private purpose selects status-only read evaluation with unchanged actual-parent metadata; the dedicated direct tenant entrypoint uses a read-only transaction. The baseline-to-corrected live comparison passed, rc=0. Book, indexed decision, superseded historical interpretation, Phase-2 annotation, task frontier and live records describe seven compatible read surfaces and distinguish eligibility from pending inspection audit/serialization. README layout/commands and public response/schema shapes remain unchanged; no production qualification category advance.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.3.2` | `pending` | preserve frozen reads with structurally valid authority |
+| 1 | `SIGNOFF-REPAIR.3.3.3.2.2` | `pending` | distinguish inspection authority in audit |
 | 2 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
 | 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
@@ -606,6 +634,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.3.2.1`: `REASONBRAID-REPAIR-0015 (leaf SIGNOFF-REPAIR.3.3.3.2.1): bind frozen-tenant inspection to valid authority`.
 
 - `SIGNOFF-REPAIR.3.3.3.1`: `REASONBRAID-REPAIR-0014 (leaf SIGNOFF-REPAIR.3.3.3.1): select usable command grants with actual parents`.
 

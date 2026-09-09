@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — A freeze exception removes one check, not the authority boundary
+
+- The historical read helper ignored parent ceilings and scope and selected only the newest grant. Matched live controls reproduced 84 invalid allowances and seven incorrect denials across seven routes. Dedicated read evaluation now ignores only actual boundary status while retaining structural binding, ceilings and half-open validity; normal commands keep their status check. All 40 live tests, ten pure controls and strict lint pass; all results consumed and the owned cluster removed. Explicit inspection auditing remains the next leaf so an allowed tenant_admin record cannot masquerade as write authority under a frozen parent.
+- promotion: promoted → `docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md`; owner `SIGNOFF-REPAIR.3.3.3.2.1`.
+
 ## _(2026-09-09)_ — Candidate selection must preserve the actual authority source
 
 - Latest-grant-only lookup hid usable grants; an independent tenant-boundary lookup wrote the wrong parent on denials, and absent delegated sources could borrow caller references. Normal commands now scan deterministic bounded pages and evaluate each actual parent, including requested delegated scope. Missing sources have no parent/grant references; malformed selected storage returns an error. The baseline reproduced four product failures; one delegated fixture collision was separately root-caused and corrected. Final verification passes all 37 live authority/command API tests, six evaluator controls and strict lint; all results and shutdown are consumed. Transaction serialization and frozen-admin reads remain separately owned.

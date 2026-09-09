@@ -1547,7 +1547,7 @@ async fn revoke_federation_agreement(
 
 /// `GET /v1/admin/nodes/presence?tenant_id=…` — the tenant's enrolled nodes
 /// with their DERIVED presence state + the lease clock: the operator's
-/// "this node is known, just quiet" rows. tenant_admin-gated (audited).
+/// "this node is known, just quiet" rows. Uses the own-tenant inspection gate.
 async fn list_node_presence(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
@@ -4874,49 +4874,22 @@ async fn revoke_boundary(
     })))
 }
 
-/// The admin READ authorization (the `.1.3.2` lists): the principal's OWN
-/// grant must carry `tenant_admin` and be within its window — the boundary
-/// ceiling is deliberately NOT required, so inspection survives a boundary
-/// revocation (the freeze stops writes, never the operator's eyes). The
-/// dev-profile root trust is the bootstrap human's grant.
+/// The admin READ authorization: an eligible own-tenant grant may inspect after
+/// its actual boundary is suspended or revoked. Only the boundary's status check
+/// is excepted; parent, subject, tenant, ceilings, scope and validity still bind.
 async fn authorize_tenant_admin_read(
     pool: &PgPool,
     principal: &GrantSubject,
     tenant_id: TenantId,
 ) -> Result<(), ControlApiError> {
-    let (subject_kind, subject_id) = match principal {
-        GrantSubject::Human(h) => ("human", h.to_string()),
-        GrantSubject::Role(r) => ("role", r.to_string()),
-    };
-    let row: Option<(Value, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT actions, valid_from, expires_at FROM authority_grants \
-         WHERE tenant_id = $1 AND subject_kind = $2 AND subject_id = $3 AND status = 'active' \
-         ORDER BY valid_from DESC LIMIT 1",
-    )
-    .bind(tenant_id.to_string())
-    .bind(subject_kind)
-    .bind(subject_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((actions, valid_from, expires_at)) = row else {
-        crate::telemetry::metrics().incr("authorization_denials");
-        return Err(ControlApiError::unauthorized(
-            "authorization denied: no applicable grant".to_string(),
-        ));
-    };
-    let now = Utc::now();
-    let in_window = valid_from <= now && now <= expires_at;
-    let has_admin = actions
-        .as_array()
-        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some("tenant_admin")));
-    if in_window && has_admin {
-        Ok(())
-    } else {
-        crate::telemetry::metrics().incr("authorization_denials");
-        Err(ControlApiError::unauthorized(
-            "authorization denied: the tenant_admin grant is revoked or outside its window"
-                .to_string(),
-        ))
+    match authority::check_tenant_admin_read(pool, principal, tenant_id, Utc::now()).await? {
+        reasonbraid_core::Decision::Allowed => Ok(()),
+        reasonbraid_core::Decision::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            Err(ControlApiError::unauthorized(format!(
+                "authorization denied: {reason}"
+            )))
+        }
     }
 }
 

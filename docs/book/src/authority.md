@@ -56,10 +56,12 @@ the caller's grant. Malformed candidate storage returns a storage error rather t
 a fabricated authority decision. The audit schema and digest input format remain
 unchanged. These lookups do not establish transaction-wide revocation ordering.
 
-The separate frozen-tenant administrative read helper remains `.3.3.3.2`; it
-needs structural and candidate checks while preserving its approved boundary-status
-exception. Delegation depth, consent and cached-decision freshness
-remain `.3.4`; tenant authority/effect transaction ordering remains `.3.3.4`.
+The separate frozen-tenant administrative read path now uses the same candidate
+selection with a boundary-status exception described below. Under `.3.3.3.2.1`,
+all 40 live authority/command API tests, ten pure controls and strict focused lint
+pass; all results are consumed and the owned cluster removed. Explicit inspection audit provenance remains
+`.3.3.3.2.2`. Delegation depth, consent and cached-decision freshness remain `.3.4`;
+tenant authority/effect transaction ordering remains `.3.3.4`.
 
 ## Subject JSON and delegation inputs
 
@@ -133,6 +135,40 @@ are explicit corrective work, not guarantees inferred from the command core.
 Tenant administration is intended to remain tenant-scoped. The approved frozen
 boundary carve-out allows an otherwise eligible tenant administrator to inspect its
 own tenant after boundary revocation. It does not grant authority over other tenants.
+
+The exception ignores **only the actual boundary's status** (active, suspended or
+revoked). The direct caller still needs an active tenant_admin grant selecting
+the whole tenant, bound to that parent and tenant and within every parent ceiling.
+Both windows must be nonempty and currently valid: the start is inclusive and
+expiration is exclusive. Revoking the grant, expiring either window or narrowing
+the parent below the grant removes eligibility. No delegation enters this path.
+
+These seven existing GET routes use the exception:
+
+| Route under `/v1/admin/` | Own-tenant inspection |
+| --- | --- |
+| `nodes/presence` | Known nodes and derived presence |
+| `grants` | Grant inventory and status |
+| `boundaries` | Enrollment boundaries and status |
+| `incarnations` | Recorded role incarnations |
+| `runs` | Recorded runs |
+| `breakers` | Spend-breaker state |
+| `usage` | Usage ledger summary |
+
+Each takes `?tenant_id=ten_…` and retains its existing response shape. For example,
+after freezing Alice's boundary, Alice can still call
+`GET /v1/admin/boundaries?tenant_id=ten_…` with a structurally valid unexpired
+grant. A grant limited to one thread cannot list these tenant-wide inventories.
+A newer future-dated grant does not hide Alice's eligible older grant. Bob's
+administrator grant in another tenant cannot inspect Alice's inventory.
+
+The gate uses a read-only transaction; response queries follow separately. It does
+not promise a shared response snapshot or revocation serialization. These seven
+reads still lack an inspection authorization record in this child; `.3.3.3.2.2`
+adds distinguishable read-purpose evidence. Ordinary write admission records are
+not evidence that these reads were audited. Thread/audit inspection, cross-domain
+receipts and process metrics retain their separate gates; the exception does not
+extend to them or to site registries.
 
 The shared adapter and region HTTP handlers use the separate
 [site-authority service](site-authority.md): explicit operator-issued grants,

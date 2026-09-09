@@ -15,6 +15,19 @@
 Harden identity, delivery, recovery, and observability so a later Internet
 slice can reuse the same control plane without rewriting it.
 
+## Frozen administrative inspection correction
+
+The historical `.1.3.2` grant-direct inspection interpretation is refined by
+`docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md`; current ownership is
+`SIGNOFF-REPAIR.3.3.3.2.1`. The status exception remains, with every structural,
+ceiling, selector and validity check restored. Historical closure is not evidence
+that the old helper enforced those checks or audited these reads. Explicit
+inspection-purpose audit evidence remains `.3.3.3.2.2`.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — the unchanged helper's guarded command_api baseline returned rc=101, 22 passed/two failed: all seven routes allowed twelve invalid-authority variants and hid an eligible grant behind newer future grants.
+- [x] **ADDRESSED (verified)** — corrected guarded authority + command_api tests passed all 40 tests, rc=0, including seven-route invalid refusal, valid fallback and unchanged eligible responses through active/suspended/revoked parent status.
+- [x] **NO REGRESSION** — ten pure evaluator tests and strict focused server/lib/authority/command_api Clippy passed, rc=0. Frozen writes remain refused with unchanged grant state; all results consumed and the owned cluster stopped/removed. The historical freeze decision now links its narrower successor.
+
 ## Subject serialization and representation evidence correction
 
 `SIGNOFF-REPAIR.3.3.1` owns the core subject JSON repair and correction of the

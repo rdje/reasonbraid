@@ -223,3 +223,174 @@ fn evaluation_excludes_exact_expiration_and_allows_the_start() {
         Decision::Denied { .. }
     ));
 }
+
+#[test]
+fn frozen_inspection_excepted_status_does_not_enable_commands() {
+    for subject in [
+        GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000001".parse().unwrap()),
+        GrantSubject::Role("rol_00000000-0000-7000-8000-000000000002".parse().unwrap()),
+    ] {
+        for status in [
+            BoundaryStatus::Active,
+            BoundaryStatus::Suspended,
+            BoundaryStatus::Revoked,
+        ] {
+            let (mut b, mut g, mut a) = fixture(GrantAction::TenantAdmin);
+            b.status = status;
+            g.subject = subject.clone();
+            a.principal = subject.clone();
+            a.actor = actor_handle_for_subject(&subject);
+            assert_eq!(
+                evaluate_tenant_admin_read(Some(&b), Some(&g), &a, at()),
+                Decision::Allowed
+            );
+            assert_eq!(
+                b.status, status,
+                "projection cannot change source attribution"
+            );
+            assert_eq!(
+                evaluate(Some(&b), Some(&g), &a, at()) == Decision::Allowed,
+                status == BoundaryStatus::Active
+            );
+        }
+    }
+}
+
+#[test]
+fn frozen_inspection_retains_binding_scope_and_every_grant_ceiling() {
+    for change in 0..13 {
+        let (mut b, mut g, mut a) = fixture(GrantAction::TenantAdmin);
+        b.status = BoundaryStatus::Revoked;
+        match change {
+            0 => g.boundary_id = "bnd_other".into(),
+            1 => b.tenant_id = TenantId::new(),
+            2 => {
+                a.principal =
+                    GrantSubject::Role("rol_00000000-0000-7000-8000-000000000002".parse().unwrap())
+            }
+            3 => {
+                a.target = ResourceTarget::Tenant {
+                    tenant_id: TenantId::new(),
+                }
+            }
+            4 => g.selector = TargetSelector::Threads { threads: vec![] },
+            5 => g.actions.clear(),
+            6 => g.actions.push(GrantAction::ThreadCreate),
+            7 => g.risk_ceiling = RiskClass::High,
+            8 => g.spend_limits = Some(serde_json::json!({"amount":101})),
+            9 => g.delegable = true,
+            10 => g.valid_from = b.valid_from - Duration::seconds(1),
+            11 => g.expires_at = b.expires_at + Duration::seconds(1),
+            12 => g.status = GrantStatus::Revoked,
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                evaluate_tenant_admin_read(Some(&b), Some(&g), &a, at()),
+                Decision::Denied { .. }
+            ),
+            "change {change}"
+        );
+    }
+}
+
+#[test]
+fn frozen_inspection_windows_are_nonempty_and_half_open() {
+    let (mut b, g, a) = fixture(GrantAction::TenantAdmin);
+    b.status = BoundaryStatus::Suspended;
+    let tick = Duration::nanoseconds(1);
+    for (time, allowed) in [
+        (g.valid_from - tick, false),
+        (g.valid_from, true),
+        (g.expires_at - tick, true),
+        (g.expires_at, false),
+    ] {
+        assert_eq!(
+            evaluate_tenant_admin_read(Some(&b), Some(&g), &a, time) == Decision::Allowed,
+            allowed,
+            "{time}"
+        );
+    }
+    let mut coextensive = g.clone();
+    coextensive.valid_from = b.valid_from;
+    coextensive.expires_at = b.expires_at;
+    assert_eq!(
+        evaluate_tenant_admin_read(Some(&b), Some(&coextensive), &a, b.valid_from),
+        Decision::Allowed
+    );
+    assert!(matches!(
+        evaluate_tenant_admin_read(Some(&b), Some(&coextensive), &a, b.expires_at),
+        Decision::Denied { .. }
+    ));
+    for change in 0..4 {
+        let mut invalid_b = b.clone();
+        let mut invalid_g = g.clone();
+        match change {
+            0 => invalid_g.valid_from = invalid_g.expires_at,
+            1 => invalid_b.valid_from = invalid_b.expires_at,
+            2 => invalid_b.valid_from = at() + tick,
+            3 => invalid_b.expires_at = at(),
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                evaluate_tenant_admin_read(Some(&invalid_b), Some(&invalid_g), &a, at()),
+                Decision::Denied { .. }
+            ),
+            "change {change}"
+        );
+    }
+    assert!(matches!(
+        evaluate_tenant_admin_read(None, Some(&g), &a, at()),
+        Decision::Denied { .. }
+    ));
+    assert!(matches!(
+        evaluate_tenant_admin_read(Some(&b), None, &a, at()),
+        Decision::Denied { .. }
+    ));
+}
+
+#[test]
+fn frozen_inspection_refuses_other_actions_targets_and_delegation() {
+    for action in [
+        GrantAction::ThreadCreate,
+        GrantAction::ThreadCreateAuto,
+        GrantAction::ThreadInspect,
+        GrantAction::ThreadInvite,
+        GrantAction::ThreadContribute,
+        GrantAction::ThreadClose,
+        GrantAction::ThreadCancel,
+        GrantAction::ThreadInvitationRespond,
+        GrantAction::ThreadAdvanceRound,
+    ] {
+        let (b, g, a) = fixture(action);
+        assert!(
+            matches!(
+                evaluate_tenant_admin_read(Some(&b), Some(&g), &a, at()),
+                Decision::Denied { .. }
+            ),
+            "{action}"
+        );
+    }
+    for change in 0..3 {
+        let (b, g, mut a) = fixture(GrantAction::TenantAdmin);
+        match change {
+            0 => {
+                a.target = ResourceTarget::Thread {
+                    tenant_id: g.tenant_id,
+                    thread_id: ThreadId::new(),
+                }
+            }
+            1 => a.delegate_subject = Some(g.subject.clone()),
+            2 => a.delegation_scope = Some(TargetSelector::TenantWide),
+            _ => unreachable!(),
+        }
+        assert!(
+            matches!(
+                evaluate_tenant_admin_read(Some(&b), Some(&g), &a, at()),
+                Decision::Denied { .. }
+            ),
+            "change {change}"
+        );
+    }
+}

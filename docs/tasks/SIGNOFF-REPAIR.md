@@ -48,11 +48,11 @@ The registry decision is explicit site-operator authority, issued only through o
 
 ### SIGNOFF-REPAIR.2.2 — Disposable PostgreSQL verification
 
-- Status: `active`; execute children `.2.2.1` then `.2.2.2` and commit each.
+- Status: `done`; children `.2.2.1` and `.2.2.2` completed in separate commits.
 - Sources / owned surfaces: `scripts/run_pg_tests.sh, tests pool helpers, migration_upgrade, backup_restore, rls`.
 - Goal and acceptance: Refuse destructive tests against an unowned database; create isolated local cluster/database/roles, support focused suites, serialize shared fixtures, verify shutdown before cleanup, and prove failure-path residue handling.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Verification: runner lifecycle and live controls, matched missing-proof and malformed-input reproductions, 40 focused cross-crate tests, final restore and three environment controls passed; evidence in both children.
+- Commits: `REASONBRAID-REPAIR-0003` and `REASONBRAID-REPAIR-0004`.
 
 #### SIGNOFF-REPAIR.2.2.1 — Owned PostgreSQL runner and focused selection
 
@@ -68,11 +68,33 @@ The registry decision is explicit site-operator authority, issued only through o
 
 #### SIGNOFF-REPAIR.2.2.2 — Test-side disposable database proof
 
-- Status: `pending`.
+- Status: `done`.
 - Owns: server/CLI/MCP test pool helpers, destructive migration/restore/RLS exercises, CI PostgreSQL invocation, documentation.
 - Scope: verify runner-issued ownership against the connected server before migrations, purges, schema drops or role changes; ordinary cargo tests with an arbitrary DATABASE_URL must refuse before destructive SQL. Preserve offline skips and prove negative controls. Wire CI through the same isolated runner, including PostgreSQL tools and repository-local environment.
 - Acceptance: real owned tests pass, missing/forged/wrong-server ownership fails before effects, cross-suite shared fixtures serialize, restore and RLS helpers remain isolated.
-- Verification and commit: pending.
+- Implementation boundary: share a test-only pool helper across the 30 server database suites, CLI integration suite and MCP unit-test module. Preflight the runner's relative workspace, live receipt and exact connection target before connecting; validate server identity on every newly opened pool connection before exposing it to destructive fixtures. Keep the helper out of production library exports. Add focused negative controls and wire the CI PG job through the owned runner. Runner receipts also clear the previous command's exit field when publishing a new active command, so a crash reader sees no stale success attached to in-flight work.
+- Historical alignment: annotate the matched census mechanisms with the repaired fixture/runner behavior and its evidence; keep combined records open wherever their other product or operations findings remain unresolved.
+- Baseline reproduction: the previously verified `target/debug/deps/authority-32bfc3fd75141971` binary ran its tenant-membership test against a new controlled disposable cluster with RB_TEST_CLUSTER/RB_TEST_OWNER/RB_TEST_DATABASE removed. It returned `1 passed`, rc=0, and wrote 2 authorization rows. The controlled cluster `target/pg-tests/run-30jhvrq6` was stopped and removed. This proves missing ownership metadata did not prevent writes in the baseline; no unowned real database was contacted.
+- Corrected missing-metadata control: the rebuilt authority binary returned exit 101 with the ownership-required refusal, and `information_schema.tables` reported zero public tables. The fresh controlled cluster `target/pg-tests/run-xnlq_y59` was stopped and removed. This is the matched negative leg for the baseline's 2 writes.
+- Restore malformed-input baseline: the already-built `backup_restore-502fc31ddecf0c57` binary received DATABASE_URL containing byte 0xff (three ownership variables absent). It printed `SKIP: DATABASE_URL is unset` and `1 passed`, exit 0, proving non-Unicode input was misreported as absent. No database was started or contacted. The source now delegates environment validation to the shared helper before reading the validated URL; the rebuilt control then returned exit 101 with the ownership refusal; the absent-variable control still skipped explicitly with exit 0.
+- Initial guard verification: `bash scripts/run_pg_tests.sh pg_guard` through the launcher passed 3 controls in 15.03 seconds, rc=0 (unsafe target/receipt/symlink preflight, forged live proof, and denial of a new connection after a role-default marker change). Cluster `target/pg-tests/run-7k9u5c0p` stopped and removed.
+- Focused regression: `pg_guard authority command_api backup_restore migration_upgrade rls mcp cli_end_to_end` passed 40 tests (3+9+18+1+1+1+5+2), no failures/ignored tests, rc=0. Cluster `target/pg-tests/run-3hydt24g` stopped and removed. YAML parsed through installed system Ruby/Psych (read-only tool input); inline Python AST and stale command-exit receipt control passed. Rust format check passed. The final source simplifies the restore entrypoint to call the common guard before reading its validated URL, preserving refusal for non-Unicode environment data. Strict all-target/all-feature Clippy passed with warnings denied, rc=0, in 35m05s; the final restore recheck passed (1 test, rc=0), and `target/pg-tests/run-x6yk9h25` was stopped and removed. Three rebuilt-binary environment controls passed: non-Unicode and supplied-without-proof returned 101 with the ownership refusal; absent URL returned 0 with an explicit skip. No database was started or contacted by those environment controls.
+- Commit: `REASONBRAID-REPAIR-0004`.
+
+#### Historical census dispositions for `.2.2`
+
+These dispositions apply to the named mechanisms in the baseline source records;
+combined records retain their other open findings. Their original observations
+remain preserved under `docs/tasks/artifacts/signoff_review/`.
+
+| Record | Corrected mechanism and evidence | Remaining scope |
+| --- | --- | --- |
+| `R-58-2` | Initial fixture pools require owned receipts; missing-metadata control changes from 2 writes to zero public tables; 40 focused tests pass. | Tenant-admin registry authority and its coverage remain `.3.2`–`.3.3`. |
+| `R-58-3` | Supported runner invocations use distinct clusters and serial suites/threads; simultaneous-cluster control passed in `.2.2.1`. | Deliberately sharing a runner's private environment across manual test processes is outside the supported invocation. |
+| `R-59-2` | Guard restricts the restore exercise to the generated canonical URL; tmp defaults are repository-local; CREATE/DROP use verified connections and errors fail the test. Actual restore passes. | General backup/restore script safety and failure-artifact handling remain `.11.3`; arbitrary credential/IPv6 URLs are refused by this fixture. |
+| `R-66-2` | Schema-drop upgrade exercise now obtains a verified pool first; upgrade test passes. | Historical migration/backfill coverage claims remain `.4.5` / `.11.4`. |
+| `R-80-82-1` | RLS role/table cleanup executes only in its owned cluster; real RLS refusal test passes. | The combined product authority, attribution, lifecycle and registry findings remain open under their listed owners. |
+| `R-90-1` | PG runner now verifies process shutdown before deletion, records failure evidence and supports explicit ordering. Baseline had 30 server suites; the new guard makes the current count 31. | The other dev/demo/load/restore/scaffold findings remain `.11.2`–`.11.4` and the record's product owners. |
 
 ### SIGNOFF-REPAIR.3.1 — Tenant-bound revocation
 
@@ -304,13 +326,14 @@ The registry decision is explicit site-operator authority, issued only through o
 - Sources / owned surfaces: `bootstrap/update_scaffold, check scripts, task acceptance probes`.
 - Goal and acceptance: Protect populated repositories, preserve project indexes, enforce ownership before all changes, validate staged evidence for the actual leaf, reject failed process censuses, and correct table/path checks against primary specifications.
 - Host execution follow-up from `.2.2.1`: a fresh `#!/bin/bash` stub under `target/pg-runner-baseline-controls` printed `ready` in 0.0 seconds through `/bin/bash <stub>` but direct execution timed out at 3 seconds; a baseline Python-shebang stub also stalled for 59 seconds. `BASH_ENV` was unset. An authorized one-second `sample` of the exact fresh stub returned 897 samples at `_dyld_start + 0`, before interpreter code; all probe groups were stopped/reaped and fixture census returned no residue. Cause is narrowed to host/loader execution startup, not the script body; the underlying host control is unproved. The current PG runner enters Python/Bash explicitly and its actual installed PostgreSQL processes pass. Follow-up: reproduce direct versus interpreter startup in the supported execution environment, identify the responsible loader/security/tooling control before changing any host policy, and retain explicit-interpreter entrypoints where sufficient. No global security setting has been changed.
+- Additional `.2.2.2` lint evidence: after 8 minutes elapsed and about 2 seconds CPU, owned rustc PID 49982 was sampled for one second (`sample`, rc=0). All 800 samples of its compiler thread were in `rustc_metadata::host_dylib::load_dylib → dlopen → dyld4::Loader::mapSegments → fcntl → __fcntl`; `lsof` identified open descriptor 7 as `target/debug/deps/libasn1_rs_derive-5b39009ea2780f94.dylib`. The main thread waited for that compiler thread. This narrows the long Clippy delay to host dynamic-library loading for that process; it does not prove the responsible OS/security service. Raw local evidence: `target/doctrine_scratch/clippy-process-sample.txt`. Clippy continued advancing other dependency checks. Keep this follow-up open; no host policy or library signature was changed.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
 ### SIGNOFF-REPAIR.11.3 — Operational scripts and evidence
 
 - Status: `pending`.
-- Sources / owned surfaces: `backup/restore/dev/demo/load scripts`.
+- Sources / owned surfaces: `backup/restore/dev/demo/load scripts`, plus remaining artifact/error cleanup in `crates/reasonbraid-server/tests/backup_restore.rs`.
 - Goal and acceptance: Protect restore targets and secrets, use atomic restrictive backups, validate identifiers and quoting, verify HTTP status and negative controls, avoid fixed-port/output collisions, reap jobs, and ensure requested load counts and honest demo evidence.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
@@ -331,20 +354,20 @@ The registry decision is explicit site-operator authority, issued only through o
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
-## Current commit acceptance — SIGNOFF-REPAIR.2.2.1
+## Current commit acceptance — SIGNOFF-REPAIR.2.2.2
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the baseline shell-function probe described in `.2.2.1` ran the unchanged `ae99e01` runner and produced `pg_ctl stop injected exit 9 ; runner exit 0 ; retained cluster directories 0`, rc=0 for the assertion. The old cleanup ignored failed shutdown and deleted data. The additional deterministic spawn/signal control failed once (rc=1), proving the unregistered-child window before its repair.
-- [x] **ADDRESSED (verified)** — `python3 -B scripts/tests/test_pg_runner.py` ran 12 tests, `OK`, rc=0. `python3 -B scripts/project_env.py python3 -B scripts/tests/test_pg_runner_live.py` ran 4 tests, `OK`, rc=0. These include foreign-server refusal before creation (including a changed server on the creation connection), occupied-port refusal, retention on unknown shutdown, signal-safe process publication/reaping, real simultaneous cluster isolation and durable failure logs. The exact retained signal fixture was cleaned only after stopped-state/process verification (1,271 files, residue False).
-- [x] **NO REGRESSION** — the final owned runner command above ran the existing authority suite: `9 passed; 0 failed; 0 ignored`, rc=0, then printed `stopped and removed target/pg-tests/run-srkgcbhd`. The sentinel external DATABASE_URL was ignored. `make book` rc=0; Python AST checks and `bash -n scripts/run_pg_tests.sh` rc=0; `git diff --check` empty, rc=0. Full CI remains pre-push work; no Rust source changed.
-- [x] **FIX / LOCKSTEP** — owned runner, lifecycle controls, command logs/receipts and signal-safe child startup ship with the deployment book, CI documentation, TOOLBOX, decision/index, task/current-status/memory pointers and changelog. Test-side refusal and CI execution changes remain explicitly owned by `.2.2.2`; current tenant/site authority defects are not claimed fixed by infrastructure tests.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the matched baseline authority binary control ran without RB_TEST_CLUSTER/RB_TEST_OWNER/RB_TEST_DATABASE: `1 passed`, test rc=0, and `authorization rows written 2`. The test pools connected directly from DATABASE_URL before destructive fixtures. The controlled cluster was stopped and removed; the reproduction never contacted an existing external database.
+- [x] **ADDRESSED (verified)** — the rebuilt test returned exit 101 with `disposable PostgreSQL ownership required`; public table count stayed 0. The `pg_guard` suite passed 3 controls (including forged token/directory proof and denial of a new connection after its role-default marker changed), rc=0. The cross-crate run passed 40 tests in 8 selected suites, rc=0, and removed its cluster. The helper validates each new physical connection before pool publication.
+- [x] **NO REGRESSION** — `cargo fmt --all -- --check` rc=0. Focused server/CLI/MCP, restore, migration and RLS tests passed as recorded above. Strict `cargo clippy --offline --locked --all-targets --all-features -- -D warnings` passed, rc=0, in 35m05s. The final restore recheck passed (1 test, rc=0); its cluster was stopped and removed. All three rebuilt-binary environment controls passed with their expected refusal/skip exits, probe rc=0. YAML parsed through system Ruby/Psych, inline Python AST and the command-receipt control passed. `make book` and `git diff --check` rc=0.
+- [x] **FIX / LOCKSTEP** — shared test-only guard, 32 existing pool entrypoints, the new guard suite, verified restore CREATE/DROP, CI runner routing and accurate active-command receipts ship with deployment/CI documentation, TOOLBOX, decision/index, memory and the historical-census dispositions above. Progress, changelog and book pointers now advance to `.3.1`. GitHub execution remains a next-push check; this slice claims no tenant/site authorization repair.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.2.2.2` | `pending` | refuse destructive tests outside an owned disposable database; align CI |
-| 2 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
-| 3 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
+| 1 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
+| 2 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
+| 3 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority |
 
 ## Evidence routing
 
@@ -368,6 +391,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.2.2.2`: `REASONBRAID-REPAIR-0004 (leaf SIGNOFF-REPAIR.2.2.2): require disposable ownership before database fixture writes`.
 
 - `SIGNOFF-REPAIR.2.2.1`: `REASONBRAID-REPAIR-0003 (leaf SIGNOFF-REPAIR.2.2.1): supervise disposable PostgreSQL tests and focused suites`.
 

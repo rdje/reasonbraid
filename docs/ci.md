@@ -11,7 +11,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
 | `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI, the WP4 fake-adapter behaviors + corpus integrity + supervisor flow (all file-based/in-process, no service), the server suites (skip offline), and the CLI's unit tests | `make check` |
-| `rust` (job `pg-tests`) | the PostgreSQL integration tests — atomic transaction (`.2.1`), leased outbox worker with fencing + kill points (`.2.2`), node channel with cursor resume + reconciliation handshake (`.3.2`), the authority engine with the enrollment-boundary ceiling + audit records (`.5.1`), the budget engine with reservations + denials (`.5.2`), the WP6 command API (`.6.1`), the node wiring (`.6.2`), the real-binary CLI end-to-end suite, and the two-host crash/reconnect demonstration (`scripts/demo_two_host.sh`) — against a PostgreSQL 16 service (`DATABASE_URL`) | `scripts/run_pg_tests.sh` |
+| `rust` (job `pg-tests`) | the full local PostgreSQL collection in an owned Ubuntu 24.04 cluster: test-side ownership guard, server integration suites, MCP, CLI and crash/reconnect demonstration; repository-local compiler/cache stores | `bash scripts/run_pg_tests.sh` |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
@@ -29,7 +29,7 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
   any finding out of the log.
 - `bash scripts/run_pg_tests.sh authority command_api` — focused suites in a new
   supervised PostgreSQL 16 cluster; caller DATABASE_URL is ignored. `--list`
-  lists names. No names runs 30 server suites, MCP and CLI tests, then the
+  lists names. No names runs 31 server suites, MCP and CLI tests, then the
   demonstration (`RB_DEMO=0` omits it). Suites are serialized. Success removes
   only the stopped owned workspace; failure preserves diagnostic data under
   `target/pg-tests/run-*`. See `docs/book/src/deployment.md` for recovery and
@@ -38,15 +38,19 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
   SQLite is a file and the fake/stub adapters are in-process, so the journal
   kill-point sweep, the `rb-journal` CLI tests, and the adapter/ supervisor tests run
   inside plain `cargo test --all` (`make check`) and the `rust` workflow above. The
-  PG-backed suites require `DATABASE_URL` / `run_pg_tests.sh`; the REAL Codex
+  PG-backed suites require the owned `run_pg_tests.sh` environment; the REAL Codex
   qualification test stays `#[ignore]`-gated and is run deliberately with
   `RB_LIVE_CODEX=1` (it dispatches to the live harness and spends tokens).
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not
-installed them locally. The current `pg-tests` job runs a subset of the local runner's suites against a
-`postgres:16` service container. `SIGNOFF-REPAIR.2.2.2` owns test-side disposable
-ownership checks and routing CI through the supervised runner.
+installed them locally. The `pg-tests` job now invokes the supervised runner with the full local suite
+list. It uses installed PostgreSQL 16 tools and provisions the pinned Rust
+toolchain under `.project-data/installed-toolchains`. The workflow was reviewed
+and syntax-checked locally; GitHub execution remains part of the next push.
+Direct database-backed tests require the runner receipt; DATABASE_URL alone
+refuses before fixture writes. See
+`docs/decisions/2026-09-09_disposable-test-pool-ownership.md`.
 
 ## Not a release claim
 

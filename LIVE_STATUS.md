@@ -28,7 +28,7 @@ product authorization reproductions remain pending.
 | Phase 7 — Internet qualification | Mostly Done | Hardening machinery exists; G6/G7 Internet exposure remains NOT MET. Local repairs and external threat-model, injection and penetration-test evidence remain required. |
 | Phase 8 — federation and interoperability | In Progress | Through regional routing historically recorded; `.5.3` store-and-forward, `.5.4` exit export/import and `.6` G8 remain. Shared authority and protocol gaps are prerequisite repairs. |
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
-| Corrective review | In Progress | `.1` census, `.2.1` local environment and `.2.2.1` supervised focused runner complete; next `.2.2.2` test-side database ownership. Product repairs pending. |
+| Corrective review | In Progress | `.1`, `.2.1` and `.2.2` complete; test-side ownership passes 40 focused tests, strict lint, final restore and environment controls. Next: `.3.1` tenant-bound revocation. Product repairs pending. |
 
 The shared adapter/region registry design is now explicit site-operator authority.
 The existing code still uses tenant-admin authority; `.3.2` owns replacing it.

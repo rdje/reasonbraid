@@ -477,6 +477,10 @@ pub mod server {
 /// offline tests compare against — the independent fixtures, never the
 /// maturity-tier prose).
 #[cfg(test)]
+#[path = "../../reasonbraid-server/tests/support/mod.rs"]
+mod pg_test_support;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -609,16 +613,7 @@ mod tests {
     /// The live pool + the purge (the DATABASE_URL gate — the guard runs
     /// this; the offline sweep skips it).
     async fn live_pool() -> Option<sqlx::PgPool> {
-        let url = match std::env::var("DATABASE_URL") {
-            Ok(u) => u,
-            Err(_) => {
-                eprintln!("SKIP: DATABASE_URL is unset — the live tool roundtrip needs the guard");
-                return None;
-            }
-        };
-        let pool = sqlx::PgPool::connect(&url)
-            .await
-            .expect("connect to DATABASE_URL");
+        let pool = crate::pg_test_support::pool().await?;
         sqlx::migrate!("../../migrations")
             .run(&pool)
             .await

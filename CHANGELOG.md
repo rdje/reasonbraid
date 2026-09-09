@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Disposable ownership at test connections (`SIGNOFF-REPAIR.2.2.2`)
+
+Server, CLI and MCP database fixtures now validate a live runner receipt and
+verify server identity on every new pool connection before fixture SQL. Missing
+ownership changes from a reproduced two-row write to refusal with zero public
+tables. Restore CREATE/DROP uses verified connections; CI uses the same runner
+and repository-local compiler stores. Active command receipts discard stale exits.
+Validation: 40 tests across eight selected suites, including forged ownership,
+replacement connections, restore, migration and RLS; format, book and CI syntax
+checks passed. Strict all-target/all-feature Clippy passed with warnings denied;
+final restore and three malformed/missing/absent-environment controls passed.
+
 ## 2026-09-09 — Supervised focused PostgreSQL verification (`SIGNOFF-REPAIR.2.2.1`)
 
 The runner now creates unique owned clusters, ignores caller database targets,

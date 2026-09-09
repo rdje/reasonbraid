@@ -6,6 +6,9 @@
 //! Skips offline (no DATABASE_URL) or when the pg_dump/pg_restore binaries are
 //! absent.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -66,17 +69,16 @@ fn url_parts(url: &str) -> (Option<String>, String, Option<String>, String) {
 #[tokio::test]
 async fn a_backup_restores_into_an_isolated_database() {
     let _g = guard().await;
-    let Some(url) = std::env::var("DATABASE_URL").ok() else {
-        eprintln!("SKIP: DATABASE_URL is unset");
+    let Some(pool) = pg_test_support::pool().await else {
         return;
     };
+    let url = std::env::var("DATABASE_URL").expect("validated DATABASE_URL remains present");
     if !have_pg_tools() {
         eprintln!("SKIP: pg_dump/pg_restore not on PATH");
         return;
     }
     let (user, host, port, dbname) = url_parts(&url);
     let _ = dbname;
-    let pool = PgPool::connect(&url).await.expect("connect");
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await
@@ -142,20 +144,13 @@ async fn a_backup_restores_into_an_isolated_database() {
         (None, Some(port)) => format!("postgres://{host}:{port}/{target}"),
         (None, None) => format!("postgres://{host}/{target}"),
     };
-    let mut created_cmd = Command::new("createdb");
-    created_cmd.args(["--host", &host]);
-    if let Some(port) = &port {
-        created_cmd.args(["--port", port]);
-    }
-    if let Some(user) = &user {
-        created_cmd.args(["--username", user]);
-    }
-    let created = created_cmd.arg(&target).output().expect("createdb runs");
-    assert!(
-        created.status.success(),
-        "createdb failed: {}",
-        String::from_utf8_lossy(&created.stderr)
-    );
+    // CREATE/DROP run on the verified pool connection, so a reused TCP port
+    // cannot redirect these administrative mutations to another cluster.
+    // `target` contains only this fixed prefix and a generated integer.
+    sqlx::query(&format!("CREATE DATABASE {target}"))
+        .execute(&pool)
+        .await
+        .expect("create the isolated restore database on the verified server");
     let restore = Command::new("pg_restore")
         .args([
             "--clean",
@@ -187,21 +182,9 @@ async fn a_backup_restores_into_an_isolated_database() {
     assert_eq!(ceiling.1, "ten_00000000-0000-7000-8000-0000000000aa");
     restored.close().await;
     // The isolated database is disposable — drop it after the assertion.
-    let mut drop_cmd = Command::new("dropdb");
-    drop_cmd.args(["--host", &host]);
-    if let Some(port) = &port {
-        drop_cmd.args(["--port", port]);
-    }
-    if let Some(user) = &user {
-        drop_cmd.args(["--username", user]);
-    }
-    let dropped = drop_cmd.arg(&target).output();
-    if let Ok(out) = dropped {
-        assert!(
-            out.status.success(),
-            "dropdb failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
+    sqlx::query(&format!("DROP DATABASE {target}"))
+        .execute(&pool)
+        .await
+        .expect("drop the isolated restore database on the verified server");
     std::fs::remove_file(&file).ok();
 }

@@ -7,11 +7,13 @@
 //! writes), applies the rest, and asserts the data + the behavior survive.
 //! Skips offline (no DATABASE_URL).
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::sync::OnceLock;
 
 use serde_json::{json, Value};
 use sqlx::migrate::Migrator;
-use sqlx::PgPool;
 
 static UPGRADE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -38,11 +40,9 @@ async fn enroll(client: &reqwest::Client, base: &str, body: Value) -> (u16, Valu
 #[tokio::test]
 async fn an_existing_database_upgrades_and_its_data_survives() {
     let _g = guard().await;
-    let Some(url) = std::env::var("DATABASE_URL").ok() else {
-        eprintln!("SKIP: DATABASE_URL is unset");
+    let Some(pool) = pg_test_support::pool().await else {
         return;
     };
-    let pool = PgPool::connect(&url).await.expect("connect");
     let migrator =
         Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
             .await

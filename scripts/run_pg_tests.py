@@ -21,7 +21,7 @@ from typing import Callable
 from project_env import ROOT, local_directory, project_environment, toolchain_directory
 
 SERVER_SUITES = (
-    "atomic_transaction outbox_worker node_channel authority budget command_api node_work "
+    "pg_guard atomic_transaction outbox_worker node_channel authority budget command_api node_work "
     "aggregate_library identity_store node_enrollment node_inbox invitations backup_restore "
     "migration_upgrade escalation node_replacement profiles evaluation routing policy rls "
     "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions"
@@ -210,6 +210,7 @@ class Cluster:
         os.replace(pending, self.path / "runner.json")
 
     def command_started(self, pid: int):
+        self.receipt.pop("command_exit", None)
         self.receipt.update({"command_pid": pid, "state": "running"})
         self.record()
 

@@ -14,6 +14,9 @@
 //! Run with `scripts/run_pg_tests.sh` locally or the `pg-tests` CI job.
 //! Without `DATABASE_URL` these skip, so `make check` stays green offline.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -32,18 +35,7 @@ async fn guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the write-gate proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

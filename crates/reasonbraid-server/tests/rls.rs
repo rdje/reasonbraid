@@ -15,23 +15,15 @@
 //! Run with `scripts/run_pg_tests.sh` locally or the `pg-tests` CI job.
 //! Without `DATABASE_URL` these skip, so `make check` stays green offline.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use sqlx::{PgPool, Row};
 
 const PROBE_ROLE: &str = "rls_probe";
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the RLS proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

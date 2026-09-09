@@ -7,6 +7,9 @@
 //! audits every attempt. Certificate issuance is deferred to Phase 2 (ADR-007).
 //! Like the other PostgreSQL suites, these tests skip without `DATABASE_URL`.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 
@@ -24,18 +27,7 @@ async fn enroll_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real PostgreSQL proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

@@ -16,6 +16,9 @@
 //! renew the lease, a newer handshake fences the old token, and expiry flips
 //! presence to `offline` and refuses channel traffic.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -44,18 +47,7 @@ async fn channel_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real node channel proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

@@ -19,39 +19,40 @@ jobs:
       - name: Test
         run: cargo test --all
 
-  # PostgreSQL-backed integration tests (WP2/WP3/WP5/WP6): the atomic
-  # state/event/idempotency/outbox transaction (.2.1), the leased outbox worker with
-  # fencing + kill points (.2.2), the node channel with cursor resume + reconciliation
-  # handshake (.3.2), the authority engine with the enrollment-boundary ceiling +
-  # audit records (.5.1), the budget engine (.5.2), the WP6 command API (.6.1), the
-  # node wiring (.6.2), the real-binary CLI end-to-end suite, and the two-host
-  # crash/reconnect demonstration can only be proven against a live Postgres.
-  # Mirrors the local `scripts/run_pg_tests.sh` ephemeral server.
+  # One owned cluster per job; test helpers refuse a caller-supplied database.
   pg-tests:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: reasonbraid_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/reasonbraid_test?sslmode=disable
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.98.0
-      - name: Test (PostgreSQL atomic transaction + outbox worker + node channel + authority + budget + command API + node wiring)
-        run: cargo test -p reasonbraid-server --test atomic_transaction --test outbox_worker --test node_channel --test authority --test budget --test command_api --test node_work -- --nocapture
-      - name: Test (real-binary CLI end-to-end)
-        run: cargo test -p reasonbraid-cli --test cli_end_to_end -- --nocapture
-      - name: Demo (two-host crash/reconnect with acceptance evidence)
-        run: bash scripts/demo_two_host.sh --database-url "$DATABASE_URL"
+      - name: Provision local compiler stores and run disposable PostgreSQL proofs
+        run: |
+          python3 -B - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import tomllib
+
+          sys.path.insert(0, "scripts")
+          from project_env import ROOT, STORES, local_directory
+
+          os.umask(0o077)
+          environment = dict(os.environ)
+          for name, relative in STORES.items():
+              environment[name] = str(local_directory(ROOT, relative))
+          environment["RUSTUP_HOME"] = str(local_directory(ROOT, ".project-data/installed-toolchains"))
+          environment["PYTHONDONTWRITEBYTECODE"] = "1"
+          with (ROOT / "rust-toolchain.toml").open("rb") as source:
+              pin = tomllib.load(source)["toolchain"]["channel"]
+          # The image's rustup and PostgreSQL binaries are read-only inputs.
+          # Compiler installation, downloads and scratch stay on the repo volume.
+          subprocess.run([
+              "rustup", "toolchain", "install", pin, "--profile", "minimal",
+              "--component", "rustfmt", "--component", "clippy", "--no-self-update",
+          ], cwd=ROOT, env=environment, check=True)
+          pg = subprocess.run(["pg_config", "--bindir"], cwd=ROOT, env=environment,
+                              capture_output=True, text=True, check=True)
+          environment["PG_BIN"] = str(Path(pg.stdout.strip()).resolve(strict=True))
+          os.chdir(ROOT)
+          os.execvpe("bash", ["bash", "scripts/run_pg_tests.sh"], environment)
+          PYTHON

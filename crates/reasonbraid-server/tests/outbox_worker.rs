@@ -10,6 +10,9 @@
 //! phase commits alone, so what remains in the database is exactly what survived the crash.
 //! The lease clock is caller-supplied, so expiry is advanced deterministically with no sleeps.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use chrono::{Duration, Utc};
 use reasonbraid_server::{
     apply_command, claim_ready, complete, deliver, Command, CompleteOutcome, DeliverOutcome,
@@ -36,18 +39,7 @@ async fn queue_guard() -> tokio::sync::MutexGuard<'static, ()> {
 const LEASE: Duration = Duration::seconds(60);
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real PostgreSQL proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

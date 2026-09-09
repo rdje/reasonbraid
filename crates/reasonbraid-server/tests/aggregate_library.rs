@@ -9,22 +9,14 @@
 //! without `DATABASE_URL` (run them via `scripts/run_pg_tests.sh` or the `pg-tests`
 //! CI job).
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use reasonbraid_server::agg::{apply, AggregateCommand, AggregateError, AggregateEvent};
 use sqlx::PgPool;
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real PostgreSQL proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

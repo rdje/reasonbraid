@@ -1,8 +1,10 @@
 # Current qualification and corrective work
 
 The startup source review is complete. It read the roadmap, all tracked code and
-all book sources before changes. Runner cleanup and process-creation races now
-have runtime controls and fixes; reproduction of product findings remains pending. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
+all book sources before changes. Runner cleanup, process-creation races and test-side
+database ownership now have runtime controls and fixes. Missing ownership refuses
+before public tables are created; forged proof and replacement connections are
+covered. Reproduction of product findings remains pending. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
 
 Historical test results in this manual describe the assertions exercised at those
 commits. They do not establish current production qualification. Internet exposure
@@ -44,7 +46,7 @@ results. Each row has executable repair ownership rather than an inert issue lis
 | Evidence and evaluation | Metadata/author binding, freshness and retention need repair. Citation excerpt presence does not prove entailment; missing gate measurements must not pass. | `.7.4`, `.8.2` |
 | Deliberation and governance | Repeated challenge resolution and supplied attribution need correction; policy authority, lifecycle and Git reconciliation need stronger binding. | `.8.1`, `.9.1`–`.9.3` |
 | Adapters and console | Subprocess bounds, certification evidence and numeric timeline rendering have source-review findings. | `.10.1`–`.10.2`, `.11.1` |
-| Verification and operations | Disposable databases, project-local storage, cleanup, script checks and historical claim accuracy require correction. | `.2.1`–`.2.2`, `.11.2`–`.11.4` |
+| Verification and operations | The supported launcher and disposable runner now localize stores and validate test connections. Remaining direct-entrypoint storage, artifact cleanup, script checks and historical claim accuracy require correction. | `.11.2`–`.11.4`; completed prerequisite evidence in `.2.1`–`.2.2` |
 
 Full records: `docs/tasks/artifacts/signoff_review/INDEX.md`. The corrective tree
 must give every finding a reproducible fixed or refuted disposition before its

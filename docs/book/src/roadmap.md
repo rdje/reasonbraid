@@ -92,9 +92,9 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.2.2.2`: test-side disposable database
-ownership and CI alignment, followed by authority repairs. The local runner now
-supports focused suites with verified shutdown. The full-read source census and its repair leaves are in
+The current frontier is `SIGNOFF-REPAIR.3.1`: tenant-bound revocation, followed
+by explicit site-operator registry authority. The disposable runner and test-side
+connection ownership proof are complete, with focused suites and verified shutdown. The full-read source census and its repair leaves are in
 `docs/tasks/SIGNOFF-REPAIR.md`. Resume `PHASE-8.5.3` after the corrective prerequisites.
 Current statuses are summarized in `LIVE_STATUS.md`; `docs/tasks/PROGRAM.md` maps
 the complete frozen roadmap to execution trees.

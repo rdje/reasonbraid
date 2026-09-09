@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_disposable-test-pool-ownership.md](docs/decisions/2026-09-09_disposable-test-pool-ownership.md) | decision | refuse unowned fixture databases before connection; validate every new pooled connection; PG CI uses the owned runner |
 | [2026-09-09_disposable-postgresql-runner.md](docs/decisions/2026-09-09_disposable-postgresql-runner.md) | decision | focused suites in an owned local cluster; server identity before mutation, process reaping and failure retention |
 | [2026-09-09_repository-local-command-environment.md](docs/decisions/2026-09-09_repository-local-command-environment.md) | decision | repository-local command stores and verified locked cache seeding; installed tools are read-only inputs |
 | [2026-09-09_site-operator-authority.md](docs/decisions/2026-09-09_site-operator-authority.md) | decision | explicit site grants for shared registry mutations; protected issuance, live boundary checks and serialized audit; implementation `SIGNOFF-REPAIR.3.2` |

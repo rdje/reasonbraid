@@ -4,23 +4,15 @@
 //! them with `scripts/run_pg_tests.sh` locally, or the `pg-tests` CI job. Without
 //! `DATABASE_URL` they skip, so `make check` / `cargo test --all` stay green offline.
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use reasonbraid_server::{apply_command, ApplyError, Command};
 use serde_json::Value;
 use sqlx::PgPool;
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real PostgreSQL proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — A disposable runner also needs test-side ownership checks
+
+- The baseline authority test wrote two authorization rows with all ownership metadata removed. A shared test-only pool helper now preflights the live receipt and exact endpoint, then validates actual server identity on every new physical connection. Missing metadata refuses before public tables exist; forged-owner/directory and replacement-connection controls pass. The PG CI job uses the same runner with repository-local installation and cache stores.
+- promotion: promoted → `docs/decisions/2026-09-09_disposable-test-pool-ownership.md`; owner `SIGNOFF-REPAIR.2.2.2`.
+
 ## _(2026-09-09)_ — Disposable files require verified process shutdown
 
 - The old PG runner discarded stop failures and then removed live data unconditionally. The replacement owns foreground process handles and separate process groups, verifies server identity before creation, and retains evidence when reaping is unproved. Focused suites run serially against unique clusters; direct test-side refusal remains the next child. Twelve lifecycle controls and four real PostgreSQL controls pass; the final runner also passes all nine existing authority tests. The deterministic spawn/signal regression failed before repair and passes after terminal signals are deferred until handle publication; an exec trampoline restores child signals.

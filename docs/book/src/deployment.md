@@ -70,10 +70,24 @@ run cleanup, so inspect the receipt and server metadata before removing residue.
 This is a trusted-host test service using loopback trust authentication and
 synthetic data.
 
-At this checkpoint, direct Rust test invocations still accept DATABASE_URL;
-use the runner for disposable verification. Test-side refusal and CI alignment
-are tracked by `SIGNOFF-REPAIR.2.2.2`. The detailed lifecycle contract is
-`docs/decisions/2026-09-09_disposable-postgresql-runner.md`.
+Database-backed tests now require the runner's live ownership receipt and exact
+endpoint. Merely setting DATABASE_URL makes them refuse before migration or
+cleanup. They also check the server's data directory, database and owner marker
+on each new pooled connection, including replacement connections. The `pg_guard`
+suite exercises these refusals. With DATABASE_URL unset, the existing offline
+skips remain available; clear an inherited DATABASE_URL before an offline run.
+
+```bash
+bash scripts/run_pg_tests.sh pg_guard authority
+# Offline checks, with no database target inherited from a development shell:
+env -u DATABASE_URL make check
+```
+
+The PG CI job now uses this runner and the same suite list. Compiler installation,
+packages and scratch stay under the repository; installed PostgreSQL and rustup
+are read-only tool inputs. GitHub execution is verified on the next push.
+Detailed contracts: `docs/decisions/2026-09-09_disposable-postgresql-runner.md` and
+`docs/decisions/2026-09-09_disposable-test-pool-ownership.md`.
 
 ## The four binaries
 

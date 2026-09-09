@@ -8,6 +8,9 @@
 //! foreign keys fail closed. Like the other PostgreSQL suites, they skip without
 //! `DATABASE_URL` (`scripts/run_pg_tests.sh` / the `pg-tests` CI job).
 
+#[path = "support/mod.rs"]
+mod pg_test_support;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -27,18 +30,7 @@ async fn identity_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn pool() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "SKIP: DATABASE_URL is unset — run scripts/run_pg_tests.sh for the real PostgreSQL proof"
-            );
-            return None;
-        }
-    };
-    let pool = PgPool::connect(&url)
-        .await
-        .expect("connect to DATABASE_URL");
+    let pool = pg_test_support::pool().await?;
     sqlx::migrate!("../../migrations")
         .run(&pool)
         .await

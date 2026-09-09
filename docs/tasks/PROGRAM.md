@@ -153,14 +153,14 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.2.2.2`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.1`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.2.2.1
+## Current index synchronization — SIGNOFF-REPAIR.2.2.2
 
 Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the prior Current Frontier named parent `.2.2`; the owning tree is now decomposed into runner `.2.2.1` and test-side guard `.2.2.2`. `git diff -- docs/tasks/SIGNOFF-REPAIR.md` (rc=0) shows the children and their separate scope.
-- [x] **ADDRESSED (verified)** — the index now names `.2.2.2`; the runner passed 12 lifecycle controls, 4 real PG controls and the existing authority suite (`9 passed; 0 failed`, rc=0), as recorded in the owning tree.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the prior frontier named `.2.2.2`, whose baseline authority binary wrote 2 authorization rows without ownership metadata (control rc=0); the completed prerequisite must advance before product repairs.
+- [x] **ADDRESSED (verified)** — the index now names `.3.1`; the missing-proof control refuses with zero public tables, 40 focused tests and strict Clippy passed, and the final restore plus three environment controls passed (probe rc=0), as recorded in the owning tree.
 - [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0 and `git diff --check` empty, rc=0; the index advances no product qualification claim.
 
 ## Decisions

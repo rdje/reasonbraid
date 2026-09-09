@@ -8,7 +8,7 @@ answers:
 # Persist the bootstrap request identity before sending it
 
 - Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3`; runtime/contract child `.1`, server protocol `.2`, CLI persistence `.3`.
-- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol in child .2 passes 73 selected controls, its final eleven-control fixture rerun and strict lint; all results/shutdown are consumed and four owned clusters are absent. CLI request persistence/recovery remains unimplemented in child .3; its durable state and whole-writer prerequisites are implemented under .3.1.
+- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol in child .2 passes 73 selected controls, its final eleven-control fixture rerun and strict lint; all results/shutdown are consumed and four owned clusters are absent. CLI durable state/whole writers and schema are qualified; keyed flow/explicit resume is implemented under .3.2.2 with thirty-three selected controls, final output rerun and strict lint passed, followed by deadlines and restart qualification.
 - Evidence: `docs/tasks/artifacts/signoff_review/bootstrap-recovery.md` at product baseline `01bd473`.
 
 ## Request and outcome
@@ -94,10 +94,12 @@ The predecessor's in-place state.json writer was insufficient. Atomic replacemen
 synchronization and complete writer exclusion are now qualified under .3.1.
 The selected version-two state schema keeps pending and the most recent completed
 request/outcome in the same atomic snapshot, with principal/outcome publication
-before pending cleanup. Explicit --resume-bootstrap will recover a retained
+before pending cleanup. Explicit --resume-bootstrap recovers a retained
 identity after cleanup or lost CLI output, while normal fresh invocation stays
-distinct. Schema/publication support is the current .3.2.1 prerequisite; actual
-CLI key/resume behavior remains .3.2.2. See
+distinct. Completed local receipts are recovered without HTTP and labelled
+historical; pending requests without completion resend their original key.
+Schema/publication support is qualified under .3.2.1; CLI key/resume behavior
+and its controls are .3.2.2. See
 docs/decisions/2026-09-09_cli-bootstrap-state.md for format and transition rules.
 Recovery metadata, locks and replacements stay repository-derived on its volume;
 there is no home/temp fallback or stale-lock deletion bypass.
@@ -108,8 +110,8 @@ This decision does not add bootstrap caller authentication or a site-operator
 credential; `.3.5` retains that policy work. The endpoint stays a development trust
 surface and cannot mint site-operator grants. The existing no-key endpoint cannot
 promise response-loss recovery; operator reconciliation may still be needed for
-callers that omit the key. The CLI will use keyed recovery by default once its
-implementation is qualified. No completed-client-recovery or zero-defect claim
+callers that omit the key. The CLI implementation now uses keyed recovery by default, with its focused
+qualification and remaining deadline/restart work tracked separately. No completed-client-recovery or zero-defect claim
 follows from the truthful unconfirmed error or this design alone.
 
 ## Server implementation details

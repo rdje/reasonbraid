@@ -2,7 +2,8 @@
 //! flow — enroll, create thread, invite, contribute, challenge, revise, close,
 //! inspect — against an in-process control API on live PostgreSQL. The acceptance is
 //! exercised mechanically: every inspection happens through CLI output, never
-//! through database access.
+//! through database access. The bootstrap recovery control additionally uses
+//! read-only database observations as an independent outcome/identity oracle.
 //!
 //! Run with `scripts/run_pg_tests.sh` (DATABASE_URL-gated; skips offline so
 //! `make check` stays green).
@@ -658,6 +659,115 @@ async fn the_cli_surfaces_typed_denials() {
         .await;
     assert!(!ok);
     assert!(stderr.contains("scope_hidden"), "{stderr}");
+    server.finish().await;
+    pool.close().await;
+}
+
+/// A restored real request recovers the database's original outcome, while a
+/// deliberately fresh invocation creates a new tenant. This is restoration,
+/// not a claim that this test physically interrupts a server commit or response.
+#[tokio::test]
+async fn bootstrap_recovery_matches_server_outcomes_and_preserves_fresh_intent() {
+    use reasonbraid_cli::{BootstrapRecovery, StateFile};
+
+    let _guard = e2e_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = format!("http://{}", server.addr);
+    let fixture = CliStateFixture::new("bootstrap");
+    let restored_fixture = CliStateFixture::new("bootstrap-restored");
+    let rb = Rb::new(&base, fixture.0.clone());
+    let restored_rb = Rb::new(&base, restored_fixture.0.clone());
+    let first = rb.json(&["enroll", "human", "alice", "--json"]).await;
+    assert_eq!(first["recovery_source"], "server");
+    assert_eq!(first["replayed"], false);
+    let key = first["bootstrap_request_id"].as_str().unwrap();
+    let stored: Value =
+        sqlx::query_scalar("SELECT outcome FROM tenant_bootstrap_requests WHERE request_id=$1")
+            .bind(key)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let mut wire = first.clone();
+    wire.as_object_mut().unwrap().remove("recovery_source");
+    assert_eq!(stored, wire);
+
+    let state = StateFile::load(&fixture.0).unwrap();
+    let recovery = state.bootstrap.unwrap();
+    assert!(recovery.pending.is_none());
+    let completed = recovery.completed.unwrap();
+    assert_eq!(serde_json::to_value(&completed.outcome).unwrap(), stored);
+    StateFile {
+        version: 2,
+        bootstrap: Some(BootstrapRecovery {
+            pending: Some(completed.request),
+            completed: None,
+        }),
+        ..StateFile::default()
+    }
+    .save(&restored_fixture.0)
+    .unwrap();
+    let replay = restored_rb
+        .json(&["enroll", "human", "alice", "--resume-bootstrap", "--json"])
+        .await;
+    assert_eq!(replay["recovery_source"], "server");
+    assert_eq!(replay["replayed"], true);
+    for field in [
+        "bootstrap_request_id",
+        "kind",
+        "name",
+        "principal_id",
+        "tenant_id",
+        "boundary_id",
+        "grant_id",
+    ] {
+        assert_eq!(replay[field], stored[field]);
+    }
+    let recovered = rb
+        .json(&["enroll", "human", "alice", "--resume-bootstrap", "--json"])
+        .await;
+    assert_eq!(recovered["recovery_source"], "local_receipt");
+    assert_eq!(recovered["replayed"], false);
+    assert_eq!(recovered["bootstrap_request_id"], key);
+    let counts: (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM tenants), (SELECT count(*) FROM tenant_bootstrap_requests)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(counts, (1, 1));
+
+    let fresh = rb.json(&["enroll", "human", "alice", "--json"]).await;
+    assert_eq!(fresh["recovery_source"], "server");
+    assert_eq!(fresh["replayed"], false);
+    for field in [
+        "bootstrap_request_id",
+        "principal_id",
+        "tenant_id",
+        "boundary_id",
+        "grant_id",
+    ] {
+        assert_ne!(fresh[field], first[field]);
+    }
+    let counts: (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM tenants), (SELECT count(*) FROM tenant_bootstrap_requests)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(counts, (2, 2));
+    let original: Value =
+        sqlx::query_scalar("SELECT outcome FROM tenant_bootstrap_requests WHERE request_id=$1")
+            .bind(key)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(original, stored);
+    let current = StateFile::load(&fixture.0).unwrap();
+    assert_eq!(current.principals["alice"].tenant, fresh["tenant_id"]);
+    let replayed = StateFile::load(&restored_fixture.0).unwrap();
+    assert_eq!(replayed.principals["alice"].tenant, first["tenant_id"]);
+    eprintln!("real bootstrap recovery: one original tenant/request after server+local recovery; two distinct tenants/requests after fresh intent; original outcome unchanged");
     server.finish().await;
     pool.close().await;
 }

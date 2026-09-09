@@ -7,8 +7,8 @@ answers:
 ---
 # Keep pending and completed bootstrap identity in versioned state
 
-- Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1`; CLI flow/explicit recovery, deadlines and reconciliation remain .2.2–.2.4.
-- Status: schema/publication support qualified by twenty-four selected controls, all-target CLI strict lint and book checks. Results are consumed and unique fixtures absent. The interrupted pre-main launch and unchanged-hash successful retry remain explicit evidence. No integrated CLI key or resume-command claim yet.
+- Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1`; CLI flow/explicit recovery is implemented under .2.2 with thirty-three selected controls, final output rerun and strict lint passed; deadlines and reconciliation remain .2.3–.2.4.
+- Status: schema/publication support qualified by twenty-four selected controls, all-target CLI strict lint and book checks. Results are consumed and unique fixtures absent. The interrupted pre-main launch and unchanged-hash successful retry remain explicit evidence. The later CLI key/resume implementation and its qualification are tracked in docs/decisions/2026-09-09_cli-bootstrap-flow.md.
 - Evidence: docs/tasks/artifacts/signoff_review/bootstrap-state-schema.md.
 
 ## Data and compatibility
@@ -40,8 +40,8 @@ pending request; there is no unbounded local receipt archive in this design.
 
 Borrowed Writer::persist reuses the qualified Publication while retaining its
 lock; consuming publish delegates to it. Ordinary Writer::open refuses a stored
-pending request before HTTP, including in this prerequisite commit. The later
-keyed coordinator receives the deliberate recovery entrypoint.
+pending request before HTTP, including in this prerequisite commit. The keyed coordinator uses a deliberate recovery entrypoint with the same storage
+and lock checks.
 
 Before changing working files, publication loads the actual current state and
 validates the exact encoded replacement plus recovery continuity. Existing
@@ -52,7 +52,7 @@ A valid first snapshot can restore recorded metadata to a legacy/empty store;
 this is data restoration, not server authentication. These rules prevent a stale
 full-snapshot save from silently discarding unresolved intent.
 
-The next coordinator persists pending before HTTP, publishes the matched
+The coordinator persists pending before HTTP, publishes the matched
 principal/outcome while retaining pending, then clears pending in another
 synchronized version-two snapshot. No separate pending pathname is deleted.
 If synchronization fails after replacement, callers preserve unconfirmed phase;
@@ -62,10 +62,11 @@ sees a complete earlier/newer snapshot and can retain the original key.
 ## Explicit recovery after output uncertainty
 
 Clearing pending must not discard the only recoverable request identity. Retain
-the completed receipt and add explicit --resume-bootstrap in the next CLI slice.
+the completed receipt and use explicit --resume-bootstrap in the CLI flow.
 Matching active pending requests reuse their saved identity; an explicit resume
 can also select the retained completed request after cleanup or lost CLI output.
 A normal fresh invocation remains distinct when no pending request exists.
 A different request/server refuses unresolved work. Do not infer that equal names
 mean equal logical operations, or that file publication proves stdout consumption.
-Qualify actual process/output interruption separately before claiming this flow.
+The CLI flow owner records actual process/output controls and distinguishes
+local historical receipts from freshly checked server responses.

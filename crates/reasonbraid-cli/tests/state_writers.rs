@@ -9,7 +9,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    routing::post,
+    Json, Router,
+};
 use reasonbraid_cli::{StateFile, StoredPrincipal, StoredThread};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
@@ -108,11 +114,23 @@ struct Gate {
     release: Notify,
 }
 
+#[derive(Clone, Default)]
+enum Reply {
+    #[default]
+    Normal,
+    Status(u16),
+    DuplicateKey,
+    WrongIdentity,
+    MissingGrant,
+    Replay,
+}
+
 #[derive(Clone)]
 struct Probe {
     requests: Arc<AtomicUsize>,
     gate: Option<Arc<Gate>>,
     observed: Observed,
+    reply: Arc<Mutex<Reply>>,
 }
 
 impl Probe {
@@ -138,6 +156,7 @@ struct Server {
     requests: Arc<AtomicUsize>,
     gate: Option<Arc<Gate>>,
     observed: Observed,
+    reply: Arc<Mutex<Reply>>,
     stop: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<()>>,
 }
@@ -146,13 +165,52 @@ async fn enroll(
     State(probe): State<Probe>,
     headers: HeaderMap,
     Json(body): Json<Value>,
-) -> Json<Value> {
+) -> Response {
     probe.record("enroll", &body, &headers).await;
-    Json(json!({
+    let mut response = json!({
         "kind":body["kind"], "name":body["name"], "principal_id":BOB,
         "tenant_id":TENANT, "boundary_id":format!("bnd_{TENANT}"),
         "grant_id":format!("grt_{BOB}"), "replayed":false
-    }))
+    });
+    if let Some(key) = body.get("bootstrap_request_id") {
+        response["bootstrap_request_id"] = key.clone();
+    }
+    match probe.reply.lock().unwrap().clone() {
+        Reply::Normal => Json(response).into_response(),
+        Reply::Status(status) => (
+            StatusCode::from_u16(status).unwrap(),
+            Json(json!({
+                "code":"dependency_unavailable", "message":"owned uncertain bootstrap response"
+            })),
+        )
+            .into_response(),
+        Reply::DuplicateKey => {
+            let raw = serde_json::to_string(&response).unwrap();
+            let duplicate = format!(
+                "{{\"bootstrap_request_id\":{},{}",
+                body["bootstrap_request_id"],
+                &raw[1..]
+            );
+            (
+                StatusCode::OK,
+                [("content-type", "application/json")],
+                duplicate,
+            )
+                .into_response()
+        }
+        Reply::WrongIdentity => {
+            response["principal_id"] = json!(ALICE);
+            Json(response).into_response()
+        }
+        Reply::MissingGrant => {
+            response.as_object_mut().unwrap().remove("grant_id");
+            Json(response).into_response()
+        }
+        Reply::Replay => {
+            response["replayed"] = json!(true);
+            Json(response).into_response()
+        }
+    }
 }
 
 async fn create_thread(
@@ -175,6 +233,7 @@ impl Server {
         let requests = Arc::new(AtomicUsize::new(0));
         let gate = gated.then(|| Arc::new(Gate::default()));
         let observed = Arc::new(Mutex::new(Vec::new()));
+        let reply = Arc::new(Mutex::new(Reply::Normal));
         let router = Router::new()
             .route("/v1/enrollments", post(enroll))
             .route("/v1/threads", post(create_thread))
@@ -182,6 +241,7 @@ impl Server {
                 requests: requests.clone(),
                 gate: gate.clone(),
                 observed: observed.clone(),
+                reply: reply.clone(),
             });
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(async move {
@@ -197,6 +257,7 @@ impl Server {
             requests,
             gate,
             observed,
+            reply,
             stop: Some(stop),
             task: Some(task),
         }
@@ -251,8 +312,9 @@ struct Rb {
 }
 
 impl Rb {
-    fn start(fixture: &Fixture, server: &Server, args: &[&str]) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_rb"))
+    fn command(fixture: &Fixture, server: &Server, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rb"));
+        command
             .args(args)
             .current_dir(&fixture.root)
             .env("REASONBRAID_CLI_STATE", fixture.state_dir())
@@ -261,12 +323,20 @@ impl Rb {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
-        eprintln!("owned rb pid={:?}, args={args:?}", child.id());
-        let mut stdout = child.stdout.take().unwrap().take(65_537);
-        let mut stderr = child.stderr.take().unwrap().take(65_537);
+            .kill_on_drop(true);
+        command
+    }
+
+    fn start(fixture: &Fixture, server: &Server, args: &[&str]) -> Self {
+        let mut child = Self::command(fixture, server, args).spawn().unwrap();
+        eprintln!(
+            "owned rb pid={:?}, verb={:?}, argument bytes={}",
+            child.id(),
+            args.first(),
+            args.iter().map(|arg| arg.len()).sum::<usize>()
+        );
+        let mut stdout = child.stdout.take().unwrap().take(1_048_577);
+        let mut stderr = child.stderr.take().unwrap().take(1_048_577);
         Self {
             child,
             stdout: Some(tokio::spawn(async move {
@@ -294,7 +364,7 @@ impl Rb {
         };
         let stdout = self.stdout.take().unwrap().await.unwrap();
         let stderr = self.stderr.take().unwrap().await.unwrap();
-        assert!(stdout.len() <= 65_536 && stderr.len() <= 65_536);
+        assert!(stdout.len() <= 1_048_576 && stderr.len() <= 1_048_576);
         let stdout = String::from_utf8(stdout).unwrap();
         let stderr = String::from_utf8(stderr).unwrap();
         assert!(
@@ -387,6 +457,43 @@ fn enrollment_args() -> Vec<&'static str> {
     vec!["enroll", "human", "bob", "--json"]
 }
 
+#[tokio::test]
+async fn bootstrap_dispatch_has_a_durable_matching_pending_request() {
+    let fixture = Fixture::new();
+    let server = Server::with_gate(true).await;
+    let writer = Rb::start(&fixture, &server, &enrollment_args());
+    if !server.entered().await {
+        let result = writer.kill().await;
+        server.finish().await;
+        panic!("bootstrap did not reach owned HTTP gate: {result:?}");
+    }
+    let at_dispatch = StateFile::load(&fixture.state_dir()).unwrap();
+    let observed = server.observed.lock().unwrap().clone();
+    let held = lock_is_held(&fixture);
+    server.release();
+    let result = writer.finish().await;
+    server.finish().await;
+    eprintln!(
+        "bootstrap dispatch: version={}, recovery={}, request_key={}, lock_held={held}",
+        at_dispatch.version,
+        at_dispatch.bootstrap.is_some(),
+        observed[0].body.get("bootstrap_request_id").is_some()
+    );
+    assert!(result.0.success(), "{result:?}");
+    assert!(held);
+    let pending = at_dispatch.bootstrap.unwrap().pending.unwrap();
+    assert_eq!(at_dispatch.version, 2);
+    assert_eq!(pending.name, "bob");
+    assert_eq!(pending.request_id, observed[0].body["bootstrap_request_id"]);
+    assert_eq!(at_dispatch.principals.len(), 1);
+    assert_eq!(at_dispatch.threads.len(), 1);
+    let final_state = StateFile::load(&fixture.state_dir()).unwrap();
+    let recovery = final_state.bootstrap.unwrap();
+    assert!(recovery.pending.is_none());
+    assert_eq!(recovery.completed.unwrap().request, pending);
+    assert_eq!(final_state.principals["bob"].id, BOB);
+}
+
 fn thread_args() -> Vec<&'static str> {
     vec![
         "thread",
@@ -441,7 +548,15 @@ async fn both_writer_orders_hold_exclusion_until_publication_and_merge_fresh_sta
         let state = StateFile::load(&fixture.state_dir()).unwrap();
         eprintln!("overlap: enroll_first={enroll_first}, lock_held={held}, pending_requests={pending_requests}, total={total_requests}");
         assert!(held);
-        assert_eq!(before, original);
+        if enroll_first {
+            let before: Value = serde_json::from_slice(&before).unwrap();
+            let original: Value = serde_json::from_slice(&original).unwrap();
+            assert_eq!(before["principals"], original["principals"]);
+            assert_eq!(before["threads"], original["threads"]);
+            assert_eq!(before["bootstrap"]["pending"]["name"], "bob");
+        } else {
+            assert_eq!(before, original);
+        }
         assert!(
             !second.0.success() && second.2.contains("another local state writer"),
             "{second:?}"
@@ -480,19 +595,45 @@ async fn killing_either_http_writer_preserves_state_and_releases_exclusion() {
         let released = !lock_is_held(&fixture);
         let observed = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
         server.release();
-        // This different deliberate operation checks local recovery, not the
-        // killed request's server outcome or its replay safety.
+        // Bootstrap interruption must recover its saved key before a different
+        // writer. The fixture observes dispatch identity, not a database commit.
+        let bootstrap_recovery = if enroll_first {
+            Some(
+                Rb::start(&fixture, &server, &enrollment_args())
+                    .finish()
+                    .await,
+            )
+        } else {
+            None
+        };
         let other = if enroll_first {
             thread_args()
         } else {
             enrollment_args()
         };
         let recovered = Rb::start(&fixture, &server, &other).finish().await;
+        let requests = server.observed.lock().unwrap().clone();
         server.finish().await;
         eprintln!("crash release: enroll_first={enroll_first}, held={held}, released={released}");
         assert!(held && released);
         assert!(!killed.0.success());
-        assert_eq!(observed, original);
+        if let Some(result) = bootstrap_recovery {
+            assert!(result.0.success(), "{result:?}");
+            let observed: Value = serde_json::from_slice(&observed).unwrap();
+            let original: Value = serde_json::from_slice(&original).unwrap();
+            assert_eq!(observed["principals"], original["principals"]);
+            assert_eq!(observed["threads"], original["threads"]);
+            assert_eq!(
+                requests[0].body["bootstrap_request_id"],
+                requests[1].body["bootstrap_request_id"]
+            );
+            assert_eq!(
+                observed["bootstrap"]["pending"]["request_id"],
+                requests[0].body["bootstrap_request_id"]
+            );
+        } else {
+            assert_eq!(observed, original);
+        }
         assert!(recovered.0.success(), "{recovered:?}");
         let state = StateFile::load(&fixture.state_dir()).unwrap();
         assert_eq!(state.principals["alice"].id, ALICE);
@@ -609,4 +750,305 @@ async fn a_different_pending_bootstrap_blocks_ordinary_writers_before_http() {
         std::fs::read(fixture.state_dir().join("state.json")).unwrap(),
         original
     );
+}
+
+#[tokio::test]
+async fn failed_bootstrap_replies_preserve_one_key_and_the_original_request() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let original = StateFile::load(&fixture.state_dir()).unwrap();
+    let mut saved = None;
+    for reply in [
+        Reply::Status(500),
+        Reply::DuplicateKey,
+        Reply::WrongIdentity,
+        Reply::MissingGrant,
+    ] {
+        *server.reply.lock().unwrap() = reply;
+        let args = if saved.is_none() {
+            vec![
+                "enroll",
+                "human",
+                "bob",
+                "--actions",
+                "original_ignored_action",
+                "--json",
+            ]
+        } else {
+            vec![
+                "enroll",
+                "human",
+                "bob",
+                "--actions",
+                "different_ignored_action",
+                "--resume-bootstrap",
+                "--json",
+            ]
+        };
+        let result = Rb::start(&fixture, &server, &args).finish().await;
+        assert!(!result.0.success(), "{result:?}");
+        assert!(!lock_is_held(&fixture));
+        let bytes = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        if let Some(previous) = &saved {
+            assert_eq!(&bytes, previous);
+        } else {
+            saved = Some(bytes);
+        }
+        let state = StateFile::load(&fixture.state_dir()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&state.principals).unwrap(),
+            serde_json::to_value(&original.principals).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&state.threads).unwrap(),
+            serde_json::to_value(&original.threads).unwrap()
+        );
+        assert!(state.bootstrap.unwrap().completed.is_none());
+    }
+    *server.reply.lock().unwrap() = Reply::Replay;
+    let result = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    let observed = server.observed.lock().unwrap().clone();
+    server.finish().await;
+    assert!(result.0.success(), "{result:?}");
+    let output: Value = serde_json::from_str(&result.1).unwrap();
+    assert_eq!(output["replayed"], true);
+    assert_eq!(output["recovery_source"], "server");
+    assert_eq!(observed.len(), 5);
+    for request in &observed {
+        assert_eq!(request.body, observed[0].body);
+        assert_eq!(request.body["actions"], json!(["original_ignored_action"]));
+    }
+    let recovery = StateFile::load(&fixture.state_dir())
+        .unwrap()
+        .bootstrap
+        .unwrap();
+    assert!(recovery.pending.is_none());
+    let completed = recovery.completed.unwrap();
+    assert_eq!(
+        completed.request.request_id,
+        observed[0].body["bootstrap_request_id"]
+    );
+    assert_eq!(completed.outcome.principal_id, BOB);
+    assert!(completed.outcome.replayed);
+}
+
+#[tokio::test]
+async fn explicit_resume_uses_a_historical_receipt_and_normal_invocation_is_fresh() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let missing = Rb::start(
+        &fixture,
+        &server,
+        &["enroll", "human", "bob", "--resume-bootstrap"],
+    )
+    .finish()
+    .await;
+    assert!(!missing.0.success() && missing.2.contains("no matching"));
+    assert_eq!(server.requests.load(Ordering::SeqCst), 0);
+    let first = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    assert!(first.0.success(), "{first:?}");
+    let first: Value = serde_json::from_str(&first.1).unwrap();
+    let mut state = StateFile::load(&fixture.state_dir()).unwrap();
+    // An ordinary later name mapping must not silently replace the historical receipt.
+    state.principals.get_mut("bob").unwrap().id = ALICE.into();
+    state.save(&fixture.state_dir()).unwrap();
+    *server.reply.lock().unwrap() = Reply::Status(500);
+    let resumed = Rb::start(
+        &fixture,
+        &server,
+        &["enroll", "human", "bob", "--resume-bootstrap", "--json"],
+    )
+    .finish()
+    .await;
+    assert!(resumed.0.success(), "{resumed:?}");
+    let resumed: Value = serde_json::from_str(&resumed.1).unwrap();
+    assert_eq!(resumed["recovery_source"], "local_receipt");
+    assert_eq!(
+        resumed["bootstrap_request_id"],
+        first["bootstrap_request_id"]
+    );
+    assert_eq!(resumed["replayed"], first["replayed"]);
+    assert_eq!(
+        StateFile::load(&fixture.state_dir()).unwrap().principals["bob"].id,
+        BOB
+    );
+    assert_eq!(server.requests.load(Ordering::SeqCst), 1);
+    // Recreate the valid completion-before-cleanup phase through the public store.
+    let mut state = StateFile::load(&fixture.state_dir()).unwrap();
+    let recovery = state.bootstrap.as_mut().unwrap();
+    recovery.pending = Some(recovery.completed.as_ref().unwrap().request.clone());
+    state.save(&fixture.state_dir()).unwrap();
+    let cleanup = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    assert!(cleanup.0.success(), "{cleanup:?}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&cleanup.1).unwrap()["recovery_source"],
+        "local_receipt"
+    );
+    assert_eq!(server.requests.load(Ordering::SeqCst), 1);
+    *server.reply.lock().unwrap() = Reply::Normal;
+    let fresh = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    let observed = server.observed.lock().unwrap().clone();
+    server.finish().await;
+    assert!(fresh.0.success(), "{fresh:?}");
+    assert_eq!(observed.len(), 2);
+    assert_ne!(
+        observed[0].body["bootstrap_request_id"],
+        observed[1].body["bootstrap_request_id"]
+    );
+}
+
+#[tokio::test]
+async fn invalid_recovery_modes_and_endpoint_conflicts_do_not_dispatch_or_change_state() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let other = Server::start().await;
+    *server.reply.lock().unwrap() = Reply::Status(500);
+    let first = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    assert!(!first.0.success());
+    let before = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+    for args in [
+        vec![
+            "enroll",
+            "role",
+            "bob",
+            "--tenant",
+            TENANT,
+            "--resume-bootstrap",
+        ],
+        vec![
+            "enroll",
+            "human",
+            "bob",
+            "--tenant",
+            TENANT,
+            "--resume-bootstrap",
+        ],
+        vec!["enroll", "human", "different", "--resume-bootstrap"],
+        vec![
+            "enroll",
+            "human",
+            "bob",
+            "--resume-bootstrap",
+            "--server",
+            &other.url,
+        ],
+        vec![
+            "enroll",
+            "human",
+            "bob",
+            "--server",
+            "http://SECRET:password@127.0.0.1:1",
+        ],
+    ] {
+        let result = Rb::start(&fixture, &server, &args).finish().await;
+        assert!(!result.0.success(), "{result:?}");
+        assert!(!result.2.contains("SECRET") && !result.2.contains("password"));
+        assert_eq!(
+            std::fs::read(fixture.state_dir().join("state.json")).unwrap(),
+            before
+        );
+        assert!(!lock_is_held(&fixture));
+    }
+    let counts = (
+        server.requests.load(Ordering::SeqCst),
+        other.requests.load(Ordering::SeqCst),
+    );
+    server.finish().await;
+    other.finish().await;
+    assert_eq!(counts, (1, 0));
+}
+
+#[tokio::test]
+async fn losing_the_process_with_unread_output_recovers_the_completed_receipt() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let name = "x".repeat(96 * 1024);
+    let mut child = Rb::command(&fixture, &server, &["enroll", "human", &name, "--json"])
+        .spawn()
+        .unwrap();
+    eprintln!("owned unread-output rb pid={:?}", child.id());
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    // Deliberately leave stdout unread. Observe both a completed state snapshot
+    // and queued pipe bytes before interrupting this exact owned process.
+    let ready = timeout(Duration::from_secs(90), async {
+        loop {
+            let state = StateFile::load(&fixture.state_dir()).unwrap();
+            if state.bootstrap.as_ref().is_some_and(|recovery| {
+                recovery.pending.is_none()
+                    && recovery
+                        .completed
+                        .as_ref()
+                        .is_some_and(|done| done.request.name == name)
+            }) {
+                let queued = rustix::io::ioctl_fionread(&stdout).unwrap();
+                if queued > 0 {
+                    break (state, queued);
+                }
+            }
+            if child.try_wait().unwrap().is_some() {
+                panic!("owned output process exited before the unread-output observation");
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let alive = child.try_wait().unwrap().is_none();
+    let queued_after = rustix::io::ioctl_fionread(&stdout).unwrap();
+    if alive {
+        child.start_kill().unwrap();
+    }
+    let status = timeout(Duration::from_secs(10), child.wait())
+        .await
+        .expect("owned interrupted output process reap deadline")
+        .unwrap();
+    let mut partial = Vec::new();
+    stdout
+        .take(1_048_577)
+        .read_to_end(&mut partial)
+        .await
+        .unwrap();
+    let mut errors = Vec::new();
+    stderr
+        .take(1_048_577)
+        .read_to_end(&mut errors)
+        .await
+        .unwrap();
+    assert!(partial.len() <= 1_048_576 && errors.len() <= 1_048_576);
+    let result = Rb::start(
+        &fixture,
+        &server,
+        &["enroll", "human", &name, "--resume-bootstrap", "--json"],
+    )
+    .finish()
+    .await;
+    let count = server.requests.load(Ordering::SeqCst);
+    server.finish().await;
+    let (published, queued_before) = ready.expect("owned output observation deadline");
+    eprintln!("unread output: queued before={queued_before}, after={queued_after}, process alive={alive}, partial bytes={}, HTTP count={count}", partial.len());
+    assert!(alive && !status.success());
+    assert!(queued_after >= queued_before && queued_after < name.len() as u64);
+    assert!(
+        serde_json::from_slice::<Value>(&partial).is_err(),
+        "the owned reader did not receive a complete JSON result"
+    );
+    assert!(result.0.success(), "recovery failed: {}", result.2);
+    let output: Value = serde_json::from_str(&result.1).unwrap();
+    let completed = published.bootstrap.unwrap().completed.unwrap();
+    assert_eq!(output["recovery_source"], "local_receipt");
+    assert_eq!(output["bootstrap_request_id"], completed.request.request_id);
+    assert_eq!(output["principal_id"], completed.outcome.principal_id);
+    assert_eq!(output["name"], name);
+    assert_eq!(count, 1);
 }

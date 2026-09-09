@@ -37,8 +37,10 @@ lint and book checks; every result/shutdown is consumed and fixtures/owned clust
 are absent. Recovery schema `.3.3.4.3.3.3.3.2.1` passes twenty-four selected
 controls, strict lint and book checks; all results consumed and unique fixtures
 absent, with the interrupted host startup and unchanged-binary retry recorded.
-Keyed CLI/explicit recovery, bounded HTTP waits and restart qualification follow
-before issuance coverage reconciliation. Remaining application/
+Keyed CLI/explicit recovery `.3.3.4.3.3.3.3.2.2` passes thirty-three selected
+controls, final output-window rerun and strict CLI lint; all results/shutdown are
+consumed, unique fixtures and owned cluster absent. Completion-capacity preflight,
+bounded HTTP waits and restart qualification follow before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.

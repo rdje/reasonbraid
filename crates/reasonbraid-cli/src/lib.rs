@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+mod bootstrap_flow;
 mod bootstrap_state;
 mod state_store;
 
@@ -253,8 +254,8 @@ impl ApiClient {
         }
     }
 
-    /// A 2xx JSON answer, or a typed server error (the `{code, message}` shape).
-    async fn parse(&self, response: reqwest::Response) -> Result<Value, CliError> {
+    /// Preserve original bytes until the selected response codec validates them.
+    async fn response_body(&self, response: reqwest::Response) -> Result<Vec<u8>, CliError> {
         let status = response.status().as_u16();
         let body = response.bytes().await?;
         if !(200..300).contains(&status) {
@@ -280,7 +281,34 @@ impl ApiClient {
                 }
             }
         }
+        Ok(body.to_vec())
+    }
+
+    /// A 2xx JSON answer, or a typed server error (the `{code, message}` shape).
+    async fn parse(&self, response: reqwest::Response) -> Result<Value, CliError> {
+        let body = self.response_body(response).await?;
         serde_json::from_slice(&body).map_err(|e| CliError::Malformed(e.to_string()))
+    }
+
+    async fn enroll_bootstrap(
+        &self,
+        request: &BootstrapRequest,
+    ) -> Result<BootstrapOutcome, CliError> {
+        let mut body = json!({
+            "kind": "human", "name": request.name,
+            "bootstrap_request_id": request.request_id,
+        });
+        if let Some(actions) = &request.actions {
+            body["actions"] = json!(actions);
+        }
+        let response = self
+            .http
+            .post(format!("{}/v1/enrollments", self.base))
+            .json(&body)
+            .send()
+            .await?;
+        let bytes = self.response_body(response).await?;
+        bootstrap_flow::decode_outcome(&bytes, request)
     }
 
     pub async fn enroll(&self, body: Value) -> Result<Value, CliError> {
@@ -544,6 +572,28 @@ pub async fn run_enroll(
     actions: Option<Vec<String>>,
     json_out: bool,
 ) -> Result<String, CliError> {
+    run_enroll_with_recovery(cfg, kind, name, tenant, actions, json_out, false).await
+}
+
+/// Enroll normally, or explicitly recover the matching pending/latest completed
+/// bootstrap. Recovery is valid only for a human without an existing tenant.
+pub async fn run_enroll_with_recovery(
+    cfg: &Config,
+    kind: &str,
+    name: &str,
+    tenant: Option<&str>,
+    actions: Option<Vec<String>>,
+    json_out: bool,
+    resume_bootstrap: bool,
+) -> Result<String, CliError> {
+    if kind == "human" && tenant.is_none() {
+        return bootstrap_flow::run(cfg, name, actions, json_out, resume_bootstrap).await;
+    }
+    if resume_bootstrap {
+        return Err(CliError::usage(
+            "--resume-bootstrap requires human enrollment without --tenant".into(),
+        ));
+    }
     let mut writer = state_store::Writer::open(&cfg.state_dir)?;
     let client = ApiClient::new(&cfg.server_base);
     let mut body = json!({ "kind": kind, "name": name });

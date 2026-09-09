@@ -1,9 +1,13 @@
 # Bootstrap recovery records
 
-The version-two storage schema is implemented. Keyed CLI enrollment and the
-explicit `--resume-bootstrap` operation remain planned in the next slice; the
-current CLI does not yet emit these recovery records or send a bootstrap key.
-Ordinary writers already refuse a stored pending request before HTTP.
+Human enrollment without `--tenant` now saves a version-two recovery record before
+sending a keyed bootstrap request. Matching pending work reuses that request;
+`--resume-bootstrap` also recovers the most recent completed receipt when output
+was lost. Other state writers refuse unresolved pending work before HTTP.
+Thirty-three selected controls, the final output-window rerun and strict CLI lint
+pass. All results/shutdown are consumed and unique fixtures/owned cluster absent.
+Capacity preflight, HTTP deadlines and broader interruption qualification remain
+separately owned.
 
 ## Versions and compatibility
 
@@ -110,8 +114,7 @@ request; this is not an unbounded client history.
 ## Publication rules
 
 The same writer guard can publish multiple synchronized snapshots without
-releasing exclusion. The planned HTTP flow uses these already qualified storage
-transitions:
+releasing exclusion. The keyed HTTP flow uses these storage transitions:
 
 | Snapshot | Pending | Completed receipt | Required local principal |
 | --- | --- | --- | --- |
@@ -131,16 +134,83 @@ held until its owner finishes or is dropped. If pending became visible before
 an interrupted acknowledgment, the key remains recoverable and ordinary writers
 refuse it. No separate unsynchronized pending-file deletion is used.
 
-## Planned recovery intent
+## Choosing fresh enrollment or recovery
 
-After an interrupted request, matching pending work will reuse its saved key.
-A different name/server will refuse while pending remains. A normally fresh
-invocation after completion will still mean a distinct new tenant. Explicit
-`--resume-bootstrap` will select recovery instead, including from the retained
-completed receipt when CLI output was lost after local cleanup.
+Use the same repository-relative state directory and configured server for every
+step of one operation:
 
-File publication cannot establish whether a person consumed stdout. The explicit
-recovery intent handles that ambiguity without treating equal names as proof of
-the same logical operation. The next CLI and deadline slices must qualify the
-actual HTTP/reply/output behavior before this becomes a completed client-recovery
-feature. Local process death or lock release never establishes server rollback.
+```sh
+export REASONBRAID_CLI_STATE=target/rb-state
+rb --server http://127.0.0.1:4310 enroll human alice --json
+```
+
+Before that HTTP request, the CLI synchronizes a canonical request key, endpoint,
+exact name and original action input. If the request fails or the process exits,
+repeating the command while a matching pending request exists reuses that exact
+request. A changed name or endpoint refuses before HTTP. New ignored human action
+arguments do not replace the original saved action input. No automatically
+invented replacement key follows a server, transport or malformed-reply error.
+
+After pending cleanup, a normal invocation is intentionally fresh and creates a
+new tenant, even if the name matches the most recent completion. If the earlier
+output was lost, select recovery explicitly:
+
+```sh
+rb --server http://127.0.0.1:4310 enroll human alice --resume-bootstrap --json
+```
+
+This operation requires human enrollment without `--tenant`. Missing or mismatched
+recovery refuses; it never falls through to creation. Only one most recent
+completed request is retained, so a later completed bootstrap replaces the older
+receipt available for this command. Use the same state directory; another store
+does not possess this operation's recovery record.
+
+A pending request with no completed outcome sends the saved key to the configured
+server. If its completed receipt is already present, recovery restores that
+historical principal mapping and reports the saved outcome locally without HTTP.
+This also finishes cleanup when completion was published before an interruption.
+An explicit resume after completed cleanup likewise uses the local receipt.
+
+JSON output includes `recovery_source: "server"` for a checked HTTP outcome or
+`recovery_source: "local_receipt"` for a retained local outcome. The original
+`replayed` value stays unchanged during local recovery. For example:
+
+```json
+{
+  "bootstrap_request_id": "req_00000000-0000-7000-8000-000000000001",
+  "kind": "human",
+  "name": "alice",
+  "principal_id": "hpr_00000000-0000-7000-8000-000000000002",
+  "tenant_id": "ten_00000000-0000-7000-8000-000000000003",
+  "boundary_id": "bnd_ten_00000000-0000-7000-8000-000000000003",
+  "grant_id": "grt_hpr_00000000-0000-7000-8000-000000000002",
+  "replayed": false,
+  "recovery_source": "local_receipt"
+}
+```
+
+Human output says "recovered historical enrollment of" for local recovery.
+A saved outcome does not prove current authority, current remote existence or
+continuity of the database at that URL. It is not an authenticated credential.
+File publication cannot establish whether a person or consuming process received
+stdout; the explicit operation handles that ambiguity without inferring intent
+from equal names. Local process death or lock release never establishes server
+rollback.
+
+The CLI requires the keyed server protocol and its complete matching reply.
+Missing, duplicate or unknown fields, non-object JSON, wrong request identity and
+inconsistent source references refuse, preserving pending intent. There is no
+silent fallback to an unkeyed request against an older server. The public
+run_enroll convenience function follows normal invocation semantics;
+run_enroll_with_recovery exposes the explicit resume choice to Rust callers.
+
+HTTP connect/whole-request and reply-size bounds are the following repair child.
+Broader process/filesystem/server restart qualification also remains open; this
+flow does not claim universal automatic retry or physical power-loss survival.
+
+Completion-capacity preflight is also pending under
+SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1. Near the 8 MiB state limit, a pending snapshot
+may fit while adding the completed receipt and principal does not. The current
+flow retains the key and reports the local publication error; automatic local
+completion is not guaranteed until space is available. The next bounds child
+owns runtime reproduction and refusal before dispatch when completion cannot fit.

@@ -61,16 +61,24 @@ where
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) use validation::{validate, validate_shape, validate_transition};
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) use validation::{canonical_server, outcome as validate_outcome};
+
 mod validation {
     use std::fmt::Display;
     use std::str::FromStr;
 
-    use reasonbraid_core::{HumanPrincipalId, RequestId, TenantId};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use reasonbraid_core::RequestId;
+    use reasonbraid_core::{HumanPrincipalId, TenantId};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use serde_json::Value;
 
-    use super::{BootstrapOutcome, BootstrapRecovery, BootstrapRequest};
-    use crate::{CliError, StateFile};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use super::BootstrapRecovery;
+    use super::{BootstrapOutcome, BootstrapRequest};
+    use crate::CliError;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use crate::StateFile;
 
     fn invalid(message: &str) -> CliError {
         CliError::state(message.to_owned())
@@ -80,7 +88,7 @@ mod validation {
         raw.parse::<T>().is_ok_and(|id| id.to_string() == raw)
     }
 
-    fn canonical_server(raw: &str) -> Result<String, CliError> {
+    pub(crate) fn canonical_server(raw: &str) -> Result<String, CliError> {
         if raw.len() > 4096 || raw.trim() != raw {
             return Err(invalid(
                 "bootstrap server identity is oversized or contains surrounding whitespace",
@@ -104,6 +112,7 @@ mod validation {
         Ok(canonical.to_owned())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn request(request: &BootstrapRequest) -> Result<(), CliError> {
         let uuid = request
             .request_id
@@ -124,7 +133,10 @@ mod validation {
         Ok(())
     }
 
-    fn outcome(value: &BootstrapOutcome, binding: &BootstrapRequest) -> Result<(), CliError> {
+    pub(crate) fn outcome(
+        value: &BootstrapOutcome,
+        binding: &BootstrapRequest,
+    ) -> Result<(), CliError> {
         if value.bootstrap_request_id != binding.request_id
             || value.kind != "human"
             || value.name != binding.name
@@ -140,6 +152,7 @@ mod validation {
         Ok(())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub(crate) fn validate(recovery: &BootstrapRecovery) -> Result<(), CliError> {
         if recovery.pending.is_none() && recovery.completed.is_none() {
             return Err(invalid(
@@ -165,6 +178,7 @@ mod validation {
         Ok(())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub(crate) fn validate_shape(root: &Value, version: u32) -> Result<(), CliError> {
         if version < 2 {
             return if root.get("bootstrap").is_some() {
@@ -195,6 +209,7 @@ mod validation {
     /// Preserve unresolved intent against a stale full-snapshot writer. New
     /// snapshots may restore valid historical data into a legacy/empty store;
     /// once recovery exists, publication cannot silently discard its identity.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub(crate) fn validate_transition(old: &StateFile, new: &StateFile) -> Result<(), CliError> {
         let Some(previous) = &old.bootstrap else {
             return Ok(());

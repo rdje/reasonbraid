@@ -51,17 +51,25 @@ pub(crate) struct Writer {
 
 impl Writer {
     pub(crate) fn open(path: &std::path::Path) -> Result<Self, CliError> {
+        let writer = Self::open_recovery(path)?;
+        if writer
+            .state
+            .bootstrap
+            .as_ref()
+            .is_some_and(|recovery| recovery.pending.is_some())
+        {
+            return Err(invalid("bootstrap recovery is pending; use the matching recovery operation before another writer"));
+        }
+        Ok(writer)
+    }
+
+    /// Only the bootstrap coordinator may select and reconcile pending intent.
+    /// The same path, snapshot and lock checks apply to both entrypoints.
+    pub(crate) fn open_recovery(path: &std::path::Path) -> Result<Self, CliError> {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let publication = unix::Publication::open(path)?;
             let state = publication.load()?;
-            if state
-                .bootstrap
-                .as_ref()
-                .is_some_and(|recovery| recovery.pending.is_some())
-            {
-                return Err(invalid("bootstrap recovery is pending; use the matching recovery operation before another writer"));
-            }
             Ok(Self { state, publication })
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]

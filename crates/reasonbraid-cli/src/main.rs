@@ -7,12 +7,12 @@
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_boundary_revoke, run_breaker_arm, run_breaker_reset,
-    run_enroll, run_grant_revoke, run_inspect_boundaries, run_inspect_breakers, run_inspect_budget,
-    run_inspect_grants, run_inspect_incarnations, run_inspect_node_inbox, run_inspect_runs,
-    run_inspect_thread, run_inspect_threads, run_inspect_usage, run_issue_node_token,
-    run_prune_node_inbox, run_quarantine_command, run_replay_command, run_revoke_node,
-    run_thread_create_named, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
-    StateFile, ThreadVerbArgs,
+    run_enroll_with_recovery, run_grant_revoke, run_inspect_boundaries, run_inspect_breakers,
+    run_inspect_budget, run_inspect_grants, run_inspect_incarnations, run_inspect_node_inbox,
+    run_inspect_runs, run_inspect_thread, run_inspect_threads, run_inspect_usage,
+    run_issue_node_token, run_prune_node_inbox, run_quarantine_command, run_replay_command,
+    run_revoke_node, run_thread_create_named, run_thread_verb, BudgetArgs, Config,
+    CreateProfileArgs, PrincipalRef, StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -42,7 +42,11 @@ enum Command {
         /// Role actions to grant (comma-separated wire names, e.g. thread_contribute).
         #[arg(long, value_delimiter = ',')]
         actions: Option<Vec<String>>,
-        /// Print the raw JSON response.
+        /// Recover the matching pending or most recent completed bootstrap.
+        /// Valid only for human enrollment without --tenant.
+        #[arg(long)]
+        resume_bootstrap: bool,
+        /// Print the JSON result, including the bootstrap recovery source.
         #[arg(long)]
         json: bool,
     },
@@ -649,8 +653,20 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             name,
             tenant,
             actions,
+            resume_bootstrap,
             json,
-        } => run_enroll(cfg, &kind, &name, tenant.as_deref(), actions, json).await,
+        } => {
+            run_enroll_with_recovery(
+                cfg,
+                &kind,
+                &name,
+                tenant.as_deref(),
+                actions,
+                json,
+                resume_bootstrap,
+            )
+            .await
+        }
         Command::Thread(ThreadCommand::Create {
             subject,
             objective,

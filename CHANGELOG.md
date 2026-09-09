@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Keyed CLI bootstrap and explicit recovery (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.2`)
+
+Persist one bootstrap request before HTTP and reuse matching pending intent with
+its original key/actions. Strictly validate complete original-byte replies;
+publish principal/completion and pending cleanup under the same guard. Add
+--resume-bootstrap for explicit pending/latest-completion recovery; historical
+receipts recover locally without HTTP and label their source. Normal no-pending
+invocation remains intentionally fresh. Thirty-three selected controls, final output rerun and strict lint pass; all
+results/shutdown consumed and unique fixtures/owned cluster absent. Capacity and HTTP bounds,
+integration reconciliation and broader restart qualification remain next.
+
 ## 2026-09-09 — Strict bootstrap recovery snapshots (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1`)
 
 Add version-two pending/completed recovery records with exact identity/outcome

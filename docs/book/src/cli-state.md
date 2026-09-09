@@ -40,8 +40,8 @@ have no qualification claim here.
 ## Valid snapshots
 
 Version two adds the implemented [bootstrap recovery record schema](docs/book/src/cli-bootstrap-state.md).
-The CLI does not yet emit those records; stored pending work already blocks ordinary
-writers before HTTP. Version-zero/version-one wire shapes remain unchanged.
+New-human enrollment emits those records before HTTP; matching pending work reuses
+its key and other writers refuse. Version-zero/version-one wire shapes remain unchanged.
 
 A version-one snapshot looks like this:
 
@@ -122,7 +122,8 @@ also refuses transitions that discard recovery metadata or replace an unresolved
 bootstrap identity.
 
 A failed request, local validation error or cancelled process releases local
-exclusion without publishing the in-memory change. A local publication error
+exclusion without publishing further in-memory changes. New-human bootstrap
+already published its pending identity before HTTP and retains it on failure. A local publication error
 still follows the before/after-replacement rules above. Process death while
 awaiting HTTP preserves the previously published snapshot; it does not prove
 that the server did nothing. Never delete the lock filename to force progress.
@@ -134,10 +135,18 @@ A peer that never responds can retain the live writer's local lock until the
 command is cancelled. Bounded HTTP waits and preservation of the request key on
 timeout are owned by the next request-recovery child.
 
-The CLI does not yet persist/send bootstrap_request_id before new-human HTTP
-enrollment. A lost bootstrap response or local write failure can therefore leave
-a created tenant without a recovered local identity. Repeating the human name
-without `--tenant` can create a distinct tenant. The server's keyed recovery API
-is implemented; durable CLI request handling and interruption/restart
-qualification are the following repair children. Successful lock release is
-not evidence that repeating an unkeyed request is safe.
+The CLI now persists/sends bootstrap_request_id before new-human HTTP enrollment,
+validates a complete keyed reply, publishes its principal and receipt, then clears
+pending under the same lock. After cleanup, use `--resume-bootstrap` to recover
+the retained historical result if output was lost; a normal no-pending invocation
+intentionally creates another tenant. See the
+[request and recovery examples](docs/book/src/cli-bootstrap-state.md).
+Broader interruption/restart qualification remains open. Successful lock release
+alone is not evidence that repeating an unkeyed request is safe.
+
+Completion-capacity preflight is also pending under
+SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1. Near the 8 MiB state limit, a pending snapshot
+may fit while adding the completed receipt and principal does not. The current
+flow retains the key and reports the local publication error; automatic local
+completion is not guaranteed until space is available. The next bounds child
+owns runtime reproduction and refusal before dispatch when completion cannot fit.

@@ -21,15 +21,22 @@ jobs:
       - name: Check workspace with local compiler and stores
         run: |
           python3 -B scripts/ci_env.py --rust -- bash -euo pipefail <<'CHECKS'
-          export R3_BROWSER_BIN="$(command -v google-chrome)"
-          test -x "$R3_BROWSER_BIN"
           cargo fmt --all -- --check
           cargo clippy --all-targets --all-features -- -D warnings
           cargo build --workspace --bins --locked
           test -x target/debug/reasonbraid-extract
           test -x target/debug/reasonbraid-browse
-          cargo test --all --locked -- --nocapture
+          python3 -B scripts/ci_browser.py -- cargo test --all --locked -- --nocapture
           CHECKS
+      - name: Retain browser setup receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-setup
+          path: |
+            target/ci-browser/*/browser.json
+            target/ci-browser/*/version.log
+          if-no-files-found: ignore
 
   pg-tests:
     runs-on: ubuntu-24.04

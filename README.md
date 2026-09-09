@@ -17,11 +17,11 @@ Execution and repair ownership: [`docs/TASK_TREE.md`](docs/TASK_TREE.md).
 
 ## Quick start
 
-Requires Python 3.11+ and the pinned Rust toolchain; the book requires mdBook.
+Requires Python 3.11+, pinned Rust and curl; mdBook builds the book.
 
 ```bash
 git config core.hooksPath .githooks
-make check    # fmt, clippy -D warnings, tests
+make check    # fmt, lint, browser tests
 make gate     # doctrine enforcer
 make book     # mdBook (requires mdbook)
 make dev      # one-command dev environment (ephemeral PG + rb-server)

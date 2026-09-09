@@ -20,7 +20,9 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
 
 ## Commands
 
-- `make check` — `cargo fmt --check` + `cargo clippy --all-targets --all-features -- -D warnings` + `cargo test --all`.
+- `make check` — format, strict all-target/all-feature lint, then `make test`.
+- `make test` — locked workspace binary build, then locked workspace tests through
+  the pinned browser launcher below. Requires network access to the official archive.
 - `make gate` — the doctrine enforcer (`scripts/check_doctrines.sh`).
 - `make deny` — `cargo deny check` against `deny.toml`. **Requires** `cargo-deny`
   (`python3 -B scripts/project_env.py cargo install --locked cargo-deny --version 0.20.2`).
@@ -92,19 +94,54 @@ make book
 These are the required checkpoint commands, not a claim they have passed now.
 All six project command jobs now use the local CI launcher. Python discovery,
 worker builds, required browser presence, explicit full demo and pinned book build
-are wired. Publisher fixture ownership .4 is verified, including independent
-processes and preserved historical data. Browser profile/child lifetime .5 and
-safe compiler-artifact disposition .6 remain before broad execution under .2.
-The browser test harness .5.1 now passes eight controls and strict lint, including
-real rendering and bounded process/origin cleanup. Its supervisor still observes
-a remaining group after the production worker returns; .5.2 owns that correction
-and .5.3 the combined qualification. A transient native group-permission refusal
-is reproduced and handled with bounded observation, never presumed absence. Actual GitHub results remain to be consumed
+are wired. Publisher/browser lifetime and compiler-artifact prerequisite repairs
+are complete. Source-7e01097's full checkpoint stopped at two browser timing
+witnesses; .2.4 repairs those witnesses and .2.5 binds the dedicated test runtime.
+The complete checkpoint still needs to run on the resulting committed source.
+Actual GitHub results remain to be consumed
 after the authorized push. Local Make commands use project_env.py.
 
 Exact census, tool versions, source hashes, skips and limits:
 `docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md`. Full CI runs before
 pushes or selected important steps; ordinary slices use focused checks.
+
+## Pinned browser test runtime
+
+`make test`, `make check` and the Rust CI job use `scripts/ci_browser.py` to select
+Chrome for Testing 153.0.8010.36. The source pins archive size and SHA-256 for Linux
+and macOS on x86-64/ARM64. There is no floating latest lookup, desktop-browser
+fallback or runtime checksum override. Unsupported platforms fail explicitly.
+
+```bash
+# Setup/version only; does not claim rendering or test coverage.
+python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py --verify-only
+# Build workers before a selected live browser test.
+python3 -B scripts/project_env.py cargo build --workspace --bins --locked
+python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py -- cargo test -p reasonbraid-browse --test browser_roundtrip --locked -- --nocapture
+```
+
+Each invocation downloads into its exclusive `target/ci-browser/<platform>-*`
+directory, verifies the pinned bytes, validates the complete ZIP layout and
+extracts a private runtime. Relative framework link chains must stay inside that
+runtime; traversal, duplicate entries, missing targets, cycles and file/link
+ancestors refuse. Archive/expanded/member limits are 300 MiB/1 GiB/512 MiB, with
+at most 20,000 entries. HTTPS download and version phases have 300-second and
+30-second limits. The command default is one hour; `--timeout 120` selects two
+minutes (accepted range 1–7200 seconds). Consumed shutdown follows these deadlines.
+
+The launcher overrides ambient browser selection and records the root-relative
+executable path, archive/executable hashes, version and child phase identities in
+`browser.json`; `version.log` preserves the version output. Successful calls remove
+their own archive/runtime. Failures retain them for inspection. CI uploads only
+the receipt/version log; command output remains in the job log. A setup-only pass
+does not replace the actual tests. Direct Cargo calls bypass this prerequisite.
+
+This dedicated runtime qualifies trusted test fixtures. The macOS artifact's
+ad-hoc linker signature is not Developer ID authentication; no re-signing,
+quarantine change or shared browser/updater mutation is performed. Production
+untrusted-content and detached-process containment remain separately owned.
+Exact source and qualification evidence:
+`docs/tasks/artifacts/signoff_review/ci-browser-runtime.md`.
 
 ## CI environment launcher
 

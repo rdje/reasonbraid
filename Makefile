@@ -6,10 +6,10 @@ PROJECT_RUN := python3 -B scripts/project_env.py
 
 help:
 	@echo "make gate            - run the doctrine enforcer (scripts/check_doctrines.sh)"
-	@echo "make check           - cargo fmt --check + clippy (deny warnings) + test"
+	@echo "make check           - format + strict lint + make test (pinned browser)"
 	@echo "make fmt             - cargo fmt --all"
 	@echo "make clippy          - cargo clippy --all-targets -- -D warnings"
-	@echo "make test            - cargo test --all"
+	@echo "make test            - build workers + locked tests with pinned browser"
 	@echo "make deny            - cargo deny check: advisories/bans/licenses/sources (requires cargo-deny)"
 	@echo "make secret-scan     - gitleaks detect (secret scan; requires gitleaks)"
 	@echo "make book            - build the mdBook (requires mdbook)"
@@ -26,7 +26,7 @@ gate:
 check:
 	$(PROJECT_RUN) cargo fmt --all -- --check
 	$(PROJECT_RUN) cargo clippy --all-targets --all-features -- -D warnings
-	$(PROJECT_RUN) cargo test --all
+	$(MAKE) test
 
 fmt:
 	$(PROJECT_RUN) cargo fmt --all
@@ -35,7 +35,8 @@ clippy:
 	$(PROJECT_RUN) cargo clippy --all-targets --all-features -- -D warnings
 
 test:
-	$(PROJECT_RUN) cargo test --all
+	$(PROJECT_RUN) cargo build --workspace --bins --locked
+	$(PROJECT_RUN) python3 -B scripts/ci_browser.py -- cargo test --all --locked
 
 # Supply-chain checks (wired into .github/workflows/supply-chain.yml — see docs/ci.md).
 deny:

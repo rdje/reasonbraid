@@ -50,13 +50,22 @@ def group_exists(pid: int) -> bool:
 
 def stop_group(process: subprocess.Popen, *, postgres: bool = False) -> None:
     """Reap the direct child and prove its process group is gone before cleanup."""
+    def absent() -> bool:
+        process.poll()
+        try:
+            return not group_exists(process.pid)
+        except PermissionError:
+            # Darwin can report EPERM for an owned zombie between poll and the
+            # group probe. Reap/reobserve within the existing deadline. A denied
+            # observation is never evidence that the group disappeared.
+            return False
+
     if postgres:
         stages = ((signal.SIGINT, 20), (signal.SIGQUIT, 5))
     else:
         stages = ((signal.SIGTERM, 5), (signal.SIGKILL, 5))
     for sig, seconds in stages:
-        process.poll()
-        if not group_exists(process.pid):
+        if absent():
             process.wait()
             return
         try:
@@ -64,10 +73,13 @@ def stop_group(process: subprocess.Popen, *, postgres: bool = False) -> None:
         except ProcessLookupError:
             process.wait()
             return
+        except PermissionError:
+            # The same exit race can affect the signal. Continue bounded
+            # observation; a genuinely persistent refusal must still fail.
+            pass
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
-            process.poll()
-            if not group_exists(process.pid):
+            if absent():
                 process.wait()
                 return
             time.sleep(0.05)

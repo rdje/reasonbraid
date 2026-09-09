@@ -101,3 +101,11 @@ desktop browser's detached updater/crash-report stderr writers; that refusal sta
 preserved. Production bytes are unchanged; strict focused lint and process/fixture
 checks pass. Pinned local/CI runtime binding .2.5 precedes the next full checkpoint.
 PostgreSQL/demo and remote CI are pending; qualification categories are unchanged.
+
+Dedicated runtime prerequisite .11.4.3.1.2.5 is now complete. Local Make and CI pin
+the same verified testing browser; four archive layouts and native setup/rendering
+are qualified. All 67 Python controls and sixteen browser integration tests pass,
+including a reproduced/repaired shared Python zombie-group shutdown race. Final
+wiring/book/process/residue checks pass; failed evidence remains and production
+Rust is unchanged. Resume the full checkpoint on the committed result, then the
+authorized public push and remote CI. Qualification categories remain unchanged.

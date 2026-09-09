@@ -126,6 +126,44 @@ class PgRunnerTests(unittest.TestCase):
             for child in spawned:
                 runner.stop_group(child)
 
+    def test_transient_group_denial_requires_later_absence_and_reaping(self):
+        child = subprocess.Popen([sys.executable, "-B", "-c", "import time; time.sleep(60)"],
+                                 start_new_session=True)
+        original = runner.group_exists
+        observations = []
+
+        def observe(pid):
+            if not observations:
+                observations.append("denied")
+                raise PermissionError("injected owned-exit race")
+            result = original(pid)
+            observations.append(result)
+            return result
+
+        try:
+            with patch.object(runner, "group_exists", side_effect=observe):
+                runner.stop_group(child)
+            self.assertEqual(observations[0], "denied")
+            self.assertIs(observations[-1], False)
+            self.assertIsNotNone(child.returncode)
+            with self.assertRaises(ChildProcessError):
+                os.waitpid(child.pid, os.WNOHANG)
+        finally:
+            runner.stop_group(child)
+
+    def test_persistent_probe_and_signal_denial_never_confirms_shutdown(self):
+        child = unittest.mock.Mock(pid=12345)
+        child.poll.return_value = None
+        with (
+            patch.object(runner, "group_exists", side_effect=PermissionError("denied")),
+            patch.object(runner.os, "killpg", side_effect=PermissionError("denied")) as send,
+            patch.object(runner.time, "monotonic", side_effect=[0, 6, 12, 18]),
+        ):
+            with self.assertRaisesRegex(runner.RunnerError, "has not stopped"):
+                runner.stop_group(child)
+        self.assertEqual(send.call_count, 2)
+        child.wait.assert_not_called()
+
     def test_test_failure_and_cleanup_failure_are_nonzero(self):
         with (
             patch.object(sys, "argv", ["run_pg_tests.py", "authority"]),

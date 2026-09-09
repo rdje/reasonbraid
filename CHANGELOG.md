@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Pin the local and CI browser runtime (`SIGNOFF-REPAIR.11.4.3.1.2.5`)
+
+Make test/check and the Rust workflow now use an exact verified Chrome for Testing
+runtime with private local installation, bounded phases and retained failure
+evidence. Four platform archives are qualified; fresh native setup and all sixteen
+browser tests pass. Repair a reproduced shared Python shutdown race: transient
+zombie-group denial requires bounded reaping and confirmed absence. All 67 Python
+controls and final wiring/book/residue checks pass. Preserve the diagnostic failures;
+full checkpoint and public push remain next. README shrinks; production Rust is unchanged.
+
 ## 2026-09-10 — Qualify browser phase witnesses (`SIGNOFF-REPAIR.11.4.3.1.2.4`)
 
 Reproduce the full checkpoint's navigation/overlap timing failures with a controlled

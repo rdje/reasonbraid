@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Pin runtime identity and consume launcher shutdown
+
+- Local/CI browser setup now pins Chrome for Testing 153.0.8010.36 with four exact archive lengths/SHA-256 hashes. Validate ZIP layout and bounded internal framework links before private extraction; verify the version before dispatch. Each invocation owns its payload and receipts, retires successful payloads and preserves failures. Make and CI use the same explicit dependency; direct Cargo bypasses it. Archive integrity is distinct from vendor signing and untrusted-content isolation.
+- Preserve two diagnostic mistakes: run_command cleanup cannot install signal handlers from executor threads, and abrupt subprocess.run outer timeouts can strand a launcher's separate downloader group. Native identity checks consume the exact orphan fixtures; a bounded sample localizes one fixture to _dyld_start without establishing the deeper host cause. The corrected test harness uses cooperative supervision and has a deliberate stalled-downloader cancellation control.
+- The corrected controls expose PermissionError during a version timeout. Three native zombie-exit races reproduce EPERM between poll and group inspection. The shared supervisor now reaps/reobserves within its existing deadlines; persistent probe/signal denial still fails. Three matched corrected native controls succeed with reaped children and absent groups. All 67 Python controls pass, including four real PostgreSQL lifecycle controls; fifteen browser setup controls cover refusal, preservation and cancellation.
+- Fresh native setup and sixteen real browser integration tests pass in 89.966 seconds overall (test body 30.22 seconds). All recorded test/tool groups are independently absent, successful fixtures/payloads are removed, seventeen prior browser and five new launcher failure fixtures remain. Four archive payload/layout comparisons, YAML/shell/Make routing, omission controls and rendered book checks pass. README stays 52 lines/2,017 bytes; worker binaries and production Rust are unchanged. Full checkpoint/remote outcomes remain separate.
+- promotion: promoted → `docs/decisions/2026-09-10_pinned-browser-runtime.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.5`.
+
 ## 2026-09-10 — A phase witness must survive startup, and EOF has process ownership
 
 - Source-7e01097 full gates pass through compilation but stop at two browser timing assertions. A recorded six-second launch delay reproduces both original failures with unchanged binaries: a four-second render can end before navigation, and the overlap fixture's five-second prerequisite can prevent its second launch. The original second error was masked by observer panic, so its exact original host timings remain unknown.

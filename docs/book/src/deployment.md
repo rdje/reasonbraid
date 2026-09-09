@@ -158,7 +158,7 @@ limits and evidence. Installation integrity does not complete release qualificat
 
 ## CI requires its runtime prerequisites
 
-All six project command jobs enter the local launcher. Rust checks require Chrome,
+All six project command jobs enter the local launcher. Rust checks pin Chrome for Testing,
 build the workspace binaries and verify executable extraction/browser workers
 before tests. Missing prerequisites fail instead of supplying apparent coverage.
 The PostgreSQL job validates installed version-16 tools, discovers every Python
@@ -285,12 +285,47 @@ passes the delayed navigation/overlap witnesses and all sixteen integration cont
 with the unchanged production worker. The archive and extracted bytes are verified;
 this testing build has an ad-hoc linker signature, not verified Developer ID signing.
 
-The result qualifies these trusted loopback fixtures. Pinned browser installation
-and CI selection remain .11.4.3.1.2.5 before the full checkpoint resumes; the current
-workflow still selects installed Chrome. Untrusted-content isolation, detached
+The result qualifies these trusted loopback fixtures. The pinned launcher below
+now supplies the local/CI browser prerequisite under .11.4.3.1.2.5.
+Untrusted-content isolation, detached
 process containment and aggregate resource limits remain .7.3.2. The full workspace
 checkpoint has not passed, and PostgreSQL/demo has not run in this attempt. Exact
 results, retained failures and scope: `docs/tasks/artifacts/signoff_review/browser-checkpoint-timing.md`.
+
+### Reproduce tests with the selected browser
+
+`make test` builds the workspace binaries with the lockfile and runs the workspace
+tests using Chrome for Testing **153.0.8010.36**. `make check` runs format and strict
+lint first. The Rust CI job uses the same browser launcher. Linux and macOS on
+x86-64/ARM64 have exact archive size/SHA-256 pins; other platforms refuse.
+
+```bash
+# Verify download, installation and version only.
+python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py --verify-only
+# Exercise only the real browser integration tests after building workers.
+python3 -B scripts/project_env.py cargo build --workspace --bins --locked
+python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py -- cargo test -p reasonbraid-browse --test browser_roundtrip --locked -- --nocapture
+```
+
+Each call requires network access to the official pinned archive. The launcher
+creates a private `target/ci-browser/<platform>-*` directory on the repository
+volume, verifies the download before extraction, validates internal framework
+links and checks the executable's exact version before dispatch. It overrides
+ambient `R3_BROWSER_BIN`; there is no desktop fallback. Direct Cargo commands
+bypass this setup and do not establish pinned-runtime coverage by themselves.
+
+Download/version waits are bounded to 300/30 seconds; the command default is one
+hour. For a shorter selected run, insert `--timeout 120` before `--` for a two-minute
+command deadline. Shutdown is consumed afterward. The receipt and version log
+remain; successful invocations retire their own archive/runtime, while failed
+invocations preserve them. Inspect `browser.json` for the selected executable's
+root-relative path, archive/executable hashes and exact child phases. A `started`
+phase without a consumed result requires inspection, never an assumption of success.
+
+Setup verification is distinct from real rendering. Archive integrity is distinct
+from vendor signing, and this test runtime does not establish production isolation
+for hostile pages. Full bounds, refusal behavior and qualification evidence:
+`docs/ci.md` and `docs/tasks/artifacts/signoff_review/ci-browser-runtime.md`.
 
 ## Public repository and publication checks
 

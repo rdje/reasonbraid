@@ -488,6 +488,26 @@ through `Storage` and `Error::source`; a commit failure preserves its transactio
 phase rather than being collapsed into that variant. Code matching the
 non-exhaustive enum must continue to handle unrecognized future failures safely.
 
+A standalone grant refusal now aborts its guarded transaction. For example,
+`MissingBoundary`, `Refused` and `BoundaryNotLive` insert neither a grant nor a
+first-use coordination anchor. An anchor that already existed stays intact. A
+deferred constraint on a provisional anchor cannot replace the established
+refusal, because this path does not attempt COMMIT. The successful grant path
+still commits normally and preserves the commit-error contract below.
+
+The private transaction API supports typed callback errors through the same
+bounded guard and connection owner. A returned error aborts preceding work; a
+successful callback value commits that value and its local effects. For example,
+a recorded authorization denial may deliberately be a successful transaction
+value, while an enrollment policy refusal must roll back its provisional rows.
+These are explicit choices at each call site. Converting a domain refusal into a
+SQL protocol error would lose that distinction. The complete enrollment handler
+integration remains the next child, `SIGNOFF-REPAIR.3.3.4.3.3.2`. The typed-error
+prerequisite passes 89 selected controls (88 live / one pure), focused strict lint
+and rendered book checks. All results/shutdown are consumed; both owned clusters
+are absent. Evidence is recorded in
+`docs/tasks/artifacts/signoff_review/typed-rollback-errors.md`.
+
 HTTP routes using these guarded services return a distinct error if a commit was
 attempted but its outcome is unconfirmed:
 
@@ -525,7 +545,8 @@ Backfilled and newly created anchors confer no identity or authority.
 | An exclusive operation for A while a shared operation holds A | Wait until the shared operation finishes; a second remaining shared holder still excludes it. |
 | An exclusive operation for B while A is occupied | B can progress independently. |
 | An operation declares B shared, A shared, then A exclusive | Acquire A exclusive before B shared, irrespective of input order. |
-| A callback records a domain refusal and returns it as its result | Commit that refusal value and its local evidence together. |
+| A callback returns a refusal as a successful value, with evidence intended to persist | Commit that value and its local evidence together. |
+| A callback returns a typed domain error after provisional writes | Roll back those writes and any new anchor; preserve the exact error. |
 | A callback encounters a SQL error or is cancelled | Do not return success; discard the connection and roll back unfinished work. Cleanup is asynchronous. |
 
 The default lock limit is 5 seconds, the statement limit 10 seconds, and the whole

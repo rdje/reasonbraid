@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Typed rollback for guarded grant refusals (`SIGNOFF-REPAIR.3.3.4.3.3.1`)
+
+A private typed-error entrypoint now aborts provisional guarded work while
+preserving domain errors, SQL causes and commit uncertainty. Standalone grant
+refusals roll back a new coordination anchor and cannot be replaced by its
+deferred commit fault; pre-existing anchors remain intact. Deliberately committed
+refusal values keep their existing contract. All 89 selected controls (88 live / one
+pure), focused strict lint and generated book contract checks pass. Every result
+and shutdown is consumed; both owned clusters are absent. Complete enrollment
+integration is the next bounded child.
+
 ## 2026-09-09 — Guarded standalone authority writers (`SIGNOFF-REPAIR.3.3.4.3.2`)
 
 Boundary/grant creation and grant/boundary revocation now share the exclusive

@@ -7,11 +7,12 @@ answers:
   - How does an incremental build detect newly added embedded migrations?
   - How do standalone authority writers preserve tenant ordering and commit uncertainty?
   - When is the parent boundary checked for live grant issuance?
+  - How can a typed domain refusal roll back earlier guarded writes?
 ---
 # Keep tenant authority stable through the protected local transaction
 
 - Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`, foundation child `.2`, standalone service integration `.3.1`–`.3.2`.
-- Status: primitive migration/transaction owner qualified in `.2`; five standalone authority services qualified under `.3.3.4.3.2` with 85 selected controls, strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Remaining application and final-effect paths retain their subsequent children.
+- Status: primitive migration/transaction owner qualified in `.2`; five standalone authority services qualified under `.3.3.4.3.2` with 85 selected controls, strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Typed rollback support `.3.3.4.3.3.1` passes 89 selected controls, focused strict lint and rendered book checks, with all results/shutdown consumed and both owned clusters absent. Remaining application and final-effect paths retain their subsequent children.
 - Source census: `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` at `1ba6184`.
 - Preserves: actual-parent selection, valid frozen-tenant inspection, exact receipt readback and the `.3.1` foreign-target/no-op corrections.
 
@@ -113,9 +114,23 @@ The grant service reads full parent policy only inside the guarded candidate
 tenant. If absent, a minimal foreign-ID existence probe may identify the existing
 tenant-binding refusal. That probe must not decode/evaluate foreign policy or
 mutate foreign state. A held foreign guard must not impede that binding refusal.
-Ordinary absent-parent/structural/time refusals can commit a coordination anchor
-without a grant. SQL and transaction faults must leave the callback as errors,
-so pre-commit health checking cannot replace their original storage cause.
+Standalone absent-parent/structural/time refusals now leave the callback as typed
+errors, rolling back any provisional anchor as well as preventing grant creation.
+Pre-existing anchors remain stable. The matched baseline in `.3.3.4.3.3.1` showed
+that the previous successful-result adapter could commit a new anchor and let a
+deferred anchor fault replace the intended policy refusal. The generic error
+entrypoint shares the original lease, bounded Limits, guard order and commit
+logic; E: From<GuardError> carries infrastructure failures without losing SQL
+sources or the commit phase. It does not require E: From<sqlx::Error>.
+
+Use an error when earlier provisional work must roll back. A successful callback
+value still commits its local effects; it can deliberately represent a recorded
+authorization denial. Preserve this choice at each call site, rather than hiding
+domain policy in a synthetic SQL error or permitting transaction-control SQL in
+callbacks. SQL errors must also leave as errors so the pre-commit health check
+does not replace the original cause. Complete enrollment integration uses this
+rollback support in the next child; it is not qualified by the standalone repair.
+Evidence: `docs/tasks/artifacts/signoff_review/typed-rollback-errors.md`.
 
 Structural checks, including parent status and all existing ceilings, run before
 the additional live-time check. Sample database time after acquiring the guard

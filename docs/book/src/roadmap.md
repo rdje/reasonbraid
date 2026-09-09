@@ -92,8 +92,10 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.4.3.3`: guard the complete development
-enrollment transaction. Standalone authority/status integration passes 85 selected
+The current frontier is `SIGNOFF-REPAIR.3.3.4.3.3.2`: guard the complete development
+enrollment transaction. Typed rollback support `.3.3.4.3.3.1` passes 89 selected
+controls (88 live / one pure), focused strict lint and rendered book checks; all
+results/shutdown consumed and both owned clusters absent. Standalone authority/status integration passes 85 selected
 controls (84 live / one pure), focused strict lint and book checks; all results
 and shutdown are consumed, with three owned clusters absent. Grant error
 classification `.3.3.4.3.1` passes 56 live authority/HTTP/card controls and focused

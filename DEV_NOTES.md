@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Typed domain errors abort provisional guarded work
+
+- Standalone create_grant previously returned MissingBoundary/Refused/BoundaryNotLive as successful callback values. The matched baseline showed each new anchor persisted despite the service refusal, and a deferred anchor constraint replaced all three refusals with Commit(P0001). The new private typed-error entrypoint shares the same guard/connection implementation and bounded Limits. It carries infrastructure failures through From<GuardError> while allowing domain errors to abort prior work; create_grant now uses that contract directly. Deliberately committed refusal values remain supported by the fixed callback contract.
+- All 89 selected controls (88 live / one pure) pass, including exact typed post-write rollback/backend exit/recovery, missing/existing anchor preservation, deferred refusal faults, original SQL cause and whole deadlines, and observed commit acknowledgment uncertainty with later committed readback. Focused strict lint and book build/rendered contract checks pass. All authority/HTTP/card/upgrade results and final shutdown are consumed; both owned clusters are absent. Baseline cluster removal was verified after preserving its full command log and same-volume census. Evidence: docs/tasks/artifacts/signoff_review/typed-rollback-errors.md.
+- promotion: promoted → `docs/decisions/2026-09-09_tenant-authority-transaction-order.md`; owner `SIGNOFF-REPAIR.3.3.4.3.3.1`.
+
 ## _(2026-09-09)_ — Order standalone authority writers and preserve failure phase
 
 - The nine-control baseline reproduced guard bypass, grant insertion after revocation had been ordered first, revocation while issuance was paused, non-live parent issuance and unknown target statuses being overwritten with an epoch increment. Five standalone services now use the qualified guard; policy rows are scoped to the candidate tenant, existing structural rules precede fresh parent liveness, and checked status decoding preserves malformed evidence. Foreign-ID identification is only a minimal binding refusal, never foreign policy evaluation. Enrollment/import and HTTP caller admission/final effects retain their following owners.

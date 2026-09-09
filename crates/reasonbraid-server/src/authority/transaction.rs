@@ -203,6 +203,28 @@ where
         ) -> BoxFuture<'tx, Result<T, GuardError>>
         + Send,
 {
+    transact_with_error(pool, guards, limits, body).await
+}
+
+/// An error aborts all provisional work, including a newly inserted anchor.
+/// Return a successful value only when that value and its local effects should
+/// commit. Typed errors preserve domain refusals without disguising them as SQL
+/// failures; From<GuardError> must retain storage causes and commit uncertainty.
+/// Limits can only be constructed with the bounded defaults or shortened policy.
+pub(crate) async fn transact_with_error<T, E, F>(
+    pool: &PgPool,
+    guards: &[(TenantId, GuardMode)],
+    limits: Limits,
+    body: F,
+) -> Result<T, E>
+where
+    T: Send,
+    E: From<GuardError> + Send,
+    F: for<'tx, 'connection> FnOnce(
+            &'tx mut TenantTransaction<'connection>,
+        ) -> BoxFuture<'tx, Result<T, E>>
+        + Send,
+{
     run(
         pool,
         guards,
@@ -239,22 +261,23 @@ pub(crate) async fn transact_with_delayed_begin(
     .await
 }
 
-async fn run<T, F>(
+async fn run<T, E, F>(
     pool: &PgPool,
     guards: &[(TenantId, GuardMode)],
     limits: Limits,
     begin: &'static str,
     body: F,
-) -> Result<T, GuardError>
+) -> Result<T, E>
 where
     T: Send,
+    E: From<GuardError> + Send,
     F: for<'tx, 'connection> FnOnce(
             &'tx mut TenantTransaction<'connection>,
-        ) -> BoxFuture<'tx, Result<T, GuardError>>
+        ) -> BoxFuture<'tx, Result<T, E>>
         + Send,
 {
     if guards.is_empty() || guards.len() > MAX_GUARDS {
-        return Err(GuardError::InvalidGuards);
+        return Err(GuardError::InvalidGuards.into());
     }
     let mut normalized = BTreeMap::new();
     for &(tenant, mode) in guards {
@@ -270,10 +293,14 @@ where
     let mut committing = false;
     let operation = async {
         let mut lease = ConnectionLease {
-            connection: pool.acquire().await?,
+            connection: pool.acquire().await.map_err(GuardError::Storage)?,
             reusable: false,
         };
-        let mut transaction = lease.connection.begin_with(begin).await?;
+        let mut transaction = lease
+            .connection
+            .begin_with(begin)
+            .await
+            .map_err(GuardError::Storage)?;
         sqlx::query(
             "SELECT set_config('lock_timeout', $1, true), \
              set_config('statement_timeout', $2, true)",
@@ -281,7 +308,8 @@ where
         .bind(format!("{}ms", limits.lock.as_millis()))
         .bind(format!("{}ms", limits.statement.as_millis()))
         .execute(&mut *transaction)
-        .await?;
+        .await
+        .map_err(GuardError::Storage)?;
         // Typed UUID order equals byte order of canonical tenant keys. Acquire
         // each full key, including first-use insertion, in that one stable order.
         for (tenant, mode) in &normalized {
@@ -291,7 +319,8 @@ where
             )
             .bind(tenant.to_string())
             .execute(&mut *transaction)
-            .await?;
+            .await
+            .map_err(GuardError::Storage)?;
             let query = match mode {
                 GuardMode::Shared => {
                     "SELECT tenant_id FROM tenant_authority_guards WHERE tenant_id = $1 FOR SHARE"
@@ -304,7 +333,8 @@ where
             sqlx::query_scalar::<_, String>(query)
                 .bind(tenant.to_string())
                 .fetch_one(&mut *transaction)
-                .await?;
+                .await
+                .map_err(GuardError::Storage)?;
         }
         let mut context = TenantTransaction {
             transaction,
@@ -315,7 +345,8 @@ where
         // aborted transaction's COMMIT-as-ROLLBACK into a reported success.
         sqlx::query("SELECT 1")
             .execute(&mut *context.transaction)
-            .await?;
+            .await
+            .map_err(GuardError::Storage)?;
         committing = true;
         context
             .transaction
@@ -328,7 +359,7 @@ where
     let result = tokio::time::timeout(limits.total, operation).await;
     match result {
         Ok(result) => result,
-        Err(_) if committing => Err(GuardError::CommitDeadline),
-        Err(_) => Err(GuardError::Deadline),
+        Err(_) if committing => Err(GuardError::CommitDeadline.into()),
+        Err(_) => Err(GuardError::Deadline.into()),
     }
 }

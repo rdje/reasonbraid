@@ -700,3 +700,123 @@ async fn http_status_commit_failures_preserve_uncertainty_and_recover() {
         && result.1==json!({"code":"commit_outcome_unconfirmed", "message":"transaction outcome is unconfirmed; inspect the target before retrying"})
         && *unchanged && *recovery==200), "HTTP commit uncertainty and controlled rollback/recovery: {outcomes:?}");
 }
+
+#[derive(Clone, Copy, Debug)]
+enum RefusalKind {
+    Missing,
+    Structural,
+    Time,
+}
+
+impl RefusalKind {
+    fn matches(self, result: &Result<(), GrantCreateError>) -> bool {
+        matches!(
+            (self, result),
+            (Self::Missing, Err(GrantCreateError::MissingBoundary { .. }))
+                | (Self::Structural, Err(GrantCreateError::Refused(_)))
+                | (Self::Time, Err(GrantCreateError::BoundaryNotLive { .. }))
+        )
+    }
+}
+
+async fn refused_candidate(pool: &PgPool, kind: RefusalKind) -> AuthorityGrant {
+    let mut boundary = parent(TenantId::new());
+    if matches!(kind, RefusalKind::Time) {
+        boundary.expires_at = Utc::now() - chrono::Duration::hours(1);
+    }
+    create_boundary(pool, &boundary).await.unwrap();
+    let mut grant = candidate(pool, boundary.tenant_id, &boundary.boundary_id).await;
+    match kind {
+        RefusalKind::Missing => grant.boundary_id.push_str("_missing"),
+        RefusalKind::Structural => grant.actions = vec![GrantAction::ThreadCreate],
+        RefusalKind::Time => {}
+    }
+    grant
+}
+
+async fn anchor_count(pool: &PgPool, tenant: TenantId) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM tenant_authority_guards WHERE tenant_id = $1")
+        .bind(tenant.to_string())
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// Model an authority namespace whose coordination row has not been created yet.
+/// Only the unique fixture tenant is touched, before any concurrent operation.
+async fn remove_fixture_anchor(pool: &PgPool, tenant: TenantId) {
+    let deleted = sqlx::query("DELETE FROM tenant_authority_guards WHERE tenant_id = $1")
+        .bind(tenant.to_string())
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(deleted.rows_affected(), 1);
+}
+
+async fn recover_refused_candidate(pool: &PgPool, tenant: TenantId) {
+    sqlx::query("UPDATE enrollment_boundaries SET expires_at = clock_timestamp() + interval '2 days' WHERE tenant_id = $1")
+        .bind(tenant.to_string()).execute(pool).await.unwrap();
+    let grant = candidate(pool, tenant, &format!("bnd_{tenant}")).await;
+    create_grant(pool, &grant).await.unwrap();
+    assert_eq!(grant_count(pool, &grant).await, 1);
+    assert_eq!(anchor_count(pool, tenant).await, 1);
+}
+
+#[tokio::test]
+async fn grant_refusals_roll_back_new_anchors_and_preserve_existing_anchors() {
+    let Some(f) = fixture().await else { return };
+    let mut outcomes = Vec::new();
+    for kind in [
+        RefusalKind::Missing,
+        RefusalKind::Structural,
+        RefusalKind::Time,
+    ] {
+        for existing in [false, true] {
+            let grant = refused_candidate(&f.pool, kind).await;
+            if !existing {
+                remove_fixture_anchor(&f.pool, grant.tenant_id).await;
+            }
+            let result = create_grant(&f.pool, &grant).await;
+            let anchors = anchor_count(&f.pool, grant.tenant_id).await;
+            let grants = grant_count(&f.pool, &grant).await;
+            let correct = kind.matches(&result) && anchors == i64::from(existing) && grants == 0;
+            outcomes.push((
+                kind,
+                existing,
+                format!("{result:?}"),
+                anchors,
+                grants,
+                correct,
+            ));
+            recover_refused_candidate(&f.pool, grant.tenant_id).await;
+        }
+    }
+    eprintln!("grant refusal anchor outcomes: {outcomes:?}");
+    assert!(outcomes.iter().all(|outcome| outcome.5), "{outcomes:?}");
+}
+
+#[tokio::test]
+async fn grant_refusals_do_not_reach_deferred_anchor_commit_faults() {
+    let Some(f) = fixture().await else { return };
+    let mut outcomes = Vec::new();
+    for kind in [
+        RefusalKind::Missing,
+        RefusalKind::Structural,
+        RefusalKind::Time,
+    ] {
+        let grant = refused_candidate(&f.pool, kind).await;
+        remove_fixture_anchor(&f.pool, grant.tenant_id).await;
+        sqlx::raw_sql("CREATE FUNCTION rb_test_refusal_anchor_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'owned refusal anchor commit fault'; END $$; CREATE CONSTRAINT TRIGGER rb_test_refusal_anchor_fault AFTER INSERT ON tenant_authority_guards DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION rb_test_refusal_anchor_fault()")
+            .execute(&f.pool).await.unwrap();
+        let result = create_grant(&f.pool, &grant).await;
+        sqlx::raw_sql("DROP TRIGGER rb_test_refusal_anchor_fault ON tenant_authority_guards; DROP FUNCTION rb_test_refusal_anchor_fault()")
+            .execute(&f.pool).await.unwrap();
+        let anchors = anchor_count(&f.pool, grant.tenant_id).await;
+        let grants = grant_count(&f.pool, &grant).await;
+        let correct = kind.matches(&result) && anchors == 0 && grants == 0;
+        outcomes.push((kind, format!("{result:?}"), anchors, grants, correct));
+        recover_refused_candidate(&f.pool, grant.tenant_id).await;
+    }
+    eprintln!("grant refusal deferred fault outcomes: {outcomes:?}");
+    assert!(outcomes.iter().all(|outcome| outcome.4), "{outcomes:?}");
+}

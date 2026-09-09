@@ -13,12 +13,28 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use reasonbraid_core::TenantId;
 use sqlx::PgPool;
-use tenant_transaction::{transact, transact_with_limits, GuardError, GuardMode, Limits};
+use tenant_transaction::{
+    transact, transact_with_error, transact_with_limits, GuardError, GuardMode, Limits,
+};
 use tokio::sync::{oneshot, Mutex, MutexGuard};
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
 static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+// Deliberately no From<sqlx::Error>: the generic runner must preserve the
+// transaction phase through GuardError instead of requiring unrelated conversions.
+#[derive(Debug)]
+enum TypedFailure {
+    Refused { reason: &'static str, backend: i32 },
+    Transaction(GuardError),
+}
+
+impl From<GuardError> for TypedFailure {
+    fn from(error: GuardError) -> Self {
+        Self::Transaction(error)
+    }
+}
 
 async fn fixture() -> Option<(PgPool, MutexGuard<'static, ()>)> {
     let guard = TEST_LOCK.get_or_init(|| Mutex::new(())).lock().await;
@@ -711,7 +727,7 @@ async fn cancelled_begin_never_returns_an_open_transaction_to_the_pool() {
 }
 
 #[tokio::test]
-async fn deferred_commit_failure_never_returns_a_success_value_or_partial_effect() {
+async fn typed_deferred_commit_failure_never_returns_a_success_value_or_partial_effect() {
     let Some((pool, _guard)) = fixture().await else {
         return;
     };
@@ -719,22 +735,29 @@ async fn deferred_commit_failure_never_returns_a_success_value_or_partial_effect
         CREATE TABLE guard_commit_child (key TEXT PRIMARY KEY REFERENCES guard_commit_parent(key) DEFERRABLE INITIALLY DEFERRED)")
         .execute(&pool).await.unwrap();
     let tenant = TenantId::new();
-    let result = transact(&pool, &[(tenant, GuardMode::Exclusive)], move |tx| {
-        Box::pin(async move {
-            sqlx::query("INSERT INTO guard_commit_child VALUES ($1)")
-                .bind(tenant.to_string())
-                .execute(tx.connection(tenant, GuardMode::Exclusive)?)
-                .await?;
-            sqlx::query("INSERT INTO guard_probe VALUES ($1, 'uncommitted')")
-                .bind(tenant.to_string())
-                .execute(tx.connection(tenant, GuardMode::Exclusive)?)
-                .await?;
-            Ok("must not return this receipt")
-        })
-    })
+    let result: Result<_, TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Exclusive)],
+        Limits::default(),
+        move |tx| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO guard_commit_child VALUES ($1)")
+                    .bind(tenant.to_string())
+                    .execute(tx.connection(tenant, GuardMode::Exclusive)?)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                sqlx::query("INSERT INTO guard_probe VALUES ($1, 'uncommitted')")
+                    .bind(tenant.to_string())
+                    .execute(tx.connection(tenant, GuardMode::Exclusive)?)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                Ok("must not return this receipt")
+            })
+        },
+    )
     .await;
     assert!(
-        matches!(result, Err(GuardError::Commit(sqlx::Error::Database(ref error))) if error.code().as_deref() == Some("23503"))
+        matches!(result, Err(TypedFailure::Transaction(GuardError::Commit(sqlx::Error::Database(ref error)))) if error.code().as_deref() == Some("23503"))
     );
     seed(&pool, tenant).await;
     assert_eq!(probe_count(&pool, tenant).await, 0);
@@ -747,7 +770,7 @@ async fn deferred_commit_failure_never_returns_a_success_value_or_partial_effect
 }
 
 #[tokio::test]
-async fn commit_deadline_reports_uncertainty_even_when_the_database_later_commits() {
+async fn typed_commit_deadline_reports_uncertainty_even_when_the_database_later_commits() {
     let Some((pool, _guard)) = fixture().await else {
         return;
     };
@@ -765,7 +788,7 @@ async fn commit_deadline_reports_uncertainty_even_when_the_database_later_commit
     let worker_pool = pool.clone();
     let (ready_tx, ready) = oneshot::channel();
     let job = tokio::spawn(async move {
-        transact_with_limits(
+        transact_with_error(
             &worker_pool,
             &[(tenant, GuardMode::Exclusive)],
             limits(500, 2000, 2000),
@@ -774,13 +797,15 @@ async fn commit_deadline_reports_uncertainty_even_when_the_database_later_commit
                     sqlx::query("INSERT INTO guard_commit_wait VALUES ($1)")
                         .bind(tenant.to_string())
                         .execute(tx.connection(tenant, GuardMode::Exclusive)?)
-                        .await?;
+                        .await
+                        .map_err(GuardError::Storage)?;
                     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
                         .fetch_one(tx.connection(tenant, GuardMode::Exclusive)?)
-                        .await?;
+                        .await
+                        .map_err(GuardError::Storage)?;
                     ready_tx.send(pid).unwrap();
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                    Ok("unconfirmed receipt")
+                    Ok::<_, TypedFailure>("unconfirmed receipt")
                 })
             },
         )
@@ -802,7 +827,7 @@ async fn commit_deadline_reports_uncertainty_even_when_the_database_later_commit
     }).await.unwrap();
     assert!(matches!(
         job.await.unwrap(),
-        Err(GuardError::CommitDeadline)
+        Err(TypedFailure::Transaction(GuardError::CommitDeadline))
     ));
     // Resolve this test's uncertainty through authoritative readback, never an
     // automatic retry. The original COMMIT can succeed after the runner returns.
@@ -824,4 +849,183 @@ async fn commit_deadline_reports_uncertainty_even_when_the_database_later_commit
     .unwrap();
     seed(&pool, tenant).await;
     pool.close().await;
+}
+
+#[tokio::test]
+async fn typed_domain_error_rolls_back_protected_work_and_first_use_before_recovery() {
+    let Some((pool, _guard)) = fixture().await else {
+        return;
+    };
+    let tenant = TenantId::new();
+    let result: Result<(), TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Exclusive)],
+        Limits::default(),
+        move |tx| {
+            Box::pin(async move {
+                let conn = tx.connection(tenant, GuardMode::Exclusive)?;
+                let backend = sqlx::query_scalar("SELECT pg_backend_pid()")
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                sqlx::query("INSERT INTO guard_probe VALUES ($1, 'provisional domain effect')")
+                    .bind(tenant.to_string())
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                Err(TypedFailure::Refused {
+                    reason: "policy refuses staged effect",
+                    backend,
+                })
+            })
+        },
+    )
+    .await;
+    let backend = match result {
+        Err(TypedFailure::Refused {
+            reason: "policy refuses staged effect",
+            backend,
+        }) => backend,
+        other => panic!("typed refusal payload was not preserved: {other:?}"),
+    };
+    backend_exited(&pool, backend).await;
+    assert_eq!(probe_count(&pool, tenant).await, 0);
+    let anchors: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM tenant_authority_guards WHERE tenant_id = $1")
+            .bind(tenant.to_string())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(anchors, 0);
+    let recovered: Result<_, TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Exclusive)],
+        Limits::default(),
+        move |tx| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO guard_probe VALUES ($1, 'confirmed recovery')")
+                    .bind(tenant.to_string())
+                    .execute(tx.connection(tenant, GuardMode::Exclusive)?)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                Ok("confirmed recovery receipt")
+            })
+        },
+    )
+    .await;
+    assert_eq!(recovered.unwrap(), "confirmed recovery receipt");
+    assert_eq!(probe_count(&pool, tenant).await, 1);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn typed_transaction_errors_preserve_invalid_scope_sql_cause_and_deadlines() {
+    let Some((pool, _guard)) = fixture().await else {
+        return;
+    };
+    let tenant = TenantId::new();
+    let invalid: Result<(), TypedFailure> =
+        transact_with_error(&pool, &[], Limits::default(), |_| {
+            Box::pin(async { panic!("invalid guards reached body") })
+        })
+        .await;
+    assert!(matches!(
+        invalid,
+        Err(TypedFailure::Transaction(GuardError::InvalidGuards))
+    ));
+    let scope: Result<(), TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Shared)],
+        Limits::default(),
+        move |tx| {
+            Box::pin(async move {
+                tx.require_scope(tenant, GuardMode::Exclusive)?;
+                Ok(())
+            })
+        },
+    )
+    .await;
+    assert!(matches!(
+        scope,
+        Err(TypedFailure::Transaction(GuardError::ScopeMismatch))
+    ));
+    for swallowed in [false, true] {
+        let sql: Result<(), TypedFailure> = transact_with_error(
+            &pool,
+            &[(tenant, GuardMode::Exclusive)],
+            Limits::default(),
+            move |tx| {
+                Box::pin(async move {
+                    let error = sqlx::query("SELECT 1 / 0")
+                        .execute(tx.connection(tenant, GuardMode::Exclusive)?)
+                        .await
+                        .expect_err("fixed division fault");
+                    if swallowed {
+                        Ok(())
+                    } else {
+                        Err(GuardError::Storage(error).into())
+                    }
+                })
+            },
+        )
+        .await;
+        let expected = if swallowed { "25P02" } else { "22012" };
+        assert!(
+            matches!(sql, Err(TypedFailure::Transaction(GuardError::Storage(sqlx::Error::Database(ref error)))) if error.code().as_deref() == Some(expected)),
+            "{sql:?}"
+        );
+    }
+    let mut occupied = Vec::new();
+    for _ in 0..10 {
+        occupied.push(pool.acquire().await.unwrap());
+    }
+    let acquisition: Result<(), TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Shared)],
+        limits(10, 50, 100),
+        |_| Box::pin(async { panic!("exhausted pool reached body") }),
+    )
+    .await;
+    drop(occupied);
+    assert!(matches!(
+        acquisition,
+        Err(TypedFailure::Transaction(GuardError::Deadline))
+    ));
+    let body: Result<(), TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Exclusive)],
+        limits(10, 50, 100),
+        move |tx| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO guard_probe VALUES ($1, 'typed body deadline')")
+                    .bind(tenant.to_string())
+                    .execute(tx.connection(tenant, GuardMode::Exclusive)?)
+                    .await
+                    .map_err(GuardError::Storage)?;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Ok(())
+            })
+        },
+    )
+    .await;
+    assert!(matches!(
+        body,
+        Err(TypedFailure::Transaction(GuardError::Deadline))
+    ));
+    seed(&pool, tenant).await;
+    assert_eq!(probe_count(&pool, tenant).await, 0);
+    pool.close().await;
+    let closed: Result<(), TypedFailure> = transact_with_error(
+        &pool,
+        &[(tenant, GuardMode::Shared)],
+        Limits::default(),
+        |_| Box::pin(async { panic!("closed pool reached body") }),
+    )
+    .await;
+    assert!(matches!(
+        closed,
+        Err(TypedFailure::Transaction(GuardError::Storage(
+            sqlx::Error::PoolClosed
+        )))
+    ));
 }

@@ -7,7 +7,9 @@ use reasonbraid_core::{
 };
 use sqlx::{PgConnection, PgPool};
 
-use super::transaction::{transact, GuardError, GuardMode, TenantTransaction};
+use super::transaction::{
+    transact, transact_with_error, GuardError, GuardMode, Limits, TenantTransaction,
+};
 use super::{
     boundary_from_row, bump_revocation_epoch, insert_boundary_in_tx, insert_grant_row,
     AuthorityTransactionError, BoundaryRow, GrantCreateError, GrantRefused,
@@ -35,26 +37,19 @@ pub async fn create_boundary(
 /// Create a grant under the candidate tenant's exclusive authority guard. The
 /// actual own-tenant parent must pass the structural checks and be live at the
 /// database-time evaluation after guard/parent lookup, immediately before INSERT.
-/// Scheduled grants remain supported. Missing/policy refusals insert no grant;
-/// transaction failures preserve their phase and never imply automatic retry.
+/// Scheduled grants remain supported. Missing/policy refusals roll back the
+/// transaction, including a first-use anchor; existing anchors remain intact.
+/// Transaction failures preserve their phase and never imply automatic retry.
 pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), GrantCreateError> {
     let grant = grant.clone();
     let tenant = grant.tenant_id;
-    transact(pool, &[(tenant, GuardMode::Exclusive)], move |tx| {
-        Box::pin(async move {
-            match create_grant_in_guard(tx, &grant).await {
-                Ok(()) => Ok(Ok(())),
-                Err(error) => match error {
-                    GrantCreateError::Storage(error) => Err(GuardError::Storage(error)),
-                    GrantCreateError::Transaction(error) => Err(error),
-                    error @ (GrantCreateError::MissingBoundary { .. }
-                    | GrantCreateError::Refused(_)
-                    | GrantCreateError::BoundaryNotLive { .. }) => Ok(Err(error)),
-                },
-            }
-        })
-    })
-    .await?
+    transact_with_error(
+        pool,
+        &[(tenant, GuardMode::Exclusive)],
+        Limits::default(),
+        move |tx| Box::pin(async move { create_grant_in_guard(tx, &grant).await }),
+    )
+    .await
 }
 
 /// Same-context body for the later complete enrollment/import integrations.

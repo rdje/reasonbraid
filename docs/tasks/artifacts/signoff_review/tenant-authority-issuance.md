@@ -40,9 +40,10 @@ from compilation alone is treated as runtime reproduction.
   GrantCreateError retains original SQLx Storage sources and gains transaction
   and current-time parent-refusal outcomes. A commit acknowledgment error must
   not become a rollback receipt or trigger an automatic retry.
-- Actual missing/structural/liveness refusals can be ordinary callback results.
-  SQL and transaction faults leave the callback as errors, preventing an aborted
-  transaction's pre-commit health query from replacing the original cause.
+- Historical `.3.2` adapter: actual missing/structural/liveness refusals were
+  ordinary callback results. `.3.3.1` supersedes that adapter with typed errors
+  that abort provisional anchors; see docs/tasks/artifacts/signoff_review/typed-rollback-errors.md.
+  SQL and transaction faults always leave as errors, preserving their original cause.
 - Status decoding must preserve malformed target evidence and leave the epoch
   unchanged. Migration 0004 has unchecked TEXT status; both baseline services
   use parse().ok() and treat an unknown value as eligible for revocation. Matched

@@ -1,7 +1,8 @@
 # ADR-009 — Delegated authority representation: chain-in-envelope for the dev profile
 
-- **Status:** `accepted` (evidence-gated — the `.1.4.1` spike prototyped the
-  subset invariant and measured the wire forms)
+- **Status:** `accepted` for the development envelope; comparative wire-size
+  evidence is withdrawn by `SIGNOFF-REPAIR.3.3.1`. The subset prototype remains
+  historical evidence; representation benchmarking is owned by `.3.4`.
 - **Date:** `2026-09-07`
 - **Leaf:** `PHASE-2.1.4.1`
 - **Requirements:** `ROADMAP.md` §23 queue item 009; §16.3 (delegation
@@ -39,10 +40,12 @@ delegate presents).
   with offline tests (narrower passes, equal passes, empty passes, a
   tenant-wide request over a thread-scoped grant refused, a foreign thread
   refused): `cargo test -p reasonbraid-core` → `test result: ok. 39 passed`.
-- **The wire-size leg**: the hand-built envelope form is ~203 bytes for the
-  same facts a token would carry PLUS a 64-byte signature — chain-in-envelope
-  is smaller AND needs no signing/verification layer (asserted in the test:
-  `the_envelope_delta_beats_a_token_blob`).
+- **Wire-size correction:** the historical test hand-built JSON, computed its
+  byte length N and asserted N < N + 64. It measured neither a capability-token
+  encoding nor delegation depths 1–3, so it establishes no comparative size
+  advantage. `SIGNOFF-REPAIR.3.3.1` replaces that assertion with an actual public
+  AuthorityContext serialization/round-trip control; `.3.4` owns the missing
+  comparative prototype and measurements before a size advantage is claimed.
 - **Expiry and revocation ride the existing `.1.3` filters**: the subject's
   grant is the authority source; a revoked grant refuses the delegation at
   the next decision with zero new machinery. A token would duplicate that
@@ -59,9 +62,11 @@ same evaluation, and the audit row carries the chain.
 
 - No token issuance/store/signature layer (subtraction); no new credential
   lifecycle to reconcile with `.1.3`.
-- Honest limits: the chain size grows with delegation depth (fine at dev
-  depth 1–2); multi-hop chains, cross-service delegation, and high-frequency
-  re-presentation are the capability-token's trigger (below).
+- Honest limits: the shipped AuthorityContext identifies one delegated subject
+  and a requested scope; the source prototype did not measure a multi-hop chain
+  at depths 1–3. Multi-hop chains, cross-service delegation and high-frequency
+  re-presentation require the revisit below. Current delegation constraints and
+  authority selection are under `SIGNOFF-REPAIR.3.3`/`.3.4` repair.
 
 ## Rollback / revisit trigger
 

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Canonical core subject JSON (`SIGNOFF-REPAIR.3.3.1`)
+
+Core human/role subjects now serialize as kind/id objects and reject malformed,
+duplicate, unknown or mismatched input through an object-only parser. Public
+command-envelope strings and split database fields retain their contracts; only
+the generated schema description changes. Direct and enclosing payload failures
+are reproduced and corrected. Core tests pass 49 unit + 3 integration controls;
+strict core/server lint and all 40 live authority/command API/site-receipt
+compatibility controls pass. The owned cluster stopped and was removed. ADR-009's
+synthetic token-size comparison is withdrawn and the missing evidence is owned
+by the delegation repair.
+
 ## 2026-09-09 — Site authority enforced on registry HTTP (`SIGNOFF-REPAIR.3.2.3`)
 
 All seven adapter/region operations now require explicit site grants and use the

@@ -153,14 +153,14 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.3`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.3.2`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.3.2.3
+## Current index synchronization — SIGNOFF-REPAIR.3.3.1
 
 Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the owning leaf's legacy registry probe returned rc=0 after reproducing four shared writes by tenant admins, including writes after boundary revocation (HTTP 200; SQL witness `1|2|2|1`). The prepared-role freshness control separately returned test rc=101, as preserved there.
-- [x] **ADDRESSED (verified)** — the index now names `.3.3`; site registry HTTP enforcement passed 8 focused controls, rc=0. The selected security run passed 58 tests and the final corrected HTTP/registry run passed 12 tests, rc=0. All results are consumed and owned clusters stopped/removed; strict focused Clippy passed, rc=0.
+- [x] **ROOT CAUSE (WHY + WHERE)** — direct/enclosing core subject controls returned rc=101 (1 passed, 2 failed) at the exported tagged-newtype serializer, as preserved by the owning leaf. The old synthetic N + 64 token comparison is corrected and real comparative evidence remains owned by `.3.4`.
+- [x] **ADDRESSED (verified)** — the index now names `.3.3.2`; core verification passed 49 unit + 3 subject tests and the guarded live compatibility run passed 40 tests, rc=0. Core/server strict Clippy passed, rc=0. All results are consumed and the owned cluster stopped/removed.
 - [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0, generated content inspected; `git diff --check` empty, rc=0. The index advances no production qualification claim.
 
 ## Decisions

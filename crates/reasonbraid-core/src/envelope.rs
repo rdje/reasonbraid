@@ -48,8 +48,8 @@ pub struct CommandEnvelope {
 }
 
 /// The delegation context a command may carry (`.1.4.2`, ADR-009). The subject
-/// rides a STRING field (`rol_…`/`hpr_…`): `GrantSubject` is a serde tagged
-/// newtype and is not a wire field.
+/// retains its established STRING field (`rol_…`/`hpr_…`). The core
+/// `GrantSubject` kind/id object is a separate authority-payload representation.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuthorityContext {

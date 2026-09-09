@@ -46,4 +46,5 @@ The real CLI controls exercise selected-identity issuance, non-operator refusals
 missing storage-inspection permission, hostile ambient PG overrides, redacted
 target errors and bounded audited listings. The task leaf records exact results;
 source implementation alone is not runtime qualification. These constraints do
-not qualify development HTTP authentication or the pending registry route repair.
+not qualify development HTTP authentication or independently qualify registry route enforcement; that verification is
+recorded under `SIGNOFF-REPAIR.3.2.3`.

@@ -93,6 +93,9 @@ async fn provision(pool: &PgPool, subject: &GrantSubject, scope: &Scope) -> (Str
     };
     let subject_json = json!({"kind": kind, "id": subject.id_string()});
     assert_eq!(grant.result["subject"], subject_json);
+    let decoded: GrantSubject = serde_json::from_value(grant.result["subject"].clone()).unwrap();
+    assert_eq!(&decoded, subject);
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), subject_json);
     assert_eq!(
         audit(pool, &grant.audit_id).await["target"]["subject"],
         subject_json

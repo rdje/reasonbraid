@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Test the exported authority type rather than an illustrative JSON shape
+
+- The core subject serializer failed because an internally tagged enum wrapped primitive string IDs. Hand-built site/envelope JSON hid that failure; direct and enclosing-type controls reproduced it. Core subjects now have explicit kind/id objects with map-only input and typed ID validation, while the established command-envelope string and split database fields remain distinct contracts. The old token-size inequality measured an invented fixed increment, so its comparative claim is withdrawn and tracked for real evidence.
+- promotion: promoted → `docs/decisions/2026-09-09_core-subject-json.md`; owner `SIGNOFF-REPAIR.3.3.1`.
+
 ## _(2026-09-09)_ — Registry HTTP responses must represent committed site decisions
 
 - All seven adapter/region operations now call the site service. Success bodies retain their keys and carry a committed audit header; attributable refusals include their audit ID. Malformed requests never reach an authority write, and failed audit inserts return a storage failure while rolling back allowed registry effects. Tenant enrollment cannot mint the required site grants. The HTTP controls prove both revocation orders using observed database waits, rather than scheduler timing.

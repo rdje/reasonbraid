@@ -41,7 +41,8 @@ Global reads require the explicit `registry_inspect` capability and a live grant
 and actual boundary. Writes use `adapter_allow`, `adapter_revoke`, `region_declare`,
 `region_pair` and `region_unpair`. Human and role subjects have explicit kind/id
 objects in site issuance/audit payloads. The separately discovered core
-`GrantSubject` serde defect remains owned by `.3.3`.
+`GrantSubject` serde defect is corrected under `.3.3.1`; site issuance receipts
+are verified compatible with its explicit kind/id representation.
 
 The protected service derives its issuer from SESSION_USER and requires a database
 superuser or MEMBER of the deployment-managed `reasonbraid_site_operator` role.

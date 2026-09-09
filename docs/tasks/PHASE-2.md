@@ -15,6 +15,25 @@
 Harden identity, delivery, recovery, and observability so a later Internet
 slice can reuse the same control plane without rewriting it.
 
+## Subject serialization and representation evidence correction
+
+`SIGNOFF-REPAIR.3.3.1` owns the core subject JSON repair and correction of the
+historical `.1.4.1` notes below. GrantSubject's old internally tagged newtype did
+not serialize as a plain string: the exported type failed serialization. The
+public command envelope separately uses a string field, which remains compatible.
+The old size test compared hand-built JSON length N with N + 64; it did not
+measure an actual token encoding or depths 1–3. ADR-009 now records that limit,
+and `SIGNOFF-REPAIR.3.4` owns the missing comparison. Historical execution counts
+below retain their provenance; they do not qualify these missing guarantees.
+
+## Current correction acceptance — SIGNOFF-REPAIR.3.3.1
+
+Implementation and verification belong to `docs/tasks/SIGNOFF-REPAIR.md`.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — direct/enclosing GrantSubject controls returned rc=101 (1 passed, 2 failed) at the actual exported serializer. The old size test computes N and N + 64 without a token encoding; the historical claim below is explicitly corrected rather than used as current evidence.
+- [x] **ADDRESSED (verified)** — the corrected core gate passed 49 unit and 3 subject integration tests, rc=0, including the actual public AuthorityContext round trip. Its 219-byte fixture was independently re-derived; an altered subject representation was detected, rc=0. A schema-description-only correction preserves validation properties.
+- [x] **NO REGRESSION** — core/server strict Clippy passed, rc=0; all 9 live authority controls passed, including delegated record JSON from split database fields. All 40 live authority/command API/site-receipt compatibility controls passed, rc=0, and the owned cluster stopped/removed. The existing command/event schema and fixture controls passed; no authority or comparative token-performance claim is added.
+
 ## Task Tree
 
 - ID: `PHASE-2.1`

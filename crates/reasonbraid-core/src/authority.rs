@@ -264,12 +264,61 @@ impl BoundaryStatus {
 }
 
 /// The grant subject: a durable human principal or an agent role (§8.1 — roles, not
-/// models, hold authority).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+/// models, hold authority). JSON is an explicit kind/id object; the typed ID
+/// must match its human/role kind. This is distinct from the public command
+/// envelope's existing `on_behalf_of` string field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
 pub enum GrantSubject {
     Human(HumanPrincipalId),
     Role(AgentRoleId),
+}
+
+// Require an object instead of accepting the sequence representation that a
+// derived adjacently tagged deserializer also supports. Derived field parsing
+// retains duplicate/missing/unknown-field checks without collapsing a JSON map.
+impl<'de> Deserialize<'de> for GrantSubject {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct SubjectVisitor;
+        impl<'de> serde::de::Visitor<'de> for SubjectVisitor {
+            type Value = GrantSubject;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a subject object with kind and id")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                map: A,
+            ) -> Result<Self::Value, A::Error> {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Fields {
+                    kind: String,
+                    id: String,
+                }
+                let fields =
+                    Fields::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+                match fields.kind.as_str() {
+                    "human" => fields
+                        .id
+                        .parse()
+                        .map(GrantSubject::Human)
+                        .map_err(serde::de::Error::custom),
+                    "role" => fields
+                        .id
+                        .parse()
+                        .map(GrantSubject::Role)
+                        .map_err(serde::de::Error::custom),
+                    unknown => Err(serde::de::Error::unknown_variant(
+                        unknown,
+                        &["human", "role"],
+                    )),
+                }
+            }
+        }
+        deserializer.deserialize_map(SubjectVisitor)
+    }
 }
 
 impl GrantSubject {
@@ -1085,27 +1134,35 @@ mod delegation_tests {
     }
 
     #[test]
-    fn the_envelope_delta_beats_a_token_blob() {
-        // The ADR-009 wire-size leg: chain-in-envelope carries the structured
-        // delegation (three fields); a capability token would carry the same
-        // facts plus a 64-byte signature. The delta below is measured, not
-        // asserted to a target — the INVARIANT is that the envelope form is
-        // smaller than the token form for the same facts.
-        // The wire form (GrantSubject is a tagged newtype — its serde
-        // representation is a plain string on the wire, so the size leg
-        // measures the hand-built JSON shape the envelope would carry).
-        let envelope_bytes = serde_json::to_vec(&serde_json::json!({
-            "on_behalf_of": "rol_00000000-0000-7000-8000-000000000001",
-            "purpose": "delegated contribution",
-            "scope": { "kind": "threads", "threads": ["thr_00000000-0000-7000-8000-000000000001", "thr_00000000-0000-7000-8000-000000000002"] },
-        }))
-        .unwrap()
-        .len();
-        let token_bytes = envelope_bytes + 64; // the signature a token must add
-        assert!(
-            envelope_bytes < token_bytes,
-            "chain-in-envelope ({envelope_bytes} B) stays smaller than the token form \
-             ({token_bytes} B) for the same facts"
+    fn public_authority_context_keeps_its_string_subject_and_scope() {
+        let context = crate::envelope::AuthorityContext {
+            on_behalf_of: "rol_00000000-0000-7000-8000-000000000001".into(),
+            purpose: Some("delegated contribution".into()),
+            scope: TargetSelector::Threads {
+                threads: vec![
+                    "thr_00000000-0000-7000-8000-000000000001".parse().unwrap(),
+                    "thr_00000000-0000-7000-8000-000000000002".parse().unwrap(),
+                ],
+            },
+        };
+        let encoded = serde_json::to_vec(&context).unwrap();
+        let value: Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "on_behalf_of": "rol_00000000-0000-7000-8000-000000000001",
+                "purpose": "delegated contribution",
+                "scope": { "kind": "threads", "threads": ["thr_00000000-0000-7000-8000-000000000001", "thr_00000000-0000-7000-8000-000000000002"] },
+            })
+        );
+        let decoded: crate::envelope::AuthorityContext = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(decoded.on_behalf_of, context.on_behalf_of);
+        assert_eq!(decoded.purpose, context.purpose);
+        assert_eq!(decoded.scope, context.scope);
+        // This measures the shipped fixture, not a hypothetical token encoding.
+        println!(
+            "public AuthorityContext fixture: {} bytes; no token comparison",
+            encoded.len()
         );
     }
 }

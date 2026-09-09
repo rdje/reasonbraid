@@ -414,6 +414,19 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
     assert_eq!(record.policy_version, boundary.policy_version);
     assert_eq!(record.policy_digest.len(), 64);
 
+    // The database's split subject fields reconstruct a core object which must
+    // also serialize as a complete delegated authorization payload.
+    let encoded = serde_json::to_vec(&record).unwrap();
+    let decoded: AuthorizationDecisionRecord = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded, record);
+    let payload: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(
+        payload["subject"],
+        serde_json::json!({
+            "kind": "human", "id": "hpr_00000000-0000-7000-8000-000000000113",
+        })
+    );
+
     // The digest re-derives from the SAME inputs (the re-derive leg).
     let expected = policy_digest(
         Some(&boundary),

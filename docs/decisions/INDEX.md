@@ -6,12 +6,13 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_core-subject-json.md](docs/decisions/2026-09-09_core-subject-json.md) | decision | explicit core kind/id subjects with strict map parsing; preserve envelope strings and split database fields |
 | [2026-09-09_operator-cli-locality.md](docs/decisions/2026-09-09_operator-cli-locality.md) | decision | explicit loopback operator target, repository-volume preflight and no home credential fallback; `SIGNOFF-REPAIR.3.2.2` |
 | [2026-09-09_operator-role-query-freshness.md](docs/decisions/2026-09-09_operator-role-query-freshness.md) | decision | fresh text-protocol operator checks after a measured stale prepared-membership result; `SIGNOFF-REPAIR.3.2.1` |
 | [2026-09-09_disposable-test-pool-ownership.md](docs/decisions/2026-09-09_disposable-test-pool-ownership.md) | decision | refuse unowned fixture databases before connection; validate every new pooled connection; PG CI uses the owned runner |
 | [2026-09-09_disposable-postgresql-runner.md](docs/decisions/2026-09-09_disposable-postgresql-runner.md) | decision | focused suites in an owned local cluster; server identity before mutation, process reaping and failure retention |
 | [2026-09-09_repository-local-command-environment.md](docs/decisions/2026-09-09_repository-local-command-environment.md) | decision | repository-local command stores and verified locked cache seeding; installed tools are read-only inputs |
-| [2026-09-09_site-operator-authority.md](docs/decisions/2026-09-09_site-operator-authority.md) | decision | explicit site grants and atomic registry service implemented; protected CLI/HTTP integration follows under `SIGNOFF-REPAIR.3.2` |
+| [2026-09-09_site-operator-authority.md](docs/decisions/2026-09-09_site-operator-authority.md) | decision | explicit site grants, protected operator CLI and atomic registry HTTP authority implemented and verified under `SIGNOFF-REPAIR.3.2` |
 | [2026-09-05_kickoff-companion-to-roadmap.md](2026-09-05_kickoff-companion-to-roadmap.md) | decision | `KICKOFF.md` is the Phase 0 companion to `ROADMAP.md` |
 | [2026-09-05_roadmap-v0.4.1-frozen.md](2026-09-05_roadmap-v0.4.1-frozen.md) | decision | roadmap v0.4.1 frozen until Phase 0+1 evidence |
 | [2026-09-05_claim-verification-adopted.md](2026-09-05_claim-verification-adopted.md) | decision | architecture #5: re-derive · falsify · durability |

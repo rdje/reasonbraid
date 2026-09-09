@@ -107,6 +107,7 @@
 - [`2026-09-08_rls-tenant-claim.md`](docs/decisions/2026-09-08_rls-tenant-claim.md)
 - [`2026-09-08_sdk-compatibility-matrix-schema.md`](docs/decisions/2026-09-08_sdk-compatibility-matrix-schema.md)
 - [`2026-09-08_tls13-refusals-are-read-side.md`](docs/decisions/2026-09-08_tls13-refusals-are-read-side.md)
+- [`2026-09-09_core-subject-json.md`](docs/decisions/2026-09-09_core-subject-json.md)
 - [`2026-09-09_disposable-postgresql-runner.md`](docs/decisions/2026-09-09_disposable-postgresql-runner.md)
 - [`2026-09-09_disposable-test-pool-ownership.md`](docs/decisions/2026-09-09_disposable-test-pool-ownership.md)
 - [`2026-09-09_operator-cli-locality.md`](docs/decisions/2026-09-09_operator-cli-locality.md)

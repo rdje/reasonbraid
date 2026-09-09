@@ -22,6 +22,50 @@ hide another applicable grant, and tenant-target actions must reject thread-only
 selectors. These are owned by `SIGNOFF-REPAIR.3.3`. Delegation and cached admission
 decisions exist; their depth, consent and freshness constraints are under `.3.4`.
 
+## Subject JSON and delegation inputs
+
+Core authority payloads represent the subject explicitly. For example:
+
+```json
+{"kind":"human","id":"hpr_00000000-0000-7000-8000-000000000001"}
+```
+
+```json
+{"kind":"role","id":"rol_00000000-0000-7000-8000-000000000001"}
+```
+
+The kind must match the typed ID prefix. Missing, duplicate or unknown fields,
+unknown kinds, malformed IDs, bare strings and arrays are rejected. Object field
+order does not matter. This representation applies to a core grant's `subject`,
+a delegated authorization record's `subject`, and core delegation constraints'
+`on_behalf_of`. The correction under `SIGNOFF-REPAIR.3.3.1` passes the core tests,
+including direct/enclosing payloads and invalid input. All 40 live
+authority/command API/site-receipt compatibility controls pass. The old serialization failure is reproduced.
+
+The existing public command envelope remains a separate compatibility contract:
+
+```json
+{
+  "authority_context": {
+    "on_behalf_of": "rol_00000000-0000-7000-8000-000000000001",
+    "purpose": "delegated contribution",
+    "scope": {"kind":"tenant_wide"}
+  }
+}
+```
+
+This is a fragment of a command, not a complete command or a capability grant.
+The HTTP/MCP principal input also remains a prefixed string. Database records
+retain separate `subject_kind` and `subject_id` columns; no migration or automatic
+new authority follows from the core JSON correction. Site issuance already uses
+the explicit kind/id form described in [site authority](site-authority.md).
+
+The development choice remains delegation through the command envelope. The old
+ADR-009 test added 64 to a hand-built JSON length; it did not measure a token
+implementation or multi-hop depths. Its size-advantage claim is withdrawn. The
+replacement control uses the actual public envelope type, and `.3.4` owns a real
+comparison before any comparative claim is restored.
+
 ## Thread commands and audit
 
 Thread creation targets a tenant. Invitation, contribution, inspection, close,

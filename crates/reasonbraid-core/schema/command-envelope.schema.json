@@ -57,7 +57,7 @@
   ],
   "$defs": {
     "AuthorityContext": {
-      "description": "The delegation context a command may carry (`.1.4.2`, ADR-009). The subject\nrides a STRING field (`rol_…`/`hpr_…`): `GrantSubject` is a serde tagged\nnewtype and is not a wire field.",
+      "description": "The delegation context a command may carry (`.1.4.2`, ADR-009). The subject\nretains its established STRING field (`rol_…`/`hpr_…`). The core\n`GrantSubject` kind/id object is a separate authority-payload representation.",
       "type": "object",
       "properties": {
         "on_behalf_of": {

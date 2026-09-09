@@ -181,17 +181,61 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.3.3 — Bound-boundary authorization and grant selection
 
-- Status: `pending`.
+- Status: `active`; execute bounded children below, committing each before the next.
 - Sources / owned surfaces: `core authority, server authority.rs`.
 - Goal and acceptance: Resolve a grant's actual boundary, enforce identity/tenant/subset/window correspondence, reject thread-only selectors for tenant actions, avoid latest-grant shadowing, and serialize all relevant authorization/mutation paths against revocation. Revocation administrative paths must persist the submitted reason and final outcome in an attributable effect audit atomically with status/epoch changes; the current tenant-admin admission audit is not that effect record.
-- Additional runtime-confirmed defect owned here: `GrantSubject` derives internally tagged serde encoding over transparent primitive ID newtypes (`crates/reasonbraid-core/src/authority.rs`), so serializing `Human` fails with `cannot serialize tagged newtype variant GrantSubject::Human containing a string`; `json!` panics on that error. The initial `.3.2.1` live service run reproduced it in seven tests. Audit all consumers and establish an explicit, tested human/role wire contract with round-trip and enclosing-payload controls; the site service's explicit kind/id encoding does not close this core defect.
+- Additional runtime-confirmed defect owned here: `GrantSubject` derives internally tagged serde encoding over transparent primitive ID newtypes (`crates/reasonbraid-core/src/authority.rs`), so serializing `Human` fails with `cannot serialize tagged newtype variant GrantSubject::Human containing a string`; `json!` panics on that error. The initial `.3.2.1` live service run reproduced it in seven tests. Audit all consumers and establish an explicit, tested human/role wire contract with round-trip and enclosing-payload controls; the site service's explicit kind/id encoding did not close the core defect by itself. The canonical core correction is now completed by `.3.3.1`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
+- Commit: pending.
+
+#### SIGNOFF-REPAIR.3.3.1 — Canonical core subject JSON
+
+- Status: `done`; predecessor HTTP closure `9356379` is committed, brief zero/untracked, tree clean and project-job census `handoff: OK`, rc=0 before activation.
+- Owns: core GrantSubject serde representation and core/enclosing-payload tests; affected subject-serialization consumers and comments; envelope compatibility and the existing delegation-size control; authority/book/decision/fixture documentation and live synchronization. Tests and diagnostic output use the repository command environment and owned fixtures.
+- Scope: define an explicit kind/id object for human and role subjects, validate the typed ID against its kind, reject malformed/unknown/ambiguous fields, and prove both direct and enclosing AuthorityGrant/AuthorizationDecisionRecord/DelegationConstraints round trips. Preserve the existing CommandEnvelope AuthorityContext string wire field and database subject_kind/subject_id storage; measure the actual public envelope type rather than a hand-built stand-in. Census HTTP/MCP/persistence consumers before changing them. No authorization-policy or storage-schema change in this child.
+- Evidence: `.3.2.1` reproduced serialization failure/panic in seven service controls. Current source still derives internally tagged newtype serde over string IDs; its delegation-size test hand-builds JSON while its comment misdescribes the core wire representation. Add executable failing controls before the fix and preserve the observed results.
+- Consumer census: 18 Rust files reference GrantSubject. Production storage uses explicit subject_kind/subject_id columns; API grant/audit inspection builds its existing row shapes. HTTP and MCP principal resolution parse prefixed strings; CommandEnvelope.AuthorityContext.on_behalf_of remains a string. Site issuance already produces an explicit kind/id object manually. Only core AuthorityGrant, AuthorizationDecisionRecord with a delegated subject, and DelegationConstraints embed the broken subject serde representation. Own the new `crates/reasonbraid-core/tests/subject_json.rs` controls and extend the existing authority record readback test to round-trip a delegated subject, and prove site issuance receipts decode into the repaired core subject while their existing JSON projection stays unchanged. No endpoint validation-shape or database migration is required; the schema golden's descriptive annotation must follow its corrected rustdoc.
+- Focused reproduction: `cargo test --offline --locked -p reasonbraid-core --test subject_json` compiled (44.44s), then returned rc=101: 1 invalid-input control passed, 2 direct/enclosing-payload controls failed with `cannot serialize tagged newtype variant GrantSubject::Human containing a string`. Test execution was 0.00s; this is the actual exported type, not a stand-in. The official Serde representation documentation confirms that internally tagged newtypes require struct/map contents; the ID serializer emits a string.
+- Object-only parsing: the pinned serde_derive adjacent-enum implementation also generates visit_seq via deserialize_struct. Keep the serialization shape adjacent kind/id, but deserialize through an explicit map visitor and derived deny-unknown Fields parsing so JSON arrays, duplicate fields and kind/ID mismatches cannot become alternative authority representations. The new input controls own that contract.
+- Measurement correction ownership: this child also owns correcting ADR-009 and the corresponding historical Phase-2 notes. The old `the_envelope_delta_beats_a_token_blob` test computes token_bytes = envelope_bytes + 64 from hand-built JSON, so its inequality is true by construction and measures neither a token encoding nor depth 1–3. Replace it with a real public AuthorityContext compatibility/round-trip control and remove the unsupported comparative claim. The source-confirmed missing comparison is tracked explicitly under `.3.4`; do not invent an alternative-token benchmark result.
+- Schema annotation synchronization: the first corrected full core run returned rc=101 (48 passed, 1 failed, 1 intentionally ignored schema-writer test). The only failure is the generated CommandEnvelope golden's AuthorityContext description: correcting its rustdoc changed that annotation. The actual public fixture measured 219 bytes. This child owns updating `crates/reasonbraid-core/schema/command-envelope.schema.json`'s description only, with an independent structural comparison proving all validation properties unchanged, then re-running the core gate. Subject integration tests did not run after that unit-test failure; do not claim they passed yet.
+- Schema control result: only the AuthorityContext description changed; restoring that one string makes the parsed golden equal its pre-edit value. A control removing on_behalf_of from required was detected, rc=0. Core strict Clippy with all targets passed, rc=0 (59.75s). The corrected full core run and owned authority/command_api/site_authority verification are in progress; all other earlier tool jobs are consumed.
+- Corrected core progress: the schema-synchronized run compiled in 9.13s and passed 49 unit tests, zero failed, with the one intentionally ignored schema-writing utility. The subject integration and doc tests are still in flight. The guarded live compatibility run is `target/pg-tests/run-r7ozj054` (authority, command_api, site_authority). Consume its exit and shutdown receipt before cleanup or closure.
+- Final core result: the corrected full `cargo test --offline --locked -p reasonbraid-core -- --nocapture` returned rc=0: 49 unit tests passed (one intentionally ignored schema-writing utility), all 3 direct/enclosing/invalid-subject integration controls passed, and doc tests completed with zero cases. No unit or integration failure remains. Python independently re-derived the actual public envelope fixture as 219 UTF-8 bytes and detected an altered subject representation, rc=0; this is fixture evidence only, not a token comparison.
+- Live/storage progress: authority passed all 9 tests, zero failed/ignored, rc=0 (0.16s), including a complete delegated record reconstructed from split database fields and serialized/deserialized through the core type. Strict server/lib/authority/command_api/site_authority Clippy passed, rc=0 (2m29s including the shared build wait). The same owned runner continues command_api and site_authority.
+- Acceptance: both subjects round-trip canonically alone and inside authority/delegation payloads; invalid kinds, mismatched IDs, duplicates, unknown fields and missing content refuse. Existing command-envelope schema/fixtures and actor/policy digest behavior remain stable. Focused core tests and strict lint pass; relevant server/CLI/MCP checks follow the consumer census.
+- Final verification: full core tests passed 49 unit + 3 subject integration tests, zero failures, rc=0; one schema-writing utility is intentionally ignored and doc tests completed with zero cases. The guarded `scripts/run_pg_tests.sh authority command_api site_authority` run passed 40 tests (9 + 21 + 10), zero failed/ignored, rc=0. Command API finished in 12.73s and site authority in 13.46s. The runner stopped and removed `run-r7ozj054`; its result is consumed and residue absent. Strict core all-target lint passed (59.75s), strict server/lib/three-suite lint passed (2m29s including build contention), rc=0. Formatting, schema structural/negative controls, diff check, book build and rendered examples/limits inspection passed. No full CI or push; no production qualification category advance. Companion authority/CLI decision hooks are synchronized to completed site enforcement and this completed core repair.
+- Commit: `REASONBRAID-REPAIR-0010` (this commit).
+
+#### SIGNOFF-REPAIR.3.3.2 — Bound authority evaluation invariants
+
+- Status: `pending`.
+- Owns: pure/evaluation checks for actual boundary ID, tenant/subject correspondence, grant ceilings/windows and action-target selectors, with focused negative controls and book synchronization.
+- Acceptance: mismatched or widened authority fails closed; tenant actions cannot be authorized by thread-only selectors. Preserve approved frozen-tenant inspection behavior and policy-digest meaning.
+- Verification: pending.
+- Commit: pending.
+
+#### SIGNOFF-REPAIR.3.3.3 — Actual-parent and usable-grant selection
+
+- Status: `pending`.
+- Owns: server authority loaders and candidate evaluation for callers and delegated subjects, actual-parent joins and deterministic usable-grant selection.
+- Acceptance: a new unrelated boundary cannot rearm old grants; a newer ineligible grant cannot shadow an eligible one; delegated selection checks the actual authority source and requested scope. Record selected and refused evidence without fabricating a live parent.
+- Verification: pending.
+- Commit: pending.
+
+#### SIGNOFF-REPAIR.3.3.4 — Tenant authority serialization and effect auditing
+
+- Status: `pending`; refine into safe children after the path census before implementation if needed.
+- Owns: tenant authority/effect transaction ordering, issuance/revocation interaction, submitted administrative reasons and committed final-outcome audit, including status/epoch no-ops.
+- Acceptance: relevant authority changes and protected effects have a consistent serialization rule; revocation ordered first fences later effects; denial/audit failure leaves protected state unchanged; final effect records commit with the change. Preserve the `.3.1` foreign-target and repeated-revoke corrections.
+- Verification: pending.
 - Commit: pending.
 
 ### SIGNOFF-REPAIR.3.4 — Delegation and cache freshness
 
 - Status: `pending`.
 - Sources / owned surfaces: `core delegation/cache, authority.rs, command envelopes`.
+- Representation evidence follow-up: the former ADR-009 wire-size assertion used hand-built JSON plus a fixed 64-byte increment, with no actual token encoding or depth 1–3 comparison. `.3.3.1` corrects that claim and verifies the shipped envelope type. This leaf owns the missing comparative prototype/measurements before claiming a wire-size or multi-hop advantage; preserve the development envelope choice without treating a mathematical increment as implementation evidence.
 - Goal and acceptance: Enforce delegability, bounded depth, actor/subject participation and consent; bind replay hashes to target and authority context while preserving approved committed-replay semantics; make cached decision expiry and future-clock behavior explicit.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
@@ -438,19 +482,28 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — final focused server/lib/CLI-test Clippy passed with warnings denied, rc=0 (7.83s); 13 runner controls passed, rc=0. `cargo fmt --all --check`, `bash -n scripts/demo_two_host.sh`, `make book` and rendered contract inspection passed, rc=0; adjacent site-service and disposable-ownership tests passed in the 16-test run. Commit hooks recheck the staged doctrines.
 - [x] **FIX / LOCKSTEP** — operator CLI, bounded inspection, explicit local connection/storage contract, matching runner fixture credential, tests and runbook are implemented and live-verified, rc=0. The transport/locality lesson is promoted to the indexed operator-CLI decision. HTTP enforcement remains `.3.2.3`.
 
-## Current commit acceptance — SIGNOFF-REPAIR.3.2.3
+## Previous commit acceptance — SIGNOFF-REPAIR.3.2.3
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — the legacy owned probe reproduced four shared writes by tenant administrators, including writes after tenant-boundary revocation (HTTP 200, SQL witness 1|2|2|1, rc=0). The source census found seven HTTP operations bypassing distinct site authority. The new wire control reproduced a plain-text invalid-UTF8 Path refusal instead of typed JSON (7 passed/1 failed, rc=101), identifying Axum extraction before the handler as the cause.
 - [x] **ADDRESSED (verified)** — the corrected `site_registry_http` suite passed all 8 tests, rc=0 (18.91s). Every verb uses explicit site grants; two tenant admins before/after freeze and inactive/out-of-window actual grant/boundary cases leave registry snapshots unchanged. Human/role action separation, no-op/read/denial receipts, audit-failure rollback, both revocation orders and expiry after waiting pass. All three malformed-UTF8 paths now return typed JSON 400; missing media type and oversized bodies return typed 415/413 without audit or effect.
 - [x] **NO REGRESSION** — corrected HTTP/registry verification passed 12 tests (8 + 2 + 2), rc=0; the selected broader security run passed 58 tests, rc=0, including operator CLI, site/tenant authority, command API and escalation. All results are consumed and owned clusters stopped/removed. Final focused strict Clippy passed, rc=0 (30.70s); `cargo fmt --all --check`, `git diff --check`, `make book` and rendered contract inspection passed, rc=0. The implementation commit passed all 13 doctrines. The project-job census reported `handoff: OK`, rc=0; no confirmation remains pending.
 - [x] **FIX / LOCKSTEP** — all seven handlers use the verified site service; obsolete any-tenant authority and private unaudited mutation helpers are removed. The rendered book route/receipt/status table inspection passed, rc=0. Authority/qualification/deployment pages, the decision, historical Phase-8 correction, live status, memory, CHANGELOG and DEV_NOTES reflect the implemented contract and completed confirmation; no production qualification advance is claimed.
 
+## Current commit acceptance — SIGNOFF-REPAIR.3.3.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — focused tests against the exported type returned rc=101 (1 passed, 2 failed) with cannot-serialize-tagged-newtype-string errors. ID serializers emit strings; the enum used internal tagging. A corrected rustdoc then changed the generated schema description, detected by the full-core golden test (48 passed/1 failed/1 intentional ignore, rc=101). The old token comparison computes N + 64 from N, with no token encoding; its claim is corrected and missing comparative evidence owned by `.3.4`.
+- [x] **ADDRESSED (verified)** — full core tests returned rc=0: 49 unit + 3 subject integration controls passed; direct/enclosing human/role payloads round-trip and malformed/duplicate/unknown/mismatched/non-object input refuses. All 40 live authority/command API/site compatibility tests passed, rc=0, including delegated database records and issued site receipts. The schema comparison proves only the description changed and detects a removed required field, rc=0.
+- [x] **NO REGRESSION** — strict core all-target Clippy passed, rc=0 (59.75s), and strict server/lib/authority/command_api/site_authority Clippy passed, rc=0 (2m29s). Existing command/event schema and fixture controls, actor/digest controls and live storage compatibility pass; the one ignored core test is an explicit schema-writing utility. `cargo fmt --all --check`, `git diff --check`, `make book` and rendered-contract inspection passed, rc=0. All test/lint/runner results are consumed and the owned cluster stopped/removed.
+- [x] **FIX / LOCKSTEP** — canonical subject serializer and strict map parser are implemented; public envelope strings and split database storage are preserved. Independent measurement re-derived the actual public fixture as 219 bytes and detected an altered representation, rc=0; no token comparison is claimed. The new indexed core-subject decision promotes the lesson; ADR-009, Phase-2 correction, book examples/limits, live docs and frontiers are synchronized. README standard commands/layout are unchanged.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
-| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.2` | `pending` | enforce bound authority invariants |
+| 2 | `SIGNOFF-REPAIR.3.3.3` | `pending` | select usable grants with actual parents |
+| 3 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
+| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -474,6 +527,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.1`: `REASONBRAID-REPAIR-0010 (leaf SIGNOFF-REPAIR.3.3.1): define canonical subject JSON and preserve envelope compatibility`.
 
 - `SIGNOFF-REPAIR.3.2.3` closure: `REASONBRAID-REPAIR-0009 (leaf SIGNOFF-REPAIR.3.2.3): record completed registry HTTP qualification`.
 

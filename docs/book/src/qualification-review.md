@@ -47,7 +47,7 @@ measured revocation controls above. Each row has executable repair ownership rat
 
 | Surface | Current limitation identified in source | Repair leaves |
 | --- | --- | --- |
-| Authority and administration | Foreign grant/boundary mutation is corrected with matched unchanged-state controls. Effect auditing, other caller/target paths, grant selection and boundary binding repairs remain. | `.3.1`–`.3.5` |
+| Authority and administration | Foreign grant/boundary mutation and shared site-registry authority are corrected with matched controls. Core subject serialization is reproduced and corrected with direct/enclosing and live compatibility controls; effect auditing, caller/target paths, grant selection and boundary binding repairs remain. | `.3.1`–`.3.5` |
 | Node recovery and budgets | Receipt identity, cursor retention, result durability, uncertain retry, settlement and concurrency guarantees need additional enforcement and proof. | `.4.1`–`.4.5` |
 | Directory and recruitment | Candidate visibility and call/thread binding are incomplete; automatic creation reuses a fixed idempotency key. | `.5.1`–`.5.3` |
 | MCP and A2A | MCP reads do not uniformly enforce target authority; listen dedup needs correction. A2A qualification currently demonstrates serialization rather than an independent transport peer. | `.6.1`–`.6.3` |

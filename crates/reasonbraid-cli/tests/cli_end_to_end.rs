@@ -7,13 +7,19 @@
 //! Run with `scripts/run_pg_tests.sh` (DATABASE_URL-gated; skips offline so
 //! `make check` stays green).
 
+#![cfg(any(target_os = "linux", target_os = "macos"))]
+
 #[path = "../../reasonbraid-server/tests/support/mod.rs"]
 mod pg_test_support;
 
 use std::net::SocketAddr;
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::OnceLock;
+use std::time::Duration;
+use tokio::io::AsyncReadExt;
+use tokio::time::timeout;
 
 use reasonbraid_server::api_router;
 use serde_json::Value;
@@ -85,7 +91,7 @@ async fn pool() -> Option<PgPool> {
 
 struct TestServer {
     addr: SocketAddr,
-    _handle: tokio::task::JoinHandle<()>,
+    handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl TestServer {
@@ -100,7 +106,24 @@ impl TestServer {
         });
         Self {
             addr,
-            _handle: handle,
+            handle: Some(handle),
+        }
+    }
+    async fn finish(mut self) {
+        let handle = self.handle.take().unwrap();
+        handle.abort();
+        let result = handle.await;
+        assert!(
+            matches!(result, Err(ref error) if error.is_cancelled()),
+            "owned server shutdown: {result:?}"
+        );
+    }
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        if let Some(handle) = &self.handle {
+            handle.abort();
         }
     }
 }
@@ -120,19 +143,48 @@ impl Rb {
     }
 
     async fn run(&self, args: &[&str]) -> (bool, String, String) {
-        let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_rb"))
+        let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_rb"))
             .args(args)
             .env("REASONBRAID_SERVER", &self.server)
             .env("REASONBRAID_CLI_STATE", &self.state_dir)
+            .env("NO_PROXY", "127.0.0.1,localhost")
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .await
+            .kill_on_drop(true)
+            .spawn()
             .expect("spawn rb");
+        let mut stdout = child.stdout.take().unwrap().take(1_048_577);
+        let mut stderr = child.stderr.take().unwrap().take(1_048_577);
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let observed = timeout(Duration::from_secs(90), async {
+            tokio::try_join!(
+                stdout.read_to_end(&mut out),
+                stderr.read_to_end(&mut err),
+                child.wait()
+            )
+        })
+        .await;
+        let status = match observed {
+            Ok(Ok((_, _, status))) => status,
+            failure => {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                panic!(
+                    "owned rb output/wait failed: {failure:?}; stderr={}",
+                    String::from_utf8_lossy(&err)
+                );
+            }
+        };
+        assert!(
+            out.len() <= 1_048_576 && err.len() <= 1_048_576,
+            "owned rb output exceeds fixture limit"
+        );
         (
-            output.status.success(),
-            String::from_utf8_lossy(&output.stdout).into_owned(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
+            status.success(),
+            String::from_utf8_lossy(&out).into_owned(),
+            String::from_utf8_lossy(&err).into_owned(),
         )
     }
 
@@ -145,16 +197,47 @@ impl Rb {
     }
 }
 
-/// A same-volume, repo-local scratch dir for the CLI state (inside `target/`, which
-/// is gitignored — §13 locality, never /tmp or a home cache).
-fn target_tmp(name: &str) -> PathBuf {
-    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    crate_dir
-        .join("../..")
-        .canonicalize()
-        .expect("repository root for the owned CLI fixture")
-        .join("target")
-        .join(format!("rb-cli-e2e-{name}"))
+/// Each test owns exactly one new directory; never delete a prior fixed-name
+/// workspace on startup. The repository root is derived at runtime.
+struct CliStateFixture(PathBuf);
+
+impl CliStateFixture {
+    fn new(name: &str) -> Self {
+        let cwd = std::env::current_dir().unwrap();
+        let root = cwd
+            .ancestors()
+            .find(|p| p.join("crates/reasonbraid-cli/Cargo.toml").is_file())
+            .unwrap();
+        let device = std::fs::metadata(root).unwrap().dev();
+        let target = root.join("target");
+        let meta = std::fs::symlink_metadata(&target).unwrap();
+        assert!(meta.is_dir() && !meta.file_type().is_symlink());
+        assert_eq!(meta.dev(), device);
+        let base = target.join("cli-writer-controls");
+        match std::fs::create_dir(&base) {
+            Ok(()) => (),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+            Err(error) => panic!("owned CLI fixture base: {error}"),
+        }
+        let meta = std::fs::symlink_metadata(&base).unwrap();
+        assert!(meta.is_dir() && !meta.file_type().is_symlink());
+        assert_eq!(meta.dev(), device);
+        let path = base.join(format!("e2e-{name}-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for CliStateFixture {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_dir_all(&self.0) {
+            if std::thread::panicking() {
+                eprintln!("owned CLI fixture cleanup failed: {error}");
+            } else {
+                panic!("owned CLI fixture cleanup failed: {error}");
+            }
+        }
+    }
 }
 
 /// The full WP6 flow, driven only by the real binary's stdout.
@@ -164,9 +247,8 @@ async fn the_real_cli_drives_the_whole_flow() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let base = format!("http://{}", server.addr);
-    let state_dir = target_tmp("full-flow");
-    let _ = std::fs::remove_dir_all(&state_dir);
-    let rb = Rb::new(&base, state_dir);
+    let fixture = CliStateFixture::new("full-flow");
+    let rb = Rb::new(&base, fixture.0.clone());
 
     // 1. Bootstrap + role enroll (--json for machine-readable ids).
     let alice = rb.json(&["enroll", "human", "alice", "--json"]).await;
@@ -524,6 +606,8 @@ async fn the_real_cli_drives_the_whole_flow() {
     assert!(stdout.contains("state: cancelled"), "{stdout}");
     assert!(stdout.contains("cancelled: no longer needed"), "{stdout}");
     assert!(stdout.contains("thread.cancelled"), "{stdout}");
+    server.finish().await;
+    pool.close().await;
 }
 
 /// Deny-by-default at the CLI: a role without `thread_create` gets a typed refusal,
@@ -534,9 +618,8 @@ async fn the_cli_surfaces_typed_denials() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let base = format!("http://{}", server.addr);
-    let state_dir = target_tmp("denials");
-    let _ = std::fs::remove_dir_all(&state_dir);
-    let rb = Rb::new(&base, state_dir);
+    let fixture = CliStateFixture::new("denials");
+    let rb = Rb::new(&base, fixture.0.clone());
 
     let alice = rb.json(&["enroll", "human", "alice", "--json"]).await;
     let tenant = alice["tenant_id"].as_str().unwrap().to_string();
@@ -575,4 +658,6 @@ async fn the_cli_surfaces_typed_denials() {
         .await;
     assert!(!ok);
     assert!(stderr.contains("scope_hidden"), "{stderr}");
+    server.finish().await;
+    pool.close().await;
 }

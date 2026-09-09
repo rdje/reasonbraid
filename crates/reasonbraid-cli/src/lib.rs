@@ -536,6 +536,7 @@ pub async fn run_enroll(
     actions: Option<Vec<String>>,
     json_out: bool,
 ) -> Result<String, CliError> {
+    let mut writer = state_store::Writer::open(&cfg.state_dir)?;
     let client = ApiClient::new(&cfg.server_base);
     let mut body = json!({ "kind": kind, "name": name });
     if let Some(t) = tenant {
@@ -547,7 +548,7 @@ pub async fn run_enroll(
     let response = client.enroll(body).await?;
 
     // Record the principal (and the tenant it belongs to) locally.
-    let mut state = StateFile::load(&cfg.state_dir)?;
+    let state = writer.state_mut();
     if state.version == 0 {
         state.version = 1;
     }
@@ -565,7 +566,7 @@ pub async fn run_enroll(
                 .to_string(),
         },
     );
-    state.save(&cfg.state_dir)?;
+    writer.publish()?;
 
     if json_out {
         return or_json(&response, true);
@@ -607,6 +608,70 @@ pub struct CreateProfileArgs {
 #[allow(clippy::too_many_arguments)]
 pub async fn run_thread_create(
     cfg: &Config,
+    principal: &PrincipalRef,
+    subject: &str,
+    objective: &str,
+    budget: &BudgetArgs,
+    profile: &CreateProfileArgs,
+    on_behalf_of: Option<&str>,
+    purpose: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let writer = state_store::Writer::open(&cfg.state_dir)?;
+    run_thread_create_in_store(
+        cfg,
+        writer,
+        principal,
+        subject,
+        objective,
+        budget,
+        profile,
+        on_behalf_of,
+        purpose,
+        json_out,
+    )
+    .await
+}
+
+/// Resolve a CLI name and optional tenant override from the fresh locked state.
+/// The resolved-principal entrypoint remains available for explicit identities.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_thread_create_named(
+    cfg: &Config,
+    name: &str,
+    tenant: Option<&str>,
+    subject: &str,
+    objective: &str,
+    budget: &BudgetArgs,
+    profile: &CreateProfileArgs,
+    on_behalf_of: Option<&str>,
+    purpose: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let writer = state_store::Writer::open(&cfg.state_dir)?;
+    let mut principal = resolve_principal(writer.state(), name)?;
+    if let Some(tenant) = tenant {
+        principal.tenant = Some(tenant.to_owned());
+    }
+    run_thread_create_in_store(
+        cfg,
+        writer,
+        &principal,
+        subject,
+        objective,
+        budget,
+        profile,
+        on_behalf_of,
+        purpose,
+        json_out,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_thread_create_in_store(
+    cfg: &Config,
+    mut writer: state_store::Writer,
     principal: &PrincipalRef,
     subject: &str,
     objective: &str,
@@ -658,7 +723,7 @@ pub async fn run_thread_create(
         .await?;
 
     // Remember the thread → tenant mapping for later verbs.
-    let mut state = StateFile::load(&cfg.state_dir)?;
+    let state = writer.state_mut();
     if state.version == 0 {
         state.version = 1;
     }
@@ -670,7 +735,7 @@ pub async fn run_thread_create(
             subject: subject.to_string(),
         },
     );
-    state.save(&cfg.state_dir)?;
+    writer.publish()?;
 
     if json_out {
         return or_json(&response, true);

@@ -8,7 +8,7 @@ answers:
 # Persist the bootstrap request identity before sending it
 
 - Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3`; runtime/contract child `.1`, server protocol `.2`, CLI persistence `.3`.
-- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol in child .2 passes 73 selected controls, its final eleven-control fixture rerun and strict lint; all results/shutdown are consumed and four owned clusters are absent. CLI persistence/recovery remains unimplemented in child .3.
+- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol in child .2 passes 73 selected controls, its final eleven-control fixture rerun and strict lint; all results/shutdown are consumed and four owned clusters are absent. CLI request persistence/recovery remains unimplemented in child .3; its durable state and whole-writer prerequisites are implemented under .3.1.
 - Evidence: `docs/tasks/artifacts/signoff_review/bootstrap-recovery.md` at product baseline `01bd473`.
 
 ## Request and outcome

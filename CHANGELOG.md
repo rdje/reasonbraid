@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Hold CLI state across HTTP writers (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.2`)
+
+Acquire and validate state before enrollment/thread-create dispatch; retain the
+same guard through fresh actor selection, merge and synchronized publication.
+Busy writers now send zero HTTP requests. Preserve explicit-principal API behavior
+and unrelated mappings; qualify both overlap orders and process-loss release.
+Nineteen selected controls, final strict CLI lint and rendered book checks pass.
+All results/shutdown consumed, unique fixtures and the owned PostgreSQL cluster
+absent. Replace fixed live fixture deletion/unbounded child waits with owned
+lifetimes. Pending bootstrap identity, bounded HTTP waits and restart remain next.
+
 ## 2026-09-09 — Durable bounded CLI snapshots (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1`)
 
 Repair in-place publication, linked-target overwrite and ignored process locks.

@@ -2,7 +2,7 @@
 //!
 //! Thin clap glue over `reasonbraid-cli`'s [`run_*`] verbs. Development profile:
 //! principals travel in the trusted `x-reasonbraid-principal` header; the state dir
-//! defaults to `./.reasonbraid-cli` (see the library docs).
+//! defaults to repository-root-relative `.reasonbraid-cli` (see the library docs).
 
 use clap::{Parser, Subcommand};
 use reasonbraid_cli::{
@@ -11,7 +11,7 @@ use reasonbraid_cli::{
     run_inspect_grants, run_inspect_incarnations, run_inspect_node_inbox, run_inspect_runs,
     run_inspect_thread, run_inspect_threads, run_inspect_usage, run_issue_node_token,
     run_prune_node_inbox, run_quarantine_command, run_replay_command, run_revoke_node,
-    run_thread_create, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
+    run_thread_create_named, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
     StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
@@ -596,18 +596,22 @@ enum InspectCommand {
     },
 }
 
-/// Resolve the acting principal: `--as` value, or the most recently used one.
+/// Explicit actor selection is required in the development profile.
+fn actor_name(as_: Option<&str>) -> Result<&str, reasonbraid_cli::CliError> {
+    as_.ok_or_else(|| {
+        reasonbraid_cli::CliError::Usage(
+            "--as <name-or-id> is required (dev profile: the CLI acts as an enrolled principal)"
+                .to_string(),
+        )
+    })
+}
+
+/// Other commands resolve from a read snapshot; creation resolves under its writer lock.
 fn acting_principal(
     state: &StateFile,
     as_: Option<&str>,
 ) -> Result<PrincipalRef, reasonbraid_cli::CliError> {
-    match as_ {
-        Some(name) => resolve_principal(state, name),
-        None => Err(reasonbraid_cli::CliError::Usage(
-            "--as <name-or-id> is required (dev profile: the CLI acts as an enrolled principal)"
-                .to_string(),
-        )),
-    }
+    resolve_principal(state, actor_name(as_)?)
 }
 
 #[tokio::main]
@@ -629,7 +633,16 @@ async fn main() {
 }
 
 async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError> {
-    let state = StateFile::load(&cfg.state_dir)?;
+    // The two writers acquire their own lock before loading any local state.
+    // Other verbs use this single read-only snapshot for local name resolution.
+    let state = if matches!(
+        &cli.command,
+        Command::Enroll { .. } | Command::Thread(ThreadCommand::Create { .. })
+    ) {
+        StateFile::default()
+    } else {
+        StateFile::load(&cfg.state_dir)?
+    };
     match cli.command {
         Command::Enroll {
             kind,
@@ -654,27 +667,21 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             purpose,
             json,
         }) => {
-            let principal = acting_principal(&state, as_.as_deref())?;
             let budget = BudgetArgs {
                 calls: budget_calls,
                 input_tokens: budget_input_tokens,
                 output_tokens: budget_output_tokens,
                 wall_clock_seconds: budget_wall_clock,
             };
-            // The create verb's tenant comes from the acting principal (enroll
-            // stored it); --tenant overrides.
-            let mut principal_for_create = principal;
-            if let Some(t) = &tenant {
-                principal_for_create.tenant = Some(t.clone());
-            }
             let profile = CreateProfileArgs {
                 classification,
                 workflow_profile,
                 allow_join_requests,
             };
-            run_thread_create(
+            run_thread_create_named(
                 cfg,
-                &principal_for_create,
+                actor_name(as_.as_deref())?,
+                tenant.as_deref(),
                 &subject,
                 &objective,
                 &budget,

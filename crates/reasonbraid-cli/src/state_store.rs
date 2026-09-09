@@ -40,6 +40,54 @@ fn invalid(detail: &str) -> CliError {
     CliError::state(detail.to_owned())
 }
 
+/// One update lifetime: fresh state is loaded only after acquiring the lock, and
+/// the same descriptor remains held through asynchronous work and publication.
+/// Dropping an interrupted operation releases exclusion without publishing it.
+pub(crate) struct Writer {
+    state: StateFile,
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    publication: unix::Publication,
+}
+
+impl Writer {
+    pub(crate) fn open(path: &std::path::Path) -> Result<Self, CliError> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let publication = unix::Publication::open(path)?;
+            let state = publication.load()?;
+            Ok(Self { state, publication })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            let _ = path;
+            Err(invalid(
+                "verified local state storage currently requires Linux or macOS",
+            ))
+        }
+    }
+
+    pub(crate) fn state(&self) -> &StateFile {
+        &self.state
+    }
+
+    pub(crate) fn state_mut(&mut self) -> &mut StateFile {
+        &mut self.state
+    }
+
+    pub(crate) fn publish(self) -> Result<(), CliError> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            self.publication.publish(&codec::encode(&self.state)?)
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            Err(invalid(
+                "verified local state storage currently requires Linux or macOS",
+            ))
+        }
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod codec {
     use super::{invalid, CliError, StateFile};
@@ -486,12 +534,33 @@ mod unix {
         Directory::open(path, false)?.map_or_else(|| Ok(StateFile::default()), |dir| dir.load())
     }
 
+    pub(super) struct Publication {
+        directory: Directory,
+        lock: File,
+    }
+
+    impl Publication {
+        pub(super) fn open(path: &Path) -> Result<Self, CliError> {
+            let directory = Directory::open(path, true)?
+                .ok_or_else(|| invalid("local state directory is missing"))?;
+            let lock = directory.lock()?;
+            Ok(Self { directory, lock })
+        }
+
+        pub(super) fn load(&self) -> Result<StateFile, CliError> {
+            self.directory.load()
+        }
+
+        pub(super) fn publish(&self, bytes: &[u8]) -> Result<(), CliError> {
+            self.directory.publish(&self.lock, bytes)
+        }
+    }
+
     pub(crate) fn save(path: &Path, state: &StateFile) -> Result<(), CliError> {
+        // Preserve the convenience API's validation-before-filesystem-effects
+        // boundary, even though complete CLI updates open their guard earlier.
         let bytes = encode(state)?;
-        let directory = Directory::open(path, true)?
-            .ok_or_else(|| invalid("local state directory is missing"))?;
-        let lock = directory.lock()?;
-        directory.publish(&lock, &bytes)
+        Publication::open(path)?.publish(&bytes)
     }
 
     #[cfg(test)]

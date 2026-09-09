@@ -93,17 +93,45 @@ or otherwise ambiguous objects remain untouched and cause refusal. These two
 reserved names belong to the store; keep unrelated files elsewhere. Working
 bytes are never recovered as authoritative state merely because they exist.
 
-## Current integration limit
+## CLI writer lifetime
 
-The StateFile library's save operation replaces the full supplied snapshot.
-A separate load, modification and save can still lose another client's update.
-Enrollment and thread creation currently call HTTP before their local load/save;
-the next owned integration holds one guard across that whole workflow. Until it
-lands, atomic publication alone does not make concurrent CLI updates safe.
+Enrollment and thread creation acquire the same nonblocking state lock and
+validate the current snapshot before dispatching HTTP. A busy or invalid store
+therefore refuses before sending an effect request. The lock stays held across
+the response, the fresh state update and synchronized publication. An overlapping
+writer fails promptly; run it again only after the first command finishes and
+you understand any reported server uncertainty.
 
-The CLI also does not yet persist/send bootstrap_request_id before new-human
-HTTP enrollment. A lost bootstrap response or local write failure can therefore
-leave a created tenant without a recovered local identity. Repeating the human
-name without --tenant can create a distinct tenant. The server's keyed recovery
-API is implemented; durable CLI request handling and interruption/restart
-qualification are the following repair children.
+Named thread creation resolves `--as` from the locked snapshot. An explicit
+`--tenant` overrides the command's tenant without changing the principal's saved
+tenant. Both writers preserve unrelated principals and threads when adding their
+own result. For example, enrollment of bob followed by a thread creation still
+retains alice and all previously stored thread mappings, whichever writer ran
+first.
+
+The library's run_thread_create entrypoint still accepts an explicitly supplied
+PrincipalRef and uses it as supplied. The CLI uses run_thread_create_named for
+fresh name resolution. Both entrypoints share the held-store implementation.
+StateFile::save remains a full-snapshot replacement API: callers that independently
+load and later save must not assume it merges a stale snapshot for them.
+
+A failed request, local validation error or cancelled process releases local
+exclusion without publishing the in-memory change. A local publication error
+still follows the before/after-replacement rules above. Process death while
+awaiting HTTP preserves the previously published snapshot; it does not prove
+that the server did nothing. Never delete the lock filename to force progress.
+
+## Remaining request recovery
+
+The HTTP client currently has no explicit connect or whole-request timeout.
+A peer that never responds can retain the live writer's local lock until the
+command is cancelled. Bounded HTTP waits and preservation of the request key on
+timeout are owned by the next request-recovery child.
+
+The CLI does not yet persist/send bootstrap_request_id before new-human HTTP
+enrollment. A lost bootstrap response or local write failure can therefore leave
+a created tenant without a recovered local identity. Repeating the human name
+without `--tenant` can create a distinct tenant. The server's keyed recovery API
+is implemented; durable CLI request handling and interruption/restart
+qualification are the following repair children. Successful lock release is
+not evidence that repeating an unkeyed request is safe.

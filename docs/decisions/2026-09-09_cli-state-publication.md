@@ -4,11 +4,12 @@ answers:
   - What does a successful StateFile save establish about publication?
   - How are interrupted local state writes and ambiguous working files handled?
   - Why does atomic file replacement still require a lock across a CLI update?
+  - When does the CLI resolve a named actor and release writer exclusion?
 ---
 # Publish bounded CLI snapshots under an operating-system lock
 
-- Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1` (storage API); `.1.2` owns complete CLI writer integration.
-- Status: StateFile storage API qualified by twelve selected controls, all-target CLI strict lint and book verification. Complete CLI writer/request integration remains the following children.
+- Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1` (storage API); `.1.2` implements complete CLI writer integration.
+- Status: StateFile storage API qualified by twelve selected controls, all-target CLI strict lint and book verification. Whole writer integration passes nineteen selected controls (seventeen library/storage/writer controls and two live CLI compatibility controls), final all-target strict lint and book checks; results/shutdown consumed and fixtures/cluster absent. Pending request/recovery remains the following children.
 - Evidence: docs/tasks/artifacts/signoff_review/cli-state-publication.md.
 
 ## Scope and repository binding
@@ -79,11 +80,40 @@ possibly swapped pathname or delete the published state. A later lock holder
 validates and cleans only the reserved work before a fresh publication. Existing
 read descriptors retain the complete snapshot they originally opened.
 
-## Remaining transaction boundary
+## Whole writer transaction boundary
 
-StateFile::save replaces a complete caller-supplied snapshot. Its lock alone
-does not merge a stale prior load. Enrollment and thread creation still perform
-HTTP before their separate load/save sequence; `.1.2` must hold one guard across
-the entire operation and fresh merge before publication. Pending bootstrap
-identity, reply validation and restart recovery retain their following children.
-Do not claim that atomic file publication has completed those protocol repairs.
+The private Writer owns a fresh StateFile and the Publication's directory/lock
+handles. Writer::open acquires exclusion and validates state before HTTP client
+construction/dispatch. Writer::publish consumes the same owner after its complete
+in-memory update; the lock remains held through encoding, replacement and sync.
+Drop releases local exclusion on request/validation error or future cancellation,
+without publishing an incomplete update. Post-replacement errors still carry
+uncertain durability.
+
+run_enroll and both thread-creation entrypoints use that owner. The existing
+run_thread_create preserves explicitly supplied PrincipalRef semantics. The new
+run_thread_create_named resolves a name and optional tenant override from the
+locked snapshot and then uses the same private operation. main.rs omits its
+former eager read for these two writers; other verbs still take a read snapshot.
+This avoids a separate pre-lock actor selection in the actual CLI.
+
+StateFile::save remains an atomic full-snapshot convenience API and validates
+encoded bounds before creating storage. It does not merge arbitrary stale caller
+snapshots. The Publication helper shares descriptor/lock/publication mechanics
+with the held writer, preserving all previously qualified storage boundaries.
+
+The two real-server CLI fixtures now use unique repository-volume directories,
+bounded output and explicit child kill/wait on failure/deadline, plus joined
+server shutdown and pool closure on success. No previous fixed-name residue is
+deleted. Normal real-process controls consume both HTTP/server and OS lock-holder
+lifetimes before assertions; abort-on-drop fallbacks bound failed fixtures.
+
+## Pending protocol ownership
+
+Pinned Reqwest defaults to no connect/read/whole-request timeout, so a stalled
+peer can keep a live writer's lock until cancellation. The pending-request child
+owns a matched stalled-response control, explicit HTTP limits and key retention
+on timeout. Cancellation/local lock release cannot prove remote rollback.
+Durable bootstrap identity, strict complete reply recovery and restart
+qualification remain the following children. No unkeyed replay-safety claim
+follows from this writer integration.

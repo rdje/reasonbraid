@@ -124,8 +124,8 @@ so `--as alice` and `--as reviewer` resolve without retyping ids (raw `hpr_…` 
 `rol_…` ids are accepted directly). The server is `http://127.0.0.1:4310` or
 `REASONBRAID_SERVER`.
 See [CLI local state and recovery](docs/book/src/cli-state.md) for path validation,
-bounded snapshots, synchronized replacement and the remaining concurrent-writer
-and pending-bootstrap integration limits.
+bounded snapshots, synchronized replacement, complete writer locking and the
+remaining pending-bootstrap recovery limits.
 
 ## What happens per command
 

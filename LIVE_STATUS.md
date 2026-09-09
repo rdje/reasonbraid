@@ -91,3 +91,13 @@ in a new commit. The actual pinned scanner passes with an empty report; eleven
 control groups are independently absent and all results consumed. No file/rule
 suppression or history rewrite. Full checkpoint .2 resumes next; qualification
 categories remain unchanged.
+
+The source-7e01097 full checkpoint passes format, strict lint, bins, fifty Python
+controls, book/doctrines and both scanners, but workspace execution stops at two
+browser timing witnesses. Repair .11.4.3.1.2.4 reproduces those assumptions and
+qualifies explicit gated arrivals/overlap with two delayed controls and all sixteen
+integration tests on a dedicated testing runtime. Native evidence identifies the
+desktop browser's detached updater/crash-report stderr writers; that refusal stays
+preserved. Production bytes are unchanged; strict focused lint and process/fixture
+checks pass. Pinned local/CI runtime binding .2.5 precedes the next full checkpoint.
+PostgreSQL/demo and remote CI are pending; qualification categories are unchanged.

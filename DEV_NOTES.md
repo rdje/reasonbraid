@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — A phase witness must survive startup, and EOF has process ownership
+
+- Source-7e01097 full gates pass through compilation but stop at two browser timing assertions. A recorded six-second launch delay reproduces both original failures with unchanged binaries: a four-second render can end before navigation, and the overlap fixture's five-second prerequisite can prevent its second launch. The original second error was masked by observer panic, so its exact original host timings remain unknown.
+- Replace fixed slow responses and short competing prerequisites with watched navigation arrivals and explicit response release. Retain the delayed second launch, actual simultaneous live profiles/groups, strict refusal, independent absence and exact listener shutdown. A separate socket control rejects a missing second arrival and observes no response byte before release.
+- The stronger real navigation then exposes browser_cleanup_unconfirmed. Native ps/lsof snapshots prove detached crashpad and GoogleUpdater processes hold the exact stderr write endpoint after browser-group exit. They later exit naturally; no shared browser state is mutated. A verified repository-local Chrome for Testing 153.0.8010.36 passes both delayed witnesses and all sixteen integration controls with unchanged production worker bytes. Native checks confirm thirty-two worker/browser groups plus three test groups absent and seventeen failed fixtures retained. Focused strict lint passes; full checkpoint/PG/demo/remote gates remain incomplete.
+- Preserve two setup-assumption failures: framework links can resolve through a bounded internal chain, and this official testing build uses an ad-hoc linker signature rather than Developer ID. Upstream release source disables its installer. Record HTTPS/archive/payload/version evidence separately from signing; no signature or OS-policy mutation. Dedicated pinned setup and CI binding are .11.4.3.1.2.5; untrusted-content/container/aggregate limits remain .7.3.2.
+- promotion: promoted → `docs/decisions/2026-09-10_browser-checkpoint-timing.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.4`.
+
 ## 2026-09-09 — Classify immutable fixture findings and test the effective ignore policy
 
 - The two history matches are the same predictable 48-digit test literal, used only by synchronous local-metadata tests. Historical/current source identity and the transitive reader establish no connection or issued-credential use; the live runner generates a separate random proof. Add exactly the two reported immutable commit/file/rule/line fingerprints, with no file/rule exclusion or history rewrite.

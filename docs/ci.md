@@ -188,6 +188,24 @@ checks, five omission controls and all fifty Python controls pass. These establi
 local wiring and exercised redaction, not a full project security/remote CI pass.
 Evidence: docs/tasks/artifacts/signoff_review/ci-workflows.md.
 
+## Browser checkpoint follow-up
+
+The source-7e01097 full checkpoint stops at two browser timing witnesses; its
+PostgreSQL/demo gates are unstarted. A four-second render budget can expire during
+startup, and an independent five-second prerequisite can prevent worker two from
+launching. The repaired tests use observed gated navigation, preserve the delayed
+second launch and require real simultaneous profiles plus consumed cleanup.
+
+A longer real navigation exposes desktop Chrome's detached crash reporter/updater
+writers holding stderr after browser-group exit. Do not qualify an installed
+interactive browser merely from executable presence. Selected controls pass with
+a verified repository-local Chrome for Testing 153.0.8010.36; its payload has an
+ad-hoc linker signature, with official HTTPS/archive integrity and exact extracted
+bytes checked separately. No Developer ID signature is claimed. Dedicated pinned
+setup and local/workflow binding are owned by .11.4.3.1.2.5 before the next full run.
+The current workflow still selects installed Chrome until that leaf is complete.
+Evidence and remaining limits: docs/tasks/artifacts/signoff_review/browser-checkpoint-timing.md.
+
 ## Not a release claim
 
 This skeleton deliberately stops short of the software-supply-chain *release* pipeline in
@@ -196,8 +214,8 @@ This skeleton deliberately stops short of the software-supply-chain *release* pi
 - **No SBOM** generation and **no signed provenance** yet — those belong to the G9 release
   gate, once there are artifacts to attest to.
 - **No release-signing**, reproducible builders, or protected release identities yet.
-- **No public-release claim** of any kind: the repository remains private pending ADR-001
-  (name clearance), and this file documents a working baseline, not a shipped capability.
+- **No release qualification claim:** the repository is public and must remain public.
+  ADR-001 name clearance and the release gates remain separate outstanding requirements.
 
 The pinned tool versions here (`gitleaks 8.30.1`) are a starting point and should be bumped
 on a schedule. The workspace now has real dependencies; current deny.toml contains

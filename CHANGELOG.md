@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Qualify browser phase witnesses (`SIGNOFF-REPAIR.11.4.3.1.2.4`)
+
+Reproduce the full checkpoint's navigation/overlap timing failures with a controlled
+startup delay. Require explicit gated arrivals, retain delayed simultaneous-profile
+proof and record dispatch errors before observer panics. The stronger witness
+exposes detached desktop Chrome updater/crash-report stderr writers; preserve the
+real cleanup refusal and qualify a dedicated testing runtime without changing the
+production worker. Two delayed controls, all sixteen integration controls and strict
+lint pass. Pinning/CI binding is the next owned prerequisite; full CI remains pending.
+Correct the CI guide's missed private-visibility sentence to the public policy.
+
 ## 2026-09-09 — Qualify exact history-fixture exceptions (`SIGNOFF-REPAIR.11.4.3.1.2.2`)
 
 Trace both scanner matches to predictable metadata-only test literals. Exclude

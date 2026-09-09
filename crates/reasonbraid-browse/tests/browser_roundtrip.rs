@@ -13,7 +13,16 @@ use std::time::Duration;
 use support::{browser_binary, Fixture};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::timeout;
+use tokio::time::{timeout, Instant};
+
+// Production allows twenty seconds for browser startup. Give its protocol/page
+// setup ten more seconds to reach the origin; a short render budget cannot prove
+// cancellation during navigation when it can expire during startup instead.
+const NAVIGATION_WINDOW: Duration = Duration::from_secs(30);
+const SECOND_LAUNCH_DELAY: Duration = Duration::from_secs(4);
+const COMPLETION_WINDOW: Duration = Duration::from_secs(10);
+// The render's ten-second cleanup allowance plus worker process startup margin.
+const SUPERVISOR_MARGIN: Duration = Duration::from_secs(20);
 
 // The receipt belongs to this exact listener. Reaching its old port after
 // shutdown may instead reach a newly bound socket and says nothing about ownership.
@@ -47,7 +56,8 @@ impl Drop for OwnedListener {
 struct Origin {
     base: String,
     hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    overlap_release: tokio::sync::watch::Sender<bool>,
+    navigation_release: tokio::sync::watch::Sender<bool>,
+    navigation_arrivals: tokio::sync::watch::Sender<u64>,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<std::io::Result<()>>>,
     listener_closed: oneshot::Receiver<()>,
@@ -58,7 +68,8 @@ async fn spawn_origin() -> Origin {
     use axum::Router;
     let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = std::sync::Arc::clone(&hits);
-    let (overlap_release, overlap_gate) = tokio::sync::watch::channel(false);
+    let (navigation_release, navigation_gate) = tokio::sync::watch::channel(false);
+    let (navigation_arrivals, _) = tokio::sync::watch::channel(0_u64);
     let app = Router::new()
         .route(
             "/page",
@@ -76,28 +87,17 @@ async fn spawn_origin() -> Origin {
             }),
         )
         .route(
-            "/overlap",
+            "/gated",
             get({
                 let counter = std::sync::Arc::clone(&counter);
+                let arrivals = navigation_arrivals.clone();
                 move || {
                     counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    let mut gate = overlap_gate.clone();
+                    arrivals.send_modify(|count| *count += 1);
+                    let mut gate = navigation_gate.clone();
                     async move {
                         let _ = gate.wait_for(|released| *released).await;
                         ([("content-type", "text/html")], "<title>Render Title</title><body>gated overlap</body>")
-                    }
-                }
-            }),
-        )
-        .route(
-            "/slow",
-            get({
-                let counter = std::sync::Arc::clone(&counter);
-                move || {
-                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    async {
-                        tokio::time::sleep(Duration::from_secs(6)).await;
-                        "slow response"
                     }
                 }
             }),
@@ -132,7 +132,8 @@ async fn spawn_origin() -> Origin {
     Origin {
         base: format!("http://127.0.0.1:{port}"),
         hits,
-        overlap_release,
+        navigation_release,
+        navigation_arrivals,
         shutdown: Some(shutdown),
         task: Some(task),
         listener_closed,
@@ -140,8 +141,22 @@ async fn spawn_origin() -> Origin {
 }
 
 impl Origin {
+    async fn wait_for_navigations(&self, count: u64, limit: Duration) -> Result<(), String> {
+        let mut arrivals = self.navigation_arrivals.subscribe();
+        timeout(limit, arrivals.wait_for(|observed| *observed >= count))
+            .await
+            .map_err(|_| {
+                format!(
+                    "expected {count} gated navigations within {limit:?}; observed {}",
+                    *self.navigation_arrivals.borrow()
+                )
+            })?
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     async fn finish(mut self) -> Result<(), String> {
-        self.overlap_release.send_replace(true);
+        self.navigation_release.send_replace(true);
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
@@ -179,6 +194,53 @@ async fn conclude(fixture: Fixture, origin: Origin, result: std::thread::Result<
     let shutdown = origin.finish().await;
     fixture.finish(result.is_ok() && shutdown.is_ok()).unwrap();
     shutdown.expect("origin and connections stopped");
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn gated_origin_requires_arrival_and_explicit_response_release() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let origin = spawn_origin().await;
+    let result = AssertUnwindSafe(async {
+        let mut stream = timeout(
+            NAVIGATION_WINDOW,
+            tokio::net::TcpStream::connect(origin.base.trim_start_matches("http://")),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        stream
+            .write_all(b"GET /gated HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        origin
+            .wait_for_navigations(1, NAVIGATION_WINDOW)
+            .await
+            .unwrap();
+        let missing_second = origin
+            .wait_for_navigations(2, Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert!(missing_second.contains("observed 1"));
+        assert!(timeout(Duration::from_millis(50), stream.read_u8())
+            .await
+            .is_err());
+        origin.navigation_release.send_replace(true);
+        let mut response = String::new();
+        timeout(NAVIGATION_WINDOW, stream.read_to_string(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(response.contains("gated overlap"));
+        assert_eq!(*origin.navigation_arrivals.borrow(), 1);
+    })
+    .catch_unwind()
+    .await;
+    origin.finish().await.expect("owned origin stopped");
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);
     }
@@ -479,20 +541,37 @@ async fn a_real_navigation_deadline_stops_the_browser_and_origin() {
     let fixture = Fixture::new();
     let origin = spawn_origin().await;
     let result = AssertUnwindSafe(async {
-        let url = format!("{}/slow", origin.base);
+        let url = format!("{}/gated", origin.base);
         let request = serde_json::json!({"url":url,"steps":[{"action":"navigate","url":url}],
-            "limits":{"max_steps":1,"max_output_bytes":1024,"time_budget_secs":4}});
-        let output = fixture.worker(&request).await.unwrap();
+            "limits":{"max_steps":1,"max_output_bytes":1024,"time_budget_secs":NAVIGATION_WINDOW.as_secs()}});
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
+        command.env("R3_BROWSER_BIN", browser_binary().unwrap());
+        let input = request.to_string();
+        let started = Instant::now();
+        // Keep the response gated until the worker has returned. A fixed slow
+        // response can either finish before the budget or outlast a budget that
+        // was already exhausted by startup; neither proves navigation cancellation.
+        let (output, arrived) = tokio::join!(
+            fixture.command(command, input.as_bytes(), NAVIGATION_WINDOW + SUPERVISOR_MARGIN),
+            origin.wait_for_navigations(1, NAVIGATION_WINDOW),
+        );
+        fixture.verify_browser_groups().await.unwrap();
+        eprintln!("navigation deadline witness: {}", serde_json::json!({
+            "arrived": arrived.is_ok(), "arrival_error": arrived.as_ref().err(),
+            "worker_error": output.as_ref().err(), "elapsed_ms": started.elapsed().as_millis(),
+            "response_released": *origin.navigation_release.borrow(),
+            "render_budget_secs": NAVIGATION_WINDOW.as_secs(),
+        }));
+        arrived.expect("actual gated navigation must occur before the render deadline");
+        let output = output.unwrap();
         assert!(!output.group_stop_requested);
+        assert!(!*origin.navigation_release.borrow());
         let response: serde_json::Value = serde_json::from_str(&output.stdout).unwrap();
         assert_eq!(
             response["error"]["kind"], "time_budget_exceeded",
             "{response}"
         );
-        assert!(
-            origin.hits.load(std::sync::atomic::Ordering::SeqCst) >= 1,
-            "actual navigation must start before the deadline"
-        );
+        assert!(started.elapsed() >= NAVIGATION_WINDOW);
         assert_eq!(completion(&output.stderr)["cleanup_confirmed"], true);
     })
     .catch_unwind()
@@ -510,76 +589,69 @@ async fn overlapping_workers_use_distinct_profiles_under_the_same_root() {
     let second = Fixture::new();
     let origin = spawn_origin().await;
     let result = AssertUnwindSafe(async {
-        let url = format!("{}/overlap", origin.base);
+        let url = format!("{}/gated", origin.base);
+        let observation_window = NAVIGATION_WINDOW * 2 + SECOND_LAUNCH_DELAY;
+        let render_budget = observation_window + COMPLETION_WINDOW;
+        let worker_limit = render_budget + SUPERVISOR_MARGIN;
+        let started = Instant::now();
         let request = serde_json::json!({"url":url,"steps":[{"action":"navigate", "url":url}],
-            "limits":{"max_steps":1,"max_output_bytes":1048576,"time_budget_secs":20}})
+            "limits":{"max_steps":1,"max_output_bytes":1048576,"time_budget_secs":render_budget.as_secs()}})
         .to_string();
         let mut one = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
         let mut two = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
         one.env("R3_BROWSER_BIN", &binary).current_dir(&first.path);
         two.env("R3_BROWSER_BIN", &binary).current_dir(&first.path);
         let observe = async {
-            timeout(Duration::from_secs(12), async {
-                loop {
-                    if origin.hits.load(std::sync::atomic::Ordering::SeqCst) >= 2 {
-                        let paths: Vec<_> =
-                            std::fs::read_dir(first.path.join(".project-data/browser"))
-                                .unwrap()
-                                .map(|e| e.unwrap().path())
-                                .collect();
-                        assert_eq!(paths.len(), 2, "both distinct profiles must still be live");
-                        let mut groups = Vec::new();
-                        for path in paths {
-                            let receipt: serde_json::Value = serde_json::from_slice(
-                                &std::fs::read(path.join("owner.json")).unwrap(),
-                            )
-                            .unwrap();
-                            let pid = rustix::process::Pid::from_raw(
-                                i32::try_from(receipt["browser_group"].as_i64().unwrap()).unwrap(),
-                            )
-                            .unwrap();
-                            rustix::process::test_kill_process_group(pid)
-                                .expect("both browser groups are live at the same observation");
-                            assert!(path.join("profile").is_dir());
-                            assert!(!path.join("completion.json").exists());
-                            eprintln!("overlapping live browser: {receipt}");
-                            groups.push(pid);
-                        }
-                        assert_ne!(groups[0], groups[1]);
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .expect("both real browsers navigate while their profiles coexist");
+            origin.wait_for_navigations(2, observation_window).await
+                .expect("both real browsers navigate while their profiles coexist");
+            let paths: Vec<_> = std::fs::read_dir(first.path.join(".project-data/browser"))
+                .unwrap().map(|e| e.unwrap().path()).collect();
+            assert_eq!(paths.len(), 2, "both distinct profiles must still be live");
+            let mut groups = Vec::new();
+            for path in paths {
+                let receipt: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(path.join("owner.json")).unwrap(),
+                ).unwrap();
+                let pid = rustix::process::Pid::from_raw(
+                    i32::try_from(receipt["browser_group"].as_i64().unwrap()).unwrap(),
+                ).unwrap();
+                rustix::process::test_kill_process_group(pid)
+                    .expect("both browser groups are live at the same observation");
+                assert!(path.join("profile").is_dir());
+                assert!(!path.join("completion.json").exists());
+                eprintln!("overlapping live browser: {receipt}");
+                groups.push(pid);
+            }
+            assert_ne!(groups[0], groups[1]);
         };
         let observe_and_release = async {
             // An observer failure must release the origin before command futures
             // are consumed; it cannot strand the gated requests.
             let result = AssertUnwindSafe(observe).catch_unwind().await;
-            origin.overlap_release.send_replace(true);
+            origin.navigation_release.send_replace(true);
             result
         };
         let delayed_second = async {
-            timeout(Duration::from_secs(5), async {
-                while origin.hits.load(std::sync::atomic::Ordering::SeqCst) == 0 {
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .map_err(|_| "first gated navigation did not arrive".to_owned())?;
+            origin.wait_for_navigations(1, NAVIGATION_WINDOW).await?;
+            eprintln!("first gated navigation witnessed after {} ms", started.elapsed().as_millis());
             // Deliberately exceed the old three-second scroll-based window.
-            tokio::time::sleep(Duration::from_secs(4)).await;
+            tokio::time::sleep(SECOND_LAUNCH_DELAY).await;
             second
-                .command(two, request.as_bytes(), Duration::from_secs(35))
+                .command(two, request.as_bytes(), worker_limit)
                 .await
         };
         let (one, two, observed) = tokio::join!(
-            first.command(one, request.as_bytes(), Duration::from_secs(35)),
+            first.command(one, request.as_bytes(), worker_limit),
             delayed_second,
             observe_and_release,
         );
+        eprintln!("overlap dispatch witness: {}", serde_json::json!({
+            "first_error": one.as_ref().err(), "second_error": two.as_ref().err(),
+            "observation_panicked": observed.is_err(),
+            "gated_arrivals": *origin.navigation_arrivals.borrow(),
+            "elapsed_ms": started.elapsed().as_millis(),
+            "render_budget_secs": render_budget.as_secs(),
+        }));
         first.verify_browser_groups().await.unwrap();
         second.verify_browser_groups().await.unwrap();
         if let Err(panic) = observed {

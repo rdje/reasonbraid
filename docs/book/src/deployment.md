@@ -247,7 +247,7 @@ own emergency cleanup still cannot count as production-owned shutdown. Exact
 baseline and controls are in
 `docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md`.
 
-Combined qualification now passes fifteen integration controls with unchanged
+The earlier combined qualification passed fifteen integration controls with unchanged
 production worker bytes, alongside the separately recorded five production unit
 controls. Two real renders succeed across a same-volume runtime-root rename; the
 original directory identity and a witness survive, while completed invocation
@@ -263,6 +263,34 @@ The original failed connection's peer was not captured, so its exact cause remai
 unstated. All twenty-six final worker/browser groups are independently absent;
 the nine earlier failed fixtures remain preserved. Exact results and remaining
 boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
+
+### Browser timing and the selected test runtime
+
+The later full checkpoint found that two timing assumptions were too short for
+real startup: the navigation deadline could fire before any request reached the
+origin, and the overlap test could abandon its second launch. Navigation now has
+an explicit arrival witness and a response that remains gated until the worker
+returns. For example, a six-second startup delay must still reach the origin before
+a thirty-second render deadline; cleanup must finish before the refusal returns.
+Overlap keeps worker one's response gated, delays worker two four seconds after
+its arrival, and proves both distinct profiles/groups are live before release.
+Missing requests, early responses and unconfirmed cleanup still fail qualification.
+
+That stronger deadline witness exposed a separate runtime boundary. Desktop Chrome
+started crash reporting/update helpers outside its process group; native pipe
+observations showed them retaining stderr after that group stopped. The worker
+returned cleanup-unconfirmed rather than claiming success. The observed helpers
+later exited naturally. A dedicated repository-local Chrome for Testing 153.0.8010.36
+passes the delayed navigation/overlap witnesses and all sixteen integration controls
+with the unchanged production worker. The archive and extracted bytes are verified;
+this testing build has an ad-hoc linker signature, not verified Developer ID signing.
+
+The result qualifies these trusted loopback fixtures. Pinned browser installation
+and CI selection remain .11.4.3.1.2.5 before the full checkpoint resumes; the current
+workflow still selects installed Chrome. Untrusted-content isolation, detached
+process containment and aggregate resource limits remain .7.3.2. The full workspace
+checkpoint has not passed, and PostgreSQL/demo has not run in this attempt. Exact
+results, retained failures and scope: `docs/tasks/artifacts/signoff_review/browser-checkpoint-timing.md`.
 
 ## Public repository and publication checks
 

@@ -30,6 +30,14 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
   as an installed read-only tool. This command scans Git history; it does not establish
   a scan of uncommitted working-tree files. `--redact` redacts secret values from output;
   findings and their metadata can still be reported.
+  `.gitleaksignore` contains two exact immutable fixture fingerprints, qualified
+  under SIGNOFF-REPAIR.11.4.3.1.2.2. Both are metadata-only test literals, not issued
+  credentials. The exceptions bind commit/file/rule/line; the file and rule remain
+  scanned, including the same content in a new commit. Removal controls recover
+  each finding. The pinned scanner also loads the source-root ignore file when
+  another ignore path is supplied; use an isolated history without that file for
+  omission checks. Requalify on scanner/exception changes. Evidence:
+  `docs/tasks/artifacts/signoff_review/history-fixture-fingerprints.md`.
 - `bash scripts/run_pg_tests.sh authority command_api` — focused suites in a new
   supervised PostgreSQL 16 cluster; caller DATABASE_URL is ignored. `--list`
   lists names. At the REPAIR-0033 census, no names runs 38 server suites, MCP and CLI

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Qualify exact history-fixture exceptions (`SIGNOFF-REPAIR.11.4.3.1.2.2`)
+
+Trace both scanner matches to predictable metadata-only test literals. Exclude
+only their immutable commit/file/rule/line fingerprints. Five native controls
+recover each omitted finding and detect identical content in a new commit; the
+actual pinned history scanner passes. Preserve the diagnosed additive-ignore
+probe failure and all results; no file/rule exclusion, Rust change or history rewrite.
+
 ## 2026-09-09 — Keep the repository public (`SIGNOFF-REPAIR.11.4.3.1.2.3`)
 
 Apply the director correction that README’s private instruction was wrong: the

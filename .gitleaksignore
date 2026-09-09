@@ -1,0 +1,5 @@
+# SIGNOFF-REPAIR.11.4.3.1.2.2: verified metadata-only test literals, not credentials.
+# Exact historical fingerprints only; do not suppress this path or detection rule.
+# Provenance and controls: docs/decisions/2026-09-09_history-fixture-fingerprints.md
+82155f53146585dc047734447e7288ed5c14e187:crates/reasonbraid-server/tests/pg_guard.rs:generic-api-key:68
+82155f53146585dc047734447e7288ed5c14e187:crates/reasonbraid-server/tests/pg_guard.rs:generic-api-key:110

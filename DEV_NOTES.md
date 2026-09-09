@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Classify immutable fixture findings and test the effective ignore policy
+
+- The two history matches are the same predictable 48-digit test literal, used only by synchronous local-metadata tests. Historical/current source identity and the transitive reader establish no connection or issued-credential use; the live runner generates a separate random proof. Add exactly the two reported immutable commit/file/rule/line fingerprints, with no file/rule exclusion or history rewrite.
+- The initial empty-ignore override unexpectedly returns zero findings. Pinned Detector source loads both the explicit ignore file and the source-root policy. Preserve that failed probe; use an isolated exact bare history with no working-tree ignore file for omission controls. Final counts are 2/1/1/0/2: neither exception, each single exception, actual default policy, and identical content in a new commit. Eleven command groups are independently absent, reports redacted, scanner bytes unchanged.
+- The actual pinned CI scanner entrypoint passes rc=0 in 4.093s with an empty report, consumed child and retired temporary executable/archive. Exact original/bare 313-commit sets match; book/rendered/diff checks pass. Evidence: docs/tasks/artifacts/signoff_review/history-fixture-fingerprints.md. Requalify on scanner/exception changes; configured history scanning is not a universal secret-free claim.
+- promotion: promoted → `docs/decisions/2026-09-09_history-fixture-fingerprints.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.2`.
+
 ## 2026-09-09 — Public visibility is an explicit director instruction
 
 - The director corrects the README: the project is public and must remain public. Apply that instruction directly; the old private clause was wrong and is superseded across README, ADR, Kickoff/Phase-0 routes, risk/owner/security records and the book. Keep historical audit/stop evidence with a clear resolution pointer; do not turn it into a claim that visibility changed or a continuing approval requirement.

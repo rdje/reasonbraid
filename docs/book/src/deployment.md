@@ -182,6 +182,23 @@ checkout. Workflow, publisher/browser and compiler-artifact prerequisites are no
 complete; full Rust/security gates and actual remote outcomes remain pending. See
 `docs/tasks/artifacts/signoff_review/ci-workflows.md` for commands and exact evidence.
 
+## Historical scanner exceptions
+
+The history scanner retains its normal rules. Two exact fingerprints in
+`.gitleaksignore` identify predictable literals used only by historical local
+metadata tests. Source and data-flow inspection establish that they were never
+issued credentials or used for connections. Each exception names the immutable
+commit, file, rule and line; it does not exclude the file or future changes.
+
+Five native controls verify that removing either entry restores that finding,
+using both gives a clean configured history result, and committing identical
+content again still produces both findings. An alternate ignore path does not
+replace the source-root policy in the pinned scanner, so omission checks use an
+isolated copy of the exact history. Requalify these boundaries when changing the
+scanner version or exceptions. The full configured history scan still runs before
+push; it does not scan uncommitted files or prove that every possible secret is
+absent. See `docs/tasks/artifacts/signoff_review/history-fixture-fingerprints.md`.
+
 ## Publisher verification owns its directories
 
 The offline publisher tests create private, exclusive directories under

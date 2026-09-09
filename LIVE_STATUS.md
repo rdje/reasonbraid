@@ -83,3 +83,11 @@ redacted history findings remain .2.2 and interrupted/unstarted gates remain
 unqualified. Continue repairs and full checkpoint .2 before the authorized public
 push. Qualification categories are unchanged. Policy:
 docs/decisions/2026-09-09_public-repository-policy.md.
+
+History-scan repair .11.4.3.1.2.2 classifies both original matches as predictable
+metadata-only fixture literals. Two exact immutable fingerprints are qualified by
+five native controls (2/1/1/0/2 findings), including detection of identical content
+in a new commit. The actual pinned scanner passes with an empty report; eleven
+control groups are independently absent and all results consumed. No file/rule
+suppression or history rewrite. Full checkpoint .2 resumes next; qualification
+categories remain unchanged.

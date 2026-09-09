@@ -128,6 +128,7 @@
 - [`2026-09-09_disposable-postgresql-runner.md`](docs/decisions/2026-09-09_disposable-postgresql-runner.md)
 - [`2026-09-09_disposable-test-pool-ownership.md`](docs/decisions/2026-09-09_disposable-test-pool-ownership.md)
 - [`2026-09-09_frozen-tenant-read-eligibility.md`](docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md)
+- [`2026-09-09_history-fixture-fingerprints.md`](docs/decisions/2026-09-09_history-fixture-fingerprints.md)
 - [`2026-09-09_operator-cli-locality.md`](docs/decisions/2026-09-09_operator-cli-locality.md)
 - [`2026-09-09_operator-role-query-freshness.md`](docs/decisions/2026-09-09_operator-role-query-freshness.md)
 - [`2026-09-09_public-repository-policy.md`](docs/decisions/2026-09-09_public-repository-policy.md)

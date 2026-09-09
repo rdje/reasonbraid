@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [History fixture fingerprints](docs/tasks/artifacts/signoff_review/history-fixture-fingerprints.md) — `.11.4.3.1.2.2`: non-secret provenance, additive ignore-path diagnosis and five native boundary controls.
+
 - [Publication precondition](docs/tasks/artifacts/signoff_review/publication-precondition.md) — `.11.4.3.1.2.1`: confirmed public/private-policy conflict, consumed checkpoint stop and concrete decision/repair owners.
 
 - [Compiler artifact disposition](docs/tasks/artifacts/signoff_review/compiler-artifact-disposition.md) — `.11.4.3.1.6`: frozen session identities, native lock controls, guarded cleanup and exact residue.

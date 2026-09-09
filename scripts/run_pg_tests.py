@@ -24,7 +24,7 @@ SERVER_SUITES = (
     "pg_guard atomic_transaction outbox_worker node_channel authority budget command_api node_work "
     "aggregate_library identity_store node_enrollment node_inbox invitations backup_restore "
     "migration_upgrade escalation node_replacement profiles evaluation routing policy rls "
-    "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority"
+    "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority site_operator_cli"
 ).split()
 SUITES = {name: ("reasonbraid-server", name) for name in SERVER_SUITES}
 SUITES.update({"mcp": ("reasonbraid-mcp", None), "cli_end_to_end": ("reasonbraid-cli", "cli_end_to_end")})
@@ -188,7 +188,15 @@ class Cluster:
         parent = local_directory(root, "target/pg-tests")
         self.path = Path(tempfile.mkdtemp(prefix="run-", dir=parent))
         self.relative = str(self.path.relative_to(root))
-        self.env.update({"PGPASSFILE": str(self.path / "unused.pgpass"), "PGSYSCONFDIR": str(self.path)})
+        # SQLx falls back to the home passfile if a custom file is absent or
+        # unmatched. A matching synthetic fixture password stops that fallback.
+        passfile = self.path / "fixture.pgpass"
+        passfile.write_text("*:*:*:*:reasonbraid-owned-fixture\n")
+        passfile.chmod(0o600)
+        self.env.update({
+            "PGPASSFILE": str(passfile), "PGSYSCONFDIR": str(self.path),
+            "PGHOST": "127.0.0.1", "PGPORT": str(self.port), "PGUSER": "postgres",
+        })
         self.token = secrets.token_hex(24)
         self.database = "rb_test_" + secrets.token_hex(12)
         self.process: subprocess.Popen | None = None

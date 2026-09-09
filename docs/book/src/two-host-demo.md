@@ -14,7 +14,7 @@ make demo                          # ephemeral PostgreSQL + all suites + the dem
 bash scripts/demo_two_host.sh --database-url postgres://postgres@127.0.0.1:55432/reasonbraid_test?sslmode=disable
 ```
 
-The script builds the four binaries, boots `rb-server`, and drives two `rb-node`
+The script builds the project binaries, boots `rb-server`, and drives two `rb-node`
 workers (one per agent role) through the real channel. It prints `PASS`/`FAIL`
 per acceptance point and exits nonzero on any failure. Evidence lands under
 `target/demo/<run-id>/evidence/`: the step `timeline.txt`, the thread

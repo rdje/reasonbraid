@@ -32,6 +32,7 @@ make dev      # one-command dev environment (ephemeral PG + rb-server)
 | Need | Canonical home |
 | --- | --- |
 | Product docs | `docs/book/` |
+| Site operator setup | `docs/book/src/site-authority.md` |
 | Architecture / gates | `ROADMAP.md` |
 | Phase 0 execution | `KICKOFF.md` |
 | Agent bootstrap | `CLAUDE.md` / `AGENTS.md` |

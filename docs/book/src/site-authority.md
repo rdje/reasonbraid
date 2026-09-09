@@ -1,11 +1,11 @@
 # Site authority for shared registries
 
-The server now has a separate site-authority service for the shared adapter and
-region registries. Its schema and library entry points are implemented under
-`SIGNOFF-REPAIR.3.2.1`. Operator CLI commands and HTTP enforcement are the following
-children, `.3.2.2` and `.3.2.3`; the existing HTTP handlers still use the legacy
-tenant-admin check until that work lands. The service's ten live controls and
-strict focused lint pass; this does not qualify the pending HTTP integration.
+The server has a separate site-authority service for the shared adapter and region
+registries, implemented under `SIGNOFF-REPAIR.3.2.1`. The `rb-site` operator CLI is
+implemented and verified under `.3.2.2`. HTTP enforcement
+remains `.3.2.3`; existing HTTP handlers still use the legacy tenant-admin check
+until that work lands. The service's ten live controls and strict focused lint
+pass; this does not qualify the pending HTTP integration.
 
 ## Who controls site authority
 
@@ -129,3 +129,142 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh site_authority
 The decision and durable verification record are
 `docs/decisions/2026-09-09_site-operator-authority.md` and
 `docs/tasks/SIGNOFF-REPAIR.md`.
+
+## Deployment-local operator CLI
+
+Build and run the dedicated executable from within the repository:
+
+```bash
+python3 -B scripts/project_env.py cargo build --locked -p reasonbraid-server --bin rb-site
+python3 -B scripts/project_env.py target/debug/rb-site --help
+```
+
+`rb-site` neither starts a server nor applies migrations. Prepare the database
+schema through the deployment workflow first. The current SQLx build has no TLS
+transport, so this tool accepts only explicit numeric loopback hosts, an explicit
+port, login and database, and the optional `sslmode=disable` URL parameter. Host
+names, remote addresses, other URL options and implicit targets are refused.
+Run on the database host; the data directory must exist on the repository's
+filesystem volume. The tool reads that setting and checks the database identity
+before any authority or inspection write. Unix deployment is currently required.
+
+Select the connection with `RB_SITE_DATABASE_URL` in the operator's protected
+environment. This separate variable avoids treating an ordinary development
+DATABASE_URL as operator intent. The following is a shape example; replace the
+login, credential, port and database for the deployment:
+
+```bash
+export RB_SITE_DATABASE_URL='postgres://operator:<percent-encoded-password>@127.0.0.1:55432/reasonbraid?sslmode=disable'
+```
+
+The tool does not print the selected URL, including in help and target errors.
+It discards ambient PGHOST, PGUSER, PGPASSWORD, PGOPTIONS and other PostgreSQL
+overrides before starting its runtime. It constructs options without reading
+passfiles or certificate files. URL components are decoded explicitly, preserving
+literal plus signs and percent-encoded credential characters. No operator state
+file or home cache is written. Protect the chosen environment and local database
+authentication according to the deployment's operating-system access policy.
+Production operator logins need verified database authentication; loopback trust
+is reserved for the disposable test setup.
+
+### Deployment permissions
+
+Provision a dedicated login through the database's normal authentication workflow.
+Then a deployment administrator can create the site-operator group and grant the
+required privileges. These SQL statements are deployment setup, not actions
+performed automatically by `rb-site`:
+
+```sql
+CREATE ROLE reasonbraid_site_operator NOLOGIN;
+GRANT reasonbraid_site_operator TO operator;
+GRANT pg_read_all_settings TO reasonbraid_site_operator;
+GRANT USAGE ON SCHEMA public TO reasonbraid_site_operator;
+GRANT SELECT, UPDATE ON public.site_authority_guard TO reasonbraid_site_operator;
+GRANT SELECT, INSERT ON public.site_boundaries, public.site_grants,
+    public.site_audit TO reasonbraid_site_operator;
+GRANT UPDATE (status) ON public.site_boundaries, public.site_grants
+    TO reasonbraid_site_operator;
+```
+
+Use the actual login identifier in place of `operator`. If the group already
+exists, review its configuration instead of recreating it. Normal inherited
+privileges are assumed. `pg_read_all_settings` permits the data-directory check;
+it is not site authority by itself. The deployment operator's direct database
+privileges form part of the trust root: supported commands maintain the audit
+contract, but those credentials must not be given to tenant-facing processes or
+treated as incapable of direct SQL. No DELETE or audit UPDATE privilege is needed
+for the supported operator commands.
+
+### Issue and retire access
+
+Choose explicit RFC3339 times and the existing human's full `hpr_…` ID. An agent
+role uses `role:rol_…` instead. The following flow gives only region-declaration
+authority. Commands return JSON; the extraction commands retain the IDs for the
+next step, while every successful operation also has a durable audit receipt.
+
+```bash
+set -euo pipefail
+RB_SITE_FROM='2026-09-09T00:00:00Z'       # choose the intended inclusive start
+RB_SITE_UNTIL='2026-09-10T00:00:00Z'      # choose a future exclusive expiry
+RB_SITE_SUBJECT='hpr_<existing-human-UUID>'
+
+RB_SITE_BOUNDARY="$(python3 -B scripts/project_env.py target/debug/rb-site boundary issue \
+  --action region_declare --valid-from "$RB_SITE_FROM" --expires-at "$RB_SITE_UNTIL" \
+  --reason 'approved regional administration' \
+  | python3 -B -c 'import json,sys; print(json.load(sys.stdin)["result"]["boundary_id"])')"
+
+RB_SITE_GRANT="$(python3 -B scripts/project_env.py target/debug/rb-site grant issue \
+  --boundary "$RB_SITE_BOUNDARY" --subject "human:$RB_SITE_SUBJECT" \
+  --action region_declare --valid-from "$RB_SITE_FROM" --expires-at "$RB_SITE_UNTIL" \
+  --reason 'assign regional administration' \
+  | python3 -B -c 'import json,sys; print(json.load(sys.stdin)["result"]["grant_id"])')"
+
+python3 -B scripts/project_env.py target/debug/rb-site grant list --reason 'review assignments'
+python3 -B scripts/project_env.py target/debug/rb-site grant suspend "$RB_SITE_GRANT" --reason 'stop access'
+python3 -B scripts/project_env.py target/debug/rb-site grant revoke "$RB_SITE_GRANT" --reason 'retire access'
+python3 -B scripts/project_env.py target/debug/rb-site boundary revoke "$RB_SITE_BOUNDARY" --reason 'retire ceiling'
+```
+
+Repeat `--action` to grant additional capabilities. A request to issue beyond the
+parent's action set or window is refused and audited. Suspension cannot be undone
+by this tool: issue replacement authority when access must be restored. Repeated
+revocation returns `changed: false` and creates a no-op audit. There is no automatic
+retry of issuance and no issuance idempotency key; a deliberate repeated issuance
+creates a different record. After a timeout or lost output, inspect history before
+trying to issue again. Lost shell variables can be recovered through the protected
+boundary/grant listings and their reasons.
+
+The separate library controls prove that these grants authorize the intended
+registry action and that disabling stops it. The ordinary registry HTTP/`rb`
+integration remains the following leaf; issuance alone does not change those
+legacy handlers.
+
+### Inspect bounded history
+
+```bash
+python3 -B scripts/project_env.py target/debug/rb-site boundary list --limit 20 --reason 'review ceilings'
+python3 -B scripts/project_env.py target/debug/rb-site audit list --limit 20 --reason 'review site history'
+python3 -B scripts/project_env.py target/debug/rb-site audit list --limit 20 \
+  --before 'sau_<next_before-UUID>' --reason 'continue site history review'
+```
+
+Each result contains `collection`, `items`, and `next_before`. Pass the exact
+returned `next_before` value to the same collection; null means that page reached
+the end. Pages contain 1–100 requested items at most, ordered by descending ID.
+They are current views rather than a repeatable multi-page snapshot of concurrent
+changes. An inspection creates a new audit record after reading its page; its
+own newer records do not extend an ordinary descending history walk. The record
+includes the requested collection, cursor, limit, database actor and reason.
+
+Exit status 0 means a committed receipt was returned; 2 means invalid arguments or
+input; 3 means an authority/domain refusal. Status 1 covers connection, storage
+verification, operation or output failures. A denial includes an `audit_id` only
+when its record committed. An unverified storage location is refused before any
+operation audit (`storage_unverified`), and an outsider without audit INSERT permission cannot create
+an audit record. Database errors are reported without driver connection details.
+
+Run the real binary controls alongside the existing service suite:
+
+```bash
+RB_DEMO=0 bash scripts/run_pg_tests.sh site_operator_cli site_authority
+```

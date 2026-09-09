@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Operator authority needs an explicit local connection contract
+
+- The new operator CLI accepts a separately selected loopback database target, checks its actual storage volume before writes and derives issuer from the database session. It constructs options without passfile lookup and discards ambient PG overrides before starting a runtime. Source inspection found that a missing custom SQLx passfile falls back to the home file; the disposable runner now supplies a matching synthetic fixture entry and the driver control checks that selection. Bounded descending audit pages exclude their own newly appended inspections; they are current views, not repeatable history snapshots.
+- promotion: promoted → `docs/decisions/2026-09-09_operator-cli-locality.md`; owner `SIGNOFF-REPAIR.3.2.2`. Detailed credential fallback correction also extends the disposable-runner decision.
+
 ## _(2026-09-09)_ — A repeated permission query can repeat stale authority
 
 - The site service's queued database-role revocation test initially allowed issuance after committed membership loss. Ordinary outsider refusal passed. A native libpq prepared-query control reproduced the stale result independently of SQLx; a simple-protocol control saw the revocation. The service now uses static text Executor queries before and after the guard wait. Site grant/boundary revocation and registry effects share one short transaction guard, and audit failure rolls back the effect. Initial subject JSON serialization also exposed a separate existing core enum defect, explicitly owned by `.3.3`; site receipts use a tested kind/id shape.

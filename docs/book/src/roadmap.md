@@ -92,9 +92,9 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.2`: the separate site-authority service
-passes ten live controls and strict lint; protected operator CLI and HTTP
-enforcement follow. Tenant-bound revocation is corrected with 34 focused tests and
+The current frontier is `SIGNOFF-REPAIR.3.2.3`: HTTP registry enforcement.
+The separate site-authority service and protected operator CLI pass their live
+controls and strict lint. Tenant-bound revocation is corrected with 34 focused tests and
 strict lint. The disposable runner and test-side connection ownership proof are complete,
 with focused suites and verified shutdown. The full-read source census and its repair leaves are in
 `docs/tasks/SIGNOFF-REPAIR.md`. Resume `PHASE-8.5.3` after the corrective prerequisites.

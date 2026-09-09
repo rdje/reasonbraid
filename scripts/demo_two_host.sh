@@ -221,10 +221,10 @@ trap cleanup EXIT
 # ── build ───────────────────────────────────────────────────────────────────────
 
 if [ "$RELEASE" = "1" ]; then
-    log "building the four release binaries (cargo build --release --bins)"
+    log "building the project release binaries (cargo build --release --bins)"
     cargo build --release --bins -q
 else
-    log "building the four binaries (cargo build --bins)"
+    log "building the project binaries (cargo build --bins)"
     cargo build --bins -q
 fi
 

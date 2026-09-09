@@ -7,6 +7,9 @@ name = "reasonbraid-server"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
+# Preserve the established `cargo run -p reasonbraid-server` target now that
+# deployment tooling has its own executable.
+default-run = "rb-server"
 
 [lints]
 workspace = true
@@ -86,6 +89,8 @@ reqwest = { version = "0.12", default-features = false, features = [
 # The hardened URL parse the §12.4 rules demand (one library, everywhere the
 # fetcher sees a URL — the redirect joins included).
 url = "2"
+# Decode explicit operator URL components without invoking a home-passfile parser.
+percent-encoding = "2"
 # The body stream's `next()` for the bounded read.
 futures-util = "0.3"
 # The snapshot request's bytes_base64 (the lock's single 0.22 — the bans
@@ -115,7 +120,7 @@ gix-transport = { version = "0.59", features = ["http-client"] }
 # fake adapter standing in for the provider.
 reasonbraid-node = { path = "../reasonbraid-node", version = "0.1.0" }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util", "process"] }
 # The mTLS roundtrip test (`.1.2`): the tokio glue over rustls, ring-pinned and
 # tls12-free (the workspace single-provider rule + the §16.2 TLS 1.3-only stance).
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }

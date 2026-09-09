@@ -8,7 +8,9 @@
 mod operator;
 mod registry;
 
-pub use operator::{disable_boundary, disable_grant, issue_boundary, issue_grant};
+pub use operator::{
+    disable_boundary, disable_grant, inspect, issue_boundary, issue_grant, Collection,
+};
 pub use registry::{execute, RegistryCommand};
 
 use std::collections::BTreeSet;

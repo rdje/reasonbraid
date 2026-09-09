@@ -48,6 +48,18 @@ class PgRunnerTests(unittest.TestCase):
         self.assertFalse(cluster.path.exists())
         self.assertEqual((sibling / "keep").read_text(), "control")
 
+    def test_fixture_password_prevents_a_home_passfile_fallback(self):
+        cluster = self.cluster()
+        passfile = Path(cluster.env["PGPASSFILE"])
+        self.assertEqual(passfile.parent, cluster.path)
+        self.assertEqual(passfile.read_text(), "*:*:*:*:reasonbraid-owned-fixture\n")
+        self.assertEqual(passfile.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(passfile.stat().st_dev, self.root.stat().st_dev)
+        self.assertEqual(cluster.env["PGHOST"], "127.0.0.1")
+        self.assertEqual(cluster.env["PGPORT"], str(cluster.port))
+        self.assertEqual(cluster.env["PGUSER"], "postgres")
+        cluster.finish(True)
+
     def test_failure_retains_stopped_evidence(self):
         cluster = self.cluster()
         cluster.finish(False)

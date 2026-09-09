@@ -25,9 +25,9 @@ protected deployment tooling. Tenant enrollment cannot issue them. Mutations mus
 check the grant's actual boundary and commit with an attributable audit record,
 serialized with revocation. The separate [site-authority service](site-authority.md)
 now implements that contract under `.3.2.1`; ten live controls and strict focused
-lint pass. Operator
-commands and HTTP routing remain `.3.2.2`/`.3.2.3`; there is no new operator command
-to run yet and the existing HTTP authorization is still under repair.
+lint pass. The `rb-site` operator CLI passed its live controls under `.3.2.2`,
+including the documented operator privileges and bounded audit walk. HTTP routing remains `.3.2.3`, so existing HTTP
+authorization is still under repair.
 
 | Scenario | Required repaired behavior |
 | --- | --- |

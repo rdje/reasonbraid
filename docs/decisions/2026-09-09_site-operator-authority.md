@@ -6,7 +6,7 @@ answers:
 ---
 # Explicit site-operator authority for shared registries
 
-- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI and HTTP enforcement remain `.3.2.2`/`.3.2.3`.
+- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI is implemented and verified under `.3.2.2`; HTTP enforcement remains `.3.2.3`.
 - Owner: repo-local engineering, acting on the director's explicit delegation.
 - Date: 2026-09-09.
 - Sources: `ROADMAP.md` §§4.4–4.5, 16.4, 20.10; ADR-027 and ADR-035.
@@ -77,9 +77,31 @@ forming a command. Database failures prevent completion and must never be report
 as stored audit records. The service exposes no history-deletion operation; database
 administrators can still modify their database directly.
 
-The book chapter `docs/book/src/site-authority.md` describes service examples and
-current integration limits. CLI wire shape and exercised commands belong to the
-next child; no unimplemented public command is advertised.
+## Protected operator command
+
+`rb-site` now issues/lists/disables boundaries and grants, and lists durable audit
+history. Every inspection uses the operator gate and guard, records its reason,
+and returns a bounded newest-ID-first page with a same-collection continuation
+cursor. Pages are current views, not a repeatable snapshot across concurrent
+updates. Issuance is deliberately not automatically retried; lost output or a
+timeout requires history inspection before another issuance.
+
+The binary requires an explicit `RB_SITE_DATABASE_URL` (or `--database-url`) with
+a numeric loopback host, port, database and login. It refuses remote plaintext
+connections because the existing SQLx build has no TLS transport. Before any
+authority or audit write, it verifies the actual database and that its data
+directory resides on the repository volume. The operator needs read access to
+`data_directory`, in addition to the site role and operation's table privileges.
+It performs no migrations, creates no roles and grants no permissions.
+
+The process discards ambient PG overrides before creating its runtime and builds
+explicit decoded options through `new_without_pgpass`. Help/errors do not print
+the URL or driver connection details. No home credential file is an implicit
+input. The runner's credential fallback correction and driver evidence are
+recorded in `docs/decisions/2026-09-09_disposable-postgresql-runner.md`.
+
+The book chapter `docs/book/src/site-authority.md` describes the command flow,
+deployment permissions, exit statuses and current HTTP integration limit.
 
 ## Required proof
 

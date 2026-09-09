@@ -54,8 +54,9 @@ The shared adapter and region HTTP handlers currently use an any-tenant-admin
 check. A separate [site-authority service](site-authority.md) now implements explicit
 operator-issued grants, actual-parent liveness, and atomic registry/audit operations
 serialized with site revocation. Tenant enrollment cannot mint those grants.
-Operator CLI and HTTP integration remain `SIGNOFF-REPAIR.3.2.2` and `.3.2.3`;
-the service implementation alone does not qualify the existing HTTP routes.
+The protected `rb-site` CLI is implemented and verified under `SIGNOFF-REPAIR.3.2.2`.
+HTTP integration remains `.3.2.3`; the service and
+operator tool alone do not qualify the existing HTTP routes.
 
 ### Grant and boundary revocation
 

@@ -3,6 +3,7 @@ answers:
   - How can a focused database test run without using an existing database?
   - What proves PostgreSQL has stopped before its files are removed?
   - How does a failed integration run preserve diagnostic evidence?
+  - Why is a missing custom passfile insufficient to prevent SQLx home lookup?
 ---
 # Disposable PostgreSQL runner
 
@@ -19,6 +20,21 @@ and runs `scripts/run_pg_tests.py`. Each invocation creates its own restricted
 The runner selects installed PostgreSQL 16 tools read-only. PostgreSQL runs as a
 foreground child in its own process group. Unix sockets are disabled; no default
 socket is created outside the repository.
+
+The runner also sets explicit numeric loopback constructor defaults and supplies
+a private matching synthetic fixture password in `fixture.pgpass` under that
+owned directory. The password is test data, not an authentication boundary; the
+isolated server uses loopback trust authentication. Mode 0600 permits both SQLx
+and libpq to consume it without consulting a shared credential store.
+
+This corrects a source-level gap discovered during `SIGNOFF-REPAIR.3.2.2`:
+SQLx 0.8.6's [passfile loader](https://github.com/launchbadge/sqlx/blob/v0.8.6/sqlx-postgres/src/options/pgpass.rs)
+tries the home passfile if a custom PGPASSFILE is missing or has no matching
+record. The old nonexistent `unused.pgpass` placeholder therefore did not stop
+that fallback. The CLI integration control checks the driver's parsed options
+contain the known owned fixture password, without printing credential material.
+No real home passfile is used as a negative probe. Other direct entrypoints keep
+their explicit `.11.2` repair ownership.
 
 The runner discards caller DATABASE_URL and libpq connection/service/option
 variables. Before creating the database, it reads the connected server's actual

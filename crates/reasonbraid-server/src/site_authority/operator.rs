@@ -228,6 +228,84 @@ enum Kind {
     Boundary,
 }
 
+/// A protected operator inventory. Registry inspection is a separate site grant
+/// capability; it does not expose these deployment authority or audit records.
+#[derive(Debug, Clone, Copy)]
+pub enum Collection {
+    Boundaries,
+    Grants,
+    Audit,
+}
+
+impl Collection {
+    fn description(self) -> (&'static str, &'static str, &'static str, &'static str) {
+        match self {
+            Self::Boundaries => ("boundaries", "boundary_inspect", "sbd", "boundary_id"),
+            Self::Grants => ("grants", "grant_inspect", "sgr", "grant_id"),
+            Self::Audit => ("audit", "audit_inspect", "sau", "audit_id"),
+        }
+    }
+}
+
+/// Read one bounded newest-ID-first page and commit its attributable inspection.
+/// Pages are current views; concurrent changes do not form a repeatable snapshot.
+/// New inspection audit records do not extend a descending history walk.
+pub async fn inspect(
+    pool: &PgPool,
+    collection: Collection,
+    limit: u16,
+    before: Option<&str>,
+    reason: &Reason,
+) -> Result<Receipt, Error> {
+    if !(1..=100).contains(&limit) {
+        return Err(Error::InvalidInput("page limit must be between 1 and 100"));
+    }
+    let (name, action, prefix, id_field) = collection.description();
+    if let Some(id) = before {
+        check_id(id, prefix)?;
+    }
+    let mut intent = intent(
+        action,
+        json!({"collection": name, "limit": limit, "before": before}),
+        reason,
+    );
+    let (mut tx, at) = begin_operator(pool, &mut intent).await?;
+    let query = match collection {
+        Collection::Boundaries => "SELECT to_jsonb(b) FROM public.site_boundaries b WHERE $1::TEXT IS NULL OR boundary_id < $1 ORDER BY boundary_id DESC LIMIT $2",
+        Collection::Grants => "SELECT to_jsonb(g) FROM public.site_grants g WHERE $1::TEXT IS NULL OR grant_id < $1 ORDER BY grant_id DESC LIMIT $2",
+        Collection::Audit => "SELECT to_jsonb(a) FROM public.site_audit a WHERE $1::TEXT IS NULL OR audit_id < $1 ORDER BY audit_id DESC LIMIT $2",
+    };
+    let mut items: Vec<Value> = sqlx::query_scalar(query)
+        .bind(before)
+        .bind(i64::from(limit) + 1)
+        .fetch_all(&mut *tx)
+        .await?;
+    let next_before = if items.len() > usize::from(limit) {
+        items.truncate(usize::from(limit));
+        items.last().map(|item| item[id_field].clone())
+    } else {
+        None
+    };
+    let audit_id = audit(
+        &mut tx,
+        &intent,
+        Outcome {
+            grant_id: None,
+            boundary_id: None,
+            outcome: "inspected",
+            reason: "inspected",
+            evaluation: json!({"database_operator": true}),
+            at,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Receipt {
+        audit_id,
+        result: json!({"collection": name, "items": items, "next_before": next_before}),
+    })
+}
+
 /// Suspension/revocation takes the same serialization guard as registry access.
 pub async fn disable_grant(
     pool: &PgPool,

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Protected site operator CLI (`SIGNOFF-REPAIR.3.2.2`)
+
+Added `rb-site` for explicit boundary/grant issuance, disabling and audited
+paginated inventory. It requires a selected loopback database, verifies storage
+on the repository volume and uses explicit credentials without home lookup.
+The runner now supplies a matching private synthetic passfile after source
+inspection exposed SQLx's fallback from the former missing placeholder.
+Validation: 16 focused CLI/service/ownership tests; strengthened CLI controls
+repeated with 3 passes; 13 runner controls; final strict CLI/server lint, format,
+script syntax and rendered book checks. HTTP enforcement remains `.3.2.3`.
+
 ## 2026-09-09 — Explicit site-authority service (`SIGNOFF-REPAIR.3.2.1`)
 
 Added separate site boundaries/grants, protected database-session issuance and

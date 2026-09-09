@@ -3557,6 +3557,7 @@ dependencies = [
  "futures-util",
  "gix",
  "gix-transport",
+ "percent-encoding",
  "rcgen",
  "reasonbraid-adapter",
  "reasonbraid-core",

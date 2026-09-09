@@ -153,14 +153,14 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.2.2`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.2.3`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.3.2.1
+## Current index synchronization — SIGNOFF-REPAIR.3.2.2
 
 Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — the owning leaf's legacy registry probe returned rc=0 after reproducing four shared writes by tenant admins, including writes after boundary revocation (HTTP 200; SQL witness `1|2|2|1`). The prepared-role freshness control separately returned test rc=101, as preserved there.
-- [x] **ADDRESSED (verified)** — the index now names `.3.2.2`; the separate site service and adjacent controls passed 36 tests, rc=0, and focused strict Clippy passed, rc=0. CLI and HTTP integration remain explicit prerequisites to route qualification.
+- [x] **ADDRESSED (verified)** — the index now names `.3.2.3`; operator CLI/service/ownership controls passed 16 tests, rc=0, and strengthened CLI controls passed 3 tests, rc=0. Focused strict Clippy and 13 runner controls passed, rc=0. HTTP integration remains an explicit prerequisite to route qualification.
 - [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0, generated content inspected; `git diff --check` empty, rc=0. The index advances no production qualification claim.
 
 ## Decisions

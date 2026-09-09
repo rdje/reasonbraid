@@ -77,6 +77,12 @@ on each new pooled connection, including replacement connections. The `pg_guard`
 suite exercises these refusals. With DATABASE_URL unset, the existing offline
 skips remain available; clear an inherited DATABASE_URL before an offline run.
 
+The runner supplies a private matching synthetic passfile under its owned cluster
+and explicit loopback defaults. SQLx can fall back to the home passfile after a
+missing or unmatched custom file, so the former nonexistent placeholder did not
+establish locality. The operator CLI uses explicit options with passfile lookup
+disabled; the live CLI control verifies the runner's selected fixture credential.
+
 ```bash
 bash scripts/run_pg_tests.sh pg_guard authority
 # Offline checks, with no database target inherited from a development shell:
@@ -89,7 +95,7 @@ are read-only tool inputs. GitHub execution is verified on the next push.
 Detailed contracts: `docs/decisions/2026-09-09_disposable-postgresql-runner.md` and
 `docs/decisions/2026-09-09_disposable-test-pool-ownership.md`.
 
-## The four binaries
+## Project binaries
 
 ```bash
 make release
@@ -99,6 +105,11 @@ make release
 | --- | --- |
 | `rb` | the CLI — the primary surface (threads, enrollment, node ops, budget/audit inspection) |
 | `rb-server` | the control plane — API + node channel + the embedded console at `/` (one listener, one binary) |
+| `rb-site` | deployment-local site authority administration and audited inventory; see [site authority](site-authority.md) for required database permissions and volume checks |
+| `rb-bench` | adapter benchmark runner |
+| `reasonbraid-browse` | browser acquisition worker |
+| `reasonbraid-extract` | resource extraction worker |
+| `rb-release-manifest` | release manifest tooling |
 | `rb-node` | the node worker — outbound channel, SQLite journal, the adapter supervisor |
 | `rb-journal` | the node-journal inspection tool |
 
@@ -186,4 +197,3 @@ pre-mutation state came back.
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
   covers detection through closure tests; its closure tests are the demo's
   SIGKILL beat, the revoke beat, the replay suites, and the restore exercise.
-

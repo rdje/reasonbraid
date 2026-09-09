@@ -1105,9 +1105,31 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2 — Execute and close the current full CI checkpoint
 
-- Status: `pending`; refine from the completed census and any required repair children.
+- Status: `blocked`; the source-f0265e2 checkpoint stopped at independently confirmed public visibility conflicting with README/ADR-001. Completed blocker audit .2.1 is REPAIR-0042; director decision .2.3 and history-scan repair .2.2 precede resumed full execution. All started results and cleanup are consumed.
 - Prerequisites: completed inventory .1, workflow repair .3, publisher ownership .4, browser lifetime .5 and evidence-based cleanup .6 (a justified retention outcome is valid).
 - Owns: all selected required local full CI commands on a named committed source, exact pass/fail/skip and suite census, bounded owned process/fixture/tool lifetimes and complete consumed evidence. Any encountered failure must be root-caused and repaired in a named child before claiming the checkpoint; no suppressed checks or new blanket allow-list exemptions. Commit completed units promptly, consume all required local/remote results and perform the already-authorized normal push only after the full local checkpoint passes. Return to CLI transport bounds afterward.
+- Selected execution before probes: target/checkpoint-ci/full-f0265e2 owns exact source/input/command receipts and bounded supervised gate logs. Clear database/provider/scanner/compiler overrides through the established CI environment, use the pinned installed compiler read-only with repository-local stores, require real Chrome/extraction binaries, two build jobs and nonincremental CI parity. Run format, strict all-target/all-feature lint, locked workspace bins/tests sequentially to avoid replacing in-flight executables; run all forty owned PostgreSQL commands with explicit demo and all Python controls. Book/doctrine and fresh online dependency/redacted Git-history scans are separate recorded gates. Inspect all failures/skips and stop dependent steps on failure; own concrete repair children without weakening gates. Verify existing private remote/tracking state before normal authorized push, then consume actual triggered CI results. Installed OS/compiler/browser tools are read-only exceptions; all command output/scratch/cache stays on the repo volume. No provider calls or OS-setting changes are owned.
+- Remote prerequisite observation: the project-local GitHub configuration has no authentication (gh repo view exit 4), while the existing Git transport successfully reads origin/main at b932c054023ea127520e74cfaf95b9bdf1ea47fe. The existing OS-account GitHub tool configuration is present. Own explicit read-only access to that shared tool credential configuration for repository privacy/CI API reads, derived at runtime from the OS account; keep all cache/output paths repository-local, do not copy credentials or modify/delete shared configuration, and verify its metadata before/after. This is a required authenticated tool input, not a project cache migration or a request for a new credential.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
+
+- Status: `done`; owns the unexpected visibility result and checkpoint stop before any publication. Authenticated gh repo view reports rdje/reasonbraid isPrivate=false, default main; existing Git transport reports remote main b932c054023ea127520e74cfaf95b9bdf1ea47fe. README.md:4 and docs/adr/001-uncleared-working-name.md:36 require private visibility until named clearance. No clearance or public-push authorization has been established.
+- Owns before further probes: independent unauthenticated official API verification, exact current/local remote identities, correction of current private-state claims, and a durable director review. Do not change repository visibility, rewrite history or push while that conflict is unresolved. Actor/time/cause of any visibility change is unknown; earlier private statements are not authenticated observations. A read-only tool-credential exception succeeded with shared configuration metadata unchanged; no credential contents are recorded.
+- Preserve and consume the already-started gates; if stopped at this real policy blocker, record cancellation distinctly from pass/fail and prove owned process cleanup before asking. The complete full checkpoint stays pending. No automatic downstream gate dispatch after the blocker is selected.
+- Verification: authenticated gh repo view and independent unauthenticated official curl API both return rc=0 and identify the exact public repository; shared tool configuration metadata is unchanged. Git remote/tracking identity matches; source f0265e2 is 310 commits ahead. Format and cargo-deny pass; Gitleaks returns rc=1 with two redacted findings owned by .2.2. Clippy is deliberately interrupted through its verified supervisor at the real policy blocker (rc=130), all results/cleanup consumed; native census returns handoff OK, rc=0. Downstream gates/push did not start. Book/rendered markers and diff checks pass; no production changes or public-clearance claim.
+- Commit: REPAIR-0042; director decision .2.3 remains required. promotion: promoted → docs/decisions/2026-09-09_publication-precondition.md, three indexed answers.
+
+###### SIGNOFF-REPAIR.11.4.3.1.2.2 — Classify and repair the history secret-scan findings
+
+- Status: `pending`; owns two redacted generic-api-key findings at historical commit 82155f53146585dc047734447e7288ed5c14e187, crates/reasonbraid-server/tests/pg_guard.rs lines 68 and 110. The pinned full-history scan returned exit 1; scanner/result groups are consumed. Raw evidence: target/ci-scanners/gitleaks-9u8ke3yi.
+- Preliminary source evidence places both literals in local preflight/symlink fixture controls. Complete literal provenance, data-flow and real-credential classification before any exclusion. If proved non-secret, qualify only exact historical fingerprints with an independent detection control; no blanket rule/path suppression. If an actual credential is found, contain/revoke it through authorized ownership before any history remedy; do not print secret contents or force-rewrite Git. Do not treat a redacted report or likely fixture as a passing gate.
+- Verification / commit: pending; publication-precondition review precedes dependent new work.
+
+###### SIGNOFF-REPAIR.11.4.3.1.2.3 — Obtain and execute the director's repository-visibility decision
+
+- Status: `pending`; blocked on director input required by the independently verified conflict with README.md:4 and ADR-001:36. Proposed action: restore rdje/reasonbraid to private, then independently verify the setting before publication. The agent has made no visibility change or push. An explicit revised public instruction must be durable and must not be misrepresented as name clearance or completed release qualification.
+- After decision: execute only the authorized visibility action, verify exact target/result and update live/book records. Then .2.2 history-scan repair and the remaining .2 full checkpoint on a fresh named source; normal push only after all required gates pass. Prior public access cannot be undone by a later setting.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
@@ -1213,12 +1235,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.2` | `pending` | execute full checkpoint after clean REPAIR-0041 and consumed census |
-| 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 5 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 6 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.2.3` | `pending` | director decision: confirmed public remote conflicts with private-repository requirement |
+| 2 | `SIGNOFF-REPAIR.11.4.3.1.2.2` | `pending` | classify/repair two exact redacted history-scan findings |
+| 3 | `SIGNOFF-REPAIR.11.4.3.1.2` | `blocked` | resume complete checkpoint after publication decision and history repair |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -1226,7 +1250,7 @@ The census is partitioned under `docs/tasks/artifacts/signoff_review/`. Each rec
 
 ## Blockers
 
-None for the current documentation and repair work. G6/G7 external review, public-name clearance and license decisions remain their existing director/external-owned gates; they do not prevent local repairs.
+Publication/checkpoint is blocked by confirmed public remote visibility against README/ADR-001; director decision .11.4.3.1.2.3 is required. Two redacted history-scan findings have repair owner .2.2. All started jobs are consumed. G6/G7, public-name clearance and license decisions retain their separate external ownership. No push or visibility change has occurred.
 
 ## Verification Log
 
@@ -1350,3 +1374,10 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - [x] **ADDRESSED (verified)** — `gc_control.py` returns rc=0: seven native compilations/seven executable invocations pass, both shared/exclusive locks protect old content and the compiler retires it after release; every group is consumed. `retire.py` returns rc=0 after a clean native census and exact frozen identity checks: 645 obsolete singly-linked whole sessions / 1,984 files / 5,116,558,334 logical bytes removed under exclusive locks, zero busy locks; newest/young/working/partial/hard-linked/evidence data retained.
 - [x] **NO REGRESSION** — `verify_retirement.py` returns rc=0 with exact residue, unchanged retained cache metadata and all 3,545 inspected source/diagnostic hashes equal. `cargo check --offline --locked -p reasonbraid-server --lib` passes, rc=0, 375.636s, group consumed. `make book`, eight rendered markers, unchanged production/README inspection and `git diff --check` pass, rc=0. The sampler's symbol-processing timeout is consumed and preserved; a retry starts no child after compiler exit. No wait-stack diagnosis or physical allocation claim.
 - [x] **FIX / LOCKSTEP** — task, decision/answers/index, artifact/index, book, live status, changelog, lesson and resume/frontier describe the verified disposition; qualification categories remain unchanged. All results are consumed. Full local/remote gates and push remain `.11.4.3.1.2`; startup investigation `.11.2` and all historical failed fixtures remain open/preserved.
+
+## Current commit acceptance — SIGNOFF-REPAIR.11.4.3.1.2.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `gh repo view` and independent unauthenticated official `curl` API both return rc=0 for rdje/reasonbraid with private=false/public visibility; `git ls-remote` returns the exact tracked remote main, rc=0. README.md:4 and ADR-001:36 require private visibility until named clearance. The current state contradicts that prerequisite; no actor/change-time claim is made. The initial local-tool-config auth refusal (rc=4) is preserved and the explicit shared read-only tool input verifies unchanged metadata.
+- [x] **ADDRESSED (verified)** — publication is blocked and current private-state claims corrected, with concrete director owner .2.3 and secret-scan repair .2.2. The verified owned checkpoint driver receives SIGINT, returns rc=130 after Clippy cleanup, and its result is consumed; downstream gate receipts are absent. Native `check_no_background_jobs.sh` returns handoff OK, rc=0. No visibility change, push, blanket scanner exclusion or history rewrite occurred.
+- [x] **NO REGRESSION** — format passes rc=0; pinned cargo-deny passes rc=0 with all four policy categories OK. Gitleaks returns rc=1 with exactly two REDACTED records, both owned before further work; no secret-free claim. All scanner results are consumed. `make book`, rendered blocker/resume checks and `git diff --check` pass, rc=0; production/configuration are unchanged. Interrupted lint and unstarted workspace/Python/PG gates remain explicitly unqualified.
+- [x] **FIX / LOCKSTEP** — artifact/index, decision/answers/index, live/book records, changelog, lesson and task/resume frontier preserve actual remote identity, original privacy requirement, exact gate statuses and the required director action. REPAIR-0042 commits the completed audit; the full checkpoint remains blocked and release categories unchanged.

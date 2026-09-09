@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — A private-repository instruction is not remote-state evidence
+
+- Authenticated GitHub metadata and an independent unauthenticated official API request both report the exact configured repository is public; README/ADR-001 require private visibility. The remote main identity matches tracking, but earlier private claims were not authenticated observations. No change actor/time is established. Block publication and record the required director decision; do not silently change visibility or infer permission from the existing public state.
+- Format/cargo-deny pass, history scan finds two redacted historical fixture-token matches, and strict Clippy is deliberately interrupted through its verified supervisor at the real policy blocker. All results/cleanup are consumed, native census is clear and downstream full gates did not start. Own exact secret classification/repair separately; no blanket exclusion, history rewrite or secret-free claim. Evidence: docs/tasks/artifacts/signoff_review/publication-precondition.md.
+- promotion: promoted → `docs/decisions/2026-09-09_publication-precondition.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.1`.
+
 ## 2026-09-09 — Compiler cache retirement follows the actual lock and session identity
 
 - Exact pinned rustc source defines finalized immutable snapshots and POSIX fcntl locks on macOS. The initial link-stage lock assertion fails after a successful compile; an observed finalized session and the pinned release point explain the bad phase assumption. Preserve it. Native shared/exclusive contention controls protect old hashes across later compilations, then prove compiler retirement after release and successful regeneration; fourteen commands finish and their groups are consumed.

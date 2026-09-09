@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_publication-precondition.md](docs/decisions/2026-09-09_publication-precondition.md) | decision | verify actual remote visibility, stop conflicting publication and keep partial gates/history findings accurately owned |
 | [2026-09-09_compiler-artifact-disposition.md](docs/decisions/2026-09-09_compiler-artifact-disposition.md) | decision | qualify whole-session cache retirement with frozen identities, native POSIX lock controls and preserved evidence |
 | [2026-09-09_browser-combined-qualification.md](docs/decisions/2026-09-09_browser-combined-qualification.md) | decision | qualify exact listener ownership, explicitly gated overlap and runtime-root relocation while keeping broader parent/container limits open |
 | [2026-09-09_browser-production-lifetimes.md](docs/decisions/2026-09-09_browser-production-lifetimes.md) | decision | own Chrome before cancellable launch, isolate private local storage and require bounded consumed shutdown; preserve parent/container and retention limits |

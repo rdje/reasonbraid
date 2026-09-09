@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Publication precondition](docs/tasks/artifacts/signoff_review/publication-precondition.md) — `.11.4.3.1.2.1`: confirmed public/private-policy conflict, consumed checkpoint stop and concrete decision/repair owners.
+
 - [Compiler artifact disposition](docs/tasks/artifacts/signoff_review/compiler-artifact-disposition.md) — `.11.4.3.1.6`: frozen session identities, native lock controls, guarded cleanup and exact residue.
 
 Owner: `SIGNOFF-REPAIR.1`. Baseline: `9c2d2ba`. Review spans 2026-09-08–09.

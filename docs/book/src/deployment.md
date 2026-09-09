@@ -247,6 +247,27 @@ unstated. All twenty-six final worker/browser groups are independently absent;
 the nine earlier failed fixtures remain preserved. Exact results and remaining
 boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
 
+## Publication is blocked on repository visibility
+
+The current checkpoint independently confirmed that GitHub reports
+`rdje/reasonbraid` as public. README and ADR-001 require it to remain private until
+named clearance or rename. Earlier private-state statements do not prove the
+remote setting. No push or visibility change has been made; the director must
+resolve this concrete conflict before publication. A later private setting cannot
+undo prior public access or establish public-name clearance.
+
+Format and the pinned dependency gate passed. The history scanner reported two
+redacted matches in historical fixture tests; their provenance/classification and
+any narrowly justified correction have a dedicated repair task. They are not yet
+classified as leaked credentials or false positives. Strict Clippy was deliberately
+interrupted at the policy blocker and its group consumed; later workspace, Python
+and PostgreSQL/demo gates did not start. All started results are consumed.
+
+Resume with the director's visibility decision, the history-scan repair and a
+complete checkpoint on the resulting committed source. Only then perform the
+authorized normal push and consume triggered CI results. Exact identities, policy,
+commands and limits: `docs/tasks/artifacts/signoff_review/publication-precondition.md`.
+
 ## Periodic compiler artifact cleanup
 
 Review generated artifacts about once per day. Keep diagnostics and failed-run

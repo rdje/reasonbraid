@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Contain the publication-precondition conflict (`SIGNOFF-REPAIR.11.4.3.1.2.1`)
+
+Independently confirm the remote is public despite the private-repository policy.
+Block publication and record the director decision plus exact history-scan repair
+owners. Preserve passed format/dependency gates, two redacted scanner findings and
+the intentionally interrupted Clippy result; all process cleanup is consumed.
+Correct current-state documentation and retain the full checkpoint as incomplete.
+No visibility change, push, scanner exemption or production change is made.
+
 ## 2026-09-09 — Retire verified obsolete compiler sessions (`SIGNOFF-REPAIR.11.4.3.1.6`)
 
 Qualify the pinned macOS compiler locks with native protected-session and

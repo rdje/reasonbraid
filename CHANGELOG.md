@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Keyed server bootstrap recovery (`SIGNOFF-REPAIR.3.3.4.3.3.3.2`)
+
+Persist a canonical request key and complete creation outcome with guarded
+bootstrap. Matching retries recover original tenant/principal/boundary/grant IDs;
+conflicts and malformed storage refuse. Concurrent losers roll back before one
+guarded replay within the original deadline. Actual lost acknowledgment and
+unconfirmed-commit recovery are qualified; no-key semantics remain unchanged.
+All 73 selected controls, final eleven-control fixture rerun and strict lint pass;
+every result/shutdown consumed, four owned clusters absent. Preserve identity FKs,
+update their 24 named fixture purges, document API examples and CLI limitations,
+and capture the director's semantic introspection proposal with an assessment
+owner. The observed native trust-store fixture wait has an immediate local repair
+and broader .11.2 follow-up. Durable CLI persistence is next.
+
 ## 2026-09-09 — Bootstrap uncertainty and recovery contract (`SIGNOFF-REPAIR.3.3.4.3.3.3.1`)
 
 Qualify a real bootstrap commit timeout followed by the original committed

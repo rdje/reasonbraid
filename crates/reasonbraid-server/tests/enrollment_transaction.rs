@@ -181,7 +181,7 @@ fn tenant(a: &Value) -> TenantId {
     a["tenant_id"].as_str().unwrap().parse().unwrap()
 }
 
-const ENROLLMENT_TABLES: [&str; 8] = [
+const ENROLLMENT_TABLES: [&str; 9] = [
     "tenants",
     "enrollment_boundaries",
     "authority_grants",
@@ -190,6 +190,7 @@ const ENROLLMENT_TABLES: [&str; 8] = [
     "usage_quotas",
     "enrollments",
     "tenant_authority_guards",
+    "tenant_bootstrap_requests",
 ];
 
 async fn snapshot(pool: &PgPool) -> Vec<Value> {

@@ -76,6 +76,7 @@ async fn pool() -> Option<PgPool> {
         "usage_quotas",
         "federation_agreements",
         "cross_domain_receipts",
+        "tenant_bootstrap_requests",
         "tenants",
         "idempotency",
         "event_log",

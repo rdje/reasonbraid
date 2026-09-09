@@ -8,7 +8,7 @@ answers:
 # Persist the bootstrap request identity before sending it
 
 - Owner: `SIGNOFF-REPAIR.3.3.4.3.3.3`; runtime/contract child `.1`, server protocol `.2`, CLI persistence `.3`.
-- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol and CLI recovery are not implemented yet.
+- Status: selected contract. Actual unconfirmed-commit/readback behavior is qualified by 25 selected controls and focused strict lint; all results/shutdown consumed, cluster absent. Server protocol in child .2 passes 73 selected controls, its final eleven-control fixture rerun and strict lint; all results/shutdown are consumed and four owned clusters are absent. CLI persistence/recovery remains unimplemented in child .3.
 - Evidence: `docs/tasks/artifacts/signoff_review/bootstrap-recovery.md` at product baseline `01bd473`.
 
 ## Request and outcome
@@ -109,3 +109,24 @@ promise response-loss recovery; operator reconciliation may still be needed for
 callers that omit the key. The CLI will use keyed recovery by default once its
 implementation is qualified. No completed-client-recovery or zero-defect claim
 follows from the truthful unconfirmed error or this design alone.
+
+## Server implementation details
+
+Migration 0057 creates tenant_bootstrap_requests with a canonical UUIDv7 request
+key, unique tenant mapping, identity foreign key, exact C-collated name, positive
+smallint outcome version and JSON object outcome. No legacy key inference occurs.
+Immutability is the service/retention contract: no update/delete/expiry endpoint is
+added; database-owner mutation is corruption, not a supported recovery operation.
+The database enforces key/tenant uniqueness, identity existence and basic shape;
+the version-one decoder additionally requires every response field, canonical
+source IDs and the actual tenant/human/enrollment/grant/parent bindings. Current
+grant status and time are not issuance checks on this historical replay.
+
+The bootstrap conflict wire code is idempotency_conflict (409). Ordinary command
+envelope idempotency_mismatch remains unchanged. Optional null keys retain the
+existing no-key behavior; malformed strings/modes produce semantic 400, while
+non-string JSON values fail extraction with 422. The private coordinator in
+api/bootstrap.rs uses the existing typed transaction owner, one abort/reacquire
+redirect and the remaining whole-millisecond budget. No outer timeout can erase
+an already-sent COMMIT phase. Exact evidence is recorded in
+docs/tasks/artifacts/signoff_review/bootstrap-server.md.

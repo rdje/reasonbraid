@@ -449,3 +449,123 @@ async fn evaluation_provenance_upgrade_preserves_legacy_records_without_inferenc
         record
     );
 }
+
+/// Request recovery is additive: old tenants/enrollments retain their exact
+/// identity, and migration never guesses a request identity from a name.
+#[tokio::test]
+async fn bootstrap_request_upgrade_preserves_legacy_rows_and_enforces_binding_constraints() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    let prefix = Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= 56)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    sqlx::raw_sql("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+        .execute(&pool)
+        .await
+        .unwrap();
+    prefix.run(&pool).await.unwrap();
+    let tenant = reasonbraid_core::TenantId::new().to_string();
+    sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'legacy bootstrap tenant')")
+        .bind(&tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ('legacy-human', $1, 'human', 'legacy bootstrap name')")
+        .bind(&tenant).execute(&pool).await.unwrap();
+    let before: Value = sqlx::query_scalar("SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(t)) FROM tenants t), (SELECT jsonb_agg(to_jsonb(e)) FROM enrollments e))")
+        .fetch_one(&pool).await.unwrap();
+    migrator.run(&pool).await.unwrap();
+    let after: Value = sqlx::query_scalar("SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(t)) FROM tenants t), (SELECT jsonb_agg(to_jsonb(e)) FROM enrollments e))")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(before, after);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tenant_bootstrap_requests")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "no invented legacy request receipt");
+    let key = reasonbraid_core::RequestId::new().to_string();
+    for (request, target, version, outcome, code) in [
+        (
+            "req_bad".to_string(),
+            tenant.clone(),
+            1_i16,
+            json!({}),
+            "23514",
+        ),
+        (
+            "req_00000000-0000-7000-8000-00000000000A".into(),
+            tenant.clone(),
+            1,
+            json!({}),
+            "23514",
+        ),
+        (
+            key.clone(),
+            reasonbraid_core::TenantId::new().to_string(),
+            1,
+            json!({}),
+            "23503",
+        ),
+        (key.clone(), tenant.clone(), 0, json!({}), "23514"),
+        (key.clone(), tenant.clone(), 1, json!([]), "23514"),
+        (key.clone(), tenant.clone(), 1, Value::Null, "23514"),
+    ] {
+        let error = sqlx::query("INSERT INTO tenant_bootstrap_requests (request_id, tenant_id, request_name, outcome_version, outcome) VALUES ($1, $2, 'legacy bootstrap name', $3, $4)")
+            .bind(request).bind(target).bind(version).bind(outcome).execute(&pool).await.unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some(code)
+        );
+    }
+    sqlx::query("INSERT INTO tenant_bootstrap_requests (request_id, tenant_id, request_name, outcome_version, outcome) VALUES ($1, $2, 'schema-only fixture', 1, '{}')")
+        .bind(&key).bind(&tenant).execute(&pool).await.unwrap();
+    for request in [key.clone(), reasonbraid_core::RequestId::new().to_string()] {
+        let error = sqlx::query("INSERT INTO tenant_bootstrap_requests (request_id, tenant_id, request_name, outcome_version, outcome) VALUES ($1, $2, 'schema-only fixture', 1, '{}')")
+            .bind(request).bind(&tenant).execute(&pool).await.unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some("23505")
+        );
+    }
+    let receipt: Value = sqlx::query_scalar(
+        "SELECT to_jsonb(r) FROM tenant_bootstrap_requests r WHERE request_id = $1",
+    )
+    .bind(&key)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    migrator.run(&pool).await.unwrap();
+    let replay: Value = sqlx::query_scalar(
+        "SELECT to_jsonb(r) FROM tenant_bootstrap_requests r WHERE request_id = $1",
+    )
+    .bind(&key)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(receipt, replay);
+    let error = sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(&tenant)
+        .execute(&pool)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.as_database_error().unwrap().code().as_deref(),
+        Some("23503")
+    );
+}

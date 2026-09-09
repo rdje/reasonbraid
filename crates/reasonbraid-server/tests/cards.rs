@@ -60,6 +60,7 @@ async fn pool() -> Option<PgPool> {
         "idempotency",
         "event_log",
         "aggregate_state",
+        "tenant_bootstrap_requests",
         "tenants",
     ] {
         sqlx::query(&format!("DELETE FROM {table}"))

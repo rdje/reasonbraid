@@ -27,12 +27,16 @@ with 56 live controls and strict lint. Standalone authority/status integration
 `.3.3.4.3.3.2` passes 97 selected controls, final focused strict lint and book
 checks; all results/shutdown are consumed and three owned clusters are absent.
 New-bootstrap uncertainty is reproduced under `.3.3.4.3.3.3.1` with 25 selected
-controls and strict lint. The explicit RequestId/outcome recovery contract is
-selected; server protocol `.3.3.4.3.3.3.2`, then durable CLI recovery, are next
-before issuance coverage reconciliation. Remaining application/
+controls and strict lint. Server RequestId/outcome recovery `.3.3.4.3.3.3.2` now
+passes 73 selected controls, a final eleven-control fixture rerun and strict lint;
+all results/shutdown are consumed and four owned clusters are absent. Durable CLI
+request persistence `.3.3.4.3.3.3.3` is next before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
+The director's semantic introspection/API/MCP discussion is preserved for assessment
+in SIGNOFF-REPAIR.6.4; it is a proposal, not an implemented feature or a change to
+the accepted execution baseline.
 
 ### 0.4.1 execution-baseline errata
 

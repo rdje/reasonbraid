@@ -27,6 +27,8 @@
 
 use std::sync::Arc;
 
+mod bootstrap;
+
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -707,6 +709,10 @@ pub struct EnrollRequest {
     /// boundary is created here). Present: enroll into an existing tenant.
     #[serde(default)]
     pub tenant_id: Option<String>,
+    /// Canonical RequestId for recovery of one new-human bootstrap. Persist it
+    /// before sending; omit for intentionally distinct no-key requests.
+    #[serde(default)]
+    pub bootstrap_request_id: Option<String>,
     /// `"human"` or `"role"`.
     pub kind: String,
     pub name: String,
@@ -727,8 +733,10 @@ pub struct EnrollResponse {
     pub boundary_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grant_id: Option<String>,
-    /// `true` when (tenant, kind, name) already exists: the ORIGINAL principal id is
-    /// returned; no new identity, grant or enrollment was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bootstrap_request_id: Option<String>,
+    /// `true` for an existing (tenant, kind, name) or keyed bootstrap outcome:
+    /// the original principal is returned; no new identity or grant was created.
     pub replayed: bool,
 }
 
@@ -821,6 +829,11 @@ async fn enroll(
         }
     };
 
+    if let Some(raw) = &req.bootstrap_request_id {
+        let key = bootstrap::validate_key(raw, &req)?;
+        return bootstrap::enroll(&state.pool, req, key, tenant_id).await;
+    }
+
     authority::transact_with_error(
         &state.pool,
         &[(tenant_id, GuardMode::Exclusive)],
@@ -857,6 +870,7 @@ async fn enroll_in_guard(
             name: req.name,
             boundary_id: None,
             grant_id: None,
+            bootstrap_request_id: None,
             replayed: true,
         }));
     }
@@ -1000,6 +1014,7 @@ async fn enroll_in_guard(
         name: req.name,
         boundary_id: boundary.as_ref().map(|b| b.boundary_id.clone()),
         grant_id: Some(grant.grant_id),
+        bootstrap_request_id: None,
         replayed: false,
     }))
 }

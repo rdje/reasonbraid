@@ -51,9 +51,11 @@ A parent expiring during a guard wait cannot authorize new enrollment. Storage
 failure returns a safe internal error; an unconfirmed commit returns
 `commit_outcome_unconfirmed`. Inspect the relevant tenant state before retrying
 that outcome. For a new bootstrap, a lost response can leave the CLI without the
-server-generated tenant ID; operator database reconciliation may be needed until
-the tracked bootstrap recovery protocol is implemented. Live qualification has
-confirmed a commit after this unconfirmed response. The selected next CLI design
+server-generated tenant ID; operator database reconciliation may be needed. The
+server now accepts an explicit bootstrap_request_id and returns its committed
+creation outcome on matching retries, but this CLI does not yet persist or send
+that key. Live qualification has confirmed a commit after the unconfirmed response.
+The selected next CLI design
 will persist a request ID before sending and retain it through local state
 publication; this recovery behavior is not implemented yet. Retrying the same human
 name without --tenant can create another tenant. These are server transaction guarantees; the CLI's local state-file

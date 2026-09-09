@@ -3,7 +3,9 @@
 //! Declare every tenant whose authority or domain state will be used, and the
 //! strongest required mode, before accessing that state. A minimal foreign-ID
 //! existence probe may identify a binding refusal; it must not decode/evaluate
-//! foreign policy or mutate foreign state. The callback must validate authority
+//! foreign policy or mutate foreign state. Bootstrap recovery may similarly read
+//! only an immutable request-to-tenant route, then abort and reacquire that tenant
+//! in a new transaction before reading its outcome. The callback must validate authority
 //! and bind effect SQL to the guarded tenant. It must not issue transaction-control SQL, alter the
 //! local limits, delete anchors, or perform external work. The borrowed connection
 //! supports existing SQLx helpers; it cannot mechanically inspect their SQL.

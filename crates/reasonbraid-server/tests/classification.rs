@@ -63,6 +63,7 @@ async fn pool() -> Option<PgPool> {
         "event_log",
         "aggregate_state",
         "cross_domain_receipts",
+        "tenant_bootstrap_requests",
         "tenants",
     ] {
         sqlx::query(&format!("DELETE FROM {table}"))

@@ -599,15 +599,13 @@ expiry. Commit failures retain uncertainty even when a controlled deferred fault
 can prove that its particular transaction rolled back.
 
 For a new bootstrap whose success response is lost or whose commit is
-unconfirmed, the client may not know the server-generated tenant ID. There is
-currently no bootstrap request key or outcome lookup; reconciliation can require
-an operator to inspect the database. Repeating the same human name without a
-tenant ID creates another new request and can create another tenant. A live control now observes this exact case: HTTP commit uncertainty followed by
-one committed bootstrap, then a distinct tenant from a repeated no-key request.
-All 25 selected controls (24 live / one pure) and focused strict lint pass; all
-results/shutdown are consumed and the owned cluster is absent. A complete client
-recovery protocol is tracked under `SIGNOFF-REPAIR.3.3.4.3.3.3`; the transaction
-guard and truthful error phase alone do not provide that protocol.
+unconfirmed, a caller that omitted the request key may not know the generated
+tenant ID. Operator database reconciliation can still be needed. Repeating the
+same human name without a tenant ID or request key is intentionally a new request
+and can create another tenant. A live control observes HTTP commit uncertainty,
+then the original committed bootstrap, then a distinct tenant from a repeated
+no-key request. Keyed callers can now recover through the protocol below; the CLI
+has not yet implemented durable request-key persistence.
 
 Enrollment remains a development trust mechanism. A human receives the nine
 explicit dev admin actions regardless of an `actions` field, and its grant names
@@ -619,30 +617,89 @@ exact rollback/race evidence for this integration are tracked in
 controls (96 live / one pure), final focused strict lint and rendered book checks
 pass. Every result/shutdown is consumed; all three owned clusters are absent.
 
-#### Selected bootstrap recovery contract — implementation pending
+#### Recover one bootstrap with a persisted request ID
 
-The next server change will accept an optional canonical `bootstrap_request_id`
-for a new-human bootstrap. The client will keep that request ID before sending;
-the server will continue generating tenant IDs. A matching request ID and creation
-request will recover the original committed tenant, principal, boundary and grant
-IDs with `replayed: true`. Conflicting payloads will return 409, and malformed
-stored outcomes will refuse safely. Requests without a key will keep their current
-intentionally-new behavior. This field is **not implemented yet**.
+`POST /v1/enrollments` accepts an optional `bootstrap_request_id` for a human
+creating a new tenant. Generate a fresh RequestId once and **durably persist it
+with the exact request and server identity before the first send**. Its wire form
+is exactly 40 characters: `req_` followed by a lowercase, hyphenated RFC UUIDv7.
+The server continues generating the tenant and principal IDs. This key cannot
+select an existing tenant for new authority.
+Rust callers constructing EnrollRequest or EnrollResponse struct literals must
+provide the new bootstrap_request_id field; None preserves the legacy wire shape.
 
-The original outcome and its request binding will commit with enrollment. A
-concurrent loser will roll back its provisional rows before reading the winner's
-outcome under that tenant's guard. Request routing will use at most one redirect
-within the existing total deadline; it will not let a caller turn its request ID
-into authority over an existing tenant. Recovering a stored creation outcome after
-revocation will not create or reactivate a grant.
+The following IDs are illustrative; clients must generate their own request ID:
 
-The following CLI change will persist one bounded pending request and server
-binding before HTTP, validate the reply, durably publish local state and only then
-clear the pending request. A response loss or interrupted state write will reuse
-that pending request; an ordinary completed new invocation will use a fresh key.
-The selected contract and remaining implementation owners are recorded in
-`docs/decisions/2026-09-09_bootstrap-recovery.md`. Caller/issuer authentication and
-Internet qualification remain separate work.
+```json
+{
+  "kind": "human",
+  "name": "operator",
+  "bootstrap_request_id": "req_00000000-0000-7000-8000-000000000001"
+}
+```
+
+A successful original response contains the complete creation outcome:
+
+```json
+{
+  "tenant_id": "ten_00000000-0000-7000-8000-000000000002",
+  "principal_id": "hpr_00000000-0000-7000-8000-000000000003",
+  "kind": "human",
+  "name": "operator",
+  "boundary_id": "bnd_ten_00000000-0000-7000-8000-000000000002",
+  "grant_id": "grt_hpr_00000000-0000-7000-8000-000000000003",
+  "bootstrap_request_id": "req_00000000-0000-7000-8000-000000000001",
+  "replayed": false
+}
+```
+
+Resubmit the same request ID and name to the same authoritative store after a
+lost response or `commit_outcome_unconfirmed`. A committed result returns all
+these original fields with `replayed: true`. If the original transaction rolled
+back, the same key can complete creation once. A concurrent request may still hit
+a bounded lock/deadline error; retain the key for subsequent recovery. A new key
+means a distinct logical bootstrap, even when the name is identical.
+
+| Request or stored condition | Result |
+| --- | --- |
+| Same key and exact name | Original tenant, human, boundary and grant IDs; replay creates no authority. |
+| Same key with a different name | 409 `idempotency_conflict`; existing binding/outcome remains unchanged. |
+| Changed human `actions` list | Ignored by this dev endpoint; same-key/name replay still succeeds. |
+| Noncanonical, malformed or non-v7 key | 400 `invalid_command` before database effects. |
+| Key combined with a role or a non-null tenant_id | 400 `invalid_command`; keyed recovery is only for new-human bootstrap. |
+| Wrong JSON type for the key | JSON extraction refuses with 422; no enrollment effects. |
+| Omitted or null key | Existing no-key semantics; no keyed recovery guarantee. |
+| Unsupported outcome version, malformed IDs/shape or broken source binding | Safe 500 `dependency_unavailable`; no replacement bootstrap or fabricated result. |
+| Revoked or expired original authority | Historical keyed outcome remains recoverable; replay does not reactivate authority. |
+
+Migration 0057 adds an outcome table with a canonical request key, unique tenant
+mapping and tenant identity foreign key. It invents no receipts for legacy rows.
+The request binding and versioned complete result commit in the same transaction
+as all bootstrap rows. Service paths only insert/read these bindings. Database
+maintenance, backups and retention must preserve the binding while the original
+tenant is recoverable; deleting or reassigning it destroys that recovery guarantee.
+Database-owner corruption is refused where detected, not treated as a supported
+mutation path or a reason to mint another tenant.
+
+A retry may read only the request-to-tenant route before knowing the original
+tenant. It aborts its provisional attempt, then acquires that tenant's exclusive
+guard before decoding the full outcome and checking identity/grant/parent
+bindings. A concurrent loser likewise rolls back every provisional row and anchor.
+At most one redirect shares the original fifteen-second budget; COMMIT errors keep
+their unconfirmed phase. Replays validate historical identity bindings without
+re-evaluating current grant liveness. This does not add caller authentication or
+site-operator credentials.
+
+Server qualification under `SIGNOFF-REPAIR.3.3.4.3.3.3.2` passes 73 selected
+controls (72 live / one pure), a final eleven-control fixture rerun and strict
+lint. All results/shutdown are consumed; all four owned clusters are absent.
+`docs/tasks/artifacts/signoff_review/bootstrap-server.md` records the matched
+baseline, observed contention, rollback, real commit/response-loss recovery,
+malformed storage, migration and fifteen-second shared-budget controls. The next CLI child will persist pending requests,
+validate replies and durably publish state before clearing pending recovery.
+Until then, the existing CLI still needs operator reconciliation after an
+unrecoverable no-key response loss. The complete selected contract is
+`docs/decisions/2026-09-09_bootstrap-recovery.md`.
 
 ### Guard lifetime and failure handling
 

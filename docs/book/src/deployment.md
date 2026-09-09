@@ -115,6 +115,23 @@ claim follows from the inventory. See `docs/ci.md` for exact commands and
 `docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md` for source evidence,
 tool boundaries and the concrete repair sequence.
 
+CI now has a shared setup launcher:
+
+```bash
+python3 -B scripts/ci_env.py --rust -- cargo fmt --all -- --check
+```
+
+It establishes repository stores before optional pinned compiler installation and
+execs the command from the checkout root. Installed rustup is read-only; new
+compiler files stay under .project-data/installed-toolchains. Installer failure,
+timeout or terminal cancellation prevents dispatch and consumes child cleanup.
+CI clears inherited database/provider/scanner and selected compiler overrides;
+ordinary developer project_env behavior is unchanged. Explicit output paths still
+need their command's storage checks. Eight focused and eighteen adjacent controls
+pass, using an instrumented installer; workflow wiring and actual remote compiler
+installation remain pending. The exact contract and evidence are in
+`docs/tasks/artifacts/signoff_review/ci-environment.md`.
+
 ## Project binaries
 
 ```bash

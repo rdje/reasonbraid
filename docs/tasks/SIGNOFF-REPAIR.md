@@ -971,9 +971,32 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.3 — Close CI workflow locality and script coverage gaps
 
-- Status: `pending`; selected after inventory REPAIR-0033 commits cleanly.
+- Status: `active`; split into bounded .3.1 environment, .3.2 scanner and .3.3 workflow wiring children after clean 238051b, thirteen green hooks, cleared/untracked brief and consumed handoff census.
 - Owns before changes: `.github/workflows/rust.yml`, supply-chain/doctrine workflow execution where required, a shared repository-local CI launcher and its focused controls. The Rust check job currently runs raw cargo after an ambient-store toolchain action; no workflow invokes the four Python control modules. The cargo-deny action's container/tool stores also need explicit source review and containment before claiming all CI stores are local. Preserve the existing pinned toolchain, strict gates and full owned PG/demo scope.
 - Acceptance: every project-owned compiler/package/cache/temp/output path derives from the checkout; installed image tools remain documented read-only inputs. Wire the existing Python unit and live runner controls, build required worker binaries before runtime checks, require the demo explicitly and make skip boundaries visible. Qualify launcher routing/locality/refusal controls and syntax locally; actual GitHub execution is later evidence. Do not claim browser qualification from an absent-browser skip. Any larger independent defect gets its own child.
+- Verification / commit: pending.
+
+####### SIGNOFF-REPAIR.11.4.3.1.3.1 — Provide the repository-local CI environment launcher
+
+- Status: `done`; REPAIR-0034.
+- Owns before changes: new scripts/ci_env.py, focused scripts/tests/test_ci_env.py controls and task-owned target/ci-workflow-controls probes. Reuse project_env store validation and the existing supervised installer process primitive; do not refactor unrelated runner behavior. Establish local stores before any installer/command, provision the repository-pinned compiler only when requested, preserve installed OS/rustup as read-only inputs, and exec the requested command from the current root with bounded installer cleanup. Remove the documented ambient database/provider/scanner overrides in CI; do not claim an arbitrary filesystem sandbox.
+- Acceptance: real child probes observe relocated same-volume stores and requested root, explicit local compiler selection, no inherited database/provider/scanner overrides; existing compatible local compiler skips installation; failed/timeout installer prevents dispatch and is reaped; symlink store refuses before external work. Instrumented tools may stand in for remote download while exercising actual process/environment routing. Existing project-env/runner controls remain green. Product Rust and live service behavior are unchanged. Commit this child before scanner setup or workflow wiring.
+- Verification: instrumented raw-workflow baseline observes all three commands inherit non-checkout stores, rc=0; new CI launcher suite passes eight controls in 4.012s, rc=0. Existing project-env five controls (0.013s) and runner thirteen controls (1.126s) pass, rc=0. All child results consumed; directory census finds zero owned environment fixtures. Final AST/source identity probe, make book, eight rendered markers and git diff --check pass, rc=0. Adjacent launcher/supervisor/workflows are unchanged. Evidence: docs/tasks/artifacts/signoff_review/ci-environment.md and target/ci-workflow-controls/environment-* receipts. No real compiler download, Rust/live-PG/full-CI or remote run occurred.
+- Commit: REPAIR-0034; after clean commit/brief and consumed handoff census, select .3.2 scanner setup.
+- promotion: promoted → docs/decisions/2026-09-09_ci-environment.md, indexed with three answers. CI/deployment guidance, task/frontier, live records and hook-derived map updated; README and LIVE_STATUS categories unchanged.
+
+####### SIGNOFF-REPAIR.11.4.3.1.3.2 — Pin and contain CI scanner installation
+
+- Status: `pending`.
+- Owns before changes: scanner installation/check driver, exact source/version/checksum probes, focused integrity/locality/refusal controls and supply-chain tool documentation. Read-only git ls-remote resolved cargo-deny-action v1 to ef301417264190a1eb9f26fcf171642070085c5b, rc=0. Retrieved v1 Dockerfile declares Rust 1.71.0 and cargo-deny 0.14.21; the local policy and lockfile require the modern pinned toolchain/cargo-deny 0.20.2 path. Source mismatch is established; remote runtime failure is not claimed.
+- Acceptance: explicit pinned cargo-deny and gitleaks setup under repository-derived stores, verified downloaded artifact integrity before use, no unrestricted archive extraction or ambient scanner configuration; commands/results use the intended versions. Use existing installed OS/network tooling read-only. Never print secret values; genuine findings are repaired/owned, not suppressed. Installer failure cannot run a stale/wrong scanner.
+- Verification / commit: pending.
+
+####### SIGNOFF-REPAIR.11.4.3.1.3.3 — Wire complete local CI commands into workflows
+
+- Status: `pending`.
+- Owns before changes: .github/workflows/{rust,doctrines,supply-chain}.yml and narrowly required command glue. Replace ambient/default action stores with the qualified launcher/scanner path; wire all Python controls, worker binaries, explicit full demo, and required browser availability/execution reporting. Preserve strict gates and normal push/PR triggering.
+- Acceptance: source/syntax/route controls prove all required commands use owned stores and pinned tools; selected real command probes pass. No optional browser/provider skip is reported as qualification. Actual full local execution and triggered GitHub outcomes remain .11.4.3.1.2. Commit wiring before selecting publisher/browser prerequisites.
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.4 — Give publisher fixtures exclusive disposable ownership
@@ -1107,7 +1130,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.3` | `pending` | repair workflow locality and script coverage after committed inventory; .4/.5/.6 then full checkpoint .2 |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.3.2` | `pending` | scanner version/integrity/locality after committed environment; then wiring .3.3, .4/.5/.6 and full checkpoint .2 |
 | 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
 | 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
@@ -1188,3 +1211,10 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - [x] **ADDRESSED (verified)** — wrapped Python final inventory/document probes returned rc=0: repeated 12/86/38/40 dimensions, exact omitted/invented registration detection, twelve source-identity/alteration controls and six checkpoint owners; nine rendered deployment markers pass. Current guidance and durable repair sequence now match source.
 - [x] **NO REGRESSION** — wrapped Python TOML comparison proves parsed deny.toml unchanged, rc=0; make book and git diff --check pass, rc=0. README remains 52 lines / 2,054 bytes; LIVE_STATUS categories unchanged. No Rust/product/workflow behavior changes, so no Rust/runtime suite was run. Commit hook checks all staged doctrines.
 - [x] **FIX / LOCKSTEP** — indexed decision/evidence, CI guide, deployment book, roadmap/frontier, MEMORY, LIVE_STATUS, CHANGELOG and DEV_NOTES preserve exact scope, skips, locality and pending repair/execution boundaries. Artifact age grants no deletion authority; no full-CI or release pass is inferred.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.3.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — wrapped instrumented process probe executes the three raw Cargo commands extracted from the Rust workflow; all preserve ambient CARGO_HOME/TMPDIR outside their fixture checkout, rc=0 after observing all three violations. Source and exact observations are preserved in environment-baseline.json; this is process/environment evidence, not a remote/compiler execution claim.
+- [x] **ADDRESSED (verified)** — wrapped unittest discover for test_ci_env.py passes eight tests, rc=0: relocated root/local tempfile, exact installer arguments/stores and reuse, nonzero/timeout/terminal cancellation with no dispatch and reaped children, linked stores/components and floating pin refusal. The new launcher uses existing store validation and supervised installation, then execs the command from root.
+- [x] **NO REGRESSION** — wrapped test_project_env.py and test_pg_runner.py pass five and thirteen tests, rc=0; final wrapped AST/byte-identity/receipt/directory probe, make book, eight rendered markers and git diff --check pass, rc=0. Existing launcher, supervisor and workflows are byte-identical to 238051b. No Rust source changes, compiler download, live PG or broad gate run in this child. All results consumed and unique environment fixtures absent.
+- [x] **FIX / LOCKSTEP** — exact CI override/install/lifetime limits are recorded in the indexed decision/evidence, CI guide and deployment book. MEMORY, CHANGELOG, DEV_NOTES, LIVE_STATUS and task frontiers are synchronized; categories and README unchanged. Scanner setup and workflow wiring have separate concrete children, with full local/remote execution still .11.4.3.1.2.

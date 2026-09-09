@@ -55,3 +55,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [Bootstrap recovery state](docs/tasks/artifacts/signoff_review/bootstrap-state-schema.md), owner `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1`: strict version-two pending/completed records, legacy wire compatibility and guarded publication continuity. Twenty-four selected controls, strict lint and book checks pass; results consumed and fixtures absent. The interrupted pre-main launch and unchanged-hash retry remain explicit. Keyed CLI/explicit resume and deadlines are still staged.
 
 - [Scheduled CI checkpoint census](docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md): source/target/skip/tool/locality/pressure inventory and concrete pre-push repair owners under .11.4.3.1.
+
+- [CI environment launcher](docs/tasks/artifacts/signoff_review/ci-environment.md): instrumented raw-workflow baseline and eight real-child locality/lifetime controls under .11.4.3.1.3.1.

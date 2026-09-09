@@ -63,7 +63,7 @@ The source census at 6bc76c6 identifies 12 workspace packages and 86 test-enable
 Cargo targets; these are targets, not test functions. All 38 registered server
 suites exist. The three other server integration targets (mtls, publisher and
 reconciler) require no PostgreSQL. The full checkpoint requires workspace checks,
-the owned full PG collection with explicit `--demo`, all four Python control
+the owned full PG collection with explicit `--demo`, all Python control
 modules, doctrines, fresh dependency checks, redacted history scanning and the book.
 Build workspace binaries before runtime checks so the extraction test cannot pass
 by skipping a missing worker. Browser availability and actual execution must be
@@ -92,6 +92,28 @@ consumed after the authorized push. Local Make commands use project_env.py.
 Exact census, tool versions, source hashes, skips and limits:
 `docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md`. Full CI runs before
 pushes or selected important steps; ordinary slices use focused checks.
+
+## CI environment launcher
+
+`scripts/ci_env.py` now supplies the shared setup prerequisite. Without --rust it
+sets the configured local stores and execs a command from the checkout root. With
+--rust it reuses or provisions the exact numeric rust-toolchain.toml pin under
+.project-data/installed-toolchains, with rustfmt/clippy and no rustup self-update.
+Installed rustup/Python/OS tools are read-only inputs; downloads and scratch are
+local before installation starts. An installer failure, timeout or terminal signal
+is consumed before the launcher returns and prevents command dispatch.
+
+```bash
+python3 -B scripts/ci_env.py -- python3 -B -m unittest discover -s scripts/tests -p test_project_env.py -v
+python3 -B scripts/ci_env.py --rust -- cargo fmt --all -- --check
+```
+
+CI clears inherited database/provider/demo/scanner and selected compiler overrides;
+see docs/tasks/artifacts/signoff_review/ci-environment.md for the exact list and
+executed controls. It is not a filesystem sandbox for explicit command paths.
+The developer project_env launcher is unchanged. The new launcher has eight
+focused and eighteen adjacent passing controls; scanner setup and actual workflow
+wiring remain .11.4.3.1.3.2/.3.3, so this is not yet a corrected remote-CI claim.
 
 ## Not a release claim
 

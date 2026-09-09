@@ -43,3 +43,5 @@ The scheduled pre-push checkpoint inventory is complete under .11.4.3.1.1. Workf
 locality/script coverage, publisher/browser fixture ownership and evidence-based
 cleanup have concrete prerequisite owners .3–.6 before full execution .2. This
 source/tool census changes no qualification category and claims no fresh full CI.
+The shared CI environment prerequisite .11.4.3.1.3.1 now passes eight focused and
+eighteen adjacent controls; scanner setup and workflow wiring remain next.

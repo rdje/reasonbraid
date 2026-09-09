@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Establish CI stores before installation (`SIGNOFF-REPAIR.11.4.3.1.3.1`)
+
+Add a repository-local CI launcher with optional exact pinned compiler setup.
+Clear documented ambient gate overrides; reuse owned process supervision for
+installer failure, timeout and terminal cancellation before command dispatch.
+Eight new and eighteen adjacent controls, final syntax/source identity and book
+checks pass; results consumed, fixtures absent. Installer controls use real
+processes with instrumented tools. Scanner setup and workflow wiring remain next;
+no actual compiler download or remote-CI pass is claimed.
+
 ## 2026-09-09 — Census the scheduled CI checkpoint (`SIGNOFF-REPAIR.11.4.3.1.1`)
 
 Record actual workflow/gate/target/skip/tool/locality and artifact-pressure scope.

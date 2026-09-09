@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Establish CI environment before installer dispatch
+
+- Instrumented execution of all three raw Cargo workflow commands preserves ambient CARGO_HOME/TMPDIR outside the fixture checkout. The new scripts/ci_env.py reuses local store validation, clears documented inherited gate controls and optionally provisions the exact numeric repository pin into .project-data/installed-toolchains before exec from root. Existing developer launcher/supervisor/workflows are unchanged.
+- Installer supervision is reused with a twenty-minute bound and terminal handlers. Eight real-child controls pass (4.012s), including relocation, local installation/reuse, failure/timeout/cancellation and symlink/floating-pin refusal; eighteen adjacent controls pass (5 in 0.013s, 13 in 1.126s). All results consumed and unique fixtures absent. Instrumented tools do not establish successful remote downloads or actual compiler qualification.
+- Final syntax/source-identity/receipt/residue checks, make book, eight rendered markers and diff checks pass. The unfiltered fixture glob's three matches were retained evidence files; exact file-type census shows zero fixture directories. Scanner version/integrity setup and workflow wiring are separately owned. Evidence: docs/tasks/artifacts/signoff_review/ci-environment.md.
+- promotion: promoted → `docs/decisions/2026-09-09_ci-environment.md`; owner `SIGNOFF-REPAIR.11.4.3.1.3.1`.
+
 ## 2026-09-09 — Census actual CI coverage before broad execution
 
 - Source 6bc76c6 has 12 workspace packages, 86 test-enabled targets and 40 owned runner commands (38 server plus MCP/CLI). The guide's 31-server count was stale; mtls/publisher/reconciler need no PG. Offline/helper returns and ignored generators/providers remain explicit, not successful live assertions. Python declares 29 controls in four modules, none wired in the current workflows.

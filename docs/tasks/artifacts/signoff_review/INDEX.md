@@ -26,3 +26,7 @@ documentation defect confirmed by parsing the file, not a runtime product findin
 The corpus was generated from sorted `git ls-files`, including every tracked non-`.md` file, and read without omitted pages (0 through 91). Roadmap and mdBook Markdown were read independently. No code changes, tests, or builds occurred before reading completed. The first changed file was the owning `docs/tasks/SIGNOFF-REPAIR.md`.
 
 The historical phase trees remain the provenance of earlier implementations. This census requires their current qualification claims to be reconciled by the owning repair leaves. `SIGNOFF-REPAIR.12` may close only after every source-review record has a fixed or refuted disposition supported by tools.
+
+## Focused corrective follow-ups
+
+- [Tenant authority/effect paths](docs/tasks/artifacts/signoff_review/tenant-authority-paths.md), owner `SIGNOFF-REPAIR.3.3.4.1`, source baseline `1ba6184`: 42 direct named-call locations plus transitive/mutation and alternate-gate coverage. The selected guard/effect contract has bounded implementation owners; this source census is not runtime ordering qualification.

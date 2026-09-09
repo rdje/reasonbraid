@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Authority ordering requires the whole transaction path
+
+- A helper named in_tx can accept a bare pooled connection, and a committed admission cannot retain locks for a later mutation. The census traces 42 named call locations plus their HTTP/MCP/node/state-service consumers and literal authority mutations. Node events already hold a lease lock before the authority callback, so guard acquisition belongs at the outer transaction. Authority tables and standalone APIs do not require a tenant identity row; a dedicated coordination table preserves that contract. The selected shared/exclusive guard and final-effect design remains unimplemented, with explicit per-path children and no new runtime qualification.
+- promotion: promoted → `docs/decisions/2026-09-09_tenant-authority-transaction-order.md`; owner `SIGNOFF-REPAIR.3.3.4.1`.
+
 ## _(2026-09-09)_ — Tenant filtering precedes interpretation of receipt evidence
 
 - The new exact HTTP lookup commits its named inspection admission, then filters tenant and record ID together before using the strict decoder. A deliberately malformed foreign record produces the same generic 404 as an absent ID; malformed own evidence produces a safe 500 with the already committed admission receipt. Human/role frozen readback, original denied/legacy records and one-new-admission counts are verified through HTTP. All 18 live authority tests and 30 HTTP tests pass, with strict lint; all results and shutdown are consumed.

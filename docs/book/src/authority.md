@@ -357,6 +357,25 @@ with the mutation. That effect audit, and serialization against revocation of th
 acting administrator's own authority, remain `.3.3`. The target-row lock described
 here does not establish those separate guarantees.
 
+### Planned transaction repair
+
+The selected contract in `SIGNOFF-REPAIR.3.3.4.1` keeps a shared tenant-authority
+guard through an ordinary protected local transaction and an exclusive guard
+through authority issuance/revocation. A dedicated full-tenant-key table preserves
+the standalone authority API's ability to operate without a tenant identity row.
+The guard comes before lease, idempotency and domain locks; live decision time is
+sampled after earlier waits. Final administrative effect evidence will remain
+distinct from admission, with the mutation and its required evidence in one commit.
+
+This is a design, with implementation still pending. Its source census covers
+42 direct named-call locations across 101 tracked Rust source files, plus the
+transitive HTTP/MCP/node/state-service and authority-table mutation cross-check.
+The child plan separately qualifies guard primitives, authority writers, command
+and node transactions, inspections, effect records and administrative families.
+The exact scope and remaining policy owners are recorded in
+`docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` and
+`docs/decisions/2026-09-09_tenant-authority-transaction-order.md`.
+
 Foreign inbox operations and shared registry mutations require their own corrected
 authority checks and unchanged-state controls under `.3.5` and `.3.2`.
 

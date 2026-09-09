@@ -92,8 +92,11 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.4`: tenant authority/effect ordering and
-final effect audit. Exact scoped receipt readback passes 18 live authority tests
+The current frontier is `SIGNOFF-REPAIR.3.3.4.2`: tenant guard primitives and
+transaction ownership. The preceding source census/design maps 42 named-call
+locations and their transitive effect paths into bounded implementation children;
+the guard and final effect evidence are not yet implemented.
+Exact scoped receipt readback passes 18 live authority tests
 and 30 HTTP tests, with strict lint and all results/shutdown consumed.
 The seven HTTP inspection receipt producers pass 45 live authority/API tests,
 ten pure evaluator tests and strict lint; all results and shutdown are consumed.

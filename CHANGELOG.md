@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Tenant transaction repair contract (`SIGNOFF-REPAIR.3.3.4.1`)
+
+Trace 42 direct authority call locations across 101 tracked Rust sources and
+cross-check transitive effects, authority-table/epoch mutations and alternate
+permission gates. A dedicated full-tenant-key guard preserves standalone authority
+namespaces without identity rows; shared/exclusive modes, lock order, fresh
+evaluation time, transaction ownership and distinct final-effect evidence are
+specified in thirteen bounded census/implementation children. Independent location
+re-derivation and omission/invention controls pass. This commit changes documentation
+only; guard behavior and runtime race qualification remain pending.
+
 ## 2026-09-09 — Tenant-scoped authorization receipt readback (`SIGNOFF-REPAIR.3.3.3.2.2.3`)
 
 GET /v1/admin/authorization-records/{record_id}?tenant_id=ten_… returns one complete

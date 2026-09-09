@@ -119,3 +119,4 @@
 - [`2026-09-09_operator-role-query-freshness.md`](docs/decisions/2026-09-09_operator-role-query-freshness.md)
 - [`2026-09-09_repository-local-command-environment.md`](docs/decisions/2026-09-09_repository-local-command-environment.md)
 - [`2026-09-09_site-operator-authority.md`](docs/decisions/2026-09-09_site-operator-authority.md)
+- [`2026-09-09_tenant-authority-transaction-order.md`](docs/decisions/2026-09-09_tenant-authority-transaction-order.md)

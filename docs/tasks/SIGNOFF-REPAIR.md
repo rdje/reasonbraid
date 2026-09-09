@@ -332,11 +332,105 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.3.3.4 — Tenant authority serialization and effect auditing
 
-- Status: `pending`; refine into safe children after the path census before implementation if needed.
+- Status: `active`; predecessor 1ba6184 is committed and clean, brief zero/untracked and consumed escalated project-job census handoff: OK. Path census and design are a separate first child before code.
 - Owns: tenant authority/effect transaction ordering, issuance/revocation interaction, submitted administrative reasons and committed final-outcome audit, including status/epoch no-ops.
 - Acceptance: relevant authority changes and protected effects have a consistent serialization rule; revocation ordered first fences later effects; denial/audit failure leaves protected state unchanged; final effect records commit with the change. Preserve the `.3.1` foreign-target and repeated-revoke corrections.
 - Verification: pending.
 - Commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.1 — Census tenant authority and effect transaction paths
+
+- Status: `done`; REPAIR-0020. Source census and selected contract are complete; runtime implementation remains subsequent children.
+- Owns: read-only source/call-site and mutation census; durable artifact docs/tasks/artifacts/signoff_review/tenant-authority-paths.md; transaction/effect contract and indexed decision as needed; safe implementation children with per-path ownership, focused reproduction/control plans, book and live-pointer synchronization. No product code or database mutation in this child.
+- Scope: all tenant boundary/grant creation and status mutation, epoch writers, authorize/authorize_in_tx and administrative helpers, transactional command preparation/effects, internal API/MCP consumers and state services reached after a separate admission. Distinguish runtime-confirmed earlier defects, current source-only ordering observations and independently owned principal/target/consent repairs. Identify transaction lifetime, waits/external work, consistent lock order, time sampling, denial persistence and final-effect evidence before choosing the guard design.
+- Acceptance: every discovered path is linked to a concrete implementation child or its existing owning repair leaf, with evidence and no unqualified global guarantee. Candidate design has explicit race ordering, rollback/refusal semantics, compatibility and bounded transaction limits; no unsafe one-slice expansion. Record census commands/counts and independent completeness controls.
+- Verification: 101 tracked Rust files / 1,749,975 bytes; corpus SHA-256 340c4af65db88e48496797c650bbce851bdfde47aaaefac5d93565cd38d26c2c. Independent direct-location set equals all 42 retained entries; omitted/invented location controls detected, rc=0. Whole tracked non-Markdown literal-name mutation/reference scan and manual transitive API/MCP/node/service reads map remaining policy gates to existing owners. These are source/coverage controls, not a runtime race reproduction.
+- Decision: docs/decisions/2026-09-09_tenant-authority-transaction-order.md, indexed with answers. Guard modes/time/transaction ownership, no identity-anchor assumption and final-effect evidence are selected but unimplemented.
+- Commit: REASONBRAID-REPAIR-0020.
+
+##### SIGNOFF-REPAIR.3.3.4.2 — Tenant guard primitives and transaction ownership
+
+- Status: `pending`; follows `.1`.
+- Owns: dedicated tenant_authority_guards migration/backfill, private transaction-owning guard with shared/exclusive modes and complete tenant-key binding, transactional missing-anchor creation, explicit READ COMMITTED and bounded lock/statement/application deadlines, focused live primitive and upgrade controls. Guard rows confer no identity or authority. No integrated application protection claim until the following children land.
+- Acceptance: concurrent shared holders coexist; exclusive blocks shared/exclusive for the same tenant; another tenant progresses; concurrent first use has one anchor; rollback/cancellation releases locks and creates no partial evidence; sorted multi-tenant acquisition and no lock upgrade prevent the tested inversion. Preserve standalone authority namespaces without identity rows. Database decision time belongs to evaluation after preceding waits, not transaction construction.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.3 — Guard tenant boundary and grant issuance
+
+- Status: `pending`; follows `.2`.
+- Owns: standalone create_boundary/create_grant and internal insertion executors, dev enrollment bootstrap/existing-tenant insertion, exclusive guard from before authority reads through commit, actual-parent live issuance checks and checked storage refusal. Preserve structural subset rules, scheduled grants and documented dev-trusted issuer semantics; caller/issuer policy remains `.3.5`.
+- Acceptance: boundary revocation ordered first refuses later issuance; issuance ordered first completes before revocation; future grants still obey parent ceilings; new-tenant bootstrap and standalone authority fixtures work without implicit identity creation. Missing/corrupt parent storage must not masquerade as a structural violation. Import's complete local transaction is `.11` below.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.4 — Order thread commands against authority changes
+
+- Status: `pending`; follows `.2` and `.3`.
+- Owns: guarded authorization entrypoint, public standalone authorization/apply APIs, run_thread_command and HTTP/MCP consumers, tenant guard before idempotency/aggregate/quota/inbox locks and fresh database time at live evaluation after earlier waits. Preserve explicit evaluation-time compatibility where the standalone API deliberately accepts a timestamp; live effect entrypoints choose their own current time. Bind guard, authorization and actual effect tenant.
+- Acceptance: observed authority-first contention denies without domain/outbox/dispatch effect; effect-first contention commits before revocation; a queued expiration is evaluated after the wait; unrelated tenants and compatible shared operations progress. Admission/domain refusal/idempotent replay semantics remain explicit. Replay hash/consent changes stay `.3.4`; automatic-initiation preflight semantics stay `.5.2`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.5 — Guard node-result transactions before lease locks
+
+- Status: `pending`; follows `.4`.
+- Owns: node_channel::events outer transaction and apply_node_result_in_tx guarded context; resolve/revalidate actual tenant, acquire tenant guard before lease/event/idempotency/domain locks, preserve receipt and rejected-result behavior while ordering thread effects against tenant authority revocation.
+- Acceptance: observed guard/lease contention establishes the selected order without an inversion; revoked authority cannot authorize a later new thread effect. Existing fencing, node-result, receipt/idempotency and settlement controls remain required. Node credential/lease proof and partial-result/budget defects remain `.4.1`–`.4.5`; do not imply that an authority guard fixes those mechanisms.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.6 — Guard named inspection admissions
+
+- Status: `pending`; follows `.4`.
+- Owns: eight frozen-tenant inspection admissions and other normal standalone read admissions through the shared guarded evaluator; original-source evidence must be selected consistently while authority writers are excluded. Retain body/header/readback and boundary-status exception contracts.
+- Acceptance: coherent grant/parent evidence after guard waits; revoked grant denied, eligible frozen boundary allowed; audit failure still refuses admission. Response queries remain outside the admission transaction and have no shared-snapshot/delivery guarantee. Fallback visibility and swallowed storage errors retain their `.3.5`/`.5.1`/`.5.2` owners.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.7 — Typed final administrative effect evidence
+
+- Status: `pending`; follows `.2`; refine schema/write/readback subchildren before implementation if needed.
+- Owns: additive final-effect evidence tied to one admission, closed operation/target/outcome representation, bounded submitted reason, strict storage decoding, own-tenant exact readback integration and honest historical absence. Preserve the distinction between authorization and the final local mutation/refusal outcome; no historical outcome inference.
+- Acceptance: effect evidence and mutation commit together; evidence failure rolls back protected state; committed domain refusals/no-ops have their actual outcome and unchanged epoch/state. Existing authorization-record JSON is not silently relabeled. Qualify legacy upgrade, malformed evidence and isolated readback.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.8 — Atomic administrative grant and boundary revocation
+
+- Status: `pending`; follows `.3`, `.4` and `.7`.
+- Owns: replace separate HTTP admission/service transactions with one exclusive guarded revocation transaction, actual tenant-bound target selection, caller authority recheck, submitted reason and final effect evidence; preserve `.3.1` foreign/missing and repeated-revoke status/epoch behavior.
+- Acceptance: both revocation race orders, self-revocation, caller-grant/parent loss while queued, missing/foreign/repeated targets, audit failure and recovery; denied/refused operations change no protected target or epoch. Complete verified slice before moving to other administrative families.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.9 — Atomic breaker administration
+
+- Status: `pending`; follows `.4` and `.7`.
+- Owns: arm/reset admission, tenant-bound breaker write and final outcome in one guarded transaction; existing request/success shapes and budget semantics, with explicit no-op/refusal evidence. Reason requirements must be introduced as a documented wire contract if needed, not silently invented.
+- Acceptance: revocation-first refusal and effect-first ordering, evidence rollback, unchanged foreign tenant and exact recovery. Broader budget arithmetic/settlement remains `.4.5`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.10 — Node administrative transaction integration
+
+- Status: `pending`; split token issuance, certificate revocation and inbox mutation into separate children before implementing.
+- Owns: guard-before-effect and final evidence for issue_node_enroll_token, revoke_node, replay/quarantine/prune. Couple target-tenant verification inside each transaction with the `.3.5` owner and annotate matched findings there; preserve zero-change epoch behavior. Certificate/token redemption and lease-lifecycle use of the guard remain `.4.1`/`.4.2`.
+- Acceptance: each route family has observed revocation ordering, tenant isolation, no protected effect after evidence failure, and exact no-op/recovery controls. Replay's cached-decision rebinding remains `.3.4`; do not refresh stale evidence as a side effect of adding a guard.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.11 — Profile/card administrative transaction integration
+
+- Status: `pending`; split common profile transaction body, guarded attestation and atomic import into bounded children before implementing.
+- Owns: transactional profile writer needed for guarded owner attestation and complete identity/grant/profile/quota/receipt card import. Authority selection and exclusive issuance guard belong to the same import transaction. Qualify associated version/import atomicity with `.5.1`/`.5.3` evidence; caller visibility, provenance policy and card replay semantics retain those owners.
+- Acceptance: no orphan identity/grant/profile after refusal; guarded attestation/import cannot outlive prior authority revocation; compatible version writers serialize at their own role/version anchor; exact receipts and audit rollback. Cross-tenant agreement dependencies use a predeclared sorted guard set when required, never a later lock upgrade.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.12 — Federation direction administration
+
+- Status: `pending`; follows `.4` and `.7`.
+- Owns: propose/accept/revoke direction mutation and local/cross-domain evidence in the admitted transaction; existing agreement effects/no-ops. Retain local caller authority and validate both-tenant dependency locking without treating a lock as permission to mutate the remote tenant.
+- Acceptance: both authority race orders and evidence rollback, preserved direction/status/receipt rules, sorted dependency contention controls. Effective remote-use/import/visibility revocation guarantees remain `.5.3` until its consumers are integrated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.3.3.4.13 — Guard coverage reconciliation and qualification
+
+- Status: `pending`; follows the concrete integration children.
+- Owns: repeat the full direct-call/mutation and transitive-path census, remove bypassing obsolete executors where migrated, confirm every remaining unguarded/different-policy path has its existing concrete repair owner, selected broad authority/node/HTTP/MCP/upgrade gate and book claims. Recruitment/auto-initiation `.5.2`, resolver ownership `.7.1`, workflow `.8.1`, policy/lifecycle/deployment `.9.1`–`.9.3` and MCP `.6.1` must adopt the guard at their eventual qualified authority boundary; this parent cannot certify their current alternative gates.
+- Acceptance: no migrated effect relies on a finished admission transaction; guard modes/order/time/rollback and final-effect evidence are qualified for the explicitly named path set. Remaining scopes stay visible and cannot be described as production-qualified by this closure. Full CI only at the selected broad step or before push, per director policy.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.3.4 — Delegation and cache freshness
 
@@ -679,12 +773,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — final strict server/lib/authority/command_api Clippy passed, rc=0; all 18 authority and 30 final HTTP controls passed. Typed path/tenant, duplicate/unknown query and malformed-principal refusals leave record counts unchanged. Existing seven-route, command, revocation, audit and selected-record controls remain green. All verification and successful-run shutdown consumed; exact stopped baseline cleanup passed, rc=0. `cargo fmt --all --check`, `git diff --check`, `make book` and rendered receipt/legacy/refusal/limit inspection passed, rc=0; all three cluster residue checks passed. No full CI or push.
 - [x] **FIX / LOCKSTEP** — tenant and record predicates precede strict decode in the private loader; the shared named helper commits admission before lookup. `git diff` review verifies the route, typed input and unchanged public storage API. Book API/header/denial examples, decisions, live status and tree frontier distinguish completed inspection readback from pending effect/transaction ordering. No schema, CLI command, list inventory or qualification category expansion.
 
+## Leaf .3.3.4.1 closure evidence
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — `rg`/tracked-source call and mutation census passed, rc=0: separate administrative admission commits, generic executors in helpers named in_tx, and node lease locks preceding the result callback are verified source facts at 1ba6184. Migration 0004 and standalone authority fixtures verify that tenant identity rows are not mandatory authority anchors. Prior source finding R-36-39-4 remains runtime-pending; this documentation child does not claim its race reproduced.
+- [x] **ADDRESSED (verified)** — 101-file source fingerprint and independent exact-set check of all 42 retained named-call locations passed, rc=0; omitted/invented location controls detected. The whole tracked non-Markdown reference/literal-mutation scan and transitive API/MCP/node/state-service reads identify alternate gates and map each path family to concrete owners. All artifact owner references and thirteen new child headings resolve, rc=0. The indexed decision specifies transaction ownership, dedicated full-key anchors, modes, lock/time order, deadlines and distinct final-effect evidence; implementation remains pending.
+- [x] **NO REGRESSION** — `git diff --check`, `make book`, rendered planned-contract inspection and documentation-only scope check passed, rc=0. No product code, schema or runtime behavior changes and no database/test job in this child. Earlier receipt qualification remains its own committed evidence. The commit hook checks doctrine and knowledge-map synchronization; no full CI or push.
+- [x] **FIX / LOCKSTEP** — source artifact/index, new decision/answers/index, bounded child ownership, live status/memory/changelog/lesson and authority/roadmap/qualification book pages distinguish selected design from unimplemented behavior. No project-wide ordering or production qualification claim; phase/status categories are unchanged.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
-| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.4.2` | `pending` | qualify tenant guard primitives and transaction ownership |
+| 2 | `SIGNOFF-REPAIR.3.3.4.3` | `pending` | guard authority issuance |
+| 3 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 4 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 5 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -708,6 +812,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.1`: `REASONBRAID-REPAIR-0020 (leaf SIGNOFF-REPAIR.3.3.4.1): map tenant authority transactions and define ordered effect repair`.
 
 - `SIGNOFF-REPAIR.3.3.3.2.2.3`: `REASONBRAID-REPAIR-0019 (leaf SIGNOFF-REPAIR.3.3.3.2.2.3): expose audited tenant-scoped authorization receipt readback`.
 

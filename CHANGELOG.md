@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Complete guarded development enrollment (`SIGNOFF-REPAIR.3.3.4.3.3.2`)
+
+Development enrollment now holds one exclusive tenant guard from replay through
+boundary, grant, identity, quota and enrollment commit. Same-context authority
+helpers use database time and reject non-live parents. Concurrent same-name
+requests return one new principal and an honest replay; typed errors roll back
+all provisional rows, and commit failures retain their unconfirmed HTTP phase.
+The book preserves validation/replay and dev issuer limits, and corrects the CLI
+role defaults. All 97 selected controls (96 live / one pure), final focused strict lint
+and rendered book checks pass. Every result/shutdown is consumed; all three
+owned clusters are absent. New-bootstrap response-loss recovery is tracked as
+the next child, with its current client/operator limitation explicit in the book.
+
 ## 2026-09-09 — Typed rollback for guarded grant refusals (`SIGNOFF-REPAIR.3.3.4.3.3.1`)
 
 A private typed-error entrypoint now aborts provisional guarded work while

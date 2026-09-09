@@ -48,7 +48,7 @@ use sqlx::PgPool;
 
 use crate::authority::{
     self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError,
-    GrantRefused,
+    GrantRefused, GuardMode, TenantTransaction,
 };
 use crate::budget;
 use crate::node_channel;
@@ -710,7 +710,8 @@ pub struct EnrollRequest {
     /// `"human"` or `"role"`.
     pub kind: String,
     pub name: String,
-    /// For a role: the granted actions (wire names). Default: `[thread_contribute]`.
+    /// For a role: the granted actions (wire names). Defaults: thread_contribute
+    /// and thread_invitation_respond.
     /// For a human: always the dev admin set (bootstrap trust — documented).
     #[serde(default)]
     pub actions: Option<Vec<String>>,
@@ -727,7 +728,7 @@ pub struct EnrollResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grant_id: Option<String>,
     /// `true` when (tenant, kind, name) already exists: the ORIGINAL principal id is
-    /// returned; nothing new was created.
+    /// returned; no new identity, grant or enrollment was created.
     pub replayed: bool,
 }
 
@@ -806,8 +807,6 @@ async fn enroll(
             )))
         }
     };
-    let now = Utc::now();
-
     let tenant_id: TenantId = match &req.tenant_id {
         Some(raw) => raw.parse().map_err(|_| {
             ControlApiError::invalid_command(format!("tenant_id `{raw}` is malformed"))
@@ -822,6 +821,24 @@ async fn enroll(
         }
     };
 
+    authority::transact_with_error(
+        &state.pool,
+        &[(tenant_id, GuardMode::Exclusive)],
+        authority::Limits::default(),
+        move |tx| Box::pin(enroll_in_guard(tx, req, kind, tenant_id)),
+    )
+    .await
+}
+
+/// Replay and every authority/identity/quota write share this exclusive guard.
+/// Returning a typed error aborts all provisional work; only the outer owner
+/// commits and can report the successful or replayed response.
+async fn enroll_in_guard(
+    tx: &mut TenantTransaction<'_>,
+    req: EnrollRequest,
+    kind: &'static str,
+    tenant_id: TenantId,
+) -> Result<Json<EnrollResponse>, ControlApiError> {
     // Replay: the same (tenant, kind, name) returns the ORIGINAL principal id.
     let existing: Option<(String, String)> = sqlx::query_as(
         "SELECT principal_id, kind FROM enrollments \
@@ -830,7 +847,7 @@ async fn enroll(
     .bind(tenant_id.to_string())
     .bind(kind)
     .bind(&req.name)
-    .fetch_optional(&state.pool)
+    .fetch_optional(tx.connection(tenant_id, GuardMode::Exclusive)?)
     .await?;
     if let Some((principal_id, stored_kind)) = existing {
         return Ok(Json(EnrollResponse {
@@ -853,34 +870,38 @@ async fn enroll(
     // The bootstrap human issues its own dev grant (no certificate issuer in Phase 0;
     // grant issuance is dev-trusted — documented). The issuer id is the human's own
     // for a human enrollment, and the enrolling tenant's bootstrap human is not
-    // known for a role — the dev profile uses the role's principal as a stand-in
-    // issuer handle for audit purposes (recorded limitation).
+    // known for a role — the dev profile records a fresh human issuer handle.
+    // That handle is not an authenticated issuer identity (recorded limitation).
     let issuer = match principal {
         GrantSubject::Human(h) => h,
         GrantSubject::Role(_) => HumanPrincipalId::new(),
     };
 
-    // ONE transaction: boundary (new tenants), grant, enrollment row — all or none.
-    let mut tx = state.pool.begin().await?;
+    // New tenant, boundary, grant, identity, quota and enrollment commit together.
     let mut boundary = None;
     if req.tenant_id.is_none() {
-        let b = dev_boundary(&tenant_id, now);
+        let b = dev_boundary(&tenant_id, tx.database_now().await?);
         // The tenant's identity row FIRST: the human_principals insert below
         // references it (PHASE-1.1.2, migrations/0007).
         sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
             .bind(tenant_id.to_string())
-            .execute(&mut *tx)
+            .execute(tx.connection(tenant_id, GuardMode::Exclusive)?)
             .await?;
         // The tenant's default quotas (`.1.3.2`): the invite-storm bound
         // rides the SAME transaction — a tenant exists with its bounds.
-        crate::quota::insert_defaults_in_tx(&mut *tx, &tenant_id.to_string()).await?;
-        authority::insert_boundary_in_tx(&mut *tx, &b).await?;
+        crate::quota::insert_defaults_in_tx(
+            tx.connection(tenant_id, GuardMode::Exclusive)?,
+            &tenant_id.to_string(),
+        )
+        .await?;
+        authority::insert_boundary_in_tx(tx.connection(tenant_id, GuardMode::Exclusive)?, &b)
+            .await?;
         boundary = Some(b);
     }
 
     let boundary_ref = match &boundary {
         Some(b) => b.clone(),
-        None => authority::load_active_boundary_for_tenant(&state.pool, &tenant_id)
+        None => authority::load_active_boundary_in_guard(tx, tenant_id)
             .await?
             .ok_or_else(|| {
                 ControlApiError::invalid_command(
@@ -918,7 +939,7 @@ async fn enroll(
     };
 
     let grant = dev_grant(&boundary_ref, issuer, principal.clone(), actions);
-    authority::create_grant_unordered_in_tx(&mut *tx, &grant)
+    authority::create_grant_in_guard(tx, &grant)
         .await
         .map_err(|error| {
             ControlApiError::grant_creation(error, "the dev grant exceeds its boundary")
@@ -939,7 +960,7 @@ async fn enroll(
             .bind(h.to_string())
             .bind(tenant_id.to_string())
             .bind(&req.name)
-            .execute(&mut *tx)
+            .execute(tx.connection(tenant_id, GuardMode::Exclusive)?)
             .await?;
         }
         GrantSubject::Role(r) => {
@@ -947,7 +968,7 @@ async fn enroll(
                 .bind(r.to_string())
                 .bind(tenant_id.to_string())
                 .bind(&req.name)
-                .execute(&mut *tx)
+                .execute(tx.connection(tenant_id, GuardMode::Exclusive)?)
                 .await?;
         }
     }
@@ -956,7 +977,7 @@ async fn enroll(
     // implies its quota row — the fail-closed check refuses an unbound
     // principal, so the bound must exist from the principal's creation.
     crate::quota::insert_principal_default_in_tx(
-        &mut *tx,
+        tx.connection(tenant_id, GuardMode::Exclusive)?,
         &tenant_id.to_string(),
         &principal.id_string(),
     )
@@ -969,9 +990,8 @@ async fn enroll(
     .bind(tenant_id.to_string())
     .bind(kind)
     .bind(&req.name)
-    .execute(&mut *tx)
+    .execute(tx.connection(tenant_id, GuardMode::Exclusive)?)
     .await?;
-    tx.commit().await?;
 
     Ok(Json(EnrollResponse {
         tenant_id: tenant_id.to_string(),

@@ -8,11 +8,12 @@ answers:
   - How do standalone authority writers preserve tenant ordering and commit uncertainty?
   - When is the parent boundary checked for live grant issuance?
   - How can a typed domain refusal roll back earlier guarded writes?
+  - How does complete enrollment preserve replay while ordering issuance and revocation?
 ---
 # Keep tenant authority stable through the protected local transaction
 
 - Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`, foundation child `.2`, standalone service integration `.3.1`–`.3.2`.
-- Status: primitive migration/transaction owner qualified in `.2`; five standalone authority services qualified under `.3.3.4.3.2` with 85 selected controls, strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Typed rollback support `.3.3.4.3.3.1` passes 89 selected controls, focused strict lint and rendered book checks, with all results/shutdown consumed and both owned clusters absent. Remaining application and final-effect paths retain their subsequent children.
+- Status: primitive migration/transaction owner qualified in `.2`; five standalone authority services qualified under `.3.3.4.3.2` with 85 selected controls, strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Typed rollback support `.3.3.4.3.3.1` passes 89 selected controls, focused strict lint and rendered book checks, with all results/shutdown consumed and both owned clusters absent. Complete enrollment `.3.3.4.3.3.2` passes 97 selected controls, final focused strict lint and rendered book checks; all results/shutdown consumed and three owned clusters absent. Bootstrap response-loss recovery remains `.3.3.4.3.3.3`; other application/final-effect paths retain their subsequent children.
 - Source census: `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` at `1ba6184`.
 - Preserves: actual-parent selection, valid frozen-tenant inspection, exact receipt readback and the `.3.1` foreign-target/no-op corrections.
 
@@ -129,7 +130,8 @@ authorization denial. Preserve this choice at each call site, rather than hiding
 domain policy in a synthetic SQL error or permitting transaction-control SQL in
 callbacks. SQL errors must also leave as errors so the pre-commit health check
 does not replace the original cause. Complete enrollment integration uses this
-rollback support in the next child; it is not qualified by the standalone repair.
+rollback support under `.3.3.4.3.3.2`; its dedicated qualification is separate from
+the standalone repair.
 Evidence: `docs/tasks/artifacts/signoff_review/typed-rollback-errors.md`.
 
 Structural checks, including parent status and all existing ceilings, run before
@@ -149,9 +151,27 @@ Controlled deferred faults may prove rollback for those fixtures, while the
 primitive's control for a commit acknowledgment timeout demonstrates a commit can still finish.
 No automatic retry, success receipt or blanket rollback claim follows an error.
 
-The complete enrollment/import transactions still use their explicit unordered
-insertion bridges after a guarded boundary lookup. Their migrations belong to
-`.3.3.4.3.3` / `.3.3.4.11`; node-certificate epoch mutation remains `.3.3.4.10`.
+Complete development enrollment now holds one exclusive guard before replay,
+then uses same-context boundary/grant helpers and scoped connections for every
+identity, quota and enrollment write. Kind/tenant validation remains before the
+guard; replay remains before action parsing and authority lookup. Same-name
+concurrency therefore resolves at replay after the first commit, rather than
+racing into an identity unique violation. Typed errors abort all prior writes.
+New bootstrap time comes from the database after guard/replay; parent liveness
+is checked immediately before grant insertion. A commit error retains the
+unconfirmed HTTP phase. Dev-trusted human/role issuer semantics are unchanged;
+the old role-issuer comment and CLI default-action documentation are corrected.
+This qualifies the complete local transaction, not a bootstrap recovery protocol:
+an absent tenant_id still generates a server-side ID, and an unconfirmed error
+does not give the client that ID or a stable request key. The CLI only persists
+IDs after a successful response. New child `.3.3.4.3.3.3` owns matched response-loss
+reproduction and protocol/CLI recovery without conflating tenant-scoped names
+with request identity. Operator reconciliation may be needed in the meantime.
+Evidence: `docs/tasks/artifacts/signoff_review/enrollment-transaction.md`.
+
+Card import still uses its explicit unordered insertion bridge after a guarded
+boundary lookup; complete migration belongs to `.3.3.4.11`. Node-certificate
+epoch mutation remains `.3.3.4.10`.
 The status services do not yet join HTTP caller admission, submitted reason and
 final effect evidence; that remains `.3.3.4.8`. Matched baseline, wait-graph,
 failure/recovery and final gate evidence live in

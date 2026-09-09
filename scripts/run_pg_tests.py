@@ -21,7 +21,7 @@ from typing import Callable
 from project_env import ROOT, local_directory, project_environment, toolchain_directory
 
 SERVER_SUITES = (
-    "pg_guard atomic_transaction outbox_worker node_channel authority authority_transaction authority_issuance budget command_api node_work "
+    "pg_guard atomic_transaction outbox_worker node_channel authority authority_transaction authority_issuance enrollment_transaction budget command_api node_work "
     "aggregate_library identity_store node_enrollment node_inbox invitations backup_restore "
     "migration_upgrade escalation node_replacement profiles evaluation routing policy rls "
     "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority site_operator_cli site_registry_http"

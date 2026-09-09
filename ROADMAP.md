@@ -23,10 +23,12 @@ and seven HTTP registry operations are implemented with matched runtime controls
 Tenant guard primitives and migration delivery are qualified under
 `SIGNOFF-REPAIR.3.3.4.2`; grant error classification is qualified under `.3.3.4.3.1`
 with 56 live controls and strict lint. Standalone authority/status integration
-`.3.3.4.3.2` passes 85 selected controls and strict lint; complete enrollment is
-next at `.3.3.4.3.3.2`. Its typed rollback prerequisite `.3.3.4.3.3.1` passes
-89 selected controls and strict lint, with all results/shutdown consumed and both
-owned clusters absent. Remaining application/effect paths stay explicitly owned.
+`.3.3.4.3.2` passes 85 selected controls and strict lint. Complete enrollment
+`.3.3.4.3.3.2` passes 97 selected controls, final focused strict lint and book
+checks; all results/shutdown are consumed and three owned clusters are absent.
+New-bootstrap recovery after response loss or commit uncertainty is next at
+`.3.3.4.3.3.3`, before issuance coverage reconciliation. Remaining application/
+effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
 

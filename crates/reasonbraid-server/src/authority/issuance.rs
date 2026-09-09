@@ -52,8 +52,9 @@ pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), G
     .await
 }
 
-/// Same-context body for the later complete enrollment/import integrations.
-async fn create_grant_in_guard(
+/// Same-context grant creation for complete guarded transactions, including
+/// development enrollment. The caller must have declared the exclusive tenant.
+pub(crate) async fn create_grant_in_guard(
     tx: &mut TenantTransaction<'_>,
     grant: &AuthorityGrant,
 ) -> Result<(), GrantCreateError> {
@@ -109,25 +110,38 @@ async fn issuance_parent(
 
 /// Read the current active boundary in a shared guarded transaction. Callers that
 /// use it after this returns must provide their own complete effect transaction;
-/// enrollment/import remain explicit temporary bridges until their next leaves.
+/// card import remains an explicit temporary bridge until its complete integration.
 pub(crate) async fn load_active_boundary_for_tenant(
     pool: &PgPool,
     tenant: &TenantId,
 ) -> Result<Option<EnrollmentAuthorityBoundary>, AuthorityTransactionError> {
     let tenant = *tenant;
     transact(pool, &[(tenant, GuardMode::Shared)], move |tx| {
-        Box::pin(async move {
-            let row: Option<BoundaryRow> = sqlx::query_as(
-                "SELECT boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
-                 permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
-                 valid_from, expires_at, charter_digest, policy_version, status \
-                 FROM enrollment_boundaries WHERE tenant_id = $1 AND status = 'active'")
-                .bind(tenant.to_string()).fetch_optional(tx.connection(tenant, GuardMode::Shared)?).await?;
-            row.map(|row| boundary_from_row(row).ok_or_else(||
-                GuardError::Storage(sqlx::Error::Protocol("stored enrollment boundary is malformed".into()))))
-                .transpose()
+        Box::pin(async move { load_active_boundary_in_guard(tx, tenant).await })
+    })
+    .await
+}
+
+/// Load active policy through the current transaction. An exclusive issuance
+/// context satisfies this read scope without another pool acquisition/guard.
+pub(crate) async fn load_active_boundary_in_guard(
+    tx: &mut TenantTransaction<'_>,
+    tenant: TenantId,
+) -> Result<Option<EnrollmentAuthorityBoundary>, AuthorityTransactionError> {
+    let row: Option<BoundaryRow> = sqlx::query_as(
+        "SELECT boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
+         permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
+         valid_from, expires_at, charter_digest, policy_version, status \
+         FROM enrollment_boundaries WHERE tenant_id = $1 AND status = 'active'")
+        .bind(tenant.to_string()).fetch_optional(tx.connection(tenant, GuardMode::Shared)?).await?;
+    row.map(|row| {
+        boundary_from_row(row).ok_or_else(|| {
+            GuardError::Storage(sqlx::Error::Protocol(
+                "stored enrollment boundary is malformed".into(),
+            ))
         })
-    }).await
+    })
+    .transpose()
 }
 
 /// Guard before the matching target lock; status and epoch commit together.

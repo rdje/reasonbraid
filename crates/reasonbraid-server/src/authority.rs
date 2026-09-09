@@ -39,8 +39,12 @@ mod issuance;
 mod transaction;
 
 pub use issuance::{create_boundary, create_grant};
-pub(crate) use issuance::{load_active_boundary_for_tenant, revoke_boundary, revoke_grant};
+pub(crate) use issuance::{
+    create_grant_in_guard, load_active_boundary_for_tenant, load_active_boundary_in_guard,
+    revoke_boundary, revoke_grant,
+};
 pub use transaction::GuardError as AuthorityTransactionError;
+pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTransaction};
 
 mod records;
 mod selection;
@@ -217,8 +221,8 @@ impl From<ApplyError> for AuthorizedApplyError {
 // ── Repository ──────────────────────────────────────────────────────────────────
 
 /// Boundary row insertion on the supplied executor; this does not acquire a
-/// tenant guard. The standalone service supplies a guarded connection. The
-/// enrollment bootstrap is a temporary unordered bridge until `.3.3.4.3.3`.
+/// tenant guard. The standalone service and complete enrollment transaction
+/// supply their scoped guarded connection.
 pub(crate) async fn insert_boundary_in_tx<'e, E>(
     mut tx: E,
     boundary: &EnrollmentAuthorityBoundary,
@@ -263,10 +267,11 @@ where
     Ok(())
 }
 
-/// Temporary unordered enrollment/import bridge: load, structural check and
-/// insertion on the caller's executor. It provides neither a tenant guard nor
-/// the standalone service's issuance-time check. Migrate these two callers under
-/// `.3.3.4.3.3` / `.3.3.4.11`; do not add new callers.
+/// Temporary unordered card-import bridge: load, structural check and insertion
+/// on the caller's executor. It provides neither a tenant guard nor the guarded
+/// service's issuance-time check. Migrate the remaining caller under `.3.3.4.11`;
+/// complete development enrollment already uses the same-context guarded helper.
+/// Do not add new callers.
 pub(crate) async fn create_grant_unordered_in_tx<'e, E>(
     mut tx: E,
     grant: &AuthorityGrant,

@@ -131,8 +131,9 @@ owned verification clusters are absent.
 The matched grant-insertion fault controls check complete enrollment/import table
 snapshots and recovery. They do not establish atomicity for every later card-import
 step: complete import transaction integration remains `SIGNOFF-REPAIR.3.3.4.11`.
-Tenant guard integration and issuance-time parent liveness remain the following
-children of `.3.3.4.3`; development issuer policy is unchanged.
+Standalone writers and complete development enrollment now use the tenant guard
+and issuance-time parent liveness described below; development issuer policy is
+unchanged. Card import retains its separately owned transaction integration.
 
 ## Subject JSON and delegation inputs
 
@@ -501,8 +502,8 @@ successful callback value commits that value and its local effects. For example,
 a recorded authorization denial may deliberately be a successful transaction
 value, while an enrollment policy refusal must roll back its provisional rows.
 These are explicit choices at each call site. Converting a domain refusal into a
-SQL protocol error would lose that distinction. The complete enrollment handler
-integration remains the next child, `SIGNOFF-REPAIR.3.3.4.3.3.2`. The typed-error
+SQL protocol error would lose that distinction. The complete enrollment handler now uses this entrypoint under
+`SIGNOFF-REPAIR.3.3.4.3.3.2`. The typed-error
 prerequisite passes 89 selected controls (88 live / one pure), focused strict lint
 and rendered book checks. All results/shutdown are consumed; both owned clusters
 are absent. Evidence is recorded in
@@ -523,13 +524,97 @@ constraint failure may be shown by a controlled test to have rolled back, while
 an acknowledgment timeout can leave a committed row. The public error must
 preserve uncertainty across both situations.
 
-The complete enrollment and card-import transactions have **not** migrated yet.
-They use the guarded active-boundary lookup followed by the existing insertion
-bridge, which does not retain that guard or apply the standalone service's new
-time check. Their owners are `.3.3.4.3.3` and `.3.3.4.11`. Node-certificate epoch
-writes retain `.3.3.4.10`. HTTP revocation admission, submitted reason and final
-effect are still separate until `.3.3.4.8`; these service locks alone do not join
-the acting administrator's earlier admission to the mutation.
+Complete development enrollment now retains its exclusive guard through all
+local writes, as described below. Card import still uses the separate guarded
+active-boundary lookup followed by its existing insertion bridge, which does not
+retain that guard or apply the guarded service's time check. Its complete
+transaction owner is `.3.3.4.11`. Node-certificate epoch writes retain `.3.3.4.10`.
+HTTP revocation admission, submitted reason and final effect are still separate
+until `.3.3.4.8`; the service lock does not join the acting administrator's earlier
+admission to that mutation.
+
+### Development enrollment transactions
+
+`POST /v1/enrollments` and `rb enroll` use one exclusive tenant guard from the
+replay lookup through commit. New-tenant identity, tenant quotas, boundary, grant,
+principal identity, principal quota and enrollment rows commit together. Existing
+tenants use their active boundary on the same connection. A typed pre-commit
+refusal rolls back every provisional row, including a new coordination anchor;
+pre-existing anchors remain intact. Concurrent requests for the same existing
+(tenant, kind, name) produce one new principal and a replay of that principal.
+
+A new human request creates a tenant and its development boundary:
+
+```json
+{"kind":"human","name":"alice"}
+```
+
+The successful response has `replayed: false`, a tenant ID, a human principal ID,
+and both `boundary_id` and `grant_id`. Supply that tenant ID when enrolling a role
+(the abbreviated IDs below are placeholders for actual response IDs):
+
+```json
+{"tenant_id":"ten_…","kind":"role","name":"reviewer"}
+```
+
+A new role response includes `grant_id` and omits `boundary_id`. Omitting `actions`
+grants both `thread_contribute` and `thread_invitation_respond`. To request a
+specific action set on first enrollment, use for example:
+
+```json
+{"tenant_id":"ten_…","kind":"role","name":"observer","actions":["thread_inspect"]}
+```
+
+Repeating the same tenant, kind and name returns the original principal, with
+neither a new grant nor a changed action set:
+
+```json
+{"tenant_id":"ten_…","principal_id":"rol_…","kind":"role","name":"reviewer","replayed":true}
+```
+
+Replay precedes action parsing and authority lookup, so a replay with different
+or invalid action names still returns that existing principal. It also remains
+available after boundary revocation; it grants no new permission. Unsupported
+kind and malformed tenant IDs are rejected before replay. A new role needs an
+explicit tenant and active boundary. Missing active authority is checked before
+parsing role action names. A new human request without `tenant_id` creates a new
+tenant each time; matching names across separate tenants do not imply replay.
+
+| Enrollment scenario | Result |
+| --- | --- |
+| Enrollment obtains the tenant guard first | Revocation waits until enrollment's complete local transaction finishes. |
+| Boundary revocation obtains the guard first | New enrollment waits, then refuses without a new grant or identity. |
+| The parent expires while enrollment waits | Fresh database-time evaluation returns 400 `invalid_command`, identifying the non-live parent. |
+| The active parent starts in the future | New enrollment refuses until the parent is live. |
+| Role actions exceed the current parent ceiling | 400 `invalid_command` retains the structural violation details. |
+| Identity, quota, grant or enrollment storage fails before commit | Safe 500 `dependency_unavailable`; provisional local writes roll back. |
+| A commit acknowledgment fails or times out | Safe 500 `commit_outcome_unconfirmed`; inspect state before deciding whether to retry. |
+| A standalone boundary exists without a tenant identity | Enrollment fails the identity FK; it cannot silently manufacture a tenant. |
+
+A new bootstrap boundary starts at database time sampled after guard acquisition
+and replay lookup. Grant issuance checks its actual parent's live window again
+immediately before INSERT, after preceding authority waits. This is an evaluation
+instant; the guard does not stop time or guarantee response delivery before
+expiry. Commit failures retain uncertainty even when a controlled deferred fault
+can prove that its particular transaction rolled back.
+
+For a new bootstrap whose success response is lost or whose commit is
+unconfirmed, the client may not know the server-generated tenant ID. There is
+currently no bootstrap request key or outcome lookup; reconciliation can require
+an operator to inspect the database. Repeating the same human name without a
+tenant ID creates another new request and can create another tenant. A complete
+client recovery protocol is tracked under `SIGNOFF-REPAIR.3.3.4.3.3.3`; the
+transaction guard and truthful error phase alone do not provide that protocol.
+
+Enrollment remains a development trust mechanism. A human receives the nine
+explicit dev admin actions regardless of an `actions` field, and its grant names
+that human as issuer. A role's grant records a newly generated human issuer handle;
+that handle is not authenticated issuer provenance. Caller/issuer policy remains
+owned by `.3.5`; enrollment cannot issue site-operator grants. Qualification and
+exact rollback/race evidence for this integration are tracked in
+`docs/tasks/artifacts/signoff_review/enrollment-transaction.md`. All 97 selected
+controls (96 live / one pure), final focused strict lint and rendered book checks
+pass. Every result/shutdown is consumed; all three owned clusters are absent.
 
 ### Guard lifetime and failure handling
 

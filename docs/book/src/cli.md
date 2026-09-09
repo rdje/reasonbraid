@@ -39,6 +39,23 @@ $ rb thread close --thread thr_… --reason "decision reached" --as alice
 $ rb thread cancel --thread thr_… --reason "no longer needed" --as alice
 ```
 
+Enrollment replay is scoped to the existing tenant, kind and name. Repeating
+`rb enroll role reviewer --tenant ten_…` returns the original principal with
+`replayed: true` in `--json` output, without a new grant or changed action set.
+Concurrent requests for that name now serialize through the full server
+transaction. Replay still works after a boundary freeze; new enrollment refuses.
+A repeated human enrollment without `--tenant` creates a separate new tenant.
+Use the returned tenant ID when intending an existing-tenant replay.
+
+A parent expiring during a guard wait cannot authorize new enrollment. Storage
+failure returns a safe internal error; an unconfirmed commit returns
+`commit_outcome_unconfirmed`. Inspect the relevant tenant state before retrying
+that outcome. For a new bootstrap, a lost response can leave the CLI without the
+server-generated tenant ID; operator database reconciliation may be needed until
+the tracked bootstrap recovery protocol is implemented. Retrying the same human
+name without --tenant can create another tenant. These are server transaction guarantees; the CLI's local state-file
+write occurs after the server response and is a separate persistence step.
+
 The create verb also takes the typed profile fields (`.1.1.3`):
 
 ```text
@@ -311,7 +328,11 @@ invariant; the audit row binds the subject.
   ADR-006/ADR-007, Phase 2).
 - Enroll is the dev bootstrap: a human creates the tenant boundary and its own
   admin grant (grant issuance is dev-trusted); a role's grant comes from
-  `--actions` (default `thread_contribute`).
+  `--actions` (default `thread_contribute` plus `thread_invitation_respond`).
+  Human action input is ignored in favor of the explicit development admin set;
+  a role grant records a fresh human issuer handle, without authenticated issuer
+  provenance. The complete server transaction and its limits are described in
+  [Authority](authority.md#development-enrollment-transactions).
 - Agent-side execution (a node receiving an invitation and contributing through
   the authenticated channel) is the `.6.2`/`.1.2.2` two-host demonstration;
   this chapter covers the control-plane command surface both halves share.

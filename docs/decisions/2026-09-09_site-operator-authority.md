@@ -6,7 +6,7 @@ answers:
 ---
 # Explicit site-operator authority for shared registries
 
-- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI is implemented and verified under `.3.2.2`; HTTP enforcement is implemented under `.3.2.3`, with live verification in progress.
+- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI is implemented and verified under `.3.2.2`; HTTP enforcement is implemented and verified under `.3.2.3`: eight focused HTTP controls, the selected 58-test security run and the final 12-test registry run pass.
 - Owner: repo-local engineering, acting on the director's explicit delegation.
 - Date: 2026-09-09.
 - Sources: `ROADMAP.md` §§4.4–4.5, 16.4, 20.10; ADR-027 and ADR-035.

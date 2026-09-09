@@ -92,10 +92,11 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.2.3`: HTTP registry enforcement is
-implemented and its eight focused controls and strict lint pass; final adjacent
-verification remains in progress. The separate site-authority service and
-protected operator CLI pass their live controls and strict lint. Tenant-bound revocation is corrected with 34 focused tests and
+The current frontier is `SIGNOFF-REPAIR.3.3`: core subject serialization,
+actual-boundary authorization, usable-grant selection and atomic tenant effect
+auditing. The site service, protected operator CLI and all seven registry HTTP
+operations are implemented and verified: the selected security run passed 58
+tests and the final corrected HTTP/registry run passed 12, with strict lint. Tenant-bound revocation is corrected with 34 focused tests and
 strict lint. The disposable runner and test-side connection ownership proof are complete,
 with focused suites and verified shutdown. The full-read source census and its repair leaves are in
 `docs/tasks/SIGNOFF-REPAIR.md`. Resume `PHASE-8.5.3` after the corrective prerequisites.

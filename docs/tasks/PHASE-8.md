@@ -30,7 +30,7 @@ default.
 `SIGNOFF-REPAIR` owns the source-review findings discovered after the historical
 `.5.2` closure. Shared adapter/region HTTP operations now use explicit site
 operator authority (`docs/decisions/2026-09-09_site-operator-authority.md`);
-`SIGNOFF-REPAIR.3.2.3` owns the current live HTTP verification. The earlier
+`SIGNOFF-REPAIR.3.2.3` owns the completed live HTTP verification. The earlier
 any-tenant-admin behavior and its positive fixtures below are historical records.
 MCP authorization/continuation, A2A transport, federation and adapter certification
 also have source-review records. Their previous test results retain provenance;
@@ -44,7 +44,7 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — the legacy registry probe reproduced shared tenant-admin writes after boundary revocation, HTTP 200 and SQL witness 1|2|2|1, rc=0. Historical success fixtures below did not prove site isolation.
 - [x] **ADDRESSED (verified)** — the corrected HTTP suite passed all 8 tests, rc=0, including every route, tenant/freeze refusals, actual-parent liveness, audit rollback, wire errors and both revocation orders. This index records the correction while preserving the old execution evidence.
-- [x] **NO REGRESSION** — Focused verification passed; confirmation is pending. strict focused Clippy passed, rc=0; `make book` and rendered contract inspection passed, rc=0. Existing regional routing and adapter controls passed; final repeated region/escalation verification remains tracked in the owner. No Phase-8 or Internet qualification is advanced.
+- [x] **NO REGRESSION** — Focused verification and confirmation passed. strict focused Clippy passed, rc=0; `make book` and rendered contract inspection passed, rc=0. Existing regional routing and adapter controls passed; the selected security run passed 58 tests and the final corrected HTTP/registry run passed 12, rc=0; all results are consumed and both owned clusters removed. No Phase-8 or Internet qualification is advanced.
 
 ## Task Tree
 
@@ -1411,7 +1411,7 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.2.3` | `active` | corrective prerequisite; HTTP site-authority verification, then remaining authority repairs |
+| 1 | `SIGNOFF-REPAIR.3.3` | `pending` | corrective prerequisite; core subject serialization and remaining tenant authority repairs |
 | 2 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
 
 ## Changelog

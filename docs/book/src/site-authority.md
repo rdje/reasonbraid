@@ -3,7 +3,7 @@
 The shared adapter and region HTTP registries now use explicit site authority.
 The service and protected `rb-site` CLI are verified under
 `SIGNOFF-REPAIR.3.2.1` and `.3.2.2`. HTTP enforcement is implemented under `.3.2.3`;
-all eight focused HTTP controls pass, with final adjacent checks in progress. Tenant enrollment conveys no site
+all eight focused HTTP controls and the selected adjacent checks pass. Tenant enrollment conveys no site
 capability. The development principal header remains a deployment trust assumption.
 
 ## Who controls site authority

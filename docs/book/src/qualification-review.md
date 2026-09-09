@@ -29,7 +29,8 @@ lint pass. The `rb-site` operator CLI passed its live controls under `.3.2.2`,
 including the documented operator privileges and bounded audit walk. HTTP routing
 now uses the site service under `.3.2.3`; the affected fixtures use explicit site
 grants. All eight HTTP controls pass, including invalid wire-input refusals and both
-revocation orders. Final adjacent security checks are in progress.
+revocation orders. The selected security run passed 58 tests; the final corrected HTTP/registry run
+passed 12. Both owned clusters were stopped and removed.
 
 | Scenario | Required repaired behavior |
 | --- | --- |

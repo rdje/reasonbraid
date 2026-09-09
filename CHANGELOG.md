@@ -8,9 +8,10 @@ bodies retain their keys with a committed audit header. Refusals distinguish
 malformed input, authority, domain and storage failures. Invalid UTF-8 paths now
 return typed JSON after a regression exposed the extractor bypass. Tenant
 enrollment confers no site authority. The live HTTP controls pass all eight tests;
-strict focused lint passes. This implementation commit is verification-pending:
-the final adjacent escalation/region checks remain supervised and tracked in the
-owning task-tree.
+strict focused lint passes. The selected security run completed with 58 passes;
+the final corrected HTTP/registry run completed with 12 passes. Both supervised
+clusters stopped and were removed; REPAIR-0009 closes the implementation commit's
+verification-pending record.
 
 ## 2026-09-09 — Protected site operator CLI (`SIGNOFF-REPAIR.3.2.2`)
 

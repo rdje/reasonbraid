@@ -15,7 +15,8 @@ foreign-target revocation and repeated-revoke epoch defects are reproduced; the
 `.3.1` correction passed 34 focused tests and strict lint. Shared writes by frozen
 tenant admins are now runtime-confirmed. The new site service passes ten live
 controls and strict focused lint; the protected CLI passes its live controls.
-HTTP integration is implemented with live verification in progress; other repairs remain open.
+All seven HTTP registry operations now use site authority and pass eight focused
+HTTP controls plus adjacent checks; other repairs remain open.
 
 | Area | Status | Current evidence and remaining work |
 | --- | --- | --- |
@@ -32,8 +33,8 @@ HTTP integration is implemented with live verification in progress; other repair
 | Phase 7 — Internet qualification | Mostly Done | Hardening machinery exists; G6/G7 Internet exposure remains NOT MET. Local repairs and external threat-model, injection and penetration-test evidence remain required. |
 | Phase 8 — federation and interoperability | In Progress | Through regional routing historically recorded; `.5.3` store-and-forward, `.5.4` exit export/import and `.6` G8 remain. Shared authority and protocol gaps are prerequisite repairs. |
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
-| Corrective review | In Progress | `.1`, `.2.1`, `.2.2`, `.3.1` complete; `.3.2.1` site service passes ten live controls and strict lint. `.3.2.2` operator CLI passes 3 live controls plus adjacent service/ownership checks and strict lint; HTTP enforcement is implemented with live verification in progress. Tenant effect-audit/authorization transaction work remains `.3.3`. |
+| Corrective review | In Progress | `.1`, `.2.1`, `.2.2`, `.3.1` complete; `.3.2.1` site service passes ten live controls and strict lint. `.3.2.2` operator CLI passes 3 live controls plus adjacent service/ownership checks and strict lint; `.3.2.3` HTTP enforcement passes 8 focused controls; the selected 58-test security run and final 12-test registry run pass. Tenant effect-audit/authorization transaction work remains `.3.3`. |
 
 The shared adapter/region registry design is now explicit site-operator authority.
-The separate site service implements that design. HTTP handlers now call that service under `.3.2.3`; live HTTP qualification is in
-progress, and service tests alone do not qualify the routes.
+The separate site service implements that design. HTTP handlers call that service under `.3.2.3`, with live cross-tenant/freeze,
+actual-parent, audit/rollback, wire-input and revocation-race controls.

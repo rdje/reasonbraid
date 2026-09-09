@@ -113,7 +113,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.3.2 — Site-operator registry authority
 
-- Status: `active`; execute and commit `.3.2.1`, `.3.2.2`, then `.3.2.3`.
+- Status: `done`; service `.3.2.1`, protected CLI `.3.2.2` and HTTP enforcement `.3.2.3` are committed with live verification; details below.
 - Sources / owned surfaces: `api.rs require_admin_any_tenant, allowlist.rs, regions.rs, operator tooling, new migration`.
 - Goal and acceptance: Implement explicitly issued site authority for adapter and region mutations, deny tenant-admin escalation, check actual bound boundary and grant liveness, serialize revocation with effects, and record durable actor/action/target/reason/decision audit. Operator-controlled issuance and revocation must be tested; no HTTP enrollment minting.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -158,7 +158,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.3.2.3 — Registry HTTP enforcement and qualification
 
-- Status: `active`; predecessor `.3.2.2` committed as `b98aa36`; brief zero/untracked, clean tree and consumed verification proved before activation.
+- Status: `done`; predecessor `.3.2.2` committed as `b98aa36`; brief zero/untracked, clean tree and consumed verification proved before activation.
 - Owns: adapter/region handlers, request validation and reason inputs, legacy fixture replacement, HTTP cross-tenant/freeze/audit/race controls, history and live-book correction.
 - Scope: route all shared adapter/region reads and mutations through the verified site service, remove the any-tenant-admin helper for these routes, require a reason on mutations, preserve existing successful response shapes, and expose attributable refusal references. Distinguish domain refusal from SQL failure. Keep tenant-owned inspection behavior.
 - Entrypoint census: `rg` over production Rust and migrations found seven adapter/region HTTP operations, the site service and legacy private region mutation helpers; migration 0052/0053 seeds are deployment schema history. `sync_gated_entries` writes resolver_capabilities, not these registries. The leaf also owns removing the now-unneeded region mutation helpers, shared test-only site-grant provisioning, a new HTTP regression suite and runner registration. Preserve routing-consumer behavior; its separate SQL/domain conflation is explicitly owned by `.5.3` federation repair.
@@ -174,7 +174,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Corrected HTTP result: `run-ouyhe95e` passed all 8 tests, zero failed/ignored, rc=0 (18.91s); this includes typed 400 responses for invalid UTF-8 on adapter revoke, region pair and unpair, typed 413/415, no audit writes and unchanged registry state. Compilation took 49.80s including the shared Cargo build-lock wait. Final adjacent registry runs continue. The broader run also passed site_operator_cli (3 tests, 1.46s) and authority (9 tests, 0.08s), rc=0.
 - Final verification continuity: selected command_api passed 21 tests (16.60s, rc=0); the broader run has 54 passed and awaits escalation. The corrected run passed allowlist again (2 tests, 19.49s, rc=0), for 10 passed, and awaits regions. Both final binaries remain before first-test output with zero recorded CPU (regions PID 10317 after 4m21s; escalation PID 10855 after 3m42s). Do not infer their result or remove either live cluster.
 - promotion: declined (HTTP integration of the existing site-authority policy; the indexed authority decision and runbook are extended rather than creating a duplicate decision).
-- Implementation commit: `REASONBRAID-REPAIR-0008` (this commit, verification-pending). Per the director's commit-first rule, the implemented and focused-verified unit is committed while the confirmatory escalation/region processes finish. The leaf remains active; consume both runner completions and commit the final evidence before selecting another leaf.
+- Implementation commit: `a710651` / `REASONBRAID-REPAIR-0008`, committed with verification-pending under the director's commit-first rule. Both confirmations are now consumed; closure is `REASONBRAID-REPAIR-0009` (this commit).
+
+- Final confirmation: `CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh site_registry_http allowlist regions site_authority site_operator_cli authority command_api escalation` completed with 58 passed (7 + 2 + 2 + 10 + 3 + 9 + 21 + 4), zero failed/ignored, runner rc=0. The final escalation controls passed in 9.65s. Corrected `scripts/run_pg_tests.sh site_registry_http allowlist regions` completed with 12 passed (8 + 2 + 2), zero failed/ignored, runner rc=0; its final regions controls passed in 21.16s. The initial 7-test HTTP run predates the added extraction regression; the final 8-test run verifies the corrected handler build. The runner stopped and removed `run-7swjcb5s` and `run-ouyhe95e`; both residue checks passed. Failure evidence from `run-79xtxgad` was consumed and its stopped workspace removed as recorded above.
+- Closure checks: implementation commit hooks passed all 13 doctrines, rc=0; git_message_brief.txt was cleared to zero and verified untracked; git tree was clean before this evidence update. All tool/runner results are consumed. The escalated project-job census printed `handoff: OK`, rc=0. No full CI or push was run; phase/Internet qualification categories remain unchanged. README layout and standard commands remain unchanged; the existing site-book navigation covers this surface.
 
 ### SIGNOFF-REPAIR.3.3 — Bound-boundary authorization and grant selection
 
@@ -439,16 +442,15 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — the legacy owned probe reproduced four shared writes by tenant administrators, including writes after tenant-boundary revocation (HTTP 200, SQL witness 1|2|2|1, rc=0). The source census found seven HTTP operations bypassing distinct site authority. The new wire control reproduced a plain-text invalid-UTF8 Path refusal instead of typed JSON (7 passed/1 failed, rc=101), identifying Axum extraction before the handler as the cause.
 - [x] **ADDRESSED (verified)** — the corrected `site_registry_http` suite passed all 8 tests, rc=0 (18.91s). Every verb uses explicit site grants; two tenant admins before/after freeze and inactive/out-of-window actual grant/boundary cases leave registry snapshots unchanged. Human/role action separation, no-op/read/denial receipts, audit-failure rollback, both revocation orders and expiry after waiting pass. All three malformed-UTF8 paths now return typed JSON 400; missing media type and oversized bodies return typed 415/413 without audit or effect.
-- [x] **NO REGRESSION** — Focused verification passed; broader confirmation is pending. corrected HTTP controls passed 8 tests, rc=0, and focused server/lib/HTTP/allowlist/regions strict Clippy passed, rc=0 (30.70s). The selected broader run has 54 passed (initial HTTP 7, allowlist 2, regions 2, site service 10, operator CLI 3, authority 9, command API 21), zero failures/ignored; escalation is still pending. The corrected run has 10 passed (HTTP 8 + allowlist 2), zero failures/ignored; regions is still pending. `cargo fmt --all --check`, `git diff --check` and `make book` passed, rc=0. This implementation commit is explicitly verification-pending until both confirmatory runners stop and their remaining results are consumed.
-- [x] **FIX / LOCKSTEP** — all seven handlers use the verified site service; obsolete any-tenant authority and private unaudited mutation helpers are removed. The rendered book route/receipt/status table inspection passed, rc=0. Authority/qualification/deployment pages, the decision, historical Phase-8 correction, live status, memory, CHANGELOG and DEV_NOTES reflect the implemented contract and pending final confirmation; no production qualification advance is claimed.
+- [x] **NO REGRESSION** — corrected HTTP/registry verification passed 12 tests (8 + 2 + 2), rc=0; the selected broader security run passed 58 tests, rc=0, including operator CLI, site/tenant authority, command API and escalation. All results are consumed and owned clusters stopped/removed. Final focused strict Clippy passed, rc=0 (30.70s); `cargo fmt --all --check`, `git diff --check`, `make book` and rendered contract inspection passed, rc=0. The implementation commit passed all 13 doctrines. The project-job census reported `handoff: OK`, rc=0; no confirmation remains pending.
+- [x] **FIX / LOCKSTEP** — all seven handlers use the verified site service; obsolete any-tenant authority and private unaudited mutation helpers are removed. The rendered book route/receipt/status table inspection passed, rc=0. Authority/qualification/deployment pages, the decision, historical Phase-8 correction, live status, memory, CHANGELOG and DEV_NOTES reflect the implemented contract and completed confirmation; no production qualification advance is claimed.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.2.3` | `active` | enforce site authority on every shared registry HTTP route |
-| 2 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
-| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
+| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -472,6 +474,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.2.3` closure: `REASONBRAID-REPAIR-0009 (leaf SIGNOFF-REPAIR.3.2.3): record completed registry HTTP qualification`.
 
 - `SIGNOFF-REPAIR.3.2.3` implementation (verification-pending): `REASONBRAID-REPAIR-0008 (leaf SIGNOFF-REPAIR.3.2.3): enforce site grants and atomic auditing on registry HTTP`.
 

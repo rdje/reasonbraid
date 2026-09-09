@@ -55,7 +55,7 @@ The shared adapter and region HTTP handlers use the separate
 actual-parent liveness, and atomic registry/audit operations serialized with site
 revocation. Tenant enrollment cannot mint those grants. The protected `rb-site`
 CLI is verified under `SIGNOFF-REPAIR.3.2.2`; HTTP enforcement is implemented under
-`.3.2.3`, with eight HTTP controls passed and final adjacent checks in progress. Shared inspection requires the
+`.3.2.3`, with eight HTTP controls and the selected adjacent checks passed. Shared inspection requires the
 explicit `registry_inspect` action; tenant-scoped inspection retains its own policy.
 
 ### Grant and boundary revocation

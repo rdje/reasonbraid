@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Revocation must select the authorized tenant before mutation
+
+- Both foreign-target baseline controls returned 404 after changing the victim's status and epoch; a repeated 409 also bumped the epoch again. Both services now filter by expected tenant and lock the matching row before status/epoch changes. The corrected controls include victim-state snapshots and two requests forced to contend on the same grant. Final effect auditing remains separate `.3.3` work; an admission record must not be described as the mutation outcome.
+- promotion: declined (local repair of the existing tenant-isolation contract, with full measurements owned by `SIGNOFF-REPAIR.3.1`; no new authority policy).
+
 ## _(2026-09-09)_ — A disposable runner also needs test-side ownership checks
 
 - The baseline authority test wrote two authorization rows with all ownership metadata removed. A shared test-only pool helper now preflights the live receipt and exact endpoint, then validates actual server identity on every new physical connection. Missing metadata refuses before public tables exist; forged-owner/directory and replacement-connection controls pass. The PG CI job uses the same runner with repository-local installation and cache stores.

@@ -57,11 +57,39 @@ cannot mint site authority. Each mutation and its audit must serialize with revo
 Implementation is pending `SIGNOFF-REPAIR.3.2`; the decision is
 `docs/decisions/2026-09-09_site-operator-authority.md`.
 
-For example, an administrator of tenant A must not revoke tenant B's grant, prune
-B's inbox or declare a shared site region merely by supplying A's tenant identifier.
-These refusal cases must prove unchanged protected rows and epochs, alongside a
-successful correctly authorized control. The current source does not enforce that
-uniformly; `.3.1`, `.3.2` and `.3.5` own the repairs.
+### Grant and boundary revocation
+
+Both revocation services now bind the target id to the authorized tenant inside
+PostgreSQL before changing status. A missing or foreign target returns HTTP 404.
+The matching target is locked until status and the tenant's revocation epoch commit
+together. An already revoked target causes no further epoch increment.
+
+For example, suppose Alice administers tenant A and Bob administers tenant B:
+
+| Request | Result and protected state |
+| --- | --- |
+| Alice supplies A's tenant id while targeting B's role grant | 404; B's grant, epoch and authorization records remain unchanged. |
+| Alice supplies A's tenant id while targeting B's boundary | 404; B's boundary, epoch and authorization records remain unchanged. |
+| Bob revokes B's role grant | 200; status becomes revoked and B's epoch increases once. |
+| Bob repeats that role-grant revocation | 409; no further epoch increment. |
+| Two admitted requests revoke the same active grant | One succeeds; the other sees the revoked status and returns 409; one epoch increment. |
+| Bob revokes B's boundary, then attempts another administrative write | The next write is refused by the frozen boundary; eligible own-tenant inspection remains available. |
+
+The prior implementation returned 404 only after committing the foreign target's
+revocation. Both live baseline controls reproduced status active→revoked and epoch
+0→1 despite that response. A rejected repeated grant revocation also advanced the
+epoch to 2. `SIGNOFF-REPAIR.3.1` owns the correction and its focused verification;
+the corrected API/authority/escalation run passed 34 tests. The contention control
+observed both requests waiting on database locks before releasing the target.
+
+The existing tenant-admin audit records the caller's admission decision. It does
+not yet persist the submitted revocation reason and final effect outcome atomically
+with the mutation. That effect audit, and serialization against revocation of the
+acting administrator's own authority, remain `.3.3`. The target-row lock described
+here does not establish those separate guarantees.
+
+Foreign inbox operations and shared registry mutations require their own corrected
+authority checks and unchanged-state controls under `.3.5` and `.3.2`.
 
 Site authority and workload certificate checks do not replace production caller
 authentication. The development header trust and the open external G6/G7 gates remain

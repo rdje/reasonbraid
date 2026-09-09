@@ -1922,6 +1922,16 @@ async fn revoking_a_grant_refuses_its_next_authorization_while_others_work() {
     )
     .await;
     assert_eq!(status, 409, "a second revocation: {again}");
+    let epoch: i64 =
+        sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+            .bind(&tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        epoch, 1,
+        "unknown and repeated targets cannot advance the epoch"
+    );
 }
 
 /// The admin revoke POST (tenant_admin-audited server-side).
@@ -1941,6 +1951,216 @@ async fn admin_revoke(
         .expect("revoke request");
     let status = response.status().as_u16();
     (status, response.json().await.expect("revoke json"))
+}
+
+async fn assert_foreign_revocation_is_inert(boundary: bool) {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, attacker) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "revocation-attacker" }),
+    )
+    .await;
+    assert_eq!(status, 200, "attacker enrollment: {attacker}");
+    let (status, victim) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "revocation-victim" }),
+    )
+    .await;
+    assert_eq!(status, 200, "victim enrollment: {victim}");
+    let victim_tenant = victim["tenant_id"].as_str().unwrap();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "victim-role", "tenant_id": victim_tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "victim role enrollment: {role}");
+    let (collection, table, column, target) = if boundary {
+        (
+            "boundaries",
+            "enrollment_boundaries",
+            "boundary_id",
+            victim["boundary_id"].as_str().unwrap(),
+        )
+    } else {
+        (
+            "grants",
+            "authority_grants",
+            "grant_id",
+            role["grant_id"].as_str().unwrap(),
+        )
+    };
+    // SQL identifiers come only from the two constant branches above.
+    let snapshot_sql = format!(
+        "SELECT a.status, t.revocation_epoch, \
+         (SELECT COUNT(*) FROM authorization_records WHERE tenant_id = t.tenant_id) \
+         FROM {table} a JOIN tenants t ON t.tenant_id = a.tenant_id WHERE a.{column} = $1"
+    );
+    let before: (String, i64, i64) = sqlx::query_as(&snapshot_sql)
+        .bind(target)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(before.0, "active");
+    let path = format!("/v1/admin/{collection}/{target}/revoke");
+    let (status, refused) = admin_revoke(
+        &client,
+        &base,
+        &path,
+        attacker["principal_id"].as_str().unwrap(),
+        attacker["tenant_id"].as_str().unwrap(),
+    )
+    .await;
+    assert_eq!(status, 404, "foreign target stays hidden: {refused}");
+    let after: (String, i64, i64) = sqlx::query_as(&snapshot_sql)
+        .bind(target)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "a foreign-target 404 must preserve victim status, epoch and authorization records"
+    );
+
+    // A real administrator in the target tenant can still revoke the same id.
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        &path,
+        victim["principal_id"].as_str().unwrap(),
+        victim_tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "own-tenant revocation: {revoked}");
+    let legitimate: (String, i64, i64) = sqlx::query_as(&snapshot_sql)
+        .bind(target)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(legitimate, ("revoked".into(), before.1 + 1, before.2 + 1));
+    let (status, repeated) = admin_revoke(
+        &client,
+        &base,
+        &path,
+        victim["principal_id"].as_str().unwrap(),
+        victim_tenant,
+    )
+    .await;
+    assert_eq!(
+        status,
+        if boundary { 403 } else { 409 },
+        "a frozen boundary or already revoked grant refuses: {repeated}"
+    );
+    let repeated_state: (String, i64, i64) = sqlx::query_as(&snapshot_sql)
+        .bind(target)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(repeated_state.0, "revoked");
+    assert_eq!(repeated_state.1, legitimate.1, "refusal changes no epoch");
+}
+
+#[tokio::test]
+async fn foreign_grant_revocation_leaves_victim_unchanged() {
+    assert_foreign_revocation_is_inert(false).await;
+}
+
+#[tokio::test]
+async fn foreign_boundary_revocation_leaves_victim_unchanged() {
+    assert_foreign_revocation_is_inert(true).await;
+}
+
+#[tokio::test]
+async fn concurrent_grant_revocations_transition_and_bump_the_epoch_once() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, admin) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "concurrent-revoker" }),
+    )
+    .await;
+    assert_eq!(status, 200, "admin enrollment: {admin}");
+    let tenant = admin["tenant_id"].as_str().unwrap().to_owned();
+    let principal = admin["principal_id"].as_str().unwrap().to_owned();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "concurrent-target", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrollment: {role}");
+    let grant = role["grant_id"].as_str().unwrap();
+    let path = format!("/v1/admin/grants/{grant}/revoke");
+
+    // Hold the target until BOTH HTTP requests are waiting on database locks.
+    // This proves contention instead of relying on scheduler timing.
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("SELECT grant_id FROM authority_grants WHERE grant_id = $1 FOR UPDATE")
+        .bind(grant)
+        .fetch_one(&mut *blocker)
+        .await
+        .unwrap();
+    let mut requests = Vec::new();
+    for _ in 0..2 {
+        let (client, base, path, principal, tenant) = (
+            client.clone(),
+            base.clone(),
+            path.clone(),
+            principal.clone(),
+            tenant.clone(),
+        );
+        requests.push(tokio::spawn(async move {
+            admin_revoke(&client, &base, &path, &principal, &tenant).await
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM pg_stat_activity \
+                 WHERE datname = current_database() AND state = 'active' \
+                   AND wait_event_type = 'Lock' AND query LIKE '%authority_grants%'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if waiting == 2 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("both revocation requests reach the locked target");
+    blocker.rollback().await.unwrap();
+    let mut results = Vec::new();
+    for request in requests {
+        results.push(request.await.unwrap());
+    }
+    results.sort_by_key(|result| result.0);
+    assert_eq!(
+        [results[0].0, results[1].0],
+        [200, 409],
+        "exactly one transition succeeds: {results:?}"
+    );
+    let state: (String, i64) = sqlx::query_as(
+        "SELECT g.status, t.revocation_epoch FROM authority_grants g \
+         JOIN tenants t ON t.tenant_id = g.tenant_id WHERE grant_id = $1",
+    )
+    .bind(grant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, ("revoked".into(), 1));
 }
 
 /// Revoking the boundary suspends the CEILING: every grant under it is refused

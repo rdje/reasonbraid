@@ -849,61 +849,81 @@ pub(crate) async fn bump_revocation_epoch(
     Ok(())
 }
 
-/// Revoke a grant by id: sets `status = 'revoked'` and bumps the tenant's
-/// revocation epoch in the SAME transaction. Returns `(tenant_id,
-/// previous_status)` — `None` when no such grant exists (the caller maps that
-/// to the typed 404). The evaluation's `status = 'active'` filters already
-/// refuse a revoked grant at the next authorization; the epoch bump refuses
-/// any node-side cached admission decision under it at the next dispatch.
+/// Revoke a grant within the expected tenant: lock the matching row before
+/// changing status and bumping the tenant's epoch in the SAME transaction.
+/// Returns `(tenant_id, previous_status)` — `None` for an absent or foreign
+/// target. An already revoked grant leaves the epoch unchanged. The evaluator
+/// refuses a revoked grant at the next authorization; the epoch bump invalidates
+/// node-side cached admission decisions at the next dispatch.
 pub(crate) async fn revoke_grant(
     pool: &PgPool,
     grant_id: &str,
+    expected_tenant: &str,
 ) -> Result<Option<(String, Option<GrantStatus>)>, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT tenant_id, status FROM authority_grants WHERE grant_id = $1")
-            .bind(grant_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT tenant_id, status FROM authority_grants \
+         WHERE grant_id = $1 AND tenant_id = $2 FOR UPDATE",
+    )
+    .bind(grant_id)
+    .bind(expected_tenant)
+    .fetch_optional(&mut *tx)
+    .await?;
     let Some((tenant_id, status)) = row else {
         return Ok(None);
     };
     let previous = status.parse::<GrantStatus>().ok();
-    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+    if previous != Some(GrantStatus::Revoked) {
+        sqlx::query(
+            "UPDATE authority_grants SET status = 'revoked' \
+             WHERE grant_id = $1 AND tenant_id = $2",
+        )
         .bind(grant_id)
+        .bind(expected_tenant)
         .execute(&mut *tx)
         .await?;
-    bump_revocation_epoch(&mut tx, &tenant_id).await?;
+        bump_revocation_epoch(&mut tx, &tenant_id).await?;
+    }
     tx.commit().await?;
     Ok(Some((tenant_id, previous)))
 }
 
-/// Revoke a boundary by id: sets `status = 'revoked'` and bumps the tenant's
-/// revocation epoch in the SAME transaction. Returns
-/// `(tenant_id, previous_status)` — `None` when no such boundary exists. The
+/// Revoke a boundary within the expected tenant: lock the matching row before
+/// changing status and bumping the tenant's epoch in the SAME transaction.
+/// Returns `(tenant_id, previous_status)` — `None` for an absent or foreign
+/// target. An already revoked boundary leaves the epoch unchanged. The
 /// active-boundary lookup then finds no ceiling, so every grant under it is
 /// refused at the next decision (the core's revoked-boundary stance); the
 /// epoch bump invalidates every node-side cached decision in the tenant.
 pub(crate) async fn revoke_boundary(
     pool: &PgPool,
     boundary_id: &str,
+    expected_tenant: &str,
 ) -> Result<Option<(String, Option<BoundaryStatus>)>, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT tenant_id, status FROM enrollment_boundaries WHERE boundary_id = $1",
+        "SELECT tenant_id, status FROM enrollment_boundaries \
+         WHERE boundary_id = $1 AND tenant_id = $2 FOR UPDATE",
     )
     .bind(boundary_id)
+    .bind(expected_tenant)
     .fetch_optional(&mut *tx)
     .await?;
     let Some((tenant_id, status)) = row else {
         return Ok(None);
     };
     let previous = status.parse::<BoundaryStatus>().ok();
-    sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE boundary_id = $1")
+    if previous != Some(BoundaryStatus::Revoked) {
+        sqlx::query(
+            "UPDATE enrollment_boundaries SET status = 'revoked' \
+             WHERE boundary_id = $1 AND tenant_id = $2",
+        )
         .bind(boundary_id)
+        .bind(expected_tenant)
         .execute(&mut *tx)
         .await?;
-    bump_revocation_epoch(&mut tx, &tenant_id).await?;
+        bump_revocation_epoch(&mut tx, &tenant_id).await?;
+    }
     tx.commit().await?;
     Ok(Some((tenant_id, previous)))
 }

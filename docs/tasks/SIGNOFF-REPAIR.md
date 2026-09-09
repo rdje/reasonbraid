@@ -98,11 +98,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.3.1 — Tenant-bound revocation
 
-- Status: `pending`.
+- Status: `done`.
 - Sources / owned surfaces: `api.rs, authority.rs revoke_grant/revoke_boundary`.
 - Goal and acceptance: Reproduce a foreign grant/boundary revocation using an own-tenant admin; bind target tenant before mutation and audit; prove victim status and epoch unchanged on refusal, with legitimate revoke preserved.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Verification: corrected `command_api authority escalation` run passed 34 tests (21+9+4), 0 failed/ignored, rc=0. Cluster `target/pg-tests/run-od1t45mh` stopped and removed. Both matched foreign-target controls preserve victim status/epoch/audit count; rightful revocation succeeds; rejected repeats keep the epoch stable. Two HTTP requests were observed waiting on locks before release in the contention control: one 200, one 409 and epoch 1. Strict `cargo clippy --offline --locked -p reasonbraid-server --lib --test command_api -- -D warnings` passed, rc=0, in 6m35s; Rust format rc=0.
+- Commit: `REASONBRAID-REPAIR-0005`.
+
+- Implementation boundary: add the expected tenant to both revocation services, lock and inspect only a matching target before changing status/epoch, and refuse repeated revocation without another epoch bump. Keep the HTTP target hidden by the existing typed 404. Prove both grant and boundary refusals against two independently enrolled tenants, including unchanged victim status/epoch and victim authorization-record count; preserve legitimate revocation and its existing caller-tenant admission audit. Add a concurrent duplicate-grant revoke control to prove one transition/epoch increment.
+- Audit qualification boundary: the existing admission audit describes tenant-admin permission, not the final revocation outcome or submitted reason. This leaf must not relabel that record as an effect audit. Atomic authorization/effect audit, reason persistence and serialization with administrator revocation remain explicitly owned by `.3.3` alongside the existing authorization transaction repair; no production qualification advances here.
+- Baseline reproduction: `CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh command_api` returned 101, `18 passed; 2 failed`. Both new foreign-grant and foreign-boundary tests observed HTTP 404 followed by victim tuple `(status, epoch, authorization_count)` changing from `(active, 0, 0)` to `(revoked, 1, 0)`. The owned cluster `target/pg-tests/run-7mqjygqr` was stopped, then its stopped receipt and both absent process groups were verified before exact cleanup: 1,590 files / 51,501,466 bytes removed, residue False. This confirms `R-36-39-1` in census-1's committed-mutation ordering at runtime.
+- Rejected-repeat reproduction: the unchanged baseline `command_api-4d4db744bfbd2952` binary ran its existing grant-revocation test alone in a new owned cluster (`target/pg-tests/run-00piqqnv`): `1 passed`, rc=0, but a subsequent SQL query measured epoch 2 after one successful revoke and the rejected repeat. The probe asserted that faulty baseline, rc=0, and the cluster was stopped and removed. The same leaf now prevents another epoch bump when the locked target is already revoked, with a repeated-request assertion and a forced two-request contention control.
+- Historical disposition: `R-36-39-1` in `docs/tasks/artifacts/signoff_review/census-1.md` is runtime-confirmed; its foreign-target committed-mutation mechanism is corrected by this leaf. The baseline source record remains historical. Admission/effect audit and administrator-revocation races remain open under `.3.3`; no claim is inferred from a 404 or a passing sibling suite.
+- promotion: declined (the DEV_NOTES revocation entry records this measured repair of an existing tenant-isolation contract; the leaf preserves its reproductions, fix and re-verification commands, without introducing a new authority policy).
 
 ### SIGNOFF-REPAIR.3.2 — Site-operator registry authority
 
@@ -116,7 +123,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - Status: `pending`.
 - Sources / owned surfaces: `core authority, server authority.rs`.
-- Goal and acceptance: Resolve a grant's actual boundary, enforce identity/tenant/subset/window correspondence, reject thread-only selectors for tenant actions, avoid latest-grant shadowing, and serialize all relevant authorization/mutation paths against revocation.
+- Goal and acceptance: Resolve a grant's actual boundary, enforce identity/tenant/subset/window correspondence, reject thread-only selectors for tenant actions, avoid latest-grant shadowing, and serialize all relevant authorization/mutation paths against revocation. Revocation administrative paths must persist the submitted reason and final outcome in an attributable effect audit atomically with status/epoch changes; the current tenant-admin admission audit is not that effect record.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -354,20 +361,20 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
-## Current commit acceptance — SIGNOFF-REPAIR.2.2.2
+## Current commit acceptance — SIGNOFF-REPAIR.3.1
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the matched baseline authority binary control ran without RB_TEST_CLUSTER/RB_TEST_OWNER/RB_TEST_DATABASE: `1 passed`, test rc=0, and `authorization rows written 2`. The test pools connected directly from DATABASE_URL before destructive fixtures. The controlled cluster was stopped and removed; the reproduction never contacted an existing external database.
-- [x] **ADDRESSED (verified)** — the rebuilt test returned exit 101 with `disposable PostgreSQL ownership required`; public table count stayed 0. The `pg_guard` suite passed 3 controls (including forged token/directory proof and denial of a new connection after its role-default marker changed), rc=0. The cross-crate run passed 40 tests in 8 selected suites, rc=0, and removed its cluster. The helper validates each new physical connection before pool publication.
-- [x] **NO REGRESSION** — `cargo fmt --all -- --check` rc=0. Focused server/CLI/MCP, restore, migration and RLS tests passed as recorded above. Strict `cargo clippy --offline --locked --all-targets --all-features -- -D warnings` passed, rc=0, in 35m05s. The final restore recheck passed (1 test, rc=0); its cluster was stopped and removed. All three rebuilt-binary environment controls passed with their expected refusal/skip exits, probe rc=0. YAML parsed through system Ruby/Psych, inline Python AST and the command-receipt control passed. `make book` and `git diff --check` rc=0.
-- [x] **FIX / LOCKSTEP** — shared test-only guard, 32 existing pool entrypoints, the new guard suite, verified restore CREATE/DROP, CI runner routing and accurate active-command receipts ship with deployment/CI documentation, TOOLBOX, decision/index, memory and the historical-census dispositions above. Progress, changelog and book pointers now advance to `.3.1`. GitHub execution remains a next-push check; this slice claims no tenant/site authorization repair.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `bash scripts/run_pg_tests.sh command_api` (offline, demo disabled) returned 101: 18 passed, 2 failed. Both foreign-target controls received 404 after victim status changed active→revoked and epoch 0→1. The API compares the returned target tenant after `authority::revoke_grant` / `revoke_boundary` commit by target id alone. The controlled cluster was stopped; exact output is summarized in the leaf above.
+- [x] **ADDRESSED (verified)** — the corrected `command_api` suite passed all 21 tests, rc=0: both foreign-target snapshots remain unchanged, own-tenant controls succeed, repeated refusals preserve the epoch, and two requests forced to wait on the target lock produce one 200, one 409 and epoch 1. Both SELECT and UPDATE include the expected tenant before effects.
+- [x] **NO REGRESSION** — `command_api authority escalation` passed 34 tests, rc=0; existing history/replay and frozen-admin inspection controls remain green. `cargo fmt --all -- --check` rc=0. Strict `cargo clippy --offline --locked -p reasonbraid-server --lib --test command_api -- -D warnings` passed, rc=0. `make book` rc=0; generated authority/CLI/qualification/roadmap content inspected. `git diff --check` empty, rc=0. The commit hook runs the staged doctrine gate.
+- [x] **FIX / LOCKSTEP** — both revocation services and API call sites are tenant-bound; tests cover refusal state, legitimate use and duplicate contention. The historical disposition, authority/CLI/qualification chapters, roadmap pointers, changelog, notes and memory are synchronized. Effect-audit/authorization transaction repair remains owned by `.3.3` as scoped above.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.1` | `pending` | target validation currently follows committed revocation |
-| 2 | `SIGNOFF-REPAIR.3.2` | `pending` | shared registry authority selected by delegated engineering judgment |
-| 3 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority |
+| 1 | `SIGNOFF-REPAIR.3.2` | `pending` | implement explicit site-operator authority for shared registries |
+| 2 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
+| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -391,6 +398,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.1`: `REASONBRAID-REPAIR-0005 (leaf SIGNOFF-REPAIR.3.1): bind revocation to the authorized tenant before mutation`.
 
 - `SIGNOFF-REPAIR.2.2.2`: `REASONBRAID-REPAIR-0004 (leaf SIGNOFF-REPAIR.2.2.2): require disposable ownership before database fixture writes`.
 

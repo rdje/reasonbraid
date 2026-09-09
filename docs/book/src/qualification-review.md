@@ -4,7 +4,8 @@ The startup source review is complete. It read the roadmap, all tracked code and
 all book sources before changes. Runner cleanup, process-creation races and test-side
 database ownership now have runtime controls and fixes. Missing ownership refuses
 before public tables are created; forged proof and replacement connections are
-covered. Reproduction of product findings remains pending. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
+covered. Foreign-tenant grant and boundary revocation, and the repeated-revoke
+epoch defect, are now reproduced and corrected under `.3.1`; 34 focused tests pass. `docs/tasks/SIGNOFF-REPAIR.md` owns the repairs and their verification.
 
 Historical test results in this manual describe the assertions exercised at those
 commits. They do not establish current production qualification. Internet exposure
@@ -33,12 +34,12 @@ serialized with revocation. Implementation and command examples are pending
 
 ## Other findings under repair
 
-These are source observations and test limitations, not newly measured runtime
-results. Each row has executable repair ownership rather than an inert issue list.
+These are source observations and test limitations except for the explicitly
+measured revocation controls above. Each row has executable repair ownership rather than an inert issue list.
 
 | Surface | Current limitation identified in source | Repair leaves |
 | --- | --- | --- |
-| Authority and administration | Some paths validate caller tenant separately from target ownership; grant selection and boundary binding need correction. | `.3.1`–`.3.5` |
+| Authority and administration | Foreign grant/boundary mutation is corrected with matched unchanged-state controls. Effect auditing, other caller/target paths, grant selection and boundary binding repairs remain. | `.3.1`–`.3.5` |
 | Node recovery and budgets | Receipt identity, cursor retention, result durability, uncertain retry, settlement and concurrency guarantees need additional enforcement and proof. | `.4.1`–`.4.5` |
 | Directory and recruitment | Candidate visibility and call/thread binding are incomplete; automatic creation reuses a fixed idempotency key. | `.5.1`–`.5.3` |
 | MCP and A2A | MCP reads do not uniformly enforce target authority; listen dedup needs correction. A2A qualification currently demonstrates serialization rather than an independent transport peer. | `.6.1`–`.6.3` |

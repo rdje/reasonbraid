@@ -209,8 +209,8 @@ presence reads `suspended` — the live lease, if any, is not cut. An unknown
 node is a typed 404; a second revocation (no active certificate left) is a
 typed 409.
 
-The authority revocation verbs (`.1.3.2`) complete the set — also
-tenant_admin-authorized and audited:
+The authority revocation verbs (`.1.3.2`) require tenant-admin admission and record
+that admission decision:
 
 ```text
  grant revoke --grant grt_rol_… --reason "role retired" --as alice
@@ -227,6 +227,14 @@ A revoked grant loses its authority at the next decision (the refusal is
 audited); a revoked boundary freezes the tenant.s WRITES — every grant under
 it is refused — while the inspection lists stay open (the freeze never blinds
 the operator).
+
+A grant or boundary outside the acting tenant returns 404 without changing the
+foreign target or its tenant's revocation epoch. A repeated grant revocation returns
+409 without another epoch increment. Concurrent admitted revocations of the same
+grant serialize at its row and advance the epoch once. The revocation reason is
+required input; persisting it with the final effect outcome remains corrective work
+under `SIGNOFF-REPAIR.3.3`. See the authority chapter for the admission/effect audit
+boundary and verification status.
 
 The incarnation surface (`.1.6.1`; deferral #4's first half): a node that
 enrolls AS a role (the dev wiring — its id IS the role wire id) records the

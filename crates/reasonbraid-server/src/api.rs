@@ -4822,16 +4822,13 @@ async fn revoke_grant(
             "the revocation reason is required (a revocation without a reason is a silent skip)",
         ));
     }
-    let Some((tenant, previous)) = authority::revoke_grant(&state.pool, &grant_id).await? else {
+    let Some((tenant, previous)) =
+        authority::revoke_grant(&state.pool, &grant_id, &req.tenant_id.to_string()).await?
+    else {
         return Err(ControlApiError::not_found(format!(
             "no grant `{grant_id}` in this tenant"
         )));
     };
-    if tenant != req.tenant_id.to_string() {
-        return Err(ControlApiError::not_found(format!(
-            "no grant `{grant_id}` in this tenant"
-        )));
-    }
     if previous == Some(GrantStatus::Revoked) {
         return Err(ControlApiError::invalid_transition(format!(
             "grant `{grant_id}` is already revoked"
@@ -4857,17 +4854,13 @@ async fn revoke_boundary(
             "the revocation reason is required (a revocation without a reason is a silent skip)",
         ));
     }
-    let Some((tenant, previous)) = authority::revoke_boundary(&state.pool, &boundary_id).await?
+    let Some((tenant, previous)) =
+        authority::revoke_boundary(&state.pool, &boundary_id, &req.tenant_id.to_string()).await?
     else {
         return Err(ControlApiError::not_found(format!(
             "no boundary `{boundary_id}` in this tenant"
         )));
     };
-    if tenant != req.tenant_id.to_string() {
-        return Err(ControlApiError::not_found(format!(
-            "no boundary `{boundary_id}` in this tenant"
-        )));
-    }
     if previous == Some(BoundaryStatus::Revoked) {
         return Err(ControlApiError::invalid_transition(format!(
             "boundary `{boundary_id}` is already revoked"

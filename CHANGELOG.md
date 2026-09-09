@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Bind revocation to the authorized tenant (`SIGNOFF-REPAIR.3.1`)
+
+Grant/boundary revocation now selects and locks only a target in the authorized
+tenant before changing status and epoch. Foreign targets remain 404 with victim
+state unchanged. Rejected repeats no longer increment the epoch again, and two
+requests forced to contend on the same grant produce one transition/epoch bump.
+Validation: both foreign-target defects and the repeated-epoch defect reproduced;
+34 corrected API/authority/escalation tests passed; format and focused strict
+Clippy passed. Final documentation gates run in the commit workflow. Atomic final-effect auditing and
+administrator-authority serialization remain explicitly owned by `.3.3`.
+
 ## 2026-09-09 — Disposable ownership at test connections (`SIGNOFF-REPAIR.2.2.2`)
 
 Server, CLI and MCP database fixtures now validate a live runner receipt and

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Separate browser test containment from production shutdown
+
+- The exact old helper captures 3 MiB without a stream bound. Its first external probe times out with no phase evidence; an unchanged supervised retry succeeds with its group consumed. New test fixtures own local stores, one worker group, bounded input/output/exit, strict group absence and explicit origin shutdown. Successful fixtures are removed; failures retain bounded logs and receipts. Only two already-locked test dependency edges are added.
+- First six controls pass, but the receipt-enabled rerun catches EPERM inspecting the real browser group after worker exit zero. Preserve the failed fixture and logs. Native Darwin controls show an exclusively owned zombie group's zero/TERM/KILL calls return EPERM, then reaping establishes ESRCH. The original Chrome member state was not captured. Retry uncertain observation only within a fixed bound, retain on persistent denial and never treat a refused probe/signal as cleanup. The correction's first compile catches an incomplete local rename; final source fixes it without weakened assertions.
+- Eight final controls pass in 7.02s with real Chrome, both output limits, worker/descendant/origin lifetime and transient/persistent refusal checks. Final strict lint passes in 8.86s; all results are consumed. Six final groups and successful fixtures are independently absent; only the original failed fixture remains. The real render still records a group-stop request after worker exit; this is evidence for .5.2 production repair, not indefinite leakage or signal causality. Evidence: docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md.
+- promotion: promoted → `docs/decisions/2026-09-09_browser-test-lifetimes.md`; owner `SIGNOFF-REPAIR.11.4.3.1.5.1`.
+
 ## 2026-09-09 — Publisher fixture ownership must survive independent processes
 
 - Two processes running the exact old helper in an isolated manifest root both select pub-0; the second erases the first witness while that owner remains alive. Replace deletion-at-start with exclusive UUIDv7/private creation under checked on-volume parent components. Record device/inode, finish explicitly after gix handle closure, check removal, and retain uncompleted fixtures without Drop deletion.

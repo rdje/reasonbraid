@@ -38,3 +38,7 @@ futures-util = "0.3"
 [dev-dependencies]
 # The offline wire test: a local origin the browser navigates to.
 axum = "0.8"
+# Test-side process-group ownership, private fixture identities and bounded I/O.
+rustix = { version = "1", features = ["process"] }
+uuid = { version = "1", features = ["v7"] }
+tokio = { version = "1", features = ["process", "io-util", "sync"] }

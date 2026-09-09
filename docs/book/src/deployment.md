@@ -201,6 +201,35 @@ does not change production publication or qualify its broader governance gates.
 Exact checks and their results are tracked in
 `docs/tasks/artifacts/signoff_review/publisher-fixtures.md`.
 
+## Browser verification bounds its workers and origins
+
+The browser integration harness gives each command a private on-volume fixture
+under `target/browser-lifetime-controls`, including temporary, profile/cache and
+bounded diagnostic data. Each worker starts in its own process group. Input,
+stdout, stderr and exit share a deadline; each output stream has a 2 MiB ceiling
+plus one byte to detect overflow. After any result the harness consumes the worker
+and confirms group absence, escalating bounded shutdown if needed. Failed tests
+or unconfirmed cleanup retain their directory and receipt for inspection.
+
+A native macOS control shows that a group containing an exited, unreaped child
+can transiently refuse inspection with `EPERM`. The harness waits only within a fixed bound and requires
+an actual absence observation; persistent denial stays an error. Refused signal
+requests never qualify cleanup. Eight final controls and strict focused lint pass;
+the original failed fixture is retained with its unconfirmed receipt.
+
+Local HTTP origins have explicit graceful shutdown; the serving task is consumed
+before successful fixture removal. Budget admission always runs, even without a
+browser. The render test reports an absent browser as unqualified; an explicitly
+configured invalid browser is an error. The CI workflow requires browser presence.
+
+A successful render does not establish the production worker's cleanup guarantee.
+The first real Chrome run left its process group observable after worker output
+and exit; the test supervisor then invoked group cleanup. That observation is
+owned by production lifetime repair `.11.4.3.1.5.2`; the supervisor's containment must never be counted
+as the worker doing its own shutdown. Combined qualification follows under `.5.3`.
+See `docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md` for exact
+control results, receipts and remaining boundaries.
+
 ## Project binaries
 
 ```bash

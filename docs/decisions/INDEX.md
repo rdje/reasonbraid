@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_browser-test-lifetimes.md](docs/decisions/2026-09-09_browser-test-lifetimes.md) | decision | bound browser test origins/groups and output; require observed absence through transient permission refusals and keep production shutdown claims separate |
 | [2026-09-09_publisher-fixtures.md](docs/decisions/2026-09-09_publisher-fixtures.md) | decision | exclusive publisher test directories, explicit identity-checked cleanup after handle closure and retained incomplete evidence |
 | [2026-09-09_ci-workflows.md](docs/decisions/2026-09-09_ci-workflows.md) | decision | require complete local CI command coverage and real scanner redaction evidence; keep wiring distinct from actual full and remote gates |
 | [2026-09-09_ci-scanners.md](docs/decisions/2026-09-09_ci-scanners.md) | decision | pin and verify scanner release bytes before execution; preserve exact version/gate phases and failure evidence |

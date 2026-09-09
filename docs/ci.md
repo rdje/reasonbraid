@@ -86,7 +86,12 @@ All six project command jobs now use the local CI launcher. Python discovery,
 worker builds, required browser presence, explicit full demo and pinned book build
 are wired. Publisher fixture ownership .4 is verified, including independent
 processes and preserved historical data. Browser profile/child lifetime .5 and
-safe compiler-artifact disposition .6 remain before broad execution under .2. Actual GitHub results remain to be consumed
+safe compiler-artifact disposition .6 remain before broad execution under .2.
+The browser test harness .5.1 now passes eight controls and strict lint, including
+real rendering and bounded process/origin cleanup. Its supervisor still observes
+a remaining group after the production worker returns; .5.2 owns that correction
+and .5.3 the combined qualification. A transient native group-permission refusal
+is reproduced and handled with bounded observation, never presumed absence. Actual GitHub results remain to be consumed
 after the authorized push. Local Make commands use project_env.py.
 
 Exact census, tool versions, source hashes, skips and limits:

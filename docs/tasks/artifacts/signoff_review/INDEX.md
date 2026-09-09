@@ -63,3 +63,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [Complete CI workflow routing](docs/tasks/artifacts/signoff_review/ci-workflows.md): three workflows, six command jobs, fifty Python controls and actual synthetic redaction under .11.4.3.1.3.3.
 
 - [Exclusive publisher fixtures](docs/tasks/artifacts/signoff_review/publisher-fixtures.md): reproduced two-process deletion, isolated creation/cleanup, five controls and native loader observation under .11.4.3.1.4.
+
+- [Browser test lifetimes](docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md): bounded origins/worker groups, eight controls, native zombie-group refusal and remaining production shutdown ownership under .11.4.3.1.5.1.

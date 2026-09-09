@@ -55,3 +55,9 @@ Publisher fixture ownership .11.4.3.1.4 now passes five focused controls, indepe
 helper lifetimes, two concurrent executable runs, strict lint and rendered book
 checks. Historical residue is preserved; all results are consumed. Browser and
 compiler-artifact prerequisites remain before full execution; categories unchanged.
+
+Browser test ownership .11.4.3.1.5.1 passes eight controls with real rendering,
+strict lint and consumed process/source/residue checks. Native transient group
+refusal is reproduced; bounded observation still requires actual absence and
+preserves the original failed fixture. Production worker lifetime .5.2 and combined
+qualification .5.3 remain before the full checkpoint; categories unchanged.

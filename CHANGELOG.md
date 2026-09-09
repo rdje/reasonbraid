@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Bound browser verification lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.1`)
+
+Give browser tests private local fixtures, bounded I/O/output/process groups and
+consumed origin shutdown. Budget admission runs without a browser; rendering
+keeps explicit qualification boundaries. Eight controls and strict lint pass.
+A real cleanup refusal exposed transient Darwin zombie-group EPERM behavior;
+native reproduction and bounded transient/persistent observation controls preserve
+strict absence checks. Keep the original failed fixture. The worker still requires
+supervisor assistance after rendering; production lifetime repair remains next.
+
 ## 2026-09-09 — Isolate publisher test directory ownership (`SIGNOFF-REPAIR.11.4.3.1.4`)
 
 Reproduce a second test process deleting a still-live owner's fixture. Replace

@@ -1,28 +1,25 @@
 //! The browser worker's stdio contract (PHASE-4.5.2): spawn the BUILT
 //! binary against a local origin — the rendered text, the network log, and
-//! the named refusals. The SKIP pattern covers machines without a browser.
+//! named refusals, bounded worker groups and consumed origin shutdown.
+//! Only rendering is unqualified when a browser is absent; budget admission always runs.
 
-use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+#![cfg(any(target_os = "linux", target_os = "macos"))]
 
-/// The skip guard: the worker's own browser probe (the startup check the
-/// `.5.1` contract pins — the binary's provenance is named).
-fn browser_present() -> bool {
-    let candidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-    ];
-    std::env::var("R3_BROWSER_BIN")
-        .map(|p| std::path::Path::new(&p).exists())
-        .unwrap_or(false)
-        || candidates.iter().any(|p| std::path::Path::new(p).exists())
-}
+mod support;
+
+use futures_util::FutureExt;
+use std::panic::AssertUnwindSafe;
+use std::time::Duration;
+use support::{browser_binary, Fixture};
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
 
 struct Origin {
     base: String,
     hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    shutdown: Option<oneshot::Sender<()>>,
+    task: Option<JoinHandle<std::io::Result<()>>>,
 }
 
 async fn spawn_origin() -> Origin {
@@ -60,103 +57,235 @@ async fn spawn_origin() -> Origin {
         .await
         .expect("the origin binds");
     let port = listener.local_addr().expect("the port is known").port();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("the origin serves");
+    let (shutdown, stopped) = oneshot::channel();
+    let task = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
     });
     Origin {
         base: format!("http://127.0.0.1:{port}"),
         hits,
+        shutdown: Some(shutdown),
+        task: Some(task),
     }
 }
 
-fn run_worker(request: &serde_json::Value) -> String {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("the worker spawns");
-    {
-        let mut stdin = child.stdin.take().expect("the worker stdin");
-        writeln!(stdin, "{request}").expect("the request writes");
+impl Origin {
+    async fn finish(mut self) -> Result<(), String> {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
+        let mut task = self.task.take().ok_or("origin task missing")?;
+        match timeout(Duration::from_secs(5), &mut task).await {
+            Ok(result) => result
+                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string()),
+            Err(_) => {
+                task.abort();
+                if timeout(Duration::from_secs(5), &mut task).await.is_err() {
+                    return Err("origin abort completion not confirmed".to_owned());
+                }
+                Err("origin graceful shutdown not confirmed".to_owned())
+            }
+        }
     }
-    let mut output = String::new();
-    child
-        .stdout
-        .take()
-        .expect("the worker stdout")
-        .read_to_string(&mut output)
-        .expect("the response reads");
-    let status = child.wait().expect("the worker exits");
-    assert!(status.success(), "the worker exits cleanly: {status}");
-    output
+}
+
+impl Drop for Origin {
+    fn drop(&mut self) {
+        if let Some(task) = &self.task {
+            task.abort();
+            eprintln!("origin aborted without confirmed graceful shutdown");
+        }
+    }
+}
+
+async fn conclude(fixture: Fixture, origin: Origin, result: std::thread::Result<()>) {
+    let shutdown = origin.finish().await;
+    fixture.finish(result.is_ok() && shutdown.is_ok()).unwrap();
+    shutdown.expect("origin and connections stopped");
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_browser_renders_the_page_and_logs_the_network() {
-    if !browser_present() {
+    if browser_binary().is_none() {
         println!("SKIP: no browser binary — set R3_BROWSER_BIN to run the render test");
         return;
     }
+    let fixture = Fixture::new();
     let origin = spawn_origin().await;
-    let request = serde_json::json!({
-        "url": format!("{}/page", origin.base),
-        "steps": [{ "action": "navigate", "url": format!("{}/page", origin.base) }],
-        "limits": { "max_steps": 4, "max_output_bytes": 1048576, "time_budget_secs": 30 }
-    });
-    let output = run_worker(&request);
-    let response: serde_json::Value = serde_json::from_str(&output).expect("the response is JSON");
-    assert!(
-        response["parent_digest"]
-            .as_str()
-            .unwrap()
-            .starts_with("sha256:"),
-        "{response}"
-    );
-    assert_eq!(response["page_title"], "Render Title", "{response}");
-    assert_eq!(response["worker_version"], "0.1.0");
-    let chunks = response["chunks"].as_array().expect("the chunks");
-    let joined: String = chunks
-        .iter()
-        .map(|c| c["text"].as_str().unwrap())
-        .collect::<Vec<_>>()
-        .join("|");
-    assert!(joined.contains("Rendered Heading"), "{joined}");
-    assert!(joined.contains("the rendered body"), "{joined}");
-    // The network log records the page request (the disclosure).
-    let log = response["network_log"].as_array().expect("the network log");
-    assert!(
-        log.iter()
-            .any(|e| e["url"].as_str().unwrap().contains("/page")),
-        "{log:?}"
-    );
-    assert!(origin.hits.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    let result = AssertUnwindSafe(async {
+        let request = serde_json::json!({
+            "url": format!("{}/page", origin.base),
+            "steps": [{ "action": "navigate", "url": format!("{}/page", origin.base) }],
+            "limits": { "max_steps": 4, "max_output_bytes": 1048576, "time_budget_secs": 30 }
+        });
+        let output = fixture
+            .worker(&request)
+            .await
+            .expect("bounded worker completes");
+        eprintln!(
+            "test supervisor group stop requested: {}",
+            output.group_stop_requested
+        );
+        let output = output.stdout;
+        let response: serde_json::Value =
+            serde_json::from_str(&output).expect("the response is JSON");
+        assert!(
+            response["parent_digest"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:"),
+            "{response}"
+        );
+        assert_eq!(response["page_title"], "Render Title", "{response}");
+        assert_eq!(response["worker_version"], "0.1.0");
+        let chunks = response["chunks"].as_array().expect("the chunks");
+        let joined: String = chunks
+            .iter()
+            .map(|c| c["text"].as_str().unwrap())
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(joined.contains("Rendered Heading"), "{joined}");
+        assert!(joined.contains("the rendered body"), "{joined}");
+        // The network log records the page request (the disclosure).
+        let log = response["network_log"].as_array().expect("the network log");
+        assert!(
+            log.iter()
+                .any(|e| e["url"].as_str().unwrap().contains("/page")),
+            "{log:?}"
+        );
+        assert!(origin.hits.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    })
+    .catch_unwind()
+    .await;
+    conclude(fixture, origin, result).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_step_budget_refuses_before_any_navigation() {
-    if !browser_present() {
-        println!("SKIP: no browser binary — set R3_BROWSER_BIN to run the render test");
-        return;
-    }
+    let fixture = Fixture::new();
     let origin = spawn_origin().await;
-    let request = serde_json::json!({
-        "url": format!("{}/page", origin.base),
-        "steps": [
-            { "action": "navigate", "url": format!("{}/page", origin.base) },
-            { "action": "click", "selector": "#nope" }
-        ],
-        "limits": { "max_steps": 1, "max_output_bytes": 1048576, "time_budget_secs": 30 }
-    });
-    let output = run_worker(&request);
-    let response: serde_json::Value = serde_json::from_str(&output).expect("the response is JSON");
+    let result = AssertUnwindSafe(async {
+        let request = serde_json::json!({
+            "url": format!("{}/page", origin.base),
+            "steps": [
+                { "action": "navigate", "url": format!("{}/page", origin.base) },
+                { "action": "click", "selector": "#nope" }
+            ],
+            "limits": { "max_steps": 1, "max_output_bytes": 1048576, "time_budget_secs": 30 }
+        });
+        let output = fixture
+            .worker(&request)
+            .await
+            .expect("bounded worker completes");
+        eprintln!(
+            "test supervisor group stop requested: {}",
+            output.group_stop_requested
+        );
+        let output = output.stdout;
+        let response: serde_json::Value =
+            serde_json::from_str(&output).expect("the response is JSON");
+        assert_eq!(
+            response["error"]["kind"], "step_budget_exceeded",
+            "{response}"
+        );
+        assert_eq!(
+            origin.hits.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the budget refusal precedes any navigation"
+        );
+    })
+    .catch_unwind()
+    .await;
+    conclude(fixture, origin, result).await;
+}
+
+#[tokio::test]
+async fn a_stalled_worker_is_bounded_and_its_group_is_consumed() {
+    let fixture = Fixture::new();
+    std::fs::write(fixture.path.join("sentinel"), b"owned unrelated witness").unwrap();
+    let mut command = tokio::process::Command::new("python3");
+    command.args([
+        "-B",
+        "-c",
+        "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)",
+    ]);
+    let result = fixture
+        .command(command, b"", Duration::from_millis(500))
+        .await;
+    assert!(result.unwrap_err().contains("deadline exceeded"));
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.path.join("worker.json")).unwrap()).unwrap();
+    assert_eq!(receipt["group_cleanup_confirmed"], true);
     assert_eq!(
-        response["error"]["kind"], "step_budget_exceeded",
-        "{response}"
+        std::fs::read(fixture.path.join("sentinel")).unwrap(),
+        b"owned unrelated witness"
     );
+    fixture.finish(true).unwrap();
+}
+
+#[tokio::test]
+async fn an_oversized_worker_stream_refuses_before_unbounded_capture() {
+    for stream in ["stdout", "stderr"] {
+        let fixture = Fixture::new();
+        let mut command = tokio::process::Command::new("python3");
+        command.args(["-B", "-c", &format!("import sys,time; sys.{stream}.buffer.write(b'x'*(3*1024*1024)); sys.{stream}.flush(); time.sleep(60)")]);
+        let result = fixture.command(command, b"", Duration::from_secs(10)).await;
+        assert!(result.unwrap_err().contains("output limit exceeded"));
+        assert_eq!(
+            std::fs::metadata(fixture.path.join(format!("{stream}.log")))
+                .unwrap()
+                .len(),
+            2 * 1024 * 1024 + 1
+        );
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(fixture.path.join("worker.json")).unwrap())
+                .unwrap();
+        assert_eq!(receipt["group_cleanup_confirmed"], true);
+        fixture.finish(true).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn origin_shutdown_closes_the_listener() {
+    let origin = spawn_origin().await;
+    let address = origin.base.trim_start_matches("http://").to_owned();
+    origin.finish().await.unwrap();
+    assert!(timeout(
+        Duration::from_secs(2),
+        tokio::net::TcpStream::connect(address)
+    )
+    .await
+    .unwrap()
+    .is_err());
+}
+
+#[tokio::test]
+async fn a_stalled_descendant_cannot_outlive_the_owned_worker_group() {
+    let fixture = Fixture::new();
+    let mut command = tokio::process::Command::new("python3");
+    command.args(["-B", "-c", "import os,signal,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); child=os.fork(); Path('descendant.pid').write_text(str(child)) if child else None; time.sleep(60)"]);
+    let result = fixture.command(command, b"", Duration::from_secs(2)).await;
+    assert!(result.unwrap_err().contains("deadline exceeded"));
+    let raw: i32 = std::fs::read_to_string(fixture.path.join("descendant.pid"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(raw > 1, "a real descendant started before the timeout");
+    let pid = rustix::process::Pid::from_raw(raw).unwrap();
     assert_eq!(
-        origin.hits.load(std::sync::atomic::Ordering::SeqCst),
-        0,
-        "the budget refusal precedes any navigation"
+        rustix::process::test_kill_process(pid),
+        Err(rustix::io::Errno::SRCH)
     );
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.path.join("worker.json")).unwrap()).unwrap();
+    assert_eq!(receipt["group_cleanup_confirmed"], true);
+    fixture.finish(true).unwrap();
 }

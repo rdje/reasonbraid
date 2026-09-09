@@ -5,8 +5,8 @@
 Bind grants to their named parent, tenant and evaluated subject; enforce nonempty
 half-open validity and action-target selector coverage. Thread-scoped grants cannot
 administer or list an entire tenant. Core 51 unit + 3 subject tests, six evaluator
-controls, 11 live authority tests and strict core/server lint pass. Command API
-compatibility confirmation remains pending in the owned runner. Book and decision
+controls, 32 live authority/command API tests and strict core/server lint pass.
+All results are consumed and the owned runner stopped/removed its cluster. Book and decision
 record document the contract and remaining loader/transaction repairs.
 
 ## 2026-09-09 — Canonical core subject JSON (`SIGNOFF-REPAIR.3.3.1`)

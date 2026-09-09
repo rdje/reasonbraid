@@ -209,7 +209,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.3.3.2 — Bound authority evaluation invariants
 
-- Status: `active`; predecessor `e1acb75` is committed, brief zero/untracked and tree clean. The final predecessor job census reported handoff: OK, rc=0; no result remains pending.
+- Status: `done`; predecessor `e1acb75` is committed, brief zero/untracked and tree clean. The final predecessor job census reported handoff: OK, rc=0; no result remains pending.
 - Activation scope: core grant/boundary correspondence and validity checks; server pure evaluator subject/action/target checks; focused core and server evaluator controls plus relevant live authority/command tests. Own any fixture repairs required to express the corrected invariant, the authority book and live/decision/task synchronization. Preserve the separate frozen-own-tenant inspection carve-out. Actual-parent database loading, candidate selection, delegation-depth policy and tenant effect serialization remain subsequent leaves.
 - Startup-delay evidence: the server baseline process had elapsed 2m16s and 0.00 CPU before its first test. A 1-second sample returned rc=0, 790 samples at _dyld_start+0 and 112 KiB footprint; `target/authority-evaluation-controls/baseline-loader-sample.txt` preserves it. This repeats the loader-startup condition already owned by `.11.2`; no application failure or OS cause is inferred, and no host setting changed.
 - Baseline core result: `cargo test --offline --locked -p reasonbraid-core authority::tests -- --nocapture` compiled in 21.30s, returned rc=101: eight existing controls passed, two new controls failed (unrelated parent accepted; exact boundary expiration still active). Execution itself took 0.00s after startup delay. The server's six pure controls compiled in 1m14s and are awaiting executable startup; no result is inferred from that wait.
@@ -221,8 +221,8 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Baseline source observations: grant_exceeds_boundary omits grant.boundary_id/tenant correspondence and nonempty windows. Server evaluate accepts every selector for tenant targets, validates only ThreadCreate's target kind, and does not compare the loaded grant's subject to the evaluated principal or delegated subject. Runtime controls will distinguish confirmed failures from source observations before correction.
 - Owns: pure/evaluation checks for actual boundary ID, tenant/subject correspondence, grant ceilings/windows and action-target selectors, with focused negative controls and book synchronization.
 - Acceptance: mismatched or widened authority fails closed; tenant actions cannot be authorized by thread-only selectors. Preserve approved frozen-tenant inspection behavior and policy-digest meaning.
-- Verification: focused core/evaluator/live authority tests and strict lint pass; command_api compatibility confirmation is pending in the owned runner.
-- Implementation commit: `REASONBRAID-REPAIR-0011` (this commit), verification-pending under the director's commit-first rule. Keep this leaf active until command_api confirmation and shutdown are consumed; then record closure before selecting another leaf.
+- Final verification: the guarded authority + command_api run returned rc=0: 32 tests passed (11 + 21), zero failures/ignores. Command API compiled in 6.42s and executed in 31.11s after startup delay. Delegated commands, thread listing, existing revocation controls and frozen-own-tenant inspection pass. The runner stopped/removed `run-ufz0yetj`; its final result is consumed and the exact cluster path is absent. Full core tests passed 51 unit + 3 subject tests, all six evaluator controls passed, strict core/server lint and formatting/book/diff checks passed. No full CI or push and no production qualification category advance.
+- Implementation commit: `d7406e0` / `REASONBRAID-REPAIR-0011`, with command API confirmation pending under the director's commit-first rule. Confirmation and shutdown are now consumed. Closure: `REASONBRAID-REPAIR-0012` (this commit).
 
 #### SIGNOFF-REPAIR.3.3.3 — Actual-parent and usable-grant selection
 
@@ -509,17 +509,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — baseline core authority tests returned rc=101 (8 passed, 2 failed); server evaluator tests returned rc=101 (2 passed, 4 failed). The subset check omitted parent/tenant correspondence, liveness included expiration, and evaluate accepted tenant targets under any selector plus automatic creation on a thread target. Existing scope/ceiling controls passed. Source census also confirmed the absent subject comparison; the new negative subject controls exercise it.
 - [x] **ADDRESSED (verified)** — corrected core tests returned rc=0 (51 unit + 3 subject integration tests passed), and all six server evaluator controls passed, rc=0. The actual database authorizer passed 11 live tests, rc=0: foreign-boundary issuance stores no grant; thread-scoped tenant requests persist denied decisions, re-derived digests and correct grant references; selected-thread and explicit tenant-wide positive controls pass.
-- [x] **NO REGRESSION** — core all-target strict Clippy passed, rc=0 (33.21s), and server/lib/authority/command_api strict Clippy passed, rc=0 (1m26s). `cargo fmt --all --check`, `git diff --check`, `make book` and rendered target-table/validity/limits inspection passed, rc=0. Core schema/subject/actor/digest controls pass; one explicit schema-writing utility is intentionally ignored. The command_api compatibility confirmation remains in flight under the director's commit-first rule; retain this verification-pending qualifier and do not activate another leaf until its result and cluster shutdown are consumed.
+- [x] **NO REGRESSION** — core all-target strict Clippy passed, rc=0 (33.21s), and server/lib/authority/command_api strict Clippy passed, rc=0 (1m26s). `cargo fmt --all --check`, `git diff --check`, `make book` and rendered target-table/validity/limits inspection passed, rc=0. Core schema/subject/actor/digest controls pass; one explicit schema-writing utility is intentionally ignored. The guarded authority + command_api confirmation passed all 32 tests (11 + 21), rc=0, including frozen-tenant reads and delegated commands. The result and shutdown receipt are consumed; the owned cluster is absent. The escalated project-job census reported handoff: OK, rc=0. Final book rendering and completed-result/limit inspection passed, rc=0. Implementation commit d7406e0 passed all 13 doctrines.
 - [x] **FIX / LOCKSTEP** — grant/parent/tenant identity, subject, nonempty half-open validity and action-target selector checks are implemented. Live negative/positive controls passed, rc=0; the indexed bound-authority decision promotes the contract. Book examples and explicit remaining actual-parent loader, frozen-read helper, delegation and effect-serialization limits are synchronized with live records. README commands/layout are unchanged; no full CI or push and no production qualification category advance.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.2` | `active` | enforce bound authority invariants |
-| 2 | `SIGNOFF-REPAIR.3.3.3` | `pending` | select usable grants with actual parents |
-| 3 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
-| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.3` | `pending` | select usable grants with actual parents |
+| 2 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
+| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -543,6 +542,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.2` closure: `REASONBRAID-REPAIR-0012 (leaf SIGNOFF-REPAIR.3.3.2): record completed tenant authority qualification`.
 
 - `SIGNOFF-REPAIR.3.3.2`: `REASONBRAID-REPAIR-0011 (leaf SIGNOFF-REPAIR.3.3.2): enforce bound tenant authority and target coverage`.
 

@@ -7,7 +7,7 @@ answers:
 # Bound authority evaluation and target coverage
 
 - Owner: `SIGNOFF-REPAIR.3.3.2`.
-- Status: implemented; core 51 unit + 3 subject tests, six evaluator controls, 11 live authority tests and strict core/server lint pass. Command API confirmation remains pending.
+- Status: implemented; core 51 unit + 3 subject tests, six evaluator controls, 32 live authority/command API tests and strict core/server lint pass. All results are consumed and the owned cluster stopped/removed.
 
 A boundary is a named parent in one tenant. Equal permission ceilings are not a
 substitute for matching grant.boundary_id and tenant_id. The core subset check

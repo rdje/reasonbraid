@@ -153,14 +153,14 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.3.2`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.3.3`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.3.3.1
+## Current index synchronization — SIGNOFF-REPAIR.3.3.2
 
 Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
 - [x] **ROOT CAUSE (WHY + WHERE)** — direct/enclosing core subject controls returned rc=101 (1 passed, 2 failed) at the exported tagged-newtype serializer, as preserved by the owning leaf. The old synthetic N + 64 token comparison is corrected and real comparative evidence remains owned by `.3.4`.
-- [x] **ADDRESSED (verified)** — the index now names `.3.3.2`; core verification passed 49 unit + 3 subject tests and the guarded live compatibility run passed 40 tests, rc=0. Core/server strict Clippy passed, rc=0. All results are consumed and the owned cluster stopped/removed.
+- [x] **ADDRESSED (verified)** — the index now names `.3.3.3`; core verification passed 51 unit + 3 subject tests, all six evaluator controls passed, and the guarded authority/command API run passed 32 tests, rc=0. Core/server strict Clippy passed, rc=0. All results are consumed and the owned cluster stopped/removed.
 - [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0, generated content inspected; `git diff --check` empty, rc=0. The index advances no production qualification claim.
 
 ## Decisions

@@ -2,7 +2,7 @@
 
 ## _(2026-09-09)_ — Matching permissions do not establish the authority source
 
-- The evaluator must bind the actual parent, tenant and subject before relying on a grant. Tenant-wide targets also require tenant-wide selectors; a thread list is a broader read than one thread. Validity excludes expiration. The core baseline reproduced unrelated-parent acceptance and exact-expiration liveness; the server baseline reproduced target/scope/parent/expiration failures. Corrected core/evaluator and 11 live authority controls plus strict lint pass; command API confirmation remains pending.
+- The evaluator must bind the actual parent, tenant and subject before relying on a grant. Tenant-wide targets also require tenant-wide selectors; a thread list is a broader read than one thread. Validity excludes expiration. The core baseline reproduced unrelated-parent acceptance and exact-expiration liveness; the server baseline reproduced target/scope/parent/expiration failures. Corrected core/evaluator controls, all 32 live authority/command API tests and strict lint pass. The runner stopped/removed its cluster.
 - promotion: promoted → `docs/decisions/2026-09-09_bound-authority-evaluation.md`; owner `SIGNOFF-REPAIR.3.3.2`.
 
 ## _(2026-09-09)_ — Test the exported authority type rather than an illustrative JSON shape

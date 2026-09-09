@@ -39,8 +39,9 @@ does not grant tenant-wide administration. A tenant-wide selector still cannot
 cross the grant's tenant boundary.
 
 These evaluation corrections are implemented under `SIGNOFF-REPAIR.3.3.2`;
-51 core unit + 3 subject tests, all six evaluator controls, 11 live authority
-tests and strict core/server lint pass. The command API confirmation is in progress. The server's database loading and candidate
+51 core unit + 3 subject tests, all six evaluator controls, 32 live authority/command API
+tests and strict core/server lint pass. The owned verification cluster stopped
+and was removed. The server's database loading and candidate
 selection remain `.3.3.3`: resolve each grant's actual parent and do not let a
 later ineligible grant hide a usable one. The separate frozen-tenant administrative
 read helper also needs these structural checks while preserving its approved

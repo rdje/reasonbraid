@@ -5,11 +5,13 @@ answers:
   - How will admission evidence differ from the final administrative mutation outcome?
   - How are tenant transaction deadlines and cancellation before BEGIN acknowledgment handled?
   - How does an incremental build detect newly added embedded migrations?
+  - How do standalone authority writers preserve tenant ordering and commit uncertainty?
+  - When is the parent boundary checked for live grant issuance?
 ---
 # Keep tenant authority stable through the protected local transaction
 
-- Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`, foundation child `.2`.
-- Status: primitive migration/transaction owner qualified in `.2`; application integration and final-effect implementation remain subsequent children.
+- Owner: `SIGNOFF-REPAIR.3.3.4`; census/design child `.1`, foundation child `.2`, standalone service integration `.3.1`–`.3.2`.
+- Status: primitive migration/transaction owner qualified in `.2`; five standalone authority services qualified under `.3.3.4.3.2` with 85 selected controls, strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Remaining application and final-effect paths retain their subsequent children.
 - Source census: `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` at `1ba6184`.
 - Preserves: actual-parent selection, valid frozen-tenant inspection, exact receipt readback and the `.3.1` foreign-target/no-op corrections.
 
@@ -97,6 +99,48 @@ and never returns the callback's success value after a failed acknowledgment.
 The fixed delayed-BEGIN injection is test-only; production BEGIN is not configurable.
 Matched results, exact failed-cluster cleanup and per-control limits are preserved
 in `docs/tasks/artifacts/signoff_review/tenant-guard-qualification.md`.
+
+## Standalone authority writer integration
+
+Boundary/grant creation and both tenant-bound status services take the exclusive
+guard before authority policy or target-row access, keeping it through commit.
+The active-boundary lookup uses the shared mode. Status services retain exact
+expected-tenant predicates and target-row locking, and couple status changes to
+the same transaction's epoch update. Malformed stored status is an error that
+preserves the original row and epoch; it is not an inferred transitionable state.
+
+The grant service reads full parent policy only inside the guarded candidate
+tenant. If absent, a minimal foreign-ID existence probe may identify the existing
+tenant-binding refusal. That probe must not decode/evaluate foreign policy or
+mutate foreign state. A held foreign guard must not impede that binding refusal.
+Ordinary absent-parent/structural/time refusals can commit a coordination anchor
+without a grant. SQL and transaction faults must leave the callback as errors,
+so pre-commit health checking cannot replace their original storage cause.
+
+Structural checks, including parent status and all existing ceilings, run before
+the additional live-time check. Sample database time after acquiring the guard
+and reading the own-tenant parent, immediately before INSERT. The actual parent
+must be live then. A scheduled grant remains supported under a currently live
+parent. This is the evaluation instant, not a promise that the clock stops during
+commit or that authority remains live at delivery; later use checks both windows.
+
+Public `AuthorityTransactionError` retains ordinary storage, pre-commit deadline
+and unconfirmed commit distinctions. `create_boundary` returns it; the public
+grant error retains original SQLx storage sources and adds transaction and
+parent-not-live outcomes. These are documented Rust API changes. HTTP consumers
+map Commit/CommitDeadline to safe 500 `commit_outcome_unconfirmed`, advising state
+inspection before retry; ordinary storage keeps `dependency_unavailable`.
+Controlled deferred faults may prove rollback for those fixtures, while the
+primitive's control for a commit acknowledgment timeout demonstrates a commit can still finish.
+No automatic retry, success receipt or blanket rollback claim follows an error.
+
+The complete enrollment/import transactions still use their explicit unordered
+insertion bridges after a guarded boundary lookup. Their migrations belong to
+`.3.3.4.3.3` / `.3.3.4.11`; node-certificate epoch mutation remains `.3.3.4.10`.
+The status services do not yet join HTTP caller admission, submitted reason and
+final effect evidence; that remains `.3.3.4.8`. Matched baseline, wait-graph,
+failure/recovery and final gate evidence live in
+`docs/tasks/artifacts/signoff_review/tenant-authority-issuance.md`.
 
 ## Migration delivery is a build dependency
 

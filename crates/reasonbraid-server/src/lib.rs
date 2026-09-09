@@ -101,7 +101,8 @@ pub use api::{
 };
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
-    AuthorizationOutcome, AuthorizedApplyError, CommandAuthz, GrantCreateError, GrantRefused,
+    AuthorityTransactionError, AuthorizationOutcome, AuthorizedApplyError, CommandAuthz,
+    GrantCreateError, GrantRefused,
 };
 pub use budget::{
     create_ceiling, create_reservation, release_reservation, settle_reservation, Reservation,

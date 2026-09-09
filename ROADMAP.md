@@ -22,8 +22,9 @@ under the accepted security correction
 and seven HTTP registry operations are implemented with matched runtime controls.
 Tenant guard primitives and migration delivery are qualified under
 `SIGNOFF-REPAIR.3.3.4.2`; grant error classification is qualified under `.3.3.4.3.1`
-with 56 live controls and strict lint. Standalone authority/status writer guard
-integration is next at `.3.3.4.3.2`; remaining application/effect paths stay owned.
+with 56 live controls and strict lint. Standalone authority/status integration
+`.3.3.4.3.2` passes 85 selected controls and strict lint; complete enrollment is
+next at `.3.3.4.3.3`. Remaining application/effect paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
 

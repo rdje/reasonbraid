@@ -92,8 +92,10 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.4.3.2`: integrate standalone authority
-and status writers with the qualified guard/connection owner. Grant error
+The current frontier is `SIGNOFF-REPAIR.3.3.4.3.3`: guard the complete development
+enrollment transaction. Standalone authority/status integration passes 85 selected
+controls (84 live / one pure), focused strict lint and book checks; all results
+and shutdown are consumed, with three owned clusters absent. Grant error
 classification `.3.3.4.3.1` passes 56 live authority/HTTP/card controls and focused
 strict lint; all results/shutdown are consumed and four owned clusters absent.
 The [authority chapter](authority.md) documents the Rust error-type migration,

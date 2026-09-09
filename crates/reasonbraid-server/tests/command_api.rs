@@ -2111,6 +2111,10 @@ async fn concurrent_grant_revocations_transition_and_bump_the_epoch_once() {
         .fetch_one(&mut *blocker)
         .await
         .unwrap();
+    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *blocker)
+        .await
+        .unwrap();
     let mut requests = Vec::new();
     for _ in 0..2 {
         let (client, base, path, principal, tenant) = (
@@ -2124,29 +2128,56 @@ async fn concurrent_grant_revocations_transition_and_bump_the_epoch_once() {
             admin_revoke(&client, &base, &path, &principal, &tenant).await
         }));
     }
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+    // The first writer waits on the target; the second waits on its tenant
+    // guard. Require both real dependencies rooted at our held target row.
+    let observed = tokio::time::timeout(std::time::Duration::from_secs(4), async {
         loop {
-            let waiting: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM pg_stat_activity \
-                 WHERE datname = current_database() AND state = 'active' \
-                   AND wait_event_type = 'Lock' AND query LIKE '%authority_grants%'",
+            let waiting: (i64, i64, i64) = sqlx::query_as(
+                "WITH RECURSIVE waiting AS MATERIALIZED (\
+                    SELECT pid, pg_blocking_pids(pid) AS blockers, query FROM pg_stat_activity \
+                    WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                    AND (query LIKE '%authority_grants%' OR query LIKE '%tenant_authority_guards%')\
+                 ), dependent(pid) AS (\
+                    SELECT pid FROM waiting WHERE $1 = ANY(blockers) \
+                    UNION SELECT w.pid FROM waiting w JOIN dependent d ON d.pid = ANY(w.blockers)\
+                 ) SELECT count(*), count(*) FILTER (WHERE query LIKE '%authority_grants%'), \
+                    count(*) FILTER (WHERE query LIKE '%tenant_authority_guards%') \
+                 FROM waiting JOIN dependent USING (pid)",
             )
+            .bind(blocker_pid)
             .fetch_one(&pool)
             .await
             .unwrap();
-            if waiting == 2 {
+            if waiting == (2, 1, 1) {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
     })
-    .await
-    .expect("both revocation requests reach the locked target");
+    .await;
+    let graph: Value = sqlx::query_scalar(
+        "SELECT coalesce(jsonb_agg(jsonb_build_object('pid',pid,'blockers',pg_blocking_pids(pid),'query',query)), '[]'::jsonb) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'")
+        .fetch_one(&pool).await.unwrap();
     blocker.rollback().await.unwrap();
-    let mut results = Vec::new();
-    for request in requests {
-        results.push(request.await.unwrap());
+    let mut joined = Vec::new();
+    for mut request in requests {
+        match tokio::time::timeout(std::time::Duration::from_secs(4), &mut request).await {
+            Ok(result) => joined.push(result.map_err(|error| error.to_string())),
+            Err(_) => {
+                request.abort();
+                let _ = request.await;
+                joined.push(Err("revocation did not finish after target release".into()));
+            }
+        }
     }
+    assert!(
+        observed.is_ok(),
+        "both revocations must depend on held target {blocker_pid}: {graph}"
+    );
+    let mut results: Vec<_> = joined
+        .into_iter()
+        .map(|result| result.expect("revocation joins"))
+        .collect();
     results.sort_by_key(|result| result.0);
     assert_eq!(
         [results[0].0, results[1].0],

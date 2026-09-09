@@ -35,6 +35,13 @@ use crate::tx::{self, ApplyError, Command, CommandOutcome};
 
 #[cfg(test)]
 mod evaluation_tests;
+mod issuance;
+mod transaction;
+
+pub use issuance::{create_boundary, create_grant};
+pub(crate) use issuance::{load_active_boundary_for_tenant, revoke_boundary, revoke_grant};
+pub use transaction::GuardError as AuthorityTransactionError;
+
 mod records;
 mod selection;
 
@@ -106,6 +113,12 @@ pub enum GrantCreateError {
     MissingBoundary { boundary_id: String },
     /// The supplied grant exceeds its actual parent's structural ceiling.
     Refused(GrantRefused),
+    /// The structurally valid parent is outside its live window at the guarded
+    /// issuance evaluation. No new grant is inserted by this refusal.
+    BoundaryNotLive { boundary_id: String },
+    /// A guarded transaction failed outside an ordinary storage operation.
+    /// In particular, commit failures must not be interpreted as confirmed rollback.
+    Transaction(AuthorityTransactionError),
     /// Connection, query, insertion or stored-data decoding failed. The
     /// original SQLx error remains available through [`std::error::Error::source`].
     Storage(sqlx::Error),
@@ -118,6 +131,10 @@ impl std::fmt::Display for GrantCreateError {
                 write!(f, "boundary `{boundary_id}` does not exist")
             }
             Self::Refused(error) => std::fmt::Display::fmt(error, f),
+            Self::BoundaryNotLive { boundary_id } => {
+                write!(f, "boundary `{boundary_id}` is not live for grant issuance")
+            }
+            Self::Transaction(error) => std::fmt::Display::fmt(error, f),
             Self::Storage(_) => f.write_str("grant creation storage failure"),
         }
     }
@@ -126,8 +143,9 @@ impl std::fmt::Display for GrantCreateError {
 impl std::error::Error for GrantCreateError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::MissingBoundary { .. } => None,
+            Self::MissingBoundary { .. } | Self::BoundaryNotLive { .. } => None,
             Self::Refused(error) => Some(error),
+            Self::Transaction(error) => Some(error),
             Self::Storage(error) => Some(error),
         }
     }
@@ -136,6 +154,16 @@ impl std::error::Error for GrantCreateError {
 impl From<sqlx::Error> for GrantCreateError {
     fn from(error: sqlx::Error) -> Self {
         Self::Storage(error)
+    }
+}
+
+impl From<AuthorityTransactionError> for GrantCreateError {
+    fn from(error: AuthorityTransactionError) -> Self {
+        match error {
+            // Keep the original SQLx cause directly available to existing callers.
+            AuthorityTransactionError::Storage(error) => Self::Storage(error),
+            error => Self::Transaction(error),
+        }
     }
 }
 
@@ -188,18 +216,9 @@ impl From<ApplyError> for AuthorizedApplyError {
 
 // ── Repository ──────────────────────────────────────────────────────────────────
 
-/// Create (or re-activate) an enrollment boundary. The dev profile holds one ACTIVE
-/// boundary per tenant — the unique partial index refuses a second active one.
-pub async fn create_boundary(
-    pool: &PgPool,
-    boundary: &EnrollmentAuthorityBoundary,
-) -> Result<(), sqlx::Error> {
-    let mut conn = pool.acquire().await?;
-    insert_boundary_in_tx(&mut *conn, boundary).await
-}
-
-/// The transactional body of [`create_boundary`] — shared with the `.6.1` enroll
-/// bootstrap so a new tenant's boundary, grant, and enrollment row commit together.
+/// Boundary row insertion on the supplied executor; this does not acquire a
+/// tenant guard. The standalone service supplies a guarded connection. The
+/// enrollment bootstrap is a temporary unordered bridge until `.3.3.4.3.3`.
 pub(crate) async fn insert_boundary_in_tx<'e, E>(
     mut tx: E,
     boundary: &EnrollmentAuthorityBoundary,
@@ -244,17 +263,11 @@ where
     Ok(())
 }
 
-/// Create a grant — REFUSED (no row) when it exceeds its boundary in any dimension
-/// (§4.4: "a grant cannot exceed the enrollment ceiling"). Missing parents and
-/// storage failures are separate from [`GrantRefused`]; see [`GrantCreateError`].
-pub async fn create_grant(pool: &PgPool, grant: &AuthorityGrant) -> Result<(), GrantCreateError> {
-    let mut conn = pool.acquire().await?;
-    create_grant_in_tx(&mut *conn, grant).await
-}
-
-/// The transactional body of [`create_grant`] — shared with the `.6.1` enroll
-/// bootstrap (boundary load + subset check + insert on the caller's executor).
-pub(crate) async fn create_grant_in_tx<'e, E>(
+/// Temporary unordered enrollment/import bridge: load, structural check and
+/// insertion on the caller's executor. It provides neither a tenant guard nor
+/// the standalone service's issuance-time check. Migrate these two callers under
+/// `.3.3.4.3.3` / `.3.3.4.11`; do not add new callers.
+pub(crate) async fn create_grant_unordered_in_tx<'e, E>(
     mut tx: E,
     grant: &AuthorityGrant,
 ) -> Result<(), GrantCreateError>
@@ -275,6 +288,16 @@ where
         return Err(GrantCreateError::Refused(GrantRefused { violations }));
     }
 
+    insert_grant_row(&mut *tx, grant).await?;
+    Ok(())
+}
+
+/// Row insertion only: callers must establish the relevant authority contract.
+async fn insert_grant_row<E>(mut tx: E, grant: &AuthorityGrant) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     let (subject_kind, subject_id) = subject_parts(&grant.subject);
     sqlx::query(
         "INSERT INTO authority_grants \
@@ -446,28 +469,6 @@ where
     .await?;
     boundary_from_row(row)
         .ok_or_else(|| sqlx::Error::Protocol("stored enrollment boundary is malformed".into()))
-}
-
-/// Load a tenant's ACTIVE enrollment boundary, if one exists (`PHASE-0.6.1` enroll
-/// path for existing tenants).
-pub(crate) async fn load_active_boundary_for_tenant(
-    pool: &PgPool,
-    tenant_id: &reasonbraid_core::TenantId,
-) -> Result<Option<EnrollmentAuthorityBoundary>, sqlx::Error> {
-    let row: Option<BoundaryRow> = sqlx::query_as(
-        "SELECT boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
-                permitted_domains, risk_ceiling, spend_ceiling, delegable, max_delegation_depth, \
-                valid_from, expires_at, charter_digest, policy_version, status \
-         FROM enrollment_boundaries WHERE tenant_id = $1 AND status = 'active'",
-    )
-    .bind(tenant_id.to_string())
-    .fetch_optional(pool)
-    .await?;
-    row.map(|row| {
-        boundary_from_row(row)
-            .ok_or_else(|| sqlx::Error::Protocol("stored enrollment boundary is malformed".into()))
-    })
-    .transpose()
 }
 
 // ── Evaluation ──────────────────────────────────────────────────────────────────
@@ -840,93 +841,15 @@ pub async fn apply_authorized_command(
 /// MUST run in the same transaction as the revocation write it accompanies: the
 /// epoch and the status change commit together, so a node holding a cached
 /// decision recorded under the old epoch is invalidated the moment the
-/// revocation is durable.
+/// revocation is durable. Grant/boundary services supply their guarded connection;
+/// the node-certificate caller remains an unordered bridge owned by `.3.3.4.10`.
 pub(crate) async fn bump_revocation_epoch(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tx: &mut sqlx::PgConnection,
     tenant_id: &str,
 ) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE tenants SET revocation_epoch = revocation_epoch + 1 WHERE tenant_id = $1")
         .bind(tenant_id)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await?;
     Ok(())
-}
-
-/// Revoke a grant within the expected tenant: lock the matching row before
-/// changing status and bumping the tenant's epoch in the SAME transaction.
-/// Returns `(tenant_id, previous_status)` — `None` for an absent or foreign
-/// target. An already revoked grant leaves the epoch unchanged. The evaluator
-/// refuses a revoked grant at the next authorization; the epoch bump invalidates
-/// node-side cached admission decisions at the next dispatch.
-pub(crate) async fn revoke_grant(
-    pool: &PgPool,
-    grant_id: &str,
-    expected_tenant: &str,
-) -> Result<Option<(String, Option<GrantStatus>)>, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT tenant_id, status FROM authority_grants \
-         WHERE grant_id = $1 AND tenant_id = $2 FOR UPDATE",
-    )
-    .bind(grant_id)
-    .bind(expected_tenant)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((tenant_id, status)) = row else {
-        return Ok(None);
-    };
-    let previous = status.parse::<GrantStatus>().ok();
-    if previous != Some(GrantStatus::Revoked) {
-        sqlx::query(
-            "UPDATE authority_grants SET status = 'revoked' \
-             WHERE grant_id = $1 AND tenant_id = $2",
-        )
-        .bind(grant_id)
-        .bind(expected_tenant)
-        .execute(&mut *tx)
-        .await?;
-        bump_revocation_epoch(&mut tx, &tenant_id).await?;
-    }
-    tx.commit().await?;
-    Ok(Some((tenant_id, previous)))
-}
-
-/// Revoke a boundary within the expected tenant: lock the matching row before
-/// changing status and bumping the tenant's epoch in the SAME transaction.
-/// Returns `(tenant_id, previous_status)` — `None` for an absent or foreign
-/// target. An already revoked boundary leaves the epoch unchanged. The
-/// active-boundary lookup then finds no ceiling, so every grant under it is
-/// refused at the next decision (the core's revoked-boundary stance); the
-/// epoch bump invalidates every node-side cached decision in the tenant.
-pub(crate) async fn revoke_boundary(
-    pool: &PgPool,
-    boundary_id: &str,
-    expected_tenant: &str,
-) -> Result<Option<(String, Option<BoundaryStatus>)>, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT tenant_id, status FROM enrollment_boundaries \
-         WHERE boundary_id = $1 AND tenant_id = $2 FOR UPDATE",
-    )
-    .bind(boundary_id)
-    .bind(expected_tenant)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((tenant_id, status)) = row else {
-        return Ok(None);
-    };
-    let previous = status.parse::<BoundaryStatus>().ok();
-    if previous != Some(BoundaryStatus::Revoked) {
-        sqlx::query(
-            "UPDATE enrollment_boundaries SET status = 'revoked' \
-             WHERE boundary_id = $1 AND tenant_id = $2",
-        )
-        .bind(boundary_id)
-        .bind(expected_tenant)
-        .execute(&mut *tx)
-        .await?;
-        bump_revocation_epoch(&mut tx, &tenant_id).await?;
-    }
-    tx.commit().await?;
-    Ok(Some((tenant_id, previous)))
 }

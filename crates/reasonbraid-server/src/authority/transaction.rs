@@ -1,8 +1,10 @@
 //! Tenant coordination and transaction lifetime, not authorization policy.
 //!
-//! Declare every tenant and the strongest required mode before any authority or
-//! domain access. The callback must validate authority and bind its SQL predicates
-//! to the guarded tenant. It must not issue transaction-control SQL, alter the
+//! Declare every tenant whose authority or domain state will be used, and the
+//! strongest required mode, before accessing that state. A minimal foreign-ID
+//! existence probe may identify a binding refusal; it must not decode/evaluate
+//! foreign policy or mutate foreign state. The callback must validate authority
+//! and bind effect SQL to the guarded tenant. It must not issue transaction-control SQL, alter the
 //! local limits, delete anchors, or perform external work. The borrowed connection
 //! supports existing SQLx helpers; it cannot mechanically inspect their SQL.
 
@@ -24,8 +26,13 @@ pub(crate) enum GuardMode {
     Exclusive,
 }
 
+/// Failure of a tenant authority transaction. A commit error or acknowledgment
+/// deadline leaves the outcome unconfirmed; callers must not infer rollback or
+/// automatically retry. This is exported as `AuthorityTransactionError` while
+/// the transaction/guard construction APIs remain private.
 #[derive(Debug)]
-pub(crate) enum GuardError {
+#[non_exhaustive]
+pub enum GuardError {
     InvalidGuards,
     InvalidLimits,
     ScopeMismatch,
@@ -210,6 +217,10 @@ where
 // transaction, before SQLx publishes its transaction object. Production callers
 // cannot change the BEGIN statement or enable the injected delay.
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "The exact-source PostgreSQL integration suite calls this fixed fault; library unit-test compilation does not."
+)]
 pub(crate) async fn transact_with_delayed_begin(
     pool: &PgPool,
     tenant: TenantId,

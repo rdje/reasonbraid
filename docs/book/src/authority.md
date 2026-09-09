@@ -437,15 +437,81 @@ sampled after earlier waits. Final administrative effect evidence will remain
 distinct from admission, with the mutation and its required evidence in one commit.
 
 Migration 0056 and the private guard owner are implemented under
-`SIGNOFF-REPAIR.3.3.4.2`. The isolated tests compile that exact source; no application
-path uses it yet. The source census covers 42 direct named-call locations across
-101 tracked Rust source files, plus the transitive HTTP/MCP/node/state-service and
-authority-table mutation cross-check. Subsequent children integrate authority
-writers, command and node transactions, inspections, effect records and
-administrative families. Those application ordering guarantees remain pending.
+`SIGNOFF-REPAIR.3.3.4.2`. The isolated tests compile that exact source. Under
+`.3.3.4.3.2`, five standalone service paths now use the guard: boundary creation,
+grant creation, active-boundary lookup, grant revocation and boundary revocation.
+All 85 selected controls (84 live / one pure), focused strict lint and book
+checks pass, including both HTTP commit-failure routes. All results/shutdown are
+consumed and the three owned clusters are absent.
+The source census covers 42 direct named-call locations across 101 tracked Rust
+source files, plus transitive HTTP/MCP/node/state-service and authority mutations.
+Command/node transactions, inspection admissions, final effect records and the
+remaining administrative families retain their separate integration children.
 The exact scope and remaining policy owners are recorded in
 `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` and
 `docs/decisions/2026-09-09_tenant-authority-transaction-order.md`.
+
+### Standalone issuance and status services
+
+The four standalone writers hold the tenant's exclusive guard through their
+transaction; active-boundary lookup holds a shared guard through its read. The
+same full tenant key coordinates issuance with grant/boundary revocation. The
+services also retain their target-row locks and exact tenant predicates, so a
+foreign target cannot be mutated and an already revoked target does not advance
+the epoch. Unknown stored target status now produces safe HTTP 500 with the
+original target and epoch preserved, rather than being overwritten as `revoked`.
+
+| Standalone issuance scenario | Behavior |
+| --- | --- |
+| Parent-boundary revocation obtains the tenant guard first | Issuance waits, then reads the revoked parent and refuses. |
+| Issuance obtains the guard first | Revocation waits until issuance finishes, then revokes the attributed parent. |
+| The parent expires while issuance waits for the guard | The fresh database-time evaluation refuses the grant. |
+| The parent is active but starts tomorrow | Standalone issuance refuses until the parent is live. |
+| The parent is live now and the grant starts tomorrow within its window | The scheduled grant remains supported. |
+| A grant names a different tenant's parent | Refuse the binding without locking or decoding the foreign policy. |
+
+The time check occurs after guard acquisition and the own-tenant parent lookup,
+immediately before INSERT. It does not promise that the parent remains live at
+commit acknowledgment or response delivery. Every later use of the grant still
+checks the parent and grant validity windows normally.
+
+`create_boundary` now returns `Result<(), AuthorityTransactionError>`. This public,
+non-exhaustive error keeps ordinary `Storage(sqlx::Error)`, pre-commit `Deadline`,
+and unconfirmed `Commit(sqlx::Error)` / `CommitDeadline` distinct. Storage and
+commit errors retain their original SQLx source. Boundary creation inserts a new
+row; it does not re-activate or replace an existing boundary.
+
+`GrantCreateError` adds `BoundaryNotLive { boundary_id }` for the new issuance-time
+refusal and `Transaction(AuthorityTransactionError)` for guarded transaction
+failures. Ordinary storage failures still expose the original SQLx error directly
+through `Storage` and `Error::source`; a commit failure preserves its transaction
+phase rather than being collapsed into that variant. Code matching the
+non-exhaustive enum must continue to handle unrecognized future failures safely.
+
+HTTP routes using these guarded services return a distinct error if a commit was
+attempted but its outcome is unconfirmed:
+
+```json
+{"code":"commit_outcome_unconfirmed","message":"transaction outcome is unconfirmed; inspect the target before retrying"}
+```
+
+The status is HTTP 500. The response exposes neither SQL details nor a claimed
+rollback. Inspect the relevant tenant state before deciding whether another
+request is appropriate. This is an additive error-code contract; ordinary
+pre-commit storage/decoding failures retain `dependency_unavailable`. A deferred
+constraint failure may be shown by a controlled test to have rolled back, while
+an acknowledgment timeout can leave a committed row. The public error must
+preserve uncertainty across both situations.
+
+The complete enrollment and card-import transactions have **not** migrated yet.
+They use the guarded active-boundary lookup followed by the existing insertion
+bridge, which does not retain that guard or apply the standalone service's new
+time check. Their owners are `.3.3.4.3.3` and `.3.3.4.11`. Node-certificate epoch
+writes retain `.3.3.4.10`. HTTP revocation admission, submitted reason and final
+effect are still separate until `.3.3.4.8`; these service locks alone do not join
+the acting administrator's earlier admission to the mutation.
+
+### Guard lifetime and failure handling
 
 The guard accepts one to eight predeclared tenant/mode entries. Duplicate entries
 take the strongest mode; full keys are sorted before locking. It cannot upgrade

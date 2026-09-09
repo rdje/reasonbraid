@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Guarded standalone authority writers (`SIGNOFF-REPAIR.3.3.4.3.2`)
+
+Boundary/grant creation and grant/boundary revocation now share the exclusive
+tenant guard; active-boundary lookup uses its shared mode. Issuance checks the
+actual own-tenant parent at fresh database time after the guard/read, preserving
+scheduled grants under live parents. Malformed target statuses now refuse with
+unchanged evidence/epoch. Public Rust errors and safe HTTP
+commit_outcome_unconfirmed preserve commit uncertainty. All 85 selected controls
+(84 live / one pure), focused strict lint and book checks pass; matched races,
+deferred faults, exact recovery and the corrected observed contention chain are
+qualified. All results/shutdown consumed and three owned clusters removed.
+Complete enrollment/import and administrative admission/effect coupling remain
+separately owned; the book documents the Rust/error-code compatibility changes.
+
 ## 2026-09-09 — Distinct grant creation failures (`SIGNOFF-REPAIR.3.3.4.3.1`)
 
 GrantCreateError now distinguishes missing parents, actual structural refusals and

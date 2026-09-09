@@ -179,6 +179,10 @@ impl ControlApiError {
                 ))
             }
             GrantCreateError::Storage(error) => error.into(),
+            GrantCreateError::Transaction(error) => error.into(),
+            GrantCreateError::BoundaryNotLive { boundary_id } => Self::invalid_command(format!(
+                "boundary `{boundary_id}` is not live for grant issuance"
+            )),
         }
     }
 
@@ -246,6 +250,29 @@ impl From<sqlx::Error> for ControlApiError {
     fn from(e: sqlx::Error) -> Self {
         eprintln!("control api: database error: {e}");
         ControlApiError::internal()
+    }
+}
+
+impl From<authority::AuthorityTransactionError> for ControlApiError {
+    fn from(error: authority::AuthorityTransactionError) -> Self {
+        match error {
+            authority::AuthorityTransactionError::Storage(error) => error.into(),
+            error @ (authority::AuthorityTransactionError::Commit(_)
+            | authority::AuthorityTransactionError::CommitDeadline) => {
+                eprintln!("control api: {error}");
+                if let Some(source) = std::error::Error::source(&error) {
+                    eprintln!("control api: commit error source: {source}");
+                }
+                Self {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    code: "commit_outcome_unconfirmed",
+                    message:
+                        "transaction outcome is unconfirmed; inspect the target before retrying"
+                            .into(),
+                }
+            }
+            error => Self::internal_with_log(error.to_string()),
+        }
     }
 }
 
@@ -891,7 +918,7 @@ async fn enroll(
     };
 
     let grant = dev_grant(&boundary_ref, issuer, principal.clone(), actions);
-    authority::create_grant_in_tx(&mut *tx, &grant)
+    authority::create_grant_unordered_in_tx(&mut *tx, &grant)
         .await
         .map_err(|error| {
             ControlApiError::grant_creation(error, "the dev grant exceeds its boundary")
@@ -4680,7 +4707,7 @@ async fn import_profile_card(
         ],
     );
     let mut tx = state.pool.begin().await?;
-    authority::create_grant_in_tx(&mut *tx, &grant)
+    authority::create_grant_unordered_in_tx(&mut *tx, &grant)
         .await
         .map_err(|error| {
             ControlApiError::grant_creation(
@@ -4847,13 +4874,13 @@ async fn revoke_grant(
         ));
     }
     let Some((tenant, previous)) =
-        authority::revoke_grant(&state.pool, &grant_id, &req.tenant_id.to_string()).await?
+        authority::revoke_grant(&state.pool, &grant_id, req.tenant_id).await?
     else {
         return Err(ControlApiError::not_found(format!(
             "no grant `{grant_id}` in this tenant"
         )));
     };
-    if previous == Some(GrantStatus::Revoked) {
+    if previous == GrantStatus::Revoked {
         return Err(ControlApiError::invalid_transition(format!(
             "grant `{grant_id}` is already revoked"
         )));
@@ -4879,13 +4906,13 @@ async fn revoke_boundary(
         ));
     }
     let Some((tenant, previous)) =
-        authority::revoke_boundary(&state.pool, &boundary_id, &req.tenant_id.to_string()).await?
+        authority::revoke_boundary(&state.pool, &boundary_id, req.tenant_id).await?
     else {
         return Err(ControlApiError::not_found(format!(
             "no boundary `{boundary_id}` in this tenant"
         )));
     };
-    if previous == Some(BoundaryStatus::Revoked) {
+    if previous == BoundaryStatus::Revoked {
         return Err(ControlApiError::invalid_transition(format!(
             "boundary `{boundary_id}` is already revoked"
         )));

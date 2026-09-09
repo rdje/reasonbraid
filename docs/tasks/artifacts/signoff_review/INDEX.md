@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Compiler artifact disposition](docs/tasks/artifacts/signoff_review/compiler-artifact-disposition.md) — `.11.4.3.1.6`: frozen session identities, native lock controls, guarded cleanup and exact residue.
+
 Owner: `SIGNOFF-REPAIR.1`. Baseline: `9c2d2ba`. Review spans 2026-09-08–09.
 
 These notes preserve source-level mechanisms and test limitations from the full startup read. They are **not runtime reproduction results**. The repair tree defines execution and closure criteria. Each record carries candidate owning leaves; a record mentioning several mechanisms may require several of those leaves. Resolve every mechanism before marking its record closed. The full source corpus was read; notes record findings, not a replacement for source code.

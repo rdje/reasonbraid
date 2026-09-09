@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Retire verified obsolete compiler sessions (`SIGNOFF-REPAIR.11.4.3.1.6`)
+
+Qualify the pinned macOS compiler locks with native protected-session and
+regeneration controls. Remove 645 frozen, obsolete sessions / 1,984 files /
+5,116,558,334 logical bytes under verified exclusive locks; preserve newest,
+young, partial, hard-linked and evidence-bearing data. Exact residue, unchanged
+retained source/evidence, affected server build and book checks pass. All results
+are consumed; preserve the failed phase assumption and sampler timeout. Production
+bytes are unchanged; the full local/remote checkpoint remains next.
+
 ## 2026-09-09 — Qualify browser storage and origin ownership (`SIGNOFF-REPAIR.11.4.3.1.5.3`)
 
 Verify real rendering after moving the runtime root and refusal of linked storage.

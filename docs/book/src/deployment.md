@@ -178,8 +178,8 @@ Three YAML workflows, six shell command blocks, five deliberate omission control
 and fifty Python tests pass locally, including actual PostgreSQL ownership checks.
 GitHub's managed checkout/artifact transport and installed OS tools are explicit
 platform dependencies; project stores and artifact temporary paths derive from the
-checkout. Full Rust/security gates and actual remote outcomes remain pending after
-the remaining compiler-artifact prerequisite. See
+checkout. Workflow, publisher/browser and compiler-artifact prerequisites are now
+complete; full Rust/security gates and actual remote outcomes remain pending. See
 `docs/tasks/artifacts/signoff_review/ci-workflows.md` for commands and exact evidence.
 
 ## Publisher verification owns its directories
@@ -246,6 +246,29 @@ The original failed connection's peer was not captured, so its exact cause remai
 unstated. All twenty-six final worker/browser groups are independently absent;
 the nine earlier failed fixtures remain preserved. Exact results and remaining
 boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
+
+## Periodic compiler artifact cleanup
+
+Review generated artifacts about once per day. Keep diagnostics and failed-run
+fixtures until their owning task has established a safe disposition. An old
+`.bin` file alone is not disposable evidence: incremental compiler sessions contain
+related cache components and may be in use or shared by hard links.
+
+The checkpoint cleanup qualified the exact installed macOS compiler, preserved
+every newest finalized session and excluded young, partial, working, hard-linked
+and evidence-dependent data. Native controls verified both shared and exclusive
+cache locks against actual compiler collection and successful later execution.
+Only a frozen, identity-checked set of whole obsolete sessions was removed under
+exclusive locks, after a native inactivity census.
+
+That operation removed 645 sessions / 1,984 files / 5,116,558,334 logical bytes.
+Immediately after removal, the remaining cache metadata and 3,545 inspected
+source/diagnostic hashes were unchanged. Zero-byte session locks remain for the compiler to collect. Logical
+bytes do not establish physical disk space recovered on a cloning filesystem.
+This was a qualified maintenance operation, not a general automatic deletion
+command. Recheck compiler/platform locking before repeating or broadening it.
+See `docs/tasks/artifacts/signoff_review/compiler-artifact-disposition.md` for
+selection, refusal conditions, native controls, exact residue and workflow evidence.
 
 ## Browser invocation storage and shutdown
 

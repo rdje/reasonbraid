@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Compiler cache retirement follows the actual lock and session identity
+
+- Exact pinned rustc source defines finalized immutable snapshots and POSIX fcntl locks on macOS. The initial link-stage lock assertion fails after a successful compile; an observed finalized session and the pinned release point explain the bad phase assumption. Preserve it. Native shared/exclusive contention controls protect old hashes across later compilations, then prove compiler retirement after release and successful regeneration; fourteen commands finish and their groups are consumed.
+- Freeze whole-session identities, retain newest ties, working/partial/young/evidence-dependent data and every hard-linked session. After native inactivity, hold the exact existing exclusive lock once, validate no-follow ancestors/files and delete only the verified old session. The operation removes 645 sessions / 1,984 files / 5,116,558,334 logical bytes; retained cache metadata and all 3,545 inspected source/diagnostic hashes remain equal. Keep zero-byte locks, failed fixtures and raw evidence; logical bytes do not measure physical allocation.
+- Affected server-lib Cargo check passes in 375.636s with its group consumed. The native sample times out during symbol processing after completing capture; a retry finds no compiler and starts no child. No new wait-stack cause is claimed. Book and eight rendered markers pass. Evidence: docs/tasks/artifacts/signoff_review/compiler-artifact-disposition.md. Full checkpoint remains separate; production/configuration are unchanged.
+- promotion: promoted → `docs/decisions/2026-09-09_compiler-artifact-disposition.md`; owner `SIGNOFF-REPAIR.11.4.3.1.6`.
+
 ## 2026-09-09 — Browser verification needs stable resource identity
 
 - Runtime-root relocation and linked-parent refusal pass with the unchanged committed production worker. The initial selected runs and lint are consumed before further edits. Replace the overlap control's three-second scroll window with an explicit origin gate; deliberately delay the second launch four seconds after first navigation. Observation failure and origin shutdown release the gate before consuming tasks.

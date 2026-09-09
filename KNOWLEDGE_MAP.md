@@ -123,6 +123,7 @@
 - [`2026-09-09_cli-bootstrap-state.md`](docs/decisions/2026-09-09_cli-bootstrap-state.md)
 - [`2026-09-09_cli-state-publication.md`](docs/decisions/2026-09-09_cli-state-publication.md)
 - [`2026-09-09_command-authority-selection.md`](docs/decisions/2026-09-09_command-authority-selection.md)
+- [`2026-09-09_compiler-artifact-disposition.md`](docs/decisions/2026-09-09_compiler-artifact-disposition.md)
 - [`2026-09-09_core-subject-json.md`](docs/decisions/2026-09-09_core-subject-json.md)
 - [`2026-09-09_disposable-postgresql-runner.md`](docs/decisions/2026-09-09_disposable-postgresql-runner.md)
 - [`2026-09-09_disposable-test-pool-ownership.md`](docs/decisions/2026-09-09_disposable-test-pool-ownership.md)

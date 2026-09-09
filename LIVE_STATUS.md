@@ -68,5 +68,8 @@ retention/container limits have concrete .7.3.1/.2 owners. Combined .5.3 now pas
 fifteen integration controls, strict lint and native/source/book checks with unchanged
 production bytes: real root relocation/refusal, gated overlap and exact listener
 close receipts. Twenty-six final groups are absent and nine failed fixtures preserved.
-Browser prerequisite .5 is complete; compiler disposition .6 precedes full execution
-.2. All results consumed; categories unchanged.
+Browser prerequisite .5 is complete. Compiler disposition .6 removes 645 obsolete
+sessions under verified native locks; exact residue and preserved source/evidence
+checks pass. The affected server build and final book checks pass; all results
+are consumed and .6 is complete. Full local/remote execution .2 and push remain
+pending. Qualification categories are unchanged.

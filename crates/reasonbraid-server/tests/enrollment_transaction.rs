@@ -665,3 +665,84 @@ async fn standalone_authority_namespace_cannot_implicitly_create_a_tenant_identi
     assert_eq!(recovery.0, 200);
     assert_eq!(recovery.1["replayed"], false);
 }
+
+/// No-key bootstrap is intentionally a new request on each invocation. This
+/// control preserves that compatibility while proving why recovery needs an
+/// explicit client-known request identity rather than a name-based retry.
+#[tokio::test]
+async fn unconfirmed_no_key_bootstrap_can_commit_before_a_distinct_repeated_request() {
+    let Some(f) = fixture().await else { return };
+    let name = format!("uncertain-bootstrap-{}", TenantId::new());
+    let request = json!({"kind":"human", "name":name});
+    // Each fixed sleep is below the 10s statement ceiling, but together they
+    // exceed the 15s whole-operation limit while COMMIT is already executing.
+    sqlx::raw_sql("CREATE FUNCTION rb_test_bootstrap_body_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(6); RETURN NEW; END $$; CREATE TRIGGER rb_test_bootstrap_body_delay BEFORE INSERT ON enrollments FOR EACH ROW EXECUTE FUNCTION rb_test_bootstrap_body_delay(); CREATE FUNCTION rb_test_bootstrap_commit_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(9.5); RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER rb_test_bootstrap_commit_delay AFTER INSERT ON enrollments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION rb_test_bootstrap_commit_delay()")
+        .execute(&f.pool).await.unwrap();
+    let mut job = post(&f, "/v1/enrollments", request.clone(), None);
+    let committing = timeout(Duration::from_secs(10), async {
+        loop {
+            let pid: Option<i32> = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND query = 'COMMIT' AND wait_event = 'PgSleep' ORDER BY pid LIMIT 1")
+                .fetch_optional(&f.pool).await.unwrap();
+            if pid.is_some() || job.is_finished() { return pid; }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }).await.ok().flatten();
+    // Keep ownership on timeout; never detach the client request job.
+    let result = match timeout(Duration::from_secs(20), &mut job).await {
+        Ok(result) => result
+            .map_err(|error| error.to_string())
+            .and_then(|result| result),
+        Err(_) => {
+            job.abort();
+            let _ = job.await;
+            Err("bootstrap did not finish after its bounded commit wait".into())
+        }
+    };
+    let readback = timeout(Duration::from_secs(5), async {
+        loop {
+            let rows: Vec<(String, String)> = sqlx::query_as("SELECT tenant_id, principal_id FROM enrollments WHERE kind = 'human' AND name = $1 ORDER BY tenant_id")
+                .bind(&name).fetch_all(&f.pool).await.unwrap();
+            if !rows.is_empty() { return rows; }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }).await;
+    // Restore all fixed faults before outcome assertions or the next request.
+    sqlx::raw_sql("DROP TRIGGER rb_test_bootstrap_body_delay ON enrollments; DROP FUNCTION rb_test_bootstrap_body_delay(); DROP TRIGGER rb_test_bootstrap_commit_delay ON enrollments; DROP FUNCTION rb_test_bootstrap_commit_delay()")
+        .execute(&f.pool).await.unwrap();
+    let result = result.unwrap();
+    let original = readback.expect("authoritative readback of the original committed bootstrap");
+    eprintln!("uncertain no-key bootstrap: COMMIT backend={committing:?}, response={result:?}, original={original:?}");
+    assert!(committing.is_some(), "must observe actual COMMIT/PgSleep");
+    assert_eq!(
+        result,
+        (
+            500,
+            json!({"code":"commit_outcome_unconfirmed","message":"transaction outcome is unconfirmed; inspect the target before retrying"})
+        )
+    );
+    assert_eq!(
+        original.len(),
+        1,
+        "exactly one original committed bootstrap"
+    );
+    let original_tenant = &original[0].0;
+    let original_principal = &original[0].1;
+    let repeated = response(post(&f, "/v1/enrollments", request, None)).await;
+    assert_eq!(repeated.0, 200, "{repeated:?}");
+    assert_eq!(repeated.1["replayed"], false);
+    assert_ne!(repeated.1["tenant_id"], *original_tenant);
+    assert_ne!(repeated.1["principal_id"], *original_principal);
+    let tenants: Vec<String> = sqlx::query_scalar(
+        "SELECT tenant_id FROM enrollments WHERE kind = 'human' AND name = $1 ORDER BY tenant_id",
+    )
+    .bind(&name)
+    .fetch_all(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(tenants.len(), 2);
+    for tenant in tenants {
+        let counts: (i64,i64,i64,i64,i64,i64,i64) = sqlx::query_as("SELECT (SELECT count(*) FROM tenants WHERE tenant_id = $1), (SELECT count(*) FROM enrollment_boundaries WHERE tenant_id = $1), (SELECT count(*) FROM authority_grants WHERE tenant_id = $1), (SELECT count(*) FROM human_principals WHERE tenant_id = $1), (SELECT count(*) FROM usage_quotas WHERE tenant_id = $1), (SELECT count(*) FROM enrollments WHERE tenant_id = $1), (SELECT count(*) FROM tenant_authority_guards WHERE tenant_id = $1)")
+            .bind(&tenant).fetch_one(&f.pool).await.unwrap();
+        assert_eq!(counts, (1, 1, 1, 1, 2, 1, 1));
+    }
+}

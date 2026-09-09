@@ -26,8 +26,10 @@ with 56 live controls and strict lint. Standalone authority/status integration
 `.3.3.4.3.2` passes 85 selected controls and strict lint. Complete enrollment
 `.3.3.4.3.3.2` passes 97 selected controls, final focused strict lint and book
 checks; all results/shutdown are consumed and three owned clusters are absent.
-New-bootstrap recovery after response loss or commit uncertainty is next at
-`.3.3.4.3.3.3`, before issuance coverage reconciliation. Remaining application/
+New-bootstrap uncertainty is reproduced under `.3.3.4.3.3.3.1` with 25 selected
+controls and strict lint. The explicit RequestId/outcome recovery contract is
+selected; server protocol `.3.3.4.3.3.3.2`, then durable CLI recovery, are next
+before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.

@@ -52,7 +52,10 @@ failure returns a safe internal error; an unconfirmed commit returns
 `commit_outcome_unconfirmed`. Inspect the relevant tenant state before retrying
 that outcome. For a new bootstrap, a lost response can leave the CLI without the
 server-generated tenant ID; operator database reconciliation may be needed until
-the tracked bootstrap recovery protocol is implemented. Retrying the same human
+the tracked bootstrap recovery protocol is implemented. Live qualification has
+confirmed a commit after this unconfirmed response. The selected next CLI design
+will persist a request ID before sending and retain it through local state
+publication; this recovery behavior is not implemented yet. Retrying the same human
 name without --tenant can create another tenant. These are server transaction guarantees; the CLI's local state-file
 write occurs after the server response and is a separate persistence step.
 

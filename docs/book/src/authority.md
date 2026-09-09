@@ -602,9 +602,12 @@ For a new bootstrap whose success response is lost or whose commit is
 unconfirmed, the client may not know the server-generated tenant ID. There is
 currently no bootstrap request key or outcome lookup; reconciliation can require
 an operator to inspect the database. Repeating the same human name without a
-tenant ID creates another new request and can create another tenant. A complete
-client recovery protocol is tracked under `SIGNOFF-REPAIR.3.3.4.3.3.3`; the
-transaction guard and truthful error phase alone do not provide that protocol.
+tenant ID creates another new request and can create another tenant. A live control now observes this exact case: HTTP commit uncertainty followed by
+one committed bootstrap, then a distinct tenant from a repeated no-key request.
+All 25 selected controls (24 live / one pure) and focused strict lint pass; all
+results/shutdown are consumed and the owned cluster is absent. A complete client
+recovery protocol is tracked under `SIGNOFF-REPAIR.3.3.4.3.3.3`; the transaction
+guard and truthful error phase alone do not provide that protocol.
 
 Enrollment remains a development trust mechanism. A human receives the nine
 explicit dev admin actions regardless of an `actions` field, and its grant names
@@ -615,6 +618,31 @@ exact rollback/race evidence for this integration are tracked in
 `docs/tasks/artifacts/signoff_review/enrollment-transaction.md`. All 97 selected
 controls (96 live / one pure), final focused strict lint and rendered book checks
 pass. Every result/shutdown is consumed; all three owned clusters are absent.
+
+#### Selected bootstrap recovery contract — implementation pending
+
+The next server change will accept an optional canonical `bootstrap_request_id`
+for a new-human bootstrap. The client will keep that request ID before sending;
+the server will continue generating tenant IDs. A matching request ID and creation
+request will recover the original committed tenant, principal, boundary and grant
+IDs with `replayed: true`. Conflicting payloads will return 409, and malformed
+stored outcomes will refuse safely. Requests without a key will keep their current
+intentionally-new behavior. This field is **not implemented yet**.
+
+The original outcome and its request binding will commit with enrollment. A
+concurrent loser will roll back its provisional rows before reading the winner's
+outcome under that tenant's guard. Request routing will use at most one redirect
+within the existing total deadline; it will not let a caller turn its request ID
+into authority over an existing tenant. Recovering a stored creation outcome after
+revocation will not create or reactivate a grant.
+
+The following CLI change will persist one bounded pending request and server
+binding before HTTP, validate the reply, durably publish local state and only then
+clear the pending request. A response loss or interrupted state write will reuse
+that pending request; an ordinary completed new invocation will use a fresh key.
+The selected contract and remaining implementation owners are recorded in
+`docs/decisions/2026-09-09_bootstrap-recovery.md`. Caller/issuer authentication and
+Internet qualification remain separate work.
 
 ### Guard lifetime and failure handling
 

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Bootstrap uncertainty and recovery contract (`SIGNOFF-REPAIR.3.3.4.3.3.3.1`)
+
+Qualify a real bootstrap commit timeout followed by the original committed
+readback and a distinct repeated no-key request. All 25 selected controls (24 live
+/ one pure), focused strict lint and book checks pass; every result/shutdown is
+consumed and the owned cluster is absent. Select an explicit client RequestId,
+immutable guarded outcome and durable CLI pending-state contract. Server protocol
+and CLI recovery implementation remain the next owned children; production
+behavior is unchanged in this qualification/contract leaf.
+
 ## 2026-09-09 — Complete guarded development enrollment (`SIGNOFF-REPAIR.3.3.4.3.3.2`)
 
 Development enrollment now holds one exclusive tenant guard from replay through

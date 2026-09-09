@@ -150,7 +150,10 @@ impl Rb {
 fn target_tmp(name: &str) -> PathBuf {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     crate_dir
-        .join("../../target")
+        .join("../..")
+        .canonicalize()
+        .expect("repository root for the owned CLI fixture")
+        .join("target")
         .join(format!("rb-cli-e2e-{name}"))
 }
 

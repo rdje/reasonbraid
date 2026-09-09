@@ -30,6 +30,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # Fresh idempotency keys per invocation (opaque, no prefix — §9.2).
 uuid = { version = "1", features = ["v7"] }
 
+[target.'cfg(unix)'.dependencies]
+# Descriptor-relative local state, process-lifetime locking and durable publication.
+rustix = { version = "1.1.4", features = ["fs", "process"] }
+
 [dev-dependencies]
 # The end-to-end suite spawns the REAL `rb` binary against an in-process control API
 # on live PostgreSQL (DATABASE_URL-gated; wired into scripts/run_pg_tests.sh).

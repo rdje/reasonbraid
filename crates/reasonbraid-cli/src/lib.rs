@@ -14,8 +14,8 @@
 //!
 //! # State dir locality (§13)
 //!
-//! The state dir defaults to `<cwd>/.reasonbraid-cli` (repo-local when run from the
-//! repo) and honors `REASONBRAID_CLI_STATE` — never `/tmp` or a home cache. The
+//! The state dir defaults to `<repo>/.reasonbraid-cli` and honors a repository-
+//! relative `REASONBRAID_CLI_STATE` — never a temporary or home-cache fallback. The
 //! server URL defaults to `http://127.0.0.1:4310` (`REASONBRAID_SERVER`).
 
 use std::collections::BTreeMap;
@@ -29,6 +29,8 @@ use reasonbraid_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
+
+mod state_store;
 
 /// The control API's default dev-profile address (`rb-server`).
 pub const DEFAULT_SERVER: &str = "http://127.0.0.1:4310";
@@ -45,16 +47,16 @@ pub struct Config {
 
 impl Config {
     /// Environment + defaults: `REASONBRAID_SERVER`, `REASONBRAID_CLI_STATE` (falls
-    /// back to `<cwd>/.reasonbraid-cli` — same-volume, repo-local by default).
+    /// back to `<repo>/.reasonbraid-cli`). Storage resolves and validates paths
+    /// against the current repository before reading or writing them.
     pub fn from_env() -> Self {
         let server_base = std::env::var("REASONBRAID_SERVER")
             .unwrap_or_else(|_| DEFAULT_SERVER.to_string())
             .trim_end_matches('/')
             .to_string();
-        let state_dir = match std::env::var("REASONBRAID_CLI_STATE") {
-            Ok(dir) => PathBuf::from(dir),
-            Err(_) => PathBuf::from(".reasonbraid-cli"),
-        };
+        let state_dir = std::env::var_os("REASONBRAID_CLI_STATE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(".reasonbraid-cli"));
         Self {
             server_base,
             state_dir,
@@ -65,6 +67,7 @@ impl Config {
 // ── State file ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StoredPrincipal {
     pub kind: String,
     pub id: String,
@@ -72,40 +75,33 @@ pub struct StoredPrincipal {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StoredThread {
     pub tenant_id: String,
     pub subject: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateFile {
     pub version: u32,
+    #[serde(deserialize_with = "state_store::unique_map")]
     pub principals: BTreeMap<String, StoredPrincipal>,
+    #[serde(deserialize_with = "state_store::unique_map")]
     pub threads: BTreeMap<String, StoredThread>,
 }
 
 impl StateFile {
-    fn path(dir: &Path) -> PathBuf {
-        dir.join("state.json")
-    }
-
+    /// Read one complete validated snapshot; a missing store creates no files.
     pub fn load(dir: &Path) -> Result<Self, CliError> {
-        let path = Self::path(dir);
-        if !path.exists() {
-            return Ok(StateFile::default());
-        }
-        let raw = std::fs::read_to_string(&path)
-            .map_err(|e| CliError::state(format!("read {}: {e}", path.display())))?;
-        serde_json::from_str(&raw)
-            .map_err(|e| CliError::state(format!("parse {}: {e}", path.display())))
+        state_store::load(dir)
     }
 
+    /// Atomically replace the complete snapshot under an exclusive process lock.
+    /// This is not a merge operation: a separate load/modify/save sequence still
+    /// needs a lock covering that whole sequence to avoid stale-snapshot updates.
     pub fn save(&self, dir: &Path) -> Result<(), CliError> {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| CliError::state(format!("create {}: {e}", dir.display())))?;
-        let raw = serde_json::to_string_pretty(self).expect("state serializes");
-        std::fs::write(Self::path(dir), raw)
-            .map_err(|e| CliError::state(format!("write state file: {e}")))
+        state_store::save(dir, self)
     }
 }
 

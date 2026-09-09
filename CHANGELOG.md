@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Durable bounded CLI snapshots (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1`)
+
+Repair in-place publication, linked-target overwrite and ignored process locks.
+StateFile now validates bounded snapshots and repository-volume paths, holds an
+OS lock, synchronizes private working bytes and atomically publishes before
+acknowledging durability. Preserve invalid/ambiguous files and report uncertain
+replacement honestly. Twelve selected controls, all-target CLI strict lint and
+book verification pass; results consumed, unique fixtures absent. Document the
+remaining whole-writer and pending-bootstrap integration explicitly. No full CI
+or push; live progress category values and bounded README remain unchanged.
+
 ## 2026-09-09 — Keyed server bootstrap recovery (`SIGNOFF-REPAIR.3.3.4.3.3.3.2`)
 
 Persist a canonical request key and complete creation outcome with guarded

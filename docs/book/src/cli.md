@@ -118,11 +118,14 @@ revocation; `--expires-in-seconds` on the invite offers a typed expiry
 `allow_explicit_invites=false` refuses the invite verb (recorded rules are
 enforced at the command boundary).
 
-The CLI keeps a local state dir (`./.reasonbraid-cli`, or
+The CLI keeps a repository-root-relative state directory (`.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,
 so `--as alice` and `--as reviewer` resolve without retyping ids (raw `hpr_…` /
 `rol_…` ids are accepted directly). The server is `http://127.0.0.1:4310` or
 `REASONBRAID_SERVER`.
+See [CLI local state and recovery](docs/book/src/cli-state.md) for path validation,
+bounded snapshots, synchronized replacement and the remaining concurrent-writer
+and pending-bootstrap integration limits.
 
 ## What happens per command
 

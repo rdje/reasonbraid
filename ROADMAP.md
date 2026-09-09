@@ -29,8 +29,11 @@ checks; all results/shutdown are consumed and three owned clusters are absent.
 New-bootstrap uncertainty is reproduced under `.3.3.4.3.3.3.1` with 25 selected
 controls and strict lint. Server RequestId/outcome recovery `.3.3.4.3.3.3.2` now
 passes 73 selected controls, a final eleven-control fixture rerun and strict lint;
-all results/shutdown are consumed and four owned clusters are absent. Durable CLI
-request persistence `.3.3.4.3.3.3.3` is next before issuance coverage reconciliation. Remaining application/
+all results/shutdown are consumed and four owned clusters are absent. StateFile
+storage `.3.3.4.3.3.3.3.1.1` passes twelve selected controls, all-target CLI strict
+lint and book checks; results consumed, unique fixtures absent. Whole-writer
+locking, durable CLI request persistence and restart qualification follow before
+issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.

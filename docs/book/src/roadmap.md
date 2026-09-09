@@ -92,10 +92,11 @@ G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
 export/import and G8 remain incomplete. Phase 9 has not started.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.3.2.2.1`: consume the final upgrade
-confirmation and close the committed provenance implementation before HTTP
-inspection receipts and scoped readback. Final code passes 51 core units, seven
-metadata/subject controls, 42 live authority/HTTP tests and strict lint. Frozen-read eligibility
+The current frontier is `SIGNOFF-REPAIR.3.3.3.2.2.2`: audited HTTP inspection
+receipts, followed by scoped receipt readback. Provenance and strict selector
+decoding pass 51 core units, seven metadata/subject controls, 44 live
+authority/HTTP/upgrade tests and strict lint; all results consumed and the owned
+cluster removed. Frozen-read eligibility
 passes all 40 live authority/command API tests, ten pure controls and strict lint;
 all results are consumed and the owned cluster removed. Actual-parent command selection is
 complete with 37 live authority/command API tests, six evaluator controls and strict

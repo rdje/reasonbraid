@@ -10,10 +10,10 @@ provenance remains readable; old strict consumers of newly serialized records
 must upgrade. Map-only evaluation/inspection and shared selector decoders reject
 discarded fields, duplicates and sequence alternatives while preserving valid
 JSON and schema. Final code passes 51 core units, seven metadata/subject controls,
-42 live authority/HTTP tests and strict lint. The existing digest format is
-unchanged. Commit-first preserves the implementation with the final upgrade
-confirmation pending; frozen-inspection HTTP receipts and scoped exact receipt
-lookup are separately owned next.
+44 live authority/HTTP/upgrade tests and strict lint. The existing digest format
+is unchanged. All results and shutdown are consumed; the owned cluster is removed.
+REPAIR-0017 closes implementation 305ed26. Frozen-inspection HTTP receipts and
+scoped exact receipt lookup are separately owned next.
 
 ## 2026-09-09 — Bound frozen-tenant inspection (`SIGNOFF-REPAIR.3.3.3.2.1`)
 

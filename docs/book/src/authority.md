@@ -135,10 +135,10 @@ are explicit corrective work, not guarantees inferred from the command core.
 
 Authorization records now carry an explicit `evaluation` object, including the
 existing thread-audit response. Under `SIGNOFF-REPAIR.3.3.3.2.2.1`, final code
-passes 51 core units, seven metadata/subject controls, 42 live authority/HTTP tests
-and strict lint. Prior fixed/latest-upgrade controls passed; the implementation
-is committed with the final upgrade confirmation still pending. The leaf remains
-active until that result and shutdown are consumed and closure is committed.
+passes 51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade
+tests and strict lint. Final fixed/latest-upgrade controls pass; all results and
+shutdown are consumed and the owned cluster removed. Qualification closure
+REPAIR-0017 completes implementation 305ed26.
 
 | `evaluation.kind` | Meaning |
 | --- | --- |

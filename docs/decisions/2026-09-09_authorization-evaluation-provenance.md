@@ -7,7 +7,7 @@ answers:
 # Record the evaluation path explicitly without inventing historical intent
 
 - Owner: `SIGNOFF-REPAIR.3.3.3.2.2`, with three bounded implementation children.
-- Status: `.2.2.1` implementation verified and committed with final upgrade confirmation pending. Final code passes 51 core units, seven metadata/subject controls, 42 live authority/HTTP tests and strict lint; prior fixed/latest-upgrade controls passed. The owning leaf retains the running confirmation and closure action.
+- Status: `.2.2.1` complete; implementation 305ed26 and qualification closure REPAIR-0017. Final code passes 51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint. All results and owned-cluster shutdown are consumed; HTTP receipt production/readback are the next two children.
 - Predecessor: `docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md`.
 
 Add a closed `evaluation` object to authorization records. `legacy_unspecified`

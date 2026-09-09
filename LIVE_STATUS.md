@@ -64,5 +64,9 @@ unit/thirteen integration controls, strict lint and native/source/book checks:
 private runtime storage, owned cancellable launch and consumed process/task shutdown.
 All twenty-one final groups are absent; failed startup evidence is retained and its
 uncaptured wait mechanism remains .11.2. Parent transport/termination and aggregate
-retention/container limits have concrete .7.3.1/.2 owners. Combined qualification
-.5.3 remains before the full checkpoint; categories unchanged.
+retention/container limits have concrete .7.3.1/.2 owners. Combined .5.3 now passes
+fifteen integration controls, strict lint and native/source/book checks with unchanged
+production bytes: real root relocation/refusal, gated overlap and exact listener
+close receipts. Twenty-six final groups are absent and nine failed fixtures preserved.
+Browser prerequisite .5 is complete; compiler disposition .6 precedes full execution
+.2. All results consumed; categories unchanged.

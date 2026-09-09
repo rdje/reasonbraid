@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Qualify browser storage and origin ownership (`SIGNOFF-REPAIR.11.4.3.1.5.3`)
+
+Verify real rendering after moving the runtime root and refusal of linked storage.
+Gate concurrent navigation explicitly instead of relying on a short timing window.
+A native successor-listener control falsifies the old port-reachability assertion;
+require the original listener's close receipt and consumed serving task. Fifteen
+integration controls, strict lint and native/source/book checks pass. Production
+bytes are unchanged; failed evidence and broader qualification owners remain open.
+
 ## 2026-09-09 — Own production browser lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.2`)
 
 Reproduce a renderer outliving a successful worker. Give each invocation private

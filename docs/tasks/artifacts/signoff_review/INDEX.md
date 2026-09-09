@@ -67,3 +67,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [Browser test lifetimes](docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md): bounded origins/worker groups, eight controls, native zombie-group refusal and remaining production shutdown ownership under .11.4.3.1.5.1.
 
 - [Production browser lifetimes](docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md): identified post-worker renderer, exclusive local storage, owned cancellable launch and explicit process/task shutdown under .11.4.3.1.5.2.
+
+- [Combined browser qualification](docs/tasks/artifacts/signoff_review/browser-combined-qualification.md): runtime-root relocation/refusal, gated concurrency and native listener-identity falsification; fifteen controls under .11.4.3.1.5.3.

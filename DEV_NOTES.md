@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Browser verification needs stable resource identity
+
+- Runtime-root relocation and linked-parent refusal pass with the unchanged committed production worker. The initial selected runs and lint are consumed before further edits. Replace the overlap control's three-second scroll window with an explicit origin gate; deliberately delay the second launch four seconds after first navigation. Observation failure and origin shutdown release the gate before consuming tasks.
+- The first complete run then passes fourteen tests but fails the post-shutdown connect assertion. Its peer was not retained. A native owned-successor control proves a closed listener's port and numeric descriptor can both be reused, returning an identifying successor payload; all sockets close. Require a receipt sent after dropping the exact listener plus the completed serving task. This corrects the ownership predicate without asserting the original failure's unknown peer or weakening deadlines.
+- Final fifteen integration controls pass in 8.55s; strict focused lint passes in 10.57s. Twenty-six final groups are independently absent; successful fixtures are gone and the nine prior failures remain. Production source/worker, support helper, manifest/lock, server, README and CI workflow are unchanged. All results are consumed. The earlier five unit controls retain their separate REPAIR-0039 evidence. Full checkpoint still awaits compiler-artifact disposition; parent/container/retention and host-startup owners remain open. Evidence: docs/tasks/artifacts/signoff_review/browser-combined-qualification.md.
+- promotion: promoted → `docs/decisions/2026-09-09_browser-combined-qualification.md`; owner `SIGNOFF-REPAIR.11.4.3.1.5.3`.
+
 ## 2026-09-09 — Browser return requires owned process and storage completion
 
 - A supervised baseline identifies a real renderer still running, reparented to PID 1 after worker exit zero. The old worker shares a default profile, closes CDP without child wait, aborts without join and discards its network task. New private lifetime/storage modules own Chrome before cancellation, preserve launch/CDP semantics, isolate profile/cache/scratch/log/crash paths and consume process/task shutdown before responding.

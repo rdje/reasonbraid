@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_browser-combined-qualification.md](docs/decisions/2026-09-09_browser-combined-qualification.md) | decision | qualify exact listener ownership, explicitly gated overlap and runtime-root relocation while keeping broader parent/container limits open |
 | [2026-09-09_browser-production-lifetimes.md](docs/decisions/2026-09-09_browser-production-lifetimes.md) | decision | own Chrome before cancellable launch, isolate private local storage and require bounded consumed shutdown; preserve parent/container and retention limits |
 | [2026-09-09_browser-test-lifetimes.md](docs/decisions/2026-09-09_browser-test-lifetimes.md) | decision | bound browser test origins/groups and output; require observed absence through transient permission refusals and keep production shutdown claims separate |
 | [2026-09-09_publisher-fixtures.md](docs/decisions/2026-09-09_publisher-fixtures.md) | decision | exclusive publisher test directories, explicit identity-checked cleanup after handle closure and retained incomplete evidence |

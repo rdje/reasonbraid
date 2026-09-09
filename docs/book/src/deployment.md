@@ -179,7 +179,7 @@ and fifty Python tests pass locally, including actual PostgreSQL ownership check
 GitHub's managed checkout/artifact transport and installed OS tools are explicit
 platform dependencies; project stores and artifact temporary paths derive from the
 checkout. Full Rust/security gates and actual remote outcomes remain pending after
-the remaining browser/compiler-cleanup prerequisites. See
+the remaining compiler-artifact prerequisite. See
 `docs/tasks/artifacts/signoff_review/ci-workflows.md` for commands and exact evidence.
 
 ## Publisher verification owns its directories
@@ -214,7 +214,7 @@ or unconfirmed cleanup retain their directory and receipt for inspection.
 A native macOS control shows that a group containing an exited, unreaped child
 can transiently refuse inspection with `EPERM`. The harness waits only within a fixed bound and requires
 an actual absence observation; persistent denial stays an error. Refused signal
-requests never qualify cleanup. Eight final controls and strict focused lint pass;
+requests never qualify cleanup. The initial eight-control harness qualification passed with strict focused lint;
 the original failed fixture is retained with its unconfirmed receipt.
 
 Local HTTP origins have explicit graceful shutdown; the serving task is consumed
@@ -229,6 +229,23 @@ successful result. The harness independently verifies browser-group absence; its
 own emergency cleanup still cannot count as production-owned shutdown. Exact
 baseline and controls are in
 `docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md`.
+
+Combined qualification now passes fifteen integration controls with unchanged
+production worker bytes, alongside the separately recorded five production unit
+controls. Two real renders succeed across a same-volume runtime-root rename; the
+original directory identity and a witness survive, while completed invocation
+storage is removed. A linked parent refuses before Chrome startup and preserves
+its target. Overlap is held by an explicit origin gate until both live groups and
+profiles are observed, including a deliberately delayed second launch.
+
+Origin shutdown is checked by identity. A native control demonstrates that a new
+listener can reuse a closed listener's port and even its numeric file descriptor;
+a later successful connection does not prove the original listener survived. The
+harness consumes the original socket's close receipt as well as its serving task.
+The original failed connection's peer was not captured, so its exact cause remains
+unstated. All twenty-six final worker/browser groups are independently absent;
+the nine earlier failed fixtures remain preserved. Exact results and remaining
+boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
 
 ## Browser invocation storage and shutdown
 

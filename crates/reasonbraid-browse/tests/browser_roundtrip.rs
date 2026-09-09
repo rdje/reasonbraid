@@ -15,11 +15,42 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
+// The receipt belongs to this exact listener. Reaching its old port after
+// shutdown may instead reach a newly bound socket and says nothing about ownership.
+struct OwnedListener {
+    socket: Option<tokio::net::TcpListener>,
+    closed: Option<oneshot::Sender<()>>,
+}
+
+impl axum::serve::Listener for OwnedListener {
+    type Io = tokio::net::TcpStream;
+    type Addr = std::net::SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        axum::serve::Listener::accept(self.socket.as_mut().expect("live listener")).await
+    }
+
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.socket.as_ref().expect("live listener").local_addr()
+    }
+}
+
+impl Drop for OwnedListener {
+    fn drop(&mut self) {
+        drop(self.socket.take());
+        if let Some(closed) = self.closed.take() {
+            let _ = closed.send(());
+        }
+    }
+}
+
 struct Origin {
     base: String,
     hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    overlap_release: tokio::sync::watch::Sender<bool>,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<std::io::Result<()>>>,
+    listener_closed: oneshot::Receiver<()>,
 }
 
 async fn spawn_origin() -> Origin {
@@ -27,6 +58,7 @@ async fn spawn_origin() -> Origin {
     use axum::Router;
     let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = std::sync::Arc::clone(&hits);
+    let (overlap_release, overlap_gate) = tokio::sync::watch::channel(false);
     let app = Router::new()
         .route(
             "/page",
@@ -39,6 +71,20 @@ async fn spawn_origin() -> Origin {
                             [("content-type", "text/html")],
                             "<!doctype html><html><head><title>Render Title</title></head><body><h1>Rendered Heading</h1><p>the rendered body</p></body></html>",
                         )
+                    }
+                }
+            }),
+        )
+        .route(
+            "/overlap",
+            get({
+                let counter = std::sync::Arc::clone(&counter);
+                move || {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let mut gate = overlap_gate.clone();
+                    async move {
+                        let _ = gate.wait_for(|released| *released).await;
+                        ([("content-type", "text/html")], "<title>Render Title</title><body>gated overlap</body>")
                     }
                 }
             }),
@@ -71,6 +117,11 @@ async fn spawn_origin() -> Origin {
         .expect("the origin binds");
     let port = listener.local_addr().expect("the port is known").port();
     let (shutdown, stopped) = oneshot::channel();
+    let (closed, listener_closed) = oneshot::channel();
+    let listener = OwnedListener {
+        socket: Some(listener),
+        closed: Some(closed),
+    };
     let task = tokio::spawn(async move {
         axum::serve(listener, app)
             .with_graceful_shutdown(async {
@@ -81,18 +132,21 @@ async fn spawn_origin() -> Origin {
     Origin {
         base: format!("http://127.0.0.1:{port}"),
         hits,
+        overlap_release,
         shutdown: Some(shutdown),
         task: Some(task),
+        listener_closed,
     }
 }
 
 impl Origin {
     async fn finish(mut self) -> Result<(), String> {
+        self.overlap_release.send_replace(true);
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
         let mut task = self.task.take().ok_or("origin task missing")?;
-        match timeout(Duration::from_secs(5), &mut task).await {
+        let result = match timeout(Duration::from_secs(5), &mut task).await {
             Ok(result) => result
                 .map_err(|e| e.to_string())?
                 .map_err(|e| e.to_string()),
@@ -103,7 +157,12 @@ impl Origin {
                 }
                 Err("origin graceful shutdown not confirmed".to_owned())
             }
-        }
+        };
+        result?;
+        self.listener_closed
+            .try_recv()
+            .map_err(|e| format!("original listener close unconfirmed: {e}"))?;
+        Ok(())
     }
 }
 
@@ -279,16 +338,14 @@ async fn an_oversized_worker_stream_refuses_before_unbounded_capture() {
 
 #[tokio::test]
 async fn origin_shutdown_closes_the_listener() {
-    let origin = spawn_origin().await;
-    let address = origin.base.trim_start_matches("http://").to_owned();
+    let mut origin = spawn_origin().await;
+    assert_eq!(
+        origin.listener_closed.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    );
+    // finish consumes both the serving task and the exact listener's drop receipt.
+    // A later connection to a reused port is deliberately not the postcondition.
     origin.finish().await.unwrap();
-    assert!(timeout(
-        Duration::from_secs(2),
-        tokio::net::TcpStream::connect(address)
-    )
-    .await
-    .unwrap()
-    .is_err());
 }
 
 #[tokio::test]
@@ -453,11 +510,9 @@ async fn overlapping_workers_use_distinct_profiles_under_the_same_root() {
     let second = Fixture::new();
     let origin = spawn_origin().await;
     let result = AssertUnwindSafe(async {
-        let url = format!("{}/page", origin.base);
-        let mut steps = vec![serde_json::json!({"action":"navigate", "url":url})];
-        steps.extend((0..15).map(|_| serde_json::json!({"action":"scroll","y":0})));
-        let request = serde_json::json!({"url":url,"steps":steps,
-            "limits":{"max_steps":16,"max_output_bytes":1048576,"time_budget_secs":20}})
+        let url = format!("{}/overlap", origin.base);
+        let request = serde_json::json!({"url":url,"steps":[{"action":"navigate", "url":url}],
+            "limits":{"max_steps":1,"max_output_bytes":1048576,"time_budget_secs":20}})
         .to_string();
         let mut one = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
         let mut two = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
@@ -499,11 +554,31 @@ async fn overlapping_workers_use_distinct_profiles_under_the_same_root() {
             .await
             .expect("both real browsers navigate while their profiles coexist");
         };
-        // Catch the observer panic without cancelling the two owned command futures.
+        let observe_and_release = async {
+            // An observer failure must release the origin before command futures
+            // are consumed; it cannot strand the gated requests.
+            let result = AssertUnwindSafe(observe).catch_unwind().await;
+            origin.overlap_release.send_replace(true);
+            result
+        };
+        let delayed_second = async {
+            timeout(Duration::from_secs(5), async {
+                while origin.hits.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .map_err(|_| "first gated navigation did not arrive".to_owned())?;
+            // Deliberately exceed the old three-second scroll-based window.
+            tokio::time::sleep(Duration::from_secs(4)).await;
+            second
+                .command(two, request.as_bytes(), Duration::from_secs(35))
+                .await
+        };
         let (one, two, observed) = tokio::join!(
             first.command(one, request.as_bytes(), Duration::from_secs(35)),
-            second.command(two, request.as_bytes(), Duration::from_secs(35)),
-            AssertUnwindSafe(observe).catch_unwind(),
+            delayed_second,
+            observe_and_release,
         );
         first.verify_browser_groups().await.unwrap();
         second.verify_browser_groups().await.unwrap();
@@ -603,6 +678,147 @@ PYTHON
     })
     .catch_unwind()
     .await;
+    fixture.finish(result.is_ok()).unwrap();
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+async fn worker_in_root(
+    fixture: &Fixture,
+    root: &std::path::Path,
+    request: &serde_json::Value,
+) -> support::WorkerOutput {
+    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
+    command
+        .env(
+            "R3_BROWSER_BIN",
+            browser_binary().expect("browser prerequisite checked"),
+        )
+        .current_dir(root);
+    let result = fixture
+        .command(
+            command,
+            request.to_string().as_bytes(),
+            Duration::from_secs(45),
+        )
+        .await;
+    fixture
+        .verify_browser_groups()
+        .await
+        .expect("browser group cleanup independently confirmed");
+    result.expect("bounded worker completes")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn moving_the_runtime_root_preserves_storage_and_next_invocation() {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    if browser_binary().is_none() {
+        println!("SKIP: no browser binary — runtime-root relocation unqualified");
+        return;
+    }
+    let first = Fixture::new();
+    let second = Fixture::new();
+    let origin = spawn_origin().await;
+    let result = AssertUnwindSafe(async {
+        let before = first.path.join("root-before");
+        let after = first.path.join("root-after");
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&before)
+            .unwrap();
+        std::fs::write(before.join("Cargo.toml"), "# movable owned runtime root\n").unwrap();
+        std::fs::create_dir(before.join("migrations")).unwrap();
+        let original = std::fs::metadata(&before).unwrap();
+        let url = format!("{}/page", origin.base);
+        let request = serde_json::json!({"url":url,"steps":[{"action":"navigate","url":url}],
+            "limits":{"max_steps":1,"max_output_bytes":1048576,"time_budget_secs":15}});
+        let one = worker_in_root(&first, &before, &request).await;
+        let first_receipt = completion(&one.stderr);
+        let first_response: serde_json::Value = serde_json::from_str(&one.stdout).unwrap();
+        assert_eq!(
+            first_response["page_title"], "Render Title",
+            "{first_response}"
+        );
+        assert!(!one.group_stop_requested);
+        assert_eq!(first_receipt["cleanup_confirmed"], true);
+        assert!(!before
+            .join(first_receipt["workspace"].as_str().unwrap())
+            .exists());
+        let witness = std::path::Path::new(".project-data/browser/witness");
+        std::fs::write(before.join(witness), b"preserve through relocation").unwrap();
+        std::fs::rename(&before, &after).unwrap();
+        let moved = std::fs::metadata(&after).unwrap();
+        assert_eq!((moved.dev(), moved.ino()), (original.dev(), original.ino()));
+        assert!(!before.exists());
+        let two = worker_in_root(&second, &after, &request).await;
+        let second_receipt = completion(&two.stderr);
+        let second_response: serde_json::Value = serde_json::from_str(&two.stdout).unwrap();
+        assert_eq!(
+            second_response["page_title"], "Render Title",
+            "{second_response}"
+        );
+        assert!(!two.group_stop_requested);
+        assert_eq!(second_receipt["cleanup_confirmed"], true);
+        assert!(!after
+            .join(second_receipt["workspace"].as_str().unwrap())
+            .exists());
+        assert_ne!(first_receipt["workspace"], second_receipt["workspace"]);
+        assert_eq!(
+            std::fs::read(after.join(witness)).unwrap(),
+            b"preserve through relocation"
+        );
+        assert_eq!(
+            std::fs::read_dir(after.join(".project-data/browser"))
+                .unwrap()
+                .count(),
+            1
+        );
+        eprintln!(
+            "runtime root relocation: {}",
+            serde_json::json!({
+                "device": moved.dev(), "inode": moved.ino(), "old_root_absent": true,
+                "witness_preserved": true, "first": first_receipt, "second": second_receipt,
+            })
+        );
+    })
+    .catch_unwind()
+    .await;
+    let shutdown = origin.finish().await;
+    let success = result.is_ok() && shutdown.is_ok();
+    first.finish(success).unwrap();
+    second.finish(success).unwrap();
+    shutdown.unwrap();
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_linked_storage_parent_refuses_before_starting_chrome() {
+    use std::os::unix::fs::symlink;
+    if browser_binary().is_none() {
+        println!("SKIP: no browser binary — worker storage refusal unqualified");
+        return;
+    }
+    let fixture = Fixture::new();
+    let result = AssertUnwindSafe(async {
+        let target = fixture.path.join("linked-target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("witness"), b"untouched target").unwrap();
+        symlink(&target, fixture.path.join(".project-data")).unwrap();
+        let request = serde_json::json!({"url":"about:blank","steps":[{"action":"navigate","url":"about:blank"}],
+            "limits":{"max_steps":1,"max_output_bytes":1024,"time_budget_secs":5}});
+        let output = fixture.worker(&request).await.unwrap();
+        let response: serde_json::Value = serde_json::from_str(&output.stdout).unwrap();
+        assert_eq!(response["error"]["kind"], "browser_storage_failed", "{response}");
+        assert!(!output.group_stop_requested);
+        assert!(!output.stderr.contains("browser ownership:"));
+        assert!(std::fs::symlink_metadata(fixture.path.join(".project-data")).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read(target.join("witness")).unwrap(), b"untouched target");
+        assert_eq!(std::fs::read_dir(&target).unwrap().count(), 1);
+        eprintln!("linked storage refusal: {}", serde_json::json!({"kind":response["error"]["kind"],"target_unchanged":true,"browser_ownership_emitted":false}));
+    }).catch_unwind().await;
     fixture.finish(result.is_ok()).unwrap();
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);

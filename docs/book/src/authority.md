@@ -50,13 +50,13 @@ Tenant administration is intended to remain tenant-scoped. The approved frozen
 boundary carve-out allows an otherwise eligible tenant administrator to inspect its
 own tenant after boundary revocation. It does not grant authority over other tenants.
 
-The shared adapter and region HTTP handlers currently use an any-tenant-admin
-check. A separate [site-authority service](site-authority.md) now implements explicit
-operator-issued grants, actual-parent liveness, and atomic registry/audit operations
-serialized with site revocation. Tenant enrollment cannot mint those grants.
-The protected `rb-site` CLI is implemented and verified under `SIGNOFF-REPAIR.3.2.2`.
-HTTP integration remains `.3.2.3`; the service and
-operator tool alone do not qualify the existing HTTP routes.
+The shared adapter and region HTTP handlers use the separate
+[site-authority service](site-authority.md): explicit operator-issued grants,
+actual-parent liveness, and atomic registry/audit operations serialized with site
+revocation. Tenant enrollment cannot mint those grants. The protected `rb-site`
+CLI is verified under `SIGNOFF-REPAIR.3.2.2`; HTTP enforcement is implemented under
+`.3.2.3`, with eight HTTP controls passed and final adjacent checks in progress. Shared inspection requires the
+explicit `registry_inspect` action; tenant-scoped inspection retains its own policy.
 
 ### Grant and boundary revocation
 

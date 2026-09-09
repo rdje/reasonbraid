@@ -6,7 +6,7 @@ answers:
 ---
 # Explicit site-operator authority for shared registries
 
-- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI is implemented and verified under `.3.2.2`; HTTP enforcement remains `.3.2.3`.
+- Status: accepted; service/schema implemented under `SIGNOFF-REPAIR.3.2.1`, ten live controls and strict focused lint pass. Operator CLI is implemented and verified under `.3.2.2`; HTTP enforcement is implemented under `.3.2.3`, with live verification in progress.
 - Owner: repo-local engineering, acting on the director's explicit delegation.
 - Date: 2026-09-09.
 - Sources: `ROADMAP.md` §§4.4–4.5, 16.4, 20.10; ADR-027 and ADR-035.
@@ -101,7 +101,7 @@ input. The runner's credential fallback correction and driver evidence are
 recorded in `docs/decisions/2026-09-09_disposable-postgresql-runner.md`.
 
 The book chapter `docs/book/src/site-authority.md` describes the command flow,
-deployment permissions, exit statuses and current HTTP integration limit.
+deployment permissions, exit statuses and HTTP registry contract.
 
 ## Required proof
 
@@ -110,3 +110,25 @@ Demonstrate operator success; tenant-admin refusal across multiple tenants; refu
 ## Consequences
 
 Existing success fixtures must obtain explicit site authority. Deployments will need an operator-issued grant for these mutations after the repair. Existing registry entries confer no authority. Correct historical qualification claims through `docs/tasks/SIGNOFF-REPAIR.md`; preserve source evidence under `docs/tasks/artifacts/signoff_review/`.
+
+## HTTP integration contract
+
+All seven shared adapter/region HTTP operations call the same site service.
+Successful JSON bodies are preserved and the committed audit reference is exposed
+in x-reasonbraid-site-audit. Every mutation now requires a bounded Reason;
+registry identifiers are bounded RegistryName values. The old any-tenant gate and
+private unaudited region mutation helpers are removed. Registry inspection requires
+its own site action. Tenant-admin grants have no site interpretation.
+
+Malformed requests return safe typed JSON without an authority write. Domain and
+authority refusals include audit_id only after the refusal commits. A database or
+audit-write failure remains 500 dependency_unavailable with no fabricated receipt;
+allowed effects roll back if their audit cannot commit. Site issuance remains
+restricted to the database operator surface; HTTP principal authentication is
+still the development deployment assumption.
+
+The HTTP tests replace the former escalation-positive fixtures and exercise all
+verbs, distinct tenants and freeze, scoped human/role grants, current actual parents,
+no-op receipts, malformed/domain/storage refusals, both revocation orders and
+expiry during a database-guard wait. Exact runtime results belong to the owning
+leaf; implementation and test source alone are not qualification.

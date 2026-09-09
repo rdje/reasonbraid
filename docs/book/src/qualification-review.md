@@ -14,10 +14,10 @@ existing restrictions. Current progress is in `LIVE_STATUS.md`.
 
 ## Shared registry authority
 
-The current adapter and region handlers accept a tenant-admin grant from any tenant
-and omit enrollment-boundary validation in that check. An owned live reproduction
+The former adapter and region handlers accepted a tenant-admin grant from any tenant
+and omitted enrollment-boundary validation in that check. An owned live reproduction
 confirmed shared writes by two distinct tenant admins, including adapter and region
-writes after tenant-boundary revocation. Their existing success tests therefore do
+writes after tenant-boundary revocation. Those historical success tests did
 not prove site isolation or administrative freeze after revocation.
 
 The accepted repair requires explicit **site-operator grants**, issued through
@@ -26,8 +26,10 @@ check the grant's actual boundary and commit with an attributable audit record,
 serialized with revocation. The separate [site-authority service](site-authority.md)
 now implements that contract under `.3.2.1`; ten live controls and strict focused
 lint pass. The `rb-site` operator CLI passed its live controls under `.3.2.2`,
-including the documented operator privileges and bounded audit walk. HTTP routing remains `.3.2.3`, so existing HTTP
-authorization is still under repair.
+including the documented operator privileges and bounded audit walk. HTTP routing
+now uses the site service under `.3.2.3`; the affected fixtures use explicit site
+grants. All eight HTTP controls pass, including invalid wire-input refusals and both
+revocation orders. Final adjacent security checks are in progress.
 
 | Scenario | Required repaired behavior |
 | --- | --- |

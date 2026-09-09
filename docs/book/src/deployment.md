@@ -44,7 +44,7 @@ Details and verification: `docs/decisions/2026-09-09_repository-local-command-en
 ```bash
 bash scripts/run_pg_tests.sh --list
 bash scripts/run_pg_tests.sh authority command_api
-bash scripts/run_pg_tests.sh allowlist regions
+bash scripts/run_pg_tests.sh site_registry_http allowlist regions
 # Broad collection, without the demonstration:
 RB_DEMO=0 bash scripts/run_pg_tests.sh
 # Add the demonstration to a focused run:
@@ -113,10 +113,10 @@ make release
 | `rb-node` | the node worker — outbound channel, SQLite journal, the adapter supervisor |
 | `rb-journal` | the node-journal inspection tool |
 
-The binaries are self-contained: the database migrations and the console
-assets embed at compile time, so a deployed `rb-server` needs no runtime path
-back to the checkout. The node's journal is a local SQLite file that stays on
-the node's own volume.
+The control-plane binary embeds its database migrations and console assets, so a
+deployed `rb-server` needs no runtime path back to the checkout. The `rb-site`
+operator tool runs from within the checkout to verify storage locality. The node's
+journal is a local SQLite file that stays on the node's own volume.
 
 ## The two profiles
 

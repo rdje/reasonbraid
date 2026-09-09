@@ -1,11 +1,10 @@
 # Site authority for shared registries
 
-The server has a separate site-authority service for the shared adapter and region
-registries, implemented under `SIGNOFF-REPAIR.3.2.1`. The `rb-site` operator CLI is
-implemented and verified under `.3.2.2`. HTTP enforcement
-remains `.3.2.3`; existing HTTP handlers still use the legacy tenant-admin check
-until that work lands. The service's ten live controls and strict focused lint
-pass; this does not qualify the pending HTTP integration.
+The shared adapter and region HTTP registries now use explicit site authority.
+The service and protected `rb-site` CLI are verified under
+`SIGNOFF-REPAIR.3.2.1` and `.3.2.2`. HTTP enforcement is implemented under `.3.2.3`;
+all eight focused HTTP controls pass, with final adjacent checks in progress. Tenant enrollment conveys no site
+capability. The development principal header remains a deployment trust assumption.
 
 ## Who controls site authority
 
@@ -65,6 +64,78 @@ bytes. Every mutation requires a nonblank reason, without control characters,
 within 1,024 UTF-8 bytes. Blank or overlong input is rejected before a command is
 formed. Action names are a closed set, so `tenant_admin` is not a site capability.
 
+## Registry HTTP commands
+
+Each request presents the human or role named by an explicit site grant using
+`x-reasonbraid-principal`. That header is trusted only in the development profile;
+issuing a site grant does not authenticate the network caller. Use the protected
+operator CLI below to issue the grant. There is no HTTP site-issuance endpoint.
+
+| Method and path | Site action | Required JSON body |
+| --- | --- | --- |
+| `GET /v1/admin/adapters` | `registry_inspect` | None |
+| `GET /v1/admin/regions` | `registry_inspect` | None |
+| `POST /v1/admin/adapters` | `adapter_allow` | `{"adapter_id":"vendor-4","reason":"qualified release"}` |
+| `POST /v1/admin/adapters/{adapter_id}/revoke` | `adapter_revoke` | `{"reason":"retired release"}` |
+| `POST /v1/admin/regions` | `region_declare` | `{"region":"eu-site","reason":"qualified site"}` |
+| `POST /v1/admin/regions/{from}/pair/{to}` | `region_pair` | `{"reason":"approved route"}` |
+| `POST /v1/admin/regions/{from}/unpair/{to}` | `region_unpair` | `{"reason":"retire route"}` |
+
+The JSON schemas reject unknown fields. Use `Content-Type: application/json` for
+mutations. Path names are percent-encoded URL components; the decoded names obey
+the same 256-byte contract as names in JSON. Invalid UTF-8 path components return
+the same safe JSON error envelope as malformed request bodies. A write grant does not grant list
+access; a read grant does not grant writes. Lists require no caller reason and
+record the service reason `inspect registry`.
+
+For example, after issuing the matching site grant to an enrolled human:
+
+```bash
+# Choose the development listener and that grant's exact human/role subject.
+RB_API='http://127.0.0.1:4310'
+RB_SITE_SUBJECT='hpr_<human-UUID>'
+curl --fail-with-body -i -H "x-reasonbraid-principal: $RB_SITE_SUBJECT" \
+  -H 'Content-Type: application/json' \
+  --data '{"region":"eu-site","reason":"qualified site"}' \
+  "$RB_API/v1/admin/regions"
+curl --fail-with-body -i -H "x-reasonbraid-principal: $RB_SITE_SUBJECT" \
+  -H 'Content-Type: application/json' \
+  --data '{"reason":"approved route"}' \
+  "$RB_API/v1/admin/regions/dev-local/pair/eu-site"
+curl --fail-with-body -i -H "x-reasonbraid-principal: $RB_SITE_SUBJECT" \
+  "$RB_API/v1/admin/regions"
+```
+
+Both regions must already be declared before pairing. Pairs are directed:
+`dev-local` → `eu-site` conveys no reverse route. An ordinary tenant administrator
+receives 403 for all seven operations, even if its tenant boundary is active.
+Revoking that tenant boundary cannot confer site access. A separately issued site
+grant remains governed by its own actual site boundary.
+
+Successful responses retain the existing JSON bodies, such as
+`{"region":"eu-site","declared":true}` or
+`{"from":"dev-local","to":"eu-site","paired":true}`. The response header
+`x-reasonbraid-site-audit` identifies the committed audit record. Adapter lists
+retain `adapter_id`, `added_by`, `reason`, `added_at`; region lists retain `regions`
+and `pairs` with `from`/`to`. Inspect the audit record through `rb-site audit list`.
+An already satisfied mutation returns 200 with the same response body and its own
+`noop` audit. Repeating an allow preserves the registry's original reason while
+recording the repeat request's reason separately.
+
+| Failure | Status and receipt |
+| --- | --- |
+| Missing development principal | 401; no site audit is claimed |
+| Malformed JSON, missing/unknown fields, invalid name or reason | 400 `invalid_command`; no site audit |
+| Wrong content type or oversized body | 415 or 413 `invalid_command`; no site audit |
+| No usable site grant and actual boundary for the action | 403 `site_authority_required`, with committed `audit_id` |
+| Authorized pairing names an undeclared region | 400 `undeclared_region`, with committed `audit_id` |
+| Database, lock-timeout or audit-insert failure | 500 `dependency_unavailable`; no receipt is fabricated |
+
+Refusal JSON contains `code`, a safe `message`, and `audit_id` only when that refusal
+record committed. No supplied malformed body or database diagnostic is echoed.
+A lost response can leave a committed effect: inspect history before deciding to
+retry. These registry requests do not use the thread-command idempotency-key store.
+
 ## Expiry, suspension and revocation
 
 Both boundary and grant must be active and current. Validity includes `valid_from`
@@ -123,7 +194,7 @@ They also do not repair the separate tenant-admin effect-audit gaps owned by
 The focused live controls are executable in a repository-owned disposable cluster:
 
 ```bash
-RB_DEMO=0 bash scripts/run_pg_tests.sh site_authority
+RB_DEMO=0 bash scripts/run_pg_tests.sh site_registry_http allowlist regions site_authority
 ```
 
 The decision and durable verification record are
@@ -234,10 +305,9 @@ creates a different record. After a timeout or lost output, inspect history befo
 trying to issue again. Lost shell variables can be recovered through the protected
 boundary/grant listings and their reasons.
 
-The separate library controls prove that these grants authorize the intended
-registry action and that disabling stops it. The ordinary registry HTTP/`rb`
-integration remains the following leaf; issuance alone does not change those
-legacy handlers.
+The issued grant is the authority evaluated by the registry HTTP commands above.
+The library and CLI controls prove issuance and disabling; `.3.2.3` owns live HTTP
+qualification. The ordinary `rb` CLI has no dedicated shared-registry commands.
 
 ### Inspect bounded history
 

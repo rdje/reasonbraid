@@ -28,13 +28,23 @@ default.
 ## Current qualification correction
 
 `SIGNOFF-REPAIR` owns the source-review findings discovered after the historical
-`.5.2` closure. Shared adapter/region mutations currently use an any-tenant-admin
-check without boundary validation; the accepted replacement is explicit site
-operator authority (`docs/decisions/2026-09-09_site-operator-authority.md`).
+`.5.2` closure. Shared adapter/region HTTP operations now use explicit site
+operator authority (`docs/decisions/2026-09-09_site-operator-authority.md`);
+`SIGNOFF-REPAIR.3.2.3` owns the current live HTTP verification. The earlier
+any-tenant-admin behavior and its positive fixtures below are historical records.
 MCP authorization/continuation, A2A transport, federation and adapter certification
 also have source-review records. Their previous test results retain provenance;
 they do not close the untested guarantees. Repairs precede extending delivery.
-Runtime reproduction is pending in the corrective tree.
+The shared-write escalation is runtime-confirmed in the corrective tree; remaining
+findings require their own runtime disposition.
+
+## Current correction synchronization — SIGNOFF-REPAIR.3.2.3
+
+Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-REPAIR.md`.
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — the legacy registry probe reproduced shared tenant-admin writes after boundary revocation, HTTP 200 and SQL witness 1|2|2|1, rc=0. Historical success fixtures below did not prove site isolation.
+- [x] **ADDRESSED (verified)** — the corrected HTTP suite passed all 8 tests, rc=0, including every route, tenant/freeze refusals, actual-parent liveness, audit rollback, wire errors and both revocation orders. This index records the correction while preserving the old execution evidence.
+- [x] **NO REGRESSION** — Focused verification passed; confirmation is pending. strict focused Clippy passed, rc=0; `make book` and rendered contract inspection passed, rc=0. Existing regional routing and adapter controls passed; final repeated region/escalation verification remains tracked in the owner. No Phase-8 or Internet qualification is advanced.
 
 ## Task Tree
 
@@ -1401,7 +1411,7 @@ Runtime reproduction is pending in the corrective tree.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.2.2` | `pending` | corrective prerequisite; focused disposable PG verification, then authority repairs |
+| 1 | `SIGNOFF-REPAIR.3.2.3` | `active` | corrective prerequisite; HTTP site-authority verification, then remaining authority repairs |
 | 2 | `PHASE-8.5.3` | `proposed` | `.5.2` done — the regional routing ships (the declarations + the pair allowlist + the typed refusals + the 31st suite); the store-and-forward executes next |
 
 ## Changelog

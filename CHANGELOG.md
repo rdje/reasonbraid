@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Site authority enforced on registry HTTP (`SIGNOFF-REPAIR.3.2.3`)
+
+All seven adapter/region operations now require explicit site grants and use the
+atomic authority/effect/audit service. Mutations require bounded reasons; success
+bodies retain their keys with a committed audit header. Refusals distinguish
+malformed input, authority, domain and storage failures. Invalid UTF-8 paths now
+return typed JSON after a regression exposed the extractor bypass. Tenant
+enrollment confers no site authority. The live HTTP controls pass all eight tests;
+strict focused lint passes. This implementation commit is verification-pending:
+the final adjacent escalation/region checks remain supervised and tracked in the
+owning task-tree.
+
 ## 2026-09-09 — Protected site operator CLI (`SIGNOFF-REPAIR.3.2.2`)
 
 Added `rb-site` for explicit boundary/grant issuance, disabling and audited

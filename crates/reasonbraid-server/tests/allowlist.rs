@@ -1,7 +1,7 @@
 //! The adapter-allowlist ledger's verbs (`PHASE-8.4.4`, ADR-027): the
 //! rung-1 registry the operator manages — the list, the allow (with the
 //! recorded reason), the revoke (the NEXT ladder run refuses at rung 1,
-//! never a silent untrust), all tenant_admin-gated. Measured:
+//! never a silent untrust), all site-grant-gated. Measured:
 //!   - the seeded dev three list;
 //!   - the allow adds the fourth row (the idempotent no-op on the
 //!     re-allow);
@@ -13,6 +13,8 @@
 
 #[path = "support/mod.rs"]
 mod pg_test_support;
+#[path = "support/site.rs"]
+mod site_fixture;
 
 use std::net::SocketAddr;
 use std::sync::OnceLock;
@@ -37,6 +39,9 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "site_audit",
+        "site_grants",
+        "site_boundaries",
         "adapter_allowlist",
         "policy_outcomes",
         "policy_corrections",
@@ -125,6 +130,12 @@ async fn pool() -> Option<PgPool> {
 struct TestServer {
     addr: SocketAddr,
     _handle: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self._handle.abort();
+    }
 }
 
 impl TestServer {
@@ -221,6 +232,7 @@ async fn the_allowlist_verbs_manage_the_rung_one_ledger() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(&pool, &human_id, site_fixture::ALL).await;
 
     // 1. The seeded dev three list.
     let ids = listed_ids(&client, &base, &human_id).await;
@@ -259,7 +271,7 @@ async fn the_allowlist_verbs_manage_the_rung_one_ledger() {
         &base,
         "/v1/admin/adapters/vendor-4/revoke",
         &human_id,
-        &json!({}),
+        &json!({"reason": "explicit registry maintenance"}),
     )
     .await;
     assert_eq!(status, 200, "the revoke: {revoked}");
@@ -270,7 +282,7 @@ async fn the_allowlist_verbs_manage_the_rung_one_ledger() {
     );
 }
 
-/// The ledger is tenant_admin-gated: the non-admin role is refused.
+/// The ledger is site-grant-gated: the non-admin role is refused.
 #[tokio::test]
 async fn the_allowlist_refuses_the_non_admin() {
     let _guard = guard().await;

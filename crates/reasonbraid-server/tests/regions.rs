@@ -7,13 +7,15 @@
 //!     region refuses with its OWN name; the unpaired cross-region
 //!     refuses until the pair row lands; the unpair makes the NEXT
 //!     delivery refuse;
-//!   - the registry verbs are tenant_admin-gated.
+//!   - the registry verbs are site-grant-gated.
 //!
 //! Run with `scripts/run_pg_tests.sh` locally or the `pg-tests` CI job.
 //! Without `DATABASE_URL` these skip, so `make check` stays green offline.
 
 #[path = "support/mod.rs"]
 mod pg_test_support;
+#[path = "support/site.rs"]
+mod site_fixture;
 
 use std::net::SocketAddr;
 use std::sync::OnceLock;
@@ -38,6 +40,9 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     for table in [
+        "site_audit",
+        "site_grants",
+        "site_boundaries",
         "region_pairs",
         "site_regions",
         "adapter_allowlist",
@@ -112,6 +117,12 @@ struct TestServer {
     _handle: tokio::task::JoinHandle<()>,
 }
 
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self._handle.abort();
+    }
+}
+
 impl TestServer {
     async fn start(pool: &PgPool) -> Self {
         let router = api_router(pool.clone());
@@ -182,6 +193,7 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(&pool, &human_id, site_fixture::ALL).await;
 
     // 1. The same-region delivery routes (the dev-local seed).
     reasonbraid_server::regions_internal::route(&pool, "dev-local", "dev-local")
@@ -207,7 +219,7 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
         &base,
         "/v1/admin/regions",
         &human_id,
-        &json!({ "region": "eu-site" }),
+        &json!({ "region": "eu-site", "reason": "declare the qualified site" }),
     )
     .await;
     assert_eq!(status, 200, "the declare: {declared}");
@@ -226,7 +238,7 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
         &base,
         "/v1/admin/regions/dev-local/pair/eu-site",
         &human_id,
-        &json!({}),
+        &json!({"reason": "explicit registry maintenance"}),
     )
     .await;
     assert_eq!(status, 200, "the pair: {paired}");
@@ -240,7 +252,7 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
         &base,
         "/v1/admin/regions/dev-local/unpair/eu-site",
         &human_id,
-        &json!({}),
+        &json!({"reason": "explicit registry maintenance"}),
     )
     .await;
     assert_eq!(status, 200, "the unpair: {unpaired}");
@@ -270,7 +282,7 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
     assert!(regions.contains(&"eu-site".to_string()), "the region lists");
 }
 
-/// The registry verbs are tenant_admin-gated.
+/// The registry verbs are site-grant-gated.
 #[tokio::test]
 async fn the_region_registry_refuses_the_non_admin() {
     let _guard = guard().await;
@@ -301,7 +313,7 @@ async fn the_region_registry_refuses_the_non_admin() {
         &base,
         "/v1/admin/regions",
         &role_id,
-        &json!({ "region": "role-site" }),
+        &json!({ "region": "role-site", "reason": "unprivileged attempt" }),
     )
     .await;
     assert_eq!(status, 403, "the non-admin declare refuses");

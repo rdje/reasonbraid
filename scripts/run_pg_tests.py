@@ -24,7 +24,7 @@ SERVER_SUITES = (
     "pg_guard atomic_transaction outbox_worker node_channel authority budget command_api node_work "
     "aggregate_library identity_store node_enrollment node_inbox invitations backup_restore "
     "migration_upgrade escalation node_replacement profiles evaluation routing policy rls "
-    "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority site_operator_cli"
+    "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority site_operator_cli site_registry_http"
 ).split()
 SUITES = {name: ("reasonbraid-server", name) for name in SERVER_SUITES}
 SUITES.update({"mcp": ("reasonbraid-mcp", None), "cli_end_to_end": ("reasonbraid-cli", "cli_end_to_end")})

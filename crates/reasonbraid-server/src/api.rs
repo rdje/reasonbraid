@@ -51,6 +51,7 @@ use crate::authority::{
 };
 use crate::budget;
 use crate::node_channel;
+use crate::site_authority::{self as site, Reason, RegistryCommand, RegistryName};
 use crate::threads::{self, CreateBody};
 use crate::tx::{self, ApplyError, ClaimOutcome, Command};
 
@@ -6298,167 +6299,216 @@ async fn admin_metrics(
     Ok(Json(Value::Object(snapshot)))
 }
 
-/// The allowlist ledger's admin gate (the `.4.4` rung-1 registry): the
-/// caller holds `tenant_admin` in ANY of their active grants (the same
-/// process-global gate the metrics surface uses — the ledger is
-/// tenant-less).
-async fn require_admin_any_tenant(
-    pool: &PgPool,
+/// Preserve the registry response bodies while exposing the committed receipt.
+/// All authorization, registry effects and audit persistence happen in the service.
+async fn site_registry_response(
+    state: &ApiState,
     principal: &GrantSubject,
-) -> Result<(), ControlApiError> {
-    let holds_admin: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS( \
-             SELECT 1 FROM authority_grants \
-             WHERE subject_id = $1 AND status = 'active' \
-               AND actions ? 'tenant_admin' \
-               AND valid_from <= now() AND (expires_at IS NULL OR expires_at > now()))",
-    )
-    .bind(principal.id_string())
-    .fetch_one(pool)
-    .await?;
-    if !holds_admin.unwrap_or(false) {
-        return Err(ControlApiError::unauthorized(
-            "the allowlist ledger is tenant_admin-gated",
-        ));
+    command: RegistryCommand,
+) -> Result<Response, ControlApiError> {
+    match site::execute(&state.pool, principal, &command).await {
+        Ok(receipt) => Ok((
+            [("x-reasonbraid-site-audit", receipt.audit_id)],
+            Json(receipt.result),
+        )
+            .into_response()),
+        Err(site::Error::Refused { reason, audit_id }) => {
+            let (status, message) = if reason == "undeclared_region" {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "both regions must be declared before pairing",
+                )
+            } else {
+                crate::telemetry::metrics().incr("authorization_denials");
+                (
+                    StatusCode::FORBIDDEN,
+                    "a current site grant for this action and its actual boundary are required",
+                )
+            };
+            Ok((
+                status,
+                Json(json!({"code": reason, "message": message, "audit_id": audit_id})),
+            )
+                .into_response())
+        }
+        Err(site::Error::InvalidInput(reason)) => Err(ControlApiError::invalid_command(reason)),
+        Err(site::Error::OperatorRequired) => {
+            Err(ControlApiError::unauthorized("site authority required"))
+        }
+        Err(site::Error::Sql(error)) => Err(error.into()),
     }
-    Ok(())
 }
 
-/// `GET /v1/admin/adapters` — the allowlist rows (the ADR-027 ladder's
-/// rung-1 ledger).
+// Do not echo malformed caller input or driver diagnostics. Keep body-size and
+// media-type refusal statuses; normalize JSON syntax/schema errors to typed 400.
+fn site_request<T>(
+    request: Result<Json<T>, axum::extract::rejection::JsonRejection>,
+) -> Result<T, ControlApiError> {
+    request.map(|Json(value)| value).map_err(|rejection| {
+        let status = match rejection.status() {
+            StatusCode::PAYLOAD_TOO_LARGE => StatusCode::PAYLOAD_TOO_LARGE,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        ControlApiError {
+            status,
+            code: "invalid_command",
+            message: "registry request requires the documented JSON fields, bounded names and a nonblank reason".into(),
+        }
+    })
+}
+
+fn site_path<T>(
+    path: Result<Path<T>, axum::extract::rejection::PathRejection>,
+) -> Result<T, ControlApiError> {
+    path.map(|Path(value)| value).map_err(|_| {
+        ControlApiError::invalid_command("registry path names must be valid UTF-8 URL components")
+    })
+}
+
+fn site_name(value: String) -> Result<RegistryName, ControlApiError> {
+    RegistryName::new(value).map_err(|error| ControlApiError::invalid_command(error.to_string()))
+}
+
+/// `GET /v1/admin/adapters` — site registry inspection, audited atomically.
 async fn list_adapters(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    let rows: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT adapter_id, added_by, reason, added_at FROM adapter_allowlist ORDER BY adapter_id",
-    )
-    .fetch_all(&state.pool)
-    .await?;
-    Ok(Json(
-        json!({ "adapters": rows.into_iter().map(|(id, by, reason, at)| json!({
-            "adapter_id": id, "added_by": by, "reason": reason, "added_at": at,
-        })).collect::<Vec<_>>() }),
-    ))
+    site_registry_response(&state, &principal, RegistryCommand::ListAdapters).await
 }
 
-/// `POST /v1/admin/adapters` — allow one adapter id (the body carries
-/// the recorded reason; an existing row is the idempotent no-op — the
-/// reason stays the original's).
-#[derive(Debug, serde::Deserialize)]
+/// `POST /v1/admin/adapters` — the first reason stays on the registry row;
+/// every admitted retry records its own reason and no-op receipt.
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AllowAdapterRequest {
-    adapter_id: String,
-    reason: String,
+    adapter_id: RegistryName,
+    reason: Reason,
 }
 
 async fn allow_adapter(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<AllowAdapterRequest>,
-) -> Result<Json<Value>, ControlApiError> {
+    request: Result<Json<AllowAdapterRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    sqlx::query(
-        "INSERT INTO adapter_allowlist (adapter_id, added_by, reason) VALUES ($1, $2, $3) \
-         ON CONFLICT (adapter_id) DO NOTHING",
+    let req = site_request(request)?;
+    site_registry_response(
+        &state,
+        &principal,
+        RegistryCommand::AllowAdapter {
+            adapter_id: req.adapter_id,
+            reason: req.reason,
+        },
     )
-    .bind(&req.adapter_id)
-    .bind(principal.id_string())
-    .bind(&req.reason)
-    .execute(&state.pool)
-    .await?;
-    Ok(Json(
-        json!({ "adapter_id": req.adapter_id, "allowed": true }),
-    ))
+    .await
 }
 
-/// `POST /v1/admin/adapters/{adapter_id}/revoke` — remove the row (the
-/// NEXT ladder run refuses at rung 1 — never a silent untrust).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SiteReasonRequest {
+    reason: Reason,
+}
+
+/// `POST /v1/admin/adapters/{adapter_id}/revoke` — remove with a reason.
 async fn revoke_adapter(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(adapter_id): Path<String>,
-) -> Result<Json<Value>, ControlApiError> {
+    path: Result<Path<String>, axum::extract::rejection::PathRejection>,
+    request: Result<Json<SiteReasonRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    sqlx::query("DELETE FROM adapter_allowlist WHERE adapter_id = $1")
-        .bind(&adapter_id)
-        .execute(&state.pool)
-        .await?;
-    Ok(Json(json!({ "adapter_id": adapter_id, "revoked": true })))
+    let req = site_request(request)?;
+    site_registry_response(
+        &state,
+        &principal,
+        RegistryCommand::RevokeAdapter {
+            adapter_id: site_name(site_path(path)?)?,
+            reason: req.reason,
+        },
+    )
+    .await
 }
 
-/// `GET /v1/admin/regions` — the declared regions + the pair rows (the
-/// ADR-035 routing registry).
+/// `GET /v1/admin/regions` — site registry inspection, audited atomically.
 async fn list_regions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    let regions: Vec<String> =
-        sqlx::query_scalar("SELECT region_id FROM site_regions ORDER BY region_id")
-            .fetch_all(&state.pool)
-            .await?;
-    let pairs: Vec<(String, String)> = sqlx::query_as(
-        "SELECT from_region, to_region FROM region_pairs ORDER BY from_region, to_region",
-    )
-    .fetch_all(&state.pool)
-    .await?;
-    Ok(Json(json!({
-        "regions": regions,
-        "pairs": pairs.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect::<Vec<_>>(),
-    })))
+    site_registry_response(&state, &principal, RegistryCommand::ListRegions).await
 }
 
-/// `POST /v1/admin/regions` — declare one region (the body carries the
-/// region id; the declaration is the fail-closed seam).
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DeclareRegionRequest {
-    region: String,
+    region: RegistryName,
+    reason: Reason,
 }
 
+/// `POST /v1/admin/regions` — declare one region with an attributable reason.
 async fn declare_region(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<DeclareRegionRequest>,
-) -> Result<Json<Value>, ControlApiError> {
+    request: Result<Json<DeclareRegionRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    crate::regions::declare(&state.pool, &req.region).await?;
-    Ok(Json(json!({ "region": req.region, "declared": true })))
+    let req = site_request(request)?;
+    site_registry_response(
+        &state,
+        &principal,
+        RegistryCommand::DeclareRegion {
+            region: req.region,
+            reason: req.reason,
+        },
+    )
+    .await
 }
 
-/// `POST /v1/admin/regions/{from}/pair/{to}` — the cross-region pair
-/// allowlist row (an undeclared region refuses with the typed 400).
+/// `POST /v1/admin/regions/{from}/pair/{to}` — both regions must be declared.
 async fn pair_regions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((from, to)): Path<(String, String)>,
-) -> Result<Json<Value>, ControlApiError> {
+    path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
+    request: Result<Json<SiteReasonRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    crate::regions::pair(&state.pool, &from, &to)
-        .await
-        .map_err(|refusal| ControlApiError::invalid_command(refusal.to_string()))?;
-    Ok(Json(json!({ "from": from, "to": to, "paired": true })))
+    let req = site_request(request)?;
+    let (from, to) = site_path(path)?;
+    site_registry_response(
+        &state,
+        &principal,
+        RegistryCommand::PairRegions {
+            from: site_name(from)?,
+            to: site_name(to)?,
+            reason: req.reason,
+        },
+    )
+    .await
 }
 
-/// `POST /v1/admin/regions/{from}/unpair/{to}` — remove the pair row
-/// (the NEXT cross-region delivery refuses).
+/// `POST /v1/admin/regions/{from}/unpair/{to}` — remove with a reason.
 async fn unpair_regions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((from, to)): Path<(String, String)>,
-) -> Result<Json<Value>, ControlApiError> {
+    path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
+    request: Result<Json<SiteReasonRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    require_admin_any_tenant(&state.pool, &principal).await?;
-    crate::regions::unpair(&state.pool, &from, &to).await?;
-    Ok(Json(json!({ "from": from, "to": to, "unpaired": true })))
+    let req = site_request(request)?;
+    let (from, to) = site_path(path)?;
+    site_registry_response(
+        &state,
+        &principal,
+        RegistryCommand::UnpairRegions {
+            from: site_name(from)?,
+            to: site_name(to)?,
+            reason: req.reason,
+        },
+    )
+    .await
 }
 
 /// `GET /v1/admin/usage?tenant_id=…` — the usage-reconciliation surface

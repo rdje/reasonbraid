@@ -57,3 +57,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [Scheduled CI checkpoint census](docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md): source/target/skip/tool/locality/pressure inventory and concrete pre-push repair owners under .11.4.3.1.
 
 - [CI environment launcher](docs/tasks/artifacts/signoff_review/ci-environment.md): instrumented raw-workflow baseline and eight real-child locality/lifetime controls under .11.4.3.1.3.1.
+
+- [Pinned CI scanners](docs/tasks/artifacts/signoff_review/ci-scanners.md): eight-archive identity/layout verification, thirteen controls and native version-contract correction under .11.4.3.1.3.2.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Verify pinned CI scanners before execution (`SIGNOFF-REPAIR.11.4.3.1.3.2`)
+
+Add exact archive/version pins, bounded verified extraction and supervised
+scanner setup/execution in unique local directories. Preserve redacted reports,
+nonzero results and failed evidence; retire only consumed run executables/archives.
+Thirteen controls, final configuration checks, all eight archive identities/layouts
+and native version-only probes pass. The real Gitleaks probe caught an incorrect
+expected version format; its root cause and failure/retry remain recorded.
+Workflow wiring and actual full security gates remain pending.
+
 ## 2026-09-09 — Establish CI stores before installation (`SIGNOFF-REPAIR.11.4.3.1.3.1`)
 
 Add a repository-local CI launcher with optional exact pinned compiler setup.

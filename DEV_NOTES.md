@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Verify scanner bytes and actual version contracts
+
+- The old action's annotated v1 tag peels to 3f4a782664881cf5725d0ffd23969fcce89fd868; exact source pins Rust 1.71.0 and cargo-deny 0.14.21. New scanner setup pins cargo-deny 0.20.2/Gitleaks 8.30.1 archive length/hash in source, bounds verified decoding, extracts one regular executable and checks its version before a gate. Use supervised curl with default configuration disabled, local stores and cleared diagnostic log destinations; keep unique run receipts and redacted evidence.
+- Initial instrumented controls passed eleven tests, but actual Gitleaks --verify-only returned rc=2: --version emits "gitleaks version 8.30.1", whereas the earlier census's version subcommand emits bare "8.30.1". The same hash-verified binary comparison proves this contract mismatch. Correct the exact expected line and fixture; retain the original failed archive/binary/log and successful retries. Do not weaken version/hash checks to hide it.
+- Corrected thirteen controls pass (4.081s), final two configuration controls pass (1.251s), all eight official archives independently match API/published hashes and pass the production decoder, and native version-only probes pass. Final syntax/seven-source identity/exit/residue, make book/eight rendered markers and diff checks pass. Results consumed; four native groups absent; zero control fixtures remain. No actual security gate, Rust/live-PG or remote workflow run occurred. Evidence: docs/tasks/artifacts/signoff_review/ci-scanners.md.
+- promotion: promoted → `docs/decisions/2026-09-09_ci-scanners.md`; owner `SIGNOFF-REPAIR.11.4.3.1.3.2`.
+
 ## 2026-09-09 — Establish CI environment before installer dispatch
 
 - Instrumented execution of all three raw Cargo workflow commands preserves ambient CARGO_HOME/TMPDIR outside the fixture checkout. The new scripts/ci_env.py reuses local store validation, clears documented inherited gate controls and optionally provisions the exact numeric repository pin into .project-data/installed-toolchains before exec from root. Existing developer launcher/supervisor/workflows are unchanged.

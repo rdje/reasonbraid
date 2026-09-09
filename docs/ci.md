@@ -111,9 +111,44 @@ python3 -B scripts/ci_env.py --rust -- cargo fmt --all -- --check
 CI clears inherited database/provider/demo/scanner and selected compiler overrides;
 see docs/tasks/artifacts/signoff_review/ci-environment.md for the exact list and
 executed controls. It is not a filesystem sandbox for explicit command paths.
-The developer project_env launcher is unchanged. The new launcher has eight
-focused and eighteen adjacent passing controls; scanner setup and actual workflow
-wiring remain .11.4.3.1.3.2/.3.3, so this is not yet a corrected remote-CI claim.
+The developer project_env launcher is unchanged. The shared launcher has eight
+focused and eighteen adjacent passing controls. Scanner setup is now verified
+below; actual workflow wiring remains .11.4.3.1.3.3, so this is not yet a
+corrected remote-CI claim.
+
+## Pinned scanner driver
+
+`scripts/ci_scanners.py` downloads pinned cargo-deny 0.20.2 or Gitleaks 8.30.1
+releases into an exclusive directory under target/ci-scanners. It verifies exact
+archive size/SHA-256, bounds decoding and extracts only the expected regular
+executable. Linux/macOS x86_64/aarch64 have explicit archive pins; unknown
+platforms refuse. Curl default configuration and inherited TLS/QUIC log targets
+cannot change the operation. Tool processes have bounded supervised lifetimes.
+
+```bash
+# Setup/version qualification only; these commands do not run security gates:
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py cargo-deny --verify-only
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py gitleaks --verify-only
+# Actual gates, when the checkpoint reaches full execution:
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py cargo-deny
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py gitleaks
+```
+
+The gates preserve deny.toml policy and fresh online advisory behavior, and scan
+Git history with full secret redaction. Scanner refusals remain nonzero. Read
+scanner.json scope and exit_code: completed means execution ended, not necessarily
+that a gate passed. Logs/receipts/redacted reports remain in the run directory;
+normal consumed execution retires only its archive and executable. Failed setup
+retains diagnostics and the last child identity; inspect actual process state
+before cleanup. The driver uses the established project stores and explicit
+selected compiler; installed OS tools remain read-only dependencies.
+
+Thirteen focused controls and final affected configuration controls pass. All eight
+archives pass checksum/layout checks; actual version probes pass on aarch64 macOS.
+The first native Gitleaks check exposed a version-command format error, now fixed
+with its failed log and successful retry retained. This is installation evidence;
+no real security gate or remote workflow pass follows from it. Exact evidence and
+limits: docs/tasks/artifacts/signoff_review/ci-scanners.md. Workflow wiring is next.
 
 ## Not a release claim
 

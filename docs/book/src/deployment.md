@@ -132,6 +132,30 @@ pass, using an instrumented installer; workflow wiring and actual remote compile
 installation remain pending. The exact contract and evidence are in
 `docs/tasks/artifacts/signoff_review/ci-environment.md`.
 
+Scanner installation now has an explicit verified path:
+
+```bash
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py cargo-deny --verify-only
+python3 -B scripts/project_env.py python3 -B scripts/ci_scanners.py gitleaks --verify-only
+```
+
+These commands verify pinned release bytes, bounded executable extraction and the
+actual version; they do not run security gates. Omit --verify-only when the full
+checkpoint reaches actual dependency/history scanning. Each invocation owns a
+directory under target/ci-scanners. It retains logs, redacted reports and a
+scanner.json receipt; read both scope and exit_code. A completed operation can
+still have a nonzero scanner result. Successful consumed setup/execution retires
+only its archive and executable; failed setup retains diagnostic files and its
+last recorded child identity for inspection.
+
+Thirteen focused controls and final affected controls pass. All eight pinned
+Linux/macOS architecture archives pass identity/layout checks; actual version
+execution is verified on aarch64 macOS. The native probe caught and corrected a
+Gitleaks version-format mismatch that instrumented tests missed, with the original
+failure retained. Workflow wiring and full local/remote gates remain pending.
+See `docs/tasks/artifacts/signoff_review/ci-scanners.md` for exact versions,
+limits and evidence. Installation integrity does not complete release qualification.
+
 ## Project binaries
 
 ```bash

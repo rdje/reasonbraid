@@ -59,3 +59,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [CI environment launcher](docs/tasks/artifacts/signoff_review/ci-environment.md): instrumented raw-workflow baseline and eight real-child locality/lifetime controls under .11.4.3.1.3.1.
 
 - [Pinned CI scanners](docs/tasks/artifacts/signoff_review/ci-scanners.md): eight-archive identity/layout verification, thirteen controls and native version-contract correction under .11.4.3.1.3.2.
+
+- [Complete CI workflow routing](docs/tasks/artifacts/signoff_review/ci-workflows.md): three workflows, six command jobs, fifty Python controls and actual synthetic redaction under .11.4.3.1.3.3.

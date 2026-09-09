@@ -1,58 +1,63 @@
 name: rust
-on:
+"on":
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.98.0
-          components: rustfmt, clippy
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy (deny warnings)
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Test
-        run: cargo test --all
+          persist-credentials: false
+      - name: Check workspace with local compiler and stores
+        run: |
+          python3 -B scripts/ci_env.py --rust -- bash -euo pipefail <<'CHECKS'
+          export R3_BROWSER_BIN="$(command -v google-chrome)"
+          test -x "$R3_BROWSER_BIN"
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo build --workspace --bins --locked
+          test -x target/debug/reasonbraid-extract
+          test -x target/debug/reasonbraid-browse
+          cargo test --all --locked -- --nocapture
+          CHECKS
 
-  # One owned cluster per job; test helpers refuse a caller-supplied database.
   pg-tests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Provision local compiler stores and run disposable PostgreSQL proofs
+        with:
+          persist-credentials: false
+      - name: Check Python controls and full owned PostgreSQL collection
         run: |
-          python3 -B - <<'PYTHON'
-          import os
-          from pathlib import Path
-          import subprocess
-          import sys
-          import tomllib
+          python3 -B scripts/ci_env.py --rust -- bash -euo pipefail <<'CHECKS'
+          export PG_BIN="$(pg_config --bindir)"
+          python3 -B -c 'import os,sys; sys.path.insert(0,"scripts"); import run_pg_tests as r; r.pg_tools(dict(os.environ))'
+          python3 -B -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          bash scripts/run_pg_tests.sh --demo
+          CHECKS
 
-          sys.path.insert(0, "scripts")
-          from project_env import ROOT, STORES, local_directory
-
-          os.umask(0o077)
-          environment = dict(os.environ)
-          for name, relative in STORES.items():
-              environment[name] = str(local_directory(ROOT, relative))
-          environment["RUSTUP_HOME"] = str(local_directory(ROOT, ".project-data/installed-toolchains"))
-          environment["PYTHONDONTWRITEBYTECODE"] = "1"
-          with (ROOT / "rust-toolchain.toml").open("rb") as source:
-              pin = tomllib.load(source)["toolchain"]["channel"]
-          # The image's rustup and PostgreSQL binaries are read-only inputs.
-          # Compiler installation, downloads and scratch stay on the repo volume.
-          subprocess.run([
-              "rustup", "toolchain", "install", pin, "--profile", "minimal",
-              "--component", "rustfmt", "--component", "clippy", "--no-self-update",
-          ], cwd=ROOT, env=environment, check=True)
-          pg = subprocess.run(["pg_config", "--bindir"], cwd=ROOT, env=environment,
-                              capture_output=True, text=True, check=True)
-          environment["PG_BIN"] = str(Path(pg.stdout.strip()).resolve(strict=True))
-          os.chdir(ROOT)
-          os.execvpe("bash", ["bash", "scripts/run_pg_tests.sh"], environment)
-          PYTHON
+  book:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build book with a pinned local renderer
+        run: |
+          python3 -B scripts/ci_env.py --rust -- bash -euo pipefail <<'CHECKS'
+          cargo install mdbook --version 0.5.4 --locked --root .project-data/cargo --target-dir target/ci-mdbook-build
+          test "$(.project-data/cargo/bin/mdbook --version)" = "mdbook v0.5.4"
+          .project-data/cargo/bin/mdbook build docs/book
+          CHECKS

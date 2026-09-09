@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Make CI prerequisites mandatory at the command boundary
+
+- Six project command jobs enter ci_env.py; Rust gets local pinned installation, strict shell ordering and required worker/browser inputs. Python discovery includes all six modules, PG validates real version-16 tools and requires --demo, the book pins a local mdBook 0.5.4 installation, and scanner jobs run real gates with narrow evidence upload. Managed runner checkout/artifact metadata and installed OS tools remain explicit platform dependencies.
+- Real Gitleaks redaction returned one github-pat finding, rc=1, with the synthetic value absent from complete output/report. The first alphabet sample returned zero findings because it matched the built-in example filter; exact configuration inspection established that cause, then a corrected deliberately unissued fixture passed without policy changes. Both reports/logs remain; the consumed fixture is absent.
+- Ruby/Psych parses all three YAML workflows; bash -n passes all six blocks. Five deliberate coverage omissions are refused. All fifty Python controls pass through the actual CI launcher in 14.542s, including four live PostgreSQL controls, with no skips. Final source/fixture and nine rendered book markers pass. The first rendered flag check caught smart punctuation changing --demo; a code span fixes its exact rendering. No product Rust, actual compiler installation, full security/PG collection or remote-CI result is claimed.
+- promotion: promoted → `docs/decisions/2026-09-09_ci-workflows.md`; owner `SIGNOFF-REPAIR.11.4.3.1.3.3`. Full evidence: docs/tasks/artifacts/signoff_review/ci-workflows.md.
+
 ## 2026-09-09 — Verify scanner bytes and actual version contracts
 
 - The old action's annotated v1 tag peels to 3f4a782664881cf5725d0ffd23969fcce89fd868; exact source pins Rust 1.71.0 and cargo-deny 0.14.21. New scanner setup pins cargo-deny 0.20.2/Gitleaks 8.30.1 archive length/hash in source, bounds verified decoding, extracts one regular executable and checks its version before a gate. Use supervised curl with default configuration disabled, local stores and cleared diagnostic log destinations; keep unique run receipts and redacted evidence.

@@ -10,8 +10,9 @@ Three GitHub Actions workflows fire on every push and pull request:
 
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
-| `rust` | format, clippy (deny warnings), test — `cargo test --all` covers core, the WP3 SQLite node journal + kill points + CLI, the WP4 fake-adapter behaviors + corpus integrity + supervisor flow (all file-based/in-process, no service), the server suites (skip offline), and the CLI's unit tests | `make check` |
-| `rust` (job `pg-tests`) | the full local PostgreSQL collection in an owned Ubuntu 24.04 cluster: test-side ownership guard, server integration suites, MCP, CLI and crash/reconnect demonstration; repository-local compiler/cache stores | `bash scripts/run_pg_tests.sh` |
+| `rust` (job `check`) | local pinned compiler, required Chrome, strict format/lint, locked workspace worker build and tests; database suites skip here and run live in pg-tests | worker build + `make check` |
+| `rust` (job `pg-tests`) | all Python controls, then the full owned PostgreSQL 16 collection and required crash/reconnect demonstration | Python unittest discovery + `bash scripts/run_pg_tests.sh --demo` |
+| `rust` (job `book`) | pinned mdBook 0.5.4 installation in local stores and book build | `make book` with the matching installed renderer |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |
 
@@ -47,9 +48,9 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
   ordinary verification does not request them. The ignored core schema-golden writer
   is a deliberate regeneration tool, not a runtime gate.
 
-Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
-which installs the tooling itself, so they gate every push even on a machine that has not
-installed them locally. The `pg-tests` job now invokes the supervised runner with the full local suite
+The same dependency and history gates run in CI (`.github/workflows/supply-chain.yml`)
+through the verified pinned scanner driver below, with no prior scanner installation
+required. Receipts/logs and the redacted JSON report are retained as CI artifacts. The `pg-tests` job now invokes the supervised runner with the full local suite
 list. It uses installed PostgreSQL 16 tools and provisions the pinned Rust
 toolchain under `.project-data/installed-toolchains`. The workflow was reviewed
 and syntax-checked locally; GitHub execution remains part of the next push.
@@ -81,13 +82,12 @@ make book
 ```
 
 These are the required checkpoint commands, not a claim they have passed now.
-The Rust check workflow still uses ambient writable stores, the supply-chain
-container's stores require review, and none of the workflows invokes the Python
-controls. Repairs are owned by SIGNOFF-REPAIR.11.4.3.1.3. Publisher fixture ownership
-and browser profile/child lifetimes are checkpoint prerequisites .4/.5; safe
-compiler-artifact cleanup is .6. Complete these before broad execution under .2.
-The PG workflow's source has local stores; actual GitHub results remain to be
-consumed after the authorized push. Local Make commands use project_env.py.
+All six project command jobs now use the local CI launcher. Python discovery,
+worker builds, required browser presence, explicit full demo and pinned book build
+are wired. Publisher fixture ownership and browser profile/child lifetimes remain
+checkpoint prerequisites .4/.5; safe compiler-artifact disposition is .6. Complete
+these before broad execution under .2. Actual GitHub results remain to be consumed
+after the authorized push. Local Make commands use project_env.py.
 
 Exact census, tool versions, source hashes, skips and limits:
 `docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md`. Full CI runs before
@@ -113,8 +113,9 @@ see docs/tasks/artifacts/signoff_review/ci-environment.md for the exact list and
 executed controls. It is not a filesystem sandbox for explicit command paths.
 The developer project_env launcher is unchanged. The shared launcher has eight
 focused and eighteen adjacent passing controls. Scanner setup is now verified
-below; actual workflow wiring remains .11.4.3.1.3.3, so this is not yet a
-corrected remote-CI claim.
+below and all workflows now enter this launcher. Fifty Python controls pass
+through its real command boundary; actual remote compiler installation and full
+GitHub execution remain pending.
 
 ## Pinned scanner driver
 
@@ -148,7 +149,31 @@ archives pass checksum/layout checks; actual version probes pass on aarch64 macO
 The first native Gitleaks check exposed a version-command format error, now fixed
 with its failed log and successful retry retained. This is installation evidence;
 no real security gate or remote workflow pass follows from it. Exact evidence and
-limits: docs/tasks/artifacts/signoff_review/ci-scanners.md. Workflow wiring is next.
+limits: docs/tasks/artifacts/signoff_review/ci-scanners.md.
+
+## Complete workflow wiring
+
+Three parsed workflows contain six bounded project-command jobs, all entering
+ci_env.py. Rust commands use a strict shell, two build jobs and no incremental
+compilation in CI. The check job requires installed Chrome and built extraction/
+browser workers before tests. pg-tests validates PostgreSQL 16, discovers all
+Python modules and requests --demo explicitly. The book job installs mdBook 0.5.4
+with --locked into .project-data/cargo and target/ci-mdbook-build, checks its exact
+version and builds docs/book. Doctrine and secret jobs fetch complete history.
+
+Scanner jobs execute actual gates and upload only scanner.json, version.log,
+check.log and, for Gitleaks, gitleaks.json. Artifact temporary directories derive
+from the checkout. GitHub-managed checkout/artifact metadata is an explicit
+required platform boundary; installed OS tools are read-only dependencies. The
+launcher does not sandbox arbitrary tool output paths.
+
+Before upload wiring, a real Gitleaks synthetic-history probe returned one finding
+and rc=1 with its value absent from both report and output. The initial alphabet
+sample matched an example stopword; its zero-finding result was investigated and
+retained before correcting the fixture. No actual credential was used. YAML/shell
+checks, five omission controls and all fifty Python controls pass. These establish
+local wiring and exercised redaction, not a full project security/remote CI pass.
+Evidence: docs/tasks/artifacts/signoff_review/ci-workflows.md.
 
 ## Not a release claim
 

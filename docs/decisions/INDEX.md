@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_ci-workflows.md](docs/decisions/2026-09-09_ci-workflows.md) | decision | require complete local CI command coverage and real scanner redaction evidence; keep wiring distinct from actual full and remote gates |
 | [2026-09-09_ci-scanners.md](docs/decisions/2026-09-09_ci-scanners.md) | decision | pin and verify scanner release bytes before execution; preserve exact version/gate phases and failure evidence |
 | [2026-09-09_ci-environment.md](docs/decisions/2026-09-09_ci-environment.md) | decision | establish CI stores before optional pinned compiler installation; consume installer failure/cancellation and exec from the current root |
 | [2026-09-09_ci-checkpoint-census.md](docs/decisions/2026-09-09_ci-checkpoint-census.md) | decision | derive the full pre-push gate from actual coverage and owned lifetimes; repair workflow/fixture gaps before execution and never infer cleanup from age |

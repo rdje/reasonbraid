@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Wire complete CI commands through local stores (`SIGNOFF-REPAIR.11.4.3.1.3.3`)
+
+All six workflow command jobs now use the local launcher. Require workers/Chrome,
+all Python controls, the full owned PG demo and a pinned local book build; use the
+verified scanner drivers and retain only their report/log allowlists. Actual
+synthetic Gitleaks redaction, YAML/shell checks, five omission controls, fifty
+Python tests and the rendered book pass. Full local/remote CI remains pending
+after publisher/browser/cleanup prerequisites; qualification categories unchanged.
+
 ## 2026-09-09 — Verify pinned CI scanners before execution (`SIGNOFF-REPAIR.11.4.3.1.3.2`)
 
 Add exact archive/version pins, bounded verified extraction and supervised

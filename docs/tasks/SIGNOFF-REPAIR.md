@@ -971,10 +971,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.3 — Close CI workflow locality and script coverage gaps
 
-- Status: `active`; split into bounded .3.1 environment, .3.2 scanner and .3.3 workflow wiring children after clean 238051b, thirteen green hooks, cleared/untracked brief and consumed handoff census.
+- Status: `done`; environment .3.1, scanner .3.2 and workflow wiring .3.3 are committed bounded children. Actual full local/remote gates remain .11.4.3.1.2.
 - Owns before changes: `.github/workflows/rust.yml`, supply-chain/doctrine workflow execution where required, a shared repository-local CI launcher and its focused controls. The Rust check job currently runs raw cargo after an ambient-store toolchain action; no workflow invokes the four Python control modules. The cargo-deny action's container/tool stores also need explicit source review and containment before claiming all CI stores are local. Preserve the existing pinned toolchain, strict gates and full owned PG/demo scope.
 - Acceptance: every project-owned compiler/package/cache/temp/output path derives from the checkout; installed image tools remain documented read-only inputs. Wire the existing Python unit and live runner controls, build required worker binaries before runtime checks, require the demo explicitly and make skip boundaries visible. Qualify launcher routing/locality/refusal controls and syntax locally; actual GitHub execution is later evidence. Do not claim browser qualification from an absent-browser skip. Any larger independent defect gets its own child.
-- Verification / commit: pending.
+- Verification / commit: REPAIR-0034–0036 qualify the launchers, scanner setup and complete source wiring. Eight environment and thirteen scanner controls, eight archive checks, native version/redaction probes, fifty combined Python controls and YAML/shell/omission/book checks pass. Full runtime gates remain separate; see each child for exact scope.
 
 ####### SIGNOFF-REPAIR.11.4.3.1.3.1 — Provide the repository-local CI environment launcher
 
@@ -999,10 +999,13 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ####### SIGNOFF-REPAIR.11.4.3.1.3.3 — Wire complete local CI commands into workflows
 
-- Status: `pending`.
-- Owns before changes: .github/workflows/{rust,doctrines,supply-chain}.yml and narrowly required command glue. Replace ambient/default action stores with the qualified launcher/scanner path; wire all Python controls, worker binaries, explicit full demo, and required browser availability/execution reporting. Preserve strict gates and normal push/PR triggering.
+- Status: `done`; REPAIR-0036 after clean f07e214 and consumed handoff census.
+- Owns before changes: .github/workflows/{rust,doctrines,supply-chain}.yml, narrowly required command glue and focused workflow-routing/syntax probes under target/ci-workflow-controls/wiring. Include book build verification with a pinned on-volume tool if needed to complete the checkpoint matrix; no change to book content/qualification is inferred from wiring. Installed runner OS/rustup/PostgreSQL/browser inputs are read-only dependencies whose presence/version must be checked. Replace ambient/default action stores with the qualified launcher/scanner path; wire all Python controls, worker binaries, explicit full demo, and required browser availability/execution reporting. Preserve strict gates and normal push/PR triggering.
+- Probe scope: inspect current official Ubuntu 24.04 image inventory and runtime tool availability; use Ruby/Psych as an installed read-only YAML parser if actionlint is unavailable. Before any report-retention wiring, verify actual Gitleaks redaction on an exclusively created synthetic Git history with a deliberately non-working token, using the retained hash-verified native binary read-only. Keep all fixture/config/log/report data under target/ci-workflow-controls/wiring and remove only the consumed successful fixture. No real project secret scan is implied.
 - Acceptance: source/syntax/route controls prove all required commands use owned stores and pinned tools; selected real command probes pass. No optional browser/provider skip is reported as qualification. Actual full local execution and triggered GitHub outcomes remain .11.4.3.1.2. Commit wiring before selecting publisher/browser prerequisites.
-- Verification / commit: pending.
+- Verification: Ruby/Psych parses three YAML files and bash -n accepts all six command blocks; wrapped check_routes.py accepts routing/coverage and refuses five omissions, rc=0. Real retained Gitleaks binary detects one synthetic github-pat finding with rc=1 and complete value redaction; the initial zero-finding example is root-caused to the built-in alphabet stopword and retained. All fifty Python controls pass via ci_env.py in 14.542s, rc=0, including four actual PG controls and no skips. make book and final nine rendered markers/source identity/fixture-residue checks pass, rc=0; the rendered --demo flag uses a code span after its first literal check exposed smart punctuation. All results consumed, successful exclusive fixtures absent; adjacent launchers/scanner/policy/pin/README unchanged. Evidence: docs/tasks/artifacts/signoff_review/ci-workflows.md and target/ci-workflow-controls/wiring.
+- Commit: REPAIR-0036; after clean commit/brief and consumed handoff census select .11.4.3.1.4 publisher ownership. No product Rust or actual full local/remote gate is claimed by wiring.
+- promotion: promoted → docs/decisions/2026-09-09_ci-workflows.md with three indexed answers. CI guide/book, roadmap/frontier and live records are synchronized; LIVE_STATUS categories and README unchanged.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.4 — Give publisher fixtures exclusive disposable ownership
 
@@ -1135,7 +1138,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.3.3` | `pending` | wire qualified launchers and Python/worker/demo coverage; then .4/.5/.6 and full checkpoint .2 |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.4` | `pending` | after clean REPAIR-0036, qualify exclusive publisher fixtures; then .5/.6 and full checkpoint .2 |
 | 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
 | 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
@@ -1230,3 +1233,10 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - [x] **ADDRESSED (verified)** — corrected test_ci_scanners.py suite passes thirteen controls, rc=0; final configuration controls pass two, rc=0. Eight official archives independently match API/published hashes and pass the bounded production decoder, rc=0. Native cargo-deny and corrected/final Gitleaks version-only runs pass, rc=0. Exact hash/version checks remain strict; no gate or policy is weakened.
 - [x] **NO REGRESSION** — final wrapped AST/seven-adjacent-source-identity/exit/residue checks, make book, eight rendered markers and git diff --check pass, rc=0. Existing launchers/supervisor, deny.toml and all workflows are unchanged. All results consumed, four native groups absent, successful transient binaries/archives retired and zero control fixture directories remain. The original failed version probe stays preserved. No Rust source changed; actual full dependency/secret/PG/remote gates remain .11.4.3.1.2.
 - [x] **FIX / LOCKSTEP** — the exact release catalog, bounded verified extraction, supervised downloader/version/gate phases, full-redaction/history command and receipt/cleanup limits are documented in the indexed decision/evidence, CI guide and deployment book. MEMORY, CHANGELOG, DEV_NOTES, LIVE_STATUS and task frontiers are synchronized; README and qualification categories unchanged. Wiring is the next concrete child.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.3.3
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — baseline workflow/source census and wrapped route probes establish missing local command/Python/worker coverage. The real synthetic Gitleaks initial rc=0/zero findings was investigated against pinned configuration; its alphabet example matches a built-in stopword. Same-binary corrected fixture returns rc=1/one redacted github-pat finding; no scanner policy or actual credential is involved.
+- [x] **ADDRESSED (verified)** — wrapped check_routes.py parses all three YAML workflows, bash -n passes six command blocks, full command coverage passes and five in-memory omissions are refused, rc=0. All fifty Python controls pass through ci_env.py in 14.542s, rc=0, including actual owned PostgreSQL controls. Real synthetic report/output contain no original value; all Secret fields are REDACTED and exact fixture removal is verified.
+- [x] **NO REGRESSION** — make book, final nine rendered markers/seven-adjacent-source identity/fixture-residue probes and git diff --check pass, rc=0. The first literal flag check caught smart punctuation; final code-span rendering preserves --demo. All results consumed, successful exclusive fixtures absent. Rust source is unchanged; full Rust/PG collection, project security scan and remote runs remain .11.4.3.1.2. Final staged doctrines run in the commit hook.
+- [x] **FIX / LOCKSTEP** — exact workflow command/permission/lifetime/history/artifact boundaries and real redaction scope are documented in indexed evidence/decision, CI guide and book. Roadmap, MEMORY, LIVE_STATUS, CHANGELOG, DEV_NOTES and task frontiers align; qualification categories and README unchanged. The next publisher/browser/cleanup leaves precede the full checkpoint.

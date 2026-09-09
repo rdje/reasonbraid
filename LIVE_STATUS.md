@@ -47,4 +47,7 @@ The shared CI environment prerequisite .11.4.3.1.3.1 now passes eight focused an
 eighteen adjacent controls. Scanner setup .11.4.3.1.3.2 passes thirteen controls,
 final affected checks, all eight archive identity/layout checks and native version
 probes; the original version-format failure and corrected retry remain preserved.
-Workflow wiring and full gate execution remain next; categories are unchanged.
+Workflow wiring .11.4.3.1.3.3 now passes YAML/shell routing checks, five omission
+controls, real synthetic Gitleaks redaction, fifty Python controls (including live
+PostgreSQL ownership) and rendered book checks. Publisher/browser/cleanup
+prerequisites and full local/remote gate execution remain; categories are unchanged.

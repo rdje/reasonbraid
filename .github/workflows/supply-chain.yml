@@ -1,37 +1,65 @@
 name: supply-chain
-# Dependency/advisory/license + secret-scan skeleton (PHASE-0.0.7, backlog 8).
-# Runs alongside the `rust` (fmt/clippy/test) and `doctrines` (gate) workflows.
-# NOT a release pipeline: no SBOM, provenance, or release-signing here — those are the
-# G9 / §16.12 gates, deferred until a release exists.
-on:
+# Checks only; release SBOM, provenance and signing remain G9 requirements.
+"on":
   push:
   pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   cargo-deny:
     name: cargo-deny (advisories, bans, licenses, sources)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Run cargo-deny against deny.toml
-        uses: EmbarkStudios/cargo-deny-action@v1
         with:
-          command: check
+          persist-credentials: false
+      - name: Run pinned cargo-deny with local compiler and stores
+        run: python3 -B scripts/ci_env.py --rust -- python3 -B scripts/ci_scanners.py cargo-deny
+      - name: Retain scanner evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          TMPDIR: ${{ github.workspace }}/.project-data/tmp
+          TMP: ${{ github.workspace }}/.project-data/tmp
+          TEMP: ${{ github.workspace }}/.project-data/tmp
+        with:
+          name: cargo-deny-evidence
+          if-no-files-found: warn
+          path: |
+            target/ci-scanners/**/scanner.json
+            target/ci-scanners/**/version.log
+            target/ci-scanners/**/check.log
 
   secret-scan:
     name: gitleaks (secret scan)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so committed-but-later-removed secrets are still caught.
           fetch-depth: 0
-      - name: Install gitleaks (pinned)
+          persist-credentials: false
+      - name: Run pinned Gitleaks over history with full redaction
+        run: python3 -B scripts/ci_env.py -- python3 -B scripts/ci_scanners.py gitleaks
+      - name: Retain redacted scanner evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         env:
-          GITLEAKS_VERSION: "8.30.1" # bump on a schedule; pinned so a drift never silently changes the scan
-        run: |
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xzf - gitleaks
-          ./gitleaks version
-      - name: Run gitleaks
-        run: ./gitleaks detect --source . --redact --verbose
+          TMPDIR: ${{ github.workspace }}/.project-data/tmp
+          TMP: ${{ github.workspace }}/.project-data/tmp
+          TEMP: ${{ github.workspace }}/.project-data/tmp
+        with:
+          name: gitleaks-evidence
+          if-no-files-found: warn
+          path: |
+            target/ci-scanners/**/scanner.json
+            target/ci-scanners/**/version.log
+            target/ci-scanners/**/check.log
+            target/ci-scanners/**/gitleaks.json

@@ -128,8 +128,8 @@ timeout or terminal cancellation prevents dispatch and consumes child cleanup.
 CI clears inherited database/provider/scanner and selected compiler overrides;
 ordinary developer project_env behavior is unchanged. Explicit output paths still
 need their command's storage checks. Eight focused and eighteen adjacent controls
-pass, using an instrumented installer; workflow wiring and actual remote compiler
-installation remain pending. The exact contract and evidence are in
+pass, using an instrumented installer. Workflows now use the launcher; actual
+remote compiler installation and full GitHub execution remain pending. The exact contract and evidence are in
 `docs/tasks/artifacts/signoff_review/ci-environment.md`.
 
 Scanner installation now has an explicit verified path:
@@ -152,9 +152,35 @@ Thirteen focused controls and final affected controls pass. All eight pinned
 Linux/macOS architecture archives pass identity/layout checks; actual version
 execution is verified on aarch64 macOS. The native probe caught and corrected a
 Gitleaks version-format mismatch that instrumented tests missed, with the original
-failure retained. Workflow wiring and full local/remote gates remain pending.
+failure retained. Workflow wiring is complete; full local/remote gates remain pending.
 See `docs/tasks/artifacts/signoff_review/ci-scanners.md` for exact versions,
 limits and evidence. Installation integrity does not complete release qualification.
+
+## CI requires its runtime prerequisites
+
+All six project command jobs enter the local launcher. Rust checks require Chrome,
+build the workspace binaries and verify executable extraction/browser workers
+before tests. Missing prerequisites fail instead of supplying apparent coverage.
+The PostgreSQL job validates installed version-16 tools, discovers every Python
+control module and runs the full owned collection with explicit `--demo`. The book
+job installs pinned mdBook 0.5.4 into .project-data/cargo using a local build tree,
+checks its version and builds this book. Strict shell errors and bounded jobs
+preserve failures. Provider tests remain separately authorized qualification.
+
+The supply-chain jobs run the actual pinned scanner gates. CI retains their
+receipts, version/check logs and redacted Gitleaks JSON report; binaries and archives
+are excluded. A real synthetic-history probe detected one deliberately unissued
+value and fully redacted it from report and output. The initial alphabet example
+was excluded by the scanner's example filter; its result was investigated before
+correcting the fixture. No repository-wide secret-free claim follows.
+
+Three YAML workflows, six shell command blocks, five deliberate omission controls
+and fifty Python tests pass locally, including actual PostgreSQL ownership checks.
+GitHub's managed checkout/artifact transport and installed OS tools are explicit
+platform dependencies; project stores and artifact temporary paths derive from the
+checkout. Full Rust/security gates and actual remote outcomes remain pending after
+the publisher/browser/cleanup prerequisites. See
+`docs/tasks/artifacts/signoff_review/ci-workflows.md` for commands and exact evidence.
 
 ## Project binaries
 

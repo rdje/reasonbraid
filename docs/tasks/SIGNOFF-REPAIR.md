@@ -946,18 +946,63 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.11.4.3 — Reconcile historical qualification and verification coverage
 
-- Status: `pending`.
+- Status: `active`; scheduled checkpoint child precedes the later complete historical/external reconciliation.
 - Owns: remaining historical phase/gate claims, dependency evidence refresh, external ledger and pre-push suite discovery after the concrete repair leaves complete.
 - Acceptance: claims trace to actual consumed evidence; skipped or missing suites are not passes; no unsupported production qualification remains in live views.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.11.4.3.1 — Verify the scheduled pre-push checkpoint
 
-- Status: `pending`; activate only after clean REPAIR-0032. The recorded remote is 300 commits behind a3fca5e; the approximately 300-commit push cadence requires a full CI checkpoint before publishing further commits. This is required batch verification, not a declaration that corrective review or release qualification is complete.
+- Status: `active`; activated after clean 6bc76c6, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. The recorded remote is 301 commits behind 6bc76c6; the approximately 300-commit push cadence requires a full CI checkpoint before publishing further commits. This is required batch verification, not a declaration that corrective review or release qualification is complete.
 - Owns before work: census actual workflow/Makefile/local-runner gates and available tools; run full Rust format/all-target all-feature strict lint/workspace tests, the full owned PostgreSQL suite collection plus demonstration, doctrine gate, dependency/advisory/license/source checks and redacted secret scanning with repository-derived logs/caches/temp. Discover suites from source, compare the runner registry and do not count skips/omissions as live passes. Include required script/runner checks where the workflow relies on them. Use installed toolchains/OS dependencies read-only; any necessary new tool/cache data stays on the repository volume. Document external-tool/advisory evidence and any unavailable verification honestly.
 - Failure ownership: every gate/tool/locality/coverage defect receives an exact child before any repair. Preserve failing logs, process identities and owned fixture shutdown; do not bypass a failing check or broaden shared-cache cleanup. Complete/commit each repaired unit and rerun the affected/full checkpoint as warranted. A skipped live-provider test is a stated external qualification boundary, never a pass or permission to spend tokens on an unrequested provider run.
 - Completion: all required local results consumed, exact source/command/test/skip census and limitations durable, live docs/book aligned, all completed units committed and message brief cleared. Full CI must pass before the authorized push to the existing private tracking branch. Verify remote advancement and any triggered CI status; remote job results that are still required remain explicit in-flight work. Preserve unrelated remote changes and use no force push. Resume .3.3.4.3.3.3.3.2.3.2 afterward.
 - Evidence / verification / commit: pending; choose bounded execution children if the source census makes this parent too broad for one safe unit. This checkpoint does not close .11.4.3's later historical/external qualification work or any still-open corrective owner.
+
+###### SIGNOFF-REPAIR.11.4.3.1.1 — Census the current CI checkpoint before execution
+
+- Status: `done`; REPAIR-0033. Documentation/evidence inventory before broad gate execution or gate/tooling changes.
+- Owns before probes: compare actual GitHub workflow commands, Make targets, doctrine registry, Rust manifests/test targets, runner suite registration/default/demo behavior, project-local environment and available installed verification tools. Use read-only source/metadata/version probes and root-relative structured output under target/checkpoint-ci; do not dump environment secrets or provider credentials. Installed pinned compilers/OS tools and already installed scanner binaries are necessary read-only inputs; their project-owned outputs/caches must stay on the repository volume. Inventory artifact pressure and owned cleanup evidence before proposing deletions; do not delete ambiguous historical logs or shared stores.
+- Documentation scope: current docs/ci.md command/suite/skip claims, deny.toml stale introductory comments only (no policy change), deployment/qualification book guidance, live records, indexed census/decision and hook-derived knowledge map.
+- Acceptance: an explicit command/suite/skip matrix names the actual checkpoint scope and all discovered gaps; tool availability and data locality are established without counting a version probe as a gate pass. Every defect gets a concrete execution/repair child before changes. Update inaccurate current CI command/suite guidance with source evidence, keep historical qualification distinct and commit this bounded inventory before broad execution. No full CI/push or code change is implied by the inventory itself.
+- Verification: wrapped Python source/metadata probes returned zero: twelve exact Git source hashes/byte counts and altered-content controls, repeated 12-package/86-target/38-server/40-command derivation, exact omitted/invented registration detection, and independent artifact count partitions. Second probe verifies unchanged parsed deny.toml, six repair/execution owners, nine rendered deployment markers and unchanged README 52 lines / 2,054 bytes, rc=0. make book and git diff --check pass, rc=0. Evidence: docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md; target/checkpoint-ci retains raw observations. No full CI, runtime reproduction, artifact deletion or push is claimed.
+- Commit: REPAIR-0033; after clean commit/brief and consumed handoff census, select .11.4.3.1.3. Remaining checkpoint prerequisites .4/.5/.6 precede execution .2; return to CLI transport after checkpoint.
+- promotion: promoted → docs/decisions/2026-09-09_ci-checkpoint-census.md with four indexed answers. Current CI guide, deployment book, roadmap/frontier and live records synced; policy values and LIVE_STATUS categories unchanged.
+
+###### SIGNOFF-REPAIR.11.4.3.1.3 — Close CI workflow locality and script coverage gaps
+
+- Status: `pending`; selected after inventory REPAIR-0033 commits cleanly.
+- Owns before changes: `.github/workflows/rust.yml`, supply-chain/doctrine workflow execution where required, a shared repository-local CI launcher and its focused controls. The Rust check job currently runs raw cargo after an ambient-store toolchain action; no workflow invokes the four Python control modules. The cargo-deny action's container/tool stores also need explicit source review and containment before claiming all CI stores are local. Preserve the existing pinned toolchain, strict gates and full owned PG/demo scope.
+- Acceptance: every project-owned compiler/package/cache/temp/output path derives from the checkout; installed image tools remain documented read-only inputs. Wire the existing Python unit and live runner controls, build required worker binaries before runtime checks, require the demo explicitly and make skip boundaries visible. Qualify launcher routing/locality/refusal controls and syntax locally; actual GitHub execution is later evidence. Do not claim browser qualification from an absent-browser skip. Any larger independent defect gets its own child.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.3.1.4 — Give publisher fixtures exclusive disposable ownership
+
+- Status: `pending`.
+- Owns before changes: `crates/reasonbraid-server/tests/publisher.rs` fixture helper, exact fixture observations and focused controls. Each test process resets a counter and unconditionally removes target/publisher-tests/pub-N before creating it. This can erase another process's fixture; source evidence only so far. Existing pub-83115 is ambiguous historical residue and must be preserved.
+- Acceptance: a unique exclusively created on-volume fixture, no preexisting-directory deletion, consumed repository handles and checked exact cleanup on success; failure retains diagnosable evidence. Exercise concurrent independent fixture creation and both publisher behaviors, strict focused lint and preservation of an unrelated sentinel. Broader fixed-path source census remains .11.2; repair any additional unsafe path needed by this checkpoint before running it.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.3.1.5 — Qualify browser profile and process lifetime before broad execution
+
+- Status: `pending`; shares the resource-isolation inventory in .7.2 and process ownership in .11.2, without closing either broader owner.
+- Owns before changes: `crates/reasonbraid-browse/src/main.rs`, browser roundtrip fixtures, the exact pinned chromiumoxide lifecycle contract and selected production/test cleanup changes. Baseline omits an explicit user-data directory, so chromiumoxide 0.9.1 uses TMPDIR/chromiumoxide-runner. Its Drop requests child kill but background runtime reaping has no completion guarantee. The worker aborts its handler without joining; fixture origin/worker waits lack complete bounded ownership. These are source-level gaps, not a reproduced leak claim.
+- Acceptance: unique private repository-derived on-volume profile/cache/scratch, explicit bounded browser/handler/fixture shutdown and reaping on success, error and timeout; failure diagnostics must not consume another invocation's data. Reproduce the actual relevant lifecycle behavior before repair, then verify isolated concurrent profiles and failure cleanup with installed Chrome as a read-only dependency. Preserve work budgets and documented behavior. Broader sandbox/network/resource isolation remains .7.2.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.3.1.6 — Safely retire unneeded compiler artifacts at the checkpoint
+
+- Status: `pending`; cleanup cannot be inferred from age alone.
+- Owns before deletion: metadata/identity census of generated target/debug/incremental sessions and targeted compiler cache cleanup only after proving no active compiler/user and no retained-evidence dependency. Initial metadata census found 7,994 .bin files / 34,291,611,338 bytes older than 24 hours. Those numbers describe candidates, not approved deletions.
+- Acceptance: capture exact same-volume non-symlink generated-cache identities and inactivity; delete only provably disposable owned data, verify exact residue and regenerated affected workflow. Preserve historical logs, failed-run evidence, old ambiguous fixtures and shared global caches. Record a reasoned retention outcome if a candidate is not safe to remove. This periodic cleanup does not broaden authority to arbitrary target data.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.3.1.2 — Execute and close the current full CI checkpoint
+
+- Status: `pending`; refine from the completed census and any required repair children.
+- Prerequisites: completed inventory .1, workflow repair .3, publisher ownership .4, browser lifetime .5 and evidence-based cleanup .6 (a justified retention outcome is valid).
+- Owns: all selected required local full CI commands on a named committed source, exact pass/fail/skip and suite census, bounded owned process/fixture/tool lifetimes and complete consumed evidence. Any encountered failure must be root-caused and repaired in a named child before claiming the checkpoint; no suppressed checks or new blanket allow-list exemptions. Commit completed units promptly, consume all required local/remote results and perform the already-authorized normal push only after the full local checkpoint passes. Return to CLI transport bounds afterward.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
 
@@ -1062,7 +1107,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1` | `pending` | scheduled full CI checkpoint before the approximately 300-commit push |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.3` | `pending` | repair workflow locality and script coverage after committed inventory; .4/.5/.6 then full checkpoint .2 |
 | 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
 | 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
@@ -1136,3 +1181,10 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - `SIGNOFF-REPAIR.2.1`: `REASONBRAID-REPAIR-0002 (leaf SIGNOFF-REPAIR.2.1): localize command stores and verify Cargo cache seeding`.
 
 - `SIGNOFF-REPAIR.1`: `REASONBRAID-REPAIR-0001 (leaf SIGNOFF-REPAIR.1): record corrective census and site authority decision`.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.1
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — wrapped git-show/hash and cargo-metadata/source census returned rc=0: current guide says 31 server suites while registration has 38; workflows omit Python controls and check uses ambient stores; publisher/browser source lifecycle gaps have exact owners. Version probes are prerequisites only; no runtime defect reproduction is claimed by this documentation leaf.
+- [x] **ADDRESSED (verified)** — wrapped Python final inventory/document probes returned rc=0: repeated 12/86/38/40 dimensions, exact omitted/invented registration detection, twelve source-identity/alteration controls and six checkpoint owners; nine rendered deployment markers pass. Current guidance and durable repair sequence now match source.
+- [x] **NO REGRESSION** — wrapped Python TOML comparison proves parsed deny.toml unchanged, rc=0; make book and git diff --check pass, rc=0. README remains 52 lines / 2,054 bytes; LIVE_STATUS categories unchanged. No Rust/product/workflow behavior changes, so no Rust/runtime suite was run. Commit hook checks all staged doctrines.
+- [x] **FIX / LOCKSTEP** — indexed decision/evidence, CI guide, deployment book, roadmap/frontier, MEMORY, LIVE_STATUS, CHANGELOG and DEV_NOTES preserve exact scope, skips, locality and pending repair/execution boundaries. Artifact age grants no deletion authority; no full-CI or release pass is inferred.

@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_ci-checkpoint-census.md](docs/decisions/2026-09-09_ci-checkpoint-census.md) | decision | derive the full pre-push gate from actual coverage and owned lifetimes; repair workflow/fixture gaps before execution and never infer cleanup from age |
 | [2026-09-09_bootstrap-capacity.md](docs/decisions/2026-09-09_bootstrap-capacity.md) | decision | check the full encoded bootstrap completion before dispatch; use a validated in-memory sizing sample without publishing invented outcome evidence |
 | [2026-09-09_cli-bootstrap-flow.md](docs/decisions/2026-09-09_cli-bootstrap-flow.md) | decision | durable keyed dispatch, matching pending reuse and explicit historical receipt recovery without HTTP; normal completed invocation stays intentionally fresh |
 | [2026-09-09_cli-bootstrap-state.md](docs/decisions/2026-09-09_cli-bootstrap-state.md) | decision | strict version-two pending/completed recovery records, preserved legacy wire shape and guarded publication continuity; explicit recovery handles output ambiguity, with CLI flow implemented and qualified by thirty-three selected controls plus final output rerun/strict lint |

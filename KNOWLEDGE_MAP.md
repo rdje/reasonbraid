@@ -112,6 +112,7 @@
 - [`2026-09-09_bootstrap-recovery.md`](docs/decisions/2026-09-09_bootstrap-recovery.md)
 - [`2026-09-09_bound-authority-evaluation.md`](docs/decisions/2026-09-09_bound-authority-evaluation.md)
 - [`2026-09-09_changelog-rotation.md`](docs/decisions/2026-09-09_changelog-rotation.md)
+- [`2026-09-09_ci-checkpoint-census.md`](docs/decisions/2026-09-09_ci-checkpoint-census.md)
 - [`2026-09-09_cli-bootstrap-flow.md`](docs/decisions/2026-09-09_cli-bootstrap-flow.md)
 - [`2026-09-09_cli-bootstrap-state.md`](docs/decisions/2026-09-09_cli-bootstrap-state.md)
 - [`2026-09-09_cli-state-publication.md`](docs/decisions/2026-09-09_cli-state-publication.md)

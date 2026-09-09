@@ -44,6 +44,9 @@ consumed, unique fixtures and owned cluster absent. Completion-capacity prefligh
 matrix and strict CLI lint; all results consumed, unique fixtures absent;
 bounded HTTP waits and restart qualification follow before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
+The scheduled pre-push checkpoint .11.4.3.1 now has a committed-scope census;
+workflow/locality and fixture prerequisites precede full gate execution, then CLI
+transport work resumes. Inventory counts do not establish runtime passes.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
 The director's semantic introspection/API/MCP discussion is preserved for assessment

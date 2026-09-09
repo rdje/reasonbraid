@@ -95,6 +95,26 @@ are read-only tool inputs. GitHub execution is verified on the next push.
 Detailed contracts: `docs/decisions/2026-09-09_disposable-postgresql-runner.md` and
 `docs/decisions/2026-09-09_disposable-test-pool-ownership.md`.
 
+## Full checkpoint before pushing
+
+Ordinary slices run focused checks and commit. Before a push, the scheduled
+checkpoint also runs workspace format/strict lint/tests, the full owned PostgreSQL
+collection with explicit `--demo`, Python runner/environment controls, doctrine
+checks, fresh dependency checks, redacted Git-history scanning and this book build.
+Build the worker binaries first and inspect test output: a missing browser or
+extraction worker can cause an early return, and offline database skips do not
+qualify live database behavior. Ignored Codex/Claude provider runs require separate
+live-provider qualification; the schema-golden writer is deliberate regeneration.
+
+The current source census finds 38 server suites plus MCP and CLI in the owned
+runner (40 commands), and 86 Cargo test-enabled targets across 12 packages. These
+are inventory counts, not passing-test counts. At the census commit, workflow
+locality/Python coverage and publisher/browser fixture lifetimes still need their
+tracked checkpoint repairs before broad execution. No fresh full-CI or release
+claim follows from the inventory. See `docs/ci.md` for exact commands and
+`docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md` for source evidence,
+tool boundaries and the concrete repair sequence.
+
 ## Project binaries
 
 ```bash

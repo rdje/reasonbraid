@@ -5,11 +5,10 @@
 # SBOM generation, signed provenance, and release-signing are the G9 / §16.12 gates,
 # deferred until there is something to release.
 #
-# Section and field names follow the current cargo-deny schema (EmbarkStudios/cargo-deny
-# `deny.toml`). The workspace currently has ZERO dependencies (the starter crate declares
-# none), so every rule below is dormant until the first real dependency lands in WP1 —
-# that commit MUST re-run `cargo deny check` and loosen/tighten any field that proved
-# wrong against a real graph.
+# Section and field names target cargo-deny 0.20. The workspace has real direct and
+# transitive dependencies; evaluate the current locked graph and fresh advisory data
+# at each dependency checkpoint. Review the scoped duplicate/license exceptions below
+# when their graph or security assumptions change; they are not future blanket approval.
 #
 # Severity vocabulary: "deny" = fail the check, "warn" = report only, "allow" = ignore.
 

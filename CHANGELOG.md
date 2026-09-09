@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Census the scheduled CI checkpoint (`SIGNOFF-REPAIR.11.4.3.1.1`)
+
+Record actual workflow/gate/target/skip/tool/locality and artifact-pressure scope.
+Correct stale CI guidance; own workflow coverage/locality, publisher/browser
+lifetimes and safe cleanup before broad execution. Repeated metadata/source
+identity, missing/extra registration controls, unchanged policy values and nine
+rendered book markers pass. No runtime gate, deletion, push or qualification
+advance is inferred from this inventory.
+
 ## 2026-09-09 — Check bootstrap completion capacity before HTTP (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1`)
 
 Reproduce a real CLI dispatch whose pending snapshot fits but whose completed

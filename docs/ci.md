@@ -1,4 +1,4 @@
-# CI and supply-chain skeleton
+# CI and supply-chain checks
 
 Phase 0 deliverable `PHASE-0.0.7` (roadmap backlog 8). This documents the automated
 checks available beyond the discipline-spine baseline, and draws the line between a *skeleton*
@@ -22,14 +22,17 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
 - `make check` — `cargo fmt --check` + `cargo clippy --all-targets --all-features -- -D warnings` + `cargo test --all`.
 - `make gate` — the doctrine enforcer (`scripts/check_doctrines.sh`).
 - `make deny` — `cargo deny check` against `deny.toml`. **Requires** `cargo-deny`
-  (`cargo install cargo-deny`). Policy: advisories, duplicate/wildcard versions, source
-  allow-list, permissive-only licenses.
+  (`python3 -B scripts/project_env.py cargo install --locked cargo-deny --version 0.20.2`).
+  Policy: advisories, duplicate/wildcard versions, source allow-list and reviewed licenses
+  with the narrow exceptions explicitly recorded in deny.toml.
 - `make secret-scan` — `gitleaks detect --source . --redact`. **Requires** `gitleaks`
-  (`brew install gitleaks`). Scans working tree and history for secrets; `--redact` keeps
-  any finding out of the log.
+  as an installed read-only tool. This command scans Git history; it does not establish
+  a scan of uncommitted working-tree files. `--redact` redacts secret values from output;
+  findings and their metadata can still be reported.
 - `bash scripts/run_pg_tests.sh authority command_api` — focused suites in a new
   supervised PostgreSQL 16 cluster; caller DATABASE_URL is ignored. `--list`
-  lists names. No names runs 31 server suites, MCP and CLI tests, then the
+  lists names. At the REPAIR-0033 census, no names runs 38 server suites, MCP and CLI
+  tests (40 runner commands), then the
   demonstration (`RB_DEMO=0` omits it). Suites are serialized. Success removes
   only the stopped owned workspace; failure preserves diagnostic data under
   `target/pg-tests/run-*`. See `docs/book/src/deployment.md` for recovery and
@@ -38,9 +41,11 @@ The first two are the discipline spine; `supply-chain` is what `.0.7` added.
   SQLite is a file and the fake/stub adapters are in-process, so the journal
   kill-point sweep, the `rb-journal` CLI tests, and the adapter/ supervisor tests run
   inside plain `cargo test --all` (`make check`) and the `rust` workflow above. The
-  PG-backed suites require the owned `run_pg_tests.sh` environment; the REAL Codex
-  qualification test stays `#[ignore]`-gated and is run deliberately with
-  `RB_LIVE_CODEX=1` (it dispatches to the live harness and spends tokens).
+  PG-backed suites require the owned `run_pg_tests.sh` environment. Live Codex and
+  Claude qualification remain ignored and explicitly gated by RB_LIVE_CODEX and
+  RB_LIVE_CLAUDE respectively. They dispatch to real providers and spend tokens;
+  ordinary verification does not request them. The ignored core schema-golden writer
+  is a deliberate regeneration tool, not a runtime gate.
 
 Both `make deny` and `make secret-scan` are also wired into CI (`.github/workflows/supply-chain.yml`),
 which installs the tooling itself, so they gate every push even on a machine that has not
@@ -51,6 +56,42 @@ and syntax-checked locally; GitHub execution remains part of the next push.
 Direct database-backed tests require the runner receipt; DATABASE_URL alone
 refuses before fixture writes. See
 `docs/decisions/2026-09-09_disposable-test-pool-ownership.md`.
+
+## Scheduled pre-push checkpoint
+
+The source census at 6bc76c6 identifies 12 workspace packages and 86 test-enabled
+Cargo targets; these are targets, not test functions. All 38 registered server
+suites exist. The three other server integration targets (mtls, publisher and
+reconciler) require no PostgreSQL. The full checkpoint requires workspace checks,
+the owned full PG collection with explicit `--demo`, all four Python control
+modules, doctrines, fresh dependency checks, redacted history scanning and the book.
+Build workspace binaries before runtime checks so the extraction test cannot pass
+by skipping a missing worker. Browser availability and actual execution must be
+reported; an absent-browser early return is not browser qualification.
+
+```bash
+python3 -B scripts/project_env.py cargo build --workspace --bins --locked
+env -u DATABASE_URL make check
+python3 -B scripts/project_env.py python3 -B -m unittest discover -s scripts/tests -p 'test_*.py' -v
+bash scripts/run_pg_tests.sh --demo
+make gate
+make deny
+make secret-scan
+make book
+```
+
+These are the required checkpoint commands, not a claim they have passed now.
+The Rust check workflow still uses ambient writable stores, the supply-chain
+container's stores require review, and none of the workflows invokes the Python
+controls. Repairs are owned by SIGNOFF-REPAIR.11.4.3.1.3. Publisher fixture ownership
+and browser profile/child lifetimes are checkpoint prerequisites .4/.5; safe
+compiler-artifact cleanup is .6. Complete these before broad execution under .2.
+The PG workflow's source has local stores; actual GitHub results remain to be
+consumed after the authorized push. Local Make commands use project_env.py.
+
+Exact census, tool versions, source hashes, skips and limits:
+`docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md`. Full CI runs before
+pushes or selected important steps; ordinary slices use focused checks.
 
 ## Not a release claim
 
@@ -64,5 +105,7 @@ This skeleton deliberately stops short of the software-supply-chain *release* pi
   (name clearance), and this file documents a working baseline, not a shipped capability.
 
 The pinned tool versions here (`gitleaks 8.30.1`) are a starting point and should be bumped
-on a schedule; the `deny.toml` allow-lists are a conservative starting policy to be reviewed
-the moment the first real dependency lands (WP1).
+on a schedule. The workspace now has real dependencies; current deny.toml contains
+reviewed duplicate/license exceptions. Every dependency checkpoint must evaluate
+the actual locked graph and current advisory data without treating those
+exceptions as blanket future approval.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Census actual CI coverage before broad execution
+
+- Source 6bc76c6 has 12 workspace packages, 86 test-enabled targets and 40 owned runner commands (38 server plus MCP/CLI). The guide's 31-server count was stale; mtls/publisher/reconciler need no PG. Offline/helper returns and ignored generators/providers remain explicit, not successful live assertions. Python declares 29 controls in four modules, none wired in the current workflows.
+- Raw cargo in the check job bypasses local stores; the supply-chain container needs explicit containment review. Publisher uses predictable deletion at startup; browser uses one default profile and background Drop reaping. These are source findings with checkpoint repair owners .3/.4/.5, coordinated with broader .7.2/.11.2. Old incremental data is measured but never deleted by age alone; .6 owns proof and cleanup/retention.
+- Repeated locked metadata, twelve exact source hashes/altered-content controls, exact missing/extra registration checks and independent artifact count partitions pass. Parsed deny.toml remains identical; make book, nine rendered markers, six concrete owners and diff checks pass. No Rust or full gate was run for this inventory. Evidence: docs/tasks/artifacts/signoff_review/ci-checkpoint-census.md.
+- promotion: promoted → `docs/decisions/2026-09-09_ci-checkpoint-census.md`; owner `SIGNOFF-REPAIR.11.4.3.1.1`.
+
 ## _(2026-09-09)_ — A pending snapshot can fit while its completion cannot
 
 - The real CLI baseline dispatches once when the completion snapshot is exactly one byte beyond 8 MiB, then fails local encoding; the adjacent exact-limit completion succeeds. Pending and old maps survive, but the larger receipt cannot be published. The state codec limit is correct; bootstrap admission previously checked completion only after the response.

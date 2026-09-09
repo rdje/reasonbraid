@@ -38,3 +38,8 @@ HTTP controls plus adjacent checks; other repairs remain open.
 The shared adapter/region registry design is now explicit site-operator authority.
 The separate site service implements that design. HTTP handlers call that service under `.3.2.3`, with live cross-tenant/freeze,
 actual-parent, audit/rollback, wire-input and revocation-race controls.
+
+The scheduled pre-push checkpoint inventory is complete under .11.4.3.1.1. Workflow
+locality/script coverage, publisher/browser fixture ownership and evidence-based
+cleanup have concrete prerequisite owners .3–.6 before full execution .2. This
+source/tool census changes no qualification category and claims no fresh full CI.

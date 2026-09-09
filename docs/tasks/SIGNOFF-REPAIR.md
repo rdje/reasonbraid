@@ -572,16 +572,24 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3 — Bound HTTP waits without losing pending request identity
 
-- Status: `pending`; follows keyed CLI flow. Capacity preflight takes priority before peer deadline integration; refine into bounded children at activation.
+- Status: `active`; follows clean a3fca5e and consumed handoff census. Capacity preflight takes priority before peer deadline integration; bounded children are explicit below.
 - Newly owned source-risk follow-up before measurement: pending publication and outcome publication have different encoded sizes. A near-limit valid preexisting map may admit the pending snapshot but reject the completed receipt/mapping after remote creation. The .2.2 source audit owns a bounded serialization-size counterexample under target/cli-bootstrap-controls; this child owns matched real-CLI reproduction and a pre-dispatch capacity check, with exact preserved bytes/zero-request refusal and adjacent fitting positive controls. Do not mistake a retained key for proof that the current store has capacity to publish completion. Existing local-write recovery claims remain limited to retained identity and reported uncertainty.
 - Owns: reproduce the pinned no-timeout behavior using an owned stalled response, choose explicit connect/whole-request budgets, retain pending identity on transport/timeout and release local exclusion. Preserve real error phase and forbid automatic fresh-key retry after an uncertain response. Qualify same-key successful recovery, malformed/oversized replies and ordinary CLI HTTP compatibility. Any wider client behavior change must be explicit in docs and focused controls.
 - Verification / commit: pending.
 
 ########### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1 — Refuse bootstrap dispatch when completion cannot fit
 
-- Status: `pending`; first bounds child after clean keyed-flow closure.
+- Status: `done`; REPAIR-0032, activated after clean a3fca5e, thirteen green doctrines, zero/untracked brief and consumed escalated census.
 - Owns: reproduce the near-limit pending-versus-completion capacity case with the real CLI and an owned loopback dispatch counter, then validate completion capacity before new remote creation under the existing guard. Use the real state codec and exact canonical outcome/source field bounds, preserving all unrelated maps and existing pending identity. Refusal must preserve original bytes, send zero HTTP and release exclusion; a fitting adjacent control must still complete and preserve maps. No invented server outcome may be published or returned as evidence. Qualify any sizing placeholder by the validated wire representation rather than a hand-maintained magic byte allowance.
-- Evidence / verification / commit: source model in docs/tasks/artifacts/signoff_review/cli-bootstrap-flow.md; actual Rust/HTTP reproduction and fix pending. Same-volume unique fixtures/logs only.
+- Exact surfaces owned before edits: state_writers.rs extends the existing unique same-volume fixtures with one real-CLI boundary matrix. Construct actual typed pending/completion records, encode them with serde_json pretty layout and size the preserved existing thread payload so completion is exactly at the 8 MiB bound or one byte over while pending still fits. Before product changes, measure real HTTP count, error, original-byte preservation and fitting success; consume each server/child and remove each unique fixture before asserting the desired matrix. Product capacity checking belongs in bootstrap_flow.rs before any pending publication/HTTP, using a nonpublishing state_store codec check and validated fixed-width canonical outcome fields. Any helper fact or safe in-memory sizing representation must remain internal, never published/returned as a server result. Focused flow/storage/writer checks, strict CLI lint and book/live lockstep complete this leaf; no unrelated HTTP policy change.
+- Probe ownership: target/cli-bootstrap-controls capacity-*.log/exit and existing unique target/cli-writer-controls fixtures. Large inputs are bounded near 8 MiB and remain on the repository volume; no ambient database/service or off-volume data. Existing installed tools are read-only dependencies.
+- Final boundary refinement owned before edit: include a restored matching pending record at the same one-byte-over bound and prove exact pending-byte preservation plus zero dispatch/released exclusion. A preflight refusal names its before-HTTP phase for this invocation; it must not imply that a previously saved pending request never reached a server. Reuse the validated outcome layout and actual codec, with no physical disk-reservation claim.
+- [x] **ROOT CAUSE (WHY + WHERE):** `python3 -B scripts/project_env.py cargo test --locked -p reasonbraid-cli --test state_writers bootstrap_checks_completion_capacity_before_dispatch_at_the_exact_bound -- --nocapture --test-threads=1` at product a3fca5e returns rc=101, 0/1 matrix test (build 12.11s, execution 3.70s). Completion one byte over 8 MiB dispatches once, publishes fitting pending, then returns the actual encoding error; old maps remain and exclusion releases. The exact-limit positive succeeds. Both fixture/server/child lifetimes are consumed before the desired zero-dispatch assertion. bootstrap_flow checked only pending capacity before HTTP; the correctly bounded completion encoder ran afterward. Evidence: docs/tasks/artifacts/signoff_review/bootstrap-capacity.md.
+- [x] **ADDRESSED:** `python3 -B scripts/project_env.py cargo test --locked -p reasonbraid-cli --lib --test bootstrap_state --test state_publication --test state_writers -- --nocapture --test-threads=1` returns rc=0, 11+4+4+12 controls (build 22.23s; execution 0.98s/0.62s/0.10s/15.69s). The oversized case now refuses with zero HTTP and exact original-byte preservation; exact-fit completion still succeeds. The final same named matrix command returns rc=0, 1/1 test (build 15.25s, execution 4.77s), adding restored pending and explicit preflight-phase output: both refusals preserve exact snapshots/maps, retain any saved key and release exclusion; the exact-limit positive succeeds. Every result consumed and unique fixtures absent.
+- [x] **NO REGRESSION:** final `python3 -B scripts/project_env.py cargo clippy --locked -p reasonbraid-cli --all-targets -- -D warnings` returns rc=0 in 17.40s; result consumed. Thirty-one selected controls preserve strict original-byte replies, 53 malformed schema cases, all storage/overlap/crash/fresh-actor controls, original-key retry, local historical receipt recovery and the real unread-output window. Formatting/diff/mdBook build return rc=0; ten rendered capacity/recovery/limit markers and three consistent JSON examples pass. No PostgreSQL/full CI/push in this bounded capacity leaf; prior actual-server evidence stays REPAIR-0031 and the scheduled broad checkpoint follows.
+- [x] **FIX / LOCKSTEP:** validate the complete prospective snapshot with the actual nonpublishing codec under the writer guard before pending publication/HTTP. Shared completion installation preserves maps/layout; canonical typed-ID sizing sample and the longer false boolean bound unknown outcomes, while known receipts use exact bytes. No sizing identity/outcome is published or returned. Code, decision/book/roadmap/live pointers and original-risk follow-up agree; physical disk reservation and immunity from later write failure are explicitly excluded. README remains 52 lines/2054 bytes; LIVE_STATUS category values unchanged.
+- Commit workflow: REPAIR-0032; exact message/resulting ID are recoverable from the leaf-bearing history. All jobs/results and unique fixture lifetimes consumed. After clean commit/brief and escalated handoff census, the scheduled pre-push checkpoint is .11.4.3.1; return afterward to .2.3.2 bounded transport, .2.4 reconciliation and .3 restart qualification.
+
 
 ########### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2 — Bound transport and reply resources while preserving recovery
 
@@ -943,6 +951,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: claims trace to actual consumed evidence; skipped or missing suites are not passes; no unsupported production qualification remains in live views.
 - Verification / commit: pending.
 
+##### SIGNOFF-REPAIR.11.4.3.1 — Verify the scheduled pre-push checkpoint
+
+- Status: `pending`; activate only after clean REPAIR-0032. The recorded remote is 300 commits behind a3fca5e; the approximately 300-commit push cadence requires a full CI checkpoint before publishing further commits. This is required batch verification, not a declaration that corrective review or release qualification is complete.
+- Owns before work: census actual workflow/Makefile/local-runner gates and available tools; run full Rust format/all-target all-feature strict lint/workspace tests, the full owned PostgreSQL suite collection plus demonstration, doctrine gate, dependency/advisory/license/source checks and redacted secret scanning with repository-derived logs/caches/temp. Discover suites from source, compare the runner registry and do not count skips/omissions as live passes. Include required script/runner checks where the workflow relies on them. Use installed toolchains/OS dependencies read-only; any necessary new tool/cache data stays on the repository volume. Document external-tool/advisory evidence and any unavailable verification honestly.
+- Failure ownership: every gate/tool/locality/coverage defect receives an exact child before any repair. Preserve failing logs, process identities and owned fixture shutdown; do not bypass a failing check or broaden shared-cache cleanup. Complete/commit each repaired unit and rerun the affected/full checkpoint as warranted. A skipped live-provider test is a stated external qualification boundary, never a pass or permission to spend tokens on an unrequested provider run.
+- Completion: all required local results consumed, exact source/command/test/skip census and limitations durable, live docs/book aligned, all completed units committed and message brief cleared. Full CI must pass before the authorized push to the existing private tracking branch. Verify remote advancement and any triggered CI status; remote job results that are still required remain explicit in-flight work. Preserve unrelated remote changes and use no force push. Resume .3.3.4.3.3.3.3.2.3.2 afterward.
+- Evidence / verification / commit: pending; choose bounded execution children if the source census makes this parent too broad for one safe unit. This checkpoint does not close .11.4.3's later historical/external qualification work or any still-open corrective owner.
+
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
 
 - Status: `pending`.
@@ -1046,11 +1062,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1` | `pending` | reproduce and prevent dispatch when bootstrap completion cannot fit |
-| 2 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 3 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 4 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 5 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1` | `pending` | scheduled full CI checkpoint before the approximately 300-commit push |
+| 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 5 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 6 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 

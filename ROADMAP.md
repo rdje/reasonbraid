@@ -39,7 +39,9 @@ controls, strict lint and book checks; all results consumed and unique fixtures
 absent, with the interrupted host startup and unchanged-binary retry recorded.
 Keyed CLI/explicit recovery `.3.3.4.3.3.3.3.2.2` passes thirty-three selected
 controls, final output-window rerun and strict CLI lint; all results/shutdown are
-consumed, unique fixtures and owned cluster absent. Completion-capacity preflight,
+consumed, unique fixtures and owned cluster absent. Completion-capacity preflight
+`.3.3.4.3.3.3.3.2.3.1` passes thirty-one selected controls, final fresh/pending/exact-fit
+matrix and strict CLI lint; all results consumed, unique fixtures absent;
 bounded HTTP waits and restart qualification follow before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the

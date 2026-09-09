@@ -40,6 +40,22 @@ fn invalid(detail: &str) -> CliError {
     CliError::state(detail.to_owned())
 }
 
+/// Validate the actual encoded snapshot without touching the store. A caller
+/// can establish capacity for a later phase before causing a remote effect.
+pub(crate) fn check_snapshot(state: &StateFile) -> Result<(), CliError> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        codec::encode(state).map(|_| ())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = state;
+        Err(invalid(
+            "verified local state storage currently requires Linux or macOS",
+        ))
+    }
+}
+
 /// One update lifetime: fresh state is loaded only after acquiring the lock, and
 /// the same descriptor remains held through asynchronous work and publication.
 /// Dropping an interrupted operation releases exclusion without publishing it.

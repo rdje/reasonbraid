@@ -144,9 +144,12 @@ intentionally creates another tenant. See the
 Broader interruption/restart qualification remains open. Successful lock release
 alone is not evidence that repeating an unkeyed request is safe.
 
-Completion-capacity preflight is also pending under
-SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1. Near the 8 MiB state limit, a pending snapshot
-may fit while adding the completed receipt and principal does not. The current
-flow retains the key and reports the local publication error; automatic local
-completion is not guaranteed until space is available. The next bounds child
-owns runtime reproduction and refusal before dispatch when completion cannot fit.
+Completion-capacity preflight is implemented under
+SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1: thirty-one selected controls, the final boundary
+matrix and strict CLI lint pass; all results consumed and fixtures absent. Before
+publishing pending or sending HTTP, the CLI validates that the complete encoded
+principal/receipt snapshot fits the 8 MiB limit. A near-limit pending snapshot
+alone is insufficient. Refusal preserves the original snapshot and any pending
+key without dispatch. The sizing sample stays private memory; only an actual
+checked outcome or a saved historical receipt can be published or reported.
+This checks the format limit, not physical disk reservation or later write success.

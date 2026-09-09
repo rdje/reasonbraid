@@ -6,8 +6,8 @@ sending a keyed bootstrap request. Matching pending work reuses that request;
 was lost. Other state writers refuse unresolved pending work before HTTP.
 Thirty-three selected controls, the final output-window rerun and strict CLI lint
 pass. All results/shutdown are consumed and unique fixtures/owned cluster absent.
-Capacity preflight, HTTP deadlines and broader interruption qualification remain
-separately owned.
+Completion-capacity preflight is also qualified below. HTTP deadlines and broader
+interruption qualification remain separately owned.
 
 ## Versions and compatibility
 
@@ -208,9 +208,25 @@ HTTP connect/whole-request and reply-size bounds are the following repair child.
 Broader process/filesystem/server restart qualification also remains open; this
 flow does not claim universal automatic retry or physical power-loss survival.
 
-Completion-capacity preflight is also pending under
-SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1. Near the 8 MiB state limit, a pending snapshot
-may fit while adding the completed receipt and principal does not. The current
-flow retains the key and reports the local publication error; automatic local
-completion is not guaranteed until space is available. The next bounds child
-owns runtime reproduction and refusal before dispatch when completion cannot fit.
+Completion-capacity preflight is implemented under
+SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1: thirty-one selected controls, the final boundary
+matrix and strict CLI lint pass; all results consumed and fixtures absent. Before
+publishing pending or sending HTTP, the CLI validates that the complete encoded
+principal/receipt snapshot fits the 8 MiB limit. A near-limit pending snapshot
+alone is insufficient. Refusal preserves the original snapshot and any pending
+key without dispatch. The sizing sample stays private memory; only an actual
+checked outcome or a saved historical receipt can be published or reported.
+This checks the format limit, not physical disk reservation or later write success.
+
+For example, a store whose pending request fits but whose completed receipt would
+be one byte over the limit refuses before sending the creation request. A
+completion exactly at the limit is admitted when every other storage check
+passes. Preserve the refused state and resolve its capacity deliberately; do not
+switch to an empty state directory or invent another request key to bypass an
+unresolved operation. Transport and later publication failures still require
+the existing matching recovery behavior.
+
+A size refusal reports `bootstrap completion preflight refused before HTTP` for
+this invocation. A previously saved pending request can still represent an earlier
+uncertain server attempt; the error does not declare that earlier attempt rolled
+back. Both fresh-state and existing-pending size refusals preserve exact bytes.

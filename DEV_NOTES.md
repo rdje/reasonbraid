@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — A pending snapshot can fit while its completion cannot
+
+- The real CLI baseline dispatches once when the completion snapshot is exactly one byte beyond 8 MiB, then fails local encoding; the adjacent exact-limit completion succeeds. Pending and old maps survive, but the larger receipt cannot be published. The state codec limit is correct; bootstrap admission previously checked completion only after the response.
+- The coordinator now checks a complete prospective snapshot with the actual nonpublishing codec before pending publication/HTTP. Share the completion installer with actual publication; preserve all maps/request escaping. Unknown outcomes use a private canonical typed-ID sizing sample and the longer false boolean, while known receipts use their exact outcome. Source formatting and strict canonical response validation establish the fixed source-field widths; no magic byte allowance or fabricated durable receipt is used. Thirty-one selected controls, the final fresh/restored-pending/exact-fit matrix and final all-target CLI strict lint pass; all results consumed and unique fixtures absent. Evidence: docs/tasks/artifacts/signoff_review/bootstrap-capacity.md.
+- This checks the encoded format limit, not physical disk reservation or eventual write success. Later storage/transport uncertainty still retains its recovery identity. Existing matching pending requests must be preserved on preflight refusal as well as ordinary fresh state.
+- promotion: promoted → `docs/decisions/2026-09-09_bootstrap-capacity.md`; owner `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1`.
+
 ## _(2026-09-09)_ — Persist bootstrap intent before HTTP and retain recoverable output
 
 - The real-CLI baseline holds its lock but dispatches without a saved request key or pending record. A private coordinator now persists the exact canonical request under that guard, resends matching pending work unchanged, validates original reply bytes and all required outcome/source bindings, publishes principal/completion, then clears pending durably. Different pending intent refuses before effects. The public convenience entrypoint preserves deliberate fresh invocation; explicit --resume-bootstrap selects pending/latest completion and never falls through into creation.

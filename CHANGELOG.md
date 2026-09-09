@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Check bootstrap completion capacity before HTTP (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1`)
+
+Reproduce a real CLI dispatch whose pending snapshot fits but whose completed
+receipt is one byte too large. Validate the full prospective snapshot with the
+actual state codec before publishing intent or sending HTTP. Preserve maps and
+saved request identity on refusal; never publish the private sizing sample as
+an outcome. Thirty-one selected controls, final three-scenario boundary matrix
+and strict CLI lint pass; all results consumed, unique fixtures absent. The
+exact-limit positive control succeeds; physical disk reservation is not claimed.
+
 ## 2026-09-09 — Keyed CLI bootstrap and explicit recovery (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.2`)
 
 Persist one bootstrap request before HTTP and reuse matching pending intent with

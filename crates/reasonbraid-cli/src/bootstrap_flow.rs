@@ -1,13 +1,13 @@
 //! One guarded bootstrap intent, from durable dispatch identity to recoverable
 //! output. A retained completion is historical data, not live server authority.
 
-use reasonbraid_core::RequestId;
+use reasonbraid_core::{HumanPrincipalId, RequestId, TenantId};
 
 use crate::bootstrap_state::{canonical_server, validate_outcome};
 use crate::state_store::Writer;
 use crate::{
     ApiClient, BootstrapOutcome, BootstrapRecovery, BootstrapRequest, CliError, CompletedBootstrap,
-    Config, StoredPrincipal,
+    Config, StateFile, StoredPrincipal,
 };
 
 pub(crate) fn decode_outcome(
@@ -23,6 +23,65 @@ pub(crate) fn decode_outcome(
     let outcome = serde_json::from_slice(bytes).map_err(|_| invalid())?;
     validate_outcome(&outcome, request).map_err(|_| invalid())?;
     Ok(outcome)
+}
+
+fn install_completion(
+    state: &mut StateFile,
+    request: &BootstrapRequest,
+    outcome: &BootstrapOutcome,
+) {
+    state.version = 2;
+    state.principals.insert(
+        request.name.clone(),
+        StoredPrincipal {
+            kind: "human".into(),
+            id: outcome.principal_id.clone(),
+            tenant: outcome.tenant_id.clone(),
+        },
+    );
+    state.bootstrap = Some(BootstrapRecovery {
+        pending: Some(request.clone()),
+        completed: Some(CompletedBootstrap {
+            request: request.clone(),
+            outcome: outcome.clone(),
+        }),
+    });
+}
+
+fn check_completion_capacity(
+    state: &StateFile,
+    request: &BootstrapRequest,
+    known: Option<&BootstrapOutcome>,
+) -> Result<(), CliError> {
+    // This in-memory sizing sample is never published or returned. Canonical
+    // typed IDs format as a family prefix plus a fixed-width hyphenated UUID;
+    // validation rejects alternative representations. Source strings derive
+    // from those IDs, and every other string is already fixed by the request.
+    // `false` is the longer JSON boolean. A known receipt uses its exact bytes.
+    let outcome = known.cloned().unwrap_or_else(|| {
+        let principal_id = HumanPrincipalId::from_uuid(uuid::Uuid::nil()).to_string();
+        let tenant_id = TenantId::from_uuid(uuid::Uuid::nil()).to_string();
+        BootstrapOutcome {
+            bootstrap_request_id: request.request_id.clone(),
+            kind: "human".into(),
+            name: request.name.clone(),
+            boundary_id: format!("bnd_{tenant_id}"),
+            grant_id: format!("grt_{principal_id}"),
+            principal_id,
+            tenant_id,
+            replayed: false,
+        }
+    });
+    let mut snapshot = state.clone();
+    install_completion(&mut snapshot, request, &outcome);
+    // Use the real codec, including all preserved maps and JSON escaping. No
+    // magic byte allowance or serialized placeholder reaches durable state.
+    crate::state_store::check_snapshot(&snapshot).map_err(|error| match error {
+        CliError::State(detail) => CliError::state(format!(
+            "bootstrap completion preflight refused before HTTP: {detail}"
+        )),
+        error => error,
+    })
 }
 
 pub(crate) async fn run(
@@ -63,6 +122,10 @@ pub(crate) async fn run(
         .map(|done| done.outcome.clone());
     let previous_completion = completed.cloned();
 
+    // Pending alone may fit when completion does not. Refuse before publishing
+    // intent or dispatching HTTP; retain any earlier snapshot and pending key.
+    check_completion_capacity(writer.state(), &request, cached.as_ref())?;
+
     // Even a previously visible pending snapshot is synchronized again: the
     // preceding process may have reported an unconfirmed publication phase.
     let state = writer.state_mut();
@@ -82,22 +145,7 @@ pub(crate) async fn run(
                 .await?
         }
     };
-    let state = writer.state_mut();
-    state.principals.insert(
-        request.name.clone(),
-        StoredPrincipal {
-            kind: "human".into(),
-            id: outcome.principal_id.clone(),
-            tenant: outcome.tenant_id.clone(),
-        },
-    );
-    state.bootstrap = Some(BootstrapRecovery {
-        pending: Some(request.clone()),
-        completed: Some(CompletedBootstrap {
-            request,
-            outcome: outcome.clone(),
-        }),
-    });
+    install_completion(writer.state_mut(), &request, &outcome);
     writer.persist()?;
     // Completion is already durable before removing unresolved intent. Keep its
     // receipt for explicit recovery after this process returns or loses stdout.

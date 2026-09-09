@@ -1052,3 +1052,114 @@ async fn losing_the_process_with_unread_output_recovers_the_completed_receipt() 
     assert_eq!(output["name"], name);
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn bootstrap_checks_completion_capacity_before_dispatch_at_the_exact_bound() {
+    use reasonbraid_cli::{
+        BootstrapOutcome, BootstrapRecovery, BootstrapRequest, CompletedBootstrap,
+    };
+
+    const LIMIT: usize = 8 * 1024 * 1024;
+    let mut observations = Vec::new();
+    for (excess, existing_pending) in [(1, false), (1, true), (0, false)] {
+        let fixture = Fixture::new();
+        let server = Server::start().await;
+        let mut original = StateFile::load(&fixture.state_dir()).unwrap();
+        original
+            .threads
+            .get_mut(OLD_THREAD)
+            .unwrap()
+            .subject
+            .clear();
+        let request = BootstrapRequest {
+            request_id: "req_00000000-0000-7000-8000-000000000001".into(),
+            server: server.url.clone(),
+            name: "bob".into(),
+            actions: None,
+        };
+        let outcome = BootstrapOutcome {
+            bootstrap_request_id: request.request_id.clone(),
+            kind: "human".into(),
+            name: "bob".into(),
+            principal_id: BOB.into(),
+            tenant_id: TENANT.into(),
+            boundary_id: format!("bnd_{TENANT}"),
+            grant_id: format!("grt_{BOB}"),
+            replayed: false,
+        };
+        let mut completion = original.clone();
+        completion.version = 2;
+        completion.principals.insert(
+            "bob".into(),
+            StoredPrincipal {
+                kind: "human".into(),
+                id: BOB.into(),
+                tenant: TENANT.into(),
+            },
+        );
+        completion.bootstrap = Some(BootstrapRecovery {
+            pending: Some(request.clone()),
+            completed: Some(CompletedBootstrap {
+                request: request.clone(),
+                outcome,
+            }),
+        });
+        let payload = LIMIT + excess - serde_json::to_vec_pretty(&completion).unwrap().len();
+        original.threads.get_mut(OLD_THREAD).unwrap().subject = "x".repeat(payload);
+        completion.threads.get_mut(OLD_THREAD).unwrap().subject = "x".repeat(payload);
+        assert_eq!(
+            serde_json::to_vec_pretty(&completion).unwrap().len(),
+            LIMIT + excess
+        );
+        let mut pending = original.clone();
+        pending.version = 2;
+        pending.bootstrap = Some(BootstrapRecovery {
+            pending: Some(request),
+            completed: None,
+        });
+        let pending_bytes = serde_json::to_vec_pretty(&pending).unwrap().len();
+        assert!(pending_bytes < LIMIT);
+        original.save(&fixture.state_dir()).unwrap();
+        if existing_pending {
+            pending.save(&fixture.state_dir()).unwrap();
+        }
+        let before = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        let result = Rb::start(&fixture, &server, &enrollment_args())
+            .finish()
+            .await;
+        let count = server.requests.load(Ordering::SeqCst);
+        server.finish().await;
+        let preserved = before == std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        let state = StateFile::load(&fixture.state_dir()).unwrap();
+        let maps_intact = state.principals["alice"].id == ALICE
+            && state.threads[OLD_THREAD].subject == original.threads[OLD_THREAD].subject;
+        let released = !lock_is_held(&fixture);
+        if excess > 0 {
+            assert!(
+                result.2.contains("preflight refused before HTTP"),
+                "{}",
+                result.2
+            );
+        }
+        eprintln!("capacity: completion_excess={excess}, existing_pending={existing_pending}, pending_bytes={pending_bytes}, HTTP={count}, success={}, original_preserved={preserved}, maps_intact={maps_intact}, lock_released={released}, error={}", result.0.success(), result.2.trim());
+        observations.push((
+            excess,
+            existing_pending,
+            count,
+            result.0.success(),
+            preserved,
+            maps_intact,
+            released,
+        ));
+    }
+    // All process/server lifetimes and all unique fixture cleanups complete
+    // before the desired baseline assertion, including the fitting control.
+    assert_eq!(
+        observations,
+        vec![
+            (1, false, 0, false, true, true, true),
+            (1, true, 0, false, true, true, true),
+            (0, false, 1, true, false, true, true)
+        ]
+    );
+}

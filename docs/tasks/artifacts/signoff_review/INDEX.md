@@ -29,6 +29,8 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 
 ## Focused corrective follow-ups
 
+- [Bootstrap completion capacity](docs/tasks/artifacts/signoff_review/bootstrap-capacity.md): exact-boundary real CLI reproduction and pre-dispatch capacity repair under .3.3.4.3.3.3.3.2.3.1.
+
 - [Keyed CLI bootstrap flow](docs/tasks/artifacts/signoff_review/cli-bootstrap-flow.md): matched missing-key baseline, implementation and explicit recovery qualification under .3.3.4.3.3.3.3.2.2.
 
 - [Tenant authority/effect paths](docs/tasks/artifacts/signoff_review/tenant-authority-paths.md), owner `SIGNOFF-REPAIR.3.3.4.1`, source baseline `1ba6184`: 42 direct named-call locations plus transitive/mutation and alternate-gate coverage. The selected guard/effect contract has bounded implementation owners; this source census is not runtime ordering qualification.

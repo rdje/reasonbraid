@@ -128,3 +128,8 @@ The next owner is .3.3.4.3.3.3.3.2.3.1 for capacity, followed by transport bound
 
 The final escalated `python3 -B scripts/project_env.py bash scripts/check_no_background_jobs.sh`
 census returns `handoff: OK`, rc=0. Result consumed before REPAIR-0031 staging.
+
+Capacity follow-up: REPAIR-0032 reproduces and repairs the actual one-byte-over
+CLI case, with an exact-fit positive and preserved existing-pending refusal.
+See docs/tasks/artifacts/signoff_review/bootstrap-capacity.md; the earlier source
+model above remains its historical observation rather than the final proof.

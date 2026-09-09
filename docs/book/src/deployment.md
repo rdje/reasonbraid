@@ -247,26 +247,25 @@ unstated. All twenty-six final worker/browser groups are independently absent;
 the nine earlier failed fixtures remain preserved. Exact results and remaining
 boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
 
-## Publication is blocked on repository visibility
+## Public repository and publication checks
 
-The current checkpoint independently confirmed that GitHub reports
-`rdje/reasonbraid` as public. README and ADR-001 require it to remain private until
-named clearance or rename. Earlier private-state statements do not prove the
-remote setting. No push or visibility change has been made; the director must
-resolve this concrete conflict before publication. A later private setting cannot
-undo prior public access or establish public-name clearance.
+This project is public and must remain public. The director confirmed that the
+earlier private-repository instruction was wrong; README, ADR-001 and their
+companion guidance now reflect the correction. No visibility change is needed.
+Name/package/domain and release qualification remain separate requirements.
 
-Format and the pinned dependency gate passed. The history scanner reported two
-redacted matches in historical fixture tests; their provenance/classification and
-any narrowly justified correction have a dedicated repair task. They are not yet
-classified as leaked credentials or false positives. Strict Clippy was deliberately
-interrupted at the policy blocker and its group consumed; later workspace, Python
-and PostgreSQL/demo gates did not start. All started results are consumed.
+Repository commits, branches, issues and pull requests are public. Confidential
+security reports and pre-disclosure work require a separate private channel or
+workspace arranged with the accountable owner; see `SECURITY.md`. Do not rely on
+public Git to provide an embargo or make this repository private for that purpose.
 
-Resume with the director's visibility decision, the history-scan repair and a
-complete checkpoint on the resulting committed source. Only then perform the
-authorized normal push and consume triggered CI results. Exact identities, policy,
-commands and limits: `docs/tasks/artifacts/signoff_review/publication-precondition.md`.
+The visibility question is resolved. The earlier checkpoint's format/dependency
+passes, two redacted history-scan findings and deliberately interrupted Clippy
+result retain their exact historical status. Continue the owned history-scan
+repair and full checkpoint on the resulting committed source, then perform the
+authorized normal push and consume triggered CI results. Details:
+`docs/decisions/2026-09-09_public-repository-policy.md` and
+`docs/tasks/artifacts/signoff_review/publication-precondition.md`.
 
 ## Periodic compiler artifact cleanup
 

@@ -1,8 +1,8 @@
 # ReasonBraid
 
 **Working name** (not legally cleared — `docs/adr/001-uncleared-working-name.md`).
-Keep this repository **private** until that ADR’s clearance gate passes. Do not
-assume crate, domain, or handle names are obtainable.
+This repository is **public** and must remain public. Do not assume crate,
+domain, or handle names are obtainable.
 
 ReasonBraid is an agent deliberation and governance platform: authorized humans
 and agents can ask a durable network a question without knowing who is online.

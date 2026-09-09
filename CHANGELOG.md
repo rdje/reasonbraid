@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Keep the repository public (`SIGNOFF-REPAIR.11.4.3.1.2.3`)
+
+Apply the director correction that README’s private instruction was wrong: the
+project is public and must remain public. Synchronize ADR/companion/security/risk
+guidance, live records and the book while retaining historical checkpoint evidence.
+Public Git is not a confidential embargo channel. No visibility or production
+change. Read-only remote, guidance, rendered-book and scope checks pass; README
+shrinks to 2,033 bytes / 52 lines. Resume history repair and full checkpoint before push.
+
 ## 2026-09-09 — Contain the publication-precondition conflict (`SIGNOFF-REPAIR.11.4.3.1.2.1`)
 
 Independently confirm the remote is public despite the private-repository policy.

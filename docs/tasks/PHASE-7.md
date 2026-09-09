@@ -658,6 +658,7 @@ reopens the applicable portions of G4–G7.
       (the §16.10 "before public beta" line) — the
       process record, linked from the README.
     Roadmap: §16.10
+    Correction (`2026-09-09`, SIGNOFF-REPAIR.11.4.3.1.2.3): the director confirms the repository is public and must remain public. The private-repo/embargo statements in the historical description below were wrong. SECURITY.md now requires a separate private reporting/investigation channel; public Git cannot provide confidentiality. Original commit chronology is retained, without treating it as visibility evidence.
     Done (`2026-09-08`): `SECURITY.md` lands (the
       disclosure + the supported-version policy): the
       reporting path names the ACCOUNTABLE OWNER (the

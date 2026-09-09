@@ -6,6 +6,12 @@ answers:
 ---
 # Verify actual remote visibility before publication
 
+Director correction, 2026-09-09: the repository is public and must remain public.
+The old README private instruction was wrong. The visibility blocker described
+below is resolved by docs/decisions/2026-09-09_public-repository-policy.md; no
+setting change is needed or authorized. The historical audit and gate results
+remain evidence of what was inspected and stopped, not current publication policy.
+
 - Owner: `SIGNOFF-REPAIR.11.4.3.1.2.1`; REPAIR-0042.
 - Evidence: docs/tasks/artifacts/signoff_review/publication-precondition.md.
 

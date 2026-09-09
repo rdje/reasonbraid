@@ -20,7 +20,9 @@ One person fills both roles; the split is by function, not by person.
 `KICKOFF.md` WP0 requires "one person is accountable for final architecture
 decisions and one for release/security gate records, even if the same small
 team fills several implementation roles." The director chose a single person
-for both roles while the repository is private and pre-clearance. Naming a
+for both roles while name clearance remains open. The original private-repository
+wording was wrong and is corrected by the director’s 2026-09-09 public-repository
+decision (docs/decisions/2026-09-09_public-repository-policy.md). Naming a
 person (rather than a title) is exactly what `PHASE-0.0.6` acceptance requires,
 and what `docs/risks.md` was waiting for ("Owner roles are titles until
 `PHASE-0.0.6` names people").

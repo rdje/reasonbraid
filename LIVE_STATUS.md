@@ -74,11 +74,12 @@ checks pass. The affected server build and final book checks pass; all results
 are consumed and .6 is complete. Full local/remote execution .2 and push remain
 pending. Qualification categories are unchanged.
 
-Publication-precondition audit .11.4.3.1.2.1 confirms the actual remote is public
-through authenticated and unauthenticated GitHub APIs, conflicting with README/
-ADR-001. Earlier private-state statements are not current evidence. Director
-decision .2.3 is required before visibility changes or push. Format/cargo-deny pass;
-history scan finds two redacted matches owned by .2.2; Clippy is intentionally
-interrupted at this policy blocker and all results/cleanup consumed. Later full
-gates did not start. The audit is complete; checkpoint .2 remains blocked and
-qualification categories are unchanged. See docs/tasks/artifacts/signoff_review/publication-precondition.md.
+Publication-precondition audit .11.4.3.1.2.1 established the public remote and
+preserved the interrupted checkpoint. The director has resolved the question:
+README's private instruction was wrong; the project is public and must remain
+public. Correction .2.3 synchronizes README, ADR, security/companion guidance and
+the book; no remote-setting change is needed. Format/cargo-deny passed; two
+redacted history findings remain .2.2 and interrupted/unstarted gates remain
+unqualified. Continue repairs and full checkpoint .2 before the authorized public
+push. Qualification categories are unchanged. Policy:
+docs/decisions/2026-09-09_public-repository-policy.md.

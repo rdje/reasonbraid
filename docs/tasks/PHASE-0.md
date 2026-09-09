@@ -22,12 +22,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
   browser workers, or a production UI.
 - Exactly-once provider execution or billing.
 - Reproducing the final `ROADMAP.md` §7.1 workspace on day one.
-- Public namespaces, crates.io names, or domains (blocked until ADR-001).
+- Package namespaces, crates.io names, or domains (blocked until ADR-001 clearance; the public repository is authorized).
 - Roadmap v0.5.0.
 
 ## Operating rules (from `KICKOFF.md` §2)
 
-- Keep the repository private until ADR-001 clears the name.
+- Keep the repository public. Director correction 2026-09-09 supersedes the earlier private instruction; owner SIGNOFF-REPAIR.11.4.3.1.2.3.
 - Treat v0.4.1 as frozen; park non-blocking ideas in `docs/parking-lot.md`.
 - Every experiment has a question, competing options, fixture, observable
   result, decision owner, and deletion plan.
@@ -55,12 +55,12 @@ that constrain Phase 1. Phase 0 does not implement the product.
 
 - ID: `PHASE-0.0`
   Status: `done`
-  Goal: private-repo operating baseline, templates, CI skeleton, visible risks
+  Goal: repository operating baseline, templates, CI skeleton, visible risks (public visibility confirmed by the director; earlier private wording was wrong)
   Children: `PHASE-0.0.1` … `PHASE-0.0.8`
 
 - ID: `PHASE-0.0.1`
   Status: `done`
-  Goal: ADR-001 — ReasonBraid as an uncleared working name; block public namespace commitments
+  Goal: ADR-001 — ReasonBraid as an uncleared working name; retain package/domain clearance with public repository authorized
   Acceptance: ADR recorded; no crates.io/domain/handle reservation assumed; rename remains mechanical
   Roadmap: §2.7, backlog 1, ADR 001
   Verification: recorded below

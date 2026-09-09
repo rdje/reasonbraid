@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Public visibility is an explicit director instruction
+
+- The director corrects the README: the project is public and must remain public. Apply that instruction directly; the old private clause was wrong and is superseded across README, ADR, Kickoff/Phase-0 routes, risk/owner/security records and the book. Keep historical audit/stop evidence with a clear resolution pointer; do not turn it into a claim that visibility changed or a continuing approval requirement.
+- SECURITY.md also assumed a private repository provided an embargo. Correct it to require a separate private channel/workspace for confidential reports and investigation; public Git cannot provide confidentiality. No new endpoint or service is asserted, no remote setting is changed, and no name/release qualification is claimed. The current risk register now owns the two scanner findings instead of claiming its latest history gate is green.
+- Validation passes: unchanged public remote, seven guidance routes, six rendered book markers, Markdown-only scope and git diff. README stays 52 lines and shrinks to 2,033 bytes. All results consumed; no new full-gate claim.
+- promotion: promoted → `docs/decisions/2026-09-09_public-repository-policy.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.3`.
+
 ## 2026-09-09 — A private-repository instruction is not remote-state evidence
 
 - Authenticated GitHub metadata and an independent unauthenticated official API request both report the exact configured repository is public; README/ADR-001 require private visibility. The remote main identity matches tracking, but earlier private claims were not authenticated observations. No change actor/time is established. Block publication and record the required director decision; do not silently change visibility or infer permission from the existing public state.

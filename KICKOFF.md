@@ -25,7 +25,7 @@ Phase 0 is not intended to implement the product. It must produce code, measurem
 
 ## 2. Operating rules
 
-- Keep the repository private until ADR-001 clears the ReasonBraid name and public namespaces.
+- Keep the repository public (director correction, 2026-09-09; docs/decisions/2026-09-09_public-repository-policy.md). ADR-001 still governs name/package/domain clearance.
 - Treat roadmap v0.4.1 as frozen. Put non-blocking ideas in `docs/parking-lot.md`.
 - Every experiment has a question, competing options, fixture, observable result, decision owner, and deletion plan.
 - Build one end-to-end path early; do not complete all domain types before running a real adapter.
@@ -87,11 +87,11 @@ Effort ranges overlap where two engineers work in parallel; manage the total aga
 ### WP0 — Bootstrap and decision log
 
 **Effort:** 0.5–1 engineer-week.  
-**Output:** private repository, ownership, contribution rules, ADR/evidence templates, CI skeleton, and visible project risks.
+**Output:** public repository, ownership, contribution rules, ADR/evidence templates, CI skeleton, and visible project risks.
 
 Acceptance:
 
-- ADR-001 records ReasonBraid as an uncleared working name and blocks public namespace commitments;
+- ADR-001 records ReasonBraid as an uncleared working name, allows the public repository and keeps package/domain clearance open;
 - one person is accountable for final architecture decisions and one for release/security gate records, even if the same small team fills several implementation roles;
 - every external dependency entry includes source, checked date, version, and revalidation trigger;
 - v0.5.0 cannot be created without the Phase 0 evidence manifest and LAN-slice evidence.
@@ -322,7 +322,7 @@ Phase 0 does **not** pass because all planned documents exist. It passes because
 
 For a two-engineer team:
 
-1. Agree on the private repository location, license intent, accountable owner, and development hosts.
+1. Record the public repository location, license intent, accountable owner, and development hosts.
 2. Create WP0 and the first fifteen issues; assign only WP0–WP3 initially.
 3. Land the workspace/CI baseline and minimal contract fixtures.
 4. Split: one engineer runs the PostgreSQL/outbox kill-point experiment while the other builds the node journal/reconnect experiment.

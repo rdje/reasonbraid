@@ -1,5 +1,12 @@
 # Publication precondition audit
 
+Resolution (director correction, 2026-09-09): the project is public and must remain
+public; the old README visibility instruction was wrong. Owner
+SIGNOFF-REPAIR.11.4.3.1.2.3 corrects that guidance without a visibility change.
+The audit below describes source f0265e2 and its historical stop; its request to
+restore privacy is superseded by docs/decisions/2026-09-09_public-repository-policy.md.
+History-scan repair and the full checkpoint remain required before push.
+
 Owner: `SIGNOFF-REPAIR.11.4.3.1.2.1`; REPAIR-0042. Inspected committed source:
 `f0265e26bbbb7dcd44fa61155768e5cba2689913`. Raw receipts/logs:
 `target/checkpoint-ci/full-f0265e2`. This is a completed blocker audit, not a

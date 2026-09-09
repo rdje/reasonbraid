@@ -1,8 +1,9 @@
 # The CLI
 
 Phase 0 ships a command-line surface for the vertical slice: `rb` (the
-`reasonbraid-cli` crate) drives the control plane over HTTP JSON. Every state
-inspection happens through this surface — **no database surgery**.
+`reasonbraid-cli` crate) drives the control plane over HTTP JSON. The CLI covers
+the established enrollment and thread workflows; the additional authorization
+receipt surface below is accessed directly over HTTP.
 
 ## Starting the control plane
 
@@ -230,7 +231,11 @@ tenant-wide administrator grant. The exception ignores boundary status alone,
 retaining parent ceilings and both validity windows. These administrative reads
 commit explicit inspection admissions before fetching their response. Their HTTP
 responses carry `x-reasonbraid-authorization`; use `curl -i` to retain it. The
-authority chapter documents the seven routes, failure cases and receipt limits.
+authority chapter documents the eight routes, failure cases and receipt limits.
+Retrieve a known receipt through
+`GET /v1/admin/authorization-records/{record_id}?tenant_id=ten_…` with the same
+principal header. This HTTP endpoint returns the earlier record and a separate
+admission receipt for the lookup; `rb` has no dedicated receipt command yet.
 
 A grant or boundary outside the acting tenant returns 404 without changing the
 foreign target or its tenant's revocation epoch. A repeated grant revocation returns

@@ -28,10 +28,12 @@ deterministic pages and actual-parent checks as commands, so a newer unusable
 grant cannot hide an eligible older one. Malformed authority is a storage failure,
 not a fabricated denial or an inspection allowance.
 
-The exception is limited to seven existing GET routes: admin nodes/presence,
-grants, boundaries, incarnations, runs, breakers and usage. Their response shapes
-remain unchanged. Thread inspection/audit, cross-domain receipts, process metrics
-and site registries use other gates; this decision gives them no new authority.
+The original exception covered seven existing GET routes: admin nodes/presence,
+grants, boundaries, incarnations, runs, breakers and usage; their response shapes
+remain unchanged. Child `.3.3.3.2.2.3` adds one explicit eighth purpose: exact
+tenant-scoped authorization-record lookup, with the same eligibility and admission
+audit. Thread inspection/audit, cross-domain receipts, process metrics and site
+registries use other gates; this decision gives them no new authority.
 
 The original eligibility child used a read-only transaction and retained the
 historical absence of inspection records. That implementation is superseded by

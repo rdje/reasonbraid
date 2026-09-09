@@ -2,8 +2,9 @@
 //! become a guessed decision, a discarded subject or a panic during inspection.
 use chrono::{DateTime, Utc};
 use reasonbraid_core::{
-    actor_handle_for_subject, AuthorizationDecisionRecord, AuthorizationEvaluation, Decision,
-    GrantAction, ResourceTarget, TargetSelector, TenantId, ThreadId,
+    actor_handle_for_subject, AuthorizationDecisionRecord, AuthorizationEvaluation,
+    AuthorizationRecordId, Decision, GrantAction, ResourceTarget, TargetSelector, TenantId,
+    ThreadId,
 };
 use serde_json::Value;
 use sqlx::PgPool;
@@ -116,6 +117,24 @@ pub async fn load_authorization_record(
         .bind(record_id)
         .fetch_optional(pool)
         .await?;
+    row.map(AuthorizationDecisionRecord::try_from).transpose()
+}
+
+/// Exact tenant-scoped evidence lookup. Filter before decoding, so foreign
+/// malformed evidence cannot be distinguished from an absent record. The caller
+/// must separately commit the named inspection admission before using this API.
+pub(crate) async fn load_tenant_authorization_record(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    record_id: AuthorizationRecordId,
+) -> Result<Option<AuthorizationDecisionRecord>, sqlx::Error> {
+    let row: Option<RecordRow> = sqlx::query_as(&format!(
+        "{SELECT_RECORD} WHERE tenant_id = $1 AND record_id = $2"
+    ))
+    .bind(tenant_id.to_string())
+    .bind(record_id.to_string())
+    .fetch_optional(pool)
+    .await?;
     row.map(AuthorizationDecisionRecord::try_from).transpose()
 }
 

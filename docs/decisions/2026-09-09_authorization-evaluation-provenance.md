@@ -7,7 +7,7 @@ answers:
 # Record the evaluation path explicitly without inventing historical intent
 
 - Owner: `SIGNOFF-REPAIR.3.3.3.2.2`, with three bounded implementation children.
-- Status: `.2.2.1` complete in 305ed26 and qualification closure dec4d3c (51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint). `.2.2.2` implements the seven HTTP receipt producers with 45 live authority/API tests, ten pure controls and strict lint passed. All results and owned-cluster shutdown are consumed; scoped readback remains `.2.2.3`.
+- Status: `.2.2.1` complete in 305ed26 and qualification closure dec4d3c (51 core units, seven metadata/subject controls, 44 live authority/HTTP/upgrade tests and strict lint). `.2.2.2` implements the seven HTTP receipt producers with 45 live authority/API tests, ten pure controls and strict lint passed. `.2.2.3` completes exact tenant-scoped readback with 18 live authority tests and 30 HTTP tests plus strict lint passed, including final denied-record retrieval. All results and owned-cluster shutdown are consumed.
 - Predecessor: `docs/decisions/2026-09-09_frozen-tenant-read-eligibility.md`.
 
 Add a closed `evaluation` object to authorization records. `legacy_unspecified`
@@ -21,9 +21,8 @@ Existing record fields still carry the actual grant/boundary references.
 Missing authority sources have absent references and absent status/scope evidence.
 Malformed evidence is a storage error, never a guessed decision or default intent.
 The inspection name is closed: nodes presence, grants, boundaries, incarnations,
-runs, breakers, usage, or the explicitly planned lookup of one authorization
-record by its typed ID. The last surface is a separate implementation child;
-declaring its metadata does not make it an available HTTP endpoint.
+runs, breakers, usage, or lookup of one authorization record by its typed ID. The
+last surface is implemented by `.2.2.3`, using the same named admission helper.
 
 Migration 0055 gives existing rows and old writers an explicit legacy_unspecified
 default. New ordinary writers supply boundary_checked themselves. Core JSON
@@ -61,9 +60,17 @@ selected parent's original status and grant selector. It commits before response
 queries; successful body shapes remain unchanged. Extraction and authority/audit
 storage failures have no confirmed receipt. A later response-query failure retains
 its already committed receipt with a safe storage-error response. The owned HTTP
-controls force both failure boundaries and verify recovery. `.2.2.3` will add one
-tenant-scoped receipt lookup, gated and audited as an explicit eighth inspection
-purpose. There is no unbounded audit-list expansion in this work.
+controls force both failure boundaries and verify recovery. The eighth purpose
+serves GET /v1/admin/authorization-records/{record_id}?tenant_id=ten_…. It filters
+tenant_id and record_id in SQL before strict decoding. The existing public storage
+loader stays unscoped and is not an authorization boundary; HTTP uses a private
+scoped loader only after committing its admission. Absent and foreign records
+(even malformed ones) return identical generic 404 responses. Malformed own
+evidence returns safe 500 with its committed admission receipt. The complete
+earlier record is returned under authorization; the header names one separate new
+admission, with no recursive fetching. Typed path/tenant IDs and a strict query
+object refuse malformed, unknown and duplicate query fields before admission.
+There is no unbounded audit-list expansion or new CLI command in this work.
 
 A record describes admission under a named evaluator. It does not prove a domain
 effect, delivery of every response byte, or transaction/revocation serialization.

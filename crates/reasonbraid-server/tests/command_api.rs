@@ -2255,7 +2255,383 @@ async fn get_with_inspection_receipt(
         .headers()
         .get(INSPECTION_RECEIPT_HEADER)
         .map(|value| value.to_str().unwrap().to_string());
-    (status, response.json().await.unwrap(), receipt)
+    let text = response.text().await.unwrap();
+    let body = serde_json::from_str(&text).unwrap_or(Value::String(text));
+    (status, body, receipt)
+}
+
+#[tokio::test]
+async fn authorization_receipt_lookup_is_tenant_scoped_and_audits_exact_named_reads() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"lookup-owner"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({"kind":"role","name":"lookup-role","tenant_id":tenant}),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let (status, outsider) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"lookup-outsider"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{outsider}");
+    let foreign_tenant = outsider["tenant_id"].as_str().unwrap();
+    let foreign_principal = outsider["principal_id"].as_str().unwrap();
+    sqlx::query("UPDATE authority_grants SET actions = '[\"tenant_admin\"]' WHERE grant_id = $1")
+        .bind(role["grant_id"].as_str().unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, _, requested) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let requested = requested.unwrap();
+    let expected = serde_json::to_value(
+        reasonbraid_server::load_authorization_record(&pool, &requested)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    let path = format!("/v1/admin/authorization-records/{requested}?tenant_id={tenant}");
+    let mut admissions = std::collections::BTreeSet::new();
+    for boundary_status in ["active", "suspended", "revoked"] {
+        sqlx::query("UPDATE enrollment_boundaries SET status = $1 WHERE tenant_id = $2")
+            .bind(boundary_status)
+            .bind(tenant)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (kind, identity) in [("human", &owner), ("role", &role)] {
+            let caller = identity["principal_id"].as_str().unwrap();
+            let before: i64 = sqlx::query_scalar("SELECT count(*) FROM authorization_records")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            let (status, body, admission) =
+                get_with_inspection_receipt(&client, &base, &path, caller).await;
+            assert_eq!(status, 200, "{kind}/{boundary_status}: {body}");
+            assert_eq!(body, json!({"tenant_id":tenant,"authorization":expected}));
+            let admission = admission.expect("lookup names its own committed admission");
+            assert_ne!(admission, requested);
+            assert!(admissions.insert(admission.clone()));
+            let record = reasonbraid_server::load_authorization_record(&pool, &admission)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(record.decision, reasonbraid_core::Decision::Allowed);
+            assert_eq!(
+                serde_json::to_value(record.evaluation).unwrap(),
+                json!({
+                    "kind":"tenant_admin_inspection",
+                    "principal":{"kind":kind,"id":caller},
+                    "inspection":{"kind":"authorization_record","record_id":requested},
+                    "boundary_status":boundary_status,
+                    "grant_selector":{"kind":"tenant_wide"}
+                })
+            );
+            let after: i64 = sqlx::query_scalar("SELECT count(*) FROM authorization_records")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(after, before + 1, "one admission, no recursive lookup");
+        }
+    }
+    let (status, _, foreign_record) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={foreign_tenant}"),
+        foreign_principal,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let foreign_record = foreign_record.unwrap();
+    // Malformed foreign evidence must be filtered before strict decoding. Restore
+    // it before asserting responses, so the fault cannot affect later fixtures.
+    sqlx::query(
+        "UPDATE authorization_records SET decision = 'owned-malformed' WHERE record_id = $1",
+    )
+    .bind(&foreign_record)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let missing = reasonbraid_core::AuthorizationRecordId::new().to_string();
+    let hidden = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/authorization-records/{foreign_record}?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    let absent = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/authorization-records/{missing}?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    sqlx::query("UPDATE authorization_records SET decision = 'allowed' WHERE record_id = $1")
+        .bind(&foreign_record)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(hidden.0, 404, "{}", hidden.1);
+    assert_eq!(absent.0, 404, "{}", absent.1);
+    assert_eq!(
+        hidden.1, absent.1,
+        "foreign and absent evidence have one refusal"
+    );
+    assert_eq!(
+        hidden.1,
+        json!({"code":"not_found","message":"authorization record not found"})
+    );
+    for (receipt, target) in [(hidden.2, &foreign_record), (absent.2, &missing)] {
+        let record = reasonbraid_server::load_authorization_record(&pool, &receipt.unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.tenant_id.to_string(), tenant);
+        assert_eq!(record.decision, reasonbraid_core::Decision::Allowed);
+        assert_eq!(
+            serde_json::to_value(record.evaluation).unwrap()["inspection"],
+            json!({"kind":"authorization_record","record_id":target})
+        );
+    }
+    for target in [&requested, &missing] {
+        let (status, body, receipt) = get_with_inspection_receipt(
+            &client,
+            &base,
+            &format!("/v1/admin/authorization-records/{target}?tenant_id={tenant}"),
+            foreign_principal,
+        )
+        .await;
+        assert_eq!(status, 403, "{body}");
+        assert!(body.get("authorization").is_none());
+        let denied_receipt = receipt.unwrap();
+        let record = reasonbraid_server::load_authorization_record(&pool, &denied_receipt)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            record.decision,
+            reasonbraid_core::Decision::Denied { .. }
+        ));
+        assert_eq!(record.tenant_id.to_string(), tenant);
+        // The tenant's administrator can inspect the denied attempt too. The
+        // returned record keeps the original outsider and refusal unchanged.
+        let (status, body, lookup_receipt) = get_with_inspection_receipt(
+            &client,
+            &base,
+            &format!("/v1/admin/authorization-records/{denied_receipt}?tenant_id={tenant}"),
+            principal,
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["authorization"], serde_json::to_value(record).unwrap());
+        assert_ne!(lookup_receipt.as_deref(), Some(denied_receipt.as_str()));
+        assert!(lookup_receipt.is_some());
+    }
+    let (status, body, receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/authorization-records/{requested}?tenant_id={foreign_tenant}"),
+        foreign_principal,
+    )
+    .await;
+    assert_eq!(status, 404, "{body}");
+    assert_eq!(body, hidden.1);
+    assert!(receipt.is_some());
+    let unchanged = serde_json::to_value(
+        reasonbraid_server::load_authorization_record(&pool, &requested)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        unchanged, expected,
+        "inspection never rewrites its source record"
+    );
+}
+
+#[tokio::test]
+async fn authorization_receipt_lookup_preserves_legacy_and_refuses_corrupt_evidence() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"legacy-lookup"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    let (status, _, requested) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let requested = requested.unwrap();
+    sqlx::query("UPDATE authorization_records SET evaluation = '{\"kind\":\"legacy_unspecified\"}' WHERE record_id = $1")
+        .bind(&requested).execute(&pool).await.unwrap();
+    let path = format!("/v1/admin/authorization-records/{requested}?tenant_id={tenant}");
+    let (status, legacy, receipt) =
+        get_with_inspection_receipt(&client, &base, &path, principal).await;
+    assert_eq!(status, 200, "{legacy}");
+    assert_eq!(
+        legacy["authorization"]["evaluation"],
+        json!({"kind":"legacy_unspecified"})
+    );
+    assert!(receipt.is_some());
+    sqlx::query(
+        "UPDATE authorization_records SET decision = 'owned-malformed' WHERE record_id = $1",
+    )
+    .bind(&requested)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (status, body, receipt) =
+        get_with_inspection_receipt(&client, &base, &path, principal).await;
+    sqlx::query("UPDATE authorization_records SET decision = 'allowed' WHERE record_id = $1")
+        .bind(&requested)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, 500, "{body}");
+    assert_eq!(
+        body,
+        json!({"code":"dependency_unavailable","message":"internal server error"})
+    );
+    let admission = reasonbraid_server::load_authorization_record(&pool, &receipt.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(admission.decision, reasonbraid_core::Decision::Allowed);
+    assert_eq!(
+        serde_json::to_value(admission.evaluation).unwrap()["inspection"],
+        json!({"kind":"authorization_record","record_id":requested})
+    );
+    let (status, recovered, _) =
+        get_with_inspection_receipt(&client, &base, &path, principal).await;
+    assert_eq!(status, 200, "{recovered}");
+    assert_eq!(recovered, legacy);
+}
+
+#[tokio::test]
+async fn authorization_receipt_lookup_enforces_eligibility_and_extraction() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({"kind":"human","name":"ineligible-lookup"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap();
+    let principal = owner["principal_id"].as_str().unwrap();
+    let grant = owner["grant_id"].as_str().unwrap();
+    let (status, _, requested) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let requested = requested.unwrap();
+    let path = format!("/v1/admin/authorization-records/{requested}?tenant_id={tenant}");
+    let (status, _, _) = get_with_inspection_receipt(&client, &base, &path, principal).await;
+    assert_eq!(status, 200, "eligible positive control");
+    for (grant_status, selector) in [
+        ("revoked", json!({"kind":"tenant_wide"})),
+        ("active", json!({"kind":"threads","threads":[]})),
+    ] {
+        sqlx::query("UPDATE authority_grants SET status = $1, selector = $2 WHERE grant_id = $3")
+            .bind(grant_status)
+            .bind(selector)
+            .bind(grant)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let (status, body, receipt) =
+            get_with_inspection_receipt(&client, &base, &path, principal).await;
+        assert_eq!(status, 403, "{body}");
+        assert!(body.get("authorization").is_none());
+        let admission = reasonbraid_server::load_authorization_record(&pool, &receipt.unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            admission.decision,
+            reasonbraid_core::Decision::Denied { .. }
+        ));
+    }
+    sqlx::query("UPDATE authority_grants SET status = 'active', selector = '{\"kind\":\"tenant_wide\"}' WHERE grant_id = $1")
+        .bind(grant).execute(&pool).await.unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM authorization_records")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    for (path, caller, expected_status) in [
+        (
+            format!("/v1/admin/authorization-records/not-a-record?tenant_id={tenant}"),
+            principal,
+            400,
+        ),
+        (
+            format!("/v1/admin/authorization-records/{requested}?tenant_id=not-a-tenant"),
+            principal,
+            400,
+        ),
+        (format!("{path}&unknown=value"), principal, 400),
+        (format!("{path}&tenant_id={tenant}"), principal, 400),
+        (path.clone(), "not-a-principal", 401),
+    ] {
+        let (status, _, receipt) = get_with_inspection_receipt(&client, &base, &path, caller).await;
+        assert_eq!(status, expected_status);
+        assert!(receipt.is_none());
+    }
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM authorization_records")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "extraction failures cannot invent admissions"
+    );
+    let (status, body, _) = get_with_inspection_receipt(&client, &base, &path, principal).await;
+    assert_eq!(status, 200, "restored eligible authority: {body}");
 }
 
 #[tokio::test]
@@ -2445,8 +2821,19 @@ async fn inspection_audit_failure_refuses_reads_and_recovers_without_fabricated_
             "normal admission failed: {normal_status} {normal_body}"
         ));
     }
+    let ordinary_record: String =
+        sqlx::query_scalar("SELECT record_id FROM authorization_records WHERE tenant_id = $1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let mut routes: Vec<String> = TENANT_INSPECTION_ROUTES
+        .iter()
+        .map(|route| (*route).into())
+        .collect();
+    routes.push(format!("authorization-records/{ordinary_record}"));
     for caller in [principal, outsider["principal_id"].as_str().unwrap()] {
-        for route in TENANT_INSPECTION_ROUTES {
+        for route in &routes {
             let (status, body, receipt) = get_with_inspection_receipt(
                 &client,
                 &base,
@@ -2490,6 +2877,22 @@ async fn inspection_audit_failure_refuses_reads_and_recovers_without_fabricated_
     assert_eq!(body["breaker"]["threshold"]["calls"], 10);
     if receipt.is_none() {
         failures.push("recovery has no committed receipt".into());
+    }
+    let (status, body, receipt) = get_with_inspection_receipt(
+        &client,
+        &base,
+        &format!("/v1/admin/authorization-records/{ordinary_record}?tenant_id={tenant}"),
+        principal,
+    )
+    .await;
+    if status != 200
+        || receipt.is_none()
+        || body["authorization"]["record_id"] != ordinary_record
+        || body["authorization"]["evaluation"] != json!({"kind":"boundary_checked"})
+    {
+        failures.push(format!(
+            "receipt lookup recovery: {status} {body}, receipt={receipt:?}"
+        ));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

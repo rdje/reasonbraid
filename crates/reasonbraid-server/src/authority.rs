@@ -39,7 +39,7 @@ mod records;
 mod selection;
 
 pub use records::load_authorization_record;
-pub(crate) use records::load_thread_authorization_records;
+pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 
 /// The authorization context of one command: the authenticated actor, the grant
 /// holder (the actor, or the delegating subject's principal), the delegated subject

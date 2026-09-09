@@ -60,9 +60,9 @@ remains unchanged. These lookups do not establish transaction-wide revocation or
 The separate frozen-tenant administrative read path now uses the same candidate
 selection with a boundary-status exception described below. Under `.3.3.3.2.1`,
 all 40 live authority/command API tests, ten pure controls and strict focused lint
-pass; all results are consumed and the owned cluster removed. The seven reads now
-commit inspection admissions and expose receipts as described below; exact scoped
-receipt lookup remains `.3.3.3.2.2.3`. Delegation depth, consent and cached-decision freshness remain `.3.4`;
+pass; all results are consumed and the owned cluster removed. The seven original
+reads and the exact tenant-scoped receipt lookup now commit inspection admissions
+and expose receipts as described below. Delegation depth, consent and cached-decision freshness remain `.3.4`;
 tenant authority/effect transaction ordering remains `.3.3.4`.
 
 ## Subject JSON and delegation inputs
@@ -162,9 +162,8 @@ consuming them. The migration preserves the other historical fields unchanged.
 The inspection metadata names the direct human/role principal and inspection,
 retaining the selected parent's actual status and grant selector. Source references
 remain in the enclosing record. Absent authority sources carry absent references
-and absent status/scope evidence. A planned exact receipt lookup has a typed
-record ID in its inspection name; this type declaration does not expose a new
-HTTP endpoint yet.
+and absent status/scope evidence. The exact receipt lookup records the requested
+typed record ID in its inspection name, separately from its own admission ID.
 
 The metadata for an inspection admission is explicit, for example:
 
@@ -195,9 +194,9 @@ existing unpaginated thread view; this change adds no general audit list.
 
 Evaluation provenance describes admission. It does not prove an effect or that
 the entire response reached the caller. The existing policy digest does not bind
-this additional field or every source fact. The seven HTTP reads now return
-admission receipts; exact tenant-scoped receipt lookup remains `.3.3.3.2.2.3`.
-Ordering and effect audits remain `.3.3.4`.
+this additional field or every source fact. The eight named HTTP reads return
+admission receipts, with exact tenant-scoped lookup described below. Ordering and
+effect audits remain `.3.3.4`.
 
 ## Administrative authority
 
@@ -212,7 +211,7 @@ Both windows must be nonempty and currently valid: the start is inclusive and
 expiration is exclusive. Revoking the grant, expiring either window or narrowing
 the parent below the grant removes eligibility. No delegation enters this path.
 
-These seven existing GET routes use the exception:
+These eight named GET routes use the exception:
 
 | Route under `/v1/admin/` | Own-tenant inspection |
 | --- | --- |
@@ -223,8 +222,10 @@ These seven existing GET routes use the exception:
 | `runs` | Recorded runs |
 | `breakers` | Spend-breaker state |
 | `usage` | Usage ledger summary |
+| `authorization-records/{record_id}` | One known authorization record in this tenant |
 
-Each takes `?tenant_id=ten_…` and retains its existing response shape. For example,
+Each takes `?tenant_id=ten_…`; the seven original routes retain their response
+shapes, and the new exact lookup is described below. For example,
 after freezing Alice's boundary, Alice can still call
 `GET /v1/admin/boundaries?tenant_id=ten_…` with a structurally valid unexpired
 grant. A grant limited to one thread cannot list these tenant-wide inventories.
@@ -265,6 +266,57 @@ audit-insert failure and a later query failure with recovery. All results and
 owned-cluster shutdown are consumed. Thread/audit inspection, cross-domain
 receipts and process metrics retain their separate gates; the exception does not
 extend to them or to site registries.
+
+### Read an authorization receipt
+
+An eligible tenant administrator can retrieve a known own-tenant authorization
+record, including a denial or a record made before provenance was recorded:
+
+```bash
+curl -i "$RB_URL/v1/admin/authorization-records/$RECORD_ID?tenant_id=$TENANT_ID" \
+  -H "x-reasonbraid-principal: $PRINCIPAL_ID"
+```
+
+Set `RECORD_ID` to the complete `authz_…` value from an earlier receipt. A successful
+response contains `tenant_id` and `authorization`, the complete canonical record.
+The lookup preserves its record ID, actor, delegated subject, actual source
+references, action, target, decision/reason, evaluation, policy digest/version
+and decision time. Historical `evaluation.kind` remains `legacy_unspecified`;
+an inspection does not relabel or rewrite the earlier record.
+
+| Location | Meaning |
+| --- | --- |
+| Response body `authorization.record_id` | The record requested in the URL. |
+| Response body `authorization.decision` | That earlier request's decision, which can be denied even when this lookup succeeds. |
+| Response header `x-reasonbraid-authorization` | A new admission for this lookup. |
+| New admission's `evaluation.inspection` | `{"kind":"authorization_record","record_id":"authz_…"}` naming the requested record. |
+
+Each lookup creates one new admission. It returns the requested evidence without
+automatically fetching the new admission; inspecting that separate receipt takes
+another explicit request. The same grant/parent/tenant/scope/window checks apply
+to direct human and role administrators, including the boundary-status exception.
+Possessing a receipt ID alone grants no access to its tenant.
+
+| Request outcome | Response |
+| --- | --- |
+| Eligible administrator, known record in the requested tenant | HTTP 200, complete record and a new admission receipt. |
+| Eligible administrator, absent or foreign record ID | Identical HTTP 404 `not_found`, message `authorization record not found`, with its new admission receipt. |
+| Ineligible principal for the requested tenant | HTTP 403 and a committed denial receipt before evidence lookup. |
+| Malformed own-tenant record | Safe HTTP 500 `dependency_unavailable` with the lookup's committed admission receipt. |
+| Malformed record/tenant ID, unknown or duplicate query field | HTTP 400 extraction refusal without an admission receipt. |
+
+Tenant and record ID are filtered together before decoding. Even malformed foreign
+evidence has the same missing-record response. Failed audit persistence uses the
+same no-data/no-unconfirmed-receipt rule as the other seven reads. This endpoint
+retrieves one ID; it adds no list, pagination or query language. The `rb` CLI has no
+receipt command yet; use the HTTP call above. Admission remains separate from
+response delivery and revocation serialization. Under
+`SIGNOFF-REPAIR.3.3.3.2.2.3`, 18 live authority tests and 30 HTTP tests pass;
+the final HTTP rerun also verifies retrieval of an outsider's denied attempt by
+the tenant administrator. Strict lint passes, all results are consumed and the
+owned clusters are removed.
+
+### Shared registries
 
 The shared adapter and region HTTP handlers use the separate
 [site-authority service](site-authority.md): explicit operator-issued grants,

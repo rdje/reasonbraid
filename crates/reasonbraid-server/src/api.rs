@@ -453,6 +453,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(revoke_boundary),
         )
         .route("/v1/admin/grants", get(list_grants))
+        .route(
+            "/v1/admin/authorization-records/{record_id}",
+            get(inspect_authorization_record),
+        )
         .route("/v1/admin/boundaries", get(list_boundaries))
         .route("/v1/admin/incarnations", get(list_incarnations))
         .route("/v1/admin/runs", get(list_runs))
@@ -4918,6 +4922,44 @@ where
         }
     };
     Ok(([("x-reasonbraid-authorization", record_id)], response).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthorizationRecordQuery {
+    tenant_id: TenantId,
+}
+
+/// One known record in the admitted tenant. Its response receipt names a separate
+/// inspection admission, never a recursive retrieval of that new admission.
+async fn inspect_authorization_record(
+    State(state): State<Arc<ApiState>>,
+    Path(record_id): Path<reasonbraid_core::AuthorizationRecordId>,
+    Query(q): Query<AuthorizationRecordQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::AuthorizationRecord { record_id },
+        |pool| async move {
+            let record = authority::load_tenant_authorization_record(&pool, q.tenant_id, record_id)
+                .await?
+                .ok_or_else(|| ControlApiError::not_found("authorization record not found"))?;
+            let authorization = serde_json::to_value(record).map_err(|error| {
+                ControlApiError::internal_with_log(format!(
+                    "authorization record encoding: {error}"
+                ))
+            })?;
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "authorization": authorization,
+            })))
+        },
+    )
+    .await
 }
 
 /// The tenant's grants, newest first — the inspection surface the revocation

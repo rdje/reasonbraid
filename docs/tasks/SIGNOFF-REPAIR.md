@@ -226,11 +226,11 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.3.3.3 — Actual-parent and usable-grant selection
 
-- Status: `active`; bounded children separate normal command authority from the approved frozen-tenant administrative read path.
+- Status: `done`; all bounded command-selection and frozen-read/provenance/readback children are complete. Final child REPAIR-0019 closes the parent.
 - Owns: server authority loaders and candidate evaluation for callers and delegated subjects, actual-parent joins and deterministic usable-grant selection; the separate frozen-own-tenant administrative read helper must apply parent/tenant/subject/selector/window checks while preserving its boundary-status exception.
 - Acceptance: a new unrelated boundary cannot rearm old grants; a newer ineligible grant cannot shadow an eligible one; delegated selection checks the actual authority source and requested scope. Record selected and refused evidence without fabricating a live parent.
-- Verification: pending.
-- Commit: pending.
+- Verification: all child controls passed with consumed results; latest readback qualification passes 18 authority + 30 HTTP tests and strict lint, rc=0.
+- Commit: child commits REPAIR-0014 through REPAIR-0019.
 
 ##### SIGNOFF-REPAIR.3.3.3.1 — Select usable command grants with actual parents
 
@@ -252,10 +252,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.3.3.3.2 — Preserve frozen-tenant reads with structurally valid authority
 
-- Status: `active`; split structural read authorization from unambiguous inspection audit provenance.
+- Status: `done`; structural eligibility and all three inspection-evidence children are complete through REPAIR-0019.
 - Owns: the separate administrative read helper's actual-parent, tenant/subject, action/selector and validity checks; usable-grant selection and attributable inspection evidence, preserving the approved boundary-status exception.
 - Acceptance: an eligible own-tenant administrator can inspect after its actual boundary is frozen; foreign, widened, expired and wrong-parent authority cannot inspect, and an ineligible newer grant does not shadow valid inspection authority. No read exception authorizes a write or site registry operation.
-- Verification / commit: pending.
+- Verification / commit: all child evidence consumed; latest readback qualification passes 18 authority + 30 HTTP tests and strict lint, rc=0. REPAIR-0019 closes this scope.
 
 ###### SIGNOFF-REPAIR.3.3.3.2.1 — Bound frozen-tenant read eligibility
 
@@ -272,11 +272,11 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.3.3.3.2.2 — Distinguishable inspection authority audit
 
-- Status: `active`; predecessor `90e8486` committed with all thirteen doctrines green; tree clean, brief zero/untracked and prior consumed project-job census handoff: OK before activation. No background result remains.
+- Status: `done`; all three bounded provenance, receipt-production and scoped-readback children complete through REPAIR-0019.
 - Owns: an explicit read-inspection purpose in durable authority evidence, exact source references, API/readback/documentation and compatibility of historical records. Choose a bounded schema/API slice before implementation; the present authorization record's tenant_admin action alone cannot distinguish the frozen-read exception from a write allowance.
 - First action: read the record schema, all record producers/consumers and HTTP inspection/audit response contracts before choosing an additive evidence shape. Keep legacy provenance explicit rather than infer that an old tenant_admin row authorized a write or inspection. The seven repaired routes, authorization service, necessary migration/type/readback controls and corresponding book/live/task synchronization are owned here; any larger inventory API or transaction-ordering expansion must be split before implementation.
 - Acceptance: inspection allow/deny decisions are attributable and visibly distinguishable from write authority, including actual frozen-parent status and the granted scope. Historical records keep honest provenance; audit failure refuses inspection admission. A record describes authorization, not successful delivery of every response byte. Preserve `.3.3.3.2.1` eligibility and no authority expansion.
-- Verification / commit: pending.
+- Verification / commit: all child evidence consumed; latest readback qualification passes 18 authority + 30 HTTP tests and strict lint, rc=0. REPAIR-0019 closes this scope.
 
 ###### SIGNOFF-REPAIR.3.3.3.2.2.1 — Explicit evaluation provenance and safe record decoding
 
@@ -317,10 +317,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.3.3.3.2.2.3 — Tenant-scoped authorization receipt readback
 
-- Status: `pending`.
+- Status: `done`; REPAIR-0019. Predecessor c5b52fe was clean with brief zero/untracked and consumed job census before activation.
 - Owns: one explicit GET receipt lookup by record ID and tenant, an eighth named own-tenant inspection purpose using the same bounded eligibility and admission audit. No unbounded list or query language. Exact actual-source/evaluation metadata visible in the response; foreign/missing records share a refusal without exposing their contents. Its own admission has a separate receipt, so each request produces one new record rather than recursively reading it.
+- Design before implementation: GET /v1/admin/authorization-records/{record_id}?tenant_id=ten_… uses a typed AuthorizationRecordId and the same named inspection helper. Add a crate-private exact storage lookup with both tenant_id and record_id SQL predicates before decoding; the existing public unscoped storage API is unchanged. Return the strict canonical AuthorizationDecisionRecord JSON under an authorization field with tenant_id, retaining all source/evaluation facts. An admitted missing or foreign ID returns the same generic 404 not_found with its real admission receipt; an ineligible principal is denied and audited before looking up evidence. Malformed record storage returns safe 500 with the committed admission receipt. No list endpoint, CLI command, schema change, recursive fetch, serialized response snapshot or site authority expansion.
+- Control plan: real HTTP human/role readback across active/suspended/revoked parent status, source record and one-new-admission counts/IDs/purpose; unknown and foreign IDs (including deliberately malformed foreign content) indistinguishable, proving tenant filtering before decoding. Foreign principal to owner tenant gets 403; own-tenant administrator asking for foreign record gets generic 404. Grant revocation and invalid scope refuse; malformed IDs refuse extraction without new records. Legacy provenance remains honest and malformed own evidence returns safe 500 plus receipt, followed by restoration/recovery. Extend the scoped audit-fault matrix to the eighth route and verify no lookup on failed admission. Baseline controls run before adding the route; new-route absence is a missing feature, not a cross-tenant exploit claim.
+- Baseline: guarded command_api run-wayvx3kb returned rc=101, 26 passed/four failed; build 6.00s and execution 14.65s. All three new readback controls stopped at an eligible lookup returning plain route-not-found 404. The extended audit-fault control observed that same absent route for both principals and recovery; the existing seven routes still passed their audit-failure controls. This proves unavailable readback, not a bypass in an existing route. Fault DDL restored; consumed runner stopped. Census: 1,608 files / 51,845,435 bytes, device 16777244; command-1.log SHA-256 8e1327fc6954cf434f41643f35b69310b78adbd928af50708477a703a2f85c6e; postgres.log fb68d3b498ff8a1f3afabc99a6389c47d82c1c43603d6ea435c630eb82b84bd5.
+- Input refinement before handler implementation: the new endpoint has a private strict query type containing only tenant_id; unknown or duplicate query parameters and malformed typed path/tenant IDs fail extraction without admissions. Existing seven-route query compatibility is unchanged.
 - Acceptance: an eligible frozen administrator can inspect a known own-tenant receipt; a foreign administrator or wrong tenant cannot read it; historical records remain legacy_unspecified. Book includes API/header examples and current limits. No new site authority or general metrics permission.
-- Verification / commit: pending.
+- Verification / commit: all child evidence consumed; latest readback qualification passes 18 authority + 30 HTTP tests and strict lint, rc=0. REPAIR-0019 closes this scope.
+
+- Final evidence: guarded run-wx8pvk0s returned rc=0, 18 authority tests (build 30.01s including lock wait; execution 0.27s) and 30 command API tests (build 5.73s; execution 14.17s). The final test refinement also retrieves the outsider's denied attempt through the owner HTTP lookup without changing its facts. Current command API run-ckr0y1uq returned rc=0, all 30 passed (build 6.07s, execution 14.28s); final strict server/lib/authority/command_api Clippy passed, rc=0 (5.00s). Both successful clusters stopped/removed and every tool result consumed. Production source is identical across these two runs; schema/evaluator rules are unchanged. Logs/exit codes are target/receipt-readback-controls/{baseline,live,lint,final_http,final_lint}.{log,exit}.
+- Baseline cleanup: exact stopped receipt/path/device, unchanged log hashes, 1,608 files / 51,845,435 bytes, absent postmaster.pid, no symlinks and no matching PostgreSQL process verified. Only run-wayvx3kb removed; residue absent, rc=0.
+- promotion: declined (bounded implementation of the existing evaluation-provenance decision, updated with exact lookup and refusal semantics).
 
 #### SIGNOFF-REPAIR.3.3.4 — Tenant authority serialization and effect auditing
 
@@ -664,13 +672,19 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — ten `authority::evaluation_tests` and strict server/lib/authority/command_api Clippy passed, rc=0. Existing all-route boundary-status, invalid-authority, usable-older-grant, ordinary command/revocation and thread-audit controls pass within the 45-test run. All results and runner shutdown consumed; exact baseline cleanup and successful-run residue check passed, rc=0. Schema/evaluator rules and valid success bodies are unchanged. `cargo fmt --all --check`, `git diff --check`, `make book` and rendered receipt/failure/limit inspection passed, rc=0. No full CI or push.
 - [x] **FIX / LOCKSTEP** — common selected-record persistence supplies explicit evaluation from two closed entrypoints; HTTP query errors retain confirmed receipts. `git diff` review verifies all seven wrappers and matched tests. Decision, book, qualification, roadmap, live status and frontier distinguish completed receipt production from pending scoped lookup and transaction serialization. Qualification categories are unchanged.
 
+## Leaf .3.3.3.2.2.3 closure evidence
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — baseline `scripts/run_pg_tests.sh command_api` returned rc=101, 26 passed/four failed. Eligible exact readback, legacy and eligibility controls all observed route-not-found 404; the audit-fault/recovery matrix also found no eighth route. The router had no exact receipt endpoint, while the public storage-only loader did not establish tenant authorization. This is a reproduced missing feature, not an existing-route bypass.
+- [x] **ADDRESSED (verified)** — corrected `scripts/run_pg_tests.sh authority command_api` passed 48 live tests, rc=0; final command_api rerun passed 30, rc=0, including denied-record HTTP retrieval. Own-tenant human/role readback works with active/suspended/revoked parents; each lookup creates one new named admission and preserves the source record. Malformed foreign content and absent IDs share identical 404; ineligible callers get audited 403; malformed own evidence returns safe 500 with its committed receipt and recovers. Legacy provenance remains unspecified. All eight routes refuse audit failure and recover, with no fabricated receipt or protected response.
+- [x] **NO REGRESSION** — final strict server/lib/authority/command_api Clippy passed, rc=0; all 18 authority and 30 final HTTP controls passed. Typed path/tenant, duplicate/unknown query and malformed-principal refusals leave record counts unchanged. Existing seven-route, command, revocation, audit and selected-record controls remain green. All verification and successful-run shutdown consumed; exact stopped baseline cleanup passed, rc=0. `cargo fmt --all --check`, `git diff --check`, `make book` and rendered receipt/legacy/refusal/limit inspection passed, rc=0; all three cluster residue checks passed. No full CI or push.
+- [x] **FIX / LOCKSTEP** — tenant and record predicates precede strict decode in the private loader; the shared named helper commits admission before lookup. `git diff` review verifies the route, typed input and unchanged public storage API. Book API/header/denial examples, decisions, live status and tree frontier distinguish completed inspection readback from pending effect/transaction ordering. No schema, CLI command, list inventory or qualification category expansion.
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.3.2.2.3` | `pending` | tenant-scoped receipt readback |
-| 2 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
-| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.4` | `pending` | serialize tenant authority and final effect audit |
+| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -694,6 +708,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.3.2.2.3`: `REASONBRAID-REPAIR-0019 (leaf SIGNOFF-REPAIR.3.3.3.2.2.3): expose audited tenant-scoped authorization receipt readback`.
 
 - `SIGNOFF-REPAIR.3.3.3.2.2.2`: `REASONBRAID-REPAIR-0018 (leaf SIGNOFF-REPAIR.3.3.3.2.2.2): commit administrative inspection admissions and return receipts`.
 

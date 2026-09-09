@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — Tenant filtering precedes interpretation of receipt evidence
+
+- The new exact HTTP lookup commits its named inspection admission, then filters tenant and record ID together before using the strict decoder. A deliberately malformed foreign record produces the same generic 404 as an absent ID; malformed own evidence produces a safe 500 with the already committed admission receipt. Human/role frozen readback, original denied/legacy records and one-new-admission counts are verified through HTTP. All 18 live authority tests and 30 HTTP tests pass, with strict lint; all results and shutdown are consumed.
+- promotion: declined (bounded completion of the existing evaluation-provenance decision, whose lookup contract and evidence are updated); owner `SIGNOFF-REPAIR.3.3.3.2.2.3`.
+
 ## _(2026-09-09)_ — Inspection receipts identify committed admission, including query failure
 
 - Seven HTTP reads previously returned 14 eligible human/role responses and seven authority denials without any inspection record. A scoped audit-insert fault had no effect because the helper never wrote evidence. The helper now shares selected-record persistence with normal authorization, supplies explicit inspection provenance, and commits before fetching the response. Audit failure refuses access; a later query failure retains the actual committed receipt. The two fault controls restore their owned DDL and prove recovery. All 45 live authority/API tests, ten pure controls and strict lint pass; final results and shutdown are consumed.

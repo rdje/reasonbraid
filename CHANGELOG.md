@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Tenant-scoped authorization receipt readback (`SIGNOFF-REPAIR.3.3.3.2.2.3`)
+
+GET /v1/admin/authorization-records/{record_id}?tenant_id=ten_… returns one complete
+own-tenant record after a separately audited inspection admission. Tenant/record
+filtering precedes strict decoding; foreign and missing records share a generic
+404, including malformed foreign evidence. Human/role frozen access, denial and
+legacy readback, invalid authority/input, audit failure and malformed-own-record
+recovery pass. All 18 live authority tests and 30 HTTP tests pass, including the
+final denied-record readback control; strict lint passes. All results consumed,
+clusters removed. The inspection selection/provenance/readback children are now
+complete; tenant authority/effect serialization remains next.
+
 ## 2026-09-09 — Committed administrative inspection receipts (`SIGNOFF-REPAIR.3.3.3.2.2.2`)
 
 Seven administrative reads commit explicit allow/deny admissions with their actual

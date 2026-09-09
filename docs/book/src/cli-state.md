@@ -39,6 +39,10 @@ have no qualification claim here.
 
 ## Valid snapshots
 
+Version two adds the implemented [bootstrap recovery record schema](docs/book/src/cli-bootstrap-state.md).
+The CLI does not yet emit those records; stored pending work already blocks ordinary
+writers before HTTP. Version-zero/version-one wire shapes remain unchanged.
+
 A version-one snapshot looks like this:
 
 ```json
@@ -113,7 +117,9 @@ The library's run_thread_create entrypoint still accepts an explicitly supplied
 PrincipalRef and uses it as supplied. The CLI uses run_thread_create_named for
 fresh name resolution. Both entrypoints share the held-store implementation.
 StateFile::save remains a full-snapshot replacement API: callers that independently
-load and later save must not assume it merges a stale snapshot for them.
+load and later save must not assume it merges a stale snapshot for them. A save
+also refuses transitions that discard recovery metadata or replace an unresolved
+bootstrap identity.
 
 A failed request, local validation error or cancelled process releases local
 exclusion without publishing the in-memory change. A local publication error

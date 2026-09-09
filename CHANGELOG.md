@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Strict bootstrap recovery snapshots (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1`)
+
+Add version-two pending/completed recovery records with exact identity/outcome
+validation and preserved legacy wire shape. Retain a writer guard across multiple
+synchronized snapshots; refuse stale saves that lose pending intent and ordinary
+CLI dispatch while recovery is pending. Twenty-four selected controls, strict
+CLI lint and book checks pass; all results consumed, unique fixtures absent.
+Preserve the interrupted pre-main launch and successful unchanged-binary retry.
+Keyed enrollment, explicit resume, HTTP deadlines and restart qualification remain
+next; this schema prerequisite does not claim integrated client recovery.
+
 ## 2026-09-09 — Hold CLI state across HTTP writers (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.2`)
 
 Acquire and validate state before enrollment/thread-create dispatch; retain the

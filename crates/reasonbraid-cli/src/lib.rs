@@ -30,7 +30,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+mod bootstrap_state;
 mod state_store;
+
+pub use bootstrap_state::{
+    BootstrapOutcome, BootstrapRecovery, BootstrapRequest, CompletedBootstrap,
+};
 
 /// The control API's default dev-profile address (`rb-server`).
 pub const DEFAULT_SERVER: &str = "http://127.0.0.1:4310";
@@ -89,6 +94,9 @@ pub struct StateFile {
     pub principals: BTreeMap<String, StoredPrincipal>,
     #[serde(deserialize_with = "state_store::unique_map")]
     pub threads: BTreeMap<String, StoredThread>,
+    /// Version-two durable request/recovery data; absent from legacy snapshots.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap: Option<BootstrapRecovery>,
 }
 
 impl StateFile {

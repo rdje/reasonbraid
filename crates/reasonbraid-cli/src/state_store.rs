@@ -55,6 +55,13 @@ impl Writer {
         {
             let publication = unix::Publication::open(path)?;
             let state = publication.load()?;
+            if state
+                .bootstrap
+                .as_ref()
+                .is_some_and(|recovery| recovery.pending.is_some())
+            {
+                return Err(invalid("bootstrap recovery is pending; use the matching recovery operation before another writer"));
+            }
             Ok(Self { state, publication })
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -74,7 +81,8 @@ impl Writer {
         &mut self.state
     }
 
-    pub(crate) fn publish(self) -> Result<(), CliError> {
+    /// Publish an intermediate snapshot while retaining this operation's lock.
+    pub(crate) fn persist(&self) -> Result<(), CliError> {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             self.publication.publish(&codec::encode(&self.state)?)
@@ -85,6 +93,9 @@ impl Writer {
                 "verified local state storage currently requires Linux or macOS",
             ))
         }
+    }
+    pub(crate) fn publish(self) -> Result<(), CliError> {
+        self.persist()
     }
 }
 
@@ -102,10 +113,14 @@ mod codec {
     }
 
     fn validate(state: &StateFile) -> Result<(), CliError> {
-        if state.version > 1
+        if state.version > 2
             || (state.version == 0 && (!state.principals.is_empty() || !state.threads.is_empty()))
+            || (state.version == 2) != state.bootstrap.is_some()
         {
             return Err(invalid("unsupported or inconsistent local state version"));
+        }
+        if let Some(recovery) = &state.bootstrap {
+            crate::bootstrap_state::validate(recovery)?;
         }
         for principal in state.principals.values() {
             let id_valid = match principal.kind.as_str() {
@@ -144,6 +159,7 @@ mod codec {
         {
             return Err(invalid("local state and its records must be JSON objects"));
         }
+        crate::bootstrap_state::validate_shape(&shape, state.version)?;
         validate(&state)?;
         Ok(state)
     }
@@ -460,7 +476,11 @@ mod unix {
         fn publish(&self, held: &File, bytes: &[u8]) -> Result<(), CliError> {
             self.check_lock(held)?;
             // Refuse corrupt/linked current state instead of silently erasing it.
-            self.load()?;
+            let current = self.load()?;
+            // Validate continuity against the exact encoded replacement, before
+            // any working-file cleanup or write can change the old snapshot.
+            let replacement = decode(bytes)?;
+            crate::bootstrap_state::validate_transition(&current, &replacement)?;
             // NEXT is a reserved private working file, never a source of truth.
             // Only remove an owned, private, bounded single-link regular residue.
             if let Some(stale) = self.open_file(NEXT)? {
@@ -566,7 +586,9 @@ mod unix {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::state_store::Writer;
         use crate::StoredPrincipal;
+        use crate::{BootstrapOutcome, BootstrapRecovery, BootstrapRequest, CompletedBootstrap};
         use std::os::unix::fs::{symlink, PermissionsExt};
 
         struct Fixture(PathBuf);
@@ -606,6 +628,139 @@ mod unix {
                 },
             );
             state
+        }
+
+        fn pending_state() -> StateFile {
+            StateFile {
+                version: 2,
+                bootstrap: Some(BootstrapRecovery {
+                    pending: Some(BootstrapRequest {
+                        request_id: "req_00000000-0000-7000-8000-000000000001".into(),
+                        server: "http://127.0.0.1:4310".into(),
+                        name: "alice".into(),
+                        actions: None,
+                    }),
+                    completed: None,
+                }),
+                ..StateFile::default()
+            }
+        }
+
+        fn add_completed_outcome(value: &mut StateFile) {
+            let request = value.bootstrap.as_ref().unwrap().pending.clone().unwrap();
+            let principal = state("alice").principals.remove("alice").unwrap();
+            let outcome = BootstrapOutcome {
+                bootstrap_request_id: request.request_id.clone(),
+                kind: "human".into(),
+                name: request.name.clone(),
+                principal_id: principal.id.clone(),
+                tenant_id: principal.tenant.clone(),
+                boundary_id: format!("bnd_{}", principal.tenant),
+                grant_id: format!("grt_{}", principal.id),
+                replayed: false,
+            };
+            value.principals.insert(request.name.clone(), principal);
+            value.bootstrap.as_mut().unwrap().completed =
+                Some(CompletedBootstrap { request, outcome });
+        }
+
+        fn assert_exclusion(path: &Path) {
+            let probe = File::open(path.join(LOCK)).unwrap();
+            assert_eq!(
+                fs::flock(&probe, FlockOperation::NonBlockingLockExclusive),
+                Err(Errno::WOULDBLOCK)
+            );
+        }
+
+        #[test]
+        fn borrowed_publications_retain_one_guard_through_pending_completion_and_cleanup() {
+            let fixture = Fixture::new();
+            let path = fixture.dir();
+            let mut writer = Writer::open(&path).unwrap();
+            *writer.state_mut() = pending_state();
+            writer.persist().unwrap();
+            assert_exclusion(&path);
+            let before = std::fs::read(path.join(STATE)).unwrap();
+            writer
+                .state_mut()
+                .bootstrap
+                .as_mut()
+                .unwrap()
+                .pending
+                .as_mut()
+                .unwrap()
+                .name = "different".into();
+            assert!(writer.persist().is_err());
+            assert_eq!(std::fs::read(path.join(STATE)).unwrap(), before);
+            assert_exclusion(&path);
+            *writer.state_mut() = pending_state();
+            add_completed_outcome(writer.state_mut());
+            writer.persist().unwrap();
+            assert_exclusion(&path);
+            let published = StateFile::load(&path).unwrap();
+            assert_eq!(published.principals["alice"].kind, "human");
+            assert!(published.bootstrap.unwrap().pending.is_some());
+            writer.state_mut().bootstrap.as_mut().unwrap().pending = None;
+            writer.persist().unwrap();
+            assert_exclusion(&path);
+            drop(writer);
+            let reopened = Writer::open(&path).unwrap();
+            assert!(reopened
+                .state()
+                .bootstrap
+                .as_ref()
+                .unwrap()
+                .pending
+                .is_none());
+            assert!(reopened
+                .state()
+                .bootstrap
+                .as_ref()
+                .unwrap()
+                .completed
+                .is_some());
+        }
+
+        #[test]
+        fn intermediate_failure_preserves_the_recoverable_key_and_does_not_release_the_guard() {
+            for point in [
+                Checkpoint::Created,
+                Checkpoint::Written,
+                Checkpoint::FileSynced,
+                Checkpoint::Renamed,
+                Checkpoint::DirectorySynced,
+            ] {
+                let fixture = Fixture::new();
+                let path = fixture.dir();
+                state("original").save(&path).unwrap();
+                let mut writer = Writer::open(&path).unwrap();
+                let original_principals = writer.state().principals.clone();
+                *writer.state_mut() = pending_state();
+                writer.state_mut().principals = original_principals;
+                writer.publication.directory.fault = Some(point);
+                let error = writer.persist().unwrap_err();
+                assert_exclusion(&path);
+                let replacement =
+                    matches!(point, Checkpoint::Renamed | Checkpoint::DirectorySynced);
+                let observed = StateFile::load(&path).unwrap();
+                assert!(observed.principals.contains_key("original"));
+                assert_eq!(observed.bootstrap.is_some(), replacement);
+                assert_eq!(error.to_string().contains("unconfirmed"), replacement);
+                drop(writer);
+                if replacement {
+                    assert_eq!(
+                        observed.bootstrap.unwrap().pending.unwrap().request_id,
+                        "req_00000000-0000-7000-8000-000000000001"
+                    );
+                    let error = match Writer::open(&path) {
+                        Ok(_) => panic!("ordinary writer must refuse unresolved recovery"),
+                        Err(error) => error,
+                    };
+                    assert!(error.to_string().contains("pending"));
+                } else {
+                    assert!(Writer::open(&path).is_ok());
+                }
+            }
         }
 
         #[test]

@@ -43,7 +43,9 @@ Directories must remain stable while the store is in use.
 The encoded/read file limit is 8 MiB; read length is checked before and during
 reading, and serialization refuses before extending beyond the bound. Version
 zero is valid only with empty maps; version one preserves principals and threads.
-Unknown versions/fields, duplicate fields/map keys, sequence-shaped records,
+Version two adds the separately qualified recovery metadata in
+docs/decisions/2026-09-09_cli-bootstrap-state.md; legacy zero/one wire shapes
+remain unchanged. Unknown versions/fields, duplicate fields/map keys, sequence-shaped records,
 wrong principal kinds and malformed/noncanonical typed identities refuse. Older
 canonical UUID identity versions remain supported; UUIDv7 is a separate new
 bootstrap request-key requirement. Invalid existing bytes are preserved even

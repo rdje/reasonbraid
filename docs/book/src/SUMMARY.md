@@ -11,6 +11,7 @@
 - [Budgets](budget.md)
 - [The CLI](cli.md)
   - [CLI local state and recovery](cli-state.md)
+    - [Bootstrap recovery records](cli-bootstrap-state.md)
 - [The web console](web-ui.md)
 - [Deployment — local and LAN](deployment.md)
 - [The two-host demonstration](two-host-demo.md)

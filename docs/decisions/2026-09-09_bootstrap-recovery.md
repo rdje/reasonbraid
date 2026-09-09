@@ -90,15 +90,17 @@ request durably. A restart between those steps must recover the same original
 server outcome and complete cleanup. A normally completed new invocation gets a
 fresh key, preserving intentional distinct tenant creation.
 
-The current in-place state.json writer is insufficient for this contract. The CLI
-child owns atomic replacement and synchronization, interruption/restart controls,
-strict recovery-state decoding, concurrency exclusion and conflict handling for
-the existing enrollment/thread state-writer paths. It must preserve unrelated
-principal/thread state and refuse ambiguous or off-volume paths. Pending files,
-locks and temporary replacements are repository-derived on the repository volume;
-no home/tmp fallback. A live process lock must release on crash; stale lock files
-must not be treated as live ownership or silently deleted to bypass exclusion.
-Choose and qualify the concrete lock/publication mechanism in the CLI child.
+The predecessor's in-place state.json writer was insufficient. Atomic replacement,
+synchronization and complete writer exclusion are now qualified under .3.1.
+The selected version-two state schema keeps pending and the most recent completed
+request/outcome in the same atomic snapshot, with principal/outcome publication
+before pending cleanup. Explicit --resume-bootstrap will recover a retained
+identity after cleanup or lost CLI output, while normal fresh invocation stays
+distinct. Schema/publication support is the current .3.2.1 prerequisite; actual
+CLI key/resume behavior remains .3.2.2. See
+docs/decisions/2026-09-09_cli-bootstrap-state.md for format and transition rules.
+Recovery metadata, locks and replacements stay repository-derived on its volume;
+there is no home/temp fallback or stale-lock deletion bypass.
 
 ## Qualification boundary
 

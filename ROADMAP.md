@@ -34,8 +34,11 @@ storage `.3.3.4.3.3.3.3.1.1` passes twelve selected controls, all-target CLI str
 lint and book checks; results consumed, unique fixtures absent. Whole-writer
 integration `.3.3.4.3.3.3.3.1.2` passes nineteen selected controls, final strict
 lint and book checks; every result/shutdown is consumed and fixtures/owned cluster
-are absent. Durable CLI request persistence, bounded HTTP waits and restart
-qualification follow before issuance coverage reconciliation. Remaining application/
+are absent. Recovery schema `.3.3.4.3.3.3.3.2.1` passes twenty-four selected
+controls, strict lint and book checks; all results consumed and unique fixtures
+absent, with the interrupted host startup and unchanged-binary retry recorded.
+Keyed CLI/explicit recovery, bounded HTTP waits and restart qualification follow
+before issuance coverage reconciliation. Remaining application/
 effect and caller-policy paths stay explicitly owned.
 Historical phase closures do not supersede the open corrective findings or the
 G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.

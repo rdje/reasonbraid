@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-09_cli-bootstrap-state.md](docs/decisions/2026-09-09_cli-bootstrap-state.md) | decision | strict version-two pending/completed recovery records, preserved legacy wire shape and guarded publication continuity; explicit recovery handles output ambiguity, with CLI integration still pending |
 | [2026-09-09_cli-state-publication.md](docs/decisions/2026-09-09_cli-state-publication.md) | decision | bounded repository-volume CLI snapshots, strict preservation, process exclusion and synchronized atomic replacement; whole HTTP writer/actor lifetime is integrated; pending-request recovery remains staged |
 | [2026-09-09_bootstrap-recovery.md](docs/decisions/2026-09-09_bootstrap-recovery.md) | decision | actual uncertain bootstrap commit/readback; selected client-persisted request identity, guarded immutable outcome recovery and durable CLI publication; server qualified by 73 selected controls plus final eleven-control rerun/strict lint; durable CLI remains pending |
 | [2026-09-09_tenant-authority-transaction-order.md](docs/decisions/2026-09-09_tenant-authority-transaction-order.md) | decision | tenant guard/connection ownership, standalone authority writer ordering, live parent issuance, typed rollback errors, complete enrollment ordering/replay and public commit uncertainty; remaining application/final-effect integration stays staged |

@@ -578,3 +578,35 @@ async fn explicit_principal_entrypoint_obeys_exclusion_and_releases_usage_failur
     assert_eq!(state.principals["alice"].id, ALICE);
     assert_eq!(state.threads[NEW_THREAD].tenant_id, TENANT);
 }
+
+#[tokio::test]
+async fn a_different_pending_bootstrap_blocks_ordinary_writers_before_http() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let mut state = StateFile::load(&fixture.state_dir()).unwrap();
+    state.version = 2;
+    state.bootstrap = Some(reasonbraid_cli::BootstrapRecovery {
+        pending: Some(reasonbraid_cli::BootstrapRequest {
+            request_id: "req_00000000-0000-7000-8000-000000000001".into(),
+            server: server.url.clone(),
+            name: "alice".into(),
+            actions: None,
+        }),
+        completed: None,
+    });
+    state.save(&fixture.state_dir()).unwrap();
+    let original = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+    let enroll = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    let thread = Rb::start(&fixture, &server, &thread_args()).finish().await;
+    let count = server.requests.load(Ordering::SeqCst);
+    server.finish().await;
+    assert!(!enroll.0.success() && !thread.0.success());
+    assert!(enroll.2.contains("pending") && thread.2.contains("pending"));
+    assert_eq!(count, 0);
+    assert_eq!(
+        std::fs::read(fixture.state_dir().join("state.json")).unwrap(),
+        original
+    );
+}

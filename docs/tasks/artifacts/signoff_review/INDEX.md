@@ -65,3 +65,5 @@ The historical phase trees remain the provenance of earlier implementations. Thi
 - [Exclusive publisher fixtures](docs/tasks/artifacts/signoff_review/publisher-fixtures.md): reproduced two-process deletion, isolated creation/cleanup, five controls and native loader observation under .11.4.3.1.4.
 
 - [Browser test lifetimes](docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md): bounded origins/worker groups, eight controls, native zombie-group refusal and remaining production shutdown ownership under .11.4.3.1.5.1.
+
+- [Production browser lifetimes](docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md): identified post-worker renderer, exclusive local storage, owned cancellable launch and explicit process/task shutdown under .11.4.3.1.5.2.

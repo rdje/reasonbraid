@@ -53,6 +53,9 @@ impl Fixture {
                 .create(path.join(name))
                 .unwrap();
         }
+        // A movable repository-shaped root isolates production storage too.
+        std::fs::write(path.join("Cargo.toml"), "# owned browser fixture root\n").unwrap();
+        std::fs::create_dir(path.join("migrations")).unwrap();
         let metadata = std::fs::symlink_metadata(&path).unwrap();
         assert_eq!(metadata.dev(), device);
         eprintln!("browser fixture created: {}", path.display());
@@ -70,12 +73,53 @@ impl Fixture {
         if let Some(binary) = browser_binary() {
             command.env("R3_BROWSER_BIN", binary);
         }
-        self.command(
-            command,
-            request.to_string().as_bytes(),
-            Duration::from_secs(45),
-        )
-        .await
+        let result = self
+            .command(
+                command,
+                request.to_string().as_bytes(),
+                Duration::from_secs(45),
+            )
+            .await;
+        self.verify_browser_groups().await?;
+        result
+    }
+
+    pub async fn verify_browser_groups(&self) -> Result<(), String> {
+        let stderr = match std::fs::read_to_string(self.path.join("stderr.log")) {
+            Ok(stderr) => stderr,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.to_string()),
+        };
+        for line in stderr.lines() {
+            if let Some(json) = line.strip_prefix("browser ownership: ") {
+                let receipt: serde_json::Value =
+                    serde_json::from_str(json).map_err(|e| e.to_string())?;
+                let pid = receipt["browser_group"]
+                    .as_i64()
+                    .and_then(|n| i32::try_from(n).ok())
+                    .filter(|n| *n > 1)
+                    .and_then(Pid::from_raw)
+                    .ok_or("invalid browser group receipt")?;
+                let present =
+                    observe_group(|| group_exists(pid), Instant::now() + SHUTDOWN_LIMIT).await?;
+                if present {
+                    self.safe_to_delete.store(false, Ordering::SeqCst);
+                    request_group_stop(pid, Signal::KILL)?;
+                    let deadline = Instant::now() + SHUTDOWN_LIMIT;
+                    while observe_group(|| group_exists(pid), deadline).await? {
+                        if Instant::now() >= deadline {
+                            return Err("browser group remains; retain fixture".to_owned());
+                        }
+                        sleep(Duration::from_millis(20)).await;
+                    }
+                    return Err(
+                        "browser required external group cleanup; retain evidence".to_owned()
+                    );
+                }
+                eprintln!("independent browser group absence: {receipt}");
+            }
+        }
+        Ok(())
     }
 
     pub async fn command(
@@ -99,8 +143,10 @@ impl Fixture {
         ] {
             command.env(key, self.path.join(dir));
         }
+        if command.as_std().get_current_dir().is_none() {
+            command.current_dir(&self.path);
+        }
         command
-            .current_dir(&self.path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -173,6 +219,7 @@ impl Fixture {
         Ok(WorkerOutput {
             stdout: String::from_utf8(stdout).map_err(|e| e.to_string())?,
             group_stop_requested,
+            stderr: String::from_utf8(stderr).map_err(|e| e.to_string())?,
         })
     }
 
@@ -209,6 +256,7 @@ impl Drop for Fixture {
 #[derive(Debug)]
 pub struct WorkerOutput {
     pub stdout: String,
+    pub stderr: String,
     // A requested test-side stop is not evidence of production cleanup.
     pub group_stop_requested: bool,
 }

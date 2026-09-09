@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Own production browser lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.2`)
+
+Reproduce a renderer outliving a successful worker. Give each invocation private
+repository-derived profile/cache/diagnostic storage and explicit process/task
+ownership through cancellable startup, rendering and bounded shutdown. Preserve
+named render refusals; return browser_cleanup_unconfirmed when cleanup fails.
+Five unit/thirteen integration controls, strict lint and native/source/book checks
+pass. Keep failed-run evidence and explicit parent/container/retention follow-ups;
+R3-enabled deployment now requires a repository working directory.
+
 ## 2026-09-09 — Bound browser verification lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.1`)
 
 Give browser tests private local fixtures, bounded I/O/output/process groups and

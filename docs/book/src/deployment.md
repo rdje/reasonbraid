@@ -222,13 +222,61 @@ before successful fixture removal. Budget admission always runs, even without a
 browser. The render test reports an absent browser as unqualified; an explicitly
 configured invalid browser is an error. The CI workflow requires browser presence.
 
-A successful render does not establish the production worker's cleanup guarantee.
-The first real Chrome run left its process group observable after worker output
-and exit; the test supervisor then invoked group cleanup. That observation is
-owned by production lifetime repair `.11.4.3.1.5.2`; the supervisor's containment must never be counted
-as the worker doing its own shutdown. Combined qualification follows under `.5.3`.
-See `docs/tasks/artifacts/signoff_review/browser-test-lifetimes.md` for exact
-control results, receipts and remaining boundaries.
+The original worker left a real renderer running after it returned. The production
+worker now owns Chrome before its first asynchronous launch wait, uses private
+per-invocation storage and consumes process/task shutdown before returning a
+successful result. The harness independently verifies browser-group absence; its
+own emergency cleanup still cannot count as production-owned shutdown. Exact
+baseline and controls are in
+`docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md`.
+
+## Browser invocation storage and shutdown
+
+Run an R3-enabled server or `reasonbraid-browse` from within the repository. The worker
+finds the root from current-directory ancestors containing Cargo.toml and migrations.
+It creates `.project-data/browser/run-<UUID>` exclusively, mode 0700, on the repository
+volume. Profile, cache, scratch, configuration and data paths are private children;
+Chrome receives explicit paths, including its log and crash-dump environment
+overrides; ambient TLS/QUIC diagnostic output overrides are removed. Moving the
+checkout changes those paths at runtime.
+A missing root, linked storage parent, foreign volume or unsafe writable parent
+refuses with `browser_storage_failed`; there is no OS/home temporary fallback.
+
+For example, from the repository root with the installed browser configured:
+
+```bash
+python3 -B scripts/project_env.py target/debug/reasonbraid-browse <<'JSON'
+{"url":"http://127.0.0.1:8080/page","steps":[{"action":"navigate","url":"http://127.0.0.1:8080/page"}],"limits":{"max_steps":4,"max_output_bytes":1048576,"time_budget_secs":5}}
+JSON
+```
+
+The caller must first classify and authorize the destination; this example assumes
+an owned local origin is running. Existing successful JSON keeps derived chunks,
+network log, title and browser/worker versions. `click_failed`, `output_too_large`
+and `time_budget_exceeded` remain named refusals. Rendering includes startup under
+the requested budget, minimum one second; startup also has a twenty-second ceiling.
+Every cooperative result then receives up to ten additional seconds for process
+and task shutdown. Chrome is closed, its direct child reaped, its group observed
+absent and the CDP/network/stderr tasks consumed. Bounded TERM/KILL requests may be
+needed; a refused inspection or signal is never evidence of absence.
+
+A render result cannot bypass failed cleanup. The worker instead emits
+`browser_cleanup_unconfirmed`, preserving the original render error in the message
+when present. A consumed successful invocation removes only its verified original
+directory. A failed or unconfirmed invocation retains private `owner.json`,
+`completion.json` and at most 64 KiB of `browser.stderr` when those files can be
+written. Stderr also carries ownership/completion receipts with root-relative
+workspace paths. Inspect these records before cleanup; an old numeric PID alone
+must never authorize signalling a current process.
+
+The shutdown budget covers asynchronous process/task operations, not a hard bound
+on filesystem calls, stdin or response delivery. Storage assumes an operator-owned
+repository. Aggregate retained-data quotas are still open. The current server-side
+spawner can kill the worker at the render deadline, interrupting this shutdown;
+`.7.3.1` owns that integration repair. Container enforcement for hard termination or
+detached descendants remains `.7.3.2`. Broader network, sandbox, total-output and
+evidence policies retain their existing qualification gaps. Linux/macOS process
+support is explicit; the current real-browser evidence is native macOS evidence.
 
 ## Project binaries
 
@@ -249,8 +297,10 @@ make release
 | `rb-journal` | the node-journal inspection tool |
 
 The control-plane binary embeds its database migrations and console assets, so a
-deployed `rb-server` needs no runtime path back to the checkout. The `rb-site`
-operator tool runs from within the checkout to verify storage locality. The node's
+deployed `rb-server` needs no runtime path back to the checkout for those embedded
+assets. Enabling the R3 browser worker currently requires a working directory within
+the checkout for private storage discovery. The `rb-site` operator tool also runs
+from within the checkout to verify storage locality. The node's
 journal is a local SQLite file that stays on the node's own volume.
 
 ## The two profiles

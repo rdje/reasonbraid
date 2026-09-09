@@ -59,5 +59,10 @@ compiler-artifact prerequisites remain before full execution; categories unchang
 Browser test ownership .11.4.3.1.5.1 passes eight controls with real rendering,
 strict lint and consumed process/source/residue checks. Native transient group
 refusal is reproduced; bounded observation still requires actual absence and
-preserves the original failed fixture. Production worker lifetime .5.2 and combined
-qualification .5.3 remain before the full checkpoint; categories unchanged.
+preserves the original failed fixture. Production lifetime .5.2 now passes five
+unit/thirteen integration controls, strict lint and native/source/book checks:
+private runtime storage, owned cancellable launch and consumed process/task shutdown.
+All twenty-one final groups are absent; failed startup evidence is retained and its
+uncaptured wait mechanism remains .11.2. Parent transport/termination and aggregate
+retention/container limits have concrete .7.3.1/.2 owners. Combined qualification
+.5.3 remains before the full checkpoint; categories unchanged.

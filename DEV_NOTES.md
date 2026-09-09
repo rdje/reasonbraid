@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Browser return requires owned process and storage completion
+
+- A supervised baseline identifies a real renderer still running, reparented to PID 1 after worker exit zero. The old worker shares a default profile, closes CDP without child wait, aborts without join and discards its network task. New private lifetime/storage modules own Chrome before cancellation, preserve launch/CDP semantics, isolate profile/cache/scratch/log/crash paths and consume process/task shutdown before responding.
+- Five unit and thirteen real/instrumented integration controls pass on frozen final identities; strict all-target/all-feature lint, workspace formatting, source/flag census, book and twelve rendered markers pass. All twenty-one final groups are independently absent, successful/unit fixtures removed, and all results consumed. Exactly nine failed fixtures remain. The expected handler-panic control verifies refusal/retention after its join is consumed. Source/commands/limits: docs/tasks/artifacts/signoff_review/browser-production-lifetimes.md.
+- An earlier expanded run has seven failed tests/eight zero-output workers, including budget admission, while another unit build overlapped execution. Preserve that failure; subsequent probes/retries pass without relaxed deadlines, but no original wait stack or pre-rebuild binary identity was captured. Existing .11.2 owns this unresolved host-execution observation. The aggregate receipt verifier also caught one interleaved libtest status line; exact display-fragment normalization is recorded with raw bytes retained.
+- Runtime root discovery requires R3-enabled deployment from within the repository. The server's old hard timeout can interrupt worker cleanup; concrete .7.3.1 owns its transport/termination repair. .7.3.2 owns aggregate retained-data and detached-process/container qualification. A worker return, PID receipt or 64 KiB stderr cap does not close those broader boundaries.
+- promotion: promoted → `docs/decisions/2026-09-09_browser-production-lifetimes.md`; owner `SIGNOFF-REPAIR.11.4.3.1.5.2`.
+
 ## 2026-09-09 — Separate browser test containment from production shutdown
 
 - The exact old helper captures 3 MiB without a stream bound. Its first external probe times out with no phase evidence; an unchanged supervised retry succeeds with its group consumed. New test fixtures own local stores, one worker group, bounded input/output/exit, strict group absence and explicit origin shutdown. Successful fixtures are removed; failures retain bounded logs and receipts. Only two already-locked test dependency edges are added.

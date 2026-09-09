@@ -111,6 +111,7 @@
 - [`2026-09-09_bootstrap-capacity.md`](docs/decisions/2026-09-09_bootstrap-capacity.md)
 - [`2026-09-09_bootstrap-recovery.md`](docs/decisions/2026-09-09_bootstrap-recovery.md)
 - [`2026-09-09_bound-authority-evaluation.md`](docs/decisions/2026-09-09_bound-authority-evaluation.md)
+- [`2026-09-09_browser-production-lifetimes.md`](docs/decisions/2026-09-09_browser-production-lifetimes.md)
 - [`2026-09-09_browser-test-lifetimes.md`](docs/decisions/2026-09-09_browser-test-lifetimes.md)
 - [`2026-09-09_changelog-rotation.md`](docs/decisions/2026-09-09_changelog-rotation.md)
 - [`2026-09-09_ci-checkpoint-census.md`](docs/decisions/2026-09-09_ci-checkpoint-census.md)

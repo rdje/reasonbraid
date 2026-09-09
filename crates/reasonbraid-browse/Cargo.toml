@@ -27,7 +27,7 @@ workspace = true
 chromiumoxide = "0.9"
 # The worker's runtime (the multi-thread flavor keeps the CDP event loop off
 # the current thread).
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "process", "io-util", "sync"] }
 # The wire protocol + the chunk digests (the ADR-011 scheme).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,10 +35,10 @@ sha2 = "0.10"
 # The event-stream + handler iteration.
 futures-util = "0.3"
 
+# Owned process groups and exclusive private browser directories.
+rustix = { version = "1", features = ["process"] }
+uuid = { version = "1", features = ["v7"] }
+
 [dev-dependencies]
 # The offline wire test: a local origin the browser navigates to.
 axum = "0.8"
-# Test-side process-group ownership, private fixture identities and bounded I/O.
-rustix = { version = "1", features = ["process"] }
-uuid = { version = "1", features = ["v7"] }
-tokio = { version = "1", features = ["process", "io-util", "sync"] }

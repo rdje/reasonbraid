@@ -4,6 +4,11 @@
 //! and the refusal vocabulary — every refusal names its kind. The rendered
 //! text is ALWAYS a Derivation (the parent digest + the derived chunks).
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod lifetime;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod storage;
+
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -142,43 +147,70 @@ async fn run(request: &BrowseRequest) -> Result<BrowseResponse, (String, String)
             "the request carries no steps".to_owned(),
         ));
     }
-    let deadline = std::time::Duration::from_secs(request.limits.time_budget_secs.max(1));
-    tokio::time::timeout(deadline, run_inner(request))
+    run_browser(request).await
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+async fn run_browser(_: &BrowseRequest) -> Result<BrowseResponse, (String, String)> {
+    Err((
+        "browser_platform_unsupported".to_owned(),
+        "owned browser processes currently require Linux or macOS".to_owned(),
+    ))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn run_browser(request: &BrowseRequest) -> Result<BrowseResponse, (String, String)> {
+    let binary = browser_binary()
+        .ok_or_else(|| {
+            (
+                "browser_missing".to_owned(),
+                "no browser binary found — set R3_BROWSER_BIN to the pinned chromium".to_owned(),
+            )
+        })?
+        .canonicalize()
+        .map_err(|e| ("browser_launch_failed".to_owned(), e.to_string()))?;
+    let mut owner = lifetime::Lifetime::new()
+        .map_err(|e| ("browser_storage_failed".to_owned(), e.to_string()))?;
+    let budget = std::time::Duration::from_secs(request.limits.time_budget_secs.max(1));
+    let result = match tokio::time::timeout(budget, run_inner(request, &binary, &mut owner)).await {
+        Ok(result) => result,
+        Err(_) => Err((
+            "time_budget_exceeded".to_owned(),
+            format!(
+                "the render exceeded the {}-second budget",
+                request.limits.time_budget_secs
+            ),
+        )),
+    };
+    if let Err(cleanup) = owner.finish(result.is_ok()).await {
+        let detail = match &result {
+            Ok(_) => cleanup,
+            Err((kind, message)) => format!("{kind}: {message}; {cleanup}"),
+        };
+        return Err(("browser_cleanup_unconfirmed".to_owned(), detail));
+    }
+    result
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn run_inner(
+    request: &BrowseRequest,
+    binary: &std::path::Path,
+    owner: &mut lifetime::Lifetime,
+) -> Result<BrowseResponse, (String, String)> {
+    tokio::time::timeout(std::time::Duration::from_secs(20), owner.launch(binary))
         .await
         .map_err(|_| {
             (
-                "time_budget_exceeded".to_owned(),
-                format!(
-                    "the render exceeded the {}-second budget",
-                    request.limits.time_budget_secs
-                ),
+                "browser_launch_failed".to_owned(),
+                "browser startup exceeded 20 seconds".to_owned(),
             )
         })?
-}
-
-async fn run_inner(request: &BrowseRequest) -> Result<BrowseResponse, (String, String)> {
-    let binary = browser_binary().ok_or_else(|| {
-        (
-            "browser_missing".to_owned(),
-            "no browser binary found — set R3_BROWSER_BIN to the pinned chromium".to_owned(),
-        )
-    })?;
-    let config = chromiumoxide::browser::BrowserConfig::builder()
-        .chrome_executable(binary)
-        .no_sandbox()
-        .build()
-        .map_err(|e| ("browser_config_failed".to_owned(), e.to_string()))?;
-    let (mut browser, mut handler) = chromiumoxide::Browser::launch(config)
-        .await
-        .map_err(|e| ("browser_launch_failed".to_owned(), e.to_string()))?;
-    let browser_task = tokio::spawn(async move {
-        while let Some(h) = handler.next().await {
-            if h.is_err() {
-                break;
-            }
-        }
-    });
-
+        .map_err(|e| ("browser_launch_failed".to_owned(), e))?;
+    let browser = owner
+        .browser
+        .as_ref()
+        .expect("launch established the browser");
     let version = browser
         .version()
         .await
@@ -198,14 +230,14 @@ async fn run_inner(request: &BrowseRequest) -> Result<BrowseResponse, (String, S
             .event_listener::<chromiumoxide::cdp::browser_protocol::network::EventRequestWillBeSent>()
             .await
             .map_err(|e| ("page_failed".to_owned(), e.to_string()))?;
-        tokio::spawn(async move {
+        owner.network = Some(tokio::spawn(async move {
             while let Some(event) = events.next().await {
                 log.lock().await.push(NetworkEntry {
                     url: event.request.url.clone(),
                     method: event.request.method.clone(),
                 });
             }
-        });
+        }));
     }
 
     for step in &request.steps {
@@ -300,7 +332,5 @@ async fn run_inner(request: &BrowseRequest) -> Result<BrowseResponse, (String, S
         worker_version: WORKER_VERSION.to_owned(),
     };
     drop(page);
-    browser.close().await.ok();
-    browser_task.abort();
     Ok(response)
 }

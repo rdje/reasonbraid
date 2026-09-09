@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Explicit site-authority service (`SIGNOFF-REPAIR.3.2.1`)
+
+Added separate site boundaries/grants, protected database-session issuance and
+disabling, and a registry service that commits effects with attributable audit.
+Actual-parent liveness, scope/window ceilings, usable-grant selection and a shared
+transaction guard fence site revocation; tenant enrollment grants no site rights.
+Native libpq controls reproduced stale prepared role membership after a wait;
+fresh text-protocol checks close that path. Ten live service controls and strict
+focused lint pass. The book documents capabilities, examples and integration
+limits. Operator CLI and HTTP enforcement follow as separate committed leaves.
+
 ## 2026-09-09 — Bind revocation to the authorized tenant (`SIGNOFF-REPAIR.3.1`)
 
 Grant/boundary revocation now selects and locks only a target in the authorized

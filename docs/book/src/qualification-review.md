@@ -15,14 +15,19 @@ existing restrictions. Current progress is in `LIVE_STATUS.md`.
 ## Shared registry authority
 
 The current adapter and region handlers accept a tenant-admin grant from any tenant
-and omit enrollment-boundary validation in that check. Consequently, their current
-success tests do not prove site isolation or administrative freeze after revocation.
+and omit enrollment-boundary validation in that check. An owned live reproduction
+confirmed shared writes by two distinct tenant admins, including adapter and region
+writes after tenant-boundary revocation. Their existing success tests therefore do
+not prove site isolation or administrative freeze after revocation.
 
 The accepted repair requires explicit **site-operator grants**, issued through
 protected deployment tooling. Tenant enrollment cannot issue them. Mutations must
 check the grant's actual boundary and commit with an attributable audit record,
-serialized with revocation. Implementation and command examples are pending
-`SIGNOFF-REPAIR.3.2`; there is no new operator command to run yet.
+serialized with revocation. The separate [site-authority service](site-authority.md)
+now implements that contract under `.3.2.1`; ten live controls and strict focused
+lint pass. Operator
+commands and HTTP routing remain `.3.2.2`/`.3.2.3`; there is no new operator command
+to run yet and the existing HTTP authorization is still under repair.
 
 | Scenario | Required repaired behavior |
 | --- | --- |

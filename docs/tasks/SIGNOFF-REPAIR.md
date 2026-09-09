@@ -113,10 +113,46 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.3.2 — Site-operator registry authority
 
-- Status: `pending`.
+- Status: `active`; execute and commit `.3.2.1`, `.3.2.2`, then `.3.2.3`.
 - Sources / owned surfaces: `api.rs require_admin_any_tenant, allowlist.rs, regions.rs, operator tooling, new migration`.
 - Goal and acceptance: Implement explicitly issued site authority for adapter and region mutations, deny tenant-admin escalation, check actual bound boundary and grant liveness, serialize revocation with effects, and record durable actor/action/target/reason/decision audit. Operator-controlled issuance and revocation must be tested; no HTTP enrollment minting.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
+- Commit: pending.
+
+- Implementation policy: separate site boundaries/grants from tenant authority; no migration seeding or tenant-enrollment minting. Site registry inspection requires an explicit `registry_inspect` capability with a live grant and its actual live boundary. Tenant-scoped frozen-admin inspection remains unchanged. Operator tooling derives its issuer/audit identity from the authenticated database session and requires database superuser authority or explicit membership of a deployment-managed `reasonbraid_site_operator` role; tenant grants never satisfy that gate. No host/database role is created automatically by migration.
+
+#### SIGNOFF-REPAIR.3.2.1 — Site authority and transactional registry service
+
+- Status: `done`.
+- Owns: new migration for site boundaries/grants/audit/serialization guard, server site-authority module/exports and direct UUID dependency plus Cargo.lock, repository-owned baseline probes, focused live service tests, shared test-helper verification access for restricted-role connections, and runner suite registration, decision/book/live-doc synchronization.
+- Scope: explicit typed site actions and subjects; immutable grant-to-boundary binding and scope/window subsets; protected database-session issuance and irreversible revoke/suspend operations; inspectable durable issuer/reason/outcome records; a single registry service that checks the actual grant/boundary and writes the effect plus audit in one transaction. Candidate grants must not shadow another usable grant. Serialize short site-configuration transactions through one database guard row before reading the actual grant/boundary; operator status changes take the same guard. Use READ COMMITTED, a fresh database decision time after lock acquisition, bounded lock/statement timeouts, and no external work inside the transaction. Preserve no-op attribution and fail closed on audit errors.
+- Acceptance: reproduce legacy any-tenant/frozen-boundary registry writes in an owned cluster; prove explicit operator service success and tenant-grant-only refusal, actual boundary binding, all liveness windows/states, safe multiple-grant selection, no-op attribution, audit rollback and deterministic grant/boundary revocation races in both orders. No HTTP routing change or public operator CLI yet; those remain the following children.
+- Verification: `CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh site_authority migration_upgrade allowlist regions command_api` passed 36 tests (10+1+2+2+21), zero failures/ignored, rc=0; owned cluster `run-ky9ees5v` stopped/removed. Focused strict Clippy for server lib/site test passed, rc=0; format, book build, rendered-content inspection and diff check passed. Legacy HTTP tests remain compatibility controls, not site-isolation qualification.
+- Commit: `REASONBRAID-REPAIR-0006` (this commit).
+
+- Legacy runtime reproduction: the existing `target/debug/rb-server` ran against owned cluster `target/pg-tests/run-ddzcfr8_`; its PID-owned loopback listener was identified by `lsof` before HTTP writes. Two independently enrolled tenant administrators added a shared adapter/region. After the second administrator revoked its tenant boundary through HTTP, it still added both another adapter and another region (all four shared writes returned 200). SQL measured `revoked boundaries|new adapters|new regions|authorization records = 1|2|2|1`; the only admission record was the tenant-boundary revocation. Probe rc=0. The server process group was stopped/reaped, then the PG cluster stopped/removed. Probe source remains repository-local at `target/site-authority-controls/legacy_registry_probe.py`; this summary is the durable baseline evidence.
+- Initial service verification is **failed**, not qualified: `CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh site_authority` compiled successfully but returned 101 (1 passed, 8 failed). Seven tests hit the existing internally tagged primitive `GrantSubject::Human` serialization defect when the new issuance audit used `json!`; the new service will encode an explicit kind/id object, and the core contract repair is owned by `.3.3`. The other failure is a queued database-member issuance after committed membership revocation. An isolated exact-test run returned 101 at test line 614: the ordinary outsider was refused, but the queued member produced a second allowed boundary issuance while a separate session reported both test roles non-superuser/non-member. The isolated cluster `run-vu3e3zsk` was stopped/removed; sanitized transcript is local at `target/site-authority-controls/role-isolation.log`. This leaf owns a minimal PostgreSQL prepared-statement/catalog visibility probe to root-cause that surprising result before any qualification claim. Original failed cluster `run-ab49o7ev` is stopped and retained pending evidence consumption/cleanup.
+- Role-check root cause isolated: the simple-protocol psql control in `run-0poban9b` reported membership true/one direct edge before the guard wait and false/zero afterward under READ COMMITTED. A native libpq prepared-query control in `run-gvzqw7p2` reproduced true after committed REVOKE and guard release; a freshly parsed simple query then saw zero membership edges and the subsequent prepared query returned false. Both probes returned rc=0 and stopped/removed their clusters. PostgreSQL 16.15's `acl.c` caches role membership with syscache invalidation callbacks; repeated prepared execution alone did not refresh it in this control. The service gate now uses a static text Executor statement for a freshly parsed simple-protocol identity query before and after the wait. No caller data is interpolated. A diagnostic service rerun in `run-6cubiypy` passed the seven previously panicking tests and the remaining ordinary control (8 passed), while queued issuance still failed even after a separate connection explicitly proved membership false before releasing the guard (1 failed, rc=101). Temporary identity logging was removed before the corrected run. The regression retains the independent visibility assertion and reuses one physical operator connection.
+- Compilation control: the first fresh-query `raw_sql(...).fetch_one(...)` spelling failed Executor/Send lifetime requirements in spawned callers (`run-rz4sy0sg`, compile rc=101, no tests executed). Calling the text Executor directly preserves simple protocol and `cargo check --offline --locked -p reasonbraid-server --test site_authority` passed, rc=0. The failed-run receipt is stopped; its evidence is consumed and the exact owned workspace may be removed after the process-group census. The role-cache lesson is promoted to `docs/decisions/2026-09-09_operator-role-query-freshness.md`.
+- Cleanup disposition: after consuming the failure records and proving both recorded process groups absent, exact stopped workspaces were removed with no residue: `run-ab49o7ev` (1,603 files / 51,365,895 bytes), `run-6cubiypy` (1,606 / 51,673,698), `run-rz4sy0sg` (1,272 / 48,216,926). Command-log SHA-256 values respectively `aaceaff87bbb110473f2ca4d41d379ed64d1ec399889936101dabd46b0b4701a`, `4afdf7fae27b217d2aa1a5a1552ac11d2bab15b9991d99a3e0b84b35f362085c`, `103df40bf61d76f38e2ac2884d5e350e8dd607a62f979f6f03f5799ecd40d5ad`. The census refused symlinks/off-volume objects and required stopped receipts; cleanup rc=0.
+- Current implementation: migration 0054 and the site service are additive. No tenant grant is upgraded, no database role is auto-created, and no HTTP handler is switched in this child. Human/role payloads, actual-parent and every-usable-grant selection, irreversible status transitions, liveness, domain refusals, effect/no-op/read audits, rollback injection, both revocation orders and queued expiry have live controls. Database-role gate freshness has the independent native libpq reproduction and corrected reused-connection regression. README layout/standard commands are unchanged; the site manual, qualification/authority/progress pages, LIVE_STATUS evidence, task/programme indexes, decisions, TOOLBOX and live memory stay aligned. LIVE_STATUS category values do not advance.
+
+#### SIGNOFF-REPAIR.3.2.2 — Protected operator CLI
+
+- Status: `pending`.
+- Owns: dedicated server-crate operator binary, CLI integration controls, operator runbook and examples.
+- Scope: issue/inspect/revoke/suspend site boundaries and grants through the protected service, requiring explicit subjects/actions/windows/reasons and deriving issuer identity from the database session. Inspect audit history through that same deployment-controlled surface. Use repository-derived output/storage and avoid credential disclosure. No tenant HTTP enrollment path may invoke issuance.
+- Acceptance: real CLI issuance/use/revocation, restricted database-role refusal with unchanged authority/audit state where no audit privilege exists, deterministic argument/input refusals, and replay/no-op history. Book examples must be exercised.
+- Verification: pending.
+- Commit: pending.
+
+#### SIGNOFF-REPAIR.3.2.3 — Registry HTTP enforcement and qualification
+
+- Status: `pending`.
+- Owns: adapter/region handlers, request validation and reason inputs, legacy fixture replacement, HTTP cross-tenant/freeze/audit/race controls, history and live-book correction.
+- Scope: route all shared adapter/region reads and mutations through the verified site service, remove the any-tenant-admin helper for these routes, require a reason on mutations, preserve existing successful response shapes, and expose attributable refusal references. Distinguish domain refusal from SQL failure. Keep tenant-owned inspection behavior.
+- Acceptance: operator success across every verb; two distinct tenant admins refused with unchanged registry rows; revoked/suspended/future/expired site grant or actual boundary refused; no enrollment-based minting; mutation/inspection read separation; audit/no-op/error persistence and deterministic HTTP revocation races. Run the affected registry/authority/CLI checks and the selected broader security gate; no Internet qualification claim.
+- Verification: pending.
 - Commit: pending.
 
 ### SIGNOFF-REPAIR.3.3 — Bound-boundary authorization and grant selection
@@ -124,6 +160,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Status: `pending`.
 - Sources / owned surfaces: `core authority, server authority.rs`.
 - Goal and acceptance: Resolve a grant's actual boundary, enforce identity/tenant/subset/window correspondence, reject thread-only selectors for tenant actions, avoid latest-grant shadowing, and serialize all relevant authorization/mutation paths against revocation. Revocation administrative paths must persist the submitted reason and final outcome in an attributable effect audit atomically with status/epoch changes; the current tenant-admin admission audit is not that effect record.
+- Additional runtime-confirmed defect owned here: `GrantSubject` derives internally tagged serde encoding over transparent primitive ID newtypes (`crates/reasonbraid-core/src/authority.rs`), so serializing `Human` fails with `cannot serialize tagged newtype variant GrantSubject::Human containing a string`; `json!` panics on that error. The initial `.3.2.1` live service run reproduced it in seven tests. Audit all consumers and establish an explicit, tested human/role wire contract with round-trip and enclosing-payload controls; the site service's explicit kind/id encoding does not close this core defect.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -361,20 +398,21 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
-## Current commit acceptance — SIGNOFF-REPAIR.3.1
+## Current commit acceptance — SIGNOFF-REPAIR.3.2.1
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — `bash scripts/run_pg_tests.sh command_api` (offline, demo disabled) returned 101: 18 passed, 2 failed. Both foreign-target controls received 404 after victim status changed active→revoked and epoch 0→1. The API compares the returned target tenant after `authority::revoke_grant` / `revoke_boundary` commit by target id alone. The controlled cluster was stopped; exact output is summarized in the leaf above.
-- [x] **ADDRESSED (verified)** — the corrected `command_api` suite passed all 21 tests, rc=0: both foreign-target snapshots remain unchanged, own-tenant controls succeed, repeated refusals preserve the epoch, and two requests forced to wait on the target lock produce one 200, one 409 and epoch 1. Both SELECT and UPDATE include the expected tenant before effects.
-- [x] **NO REGRESSION** — `command_api authority escalation` passed 34 tests, rc=0; existing history/replay and frozen-admin inspection controls remain green. `cargo fmt --all -- --check` rc=0. Strict `cargo clippy --offline --locked -p reasonbraid-server --lib --test command_api -- -D warnings` passed, rc=0. `make book` rc=0; generated authority/CLI/qualification/roadmap content inspected. `git diff --check` empty, rc=0. The commit hook runs the staged doctrine gate.
-- [x] **FIX / LOCKSTEP** — both revocation services and API call sites are tenant-bound; tests cover refusal state, legitimate use and duplicate contention. The historical disposition, authority/CLI/qualification chapters, roadmap pointers, changelog, notes and memory are synchronized. Effect-audit/authorization transaction repair remains owned by `.3.3` as scoped above.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the owned legacy-server probe returned rc=0 after observing four shared writes return 200 from two tenant admins, including adapter/region writes after tenant-boundary revocation. SQL witness `1|2|2|1` is explained in the leaf. The helper queries only tenant grants and performs no boundary or audit check; no distinct site authority exists at baseline.
+- [x] **ADDRESSED (verified)** — the owned `site_authority` suite passed all 10 tests, rc=0, including tenant-only refusal with unchanged state, actual-parent liveness, human/role receipts, audit rollback, grant/boundary revocation in both lock orders and expiry during a wait. The prepared operator-membership regression changed from an observed allowed second issuance after REVOKE (test rc=101) to an audited denial with one boundary, rc=0. CLI and HTTP integration remain `.3.2.2`/`.3.2.3`.
+- [x] **NO REGRESSION** — the five-suite command recorded above passed 36 tests, rc=0. `python3 -B scripts/project_env.py cargo clippy --offline --locked -p reasonbraid-server --lib --test site_authority -- -D warnings` passed, rc=0 (28.02s); `cargo fmt --all --check`, `make book`, rendered site/authority/qualification content inspection and `git diff --check` passed, rc=0. The final staged doctrine gate runs in the commit hook.
+- [x] **FIX / LOCKSTEP** — schema/service, protected issuance, immutable records, transactional audits and owned live controls are implemented; the corrected five-suite run stopped/removed its cluster, rc=0. Documentation distinguishes the implemented service from pending CLI/HTTP enforcement, with no production qualification advance. The stale-role-query lesson is promoted to its indexed decision; the core serde defect has concrete `.3.3` ownership.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.2` | `pending` | implement explicit site-operator authority for shared registries |
-| 2 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
-| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.2.2` | `pending` | expose the verified service through protected operator tooling |
+| 2 | `SIGNOFF-REPAIR.3.2.3` | `pending` | enforce site authority on every shared registry HTTP route |
+| 3 | `SIGNOFF-REPAIR.3.3` | `pending` | bind the actual boundary, select usable grants and serialize authority/effect audit |
+| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -398,6 +436,8 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.2.1`: `REASONBRAID-REPAIR-0006 (leaf SIGNOFF-REPAIR.3.2.1): add explicit site authority and atomic registry auditing`.
 
 - `SIGNOFF-REPAIR.3.1`: `REASONBRAID-REPAIR-0005 (leaf SIGNOFF-REPAIR.3.1): bind revocation to the authorized tenant before mutation`.
 

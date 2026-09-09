@@ -48,6 +48,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Opaque v7 identifiers for the separately issued site authority and its audit.
+uuid = { version = "1", features = ["v7"] }
 # The control API's idempotency request hash (.6.1): SHA-256 over operation +
 # principal + canonical body (same crate family as core's policy digest).
 sha2 = "0.10"

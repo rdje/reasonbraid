@@ -1,5 +1,10 @@
 # DEV_NOTES.md
 
+## _(2026-09-09)_ — A repeated permission query can repeat stale authority
+
+- The site service's queued database-role revocation test initially allowed issuance after committed membership loss. Ordinary outsider refusal passed. A native libpq prepared-query control reproduced the stale result independently of SQLx; a simple-protocol control saw the revocation. The service now uses static text Executor queries before and after the guard wait. Site grant/boundary revocation and registry effects share one short transaction guard, and audit failure rolls back the effect. Initial subject JSON serialization also exposed a separate existing core enum defect, explicitly owned by `.3.3`; site receipts use a tested kind/id shape.
+- promotion: promoted → `docs/decisions/2026-09-09_operator-role-query-freshness.md`; schema/service contract in `docs/decisions/2026-09-09_site-operator-authority.md`; owner `SIGNOFF-REPAIR.3.2.1`.
+
 ## _(2026-09-09)_ — Revocation must select the authorized tenant before mutation
 
 - Both foreign-target baseline controls returned 404 after changing the victim's status and epoch; a repeated 409 also bumped the epoch again. Both services now filter by expected tenant and lock the matching row before status/epoch changes. The corrected controls include victim-state snapshots and two requests forced to contend on the same grant. Final effect auditing remains separate `.3.3` work; an admission record must not be described as the mutation outcome.

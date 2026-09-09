@@ -50,12 +50,12 @@ Tenant administration is intended to remain tenant-scoped. The approved frozen
 boundary carve-out allows an otherwise eligible tenant administrator to inspect its
 own tenant after boundary revocation. It does not grant authority over other tenants.
 
-The shared adapter and region registries currently use an any-tenant-admin check.
-The accepted replacement is a distinct site-operator grant, issued through protected
-deployment tooling, with a live operator-controlled parent boundary. Tenant enrollment
-cannot mint site authority. Each mutation and its audit must serialize with revocation.
-Implementation is pending `SIGNOFF-REPAIR.3.2`; the decision is
-`docs/decisions/2026-09-09_site-operator-authority.md`.
+The shared adapter and region HTTP handlers currently use an any-tenant-admin
+check. A separate [site-authority service](site-authority.md) now implements explicit
+operator-issued grants, actual-parent liveness, and atomic registry/audit operations
+serialized with site revocation. Tenant enrollment cannot mint those grants.
+Operator CLI and HTTP integration remain `SIGNOFF-REPAIR.3.2.2` and `.3.2.3`;
+the service implementation alone does not qualify the existing HTTP routes.
 
 ### Grant and boundary revocation
 

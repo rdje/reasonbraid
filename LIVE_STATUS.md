@@ -12,8 +12,9 @@ Historical phase closure does not establish current production qualification.
 `docs/tasks/artifacts/signoff_review/INDEX.md` preserves the source evidence.
 The runner cleanup and spawn/signal defects now have runtime controls and fixes;
 foreign-target revocation and repeated-revoke epoch defects are reproduced; the
-`.3.1` correction passed 34 focused tests and strict lint. Other product repairs
-remain open.
+`.3.1` correction passed 34 focused tests and strict lint. Shared writes by frozen
+tenant admins are now runtime-confirmed. The new site service passes ten live
+controls and strict focused lint; CLI/HTTP integration and other repairs remain open.
 
 | Area | Status | Current evidence and remaining work |
 | --- | --- | --- |
@@ -30,7 +31,8 @@ remain open.
 | Phase 7 — Internet qualification | Mostly Done | Hardening machinery exists; G6/G7 Internet exposure remains NOT MET. Local repairs and external threat-model, injection and penetration-test evidence remain required. |
 | Phase 8 — federation and interoperability | In Progress | Through regional routing historically recorded; `.5.3` store-and-forward, `.5.4` exit export/import and `.6` G8 remain. Shared authority and protocol gaps are prerequisite repairs. |
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
-| Corrective review | In Progress | `.1`, `.2.1`, `.2.2` and `.3.1` complete. Tenant-bound revocation passes 34 focused tests and strict lint. Next: `.3.2` explicit site-operator authority; effect-audit/authorization transaction work remains `.3.3`. |
+| Corrective review | In Progress | `.1`, `.2.1`, `.2.2`, `.3.1` complete; `.3.2.1` site service passes ten live controls and strict lint. Next: protected operator CLI then HTTP enforcement; tenant effect-audit/authorization transaction work remains `.3.3`. |
 
 The shared adapter/region registry design is now explicit site-operator authority.
-The existing code still uses tenant-admin authority; `.3.2` owns replacing it.
+The separate site service implements that design. Existing HTTP handlers still use
+tenant-admin authority until `.3.2.3`; service tests do not qualify those routes.

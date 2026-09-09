@@ -7,6 +7,7 @@
 - [The node channel](node-channel.md)
 - [The adapter boundary](adapter-boundary.md)
 - [Authority](authority.md)
+- [Site authority](site-authority.md)
 - [Budgets](budget.md)
 - [The CLI](cli.md)
 - [The web console](web-ui.md)

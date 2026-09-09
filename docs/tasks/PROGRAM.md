@@ -153,14 +153,14 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.2`; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.3.2.2`; return to `PHASE-8.5.3` after corrective prerequisites |
 
-## Current index synchronization — SIGNOFF-REPAIR.3.1
+## Current index synchronization — SIGNOFF-REPAIR.3.2.1
 
 Implementation and acceptance belong to `docs/tasks/SIGNOFF-REPAIR.md`.
 
-- [x] **ROOT CAUSE (WHY + WHERE)** — the prior frontier named `.3.1`; both baseline foreign-target controls returned 404 after victim status/epoch changed (`18 passed; 2 failed`, test rc=101), as preserved in the owning tree.
-- [x] **ADDRESSED (verified)** — the index now names `.3.2`; the corrected target-scope and duplicate-revoke controls passed within 34 focused tests, rc=0. Strict server/API-test Clippy passed, rc=0.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the owning leaf's legacy registry probe returned rc=0 after reproducing four shared writes by tenant admins, including writes after boundary revocation (HTTP 200; SQL witness `1|2|2|1`). The prepared-role freshness control separately returned test rc=101, as preserved there.
+- [x] **ADDRESSED (verified)** — the index now names `.3.2.2`; the separate site service and adjacent controls passed 36 tests, rc=0, and focused strict Clippy passed, rc=0. CLI and HTTP integration remain explicit prerequisites to route qualification.
 - [x] **NO REGRESSION** — phase ownership, roadmap mappings and gate definitions are unchanged. `make book` rc=0, generated content inspected; `git diff --check` empty, rc=0. The index advances no production qualification claim.
 
 ## Decisions

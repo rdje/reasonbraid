@@ -183,7 +183,9 @@ impl Ownership {
             .await
     }
 
-    async fn verify(&self, connection: &mut PgConnection) -> Result<(), sqlx::Error> {
+    /// Role-specific test pools use this callback before publishing each new
+    /// connection, after preflighting the runner's canonical administrator URL.
+    pub async fn verify(&self, connection: &mut PgConnection) -> Result<(), sqlx::Error> {
         let actual: (String, String, Option<String>) = sqlx::query_as(
             "SELECT current_setting('data_directory'), current_database(), \
              current_setting('reasonbraid.test_owner', true)",

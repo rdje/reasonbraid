@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-09 — Isolate publisher test directory ownership (`SIGNOFF-REPAIR.11.4.3.1.4`)
+
+Reproduce a second test process deleting a still-live owner's fixture. Replace
+counter-based removal with exclusive private creation, checked directory identity
+and explicit cleanup after gix handle closure; retain incomplete evidence. Five
+publisher/ownership controls, independent helper owners, two concurrent real test
+executables, strict focused lint and book checks pass. Historical residue is
+unchanged. The slow compiler's native-loader sample is retained under .11.2;
+all results completed naturally and were consumed. Production behavior is unchanged.
+
 ## 2026-09-09 — Wire complete CI commands through local stores (`SIGNOFF-REPAIR.11.4.3.1.3.3`)
 
 All six workflow command jobs now use the local launcher. Require workers/Chrome,

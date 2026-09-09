@@ -179,8 +179,27 @@ and fifty Python tests pass locally, including actual PostgreSQL ownership check
 GitHub's managed checkout/artifact transport and installed OS tools are explicit
 platform dependencies; project stores and artifact temporary paths derive from the
 checkout. Full Rust/security gates and actual remote outcomes remain pending after
-the publisher/browser/cleanup prerequisites. See
+the remaining browser/compiler-cleanup prerequisites. See
 `docs/tasks/artifacts/signoff_review/ci-workflows.md` for commands and exact evidence.
+
+## Publisher verification owns its directories
+
+The offline publisher tests create private, exclusive directories under
+`target/publisher-tests`, after checking the parent components remain directories
+on the repository volume. They never remove a preexisting directory to start a
+test. A directory collision refuses. Repository readers and handles close before
+explicit cleanup, which checks the original directory identity and confirms its
+removal. An assertion failure or unfinished fixture retains its data and prints
+its location for diagnosis. Inspect the owning test/process before removing it;
+old `pub-N` directories may belong to historical work.
+
+The old counter-based helper was reproduced in two isolated processes: the second
+removed the first process's witness while that owner was still running. The new
+helper's two-process control preserves both witnesses; finishing one owner removes
+only its own directory. Fixture isolation improves verification reliability; it
+does not change production publication or qualify its broader governance gates.
+Exact checks and their results are tracked in
+`docs/tasks/artifacts/signoff_review/publisher-fixtures.md`.
 
 ## Project binaries
 

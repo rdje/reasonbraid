@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-09 — Publisher fixture ownership must survive independent processes
+
+- Two processes running the exact old helper in an isolated manifest root both select pub-0; the second erases the first witness while that owner remains alive. Replace deletion-at-start with exclusive UUIDv7/private creation under checked on-volume parent components. Record device/inode, finish explicitly after gix handle closure, check removal, and retain uncompleted fixtures without Drop deletion.
+- Both original publisher controls and three preservation/retention/refusal tests pass (five total, 0.03s). An exact-helper two-process probe proves simultaneous independent lifetimes; two concurrent real test executables pass five each with ten distinct removed directories. Strict focused all-feature lint, workspace formatting, seven rendered book markers and final source/exit/residue checks pass. All nineteen historical files preserve names/sizes/hashes; production source/manifests/lockfile and README are unchanged.
+- The compiler's 5m 17s build delay is separate: 802 worker samples show proc-macro load_dylib → dyld dlopen/mapSegments → __fcntl; the main thread joins that worker. All compiler/test/lint/sampler results complete naturally and are consumed. This identifies the observed wait stage, not the fcntl request or OS cause. Preserve exact diagnostics under existing .11.2; no OS settings, signatures, attributes or compiler inputs changed. Evidence: docs/tasks/artifacts/signoff_review/publisher-fixtures.md.
+- promotion: promoted → `docs/decisions/2026-09-09_publisher-fixtures.md`; owner `SIGNOFF-REPAIR.11.4.3.1.4`.
+
 ## 2026-09-09 — Make CI prerequisites mandatory at the command boundary
 
 - Six project command jobs enter ci_env.py; Rust gets local pinned installation, strict shell ordering and required worker/browser inputs. Python discovery includes all six modules, PG validates real version-16 tools and requires --demo, the book pins a local mdBook 0.5.4 installation, and scanner jobs run real gates with narrow evidence upload. Managed runner checkout/artifact metadata and installed OS tools remain explicit platform dependencies.

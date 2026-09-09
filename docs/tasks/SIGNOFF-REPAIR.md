@@ -910,6 +910,8 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+- Native-loader evidence from .11.4.3.1.4: target/publisher-fixture-controls/compiler-wait.sample shows 802 procedural-macro loading stacks in dyld mapSegments → __fcntl; compilation/sampler finish naturally and all publisher checks pass. Own exact module/request/OS-cause investigation and a safe reproducible remedy if warranted; no signature/attribute/security-setting changes are authorized by this observation. Durable observation and limits: docs/tasks/artifacts/signoff_review/publisher-fixtures.md.
+
 ### SIGNOFF-REPAIR.11.3 — Operational scripts and evidence
 
 - Status: `pending`.
@@ -1009,10 +1011,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.4 — Give publisher fixtures exclusive disposable ownership
 
-- Status: `pending`.
+- Status: `done`; REPAIR-0037 after clean 8542331, thirteen green hooks, cleared/untracked brief and consumed handoff census.
 - Owns before changes: `crates/reasonbraid-server/tests/publisher.rs` fixture helper, exact fixture observations and focused controls. Each test process resets a counter and unconditionally removes target/publisher-tests/pub-N before creating it. This can erase another process's fixture; source evidence only so far. Existing pub-83115 is ambiguous historical residue and must be preserved.
+- Probe ownership: exclusively create target/publisher-fixture-controls for generated source/compile/runtime evidence. Reproduce the exact old helper in an isolated on-volume fixture root using separate processes, never against an ambiguous existing pub-N directory. Qualify the replacement helper and concurrent real publisher test executables; retain failure evidence. Narrow test-only support and controls in publisher.rs are owned here; production publication semantics remain unchanged. The focused Rust compile has a prolonged low-CPU wait; read-only exact-PID process/stack diagnostics and local logs are owned here, cross-referenced to the existing .11.2 host investigation without inferring its root cause.
 - Acceptance: a unique exclusively created on-volume fixture, no preexisting-directory deletion, consumed repository handles and checked exact cleanup on success; failure retains diagnosable evidence. Exercise concurrent independent fixture creation and both publisher behaviors, strict focused lint and preservation of an unrelated sentinel. Broader fixed-path source census remains .11.2; repair any additional unsafe path needed by this checkpoint before running it.
-- Verification / commit: pending.
+- Verification: two exact old-helper processes reproduce live-owner witness deletion in isolated storage; two exact replacement-helper processes preserve distinct private on-volume witnesses and independent cleanup, both exits zero. Five real publisher/ownership controls pass in 0.03s, rc=0; two concurrently launched actual executables pass five each with ten distinct removed directories. Strict focused all-feature clippy, workspace format, make book, seven rendered markers and final source/exit/residue checks pass, rc=0. Nineteen historical files preserve exact names/sizes/hashes. All results consumed; production source/manifest/lockfile/README unchanged. Evidence: docs/tasks/artifacts/signoff_review/publisher-fixtures.md.
+- Native observation: compilation takes 5m 17s and finishes naturally. The consumed one-second sample has 802 worker observations in procedural-macro load_dylib → dyld dlopen/mapSegments → __fcntl; main waits in pthread_join. Strict lint completes after its Cargo lock wait. The sample also finishes naturally, rc=0; no signal is sent. Existing .11.2 owns the unidentified native delay cause. No product failure or OS cause is inferred.
+- Commit: REPAIR-0037; after clean brief/commit and consumed handoff census, select browser .11.4.3.1.5.
+- promotion: promoted → docs/decisions/2026-09-09_publisher-fixtures.md, three indexed answers. Deployment book, live records and task frontier align; qualification categories unchanged.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.5 — Qualify browser profile and process lifetime before broad execution
 
@@ -1138,7 +1144,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.4` | `pending` | after clean REPAIR-0036, qualify exclusive publisher fixtures; then .5/.6 and full checkpoint .2 |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.5` | `pending` | after clean REPAIR-0037, qualify browser profile/process lifetime; then .6 and full checkpoint .2 |
 | 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
 | 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
@@ -1240,3 +1246,10 @@ None for the current documentation and repair work. G6/G7 external review, publi
 - [x] **ADDRESSED (verified)** — wrapped check_routes.py parses all three YAML workflows, bash -n passes six command blocks, full command coverage passes and five in-memory omissions are refused, rc=0. All fifty Python controls pass through ci_env.py in 14.542s, rc=0, including actual owned PostgreSQL controls. Real synthetic report/output contain no original value; all Secret fields are REDACTED and exact fixture removal is verified.
 - [x] **NO REGRESSION** — make book, final nine rendered markers/seven-adjacent-source identity/fixture-residue probes and git diff --check pass, rc=0. The first literal flag check caught smart punctuation; final code-span rendering preserves --demo. All results consumed, successful exclusive fixtures absent. Rust source is unchanged; full Rust/PG collection, project security scan and remote runs remain .11.4.3.1.2. Final staged doctrines run in the commit hook.
 - [x] **FIX / LOCKSTEP** — exact workflow command/permission/lifetime/history/artifact boundaries and real redaction scope are documented in indexed evidence/decision, CI guide and book. Roadmap, MEMORY, LIVE_STATUS, CHANGELOG, DEV_NOTES and task frontiers align; qualification categories and README unchanged. The next publisher/browser/cleanup leaves precede the full checkpoint.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.4
+
+- [x] **ROOT CAUSE (WHY + WHERE)** — wrapped exact-helper two-process probe returns rc=0 after observing both choose pub-0, second-owner removal of the first witness and a still-live first process. Both exits are consumed. The process-local counter resets while unconditional remove_dir_all erases the selected path; all reproduction data is isolated and historical directories are untouched.
+- [x] **ADDRESSED (verified)** — wrapped candidate-helper probe proves simultaneous distinct 0700 same-volume fixtures, surviving witnesses and independent confirmed cleanup, rc=0. cargo test --locked -p reasonbraid-server --test publisher passes five controls, rc=0, including existing-path preservation, incomplete retention and replacement refusal. Two concurrently launched real executables each pass all five controls; all ten directories are distinct and removed, rc=0.
+- [x] **NO REGRESSION** — focused all-feature cargo clippy with -D warnings, workspace format, make book, seven rendered markers and final source/exit/residue checks pass, rc=0; git diff --check passes. Production publisher, server manifest, lockfile and README are unchanged; nineteen historical files match exact names/sizes/hashes. All test/lint/helper/sampler results consumed. The slow native compiler completes naturally; its sampled loader wait remains separately investigated under .11.2. No full CI or push is claimed.
+- [x] **FIX / LOCKSTEP** — indexed evidence/decision, deployment book, MEMORY, LIVE_STATUS, CHANGELOG, DEV_NOTES and task frontiers document exclusive creation, explicit handle-before-cleanup lifetime, preserved failure evidence and exact qualification limits. Categories unchanged; browser .11.4.3.1.5 is next after clean handoff.

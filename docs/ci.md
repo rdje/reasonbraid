@@ -84,9 +84,9 @@ make book
 These are the required checkpoint commands, not a claim they have passed now.
 All six project command jobs now use the local CI launcher. Python discovery,
 worker builds, required browser presence, explicit full demo and pinned book build
-are wired. Publisher fixture ownership and browser profile/child lifetimes remain
-checkpoint prerequisites .4/.5; safe compiler-artifact disposition is .6. Complete
-these before broad execution under .2. Actual GitHub results remain to be consumed
+are wired. Publisher fixture ownership .4 is verified, including independent
+processes and preserved historical data. Browser profile/child lifetime .5 and
+safe compiler-artifact disposition .6 remain before broad execution under .2. Actual GitHub results remain to be consumed
 after the authorized push. Local Make commands use project_env.py.
 
 Exact census, tool versions, source hashes, skips and limits:

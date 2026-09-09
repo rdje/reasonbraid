@@ -49,5 +49,9 @@ final affected checks, all eight archive identity/layout checks and native versi
 probes; the original version-format failure and corrected retry remain preserved.
 Workflow wiring .11.4.3.1.3.3 now passes YAML/shell routing checks, five omission
 controls, real synthetic Gitleaks redaction, fifty Python controls (including live
-PostgreSQL ownership) and rendered book checks. Publisher/browser/cleanup
-prerequisites and full local/remote gate execution remain; categories are unchanged.
+PostgreSQL ownership) and rendered book checks. Subsequent prerequisite and full
+local/remote gate results are tracked separately; categories are unchanged.
+Publisher fixture ownership .11.4.3.1.4 now passes five focused controls, independent
+helper lifetimes, two concurrent executable runs, strict lint and rendered book
+checks. Historical residue is preserved; all results are consumed. Browser and
+compiler-artifact prerequisites remain before full execution; categories unchanged.

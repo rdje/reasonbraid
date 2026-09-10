@@ -50,6 +50,7 @@ async fn pool() -> Option<PgPool> {
         "enrollment_boundaries",
         "node_enroll_audit",
         "node_keys",
+        "node_certificates",
         "node_leases",
         "node_enrollment_tokens",
         "runs",
@@ -268,4 +269,56 @@ async fn identity_fks_fail_closed() {
         orphan_node.is_err(),
         "a node with no host row must be refused"
     );
+}
+
+/// A preceding node suite can leave certificates referencing the identity tree.
+/// Cleanup must handle that residue while preserving the database's FK checks.
+#[tokio::test]
+async fn fixture_cleanup_removes_certificates_before_their_identity_parents() {
+    let _guard = identity_guard().await;
+    let Some(seeded) = pool().await else { return };
+    let mut transaction = seeded.begin().await.expect("begin fixture seed");
+    // Opaque certificate bytes are sufficient for this storage dependency test.
+    sqlx::raw_sql(
+        "INSERT INTO tenants (tenant_id, name)
+             VALUES ('ten_00000000-0000-7000-8000-000000000901', 'fixture residue');
+         INSERT INTO hosts (host_id, tenant_id)
+             VALUES ('hst_00000000-0000-7000-8000-000000000901',
+                     'ten_00000000-0000-7000-8000-000000000901');
+         INSERT INTO nodes (node_id, host_id, tenant_id)
+             VALUES ('nod_00000000-0000-7000-8000-000000000901',
+                     'hst_00000000-0000-7000-8000-000000000901',
+                     'ten_00000000-0000-7000-8000-000000000901');
+         INSERT INTO node_certificates
+             (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at)
+             VALUES (repeat('a', 64), 'nod_00000000-0000-7000-8000-000000000901',
+                     decode('00', 'hex'), decode('00', 'hex'), now(), now() + interval '1 hour');",
+    )
+    .execute(&mut *transaction)
+    .await
+    .expect("seed certified-node identity hierarchy");
+    transaction.commit().await.expect("commit fixture seed");
+
+    let refused = sqlx::query("DELETE FROM nodes")
+        .execute(&seeded)
+        .await
+        .expect_err("a referenced node cannot be deleted first");
+    let database_error = refused.as_database_error().expect("database FK refusal");
+    assert_eq!(database_error.code().as_deref(), Some("23503"));
+    assert_eq!(
+        database_error.constraint(),
+        Some("node_certificates_node_id_fkey")
+    );
+
+    let cleaned = pool().await.expect("reopen the owned identity fixture");
+    let remaining: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM node_certificates),
+                (SELECT count(*) FROM nodes),
+                (SELECT count(*) FROM hosts),
+                (SELECT count(*) FROM tenants)",
+    )
+    .fetch_one(&cleaned)
+    .await
+    .expect("inspect the cleaned hierarchy");
+    assert_eq!(remaining, (0, 0, 0, 0));
 }

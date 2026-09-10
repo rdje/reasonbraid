@@ -288,8 +288,8 @@ this testing build has an ad-hoc linker signature, not verified Developer ID sig
 The result qualifies these trusted loopback fixtures. The pinned launcher below
 now supplies the local/CI browser prerequisite under .11.4.3.1.2.5.
 Untrusted-content isolation, detached
-process containment and aggregate resource limits remain .7.3.2. The full workspace
-checkpoint has not passed, and PostgreSQL/demo has not run in this attempt. Exact
+process containment and aggregate resource limits remain .7.3.2. The source-7e01097
+attempt did not pass workspace tests or start PostgreSQL/demo. Exact
 results, retained failures and scope: `docs/tasks/artifacts/signoff_review/browser-checkpoint-timing.md`.
 
 ### Reproduce tests with the selected browser
@@ -327,6 +327,39 @@ from vendor signing, and this test runtime does not establish production isolati
 for hostile pages. Full bounds, refusal behavior and qualification evidence:
 `docs/ci.md` and `docs/tasks/artifacts/signoff_review/ci-browser-runtime.md`.
 
+### Current checkpoint and database fixture ordering
+
+The later **b0cddfe** checkpoint passes nine local gates, including workspace tests
+with the pinned browser, Python controls and both scanners. Its live PostgreSQL
+run passes thirteen suites, then fails during `identity_store` fixture cleanup:
+a certificate left by node-work tests still references the node being deleted.
+The following twenty-six commands and the crash/reconnect demo do not run.
+The stopped failed database and its logs are retained; no full checkpoint or
+remote-CI success is claimed.
+
+The identity fixture now removes `node_certificates` before `nodes`. A regression
+first proves that the real foreign key refuses deleting a referenced node, then
+checks that fixture cleanup removes the complete identity hierarchy. All four
+identity tests pass both on a fresh database and after all eight node-work tests.
+The deployment CA remains intact. Production constraints and API behavior are
+unchanged.
+
+These two commands exercise different preconditions:
+
+```bash
+# Fresh database: all four identity tests.
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh identity_store
+# Same owned database: real node-work residue, then the identity tests.
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh node_work identity_store
+```
+
+A fresh-only pass missed the original defect. The live FK census also identifies
+MCP-listener cleanup gaps in fourteen fixtures and a spend-breaker gap in the CLI
+fixture. `SIGNOFF-REPAIR.11.4.3.1.2.7` owns their reproduction and repair before
+the full checkpoint resumes. Native executable startup delays have separate
+diagnostic ownership under `.11.2`; they do not excuse the reproduced FK failure.
+Exact evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`.
+
 ## Public repository and publication checks
 
 This project is public and must remain public. The director confirmed that the
@@ -341,8 +374,8 @@ public Git to provide an embargo or make this repository private for that purpos
 
 The visibility question is resolved. The earlier checkpoint's format/dependency
 passes, two redacted history-scan findings and deliberately interrupted Clippy
-result retain their exact historical status. Continue the owned history-scan
-repair and full checkpoint on the resulting committed source, then perform the
+result retain their exact historical status. History-scan and browser prerequisites
+are repaired; complete the remaining fixture repairs and full checkpoint, then perform the
 authorized normal push and consume triggered CI results. Details:
 `docs/decisions/2026-09-09_public-repository-policy.md` and
 `docs/tasks/artifacts/signoff_review/publication-precondition.md`.

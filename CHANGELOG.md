@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Repair certified-node fixture residue (`SIGNOFF-REPAIR.11.4.3.1.2.6`)
+
+The b0cddfe checkpoint passes nine gates, then fails at identity fixture cleanup
+after thirteen live PostgreSQL suites pass. Reproduce the fresh-versus-node-work
+ordering failure and the exact restrictive certificate FK. Remove certificate
+children before nodes and add a regression that preserves the FK refusal, then
+checks complete hierarchy cleanup. The regression, four fresh identity tests and
+eight node-work plus four identity tests pass; strict server lint, format and book
+pass. Preserve all failed databases/logs. Production behavior is unchanged; MCP
+listener and CLI spend-breaker fixture dependencies have prerequisite owner .2.7.
+Full checkpoint, public push and remote CI remain incomplete.
+
 ## 2026-09-10 — Pin the local and CI browser runtime (`SIGNOFF-REPAIR.11.4.3.1.2.5`)
 
 Make test/check and the Rust workflow now use an exact verified Chrome for Testing

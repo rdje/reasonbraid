@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Fixture dependencies require predecessor-residue controls
+
+- The source-b0cddfe run passes nine gates and thirteen live PostgreSQL suites, then all three identity tests fail before their assertions: their purge omits node_certificates before nodes. A clean-database baseline passes; real node_work residue reproduces the exact SQLSTATE 23503 constraint failure. Both snapshots retain one node/certificate/host/tenant and CA. The stopped original and ordered-baseline databases remain preserved.
+- Add a regression that seeds a certified identity hierarchy, proves the exact FK still refuses deleting the node first, then invokes the actual fixture cleanup and checks all hierarchy counts. It fails on the unchanged purge and passes after the single cleanup entry is added. All four identity tests pass fresh and after eight real node-work tests; the unrelated CA remains. Final strict all-target/all-feature server lint passes in 230.520 seconds. Production source/schema, manifests and lockfile remain unchanged.
+- Census 41 live public FKs against eighteen explicit node-purge lists. Only identity_store misses certificates; fourteen lists also omit mcp_listen_state and the CLI list omits spend_breakers. Those fifteen further cases have concrete runtime/repair owner .11.4.3.1.2.7 before full checkpoint resumption. Pre-entry journal/authority/budget samples and the distinct 21.868428-second atomic-executable host evaluation interval remain scoped observations under .11.2, with no OS remedy or full-pass claim inferred.
+- promotion: promoted → `docs/decisions/2026-09-10_identity-fixture-dependencies.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.6`.
+
 ## 2026-09-10 — Pin runtime identity and consume launcher shutdown
 
 - Local/CI browser setup now pins Chrome for Testing 153.0.8010.36 with four exact archive lengths/SHA-256 hashes. Validate ZIP layout and bounded internal framework links before private extraction; verify the version before dispatch. Each invocation owns its payload and receipts, retires successful payloads and preserves failures. Make and CI use the same explicit dependency; direct Cargo bypasses it. Archive integrity is distinct from vendor signing and untrusted-content isolation.

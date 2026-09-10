@@ -97,7 +97,14 @@ worker builds, required browser presence, explicit full demo and pinned book bui
 are wired. Publisher/browser lifetime and compiler-artifact prerequisite repairs
 are complete. Source-7e01097's full checkpoint stopped at two browser timing
 witnesses; .2.4 repairs those witnesses and .2.5 binds the dedicated test runtime.
-The complete checkpoint still needs to run on the resulting committed source.
+Source-b0cddfe passes nine gates including the complete workspace/browser run,
+then fails on the fourteenth PostgreSQL suite: identity_store omitted certificate
+children from its node cleanup. Thirteen live suites pass; twenty-six later
+commands and the demo are unstarted. Repair .2.6 qualifies certificate cleanup on
+fresh and real node-work residue. The remaining MCP-listener/CLI spend-breaker
+cleanup candidates have concrete prerequisite .2.7 before checkpoint resumption.
+Exact failed-gate disposition and focused evidence:
+`docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`.
 Actual GitHub results remain to be consumed
 after the authorized push. Local Make commands use project_env.py.
 

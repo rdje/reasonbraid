@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Identity fixture dependencies](docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md) — `.11.4.3.1.2.6`: failed full-gate disposition, fresh/ordered reproduction and certificate-cleanup regression; remaining dependencies owned by `.2.7`.
+
 - [Pinned browser runtime](docs/tasks/artifacts/signoff_review/ci-browser-runtime.md) — `.11.4.3.1.2.5`: exact dependency identities, local/CI binding and native Python shutdown-race repair.
 
 - [Browser checkpoint timing](docs/tasks/artifacts/signoff_review/browser-checkpoint-timing.md) — `.11.4.3.1.2.4`: actual full-gate failures, controlled startup-delay reproduction and phase-witness repair.

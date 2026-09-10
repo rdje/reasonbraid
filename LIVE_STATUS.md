@@ -107,5 +107,16 @@ the same verified testing browser; four archive layouts and native setup/renderi
 are qualified. All 67 Python controls and sixteen browser integration tests pass,
 including a reproduced/repaired shared Python zombie-group shutdown race. Final
 wiring/book/process/residue checks pass; failed evidence remains and production
-Rust is unchanged. Resume the full checkpoint on the committed result, then the
-authorized public push and remote CI. Qualification categories remain unchanged.
+Rust is unchanged by that prerequisite. Qualification categories remain unchanged.
+
+The resumed source-b0cddfe checkpoint passes nine gates, including the pinned-browser
+workspace run and 67 Python controls, then fails in identity_store fixture cleanup
+after thirteen live PostgreSQL suites pass. Certificates left by node_work block
+parent-node deletion; twenty-six later commands and the demo are unstarted. The
+minimal test-only repair passes its new regression and all four identity tests on
+fresh and node-work-populated databases; the production FK and deployment CA remain
+intact. Remaining MCP-listener/CLI spend-breaker cleanup candidates are owned by
+.11.4.3.1.2.7 before full checkpoint resumption, authorized public push and remote
+CI. Preserve the stopped failed databases and native startup diagnostics under
+.11.2. Qualification categories remain unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md.

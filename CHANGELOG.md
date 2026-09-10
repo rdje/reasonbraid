@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Preserve the requested clean handoff (`SIGNOFF-REPAIR.7.3.3.2.1`)
+
+- Record the direct-worker completion diagnostic plan and pending implementation child before any new probe or production edit. PNT is paused at the director's request; resume .7.3.3.2.2 from durable task/live pointers.
+- Preserve all prior evidence and the private unsent OpenAI Support report. Source/book behavior and qualification categories remain unchanged; documentation checks and the native handoff census are the relevant gates.
+
 ## 2026-09-10 — Diagnose production extraction input interference (`SIGNOFF-REPAIR.7.3.3.1`)
 
 - Exact production acquisition span and unchanged worker reproduce six shared paths and eight wrong-owner results among 32 callers; two own-input controls pass. Preserve all 24 files, original identities and failed diagnostic attempts. Production code is unchanged; HTTP/database effects remain untested.

@@ -874,8 +874,26 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.7.3.3.2 — Expose and consume direct extraction worker completion
 
-- Status: `pending`; prerequisite for owned-input cleanup.
+- Status: `pending`; prerequisite for owned-input cleanup. On 2026-09-11 the director requests a clean handoff before probes or production edits. Preparation child .3.2.1 is complete in REPAIR-0059; runtime reproduction and implementation child .3.2.2 remain unstarted. The resume census from clean 38ccab2 returned handoff OK; the report editor is no longer flagged.
 - Owns: qualify success, named refusal, spawn/stdio/exit/parse failure and timeout against bounded owned worker controls. Establish explicit confirmed-versus-unconfirmed direct-child termination so input cleanup cannot depend on an assumed kill/wait success. Consume every owned child when possible and surface unresolved completion honestly with preserved evidence. Keep public error compatibility and no parser/body-budget expansion; decomposition may be refined after .3.1 evidence.
+- Before edits: target/extraction-completion-controls owns exact source/manifest/lock/worker preservation, isolated diagnostic driver and matched controls. The unchanged run_extraction stdin-write error returns through ? without consuming Child. A controlled repository-local worker closes stdin, records its identity, and waits on an explicit release with a hard deadline; a larger synthetic media-type field forces the actual write-error path. Independently query the exact direct child's wait status before releasing/reaping it; preserve the baseline and consume the outer process group. No public-network input, unrelated process signaling, clock mock or parser change. OS/toolchain binaries are required read-only runtime inputs; all generated scripts, lockfiles, fixtures, logs and outputs remain on the repository volume.
+- Selected scope: introduce explicit direct-child completion evidence and bounded stop/reap handling in the extraction spawner, preserving existing wire response and error classifications where truthful. Permanent focused controls own success/refusal/spawn/write/exit/parse/timeout paths and injected cleanup-error outcomes; distinguish synthetic OS-error injection from native reproduction. API input storage/digest integration remains .3.3, synchronous pipes/descendants/aggregate bounds remain .7.3.4. No claim of total extraction deadline or descendant containment.
+- Artifact review: the calendar advanced to 2026-09-11; inspect generated-storage inventory during this activity, retaining all current/historical failure evidence. Any deletion needs fresh exact ownership/identity evidence and its existing cleanup owner before mutation; do not reuse frozen cleanup manifests.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.7.3.3.2.1 — Preserve the direct-worker repair plan for handoff
+
+- Status: `done`; REPAIR-0059, director-requested handoff on 2026-09-11.
+- Owns: reviewed source/call-site census, bounded diagnostic plan, explicit pending implementation scope, task/index/live resume synchronization and consumed handoff checks. No production, test, manifest or book source changes; no diagnostic workspace or worker started in this preparation.
+- Source evidence: run_extraction has one production API caller and its existing spawner test; stdin-write and try_wait errors can leave an unconsumed Child, while timeout ignores kill/wait results. These completion-path findings remain source-level until .3.2.2 reproduces them. The previous wrong-owner input reproduction stays independently qualified under .3.1.
+- Handoff: stop PNT on the director's instruction; preserve all prior evidence and the private unsent Support report. Resume .3.2.2 by preserving current source/worker identities and running the owned bounded baseline before implementation. The larger pipe/descendant/storage boundary remains .7.3.4. Artifact inventory/cleanup remains pending, with no deletion attempted here.
+- Verification: git diff --check and all 342 frozen non-Markdown source hashes checked; unchanged mdBook/README and qualification categories reviewed. Required doctrine hooks and native handoff census must be consumed before declaring safe to clear; no Rust test or full CI claim for this documentation-only preparation.
+
+###### SIGNOFF-REPAIR.7.3.3.2.2 — Qualify and implement direct-worker completion
+
+- Status: `pending`; unstarted at the director-requested handoff.
+- Owns: execute the parent's preserved actual-worker failure baseline, then implement and qualify explicit never-started/consumed-exit/unconfirmed completion and bounded stop/reap handling. Preserve current wire/error behavior where truthful; add focused native and injected-error controls with precise evidence limits, strict affected lint and book/live synchronization. All local diagnostic artifacts belong under target/extraction-completion-controls, created only after resumption.
+- Acceptance: every ordinary spawner return exposes honest direct-child completion; named worker refusals and successful parsing remain compatible, early errors do not silently abandon live children, and unresolved cleanup retains evidence. No total-pipe deadline, descendant containment or API input-ownership closure is inferred; .3.3 and .7.3.4 remain separate owners.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.7.3.3.3 — Integrate exclusive server extraction inputs
@@ -1582,7 +1600,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.3.3.2` | `pending` | qualify direct-worker completion before exclusive input/digest integration .3.3 |
+| 1 | `SIGNOFF-REPAIR.7.3.3.2.2` | `pending` | resume preserved baseline and direct-worker completion repair after director-requested handoff |
 | 2 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | resume complete checkpoint after prerequisites, then authorized public push and remote CI |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 4 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |

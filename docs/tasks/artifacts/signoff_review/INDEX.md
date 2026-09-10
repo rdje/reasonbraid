@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Production extraction input boundary](docs/tasks/artifacts/signoff_review/extraction-input-boundary.md) — `.7.3.3.1`: six native-clock path collisions and eight wrong-owner actual-worker results; staged completion/storage repair follows.
+
 - [Extraction fixture ownership](docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md) — `.11.4.3.1.2.12`: failed PDF checkpoint, unchanged-binary wrong ZIP and native-clock collision diagnosis; production follow-up .7.3.3.
 
 - [Explicit state-lock release](docs/tasks/artifacts/signoff_review/state-writer-lock-release.md) — `.11.4.3.1.2.11.2`: five-path negative baseline, private release guard, fixture companions and actual-API fork qualification.

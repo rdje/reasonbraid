@@ -620,6 +620,15 @@ of a URI is not a promise the core can resolve it.
 
   - ID: `PHASE-4.4.3`
     Status: `done`
+    Qualification correction (`2026-09-10`, REPAIR-0058): the original
+      e2b43ea1 input PID/subsec_nanos name plus truncating write permits
+      cross-request interference. Exact production-span/unchanged-worker
+      controls reproduce eight wrong-owner responses among 32 callers; two
+      positive controls pass. No HTTP/database persistence reproduction is
+      claimed. Source also lacks digest binding and checked direct-child
+      completion. SIGNOFF-REPAIR.7.3.3.2/.3 own the staged correction; broader
+      pipe/descendant/retention limits remain .7.3.4. Evidence:
+      docs/tasks/artifacts/signoff_review/extraction-input-boundary.md.
     Goal: the receipt + the pack wiring — the R2 receipt (the
       Derivation edge: the derived chunk digests + the parent
       digest + the extractor version), the R2 registry entry (the

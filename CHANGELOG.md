@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Diagnose production extraction input interference (`SIGNOFF-REPAIR.7.3.3.1`)
+
+- Exact production acquisition span and unchanged worker reproduce six shared paths and eight wrong-owner results among 32 callers; two own-input controls pass. Preserve all 24 files, original identities and failed diagnostic attempts. Production code is unchanged; HTTP/database effects remain untested.
+- Own staged direct-worker completion and exclusive input/digest integration before the full checkpoint. Keep broader pipe, descendant and retention bounds explicit; annotate the historical Phase 4 claim and book.
+- Prepare the director-requested private OpenAI Support report with available correlation metadata and clearly missing fields; preserve a redacted incident record without publishing session identifiers or submitting the report.
+
 ## 2026-09-10 — Own extraction fixture files exclusively (`SIGNOFF-REPAIR.11.4.3.1.2.12`)
 
 - Preserve the failed PDF checkpoint and reproduce wrong-owner data with both the unchanged extractor executable and the exact original helper/native clock.

@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-10_extraction-input-boundary.md](docs/decisions/2026-09-10_extraction-input-boundary.md) | decision | reproduced production input interference; require worker completion, exclusive ownership and source digest binding before cleanup/persistence |
 | [2026-09-10_extraction-fixture-ownership.md](docs/decisions/2026-09-10_extraction-fixture-ownership.md) | decision | exclusive extraction fixture creation, witnessed native-clock collisions and separately owned production acquisition risk |
 | [2026-09-10_state-lock-release.md](docs/decisions/2026-09-10_state-lock-release.md) | decision | explicitly release acquired flock ownership while preserving successor exclusion and abrupt-process-loss boundaries |
 | [2026-09-10_state-writer-lock-lifetime.md](docs/decisions/2026-09-10_state-writer-lock-lifetime.md) | decision | distinguish shared-descriptor lock retention, original-incident inference and abrupt process-loss limits |

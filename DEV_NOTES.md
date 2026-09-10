@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Bind extraction results to owned input bytes
+
+- Byte-identical 479-byte production input acquisition span plus unchanged server module/actual worker reproduces six shared paths and eight wrong-owner responses among 32 callers. All 24 unique inputs and five original identities remain preserved. Independent source/file/chunk digest reconciliation distinguishes input interference from parser corruption; two unchanged-worker positive controls pass.
+- Preserve initial omitted-chrono compilation failure and the later receipt/input-name assertion before positive dispatch. Corrected build uses 52 workspace-matching dependency identities; no server/parser/manifest change and no HTTP/database execution is claimed.
+- Select explicit direct-child completion before input cleanup (.7.3.3.2), then exclusive private same-volume inputs and acquired-source/response digest binding (.7.3.3.3). Synchronous pipes, output allocation, descendants and aggregate storage remain .7.3.4; direct-child completion alone is insufficient for those boundaries.
+- Director-requested OpenAI Support draft is private/ignored under target/extraction-input-controls; the indexed evidence retains a redacted incident record. Known metadata and missing fields are distinguished; no confirmed moderation trigger or request ID, no Support submission, and no account/access-setting changes.
+- promotion: promoted → `docs/decisions/2026-09-10_extraction-input-boundary.md`; owner `SIGNOFF-REPAIR.7.3.3.1`.
+
 ## 2026-09-10 — File names propose identity; exclusive creation proves ownership
 
 - Preserve source-ec8df08's failed checkpoint: eight gates pass, workspace stops at two PDF tests, PostgreSQL/demo unstarted. Exact original concurrent/isolated/serial reruns pass, then unchanged default-concurrent repetition receives the other ZIP fixture's outer.zip entry. A trace observer fails on interleaved stdout/stderr; separated traces pass 100 times and do not disprove the earlier result.

@@ -180,3 +180,12 @@ were not captured. The analogous production R2 path now has immediate next repai
 owner .7.3.3 before the full checkpoint; Git scratch and remaining fixture names
 have separate concrete owners. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md.
+
+
+Production-boundary diagnosis .7.3.3.1 now reproduces eight wrong-owner extraction
+responses through the exact input acquisition span and unchanged worker; two
+own-input controls pass. No HTTP/database reproduction or production fix is
+claimed. Direct-worker completion .7.3.3.2 and exclusive input/digest integration
+.7.3.3.3 precede the full checkpoint; larger transport/retention limits stay .7.3.4.
+Qualification categories remain unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/extraction-input-boundary.md.

@@ -731,3 +731,19 @@ a candidate collision. The permanent controls also cover 32 simultaneous owners,
 assertion failure and a replaced path. These are fixture guarantees in a controlled
 repository workspace. They do not qualify hostile concurrent directory changes or
 the server's still-pending production R2 input/worker isolation boundary.
+
+
+The subsequent production-boundary diagnosis under .7.3.3.1 uses the exact
+server input-name/write span and unchanged extraction module/worker. With 32
+simultaneous input owners, six paths collide and eight worker responses describe
+another owner's bytes. Two positive controls return their own bytes correctly.
+This reproduces input interference before the worker; it does not execute the
+HTTP handler or prove an incorrect database write. The API currently lacks a
+source/response parent-digest equality check. Production remains unrepaired at
+this diagnosis: .7.3.3.2 establishes confirmed direct-worker completion, then
+.7.3.3.3 adds exclusive same-volume inputs, exact digest binding and checked
+cleanup/retention. For example, two acquired documents must never share a worker
+input, and a response for different bytes must be refused before persistence.
+Unconfirmed reader completion must retain its input. Pipe/output bounds,
+descendant containment and aggregate retained-storage limits remain .7.3.4.
+See `docs/tasks/artifacts/signoff_review/extraction-input-boundary.md`.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Delegate against the administrative target, not the URL shape
+
+- The real rb binary reproduces removal's remaining 403 scope failure after the server target repair; ordinary one-thread invitation passes. Git blame binds the generic selector and removal flags to b62f6a88, PHASE-2.1.4.2; annotate that historical caller gap while preserving its original scoped evidence.
+- Only removal requests TenantWide in the shared existing-thread helper. A deliberately all-TenantWide mutation makes the ordinary scoped-invitation control fail with 403; restore/hash-check the selected source before final checks. Final five real CLI and six server invitation tests pass, covering actual direct/delegated removal, source/caller/tenant refusals, exact domain/CLI-state preservation and ordinary single-thread attenuation. Eleven CLI library tests also pass.
+- Strict CLI all-target/all-feature lint, format, book and independent source/receipt verification pass. Fifteen recorded groups are absent; two successful databases removed; expected runtime failures and preliminary driver/compiler failures are separately preserved. The original three CLI tests, server/evaluator/schema and 338 other existing non-Markdown sources remain unchanged. No broader delegated consent/depth, revocation ordering or full-checkpoint qualification claim.
+- promotion: promoted → `docs/decisions/2026-09-10_cli-removal-delegation.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.10`.
+
 ## 2026-09-10 — Migrate the authority caller when target kinds are tightened
 
 - Git blame and the exact original invitation lifecycle identify an unmigrated caller: the evaluator requires Tenant for TenantAdmin, but participant removal still constructs Thread. The earlier evaluator/command gate did not include this invitation lifecycle; its historical task now carries the scoped compatibility correction. Two new HTTP controls independently reproduce wrong persisted target_kind with unchanged production.

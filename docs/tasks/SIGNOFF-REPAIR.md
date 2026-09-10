@@ -1243,10 +1243,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.10 — Match CLI removal delegation to administrative scope
 
-- Status: `pending`; follows the committed server target repair .2.8, before retention fixture .2.9 and remaining checkpoint prerequisites.
+- Status: `done`; started from clean f63795556467ca26cec85eb290ff8a1499bfd218 after REPAIR-0050, thirteen green doctrine hooks, zero/untracked brief and consumed native handoff census. Follows server target repair .2.8, before retention fixture .2.9 and remaining checkpoint prerequisites. Own local diagnostic/control drivers and receipts under target/cli-removal-controls; inspect the real CLI/API path, reproduce before changing production and preserve failed evidence.
 - Owns before edits: real CLI/API reproduction of delegated participant removal using a thread-only scope; crates/reasonbraid-cli/src/lib.rs run_thread_verb scope selection, focused real CLI regression controls and book/live synchronization. Preserve direct removal and ordinary thread-verb attenuation. The source census identifies main.rs RemoveParticipant forwarding through the generic helper, which unconditionally constructs TargetSelector::Threads; thread creation already uses TenantWide.
 - Acceptance: select the existing action's required administrative target scope for removal without changing other thread operations, prove real delegated removal with explicitly eligible caller/source authority, preserve scope/caller/foreign-tenant refusals and ordinary thread delegation, run strict focused lint and consume exact process/fixture outcomes. Do not relax the server evaluator, introduce a new grant action, or claim consent/depth/revocation serialization fixed; those remain .3.4/.3.3.4.4.
-- Verification / commit: source mechanism identified; actual CLI reproduction and repair pending.
+- Selected control before edits: private support/participant_removal.rs child of the existing cli_end_to_end target, preserving original three tests. Actual rb subprocesses enroll principals, create/invite/remove/inspect against the real API/owned PostgreSQL. Explicitly provision eligible caller/source grants in fixture setup; observe final domain/audit rows independently. Reproduce an authorized delegated removal failure before the production mapping change, and preserve refusal controls for caller, source action/scope/revocation, foreign source and foreign thread. A separate ordinary invitation control narrows the source grant to one thread, so broadening all commands to tenant-wide scope must fail. No new Cargo target/runner entry, server/evaluator/schema changes, or claim about consent/depth/serialized revocation.
+- Diagnostic driver correction: initial local driver passed unregistered suite key cli to cargo_command; the tracked registry names cli_end_to_end. KeyError occurred before any Cargo command. Receipt has zero commands; target/pg-tests/run-hkq8ugfz is stopped/preserved. Correct the local name and preflight registered commands before creating further clusters; this is not a product baseline result.
+- Initial new test compilation fails E0277 on JsonValue versus &String; no runtime tests execute. Correct that test comparison to &str after consuming the result. Preserve the exact test bytes/log and stopped run-8qt01f28. Local driver had assumed migrations existed for its post-command snapshot; add explicit missing-runtime-result classification so compilation/startup failures cannot count as expected product failures.
+- Runtime baseline consumed: new actual-CLI controls yield one ordinary-thread pass and one administrative-removal failure, exit 101, three filtered, no skips/ignores. The real rb error is 403 unauthorized naming delegation scope, with explicitly eligible source/caller authority. Retain stopped run-t4xbqo5e and logs. Git blame binds the generic scope to b62f6a88 (PHASE-2.1.4.2), original removal dispatch to d7b76733 and its delegation flags to b62f6a88. Own a correction annotation in PHASE-2.1.4.2 alongside this repair.
+- Selected production change: only thread.remove_participant uses TenantWide delegation in run_thread_verb; all other operations retain the requested single-thread selector. Before final qualification, deliberately replace that operation distinction with TenantWide for all existing-thread verbs and run the ordinary scoped-invitation test. Require its actual 403 failure, preserve the failed receipt and restore the exact selected production bytes in a finally block. This counterfactual must not enter a commit; consume it before final checks.
+- Verification: baseline one pass/one fail (40.639553-second command/17.51 body); deliberate overbroad mutation zero pass/one fail (46.601166/16.90), exact production bytes restored/hash-verified. Final all five CLI tests pass (74.196326/30.52), all six server invitation tests pass (28.297274/17.67), eleven CLI library tests pass (31.276452/0.63), no skips/ignores. Format, strict all-target/all-feature CLI lint (49.382412 seconds) and book all exit zero. Independent verifier exits zero: fifteen recorded groups absent, two successful databases removed, two runtime/two setup failures stopped/preserved, prior five failed databases preserved, original three CLI tests/338 other existing non-Markdown files unchanged. Eleven rendered markers pass, README 52 lines/2017 bytes unchanged; progress categories/full-checkpoint status unchanged.
+- Commit: REPAIR-0051; clear brief/verify clean and consume native census before selecting .2.9. promotion: promoted → docs/decisions/2026-09-10_cli-removal-delegation.md, three indexed answers. Evidence: docs/tasks/artifacts/signoff_review/cli-removal-delegation.md.
+- [x] **REPRODUCE / ISSUE** — actual unchanged rb removal returns 403 delegation scope for eligible caller/source, while the ordinary one-thread control passes; expected failing run is consumed and retained.
+- [x] **ROOT CAUSE (WHY + WHERE)** — run_thread_verb unconditionally constructed Threads; the administrative Tenant target requires TenantWide. Source/history census binds the generic scope/removal flags to b62f6a88 and annotates PHASE-2.1.4.2.
+- [x] **FIX** — only removal selects TenantWide; exact source reconstruction confirms ordinary targets, server/evaluator/schema and 338 other existing non-Markdown files unchanged.
+- [x] **ADDRESSED (verified)** — all five real CLI tests pass; delegated/direct successes name the actual grant/subject and revoked state. Five administrative authority refusals and one foreign-thread domain refusal preserve domain/CLI state; ordinary one-thread allow/other-thread deny remain.
+- [x] **NO REGRESSION** — six server invitation and eleven CLI library tests, strict CLI lint, format, source/process verification pass. The overbroad mutation fails its live control before exact source restoration; original three CLI tests are byte-preserved.
+- [x] **LOCKSTEP** — live docs, authority/CLI/deployment book, CI guide, task/program/index, historical PHASE-2 annotation and indexed decision/evidence are synchronized; book and eleven rendered markers pass, qualification categories/README unchanged.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 
@@ -1409,15 +1421,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.2.10` | `pending` | reproduce and correct CLI delegated-removal scope after the server target repair |
-| 2 | `SIGNOFF-REPAIR.11.4.3.1.2.9` | `pending` | replace reproduced stale retention-test calendar assumption |
-| 3 | `SIGNOFF-REPAIR.11.4.3.1.2.7.3`–`.2.7.4` | `pending` | close six partial fixture plans and reconcile complete adoption/qualification |
-| 4 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | resume complete checkpoint after prerequisites, then authorized public push and remote CI |
-| 5 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 6 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 7 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 8 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 9 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.2.9` | `pending` | replace reproduced stale retention-test calendar assumption |
+| 2 | `SIGNOFF-REPAIR.11.4.3.1.2.7.3`–`.2.7.4` | `pending` | close six partial fixture plans and reconcile complete adoption/qualification |
+| 3 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | resume complete checkpoint after prerequisites, then authorized public push and remote CI |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 ## Evidence routing
 
@@ -1425,7 +1436,7 @@ The census is partitioned under `docs/tasks/artifacts/signoff_review/`. Each rec
 
 ## Blockers
 
-The director resolved the visibility question: public repository visibility is intentional and must remain. Scanner/browser prerequisites are qualified. Source-b0cddfe's actual PostgreSQL failure now has qualified certificate repair .2.6 and shared-checker prerequisite .2.7.1; fourteen caller plans now qualify with original-fixture comparisons separating the two pre-existing failures. Server repair .2.8 is qualified; complete CLI companion .2.10 and retention fixture .2.9, then finish .2.7.3–.2.7.4 before resuming the incomplete checkpoint. No director decision is needed for these repairs. G6/G7, public-name clearance and license decisions retain separate ownership. No visibility change or checkpoint push has occurred.
+The director resolved the visibility question: public repository visibility is intentional and must remain. Scanner/browser prerequisites are qualified. Source-b0cddfe's actual PostgreSQL failure now has qualified certificate repair .2.6 and shared-checker prerequisite .2.7.1; fourteen caller plans now qualify with original-fixture comparisons separating the two pre-existing failures. Server repair .2.8 and CLI companion .2.10 are qualified; complete retention fixture .2.9, then finish .2.7.3–.2.7.4 before resuming the incomplete checkpoint. No director decision is needed for these repairs. G6/G7, public-name clearance and license decisions retain separate ownership. No visibility change or checkpoint push has occurred.
 
 ## Verification Log
 

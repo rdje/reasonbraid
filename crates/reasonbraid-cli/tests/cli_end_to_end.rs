@@ -16,6 +16,9 @@ mod pg_test_support;
 #[path = "../../reasonbraid-server/tests/support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/participant_removal.rs"]
+mod participant_removal;
+
 use std::net::SocketAddr;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;

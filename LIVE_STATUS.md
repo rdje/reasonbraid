@@ -124,12 +124,16 @@ fixtures: participant-removal authorization (.2.8) and a fixed retention-test da
 (.2.9). The server target repair .2.8 now passes all six invitation tests, 22
 authority and 33 command-API tests plus ten pure evaluator controls and strict
 server lint. Refusals preserve domain state and historical denial replay; valid
-tenant administrators can remove participants. CLI delegation companion .2.10
-and retention fixture .2.9 remain before six partial plans and remaining coverage
+tenant administrators can remove participants. CLI companion .2.10 now passes
+all five real CLI tests: administrative removal requests tenant-wide scope and
+ordinary delegated invitation retains its single-thread scope. Actual unchanged-
+CLI and deliberately overbroad controls fail as expected. Retention fixture .2.9
+remains before six partial plans and remaining coverage
 (.2.7.3–.2.7.4), full checkpoint resumption, authorized public push and remote CI.
 Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md and
 docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
-docs/tasks/artifacts/signoff_review/participant-removal-authority.md.
+docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
+docs/tasks/artifacts/signoff_review/cli-removal-delegation.md.

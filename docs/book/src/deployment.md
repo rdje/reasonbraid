@@ -392,12 +392,14 @@ returned 403 for an authorized administrator because the handler supplied a thre
 target to the tenant-administration action. The exact original fixture reproduced
 that refusal on a fresh database. `SIGNOFF-REPAIR.11.4.3.1.2.8` now corrects the
 server target; all six invitation tests and adjacent authority/command tests pass.
-The companion CLI delegation scope remains `.2.10`. The historical fixture census
+The companion CLI scope correction is `.2.10`: removal requests administrative
+scope while ordinary thread delegation stays narrow. The historical fixture census
 is preserved: all fourteen cleanup callers completed and twelve whole suites passed;
 no complete affected-suite or full-checkpoint pass is claimed. Profiles has the other failure: its fixed expiry date
 precedes the newly created snapshot, so the expected tombstone is not due. The
 original fixture and independent database-time predicates reproduce that mistake;
-`.2.9` owns its clock repair. Both repairs precede complete requalification. The
+`.2.9` owns its clock repair; remaining fixture repairs precede complete
+requalification. The
 six partial plans remain `.2.7.3`, followed by remaining
 adoption/coverage `.2.7.4`, before the full checkpoint resumes.
 The MCP producer above is an internal durable-state test, not MCP-wire or agent

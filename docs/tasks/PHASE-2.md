@@ -385,6 +385,16 @@ Implementation and verification belong to `docs/tasks/SIGNOFF-REPAIR.md`.
       revoked subject grant refuses the delegation at the next decision;
       no regression.
 
+    Corrective caller evidence (`2026-09-10`): b62f6a88 introduced the generic
+      existing-thread delegation selector and flags on the pre-existing removal
+      command. That selector does not cover removal's TenantAdmin/Tenant target.
+      After the server caller correction, an actual rb removal still returns 403
+      for eligible caller/source authority; the ordinary thread control passes.
+      `SIGNOFF-REPAIR.11.4.3.1.2.10` owns the removal-only CLI mapping and real
+      regression controls. Preserve this leaf's scoped historical results; they
+      do not establish administrative-removal compatibility or broader consent/
+      depth enforcement (still `SIGNOFF-REPAIR.3.4`).
+
   - ID: `PHASE-2.1.5`
     Status: `active`
     Goal: cached-decision semantics — ADR-008 (which decisions are

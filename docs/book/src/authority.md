@@ -95,11 +95,12 @@ cover tenant administration.
 
 The existing accepted-participant lifecycle and new live HTTP controls qualify
 this target mapping. Concurrent authority/effect ordering and broader delegated
-consent/depth remain `.3.3.4.4`/`.3.4`. The CLI currently supplies thread-only scope
-for delegated existing-thread verbs, including removal; its companion correction
-and real CLI qualification remain `.11.4.3.1.2.10`. Direct HTTP/CLI requests do not
-carry that delegation context. Evidence:
-`docs/tasks/artifacts/signoff_review/participant-removal-authority.md`.
+consent/depth remain `.3.3.4.4`/`.3.4`. The CLI companion `.11.4.3.1.2.10` now
+requests tenant-wide delegation for removal only. Ordinary existing-thread verbs
+retain single-thread scope; both caller and source authority are still required.
+Direct HTTP/CLI requests do not carry that delegation context. Evidence:
+`docs/tasks/artifacts/signoff_review/participant-removal-authority.md` and
+`docs/tasks/artifacts/signoff_review/cli-removal-delegation.md`.
 
 ## Grant creation failures
 

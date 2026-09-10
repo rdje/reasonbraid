@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Match CLI removal delegation to tenant administration (`SIGNOFF-REPAIR.11.4.3.1.2.10`)
+
+Correct participant removal's delegated scope while retaining single-thread scope
+for ordinary existing-thread commands. Real rb controls reproduce the old failure
+and reject a deliberately overbroad mutation before exact restoration. All five
+CLI, six adjacent server invitation and eleven library tests pass, as do strict
+CLI lint, format, book and source/process checks. Preserve expected failures and
+historical caller evidence; retention and remaining fixture repairs stay pending.
+
 ## 2026-09-10 — Restore authorized participant removal (`SIGNOFF-REPAIR.11.4.3.1.2.8`)
 
 Correct the handler’s authorization target to Tenant for its existing TenantAdmin

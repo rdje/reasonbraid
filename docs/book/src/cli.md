@@ -118,12 +118,12 @@ revocation, requiring live tenant-wide administrative authority; `--expires-in-s
 `allow_explicit_invites=false` refuses the invite verb (recorded rules are
 enforced at the command boundary).
 
-Participant removal now reaches the server with a tenant-administration target,
-while the thread lookup remains bound to that tenant. Direct removal is qualified
-through the HTTP lifecycle. Delegated removal with `--on-behalf-of` still carries
-the CLI's thread-only scope and refuses; its scope correction and real CLI control
-are owned by `SIGNOFF-REPAIR.11.4.3.1.2.10`. Other thread verbs keep thread-scoped
-delegation. See the [authority contract](authority.md#removing-a-participant).
+Participant removal uses a tenant-administration target, while the thread lookup
+remains bound to that tenant. Delegated removal with `--on-behalf-of` now requests
+tenant-wide scope because its existing action requires that scope. Both the caller
+and the named source must have live tenant-wide administrative authority. Ordinary
+thread verbs keep their single-thread delegation. See the
+[authority contract](authority.md#removing-a-participant).
 
 The CLI keeps a repository-root-relative state directory (`.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,
@@ -331,9 +331,29 @@ principal whose grant is the authority source:
     --on-behalf-of rol_… --purpose "owner is offline" --as alice
 ```
 
-The server runs the dual evaluation — the caller.s own grant AND the
-subject.s grant — and refuses a widening scope with a typed 403 naming the
-invariant; the audit row binds the subject.
+The server evaluates both the caller's own grant and the source's grant, and
+refuses insufficient authority or scope with 403. The audit row identifies the
+source. The CLI chooses scope according to the operation:
+
+| Operation | Requested delegation scope |
+| --- | --- |
+| Create a thread | Tenant-wide, matching the creation target. |
+| Remove a participant | Tenant-wide, matching tenant administration. |
+| Other existing-thread verbs, such as invite or contribute | Only the named thread. |
+
+For removal, supply the raw principal ID of an eligible administrative source:
+
+```bash
+rb thread remove-participant --thread "$THREAD_ID" --participant "$ROLE_ID" \
+  --as organizer --on-behalf-of "$ADMIN_SOURCE_ID" --purpose "review complete"
+```
+
+The flag creates no grant. A caller without administration cannot borrow it from
+the source; a thread-only, revoked or foreign-tenant source is insufficient. The
+thread remains bound to the selected tenant. Real CLI controls cover this mapping
+and retain ordinary one-thread delegation; broader consent/depth enforcement and
+concurrent revocation ordering remain open under `.3.4`/`.3.3.4.4`. Evidence:
+`docs/tasks/artifacts/signoff_review/cli-removal-delegation.md`.
 
 ## Honest limits (Phase 1)
 

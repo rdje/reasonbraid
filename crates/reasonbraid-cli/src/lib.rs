@@ -804,9 +804,7 @@ async fn run_thread_create_in_store(
     ))
 }
 
-/// The shared body of the five thread verbs (invite/contribute/challenge/revise/close).
-/// The shared arguments of the five thread verbs (invite/contribute/challenge/
-/// revise/close) — grouped so the runner keeps a small signature.
+/// Shared arguments for commands on an existing thread.
 pub struct ThreadVerbArgs {
     pub thread_id: String,
     pub tenant: Option<String>,
@@ -829,14 +827,17 @@ pub async fn run_thread_verb(
     let mut full = args.body.clone();
     let obj = full.as_object_mut().expect("verb body is an object");
     obj.insert("tenant_id".to_string(), json!(tenant));
-    // The delegation scope is the command's own target — the honest minimal
-    // attenuation (`.1.4.2`).
+    // Match the authorization target: removal requires tenant administration;
+    // other existing-thread verbs retain single-thread attenuation.
     let delegation = args.on_behalf_of.as_ref().map(|subject| {
         (
             subject.clone(),
             args.purpose.clone(),
-            TargetSelector::Threads {
-                threads: vec![args.thread_id.parse().expect("the thread id parses")],
+            match args.operation {
+                "thread.remove_participant" => TargetSelector::TenantWide,
+                _ => TargetSelector::Threads {
+                    threads: vec![args.thread_id.parse().expect("the thread id parses")],
+                },
             },
         )
     });

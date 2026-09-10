@@ -3,7 +3,8 @@
 Owner: `SIGNOFF-REPAIR.11.4.3.1.2.8`; REPAIR-0050. Predecessor:
 `576078dddcbd6d5821905123f9588a37ff7d55de`. Raw observations:
 `target/participant-removal-controls`. The server target mapping, live HTTP controls and final lint/process/book
-verification pass. The CLI companion remains pending.
+verification pass. The subsequently qualified CLI companion has its own record:
+`docs/tasks/artifacts/signoff_review/cli-removal-delegation.md`.
 
 ## Root cause and historical correction
 
@@ -108,15 +109,15 @@ read audit/domain state and original historical lifecycle. Durable controls live
 in the existing registered invitations target and adjacent suites. Raw timing,
 process and exact-source receipts/verifier under target are local evidence, not a
 portable regression gate; no future process-cleanliness or duration guarantee is
-inferred from them. Full checkpoint, remaining fixtures and actual CLI delegation
-remain required under their separate owners.
+inferred from them. Full checkpoint and remaining fixtures stay open. The subsequent actual CLI
+delegation qualification is recorded separately under its own owner.
 
 ## Companion CLI scope
 
-The main.rs removal command forwards to run_thread_verb in the CLI library, which
-unconditionally uses a Threads selector for delegated existing-thread verbs.
-That cannot cover the administrative Tenant target. The `.11.4.3.1.2.10` owner
-will reproduce the actual CLI request and correct that one operation's scope
-while retaining ordinary thread attenuation. No real CLI delegated-removal pass
-is inferred from these HTTP tests; consent/depth and revocation ordering retain
-their existing owners.
+At this server leaf's closure, main.rs removal forwarded to run_thread_verb,
+which unconditionally used Threads for delegated existing-thread verbs. That
+cannot cover the administrative Tenant target. The subsequent `.11.4.3.1.2.10`
+record reproduces the actual CLI request and corrects that one operation's scope
+while retaining ordinary thread attenuation. No real CLI pass is inferred from
+these HTTP tests; the companion carries its own evidence. Consent/depth and
+revocation ordering retain their existing owners.

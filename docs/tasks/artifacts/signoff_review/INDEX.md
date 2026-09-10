@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [CLI removal delegation](docs/tasks/artifacts/signoff_review/cli-removal-delegation.md) — `.11.4.3.1.2.10`: actual CLI scope mismatch and administrative/ordinary delegation controls.
+
 - [Participant-removal authority](docs/tasks/artifacts/signoff_review/participant-removal-authority.md) — `.11.4.3.1.2.8`: original target mismatch, historical caller audit and live success/refusal/audit controls; CLI delegation remains separately owned.
 
 - [Checked node fixtures](docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md) — `.11.4.3.1.2.7.2`: fourteen caller migrations, exact source scope and predecessor-residue qualification; partial plans remain separately owned.

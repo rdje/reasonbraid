@@ -26,8 +26,9 @@ older caller mapping/target to d7b76733/35f395d9. Original focused evaluator and
 command tests did not cover this invitation lifecycle, so retain their scoped
 results and annotate the later compatibility repair in the original task.
 
-CLI delegated existing-thread verbs currently construct thread-only scope. Its
-removal-specific companion correction and real CLI qualification are .2.10; the
-server's direct-request fix does not claim that caller has migrated. Broader
+At REPAIR-0050, CLI delegated existing-thread verbs still constructed thread-only
+scope. The subsequent removal-specific companion correction and real CLI controls
+are .2.10; see docs/decisions/2026-09-10_cli-removal-delegation.md. The server's
+original direct-request evidence alone does not establish caller compatibility. Broader
 consent/depth and authority/revocation ordering remain .3.4/.3.3.4.4. The development
 principal-header trust model and the production evaluator are unchanged.

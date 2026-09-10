@@ -105,6 +105,12 @@ fresh and real node-work residue. The remaining MCP-listener/CLI spend-breaker
 cleanup candidates have concrete prerequisite .2.7 before checkpoint resumption.
 Exact failed-gate disposition and focused evidence:
 `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`.
+The expanded explicit-plan census finds twenty affected plans. Three actual
+producer/consumer baselines reproduce distinct FK failures. Prerequisite .2.7.1
+qualifies a shared pre-deletion plan check with eight pg_guard tests (five new
+live controls and three existing ownership controls). Caller migration remains
+.2.7.2–.2.7.4; this primitive does not make the original failing suites pass yet.
+Evidence: `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md`.
 Actual GitHub results remain to be consumed
 after the authorized push. Local Make commands use project_env.py.
 

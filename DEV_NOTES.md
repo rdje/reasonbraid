@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Preflight the whole declared cleanup plan
+
+- All three original producer/consumer baselines meet their expected outcomes: one MCP-listen pass precedes four identity FK failures; the selected spend-breaker pass precedes three CLI FK failures; eight node-work passes precede one MCP-fixture incarnation FK failure. The three owned databases stop and remain preserved. These are internal/database-state tests, not MCP transport qualification.
+- Expanding the explicit-loop census from eighteen node plans to twenty-five plans finds twenty affected plans and seventy-five restrictive dependency edges against 41 live FKs. The three existing cascade edges also need explicit declarations under the new helper contract; they are not newly classified product defects. The census is scoped to these source shapes, not arbitrary SQL or every implicit application relationship.
+- New private cleanup support checks canonical names, duplicates, supported ordinary public relations and all incoming FK order before DELETE on one ownership-verified connection. Reject empty-child omissions, cross-schema name collisions, inheritance/views and cycles; require explicit cascade/null/default children. Preserve SQL causes and the existing non-atomic semantics of a later statement failure. Five live controls plus the three existing ownership tests pass (15.19s test body; 47.313559s command), with the successful cluster removed. Strict all-target/all-feature server lint passes in 11.360956 seconds. Caller integration remains .2.7.2–.2.7.4.
+- promotion: promoted → `docs/decisions/2026-09-10_checked-fixture-cleanup.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.7.1`.
+
 ## 2026-09-10 — Fixture dependencies require predecessor-residue controls
 
 - The source-b0cddfe run passes nine gates and thirteen live PostgreSQL suites, then all three identity tests fail before their assertions: their purge omits node_certificates before nodes. A clean-database baseline passes; real node_work residue reproduces the exact SQLSTATE 23503 constraint failure. Both snapshots retain one node/certificate/host/tenant and CA. The stopped original and ordered-baseline databases remain preserved.

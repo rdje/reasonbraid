@@ -5,6 +5,11 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+#[path = "support/cleanup_tests.rs"]
+mod cleanup_tests;
+#[path = "support/cleanup.rs"]
+mod pg_cleanup;
+
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::PathBuf;

@@ -115,8 +115,11 @@ after thirteen live PostgreSQL suites pass. Certificates left by node_work block
 parent-node deletion; twenty-six later commands and the demo are unstarted. The
 minimal test-only repair passes its new regression and all four identity tests on
 fresh and node-work-populated databases; the production FK and deployment CA remain
-intact. Remaining MCP-listener/CLI spend-breaker cleanup candidates are owned by
-.11.4.3.1.2.7 before full checkpoint resumption, authorized public push and remote
-CI. Preserve the stopped failed databases and native startup diagnostics under
+intact. Expanded fixture review reproduces MCP-listener, CLI spend-breaker and
+incarnation residue failures. Shared cleanup-plan check .11.4.3.1.2.7.1 passes
+eight guard tests and strict lint; existing callers still require migration and
+qualification under .2.7.2–.2.7.4 before full checkpoint resumption, authorized
+public push and remote CI. Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
-docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md.
+docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
+docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md.

@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-10_checked-fixture-cleanup.md](docs/decisions/2026-09-10_checked-fixture-cleanup.md) | decision | validate complete explicit fixture plans against live dependencies before deletion; preserve ownership, declared cascade scope and honest late-error semantics |
 | [2026-09-10_identity-fixture-dependencies.md](docs/decisions/2026-09-10_identity-fixture-dependencies.md) | decision | prove fixture cleanup with real predecessor residue and restrictive foreign keys; preserve partial checkpoint outcomes and own remaining dependency candidates |
 | [2026-09-10_pinned-browser-runtime.md](docs/decisions/2026-09-10_pinned-browser-runtime.md) | decision | pin local/CI browser archive identities and distinguish integrity from isolation; consume launcher children and require actual shutdown after transient denial |
 | [2026-09-10_browser-checkpoint-timing.md](docs/decisions/2026-09-10_browser-checkpoint-timing.md) | decision | qualify navigation and overlap from observed phase events with startup-derived bounds; preserve failed gates and missing original timing evidence |

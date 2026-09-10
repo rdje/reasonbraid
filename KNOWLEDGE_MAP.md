@@ -138,5 +138,6 @@
 - [`2026-09-09_site-operator-authority.md`](docs/decisions/2026-09-09_site-operator-authority.md)
 - [`2026-09-09_tenant-authority-transaction-order.md`](docs/decisions/2026-09-09_tenant-authority-transaction-order.md)
 - [`2026-09-10_browser-checkpoint-timing.md`](docs/decisions/2026-09-10_browser-checkpoint-timing.md)
+- [`2026-09-10_checked-fixture-cleanup.md`](docs/decisions/2026-09-10_checked-fixture-cleanup.md)
 - [`2026-09-10_identity-fixture-dependencies.md`](docs/decisions/2026-09-10_identity-fixture-dependencies.md)
 - [`2026-09-10_pinned-browser-runtime.md`](docs/decisions/2026-09-10_pinned-browser-runtime.md)

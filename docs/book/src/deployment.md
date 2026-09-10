@@ -353,12 +353,34 @@ python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh identity_store
 python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh node_work identity_store
 ```
 
-A fresh-only pass missed the original defect. The live FK census also identifies
-MCP-listener cleanup gaps in fourteen fixtures and a spend-breaker gap in the CLI
-fixture. `SIGNOFF-REPAIR.11.4.3.1.2.7` owns their reproduction and repair before
-the full checkpoint resumes. Native executable startup delays have separate
-diagnostic ownership under `.11.2`; they do not excuse the reproduced FK failure.
-Exact evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`.
+A fresh-only pass missed the original defect. The initial node-plan census found
+MCP-listener gaps in fourteen fixtures and a CLI spend-breaker gap. The expanded
+census finds dependency candidates in twenty of twenty-five explicit cleanup
+plans. Actual producer/consumer tests reproduce listener-state, spend-breaker and
+incarnation failures. These are concrete fixture failures; the source/catalog
+edge count is not a count of independently reproduced product defects.
+
+A shared test-only checker now validates the entire declared table plan before
+any deletion. For example, an otherwise complete tenant cleanup must name its
+listener-state dependency even when that table is empty. Dependent tables must
+precede parents, including existing cascading/null/default effects. Unsupported
+table shapes, cross-schema dependencies and cycles refuse; unrelated rows stay
+outside the declared plan. Callers must use the existing ownership-verified pool
+and exclusive fixture access. A later SQL error retains its cause and may leave
+earlier deletes committed; this helper does not promise atomic rollback.
+
+```bash
+# Five live plan controls plus the three existing ownership controls.
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh pg_guard
+```
+
+All eight checks pass. The checker is initially exercised by `pg_guard`;
+existing fixture callers are still migrated and qualified under
+`SIGNOFF-REPAIR.11.4.3.1.2.7.2` through `.2.7.4` before the full checkpoint resumes.
+The MCP producer above is an internal durable-state test, not MCP-wire or agent
+qualification. Native executable startup delays have separate diagnostic ownership
+under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`
+and `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md`.
 
 ## Public repository and publication checks
 

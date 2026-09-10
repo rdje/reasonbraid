@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Check complete fixture cleanup plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.1`)
+
+Reproduce MCP-listener, spend-breaker and incarnation residue failures in actual
+producer/consumer suites. Add a shared test-only checker that validates canonical
+table names, supported relations and complete dependency order before deletion,
+including cascade/null/default effects. Preserve typed errors, unrelated rows and
+honest late-error partial effects. All eight guard tests and strict server lint
+pass. Existing fixture callers remain unchanged for the next migration children;
+production code/schema and the failed full-checkpoint status remain unchanged.
+
 ## 2026-09-10 — Repair certified-node fixture residue (`SIGNOFF-REPAIR.11.4.3.1.2.6`)
 
 The b0cddfe checkpoint passes nine gates, then fails at identity fixture cleanup

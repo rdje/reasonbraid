@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Declare dependency closure at existing fixture callers
+
+- Fourteen node-fixture plans now use the qualified cleanup helper. Preserve original table order and unrelated-state policies while adding MCP-listener state, the CLI spend breaker and explicit existing resource-cascade descendants. Exact source reconstruction confines every Rust change to the import and cleanup loop; 325 other non-Markdown source files remain unchanged.
+- Real MCP→identity and selected breaker→CLI sequences pass, with listener/breaker residue observed before consumers and absent afterward. All four identity and all three CLI assertions pass; both owned clusters are removed. The fourteen-caller census has 135 passing assertions and two failures: the original invitation fixture independently reproduces the tenant-admin/thread target mismatch, and the original profile fixture plus database-time predicates prove its fixed retention cutoff predates creation. All cleanup plans execute successfully; twelve full suites pass. The two failures remain mandatory .2.8/.2.9 repairs, with four stopped failure databases retained. Six partial plans and remaining adoption retain separate ownership.
+- Format, strict all-target/all-feature server/CLI lint (177.305769 seconds), book and independent verification pass. Thirty-six recorded groups are absent; eight successful databases are removed and four failures preserved. The original-fixture comparisons and precise partial results remain durable; no all-green affected-suite/full-CI claim.
+- promotion: promoted → `docs/decisions/2026-09-10_checked-node-fixtures.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.7.2`.
+
 ## 2026-09-10 — Preflight the whole declared cleanup plan
 
 - All three original producer/consumer baselines meet their expected outcomes: one MCP-listen pass precedes four identity FK failures; the selected spend-breaker pass precedes three CLI FK failures; eight node-work passes precede one MCP-fixture incarnation FK failure. The three owned databases stop and remain preserved. These are internal/database-state tests, not MCP transport qualification.

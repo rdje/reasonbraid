@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Migrate fourteen checked cleanup callers (`SIGNOFF-REPAIR.11.4.3.1.2.7.2`)
+
+Add missing MCP-listener/CLI-breaker dependencies and explicitly declare existing
+resource-cascade children. Preserve original cleanup order, unrelated state and
+feature assertions. Real predecessor→identity/CLI sequences pass; all fourteen
+cleanup callers execute successfully. The affected census records 135 passing
+assertions and two failures, both reproduced with original fixtures: participant
+removal has a tenant-action/thread-target mismatch, and a retention test uses an
+expired calendar assumption. Own their immediate repairs under .2.8/.2.9; retain
+the four failed databases and all results. Strict server/CLI lint, format, book
+and independent scope/process checks pass; production code remains unchanged.
+
+
 ## 2026-09-10 — Check complete fixture cleanup plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.1`)
 
 Reproduce MCP-listener, spend-breaker and incarnation residue failures in actual

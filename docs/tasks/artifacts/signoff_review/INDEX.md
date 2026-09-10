@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Checked node fixtures](docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md) — `.11.4.3.1.2.7.2`: fourteen caller migrations, exact source scope and predecessor-residue qualification; partial plans remain separately owned.
+
 - [Checked fixture cleanup](docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md) — `.11.4.3.1.2.7.1`: three actual residue failures, expanded dependency census and live qualification of a shared pre-deletion check; caller adoption remains separate.
 
 - [Identity fixture dependencies](docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md) — `.11.4.3.1.2.6`: failed full-gate disposition, fresh/ordered reproduction and certificate-cleanup regression; remaining dependencies owned by `.2.7`.

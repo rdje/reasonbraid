@@ -70,6 +70,14 @@ refuses before fixture writes. See
 
 ## Scheduled pre-push checkpoint
 
+Fourteen node-fixture cleanup callers now use the checked dependency-plan helper.
+Actual MCP-listener→identity and spend-breaker→CLI sequences pass; the affected
+caller census runs every cleanup plan successfully, but its feature assertions
+are not all green. Participant-removal authorization and a dated retention fixture
+each fail once and reproduce with the original fixtures. Repairs
+SIGNOFF-REPAIR.11.4.3.1.2.8/.2.9 precede remaining fixture adoption and the complete
+checkpoint. Exact results: docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md.
+
 The source census at 6bc76c6 identifies 12 workspace packages and 86 test-enabled
 Cargo targets; these are targets, not test functions. All 38 registered server
 suites exist. The three other server integration targets (mtls, publisher and

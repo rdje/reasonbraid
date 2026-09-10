@@ -117,9 +117,13 @@ minimal test-only repair passes its new regression and all four identity tests o
 fresh and node-work-populated databases; the production FK and deployment CA remain
 intact. Expanded fixture review reproduces MCP-listener, CLI spend-breaker and
 incarnation residue failures. Shared cleanup-plan check .11.4.3.1.2.7.1 passes
-eight guard tests and strict lint; existing callers still require migration and
-qualification under .2.7.2–.2.7.4 before full checkpoint resumption, authorized
-public push and remote CI. Preserve the stopped failed databases and startup diagnostics under
+eight guard tests and strict lint. Fourteen node callers now use it and all cleanup
+plans execute; real MCP→identity and breaker→CLI sequences pass. The affected
+census has 135 passing assertions and two failures, both reproduced with original
+fixtures: participant-removal authorization (.2.8) and a fixed retention-test date
+(.2.9). They require repair before six partial plans and remaining coverage
+(.2.7.3–.2.7.4), full checkpoint resumption, authorized public push and remote CI. Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
-docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md.
+docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md and
+docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md.

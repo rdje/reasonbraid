@@ -11,6 +11,9 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+#[path = "support/cleanup.rs"]
+mod pg_cleanup;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -36,51 +39,55 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     // Purge in FK order (children first): this suite exclusively owns these tables.
-    for table in [
-        "outbox_delivery",
-        "outbox",
-        "node_events",
-        "node_inbox",
-        "budget_reservations",
-        "budget_ceilings",
-        "spend_breakers",
-        "authorization_records",
-        "authority_grants",
-        "enrollments",
-        "enrollment_boundaries",
-        "node_enroll_audit",
-        "node_keys",
-        "node_certificates",
-        "node_leases",
-        "node_enrollment_tokens",
-        "runs",
-        "incarnations",
-        "nodes",
-        "hosts",
-        "profile_versions",
-        "agent_profiles",
-        "recruitment_panels",
-        "recruitment_responses",
-        "recruitment_offers",
-        "recruitment_calls",
-        "agent_roles",
-        "human_principals",
-        "resource_references",
-        "quota_events",
-        "usage_quotas",
-        "federation_agreements",
-        "cross_domain_receipts",
-        "tenant_bootstrap_requests",
-        "tenants",
-        "idempotency",
-        "event_log",
-        "aggregate_state",
-    ] {
-        sqlx::query(&format!("DELETE FROM {table}"))
-            .execute(&pool)
-            .await
-            .expect("purge table");
-    }
+    pg_cleanup::delete_tables(
+        &pool,
+        &[
+            "outbox_delivery",
+            "outbox",
+            "node_events",
+            "node_inbox",
+            "budget_reservations",
+            "budget_ceilings",
+            "spend_breakers",
+            "authorization_records",
+            "authority_grants",
+            "enrollments",
+            "enrollment_boundaries",
+            "node_enroll_audit",
+            "node_keys",
+            "node_certificates",
+            "node_leases",
+            "node_enrollment_tokens",
+            "runs",
+            "incarnations",
+            "nodes",
+            "hosts",
+            "profile_versions",
+            "agent_profiles",
+            "recruitment_panels",
+            "recruitment_responses",
+            "recruitment_offers",
+            "recruitment_calls",
+            "agent_roles",
+            "human_principals",
+            "claim_assessments",
+            "derivations",
+            "evidence_snapshots",
+            "resource_references",
+            "quota_events",
+            "usage_quotas",
+            "federation_agreements",
+            "cross_domain_receipts",
+            "mcp_listen_state",
+            "tenant_bootstrap_requests",
+            "tenants",
+            "idempotency",
+            "event_log",
+            "aggregate_state",
+        ],
+    )
+    .await
+    .expect("purge checked fixture plan");
     Some(pool)
 }
 

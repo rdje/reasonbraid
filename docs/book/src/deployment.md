@@ -374,13 +374,35 @@ earlier deletes committed; this helper does not promise atomic rollback.
 python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh pg_guard
 ```
 
-All eight checks pass. The checker is initially exercised by `pg_guard`;
-existing fixture callers are still migrated and qualified under
-`SIGNOFF-REPAIR.11.4.3.1.2.7.2` through `.2.7.4` before the full checkpoint resumes.
+All eight checks pass. Fourteen node-fixture plans now use the checker, including
+the identity and CLI fixtures. They name `mcp_listen_state` before `tenants`; the
+CLI also names `spend_breakers`. Existing resource cascade effects are now explicit:
+`claim_assessments` and `derivations` precede `evidence_snapshots`, which precedes
+`resource_references`. Each fixture keeps its prior table order and unrelated
+state policy, including the identity fixture's preserved deployment CA.
+
+```bash
+# Real listener residue followed by the repaired identity fixture.
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh mcp_listen identity_store
+```
+
+The real listener→identity and selected spend-breaker→CLI sequences pass. The
+broader caller run exposed a separate application defect: participant removal
+returns 403 for an authorized administrator because the handler supplies a thread
+target to the tenant-administration action. The exact original fixture reproduces
+that refusal on a fresh database. `SIGNOFF-REPAIR.11.4.3.1.2.8` owns the repair;
+no complete affected-suite pass is claimed. All fourteen cleanup callers complete;
+twelve whole suites pass. Profiles has the other failure: its fixed expiry date
+precedes the newly created snapshot, so the expected tombstone is not due. The
+original fixture and independent database-time predicates reproduce that mistake;
+`.2.9` owns its clock repair. Both repairs precede complete requalification. The
+six partial plans remain `.2.7.3`, followed by remaining
+adoption/coverage `.2.7.4`, before the full checkpoint resumes.
 The MCP producer above is an internal durable-state test, not MCP-wire or agent
 qualification. Native executable startup delays have separate diagnostic ownership
-under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`
-and `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md`.
+under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`,
+`docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md` and
+`docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md`.
 
 ## Public repository and publication checks
 

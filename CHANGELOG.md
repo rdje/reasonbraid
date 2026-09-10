@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Restore authorized participant removal (`SIGNOFF-REPAIR.11.4.3.1.2.8`)
+
+Correct the handler’s authorization target to Tenant for its existing TenantAdmin
+action. Keep tenant-wide authority and locked tenant/thread binding. New real HTTP
+controls reproduce the old audit target, then verify allowed removal, exact
+no-effect authority/domain refusals and preserved committed-denial replay. All
+six invitation tests plus 22 authority and 33 command-API tests pass. Preserve
+historical evidence and own the CLI delegation-scope companion under .2.10. Ten
+evaluator controls, strict server lint, format, book and independent source/process
+checks pass; three successful databases are removed and failure evidence retained.
+
+
 ## 2026-09-10 — Migrate fourteen checked cleanup callers (`SIGNOFF-REPAIR.11.4.3.1.2.7.2`)
 
 Add missing MCP-listener/CLI-breaker dependencies and explicitly declare existing

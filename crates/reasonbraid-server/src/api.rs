@@ -6192,9 +6192,14 @@ async fn thread_command(
         principal: principal.clone(),
         delegate_subject,
         action: authz_action,
-        target: ResourceTarget::Thread {
-            tenant_id,
-            thread_id,
+        // Participant removal requires tenant administration. The domain
+        // executor still locks and selects the thread within this same tenant.
+        target: match authz_action {
+            GrantAction::TenantAdmin => ResourceTarget::Tenant { tenant_id },
+            _ => ResourceTarget::Thread {
+                tenant_id,
+                thread_id,
+            },
         },
     };
     let response = run_thread_command(

@@ -121,9 +121,15 @@ eight guard tests and strict lint. Fourteen node callers now use it and all clea
 plans execute; real MCP→identity and breaker→CLI sequences pass. The affected
 census has 135 passing assertions and two failures, both reproduced with original
 fixtures: participant-removal authorization (.2.8) and a fixed retention-test date
-(.2.9). They require repair before six partial plans and remaining coverage
-(.2.7.3–.2.7.4), full checkpoint resumption, authorized public push and remote CI. Preserve the stopped failed databases and startup diagnostics under
+(.2.9). The server target repair .2.8 now passes all six invitation tests, 22
+authority and 33 command-API tests plus ten pure evaluator controls and strict
+server lint. Refusals preserve domain state and historical denial replay; valid
+tenant administrators can remove participants. CLI delegation companion .2.10
+and retention fixture .2.9 remain before six partial plans and remaining coverage
+(.2.7.3–.2.7.4), full checkpoint resumption, authorized public push and remote CI.
+Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md and
-docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md.
+docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
+docs/tasks/artifacts/signoff_review/participant-removal-authority.md.

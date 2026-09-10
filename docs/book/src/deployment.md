@@ -388,11 +388,13 @@ python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh mcp_listen identi
 
 The real listener→identity and selected spend-breaker→CLI sequences pass. The
 broader caller run exposed a separate application defect: participant removal
-returns 403 for an authorized administrator because the handler supplies a thread
-target to the tenant-administration action. The exact original fixture reproduces
-that refusal on a fresh database. `SIGNOFF-REPAIR.11.4.3.1.2.8` owns the repair;
-no complete affected-suite pass is claimed. All fourteen cleanup callers complete;
-twelve whole suites pass. Profiles has the other failure: its fixed expiry date
+returned 403 for an authorized administrator because the handler supplied a thread
+target to the tenant-administration action. The exact original fixture reproduced
+that refusal on a fresh database. `SIGNOFF-REPAIR.11.4.3.1.2.8` now corrects the
+server target; all six invitation tests and adjacent authority/command tests pass.
+The companion CLI delegation scope remains `.2.10`. The historical fixture census
+is preserved: all fourteen cleanup callers completed and twelve whole suites passed;
+no complete affected-suite or full-checkpoint pass is claimed. Profiles has the other failure: its fixed expiry date
 precedes the newly created snapshot, so the expected tombstone is not due. The
 original fixture and independent database-time predicates reproduce that mistake;
 `.2.9` owns its clock repair. Both repairs precede complete requalification. The
@@ -402,7 +404,8 @@ The MCP producer above is an internal durable-state test, not MCP-wire or agent
 qualification. Native executable startup delays have separate diagnostic ownership
 under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`,
 `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md` and
-`docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md`.
+`docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md` and
+`docs/tasks/artifacts/signoff_review/participant-removal-authority.md`.
 
 ## Public repository and publication checks
 

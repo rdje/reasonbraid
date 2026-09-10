@@ -111,12 +111,19 @@ invited role **accepts** (`rb thread accept --as reviewer`) before it may act,
 and the accept is the transaction that dispatches the role's work item.
 `rb thread decline` refuses the offer (a declined role may be re-invited);
 `rb thread remove-participant --participant rol_…` is the tenant-admin
-revocation; `--expires-in-seconds` on the invite offers a typed expiry
+revocation, requiring live tenant-wide administrative authority; `--expires-in-seconds` on the invite offers a typed expiry
 (derived — an expired offer reads `expired` and refuses accept/decline).
 `rb thread join` is the self-request path (`.1.3.2`): a thread created with
 `--allow-join-requests` admits the role directly — no invitation — while
 `allow_explicit_invites=false` refuses the invite verb (recorded rules are
 enforced at the command boundary).
+
+Participant removal now reaches the server with a tenant-administration target,
+while the thread lookup remains bound to that tenant. Direct removal is qualified
+through the HTTP lifecycle. Delegated removal with `--on-behalf-of` still carries
+the CLI's thread-only scope and refuses; its scope correction and real CLI control
+are owned by `SIGNOFF-REPAIR.11.4.3.1.2.10`. Other thread verbs keep thread-scoped
+delegation. See the [authority contract](authority.md#removing-a-participant).
 
 The CLI keeps a repository-root-relative state directory (`.reasonbraid-cli`, or
 `REASONBRAID_CLI_STATE`): names → principal ids, and the thread → tenant mapping,

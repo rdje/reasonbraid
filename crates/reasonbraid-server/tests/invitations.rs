@@ -12,6 +12,9 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/participant_removal_tests.rs"]
+mod participant_removal_tests;
+
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 

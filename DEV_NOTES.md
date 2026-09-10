@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Migrate the authority caller when target kinds are tightened
+
+- Git blame and the exact original invitation lifecycle identify an unmigrated caller: the evaluator requires Tenant for TenantAdmin, but participant removal still constructs Thread. The earlier evaluator/command gate did not include this invitation lifecycle; its historical task now carries the scoped compatibility correction. Two new HTTP controls independently reproduce wrong persisted target_kind with unchanged production.
+- Select a tenant target only for the administrative action, retaining the evaluator and locked tenant/thread aggregate lookup. Final six invitation tests and 22 authority/33 command-API tests pass, including exact no-effect refusals, tenant isolation, caller/scope attenuation, audit targets and preserved historical denial replay before fresh success. The repeated invitation pass is not additional distinct coverage. Production changes are confined to that target construction.
+- Final format, strict all-target/all-feature server lint (159.110521 seconds), ten pure evaluator controls and book pass. Independent verification confirms thirteen recorded groups absent, three successful databases removed, new baseline/prior failures preserved, 337 other existing non-Markdown sources unchanged and twelve rendered contract markers.
+- The CLI generic verb helper still constructs thread-only delegated scope for removal; actual CLI reproduction and correction are immediately owned by .2.10. Broader delegated consent/depth and command/revocation ordering remain .3.4/.3.3.4.4. Preserve the baseline and all original failed fixtures.
+- promotion: promoted → `docs/decisions/2026-09-10_participant-removal-authority.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.8`.
+
 ## 2026-09-10 — Declare dependency closure at existing fixture callers
 
 - Fourteen node-fixture plans now use the qualified cleanup helper. Preserve original table order and unrelated-state policies while adding MCP-listener state, the CLI spend breaker and explicit existing resource-cascade descendants. Exact source reconstruction confines every Rust change to the import and cleanup loop; 325 other non-Markdown source files remain unchanged.

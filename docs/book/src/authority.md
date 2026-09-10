@@ -65,6 +65,42 @@ reads and the exact tenant-scoped receipt lookup now commit inspection admission
 and expose receipts as described below. Delegation depth, consent and cached-decision freshness remain `.3.4`;
 tenant authority/effect transaction ordering remains `.3.3.4`.
 
+## Removing a participant
+
+`thread.remove_participant` requires `tenant_admin` on the tenant with a
+`tenant_wide` selector, even though its effect changes one thread. The HTTP
+handler now constructs that tenant target. Previously it supplied a thread target,
+so the stricter evaluator rejected even an eligible administrator with 403.
+The evaluator's action/target restriction remains intact.
+
+For example, direct removal through the existing CLI is:
+
+```bash
+rb thread remove-participant --thread "$THREAD_ID" --participant "$ROLE_ID" --as organizer
+```
+
+The server still locks and selects the aggregate by both tenant and thread ID.
+Authority in tenant A cannot remove a participant from tenant B's thread. A
+thread-only grant containing `tenant_admin` is insufficient; so are missing action,
+revoked/expired/future grants and suspended/revoked parent boundaries. A delegated
+caller cannot borrow authority it lacks, and thread-only delegated scope cannot
+cover tenant administration.
+
+| Request outcome | Result and durable evidence |
+| --- | --- |
+| Eligible administrator, matching tenant/thread and removable participant | 200, revoked participant state, removal event and a tenant-target administrative allowance. |
+| Authority or requested delegation scope is insufficient | 403, one tenant-target denial; domain, queue, budget and quota-event rows remain unchanged. |
+| Eligible tenant administrator names a thread outside that tenant | 404; domain rows stay unchanged and the provisional admission rolls back. |
+| Same key replays an already committed denial | The original refusal remains the result; restoring authority does not reinterpret that past request. Use a fresh key for new intent. |
+
+The existing accepted-participant lifecycle and new live HTTP controls qualify
+this target mapping. Concurrent authority/effect ordering and broader delegated
+consent/depth remain `.3.3.4.4`/`.3.4`. The CLI currently supplies thread-only scope
+for delegated existing-thread verbs, including removal; its companion correction
+and real CLI qualification remain `.11.4.3.1.2.10`. Direct HTTP/CLI requests do not
+carry that delegation context. Evidence:
+`docs/tasks/artifacts/signoff_review/participant-removal-authority.md`.
+
 ## Grant creation failures
 
 Grant creation distinguishes a missing parent, a structural ceiling violation and

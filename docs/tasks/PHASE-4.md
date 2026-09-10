@@ -1623,6 +1623,23 @@ install record), `crates/reasonbraid-server/src/extraction.rs`
   tree's logs above, `docs/TASK_TREE.md` frontier, KNOWLEDGE_MAP —
   same commit.
 
+## 2026-09-10 qualification correction — extraction fixture ownership
+
+The historical nine-test result below does not establish exclusive input-file
+ownership. Source-ec8df08's full checkpoint later fails two PDF controls. The
+unchanged extractor executable also receives the other test's outer.zip entry;
+a byte-identical original fixture helper reproduces three native-clock filename
+collisions among 32 simultaneous writers. The helper introduced in ede2e2a8 under
+PHASE-4.4.2 used PID/subsec_nanos plus truncating writes. REPAIR-0057 replaces the
+unit/stdio fixture ownership under SIGNOFF-REPAIR.11.4.3.1.2.12, preserving original
+parser assertions. See docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md.
+
+The analogous production R2 input path introduced by the PHASE-4.4.3 pipeline
+remains a source-level risk owned concretely by SIGNOFF-REPAIR.7.3.3, with actual
+runtime qualification required. Fixture repair does not close that production
+path or the broader .7.3 isolation/resource/transport findings. Original full-gate
+PDF input paths were not recorded and their exact attribution is not reconstructed.
+
 ## Acceptance Checklist (PHASE-4.4.2)
 
 The CODE change owned by this leaf:

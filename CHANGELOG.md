@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Own extraction fixture files exclusively (`SIGNOFF-REPAIR.11.4.3.1.2.12`)
+
+- Preserve the failed PDF checkpoint and reproduce wrong-owner data with both the unchanged extractor executable and the exact original helper/native clock.
+- Replace timestamp/truncating unit and stdio fixtures with exclusively created, repository-local inputs retained through assertions. Add concurrent ownership, existing-file/link refusal and panic/replacement controls without changing parser behavior or dependencies.
+- All twelve selected tests, strict extractor lint/format and three independent locality cases pass; original assertions, parser and 339 other non-Markdown sources are unchanged. Keep historical attribution limits and concrete production/fixture follow-ups. Full checkpoint/public push remain pending.
+
 ## 2026-09-10 — Explicitly release state-writer locks (`SIGNOFF-REPAIR.11.4.3.1.2.11.2`)
 
 - Install release ownership immediately after flock acquisition and explicitly unlock before File close, including errors/unwind. Preserve nonblocking exclusion, snapshots and synchronization; correct two successful test probes with the same lifetime.

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — File names propose identity; exclusive creation proves ownership
+
+- Preserve source-ec8df08's failed checkpoint: eight gates pass, workspace stops at two PDF tests, PostgreSQL/demo unstarted. Exact original concurrent/isolated/serial reruns pass, then unchanged default-concurrent repetition receives the other ZIP fixture's outer.zip entry. A trace observer fails on interleaved stdout/stderr; separated traces pass 100 times and do not disprove the earlier result.
+- A byte-identical original helper with the native clock and 32 simultaneous labelled writers immediately produces three shared paths and wrong-owner payloads. Preserve all 29 unique files by size/hash. PID/subsec_nanos plus truncating write does not establish ownership. Original full-gate PDF input paths remain unavailable; distinguish mechanism reproduction from exact historical attribution.
+- Shared test-only Input owns exclusive private files on the current repository volume, retains them through assertions, refuses existing files/links and checks identity before successful cleanup. Panic/replacement controls retain evidence. Unit and stdio parser assertions/concurrency remain unchanged; production parser and dependencies are untouched.
+- The same-mechanism census identifies the server R2 input path as the next production repair .7.3.3, Git scratch .7.2.1 and remaining journal/stub fixtures .11.2.1. Source risk is not a runtime production-collision claim. Repair the concrete production prerequisite before another full checkpoint.
+- Final twelve distinct tests pass (271.946638 seconds); strict lint passes in 20.944596 and format in 0.544521. Three independent helper cases prove occupied-candidate preservation, moved-root operation and linked-parent refusal. Source reconstruction preserves parser bytes/all original assertions/339 other sources. Original identities and 29 collision files remain; successful fixture storage is empty. Final process/book checks pass.
+- promotion: promoted → `docs/decisions/2026-09-10_extraction-fixture-ownership.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.12`.
+
 ## 2026-09-10 — Acquire release ownership before further fallible setup
 
 - StateLock wraps the existing File immediately after successful flock, so identity/sync failures as well as complete Writer paths explicitly unlock during Drop. Publication retains the guard through every snapshot. Interrupted unlock retries; unexpected OS refusal falls back to close. No locking primitive, wire/dependency/schema or normal snapshot change.

@@ -483,6 +483,10 @@ fn extract_feed(
 }
 
 #[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+mod input_fixture;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -504,17 +508,103 @@ mod tests {
         }
     }
 
-    fn write_input(bytes: &[u8]) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "r2-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::write(&path, bytes).expect("the input writes");
-        path
+    fn write_input(bytes: &[u8]) -> input_fixture::Input {
+        input_fixture::Input::new(bytes)
+    }
+
+    #[test]
+    fn the_inputs_remain_independent_until_their_owner_finishes() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(32));
+        let writers: Vec<_> = (0..32)
+            .map(|id| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let bytes = format!("independent input {id}").into_bytes();
+                    barrier.wait();
+                    (write_input(&bytes), bytes)
+                })
+            })
+            .collect();
+        // Consume every thread even if one writer failed before returning an input.
+        let outcomes: Vec<_> = writers.into_iter().map(|w| w.join()).collect();
+        let inputs: Vec<_> = outcomes.into_iter().map(Result::unwrap).collect();
+        let paths: std::collections::HashSet<_> = inputs
+            .iter()
+            .map(|(input, _)| input.path().to_path_buf())
+            .collect();
+        assert_eq!(paths.len(), inputs.len());
+        for (input, bytes) in &inputs {
+            assert_eq!(std::fs::read(input.path()).unwrap(), *bytes);
+        }
+        for (input, bytes) in inputs {
+            assert_eq!(std::fs::read(input.path()).unwrap(), bytes);
+            let path = input.path().to_path_buf();
+            drop(input);
+            assert!(!path.try_exists().unwrap());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_input_allocator_preserves_existing_files_and_links() {
+        use std::os::unix::fs::PermissionsExt;
+        let input = write_input(b"existing owner");
+        assert_eq!(
+            std::fs::metadata(input.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        let name = input.path().file_name().unwrap().to_str().unwrap();
+        let refused = input_fixture::Input::create_named(name, b"would truncate");
+        assert_eq!(
+            refused.err().unwrap().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+
+        let link_name = format!("link-{name}");
+        let link = input.path().with_file_name(&link_name);
+        std::os::unix::fs::symlink(input.path(), &link).unwrap();
+        let refused = input_fixture::Input::create_named(&link_name, b"would follow");
+        assert_eq!(
+            refused.err().unwrap().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(std::fs::read(input.path()).unwrap(), b"existing owner");
+        assert_eq!(std::fs::read_link(&link).unwrap(), input.path());
+        assert!(input_fixture::Input::create_named("../escape", b"no").is_err());
+        std::fs::remove_file(link).unwrap();
+    }
+
+    #[test]
+    fn failed_and_replaced_inputs_are_retained() {
+        let input = write_input(b"failed assertion evidence");
+        let path = input.path().to_path_buf();
+        let result = std::panic::catch_unwind(move || {
+            let _owner = input;
+            panic!("deliberate assertion failure");
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"failed assertion evidence");
+        std::fs::remove_file(path).unwrap();
+
+        let input = write_input(b"original identity");
+        let path = input.path().to_path_buf();
+        let retained = path.with_extension("retained");
+        std::fs::hard_link(&path, &retained).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let mut successor = std::fs::File::create_new(&path).unwrap();
+        use std::io::Write;
+        successor.write_all(b"successor identity").unwrap();
+        let result = std::panic::catch_unwind(move || drop(input));
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"successor identity");
+        assert_eq!(std::fs::read(&retained).unwrap(), b"original identity");
+        drop(successor);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(retained).unwrap();
     }
 
     /// A minimal PDF (one page, one text stream), built with lopdf's own
@@ -593,8 +683,8 @@ mod tests {
     fn the_pdf_extracts_its_text() {
         let fixture = minimal_pdf();
         let path = write_input(&fixture);
-        let response = extract(&request_for(&path, "application/pdf")).expect("the PDF extracts");
-        std::fs::remove_file(&path).ok();
+        let response =
+            extract(&request_for(path.path(), "application/pdf")).expect("the PDF extracts");
         assert_eq!(response.chunks.len(), 1);
         assert!(
             response.chunks[0].text.contains("Hello extraction"),
@@ -641,19 +731,17 @@ mod tests {
         let mut out = Vec::new();
         document.save_to(&mut out).expect("the fixture PDF saves");
         let path = write_input(&out);
-        match extract(&request_for(&path, "application/pdf")) {
+        match extract(&request_for(path.path(), "application/pdf")) {
             Err(refusal) => assert_eq!(refusal.kind, "pdf_javascript", "{:?}", refusal.message),
             Ok(_) => panic!("the JS-bearing PDF must refuse"),
         }
-        std::fs::remove_file(&path).ok();
 
         // An unsupported media type names itself.
         let path = write_input(b"whatever");
-        match extract(&request_for(&path, "video/mp4")) {
+        match extract(&request_for(path.path(), "video/mp4")) {
             Err(refusal) => assert_eq!(refusal.kind, "media_type_unsupported"),
             Ok(_) => panic!("the unsupported type must refuse"),
         }
-        std::fs::remove_file(&path).ok();
     }
 
     fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -676,8 +764,8 @@ mod tests {
             ("dir/nested.txt", b"nested"),
         ]);
         let path = write_input(&bytes);
-        let response = extract(&request_for(&path, "application/zip")).expect("the zip extracts");
-        std::fs::remove_file(&path).ok();
+        let response =
+            extract(&request_for(path.path(), "application/zip")).expect("the zip extracts");
         let texts: Vec<&str> = response.chunks.iter().map(|c| c.text.as_str()).collect();
         assert!(texts.contains(&"hello zip"));
         assert!(texts.contains(&"nested"));
@@ -690,25 +778,23 @@ mod tests {
         let nested = zip_bytes(&[("inner.txt", b"x")]);
         let bytes = zip_bytes(&[("outer.zip", &nested)]);
         let path = write_input(&bytes);
-        match extract(&request_for(&path, "application/zip")) {
+        match extract(&request_for(path.path(), "application/zip")) {
             Err(refusal) => assert_eq!(refusal.kind, "nested_archive", "{:?}", refusal.message),
             Ok(_) => panic!("the nested archive must refuse"),
         }
-        std::fs::remove_file(&path).ok();
 
         // The traversal entry name.
         let bytes = zip_bytes(&[("../evil.txt", b"x")]);
         let path = write_input(&bytes);
-        match extract(&request_for(&path, "application/zip")) {
+        match extract(&request_for(path.path(), "application/zip")) {
             Err(refusal) => assert_eq!(refusal.kind, "path_traversal"),
             Ok(_) => panic!("the traversal must refuse"),
         }
-        std::fs::remove_file(&path).ok();
 
         // The bomb: a highly compressible entry trips the ratio brake.
         let bomb = zip_bytes(&[("bomb.txt", &vec![b'0'; 1_000_000])]);
         let path = write_input(&bomb);
-        match extract(&request_for(&path, "application/zip")) {
+        match extract(&request_for(path.path(), "application/zip")) {
             Err(refusal) => {
                 assert_eq!(
                     refusal.kind, "decompression_ratio_exceeded",
@@ -718,7 +804,6 @@ mod tests {
             }
             Ok(_) => panic!("the bomb must trip the ratio brake"),
         }
-        std::fs::remove_file(&path).ok();
     }
 
     fn tar_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -739,8 +824,8 @@ mod tests {
     fn the_tar_extracts_text_entries() {
         let bytes = tar_bytes(&[("a.txt", b"hello tar"), ("b.txt", b"second")]);
         let path = write_input(&bytes);
-        let response = extract(&request_for(&path, "application/x-tar")).expect("the tar extracts");
-        std::fs::remove_file(&path).ok();
+        let response =
+            extract(&request_for(path.path(), "application/x-tar")).expect("the tar extracts");
         let texts: Vec<&str> = response.chunks.iter().map(|c| c.text.as_str()).collect();
         assert!(texts.contains(&"hello tar"));
         assert!(texts.contains(&"second"));
@@ -763,8 +848,7 @@ mod tests {
 </feed>"#;
         let path = write_input(atom.as_bytes());
         let response =
-            extract(&request_for(&path, "application/atom+xml")).expect("the feed extracts");
-        std::fs::remove_file(&path).ok();
+            extract(&request_for(path.path(), "application/atom+xml")).expect("the feed extracts");
         assert!(response.chunks[0].text.contains("Example Feed"));
         let joined: String = response
             .chunks
@@ -777,24 +861,22 @@ mod tests {
         assert!(joined.contains("Second"));
         // A malformed feed names itself.
         let path = write_input(b"<not-xml");
-        match extract(&request_for(&path, "application/rss+xml")) {
+        match extract(&request_for(path.path(), "application/rss+xml")) {
             Err(refusal) => assert_eq!(refusal.kind, "feed_unreadable"),
             Ok(_) => panic!("the malformed feed must refuse"),
         }
-        std::fs::remove_file(&path).ok();
     }
 
     #[test]
     fn the_output_ceiling_names_itself() {
         let bytes = zip_bytes(&[("a.txt", b"x".repeat(2048).as_slice())]);
         let path = write_input(&bytes);
-        let mut request = request_for(&path, "application/zip");
+        let mut request = request_for(path.path(), "application/zip");
         request.limits.max_output_bytes = 100;
         request.limits.max_decompression_ratio = 10_000.0;
         match extract(&request) {
             Err(refusal) => assert_eq!(refusal.kind, "output_too_large"),
             Ok(_) => panic!("the output ceiling must trip"),
         }
-        std::fs::remove_file(&path).ok();
     }
 }

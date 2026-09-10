@@ -170,3 +170,13 @@ inherited-descriptor abrupt-owner-death qualification stays owned by the existin
 restart leaf. Full checkpoint/public push/remote CI remain pending, with all
 qualification categories unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/state-writer-lock-release.md.
+
+The ec8df08 checkpoint passes eight gates and the lock controls, then stops at two
+PDF tests; PostgreSQL/demo remain unstarted. An unchanged-binary wrong-ZIP result
+and three exact-helper native-clock collisions establish unsafe fixture ownership.
+Exclusive unit/stdio inputs are repaired under .11.4.3.1.2.12; all twelve selected
+tests, strict lint/format and three independent locality cases pass. Original PDF paths
+were not captured. The analogous production R2 path now has immediate next repair
+owner .7.3.3 before the full checkpoint; Git scratch and remaining fixture names
+have separate concrete owners. Qualification categories remain unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md.

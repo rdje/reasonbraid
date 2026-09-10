@@ -693,3 +693,41 @@ unchanged. The original holder remains uncaptured; inherited references after
 abrupt owner death retain separate restart ownership. Resume the full checkpoint
 from this committed repair before public push/remote CI. Evidence:
 `docs/tasks/artifacts/signoff_review/state-writer-lock-release.md`.
+
+
+### Extraction test input ownership
+
+
+The **ec8df08** checkpoint next stops at two PDF tests: zero chunks instead of
+one, and a JavaScript-bearing fixture unexpectedly accepted. Eight other gates
+pass; PostgreSQL/demo never start. An unchanged extractor rerun receives another
+test's outer.zip. The exact old helper then reproduces three native-clock filename
+collisions among 32 simultaneous writers. Original checkpoint paths are missing;
+passing isolated/instrumented reruns do not erase the failures. Exclusive
+repository-local unit/stdio inputs are repaired under .11.4.3.1.2.12, with all
+original parser assertions preserved. All twelve selected tests, strict lint/format
+and three independent locality cases pass. The analogous server input risk has concrete
+next repair owner .7.3.3 before checkpoint resumption. See
+`docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md`.
+
+From the repository root, run the extraction controls:
+
+```bash
+python3 -B scripts/project_env.py cargo test --locked -p reasonbraid-extract --all-targets -- --nocapture
+```
+
+Each fixture owns an exclusively created 0600 file under `target/extract-tests`.
+The helper derives that path at runtime, checks its parent directories stay on the
+repository volume, and never falls back to a home or system temporary directory.
+An existing candidate is skipped without changing its bytes. Tests keep inputs
+through their assertions, remove successful inputs only after checking identity,
+and print a repository-relative retained-input path on panic. If an input path
+has been replaced, cleanup refuses to remove the successor. Investigate retained
+failures before any exact, ownership-proven artifact retirement.
+
+For example, two concurrent PDF fixtures must retain separate paths and exact
+source bytes until both owners finish. A pre-existing file or symlink must survive
+a candidate collision. The permanent controls also cover 32 simultaneous owners,
+assertion failure and a replaced path. These are fixture guarantees in a controlled
+repository workspace. They do not qualify hostile concurrent directory changes or
+the server's still-pending production R2 input/worker isolation boundary.

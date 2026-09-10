@@ -96,3 +96,16 @@ unchanged. The original holder remains uncaptured; inherited references after
 abrupt owner death retain separate restart ownership. Resume the full checkpoint
 from this committed repair before public push/remote CI. Evidence:
 `docs/tasks/artifacts/signoff_review/state-writer-lock-release.md`.
+
+
+The **ec8df08** checkpoint next stops at two PDF tests: zero chunks instead of
+one, and a JavaScript-bearing fixture unexpectedly accepted. Eight other gates
+pass; PostgreSQL/demo never start. An unchanged extractor rerun receives another
+test's outer.zip. The exact old helper then reproduces three native-clock filename
+collisions among 32 simultaneous writers. Original checkpoint paths are missing;
+passing isolated/instrumented reruns do not erase the failures. Exclusive
+repository-local unit/stdio inputs are repaired under .11.4.3.1.2.12, with all
+original parser assertions preserved. All twelve selected tests, strict lint/format
+and three independent locality cases pass. The analogous server input risk has concrete
+next repair owner .7.3.3 before checkpoint resumption. See
+`docs/tasks/artifacts/signoff_review/extraction-fixture-ownership.md`.

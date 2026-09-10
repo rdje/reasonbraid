@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-10_extraction-fixture-ownership.md](docs/decisions/2026-09-10_extraction-fixture-ownership.md) | decision | exclusive extraction fixture creation, witnessed native-clock collisions and separately owned production acquisition risk |
 | [2026-09-10_state-lock-release.md](docs/decisions/2026-09-10_state-lock-release.md) | decision | explicitly release acquired flock ownership while preserving successor exclusion and abrupt-process-loss boundaries |
 | [2026-09-10_state-writer-lock-lifetime.md](docs/decisions/2026-09-10_state-writer-lock-lifetime.md) | decision | distinguish shared-descriptor lock retention, original-incident inference and abrupt process-loss limits |
 | [2026-09-10_fixture-plan-coverage.md](docs/decisions/2026-09-10_fixture-plan-coverage.md) | decision | complete the explicit fixture-plan population while preserving per-caller scope and separate SQL, transport and checkpoint boundaries |

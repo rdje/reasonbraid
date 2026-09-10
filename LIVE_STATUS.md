@@ -159,3 +159,14 @@ original holder was not captured; its unchanged reruns pass. Explicit-release
 repair/permanent controls .2.11.2 precede checkpoint resumption. Qualification
 categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md.
+
+Inherited state-lock release is now repaired under .11.4.3.1.2.11.2: the private
+guard explicitly unlocks before File close, including post-acquisition failures.
+A permanent five-path child control fails on unchanged production and passes after
+repair; all 32 selected CLI tests, final twelve-writer rerun, six raw-fork actual-API
+scenarios and strict CLI lint/format pass. Two test probes release explicitly too.
+Original assertions and 339 other non-Markdown sources remain unchanged. Broader
+inherited-descriptor abrupt-owner-death qualification stays owned by the existing
+restart leaf. Full checkpoint/public push/remote CI remain pending, with all
+qualification categories unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/state-writer-lock-release.md.

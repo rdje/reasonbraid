@@ -508,13 +508,19 @@ fn thread_args() -> Vec<&'static str> {
     ]
 }
 
-// This test process is independent of rb. Its nonblocking probe closes its own
-// descriptor before returning, including an incorrectly acquired lock.
+// This test process is independent of rb. Release any acquired lock explicitly:
+// a concurrently spawned child can retain a descriptor after this probe returns.
 fn lock_is_held(fixture: &Fixture) -> bool {
     let file = std::fs::File::open(fixture.state_dir().join("state.lock")).unwrap();
     match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
         Err(rustix::io::Errno::WOULDBLOCK) => true,
-        Ok(()) => false,
+        Ok(()) => {
+            rustix::io::retry_on_intr(|| {
+                rustix::fs::flock(&file, rustix::fs::FlockOperation::Unlock)
+            })
+            .unwrap();
+            false
+        }
         Err(error) => panic!("owned lock observation failed: {error}"),
     }
 }
@@ -688,6 +694,8 @@ async fn explicit_principal_entrypoint_obeys_exclusion_and_releases_usage_failur
     )
     .await;
     let blocked_requests = server.requests.load(Ordering::SeqCst);
+    rustix::io::retry_on_intr(|| rustix::fs::flock(&held, rustix::fs::FlockOperation::Unlock))
+        .unwrap();
     drop(held);
     let invalid = PrincipalRef {
         id: ALICE.into(),

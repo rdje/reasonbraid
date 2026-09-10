@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Acquire release ownership before further fallible setup
+
+- StateLock wraps the existing File immediately after successful flock, so identity/sync failures as well as complete Writer paths explicitly unlock during Drop. Publication retains the guard through every snapshot. Interrupted unlock retries; unexpected OS refusal falls back to close. No locking primitive, wire/dependency/schema or normal snapshot change.
+- The durable inherited-description control witnesses a real child's device/inode and checks success, encoding error, publication error, discard and unwind. All five retain exclusion on unchanged production; all release with the correction. A successor stays exclusive when the old child exits. All holder/reader lifetimes are bounded and consumed before the baseline assertion.
+- Thirty-two distinct CLI library/storage/bootstrap/writer tests pass under default concurrency; a final twelve-writer rerun qualifies the two explicit-unlock fixture companions. Strict CLI lint and format pass. Six independent raw-fork actual-API scenarios now release while children remain alive, with exact failed/cancelled snapshot preservation. Counts separate 45 successful Rust executions from 32 distinct tests and six probe scenarios. Original assertions and 339 other non-Markdown sources remain unchanged.
+- Preserve original/preliminary failures and all old probe snapshots. Original checkpoint attribution remains limited by its deleted holder fixture. Surviving inherited references after abrupt owner death remain the concrete broader restart leaf, not a Drop guarantee.
+- Final native verification returns zero: 62 groups absent, nineteen frozen evidence records and original binary/snapshot copies unchanged, eight rendered markers pass. Book returns zero in 0.150580 seconds; README remains 52 lines/2017 bytes and qualification categories unchanged. All results consumed before the per-leaf commit.
+- promotion: promoted → `docs/decisions/2026-09-10_state-lock-release.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.11.2`.
+
 ## 2026-09-10 — Distinguish guard drop from last shared-descriptor close
 
 - The original concurrent state_writers failure occurs before its entrypoint assertion; its panic cleanup removes the original lock fixture. Preserve that missing-observation limit. Exact unchanged concurrent/isolated/serial binaries pass on rerun; they do not invalidate the failure.

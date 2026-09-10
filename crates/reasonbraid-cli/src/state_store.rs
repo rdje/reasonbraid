@@ -253,6 +253,21 @@ mod unix {
         .union(OFlags::NOFOLLOW)
         .union(OFlags::NONBLOCK);
 
+    /// Own exclusion separately from the descriptor's reference count. Forked
+    /// children can retain the open-file description before close-on-exec runs.
+    struct StateLock {
+        file: File,
+    }
+
+    impl Drop for StateLock {
+        fn drop(&mut self) {
+            // Unlock the shared description while our valid descriptor still
+            // exists, including error/unwind paths. File close remains the
+            // fallback if the OS unexpectedly refuses this nonblocking unlock.
+            let _ = rustix::io::retry_on_intr(|| fs::flock(&self.file, FlockOperation::Unlock));
+        }
+    }
+
     fn failure(operation: &str, error: impl std::fmt::Display) -> CliError {
         invalid(&format!("local state {operation}: {error}"))
     }
@@ -444,7 +459,7 @@ mod unix {
             decode(&bytes)
         }
 
-        fn lock(&self) -> Result<File, CliError> {
+        fn lock(&self) -> Result<StateLock, CliError> {
             let file = File::from(
                 fs::openat(
                     &self.file,
@@ -468,9 +483,11 @@ mod unix {
                     failure("lock failed", error)
                 }
             })?;
-            self.check_lock(&file)?;
+            // Install release ownership before any later fallible validation.
+            let held = StateLock { file };
+            self.check_lock(&held.file)?;
             synchronize(&self.file)?;
-            Ok(file)
+            Ok(held)
         }
 
         fn check_lock(&self, held: &File) -> Result<(), CliError> {
@@ -580,7 +597,7 @@ mod unix {
 
     pub(super) struct Publication {
         directory: Directory,
-        lock: File,
+        lock: StateLock,
     }
 
     impl Publication {
@@ -596,7 +613,7 @@ mod unix {
         }
 
         pub(super) fn publish(&self, bytes: &[u8]) -> Result<(), CliError> {
-            self.directory.publish(&self.lock, bytes)
+            self.directory.publish(&self.lock.file, bytes)
         }
     }
 
@@ -693,6 +710,150 @@ mod unix {
             assert_eq!(
                 fs::flock(&probe, FlockOperation::NonBlockingLockExclusive),
                 Err(Errno::WOULDBLOCK)
+            );
+        }
+
+        /// Retain the real lock's open-file description in an independent
+        /// process, with explicit inheritance rather than a scheduling race.
+        struct InheritedLock {
+            child: std::process::Child,
+            reader: Option<std::thread::JoinHandle<()>>,
+        }
+
+        impl InheritedLock {
+            fn start(file: &File) -> Self {
+                use std::io::{BufRead, BufReader};
+                use std::process::{Command, Stdio};
+
+                let metadata = file.metadata().unwrap();
+                let child = Command::new("python3")
+                    .args([
+                        "-B",
+                        "-c",
+                        "import os,sys\nm=os.fstat(2)\nprint(f'{m.st_dev}:{m.st_ino}',flush=True)\nassert sys.stdin.buffer.read(1)==b'x'",
+                    ])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::from(file.try_clone().unwrap()))
+                    .spawn()
+                    .unwrap();
+                let mut holder = Self {
+                    child,
+                    reader: None,
+                };
+                let stdout = holder.child.stdout.take().unwrap();
+                let (send, received) = std::sync::mpsc::sync_channel(1);
+                holder.reader = Some(std::thread::spawn(move || {
+                    let mut line = String::new();
+                    let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
+                    let _ = send.send(result);
+                }));
+                let witness = received
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .expect("inherited lock witness deadline")
+                    .unwrap();
+                holder.reader.take().unwrap().join().unwrap();
+                assert_eq!(
+                    witness.trim(),
+                    format!("{}:{}", metadata.dev(), metadata.ino())
+                );
+                holder
+            }
+
+            fn finish(mut self) {
+                use std::time::{Duration, Instant};
+
+                self.child.stdin.take().unwrap().write_all(b"x").unwrap();
+                let deadline = Instant::now() + Duration::from_secs(10);
+                loop {
+                    if let Some(status) = self.child.try_wait().unwrap() {
+                        assert!(status.success(), "inherited lock holder: {status}");
+                        return;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "inherited lock shutdown deadline"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+
+        impl Drop for InheritedLock {
+            fn drop(&mut self) {
+                // Also consume the holder/reader when a witness assertion fails.
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                if let Some(reader) = self.reader.take() {
+                    let _ = reader.join();
+                }
+            }
+        }
+
+        #[test]
+        fn writer_release_does_not_wait_for_an_inherited_descriptor() {
+            let mut retained = Vec::new();
+            for outcome in [
+                "success",
+                "encoding-error",
+                "publication-error",
+                "discard",
+                "unwind",
+            ] {
+                let fixture = Fixture::new();
+                let path = fixture.dir();
+                state("original").save(&path).unwrap();
+                let before = std::fs::read(path.join(STATE)).unwrap();
+                let mut writer = Writer::open(&path).unwrap();
+                let child = InheritedLock::start(&writer.publication.lock.file);
+                assert_exclusion(&path);
+                assert!(Writer::open(&path).is_err());
+                assert_exclusion(&path);
+                *writer.state_mut() = state("replacement");
+                match outcome {
+                    "success" => writer.publish().unwrap(),
+                    "encoding-error" => {
+                        writer.state_mut().version = 3;
+                        assert!(writer.publish().is_err());
+                    }
+                    "publication-error" => {
+                        writer.publication.directory.fault = Some(Checkpoint::Written);
+                        assert!(writer.publish().is_err());
+                    }
+                    "discard" => drop(writer),
+                    "unwind" => {
+                        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let _writer = writer;
+                            panic!("owned state writer unwind");
+                        }))
+                        .is_err());
+                    }
+                    _ => unreachable!(),
+                }
+                // Observe before releasing the child, but consume it before
+                // asserting the desired result so the red baseline is clean.
+                let successor = Writer::open(&path);
+                child.finish();
+                if successor.is_ok() {
+                    // Closing the old description must not unlock a new owner.
+                    assert_exclusion(&path);
+                } else {
+                    retained.push(outcome);
+                }
+                drop(successor);
+                assert_eq!(
+                    std::fs::read(path.join(STATE)).unwrap() == before,
+                    outcome != "success"
+                );
+                let current = Writer::open(&path).unwrap();
+                assert_eq!(
+                    current.state().principals.contains_key("replacement"),
+                    outcome == "success"
+                );
+            }
+            assert!(
+                retained.is_empty(),
+                "completed writers retained exclusion: {retained:?}"
             );
         }
 
@@ -803,7 +964,7 @@ mod unix {
                 directory.fault = Some(point);
                 let held = directory.lock().unwrap();
                 let error = directory
-                    .publish(&held, &encode(&state("replacement")).unwrap())
+                    .publish(&held.file, &encode(&state("replacement")).unwrap())
                     .unwrap_err();
                 let published = matches!(point, Checkpoint::Renamed | Checkpoint::DirectorySynced);
                 let observed = StateFile::load(&path).unwrap();
@@ -930,7 +1091,7 @@ mod unix {
             std::fs::remove_file(path.join(LOCK)).unwrap();
             let replacement = File::create(path.join(LOCK)).unwrap();
             let error = directory
-                .publish(&held, &encode(&state("replacement")).unwrap())
+                .publish(&held.file, &encode(&state("replacement")).unwrap())
                 .unwrap_err();
             assert!(error.to_string().contains("lock identity changed"));
             assert!(StateFile::load(&path)

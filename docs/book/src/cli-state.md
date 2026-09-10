@@ -75,9 +75,10 @@ the CLI does not silently reset it to empty state.
 ## Publication and interruptions
 
 A save acquires a nonblocking operating-system lock on the reserved state.lock
-file. Another live writer causes an error. Exclusion ends when the last shared
-lock descriptor closes; an inherited child descriptor can outlive its parent. The
-filename normally remains. Never delete state.lock to bypass contention.
+file. Another live writer causes an error. The guard explicitly unlocks when its
+operation ends, then closes its File. The filename normally remains. After abrupt
+process death, an inherited descriptor can retain exclusion until its last shared
+reference closes; the normal release destructor cannot run then. Never delete state.lock to bypass contention.
 The lock coordinates cooperating clients, and the directories must remain
 stable during use.
 
@@ -122,10 +123,9 @@ load and later save must not assume it merges a stale snapshot for them. A save
 also refuses transitions that discard recovery metadata or replace an unresolved
 bootstrap identity.
 
-A failed request, local validation error or cancellation drops the writer without
-publishing further in-memory changes. The current close-only guard can retain
-exclusion while a forked child still holds its descriptor; do not equate parent
-completion with immediate lock release. New-human bootstrap
+A failed request, local validation error or future cancellation drops the writer,
+explicitly releasing exclusion without publishing further in-memory changes. An
+inherited child descriptor no longer delays this normal release. New-human bootstrap
 already published its pending identity before HTTP and retains it on failure. A local publication error
 still follows the before/after-replacement rules above. Process death while
 awaiting HTTP preserves the previously published snapshot; it does not prove
@@ -159,20 +159,24 @@ This checks the format limit, not physical disk reservation or later write succe
 
 ## Inherited-descriptor qualification
 
-The 2026-09-10 diagnosis calls the real run_thread_create API through a gated
-loopback server. With no child, success, HTTP error and future cancellation all
-release exclusion. With a child holding the actual inherited descriptor, all
-three retain the lock after the parent's descriptor closes; child exit releases
-it. Error/cancellation preserve exact prior state bytes. This is a reproduced
-production defect; explicit release and permanent controls are the immediate
-SIGNOFF-REPAIR.11.4.3.1.2.11.2 prerequisite, still unimplemented at this diagnosis.
-For example, an embedding application that forks during an asynchronous CLI call
-can see a later save report contention even though that call has returned.
+The original close-only guard retained exclusion when a child inherited its lock
+descriptor. The guard now explicitly unlocks before File close, including errors
+immediately after acquisition. For example, an embedding application can finish
+or cancel a run_thread_create call and start another writer while an unrelated
+forked child still holds the old description. Valid overlapping writers continue
+to fail promptly; close-on-exec and complete snapshot synchronization stay intact.
 
-The original concurrent test failure did not preserve its holder, so this
-controlled mechanism does not prove its exact historical spawn path. Abrupt
-process death does not run a release destructor; surviving inherited descriptors
-need separate restart qualification. That work remains owned by the existing
-broader interruption/restart leaf. Never unlink state.lock or infer server rollback
-from local contention. Evidence:
-`docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md`.
+All 32 distinct CLI tests pass under default concurrency. A permanent control
+retains the real lock description in a child across success, encoding error,
+publication error, discard and unwind; it fails all five paths on unchanged
+production and passes after repair. It also verifies that a successor stays
+exclusive when the old child exits. Six independent raw-fork public-API scenarios
+confirm immediate release after success, HTTP error and future cancellation,
+with unchanged failure/cancellation snapshots. Strict CLI lint and format pass.
+
+The original concurrent checkpoint failure did not preserve its holder, so these
+controls do not establish its exact historical spawn path. Abrupt process death
+does not run a release destructor; surviving inherited references need separate
+restart qualification, concretely owned by the broader interruption/restart leaf.
+Never unlink state.lock or infer server rollback from local contention. Evidence:
+`docs/tasks/artifacts/signoff_review/state-writer-lock-release.md`.

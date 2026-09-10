@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Explicitly release state-writer locks (`SIGNOFF-REPAIR.11.4.3.1.2.11.2`)
+
+- Install release ownership immediately after flock acquisition and explicitly unlock before File close, including errors/unwind. Preserve nonblocking exclusion, snapshots and synchronization; correct two successful test probes with the same lifetime.
+- A permanent five-path inherited-descriptor regression fails on unchanged production and passes after correction. All 32 selected CLI tests, the final twelve-writer rerun and six actual-API raw-fork scenarios pass; strict CLI lint and format pass.
+- Preserve all original assertions and 339 other non-Markdown sources. Abrupt owner death with surviving inherited references remains owned by broader restart qualification; full checkpoint/public push remain next.
+
 ## 2026-09-10 — Reproduce inherited state-lock retention (`SIGNOFF-REPAIR.11.4.3.1.2.11.1`)
 
 - Preserve source-8d1504d's failed workspace gate: eight other gates pass, PostgreSQL/demo unstarted. Original sources and executable copies match; unchanged concurrent/isolated/serial reruns pass.

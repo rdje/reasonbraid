@@ -304,8 +304,18 @@ at one state-writer lock failure; PostgreSQL and the demo never start. All sixte
 browser controls pass. Six controlled actual-CLI scenarios then prove that an
 inherited child descriptor can retain exclusion after parent success, error or
 cancellation. Exact attribution of the original deleted fixture is unavailable.
-All 341 source hashes match and fifty recorded groups are absent. Production is
-unchanged: explicit-release repair .11.4.3.1.2.11.2 and permanent controls precede
-checkpoint resumption/public push. Broader inherited-descriptor process-loss
+All 341 source hashes match and fifty recorded groups are absent. That diagnostic commit left production unchanged; the explicit-release repair
+and permanent controls follow below, before checkpoint resumption/public push. Broader inherited-descriptor process-loss
 qualification remains owned separately. See
 `docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md`.
+
+Inherited state-lock release is now repaired under .11.4.3.1.2.11.2. A guard
+explicitly unlocks before closing its File, including post-acquisition failures;
+two successful test probes do likewise. The permanent five-path child regression
+fails on unchanged production and passes after repair. All 32 selected CLI tests,
+the final twelve-writer rerun, six raw-fork actual-API scenarios and strict CLI
+lint/format pass. Original assertions and 339 other non-Markdown sources remain
+unchanged. The original holder remains uncaptured; inherited references after
+abrupt owner death retain separate restart ownership. Resume the full checkpoint
+from this committed repair before public push/remote CI. Evidence:
+`docs/tasks/artifacts/signoff_review/state-writer-lock-release.md`.

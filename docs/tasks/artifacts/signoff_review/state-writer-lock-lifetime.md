@@ -113,3 +113,7 @@ regressions in .2.11.2, not dependence on ignored raw probe files. Book/rendered
 checks and commit doctrine results are recorded in the owning leaf. The full
 checkpoint, production repair, broader restart qualification and remote CI remain
 incomplete at this diagnostic commit.
+
+Subsequent correction: REPAIR-0056/.2.11.2 qualifies explicit release and permanent
+controls in docs/tasks/artifacts/signoff_review/state-writer-lock-release.md.
+The historical observations and attribution limits above remain unchanged.

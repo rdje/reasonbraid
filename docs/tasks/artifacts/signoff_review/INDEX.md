@@ -1,5 +1,6 @@
 # Full-read source census
 
+- [Explicit state-lock release](docs/tasks/artifacts/signoff_review/state-writer-lock-release.md) — `.11.4.3.1.2.11.2`: five-path negative baseline, private release guard, fixture companions and actual-API fork qualification.
 - [State-writer lock lifetime](docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md) — `.11.4.3.1.2.11.1`: preserved failed checkpoint and controlled actual-API inherited-lock diagnosis; production repair remains .2.11.2.
 - [Fixture-plan coverage](docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md) — `.11.4.3.1.2.7.4`: final five caller adoptions and exact original-population regression coverage.
 

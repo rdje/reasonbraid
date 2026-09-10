@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Complete explicit fixture-plan coverage (`SIGNOFF-REPAIR.11.4.3.1.2.7.4`)
+
+Migrate the final five fixtures to checked explicit cleanup, preserving each
+original scope and assertion. All 25 original plans are covered; the first
+consumer sequence passes 22 tests and the consecutive affected collection passes
+169 distinct tests. Strict server/MCP/CLI lint, format, book and source/process
+checks pass. Both successful databases are removed and historical failure
+evidence preserved. Production/schema remain unchanged; the full checkpoint
+is next before public push and remote CI.
+
 ## 2026-09-10 — Complete six partial fixture plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.3`)
 
 Reproduce each original cleanup failure after real node-work residue. Add only

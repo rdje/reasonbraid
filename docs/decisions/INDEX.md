@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-10_fixture-plan-coverage.md](docs/decisions/2026-09-10_fixture-plan-coverage.md) | decision | complete the explicit fixture-plan population while preserving per-caller scope and separate SQL, transport and checkpoint boundaries |
 | [2026-09-10_partial-fixture-dependencies.md](docs/decisions/2026-09-10_partial-fixture-dependencies.md) | decision | extend partial fixture scope only by explicit FK closure, preserving original order, deployment CA and honest coverage boundaries |
 | [2026-09-10_retention-fixture-clock.md](docs/decisions/2026-09-10_retention-fixture-clock.md) | decision | derive expiry tests from stored creation time and preserve strict TTL boundaries, audit state and honest production-policy limits |
 | [2026-09-10_cli-removal-delegation.md](docs/decisions/2026-09-10_cli-removal-delegation.md) | decision | match removal delegation to tenant administration while preserving ordinary single-thread scope and actual CLI falsification |

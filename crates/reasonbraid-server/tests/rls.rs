@@ -18,6 +18,9 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+#[path = "support/cleanup.rs"]
+mod pg_cleanup;
+
 use sqlx::{PgPool, Row};
 
 const PROBE_ROLE: &str = "rls_probe";
@@ -30,18 +33,18 @@ async fn pool() -> Option<PgPool> {
         .expect("apply migrations");
     // FK-ordered: the delivery rows reference the outbox, which references
     // the events — the child tables purge first.
-    for table in [
-        "outbox_delivery",
-        "outbox",
-        "idempotency",
-        "event_log",
-        "aggregate_state",
-    ] {
-        sqlx::query(&format!("DELETE FROM {table}"))
-            .execute(&pool)
-            .await
-            .expect("purge table");
-    }
+    pg_cleanup::delete_tables(
+        &pool,
+        &[
+            "outbox_delivery",
+            "outbox",
+            "idempotency",
+            "event_log",
+            "aggregate_state",
+        ],
+    )
+    .await
+    .expect("purge checked fixture plan");
     // The probe role: fresh per run (no cross-suite residue). The OWNED drop
     // removes the grant dependencies that would block DROP ROLE; the DO
     // block keeps it idempotent whether or not the role exists.

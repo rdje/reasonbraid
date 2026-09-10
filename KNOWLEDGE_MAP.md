@@ -141,6 +141,7 @@
 - [`2026-09-10_checked-fixture-cleanup.md`](docs/decisions/2026-09-10_checked-fixture-cleanup.md)
 - [`2026-09-10_checked-node-fixtures.md`](docs/decisions/2026-09-10_checked-node-fixtures.md)
 - [`2026-09-10_cli-removal-delegation.md`](docs/decisions/2026-09-10_cli-removal-delegation.md)
+- [`2026-09-10_fixture-plan-coverage.md`](docs/decisions/2026-09-10_fixture-plan-coverage.md)
 - [`2026-09-10_identity-fixture-dependencies.md`](docs/decisions/2026-09-10_identity-fixture-dependencies.md)
 - [`2026-09-10_partial-fixture-dependencies.md`](docs/decisions/2026-09-10_partial-fixture-dependencies.md)
 - [`2026-09-10_participant-removal-authority.md`](docs/decisions/2026-09-10_participant-removal-authority.md)

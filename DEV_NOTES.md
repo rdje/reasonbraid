@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Close the declared fixture population without broadening its claim
+
+- The final five plans are regions, allowlist, rls, mcp_write and MCP lib. Four broad plans retain their existing CA deletion and explicitly declare the three existing resource-cascade descendants; RLS keeps its five-table scope. MCP shares private support only under cfg(test). Exact reconstruction preserves all original assertions/order and 336 other non-Markdown files.
+- All original 25 literal-array DELETE plans now use checked cleanup and match the observed 41-FK graph. Other SQL shapes and implicit relationships remain outside that source population. The first 22-test sequence observes retained RLS hierarchy/CA and cleared regions hierarchy/CA; the consecutive 26-command collection passes 169 distinct tests, including the original certificate, removal, delegation and retention regressions. The first sequence repeats tests; total executions are 191, not 191 distinct controls.
+- All 25 original fixture suites and the guard target pass consecutively: 169 distinct tests, zero skips/ignores/filters. The earlier 22-test consumer sequence repeats part of that coverage (191 total executions). All 32 command snapshots match the 41-FK graph. Format, strict all-target/all-feature server/MCP/CLI lint and book pass. Final verification returns zero: 37 recorded groups absent, both successful databases removed, twenty captured historical failure databases stopped/preserved with unchanged receipts/logs, exact five-import/cleanup reconstruction and 336 other non-Markdown files unchanged. Nine rendered markers match, README remains 52 lines/2017 bytes and LIVE_STATUS categories unchanged.
+- promotion: promoted → `docs/decisions/2026-09-10_fixture-plan-coverage.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.7.4`.
+
 ## 2026-09-10 — Complete partial fixture scope from observed FK dependencies
 
 - All six unchanged consumers fail their one test at incarnations_role_id_fkey after each eight-test node_work producer passes. All twelve baseline schema snapshots match the selected 41-FK graph, and all 341 source hashes match before edits. Preserve six stopped failure databases; empty-database passes would not expose this dependency.

@@ -133,9 +133,11 @@ tests, with strict boundaries, exact class effects and preserved audit/replay
 state. Strict server lint and source/process/book checks pass. All six partial
 fixtures under .2.7.3 now use explicit checked dependencies and pass both actual
 node-work→consumer pairs and a consecutive consumer run, preserving deployment
-CA rows and original assertions. The original 25-plan census now has twenty
-checked callers; remaining five-loop adoption and affected coverage .2.7.4 stay
-open before full checkpoint resumption, authorized public push and remote CI.
+CA rows and original assertions. All 25 original plans now use checked cleanup. Final five-plan adoption .2.7.4
+passes its 22-test consumer sequence and all 169 distinct tests in the consecutive
+affected collection, plus strict server/MCP/CLI lint and final verification.
+Both successful databases are removed and prior failures preserved. Full
+checkpoint resumption, authorized public push and remote CI remain next.
 Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
@@ -144,4 +146,5 @@ docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
 docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and
 docs/tasks/artifacts/signoff_review/retention-fixture-clock.md and
-docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md.
+docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md and
+docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md.

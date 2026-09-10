@@ -82,13 +82,19 @@ ordinary-thread controls in all five real CLI tests. Retention fixture .2.9 now
 uses observed creation times and passes the focused control and all 31 profiles
 tests. All six partial fixture plans now use checked explicit dependencies; each
 passes after node-work residue, and their consecutive run passes. The original
-25-plan census has twenty checked callers and five remaining legacy loops under
-.2.7.4; that coverage and affected regression precede the complete checkpoint. Exact results:
+25-plan census now has all 25 checked callers after the final five migrations
+under .2.7.4. Exact source reconstruction and declared dependency closure pass;
+the five-consumer sequence passes 22 tests and the consecutive affected collection
+passes all 169 distinct tests (25 original suites plus the guard target), with
+zero skips/ignores. Strict server/MCP/CLI lint and final verification pass; both
+successful databases are removed and prior failures preserved. The complete
+checkpoint still needs to pass before public push/remote CI. Exact results:
 docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
 docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and
 docs/tasks/artifacts/signoff_review/retention-fixture-clock.md and
-docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md.
+docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md and
+docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md.
 
 The source census at 6bc76c6 identifies 12 workspace packages and 86 test-enabled
 Cargo targets; these are targets, not test functions. All 38 registered server

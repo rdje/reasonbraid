@@ -417,11 +417,29 @@ its original table order and leaves the deployment CA outside its deletion list.
 The checker verifies the whole declared plan before the first deletion; it does
 not silently add tables to the requested scope.
 
-The source census covers the original 25 literal-array DELETE plans. Twenty now
-use checked cleanup; the five remaining loops are regions, allowlist, rls,
-mcp_write and the MCP crate's internal fixture. Other direct or implicit fixture
-relationships are outside that source-pattern census. Reproduction and final
-qualification evidence: `docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md`.
+The source census covers the original 25 literal-array DELETE plans. All 25 now
+use checked cleanup, including regions, allowlist, rls, mcp_write and the MCP
+crate's internal fixture. Four of these final five plans already deleted resource
+evidence through CASCADE; they now explicitly name claim_assessments, derivations
+and evidence_snapshots before resource_references. Their existing deployment-CA
+deletion policy stays intact. RLS keeps its five-table event/outbox scope; it does
+not gain tenant or node deletion. Every original feature assertion stays intact.
+Other direct SQL shapes and relationships without FKs are outside this census.
+The helper is test-only, including its MCP import; this does not qualify MCP wire
+transport or an AI agent workflow. Reproduction and coverage evidence:
+`docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md`.
+
+For example, exercise the final consumers against actual predecessor residue:
+
+```bash
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh node_work rls regions allowlist mcp_write mcp
+```
+
+The runner uses an owned disposable database. Its cleanup validates each fixture's
+explicit scope even when dependent tables are empty. Keep a failing database and
+its receipts for diagnosis; a passing selected run does not replace the complete
+pre-push checkpoint. Earlier partial-plan failure baselines remain recorded in
+`docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md`.
 
 ### Retention fixture time
 

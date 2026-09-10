@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Fixture-plan coverage](docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md) — `.11.4.3.1.2.7.4`: final five caller adoptions and exact original-population regression coverage.
+
 - [Partial fixture cleanup](docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md) — `.11.4.3.1.2.7.3`: six missing dependency plans, original residue baselines and explicit closure qualification.
 
 - [Retention fixture clock](docs/tasks/artifacts/signoff_review/retention-fixture-clock.md) — `.11.4.3.1.2.9`: fixed-cutoff reproduction and creation-time-relative expiry/class controls.

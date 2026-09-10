@@ -1,5 +1,7 @@
 # Full-read source census
 
+- [Retention fixture clock](docs/tasks/artifacts/signoff_review/retention-fixture-clock.md) — `.11.4.3.1.2.9`: fixed-cutoff reproduction and creation-time-relative expiry/class controls.
+
 - [CLI removal delegation](docs/tasks/artifacts/signoff_review/cli-removal-delegation.md) — `.11.4.3.1.2.10`: actual CLI scope mismatch and administrative/ordinary delegation controls.
 
 - [Participant-removal authority](docs/tasks/artifacts/signoff_review/participant-removal-authority.md) — `.11.4.3.1.2.8`: original target mismatch, historical caller audit and live success/refusal/audit controls; CLI delegation remains separately owned.

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Base expiry controls on the persisted creation clock
+
+- The unchanged current profiles fixture and exact original-fixture comparison both return zero tombstones. Independent PostgreSQL creation/cutoff predicates prove the fixed midnight cutoff predates both new snapshots; Git blame binds it to 5083d9cf under PHASE-4.6.4. Annotate that historical calendar dependency without blaming the cleanup migration or changing production expiry.
+- The existing test now reads actual created_at, checks strict temporary/standard TTL boundaries with exact counts and unchanged rows, includes an explicit audit snapshot, and retains license/freshness/re-fetch assertions. Same-content replay preserves retention age. The focused test and all 31 profiles tests pass; the focused repeat adds no distinct coverage. Independent SQL confirms the two finite-class tombstones and unchanged audit class. Both successful databases are removed and original failures preserved.
+- Format, strict all-target/all-feature server lint (47.225630 seconds), book and final independent verifier pass. Seven recorded groups are absent; exact source comparison confines the change to the existing test function with 340 other non-Markdown files unchanged. Nine rendered markers pass; README and progress categories stay unchanged.
+- The long compile completes naturally after a sampled idle Cargo/rustc observation; target identity disappears before stack sampling, so no sample is dispatched. Host-wait causation remains .11.2. Broader expiry scope/clock, object integrity and freshness-horizon fixes stay .7.4; this leaf changes only the test function.
+- promotion: promoted → `docs/decisions/2026-09-10_retention-fixture-clock.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.9`.
+
 ## 2026-09-10 — Delegate against the administrative target, not the URL shape
 
 - The real rb binary reproduces removal's remaining 403 scope failure after the server target repair; ordinary one-thread invitation passes. Git blame binds the generic selector and removal flags to b62f6a88, PHASE-2.1.4.2; annotate that historical caller gap while preserving its original scoped evidence.

@@ -78,11 +78,13 @@ each fail once and reproduce with the original fixtures. The server's participan
 removal target repair now passes all six invitation, 22 authority and 33 command-API
 tests plus ten evaluator controls and strict lint. CLI delegation companion
 SIGNOFF-REPAIR.11.4.3.1.2.10 now passes the actual delegated/direct removal and
-ordinary-thread controls in all five real CLI tests. Retention fixture .2.9 still
-precedes remaining fixture adoption and the complete checkpoint. Exact results:
+ordinary-thread controls in all five real CLI tests. Retention fixture .2.9 now
+uses observed creation times and passes the focused control and all 31 profiles
+tests. Remaining fixture adoption still precedes the complete checkpoint. Exact results:
 docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
-docs/tasks/artifacts/signoff_review/cli-removal-delegation.md.
+docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and
+docs/tasks/artifacts/signoff_review/retention-fixture-clock.md.
 
 The source census at 6bc76c6 identifies 12 workspace packages and 86 test-enabled
 Cargo targets; these are targets, not test functions. All 38 registered server

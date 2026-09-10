@@ -395,19 +395,55 @@ server target; all six invitation tests and adjacent authority/command tests pas
 The companion CLI scope correction is `.2.10`: removal requests administrative
 scope while ordinary thread delegation stays narrow. The historical fixture census
 is preserved: all fourteen cleanup callers completed and twelve whole suites passed;
-no complete affected-suite or full-checkpoint pass is claimed. Profiles has the other failure: its fixed expiry date
-precedes the newly created snapshot, so the expected tombstone is not due. The
-original fixture and independent database-time predicates reproduce that mistake;
-`.2.9` owns its clock repair; remaining fixture repairs precede complete
-requalification. The
-six partial plans remain `.2.7.3`, followed by remaining
-adoption/coverage `.2.7.4`, before the full checkpoint resumes.
+no complete affected-suite or full-checkpoint pass is claimed. Profiles exposed
+a separate fixture-clock failure: its fixed expiry date preceded newly created
+snapshots, so the expected tombstone was not due. Original-fixture reproduction
+and database-time predicates confirmed that mistake. The `.2.9` repair derives
+cutoffs from recorded creation times, as described below. Six partial plans remain
+`.2.7.3`, followed by remaining adoption/coverage `.2.7.4`, before the full
+checkpoint resumes.
 The MCP producer above is an internal durable-state test, not MCP-wire or agent
 qualification. Native executable startup delays have separate diagnostic ownership
 under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`,
 `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md` and
 `docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md` and
 `docs/tasks/artifacts/signoff_review/participant-removal-authority.md`.
+
+### Retention fixture time
+
+The retention/freshness test uses each snapshot's stored creation time. It no
+longer assumes a fixed calendar date lies beyond a newly created row's lifetime.
+The existing retention behavior exercised in the disposable database is:
+
+| Class | Automatic expiry threshold measured from creation |
+| --- | --- |
+| temporary | More than one day; exactly one day remains live. |
+| standard | More than thirty days; exactly thirty days remains live. |
+| audit | No automatic TTL in the current implementation. |
+
+For example, a temporary snapshot created at instant T remains live when the
+fixture submits T + one day. Submitting one microsecond later tombstones that row;
+repeating the same expiry request changes no rows. The standard snapshot remains
+live until its own thirty-day threshold is passed. Audit state remains unchanged
+through both finite expiries and the later observation.
+
+A tombstone retains the snapshot metadata and records its deletion reason.
+The existing same-content replay updates refreshed_at while retaining created_at;
+it does not reset retention age. Freshness horizons are a separate field. The
+focused fixture preserves its freshness-list, license and replay assertions and
+checks exact rows/counts at expiry boundaries.
+
+Run these controls in the owned disposable PostgreSQL environment:
+
+```bash
+python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh profiles
+```
+
+The test uses the existing HTTP at override only to drive its owned fixture.
+Production expiry authority/scope and caller-clock restrictions, actual freshness-
+horizon refresh and object retirement remain open under SIGNOFF-REPAIR.7.4. This
+fixture repair changes no production policy. Evidence:
+`docs/tasks/artifacts/signoff_review/retention-fixture-clock.md`.
 
 ## Public repository and publication checks
 

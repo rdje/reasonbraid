@@ -3720,6 +3720,7 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
                     .send()
                     .await
                     .expect("snapshot request");
+                assert_eq!(response.status().as_u16(), 200, "snapshot submission");
                 response.json::<Value>().await.unwrap()
             }
         };
@@ -3747,6 +3748,52 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
     )
     .await;
     let fresh_id = fresh["snapshot_id"].as_str().unwrap().to_string();
+    let audit = submit_snapshot(b"the audit bytes", "audit".to_owned(), None).await;
+    let audit_id = audit["snapshot_id"].as_str().unwrap().to_string();
+
+    // Expiry is measured from the stored creation time, not a calendar date
+    // chosen when this test was written. Observe PostgreSQL's actual values.
+    let created: std::collections::BTreeMap<String, chrono::DateTime<chrono::Utc>> =
+        sqlx::query_as::<_, (String, chrono::DateTime<chrono::Utc>)>(
+            "SELECT snapshot_id, created_at FROM evidence_snapshots WHERE reference_id=$1",
+        )
+        .bind(&reference_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert_eq!(created.len(), 3);
+    let temporary_due = created[&temporary_id] + chrono::Duration::days(1);
+    let standard_due = created[&fresh_id] + chrono::Duration::days(30);
+    let tick = chrono::Duration::microseconds(1); // PostgreSQL timestamp precision.
+    assert!(temporary_due + tick < standard_due);
+    let snapshot_rows = || async {
+        sqlx::query_scalar::<_, Value>(
+            "SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id=$1 ORDER BY snapshot_id",
+        )
+        .bind(&reference_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+    };
+    let expire_at = |at: chrono::DateTime<chrono::Utc>| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/snapshots/expire-due"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "at": at }))
+                .send()
+                .await
+                .expect("expire request");
+            assert_eq!(response.status().as_u16(), 200, "retention response");
+            let outcome: Value = response.json().await.unwrap();
+            outcome["tombstoned"].as_u64().expect("tombstone count")
+        }
+    };
 
     // The staleness surface lists ONLY the passed horizon.
     let (status, stale) = get(&client, &base, "/v1/snapshots/stale", &human_id).await;
@@ -3755,17 +3802,18 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
     assert_eq!(stale.len(), 1, "{stale:?}");
     assert_eq!(stale[0]["snapshot_id"], json!(temporary_id));
 
-    // The retention enforcement: the `at` override tombstones the
-    // temporary class (the TTL = 1 day) — the audit/standard stay.
-    let response = client
-        .post(format!("{base}/v1/snapshots/expire-due"))
-        .header(PRINCIPAL_HEADER, &human_id)
-        .json(&json!({ "at": "2026-09-10T00:00:00Z" }))
-        .send()
-        .await
-        .expect("expire request");
-    let outcome: Value = response.json().await.unwrap();
-    assert!(outcome["tombstoned"].as_u64().unwrap() >= 1, "{outcome}");
+    // A TTL must have passed: equality is not expiry. Neither the before nor
+    // exact-boundary request may change any snapshot row.
+    let original = snapshot_rows().await;
+    assert!(original.iter().all(|row| row["deleted_at"].is_null()));
+    assert_eq!(expire_at(temporary_due - tick).await, 0);
+    assert_eq!(snapshot_rows().await, original);
+    assert_eq!(expire_at(temporary_due).await, 0);
+    assert_eq!(snapshot_rows().await, original);
+    assert_eq!(expire_at(temporary_due + tick).await, 1);
+    let expired_temporary = snapshot_rows().await;
+    assert_eq!(expire_at(temporary_due + tick).await, 0);
+    assert_eq!(snapshot_rows().await, expired_temporary);
 
     let (status, stored) = get(
         &client,
@@ -3806,6 +3854,45 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
     .await;
     assert_eq!(status, 200, "the refreshed snapshot reads: {stored}");
     assert!(stored["refreshed_at"].is_string(), "{stored}");
+
+    // Re-fetching identical bytes does not reset the original retention age.
+    let refreshed_created: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT created_at FROM evidence_snapshots WHERE snapshot_id=$1")
+            .bind(&fresh_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(refreshed_created, created[&fresh_id]);
+    let before_standard = snapshot_rows().await;
+    assert_eq!(expire_at(standard_due).await, 0);
+    assert_eq!(snapshot_rows().await, before_standard);
+    assert_eq!(expire_at(standard_due + tick).await, 1);
+    let after_standard = snapshot_rows().await;
+    let standard = after_standard
+        .iter()
+        .find(|row| row["snapshot_id"] == fresh_id)
+        .unwrap();
+    assert!(standard["deleted_at"].is_string());
+    assert_eq!(standard["deletion_reason"], "the retention expired");
+    assert_eq!(standard["license"], "MIT OR Apache-2.0");
+
+    // The audit class has no automatic TTL. Advancing this fixture's expiry
+    // observation beyond both finite classes must preserve its exact row.
+    assert_eq!(
+        expire_at(created[&audit_id] + chrono::Duration::days(365)).await,
+        0
+    );
+    assert_eq!(snapshot_rows().await, after_standard);
+    let original_audit = original
+        .iter()
+        .find(|row| row["snapshot_id"] == audit_id)
+        .unwrap();
+    let final_audit = after_standard
+        .iter()
+        .find(|row| row["snapshot_id"] == audit_id)
+        .unwrap();
+    assert_eq!(final_audit, original_audit);
+    eprintln!("retention fixture: temporary/standard exact TTL boundaries preserved; after-boundary tombstones 1/1; repeated expiry 0; audit row unchanged; replay retains creation time");
 }
 
 /// The G4 hostile-content suite (PHASE-4.7.1): ONE gate-citable test

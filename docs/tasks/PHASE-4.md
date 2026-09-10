@@ -993,6 +993,16 @@ of a URI is not a promise the core can resolve it.
       replay refreshes the freshness. **`.6` COMPLETE** —
       frontier → `.7`.
 
+    Corrective fixture evidence (`2026-09-10`): the cutoff introduced by
+      5083d9cf is fixed at 2026-09-10T00:00:00Z. Exact original-fixture
+      reproduction now creates snapshots after that instant and correctly
+      returns zero tombstones, contradicting the test's expectation. The
+      earlier passing run is historical evidence, not a calendar-independent
+      regression. `SIGNOFF-REPAIR.11.4.3.1.2.9` owns creation-time-relative
+      boundaries, exact class effects and audit/replay controls. Production
+      clock/scope, freshness-horizon and integrity repairs remain `.7.4` of
+      that repair tree; changing the fixture does not qualify those surfaces.
+
 - ID: `PHASE-4.7`
   Status: `done`
   Goal: G4 hostile-content suite; explicit failure for unsupported references

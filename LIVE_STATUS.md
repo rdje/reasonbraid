@@ -128,12 +128,16 @@ tenant administrators can remove participants. CLI companion .2.10 now passes
 all five real CLI tests: administrative removal requests tenant-wide scope and
 ordinary delegated invitation retains its single-thread scope. Actual unchanged-
 CLI and deliberately overbroad controls fail as expected. Retention fixture .2.9
-remains before six partial plans and remaining coverage
-(.2.7.3–.2.7.4), full checkpoint resumption, authorized public push and remote CI.
+now uses observed creation times and passes the focused test and all 31 profiles
+tests, with strict boundaries, exact class effects and preserved audit/replay
+state. Strict server lint and source/process/book checks pass. Six partial plans
+and remaining coverage (.2.7.3–.2.7.4) stay open before full checkpoint resumption,
+authorized public push and remote CI.
 Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md and
 docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
-docs/tasks/artifacts/signoff_review/cli-removal-delegation.md.
+docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and
+docs/tasks/artifacts/signoff_review/retention-fixture-clock.md.

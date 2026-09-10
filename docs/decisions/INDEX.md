@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-10_retention-fixture-clock.md](docs/decisions/2026-09-10_retention-fixture-clock.md) | decision | derive expiry tests from stored creation time and preserve strict TTL boundaries, audit state and honest production-policy limits |
 | [2026-09-10_cli-removal-delegation.md](docs/decisions/2026-09-10_cli-removal-delegation.md) | decision | match removal delegation to tenant administration while preserving ordinary single-thread scope and actual CLI falsification |
 | [2026-09-10_participant-removal-authority.md](docs/decisions/2026-09-10_participant-removal-authority.md) | decision | target participant removal at tenant administration while retaining thread/tenant binding, historical denials and explicit CLI/ordering limits |
 | [2026-09-10_checked-node-fixtures.md](docs/decisions/2026-09-10_checked-node-fixtures.md) | fact | fourteen node fixtures adopt checked dependency plans while preserving feature assertions, original scope and production referential actions |

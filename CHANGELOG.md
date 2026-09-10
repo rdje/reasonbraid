@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Remove the retention fixture's calendar dependency (`SIGNOFF-REPAIR.11.4.3.1.2.9`)
+
+Derive expiry instants from recorded snapshot creation time. Qualify strict
+one-day/thirty-day boundaries, exact tombstone counts, repeated no-change behavior,
+audit-class preservation and unchanged retention age on replay. The focused
+retention test and all 31 profiles tests pass; preserve the original failures and
+historical caller evidence. Strict server lint, format, book and independent
+source/process verification pass. Production retention policies remain unchanged.
+
 ## 2026-09-10 — Match CLI removal delegation to tenant administration (`SIGNOFF-REPAIR.11.4.3.1.2.10`)
 
 Correct participant removal's delegated scope while retaining single-thread scope

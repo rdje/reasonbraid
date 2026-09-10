@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Complete partial fixture scope from observed FK dependencies
+
+- All six unchanged consumers fail their one test at incarnations_role_id_fkey after each eight-test node_work producer passes. All twelve baseline schema snapshots match the selected 41-FK graph, and all 341 source hashes match before edits. Preserve six stopped failure databases; empty-database passes would not expose this dependency.
+- The six caller imports/lists now declare the exact minimum incoming-FK closure while retaining every original table's relative order and every feature assertion. Source reconstruction passes; 335 other non-Markdown files are unchanged. Keep unrelated resources, deployment CA and audit tables outside the deletion scope; the helper validates explicit scope without expanding it.
+- All six repaired pairs pass, with actual node/certificate/host/incarnation residue cleared and the complete deployment-CA row fingerprint unchanged. The six-consumer chain also passes, including listener residue cleared by its follower. Seven successful databases are removed; the final distinct live coverage is eight producer tests plus six consumer tests (fourteen), with repeated runs counted separately. The original 25-plan source population now has twenty checked callers and five remaining loops: regions, allowlist, rls, mcp_write and the MCP internal fixture; other SQL shapes remain outside this census.
+- Format, strict all-target/all-feature server lint (17.063604 seconds), book and independent verification pass. All 46 recorded groups are absent, seven successful databases removed and six failed baselines stopped/preserved. Nine rendered markers pass, README remains 52 lines/2017 bytes and progress categories stay unchanged.
+- promotion: promoted → `docs/decisions/2026-09-10_partial-fixture-dependencies.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.7.3`.
+
 ## 2026-09-10 — Base expiry controls on the persisted creation clock
 
 - The unchanged current profiles fixture and exact original-fixture comparison both return zero tombstones. Independent PostgreSQL creation/cutoff predicates prove the fixed midnight cutoff predates both new snapshots; Git blame binds it to 5083d9cf under PHASE-4.6.4. Annotate that historical calendar dependency without blaming the cleanup migration or changing production expiry.

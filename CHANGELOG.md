@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Complete six partial fixture plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.3`)
+
+Reproduce each original cleanup failure after real node-work residue. Add only
+its required FK dependencies and adopt checked static plans for cards, quota,
+classification, mcp_listen, federation and quarantine. Preserve original table
+order, feature assertions and deployment CA. All six repaired producer/consumer
+pairs and the consecutive consumer run pass; preserve six failed baselines and
+remove seven successful databases. Five remaining explicit plans retain separate
+coverage ownership before the full checkpoint. Strict server lint, format, book
+and source/process verification pass; production/schema stay unchanged.
+
 ## 2026-09-10 — Remove the retention fixture's calendar dependency (`SIGNOFF-REPAIR.11.4.3.1.2.9`)
 
 Derive expiry instants from recorded snapshot creation time. Qualify strict

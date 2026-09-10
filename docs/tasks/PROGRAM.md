@@ -153,7 +153,7 @@ No ADR is approved merely because the roadmap names a candidate technology.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.11.4.3.1.2.7.3`, then remaining fixture coverage and full checkpoint; return to `PHASE-8.5.3` after corrective prerequisites |
+| — | (none in this file) | — | next executable work is `SIGNOFF-REPAIR.11.4.3.1.2.7.4`, then full checkpoint; return to `PHASE-8.5.3` after corrective prerequisites |
 
 ## Previous index synchronization — SIGNOFF-REPAIR.3.3.3.1
 

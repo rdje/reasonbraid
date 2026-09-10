@@ -399,15 +399,29 @@ no complete affected-suite or full-checkpoint pass is claimed. Profiles exposed
 a separate fixture-clock failure: its fixed expiry date preceded newly created
 snapshots, so the expected tombstone was not due. Original-fixture reproduction
 and database-time predicates confirmed that mistake. The `.2.9` repair derives
-cutoffs from recorded creation times, as described below. Six partial plans remain
-`.2.7.3`, followed by remaining adoption/coverage `.2.7.4`, before the full
-checkpoint resumes.
+cutoffs from recorded creation times, as described below. The six partial plans
+under `.2.7.3` now declare their required dependency tables explicitly. Remaining
+adoption/coverage `.2.7.4` precedes the full checkpoint.
 The MCP producer above is an internal durable-state test, not MCP-wire or agent
 qualification. Native executable startup delays have separate diagnostic ownership
 under `.11.2`. Evidence: `docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md`,
 `docs/tasks/artifacts/signoff_review/fixture-cleanup-plan-check.md` and
 `docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md` and
 `docs/tasks/artifacts/signoff_review/participant-removal-authority.md`.
+
+The six formerly partial fixtures are cards, quota, classification, mcp_listen,
+federation and quarantine. For example, removing a role requires first removing
+incarnations that reference it; removing a node requires its certificate, key and
+lease children first. Each fixture now names those required dependencies, keeps
+its original table order and leaves the deployment CA outside its deletion list.
+The checker verifies the whole declared plan before the first deletion; it does
+not silently add tables to the requested scope.
+
+The source census covers the original 25 literal-array DELETE plans. Twenty now
+use checked cleanup; the five remaining loops are regions, allowlist, rls,
+mcp_write and the MCP crate's internal fixture. Other direct or implicit fixture
+relationships are outside that source-pattern census. Reproduction and final
+qualification evidence: `docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md`.
 
 ### Retention fixture time
 

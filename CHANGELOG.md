@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-10 — Reproduce inherited state-lock retention (`SIGNOFF-REPAIR.11.4.3.1.2.11.1`)
+
+- Preserve source-8d1504d's failed workspace gate: eight other gates pass, PostgreSQL/demo unstarted. Original sources and executable copies match; unchanged concurrent/isolated/serial reruns pass.
+- A controlled actual-CLI probe proves close-only retention across success, HTTP error and cancellation when a forked child retains the descriptor. Three no-child controls release immediately; three child exits release retained locks. Production remains unchanged; .2.11.2 owns the fix and permanent regressions.
+- Independent verification checks all 341 source files and fifty absent process groups. Preserve preliminary observer failure and original evidence. Scope original-cause attribution and inherited-descriptor process-loss limits explicitly.
+
 ## 2026-09-10 — Complete explicit fixture-plan coverage (`SIGNOFF-REPAIR.11.4.3.1.2.7.4`)
 
 Migrate the final five fixtures to checked explicit cleanup, preserving each

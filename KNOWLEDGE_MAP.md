@@ -147,3 +147,4 @@
 - [`2026-09-10_participant-removal-authority.md`](docs/decisions/2026-09-10_participant-removal-authority.md)
 - [`2026-09-10_pinned-browser-runtime.md`](docs/decisions/2026-09-10_pinned-browser-runtime.md)
 - [`2026-09-10_retention-fixture-clock.md`](docs/decisions/2026-09-10_retention-fixture-clock.md)
+- [`2026-09-10_state-writer-lock-lifetime.md`](docs/decisions/2026-09-10_state-writer-lock-lifetime.md)

@@ -75,3 +75,14 @@ replay, then separately permissioned repairs with preconditions and verification
 A diagnostic response must distinguish facts, hypotheses and missing evidence,
 including committed, rolled-back and unknown operation outcomes. The current
 bootstrap recovery work continues without a pivot.
+
+The resumed **8d1504d** checkpoint passes eight gates but workspace testing stops
+at one state-writer lock failure; PostgreSQL and the demo never start. All sixteen
+browser controls pass. Six controlled actual-CLI scenarios then prove that an
+inherited child descriptor can retain exclusion after parent success, error or
+cancellation. Exact attribution of the original deleted fixture is unavailable.
+All 341 source hashes match and fifty recorded groups are absent. Production is
+unchanged: explicit-release repair .11.4.3.1.2.11.2 and permanent controls precede
+checkpoint resumption/public push. Broader inherited-descriptor process-loss
+qualification remains owned separately. See
+`docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md`.

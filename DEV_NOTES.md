@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-10 — Distinguish guard drop from last shared-descriptor close
+
+- The original concurrent state_writers failure occurs before its entrypoint assertion; its panic cleanup removes the original lock fixture. Preserve that missing-observation limit. Exact unchanged concurrent/isolated/serial binaries pass on rerun; they do not invalidate the failure.
+- Six controlled public run_thread_create scenarios isolate shared lock references. All observe live exclusion. Success/error/cancellation release without a child but retain WouldBlock after the parent's descriptor closes while a witnessed fork child survives. Every child exit restores acquisition; only success changes the state snapshot. The corrected fstat observer and all child shutdowns are consumed; retain the earlier pathname-observer failure separately.
+- Publication/Directory rely on File close instead of explicit lock release. Own a guard immediately after acquisition for normal/error/unwind paths; retain nonblocking semantics and separately qualify inherited references after abrupt process loss under the existing restart leaf. No production change or original-holder trace is claimed at this diagnostic commit. All 341 sources match and fifty recorded groups are absent.
+- promotion: promoted → `docs/decisions/2026-09-10_state-writer-lock-lifetime.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.11.1`.
+
 ## 2026-09-10 — Close the declared fixture population without broadening its claim
 
 - The final five plans are regions, allowlist, rls, mcp_write and MCP lib. Four broad plans retain their existing CA deletion and explicitly declare the three existing resource-cascade descendants; RLS keeps its five-table scope. MCP shares private support only under cfg(test). Exact reconstruction preserves all original assertions/order and 336 other non-Markdown files.

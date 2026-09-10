@@ -137,7 +137,7 @@ CA rows and original assertions. All 25 original plans now use checked cleanup. 
 passes its 22-test consumer sequence and all 169 distinct tests in the consecutive
 affected collection, plus strict server/MCP/CLI lint and final verification.
 Both successful databases are removed and prior failures preserved. Full
-checkpoint resumption, authorized public push and remote CI remain next.
+checkpoint resumption follows the state-lock prerequisite below; authorized public push and remote CI remain pending.
 Preserve the stopped failed databases and startup diagnostics under
 .11.2. Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/identity-fixture-cleanup.md and
@@ -148,3 +148,14 @@ docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and
 docs/tasks/artifacts/signoff_review/retention-fixture-clock.md and
 docs/tasks/artifacts/signoff_review/partial-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/fixture-plan-coverage.md.
+
+The resumed source-8d1504d checkpoint passes eight gates, then workspace testing
+fails one initial state-writer lock acquisition (eleven other writer tests pass).
+PostgreSQL/demo never start. Diagnosis .11.4.3.1.2.11.1 proves close-only lock
+retention across actual CLI success/error/cancellation when a forked child retains
+the descriptor; all three no-child controls and later child-exit acquisitions
+succeed. All 341 source hashes match and fifty recorded groups are absent. The
+original holder was not captured; its unchanged reruns pass. Explicit-release
+repair/permanent controls .2.11.2 precede checkpoint resumption. Qualification
+categories remain unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md.

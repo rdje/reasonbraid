@@ -1226,6 +1226,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2 — Execute and close the current full CI checkpoint
 
+- **The checkpoint PASSES at source `7233122`.** All eight commands return 0: build (52s), format/strict lint/workspace tests with the pinned browser (2,523s), Python controls (22s), the full owned PostgreSQL collection with `--demo` (4,034s), thirteen doctrines, pinned cargo-deny, pinned Gitleaks and the book. Every earlier attempt stopped — `7e01097` at browser witnesses, `b0cddfe` at identity fixture cleanup, `8d1504d` at a state-writer lock, `ec8df08` at two PDF tests, `165cb3a` at `04-pg-demo`, `5c8609e` at `02-check`.
+- Re-derived rather than read off the exit code: 41 runner invocations covering all 40 registered suites, 291 tests passed and 0 failed across 42 blocks; the demonstration reports `ALL acceptance checks passed`; both scanner receipts record `scope: gate` with `exit_code: 0` for cargo-deny 0.20.2 and Gitleaks 8.30.1 — the real gates, not `--verify-only`.
+- Falsified before publishing: zero `SKIP: DATABASE_URL unset` lines, `browser_roundtrip.rs` ran 16 tests against the pinned browser rather than returning early, the only 3 ignored tests are the env-gated `RB_LIVE_CLAUDE`/`RB_LIVE_CODEX` dispatches, 40 of 40 suites ran (`mcp` runs as a whole-package invocation), and `HEAD` was still `7233122` with an empty `git status --porcelain` when the claim was made.
+- This satisfies the condition the recorded policy places on the already-authorized push (`docs/decisions/2026-09-09_public-repository-policy.md`). Remote CI has never run and must be consumed after the push. Evidence: docs/tasks/artifacts/signoff_review/checkpoint-7233122.md.
+- It closes no external gate: G6/G7, name clearance and the license decision remain open, the historical phase closures remain under corrective review, and `.7.4.2`, `.7.2.1`, `.7.3.3.4`, `.11.4.3.1.2.15` and `.11.5` remain open repair leaves.
+
 - Status: `active`; source-b0cddfe878520b0368402c44c16a5ba63ba26b05 passed nine gates, then failed the fourteenth live PostgreSQL command. Fixture prerequisites .2.6/.2.7 and exposed repairs .2.8–.10 are now qualified; resume on the next committed source. Public visibility is authorized by the director; history-scan repair .2.2 and dedicated browser prerequisite .2.5 are qualified. Preserve source-f0265e2/source-7e01097 gate failures and stops and the exact source-b0cddfe outcomes under target/checkpoint-ci/full-b0cddfe.
 - Prerequisites: completed inventory .1, workflow repair .3, publisher ownership .4, browser lifetime .5 and evidence-based cleanup .6 (a justified retention outcome is valid).
 - Owns: all selected required local full CI commands on a named committed source, exact pass/fail/skip and suite census, bounded owned process/fixture/tool lifetimes and complete consumed evidence. Any encountered failure must be root-caused and repaired in a named child before claiming the checkpoint; no suppressed checks or new blanket allow-list exemptions. Commit completed units promptly, consume all required local/remote results and perform the already-authorized normal push only after the full local checkpoint passes. Return to CLI transport bounds afterward.
@@ -1721,7 +1727,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | resume the complete checkpoint now that the R2 input boundary is repaired, then the authorized public push and remote CI |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | checkpoint PASSED at 7233122; perform the authorized push and consume actual remote CI |
 | 2 | `SIGNOFF-REPAIR.7.4.1` | `pending` | measured evidence-identifier collisions: one distinct value per twelve calls |
 | 3 | `SIGNOFF-REPAIR.7.3.3.4` | `pending` | close the live coverage gap on the R2 acquisition success path |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |

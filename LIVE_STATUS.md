@@ -284,3 +284,19 @@ identity and there is nothing to reconcile. The storage-failure misclassificatio
 the diagnosis exposed — every fault reported as `ReferenceMissing` and mapped to
 HTTP 400, with the R2 pipeline still reporting a successful acquisition — is
 routed to .7.4.2. Qualification categories are unchanged.
+
+**The full pre-push checkpoint PASSES at source 7233122** — the first complete
+run in this project's recorded history. All eight commands return 0: build,
+format/strict lint/workspace tests with the pinned browser, Python controls, the
+full owned PostgreSQL collection with an explicit demonstration, thirteen
+doctrines, pinned cargo-deny, pinned Gitleaks and the book. 40 of 40 registered
+suites ran with 291 tests passed and 0 failed; the demonstration reports ALL
+acceptance checks passed; both scanner receipts record scope `gate` with exit 0.
+The pass was falsified before publication: no DATABASE_URL skips, 16 real browser
+controls rather than an absent-browser early return, and the only ignored tests
+are the env-gated live-provider dispatches. This satisfies the condition the
+recorded policy places on the already-authorized push; remote CI has never run
+and must be consumed after it. No external gate closes: G6/G7, name clearance and
+the license decision remain open, historical phase closures remain under
+corrective review, and .7.4.2, .7.2.1, .7.3.3.4, .11.4.3.1.2.15 and .11.5 remain
+open. Evidence: docs/tasks/artifacts/signoff_review/checkpoint-7233122.md.

@@ -153,3 +153,12 @@ The production R2 input boundary `.7.3.3` is complete. One gap is explicit: no
 live test drives a successful acquisition through to a snapshot and derivation,
 because the live R2 test refuses at the loopback gate; `.7.3.3.4` owns that join.
 See `docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
+
+The full pre-push checkpoint now passes on source `7233122` — the first complete
+run recorded. All eight commands return 0, 40 of 40 database suites run with 291
+tests and no failures, the two-host demonstration reports all acceptance checks
+passed, the browser controls render against the pinned runtime, and both
+supply-chain scanners pass as real gates. This is a local qualification only:
+remote CI has never run, G6/G7 Internet exposure, name clearance and the license
+decision remain open, and the historical phase closures remain under corrective
+review. See `docs/tasks/artifacts/signoff_review/checkpoint-7233122.md`.

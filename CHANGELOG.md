@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — The full pre-push checkpoint passes (`SIGNOFF-REPAIR.11.4.3.1.2`)
+
+- All eight checkpoint commands return 0 at source `7233122`: build, format/strict lint/workspace tests with the pinned browser, Python controls, the full owned PostgreSQL collection with `--demo`, thirteen doctrines, pinned cargo-deny, pinned Gitleaks and the book. Every earlier attempt stopped somewhere.
+- Re-derived from the receipts rather than the exit code: 40 of 40 registered suites, 291 tests passed and 0 failed, the demonstration's `ALL acceptance checks passed`, and both scanners recording `scope: gate` with `exit_code: 0`.
+- Falsified before publishing: zero DATABASE_URL skips, 16 real browser controls instead of an absent-browser early return, and only the deliberately env-gated live-provider dispatches ignored.
+- This satisfies the condition on the already-authorized push. It closes no external gate: G6/G7, name clearance and the license decision remain open, and five repair leaves remain open including the unexplained checkpoint wall time.
+
 ## 2026-09-11 — Mint evidence identifiers that are actually distinct (`SIGNOFF-REPAIR.7.4.1`)
 
 - `snapshots.rs`, `claims.rs` and `derivations.rs` each minted durable evidence identifiers from `format!("{:x}{:x}", nanos, pid)` — a function literally named `uuid_like_suffix`, resembling a UUID in shape and not in the one property a UUID is for. A probe of that exact expression measured 8 collisions in 10 sequential calls, 918 in 1,000, and 269 among 400 across eight threads: about one distinct value per twelve calls.

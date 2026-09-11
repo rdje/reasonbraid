@@ -13,14 +13,22 @@ fn tool() -> &'static str {
     env!("CARGO_BIN_EXE_rb-release-manifest")
 }
 
-/// A per-test temp dir (the unique suffix — the parallel-collision lesson).
+/// A per-test control directory on the REPOSITORY's own volume (§13: project
+/// data never lands in an ambient temporary directory), created exclusively so
+/// an existing path is refused rather than adopted. The process id plus a
+/// counter is already unique; the creation now proves it.
 fn temp_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let parent =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release-tool-controls");
+    std::fs::create_dir_all(&parent).expect("create the control parent");
+    let dir = parent.join(format!(
         "rb-release-tool-{}-{}",
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::create_dir_all(&dir).expect("create the temp dir");
+    std::fs::DirBuilder::new()
+        .create(&dir)
+        .expect("the control directory is new");
     dir
 }
 

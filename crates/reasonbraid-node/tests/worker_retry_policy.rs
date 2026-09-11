@@ -21,14 +21,16 @@ fn journal_path(name: &str) -> PathBuf {
     let base = std::env::var_os("CARGO_TARGET_TMPDIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
+    let unique = uuid::Uuid::now_v7();
     let dir = base
         .join("retry-policy-tests")
-        .join(format!("{name}-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
+        .join(format!("{name}-{unique}"));
+    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
+    // Exclusive: an existing directory belongs to another fixture or an
+    // earlier run, and must never be adopted.
+    std::fs::DirBuilder::new()
+        .create(&dir)
+        .expect("the fixture directory is new");
     dir.join("node.db")
 }
 

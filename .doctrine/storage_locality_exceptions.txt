@@ -1,0 +1,5 @@
+# STORAGE-LOCALITY exceptions — verbatim path<TAB>reason.
+#
+# A listed path that no longer contains the pattern is ALSO a breach: this list
+# describes what is there, not what is forgiven in general.
+crates/reasonbraid-server/src/authority/transaction.rs	subsec_nanos() measures a Duration's sub-second remainder to reject sub-millisecond limits; it names nothing and reaches no path

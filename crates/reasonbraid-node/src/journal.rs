@@ -1324,14 +1324,16 @@ mod tests {
     /// A unique journal path under the repo's `target/` (same volume as the repo, per
     /// the data-locality policy; `target/` is gitignored and cleaned with `cargo clean`).
     fn test_path(name: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .subsec_nanos();
+        let unique = uuid::Uuid::now_v7();
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/journal-tests")
-            .join(format!("{name}-{nanos}"));
-        std::fs::create_dir_all(&dir).unwrap();
+            .join(format!("{name}-{unique}"));
+        std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
+        // Exclusive: an existing directory belongs to another fixture or an
+        // earlier run, and must never be adopted.
+        std::fs::DirBuilder::new()
+            .create(&dir)
+            .expect("the fixture directory is new");
         dir.join("node.db")
     }
 
@@ -1772,14 +1774,13 @@ mod tests {
     async fn garbage_and_missing_files_fail_cleanly() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/journal-tests")
-            .join(format!(
-                "garbage-{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .subsec_nanos()
-            ));
-        std::fs::create_dir_all(&dir).unwrap();
+            .join(format!("garbage-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
+        // Exclusive: an existing directory belongs to another fixture or an
+        // earlier run, and must never be adopted.
+        std::fs::DirBuilder::new()
+            .create(&dir)
+            .expect("the fixture directory is new");
 
         let garbage = dir.join("garbage.db");
         std::fs::write(&garbage, b"this is not a sqlite database").unwrap();

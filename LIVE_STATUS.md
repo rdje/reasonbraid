@@ -375,3 +375,11 @@ instance of that shape in the workspace. It was never Linux-only: a probe lost
 346 of 640 creations locally, and the suite reproduces the exact CI failure here
 once the warm control directory is removed. Six consecutive cold-tree runs pass.
 No remote-green claim is made until the runner confirms it.
+
+REPAIR-0085 closes the §13 storage-locality family: 26 breaches repaired across
+16 files and a STORAGE-LOCALITY gate registered so the policy is now checked
+rather than merely stated. Remote CI is still red, on a DIFFERENT defect each
+time rather than the same one recurring: the four AuthorMissing git tests are
+confirmed fixed on the runner, the pg_guard race is fixed, and the current
+failure is an intermittent ETXTBSY in the conformance stubs which PASSED in the
+preceding run. No remote-green claim is made.

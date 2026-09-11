@@ -49,6 +49,14 @@ if ! scripts/check_book_links.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# Project data stays on the repository volume and names are proved by creation
+# (`.11.4.3.1.2.21`): §13 was prose for the life of the project and was breached
+# in 26 places — 8 ambient temporary directories and 18 clock-derived paths.
+if ! scripts/check_storage_locality.sh >/dev/null 2>&1; then
+    scripts/check_storage_locality.sh >&2
+    exit 1
+fi
+
 # The SDK compatibility matrix (`.4.2`): the token + the evidence artifacts
 # must agree with the code — the matrix is evidence-bound, never prose-bound.
 if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then

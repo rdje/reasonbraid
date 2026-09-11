@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Enforce storage locality and prove fixture names (`SIGNOFF-REPAIR.11.4.3.1.2.21`)
+
+- §13 says project-owned data lives on the repository's own volume and that a name must be proved, not proposed. It was prose for the life of the project and was breached in 26 places: 8 ambient temporary directories and 18 clock-derived paths across 16 files. The census found 18, not the "roughly ten" the finding estimated.
+- All repaired. Fixtures now take a v7 UUID and create their leaf directory EXCLUSIVELY while the shared parent stays tolerant of an existing one. `backup_restore.rs` also had a FIXED directory name shared by every run, with a clock supplying the only uniqueness in the file name.
+- Why it mattered beyond policy: these directories persist between runs (`target/journal-tests` held 954 MB of residue) and `create_dir_all` adopts. With a clock measured at 501 distinct values in 2000 calls, collision with a PRIOR run's directory was likely rather than remote — so a test could open a previous run's SQLite database and call the result a pass.
+- New `STORAGE-LOCALITY` gate refuses both patterns across all tracked Rust, with a verbatim reasoned allowlist where a stale entry is also a breach. It reports 195 files clean with one reviewed exception — a duration measurement that reaches no path.
+- 60 node tests, the release-tool suite, strict lint and all gates pass.
+
 ## 2026-09-11 — Stop racing for the guard fixture's parent (`SIGNOFF-REPAIR.11.4.3.1.2.25`)
 
 - `pg_guard.rs` created its control parent only when the path was absent, then unwrapped the result. That is a check-then-act, and these fixtures run in parallel threads, so all but one loser panicked with `AlreadyExists`.

@@ -1647,7 +1647,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - The second family in the same census: clock-derived fixture directory names with `create_dir_all`, which adopts an existing directory rather than refusing. `crates/reasonbraid-node/src/journal.rs:1330` and `:1780` (both after `#[cfg(test)]` at 1320) and roughly ten files under `crates/reasonbraid-node/tests/` share the shape repaired in `.11.4.3.1.2.17`. `target/journal-tests` holds 954 MB of their residue.
 - Owns: a registered check that refuses `std::env::temp_dir()` in tracked Rust, with a verbatim allowlist for any genuinely required exception, in the idiom of `VISIBILITY-POLICY` and `FILE-TERMINATION`; and the repair of the clock-named node fixtures. A policy stated in prose for the life of the project and breached in eight places is the definition of a rule nothing checks.
 - Note on method, recorded because it cost three attempts: censusing for a token drawn from the last instance finds the last instance. Census the CONCEPT — here an ambient temporary directory, and a clock in a path — not the spelling that happened to be in front of you.
-- Verification / commit: pending.
+
+- Status: `done`; REPAIR-0085.
+- CENSUS, re-derived at repair time rather than carried from the note above. Ambient temporary directories: 8 at the time of the finding, of which 6 in `git.rs` were repaired by `.7.2.1`/REPAIR-0082, leaving `crates/reasonbraid-server/tests/backup_restore.rs` and `crates/reasonbraid-release-tool/tests/manifest.rs`. Clock-derived paths: **18** across 16 files — larger than the "roughly ten" the note estimated — plus exactly one legitimate use, `crates/reasonbraid-server/src/authority/transaction.rs:111`, which measures a `Duration`'s sub-second remainder and reaches no path. 26 breaches in total.
+- Both families repaired. The 17 remaining clock-named fixtures now take a v7 UUID and create the fixture leaf EXCLUSIVELY, while the shared parent stays tolerant of an existing directory — the distinction `.11.4.3.1.2.25` proved matters. `backup_restore.rs` additionally had a FIXED directory name shared by every run, with a clock supplying the only uniqueness in the file name; both are now repository-derived and exclusive.
+- Why this mattered beyond policy: these fixture directories PERSIST between runs (`target/journal-tests` held 954 MB of residue), and `create_dir_all` adopts. With a clock measured at 501 distinct values in 2000 calls, an accumulating store makes collision with a PRIOR run's directory likely rather than remote — so a test could open a previous run's SQLite database and call the result a pass.
+- Fix, enforcement half: `scripts/check_storage_locality.sh` refuses both patterns across all tracked Rust, with a verbatim reasoned allowlist where a stale entry is also a breach. `--self-test` verifies 8 classifications including a v7 UUID name and a duration measurement that must NOT trip. Registered in `scripts/check_doctrines.project.sh` and mirrored in `DOCTRINE_ENFORCEMENT.md`.
+- Verification: the check reports 195 tracked Rust files clean with 1 reviewed exception; `env::temp_dir()` now returns 0 sites. Builds and tests below.
+- Verification, measured: 60 node tests and the release-tool suite pass with the repaired fixtures, which now create 55 UUID-named directories on the repository volume; `cargo fmt --all --check`, strict `-D warnings` lint across the three touched crates, and all doctrine gates pass.
+- promotion: declined (this applies the existing owned-storage and prove-the-name rules to a second family; the durable statement of both already lives in `docs/knowledge/proving-a-path-still-names-what-you-created.md` and the new `STORAGE-LOCALITY` gate now enforces them mechanically).
+- Commit: `REASONBRAID-REPAIR-0085 (leaf SIGNOFF-REPAIR.11.4.3.1.2.21): enforce storage locality and prove fixture names`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.23 — Prove input identity against the descriptor, not an inode number
 
@@ -1880,6 +1889,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.21`: `REASONBRAID-REPAIR-0085 (leaf SIGNOFF-REPAIR.11.4.3.1.2.21): enforce storage locality and prove fixture names`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.25`: `REASONBRAID-REPAIR-0083 (leaf SIGNOFF-REPAIR.11.4.3.1.2.25): stop racing for the guard fixture's parent`.
 

@@ -9,6 +9,7 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -104,13 +105,19 @@ async fn a_backup_restores_into_an_isolated_database() {
     .expect("seed budget");
 
     // 2. The backup (the real pg_dump, the same command scripts/backup.sh runs).
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join("reasonbraid-restore-exercise");
-    std::fs::create_dir_all(&dir).expect("backup dir");
-    let file = dir.join(format!("exercise-{stamp}.dump"));
+    // §13: project data lives on the repository's own volume, never in an
+    // ambient temporary directory. The directory name was also FIXED, so two
+    // runs shared it, and a clock supplied the only uniqueness in the file
+    // name.
+    let run = uuid::Uuid::now_v7().simple().to_string();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/backup-restore-controls")
+        .join(format!("exercise-{run}"));
+    std::fs::create_dir_all(dir.parent().expect("the control parent")).expect("backup parent");
+    std::fs::DirBuilder::new()
+        .create(&dir)
+        .expect("the backup directory is new");
+    let file = dir.join("exercise.dump");
     let dump = Command::new("pg_dump")
         .args(["--format=custom", "--no-owner", "--file"])
         .arg(&file)
@@ -137,7 +144,7 @@ async fn a_backup_restores_into_an_isolated_database() {
     assert_eq!(gone, 0, "the mutation removed the seeded row");
 
     // 4. Restore into an ISOLATED database.
-    let target = format!("reasonbraid_restore_{stamp}");
+    let target = format!("reasonbraid_restore_{run}");
     let target_url = match (&user, &port) {
         (Some(user), Some(port)) => format!("postgres://{user}@{host}:{port}/{target}"),
         (Some(user), None) => format!("postgres://{user}@{host}/{target}"),

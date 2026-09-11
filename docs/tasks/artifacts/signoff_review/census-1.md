@@ -337,5 +337,3 @@ lifecycle::record_approval checksinput.approver matchesinput.grant_id subject bu
 - State: open source-review record; runtime pending.
 
 matching.rs eligible follows expression.scope forcapability/interest/confidentiality, but min_concurrency directlycandidate.concurrency regardlessfieldvisibility and permits suspended/unavailable if caller presence_statesrequests. Actualscope mustclamp per candidate atAPI; networkprivacy leaksource confirmed35 even eligibilityusesfilter. Rankpending next.
-
-

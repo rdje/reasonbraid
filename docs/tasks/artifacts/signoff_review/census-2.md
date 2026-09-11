@@ -225,5 +225,3 @@ ssrf IPv6 classifier publicdefault outsidefewblockedranges means non-global rese
 - State: open source-review record; runtime pending.
 
 thread module topcomments staleautoaccept/unqualifiedclassificationdespitecurrentbehaviorchanges. Semanticsfullreadongoing; evidenceonlynodedefects track separately.
-
-

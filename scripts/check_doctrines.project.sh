@@ -35,6 +35,13 @@ if ! scripts/check_book_frontier.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every tracked text file ends with exactly one newline (`.11.4.3.1.2.16`): a
+# blank line at end of file reached a commit and forced a correction commit.
+if ! scripts/check_file_termination.sh >/dev/null 2>&1; then
+    scripts/check_file_termination.sh >&2
+    exit 1
+fi
+
 # The SDK compatibility matrix (`.4.2`): the token + the evidence artifacts
 # must agree with the code — the matrix is evidence-bound, never prose-bound.
 if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then

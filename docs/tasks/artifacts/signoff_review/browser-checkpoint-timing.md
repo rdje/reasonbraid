@@ -147,4 +147,3 @@ Primary distribution references:
 - https://developer.chrome.com/docs/automation-and-testing/chrome-for-testing
 - https://github.com/GoogleChromeLabs/chrome-for-testing
 - https://chromium.googlesource.com/chromium/src/+/refs/tags/153.0.8010.36/chrome/installer/installers.gni
-

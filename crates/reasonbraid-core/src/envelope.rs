@@ -176,7 +176,14 @@ mod tests {
     fn write_schema_goldens() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/schema");
         std::fs::create_dir_all(dir).unwrap();
-        let cmd = serde_json::to_string_pretty(&schema_for!(CommandEnvelope)).unwrap();
+        // Emit a final newline: a golden the writer produces without one drifts
+        // from every other tracked text file, and a hand-fixed file would be
+        // silently reverted by the next regeneration. The sync check compares
+        // parsed values, so this changes no comparison.
+        let cmd = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&schema_for!(CommandEnvelope)).unwrap()
+        );
         std::fs::write(
             concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -185,7 +192,10 @@ mod tests {
             cmd,
         )
         .unwrap();
-        let evt = serde_json::to_string_pretty(&schema_for!(CommittedEvent)).unwrap();
+        let evt = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&schema_for!(CommittedEvent)).unwrap()
+        );
         std::fs::write(
             concat!(
                 env!("CARGO_MANIFEST_DIR"),

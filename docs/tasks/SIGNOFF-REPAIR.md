@@ -1502,6 +1502,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns: measure `make check`'s phases directly rather than inferring them from cargo's own summaries, and establish whether the duration is inherent to `--all-features` clippy followed by `cargo test --all` on a thrashed cache or something else. A checkpoint nobody can predict the cost of is one people skip; that is a throughput defect, not merely an aesthetic one. No gate may be weakened or dropped to make it faster.
 - Verification / commit: pending.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.16 — Gate file termination instead of re-correcting it
+
+- Status: `done`; REPAIR-0066. Director asked for the call to be mine and to be signoff-grade.
+- Reproduce: REPAIR-0061 introduced a blank line at end of file in `LIVE_STATUS.md`, its own acceptance record claimed `git diff --check` returned rc=0, and REPAIR-0062 was spent correcting both. Nothing in the registry checks file termination, so the same slip is free to recur.
+- Root cause of the INSTRUMENT, not just the slip: the obvious gate — wrapping `git diff --check` — would be wrong here. A census shows `ROADMAP.md` uses trailing double-spaces as Markdown hard line breaks, so that check's whitespace family contains a legitimate use in this repository and a blanket rule would fire on correct content and teach bypass. A blank line at end of file has no legitimate use in any format the tree carries.
+- Census before designing: 642 tracked text files, 0 binary, 9 non-conforming — 6 evidence artifacts ending with a blank line, 2 schema goldens and 1 benchmark corpus missing a final newline. Two of those would have been damaged by a naive fix. `crates/reasonbraid-core/src/envelope.rs`'s `write_schema_goldens` emits no trailing newline, so hand-editing the goldens would be reverted by the next regeneration — the writer is the defect, and the sync test compares parsed values so the change alters no comparison. `crates/reasonbraid-adapter/bench/v1/prompts.json` is hashed by `Prompts::digest` and published as `prompts_digest`, "the versioning anchor in reports"; a newline there moves that anchor and breaks comparability with every historical report.
+- Fix: `scripts/check_file_termination.sh` enforces exactly one terminating newline across tracked text files, whole-tree so the CI backstop is real, with verbatim exceptions in `.doctrine/file_termination_exceptions.txt` for generated or digest-bound bytes and a stale entry treated as a breach. The six artifacts are corrected, the schema WRITER now emits the newline and both goldens are regenerated from it, and the benchmark corpus is the one reviewed exception with its reason recorded.
+- Verification: `--self-test` verifies eight classifications including a Markdown hard break that must not trip and a binary file that must be skipped. Three negative controls each return rc=1 — a new blank line at EOF, a stripped terminator on `README.md`, and a stale exception — and the restored tree returns rc=0. `cargo test -p reasonbraid-core --lib envelope` passes 4 tests including `schema_goldens_are_in_sync_with_types` on the regenerated files. `bash scripts/check_doctrines.sh` prints `=== all doctrines green ===`. Documentation, check scripts and one test-writer only; no production behavior or qualification category changes.
+- Commit: `REASONBRAID-REPAIR-0066 (leaf SIGNOFF-REPAIR.11.4.3.1.2.16): gate file termination`. promotion: declined (the durable rule is the registered doctrine and its mirror in DOCTRINE_ENFORCEMENT.md; it establishes no new cross-cutting fact beyond the check itself).
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 
 - Status: `done`; owns the unexpected visibility result and checkpoint stop before any publication. Authenticated gh repo view reports rdje/reasonbraid isPrivate=false, default main; existing Git transport reports remote main b932c054023ea127520e74cfaf95b9bdf1ea47fe. README.md:4 and docs/adr/001-uncleared-working-name.md:36 require private visibility until named clearance. No clearance or public-push authorization has been established.
@@ -1695,6 +1705,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.16`: `REASONBRAID-REPAIR-0066 (leaf SIGNOFF-REPAIR.11.4.3.1.2.16): gate file termination`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.14`: `REASONBRAID-REPAIR-0065 (leaf SIGNOFF-REPAIR.11.4.3.1.2.14): restore the recreated schema's grant and refuse non-operators honestly`.
 

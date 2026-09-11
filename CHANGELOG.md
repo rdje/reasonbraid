@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Gate file termination (`SIGNOFF-REPAIR.11.4.3.1.2.16`)
+
+- Register `FILE-TERMINATION`: every tracked text file ends with exactly one newline. Deliberately not a `git diff --check` wrapper — `ROADMAP.md` uses trailing double-spaces as Markdown hard line breaks, so that check's whitespace family has a legitimate use here and a blanket rule would teach bypass. A blank line at end of file does not, and is the defect that forced a correction commit.
+- Census first: 642 tracked text files, 9 non-conforming. Two would have been damaged by a naive fix — the schema goldens are produced by a writer that emits no trailing newline, so the WRITER is corrected and the goldens regenerated from it; the benchmark corpus is hashed and published as `prompts_digest`, so it is the one reviewed exception with its reason recorded.
+- Three negative controls each detect their defect (new blank line, stripped terminator, stale exception) and the restored tree passes; `--self-test` covers eight classifications including a Markdown hard break and a binary file.
+
 ## 2026-09-11 — Restore the recreated schema's grant and refuse non-operators honestly (`SIGNOFF-REPAIR.11.4.3.1.2.14`)
 
 - Root-cause the full checkpoint's stop at `04-pg-demo`: `migration_upgrade` recreates `public` with `DROP SCHEMA … CASCADE; CREATE SCHEMA public`, and a manually created schema does not inherit the default ACL a fresh database ships. A direct catalogue comparison shows the failing database's `{postgres=UC/postgres}` against a pristine `{pg_database_owner=UC/…,=U/pg_database_owner}` — PUBLIC's `USAGE` is gone, so every later non-owner role cannot resolve a qualified name.

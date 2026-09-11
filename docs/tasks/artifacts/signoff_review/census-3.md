@@ -162,5 +162,3 @@ node_channel wake gate tests onlyconcurrencyzero then2; nopositiveconcurrency ac
 - State: open source-review record; runtime pending.
 
 node_channel handshake bad proof test malformed cert00 refusesbeforeproof, doesn't isolate wellformedcertwrongsignature. Need exact cryptographicnegativefixtures +capturedvalidproofreplay.
-
-

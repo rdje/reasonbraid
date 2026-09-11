@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Decompose the R2 acquisition coverage gap (`SIGNOFF-REPAIR.7.3.3.4`)
+
+- The leaf needed two unrelated fixtures — a destination-policy seam for the success path, a dishonest stub worker for the mismatch refusal — so it became `.4.1` and `.4.2` before any implementation, per the tree's execution contract.
+- The design is established from measured source facts rather than left to the implementer: `FetcherConfig` and `Fetcher::from_config` are already public; `classify` returns through `allow_ip` for an IP-literal host **before** any resolver call, so a loopback origin needs only a policy plus `schemes: ["http"]` and its port; the R2 format set makes a minimal Atom feed the cleanest served document; and `extraction.rs` already reads `R2_WORKER_BIN` for the mismatch injection. The only missing piece is a seam on `ApiState`, whose `new`/`with_gate` hard-code the production `Fetcher::new`.
+- No production rule is relaxed by either child: the seam constructs a different fetcher for a test profile and leaves the shipped https-only public-destination policy untouched.
+
 ## 2026-09-12 — Where the checkpoint's missing hour goes (`SIGNOFF-REPAIR.11.4.3.1.2.15`)
 
 - The full checkpoint's `02-check` took 3,922s and reported 940s of it. The other 2,982s is now measured: **macOS first-execution validation of each newly written executable on the repository volume, ~21.9s apiece**, paid once per file identity and cached afterwards. The same bytes cost ~0.15s on the boot volume — about 150x, across four pairs with a spread under 0.8s.

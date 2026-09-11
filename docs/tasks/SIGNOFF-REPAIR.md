@@ -937,9 +937,31 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.7.3.3.4 — Qualify the R2 acquisition success path end to end
 
-- Status: `pending`; concrete coverage gap identified by the `.7.3.3.3.2` census above.
+- Status: `active`; decomposed into `.4.1` and `.4.2` below before implementation, because the success path and the mismatch refusal need different machinery — a destination-policy seam for one, a stub worker for the other — and a leaf that needs two unrelated fixtures is two leaves.
 - Sources: the live R2 test reaches only resolver ranking and the loopback refusal; no live test drives acquisition → extraction → snapshot → derivation on a successful document. That join is exactly where `.7.3.3.1`'s misattribution consequence would become a persisted wrong record, and it is why an input defect could survive a full historical phase closure.
-- Owns: a policy-allowed local origin for the acquisition leg (the fetcher's destination classification currently refuses loopback, so this needs an explicit, narrowly scoped test-profile allowance rather than a weakened production rule), then a live control that asserts the snapshot's raw digest, the derivation chunks and the receipt all describe the document actually served. Include a live control for the mismatch refusal leaving no snapshot or derivation behind. No Internet dependency, and no production SSRF relaxation.
+- Owns (via its children): a policy-allowed local origin for the acquisition leg, then a live control that asserts the snapshot's raw digest, the derivation chunks and the receipt all describe the document actually served; plus a live control for the mismatch refusal leaving no snapshot or derivation behind. No Internet dependency, and no production SSRF relaxation.
+- Design established before implementation, so the children start from measured facts rather than assumptions:
+  - `Fetcher::from_config` and `FetcherConfig` (with its `pub policy`, `schemes` and `ports` fields) are already public; `fetcher.rs`'s own unit tests drive a loopback origin through exactly this path. What is missing is only a seam on `ApiState`, whose `new`/`with_gate` both hard-code `Fetcher::new`.
+  - `Fetcher::classify` returns through `allow_ip` for an IP-literal host **before** any resolver call, so `http://127.0.0.1:<port>/…` needs only a loopback-admitting policy plus `schemes: ["http"]` and that port. No custom resolver is required, and `StaticResolver` is `#[cfg(test)]`-only and therefore unavailable to an integration test anyway.
+  - The R2 format set is `application/pdf`, `application/zip`, `application/x-tar`, `application/atom+xml`, `application/rss+xml` (`crates/reasonbraid-extract/src/main.rs`). A minimal Atom feed is the cleanest served document: text, no binary fixture, and `extract_feed` derives deterministic chunks — the feed title (plus subtitle), then one chunk per entry of title + summary + content.
+  - Snapshot/derivation readback uses direct SQL against the runner's owned disposable cluster, which is the pattern `profiles.rs` already uses (`SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id=$1`).
+  - The mismatch leg has its own injection point: `crates/reasonbraid-server/src/extraction.rs:183` reads `R2_WORKER_BIN`, so a stub worker can return a wrong `parent_digest` without touching production.
+- Verification / commit: pending; the children carry it.
+
+###### SIGNOFF-REPAIR.7.3.3.4.1 — Drive a successful R2 acquisition through to its snapshot and derivations
+
+- Status: `pending`; the first child, and the one that closes the stated coverage gap.
+- Owns: a narrow acquisition seam on `ApiState` that accepts a caller-supplied `Fetcher`, leaving `new`/`with_gate` building the production `Fetcher::new` unchanged; a local Atom-feed origin; and one live control through the real HTTP handler that asserts the persisted evidence describes the bytes actually served — the snapshot's `raw_digest` equals the served document's SHA-256, its `byte_length` equals the served length, and the derivation rows' chunk digests are those `extract_feed` derives from that exact feed.
+- The seam is a test/deployment profile, not a production relaxation: production constructs a different `Fetcher`, and the shipped https-only public-destination policy is not edited. Follow the established `with_gate` precedent, which is already documented in the source as "the test/deployment seam".
+- Acceptance: the control fails against a production-policy fetcher (the loopback refusal it exists to get past), passes with the seam, and asserts digests rather than merely a 200 — a successful acquisition that persisted the wrong bytes must fail it.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.7.3.3.4.2 — Prove the mismatch refusal persists nothing, live
+
+- Status: `pending`; the second child, after `.4.1` establishes the seam and the origin it reuses.
+- Owns: a stub worker selected through `R2_WORKER_BIN` that returns a well-formed response whose `parent_digest` is not the digest of the supplied bytes, and a live control asserting the handler refuses it as `extraction_source_mismatch` with **no** `evidence_snapshots` row and **no** `derivations` row for that reference.
+- Why it is separate: `.4.1` needs a destination-policy seam and a real document; this needs a dishonest worker and asserts an ABSENCE. The existing seven integration controls for the mismatch are below the HTTP handler; this one is the live join.
+- Acceptance: the absence is asserted by count over the exact reference, not inferred from a non-200; and the control fails if the refusal is ever moved after persistence.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.7.3.4 — Bound extraction transport and retained storage
@@ -1910,7 +1932,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.3.3.4` | `pending` | close the live coverage gap on the R2 acquisition success path; `.11.5` builds the pipeline-stage registry from it |
+| 1 | `SIGNOFF-REPAIR.7.3.3.4.1` | `pending` | drive a successful R2 acquisition through to its snapshot and derivations; `.11.5` builds the pipeline-stage registry from it |
 | 2 | `SIGNOFF-REPAIR.11.4.4` | `pending` | a leaf's first `Status:` line can be contradicted later in its own section |
 | 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |

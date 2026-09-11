@@ -4,18 +4,25 @@
 //! (spawn, JSONL parsing, exit-status verdicts, kill) — only the provider is fake.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_STUB: AtomicU64 = AtomicU64::new(0);
 
 fn stub_dir(name: &str) -> PathBuf {
     let base = std::env::var_os("CARGO_TARGET_TMPDIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
+    // A scenario name plus a clock reading is not a unique directory: scenario
+    // names repeat across adapters, this host returns byte-identical
+    // `subsec_nanos` for consecutive calls, and `create_dir_all` succeeds on an
+    // existing directory rather than refusing. Two stubs could therefore share a
+    // directory while one is being written and the other executed. The counter
+    // is unique within the process and the process id across processes — the
+    // same shape as `.11.4.3.1.2.17`, `.7.3.3.1` and `.7.4.1`.
+    let sequence = NEXT_STUB.fetch_add(1, Ordering::Relaxed);
     let dir = base
         .join("conformance-stubs")
-        .join(format!("{name}-{nanos}"));
+        .join(format!("{name}-{}-{sequence}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

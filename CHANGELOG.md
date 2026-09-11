@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Make a conformance refusal name its cause (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
+
+- The project's first remote CI run failed: `doctrines` and `supply-chain` pass, `rust` fails at `codex_adapter_passes_the_conformance_suite` with "the lose trigger refused instead of dispatching". The suite passes locally and the Claude scenario passes on the same runner.
+- The diagnosis was blocked by the harness itself: `InvokeOutcome::FailedBeforeDispatch` carries a `reason`, and the certification discarded it at three arms, emitting a fixed sentence. The whole CI log contained no cause, because none was ever produced. The three arms now carry the adapter's own reason.
+- Separately and on its own evidence, the conformance stubs no longer name their directory from the clock: scenario names repeat across adapters, `create_dir_all` succeeds on an existing directory, and 2,446 local stub directories ending in `000` confirm the resolution. This is the fourth instance of that family today.
+- The remote cause remains UNPROVED. The stub-naming repair is made because it is a measured defect, not because it is demonstrated to be the cause; the next remote run is the measurement.
+
 ## 2026-09-11 — Report evidence storage faults honestly (`SIGNOFF-REPAIR.7.4.2`)
 
 - Ten `map_err` arms across `snapshots.rs`, `derivations.rs` and `claims.rs` collapsed every storage fault into a caller error, and `api.rs` rendered all of them as HTTP 400. A server-side failure told the caller its own reference did not exist.

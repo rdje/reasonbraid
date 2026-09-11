@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The harness could not say why it refused
+
+- First remote CI run of the project, and it failed where local passes — which is the entire argument for running it. `claude` passed on the same runner and `codex` did not, so it is environment-dependent and scenario-specific.
+- Then the diagnosis stalled, because the certification harness discarded the cause. `FailedBeforeDispatch` carries a `reason: String` and three arms matched it with `{ .. }`, emitting a fixed sentence. Grepping the entire CI log for the cause found nothing, because nothing had produced one. The component whose only job is to explain why an adapter failed to qualify was the component that refused to explain.
+- That is the third refusal-that-names-nothing today, after the evidence storage faults and the opaque `assert!(matches!(…))`. The pattern is worth naming: wherever a value is matched with `{ .. }` or `|_|`, someone has decided that a future reader will not need what was discarded, and that decision is almost always wrong at 3am on a runner you cannot attach to.
+- Build the instrument BEFORE guessing. There were at least three plausible mechanisms — a shared stub directory, a Linux ETXTBSY on a script written while being executed, something else entirely — and no evidence separating them. Pushing a self-describing refusal costs one CI cycle and returns a fact; guessing costs the same cycle and returns a maybe.
+- The census correction stings: `.11.4.3.1.2.17` grepped `format!(.*process::id())` and missed this site, which derives its name from the clock ALONE. The census was keyed on a token I had just seen rather than on the concept I was hunting. A census is only as wide as its pattern, and a pattern drawn from the last instance will find the last instance.
+- promotion: declined (the durable rules already exist — a name proposes identity and only exclusive creation proves it, and a refusal must name its cause; this records the fourth instance and a lesson about census width).
+
 ## 2026-09-11 — Blaming the caller for the server's failure
 
 - Ten `map_err(|_| …Missing)` arms turned every storage fault into "your input does not exist", and the handlers rendered that as HTTP 400. The error message was not merely unhelpful; it was false, and it pointed the reader at the wrong system.

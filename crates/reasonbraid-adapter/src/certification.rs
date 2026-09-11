@@ -242,9 +242,9 @@ pub async fn certify<A: Adapter>(
                         )
                     }
                 }
-                InvokeOutcome::FailedBeforeDispatch { .. } => CheckResult::refused(
+                InvokeOutcome::FailedBeforeDispatch { reason, .. } => CheckResult::refused(
                     "ambiguous_outcome_honesty",
-                    "the lose trigger refused instead of dispatching",
+                    format!("the lose trigger refused instead of dispatching: {reason}"),
                 ),
             };
             checks.push(result);
@@ -268,9 +268,9 @@ pub async fn certify<A: Adapter>(
                         )
                     }
                 }
-                InvokeOutcome::FailedBeforeDispatch { .. } => CheckResult::refused(
+                InvokeOutcome::FailedBeforeDispatch { reason, .. } => CheckResult::refused(
                     "cancellation_matches_declaration",
-                    "the hang trigger refused instead of dispatching",
+                    format!("the hang trigger refused instead of dispatching: {reason}"),
                 ),
             };
             checks.push(result);
@@ -318,9 +318,9 @@ pub async fn certify<A: Adapter>(
                     }
                     CheckResult::passed("terminal_completion")
                 }
-                InvokeOutcome::FailedBeforeDispatch { .. } => CheckResult::refused(
+                InvokeOutcome::FailedBeforeDispatch { reason, .. } => CheckResult::refused(
                     "terminal_completion",
-                    "the complete trigger refused instead of dispatching",
+                    format!("the complete trigger refused instead of dispatching: {reason}"),
                 ),
             };
             checks.push(result);

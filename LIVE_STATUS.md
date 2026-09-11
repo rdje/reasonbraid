@@ -319,3 +319,11 @@ and the rust workflow FAILS at `codex_adapter_passes_the_conformance_suite`
 ("the lose trigger refused instead of dispatching"). That suite passes locally,
 so it is environment-dependent and is exactly what remote execution exists to
 find. It is the next repair; no remote-CI green claim is made.
+
+The first remote CI failure is being diagnosed under .11.4.3.1.2.19. The
+certification harness discarded the adapter's refusal reason at three arms, so
+the CI log carried no cause at all; those arms now append it. The conformance
+stubs also stopped naming their directory from the clock, on measured evidence
+of their own. The remote cause remains UNPROVED and no remote-CI green claim is
+made: the instrument was pushed so the next run names the cause rather than
+having it guessed.

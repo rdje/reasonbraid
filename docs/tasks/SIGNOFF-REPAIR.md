@@ -1060,7 +1060,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Why it was raised: the director asked how this project intends to exercise its corners, given an agent network over a LAN or the Internet, and whether MCP helps. The answer rests on measured evidence rather than opinion: of the six defects repaired in `REPAIR-0060`–`0068`, NONE was a wrong return value. Each was an identity, lifetime, ordering, concurrency or environment property, found by an instrument that asked the operating system or the catalogue a question — `ps`, `pg_namespace.nspacl`, a process-table probe, a distinctness counter, and a stage census.
 - Owns: assess the proposal in `docs/tasks/artifacts/signoff_review/verification-strategy-proposal.md` against ROADMAP §19, and decide which parts become tracked work. Its four ranked proposals are a falsification requirement for new controls, a pipeline-stage coverage registry, the unbuilt `reasonbraid-simulator` with invariants over the event log, and an adversarial concurrency lane. Its MCP finding is that MCP widens reachability and supplies an external conformance yardstick, but caught none of the six defects, is itself unqualified on its wire (`.6.1`–`.6.3` open), and must stay in a conformance lane rather than the correctness lane per ROADMAP §25's stop/reframe trigger.
 - Binding constraint on any outcome: the full checkpoint already takes roughly two hours with about 2,982 seconds unaccounted (`.11.4.3.1.2.15`). New lanes arrive with a tiering story or they get routed around, and a gate people route around is a gate that lies.
-- Verification / commit: pending; this leaf is an assessment, so its acceptance is a recorded decision about scope, not a test run.
+- Status: `done`; REPAIR-0087. Assessment recorded as `docs/decisions/2026-09-12_verification-strategy-assessment.md`.
+- Outcome: all four proposals accepted in principle and SEQUENCED, with one new lane added ahead of three of them. Order: (0) a clean-state lane, new and not in the proposal; (1) a control must have failed on the defect it was written for, as a doctrine gate; (4) the adversarial concurrency lane, whose fixture-ownership prerequisite is now largely done by REPAIR-0082/0085/0086; (2) the pipeline-stage registry, after `.7.3.3.4` so it is built from a real instance; (3) the deterministic simulator, tracked but deliberately not now.
+- The evidence got STRONGER, not merely longer. Four further defects were repaired after the proposal was written — REPAIR-0080, 0083, 0085, 0086 — bringing the count to **ten defects, none a wrong return value, none reachable by MCP**. REPAIR-0086 is the clearest demonstration of proposal 1 the project has produced: its invariant control fails against the superseded design while all three conformance scenarios still pass, which is exactly why the race shipped.
+- The new lane goes first because it is cheaper than all the others and has already paid: two of the three "remote-only" failures needed only a CLEAN machine, not a remote one, and each was reproduced by one command after costing CI round-trips.
+- MCP's assessment is unchanged and better evidenced: it widens reachability, supplies an external yardstick, caught none of the ten defects, and stays in a conformance lane per ROADMAP §25.
+- Binding constraint carried forward: no new lane lands before `.11.4.3.1.2.15` explains the checkpoint's ~2,982 unaccounted seconds. The clean-state lane is exempt because it REPLACES CI round-trips rather than adding to them.
+- promotion: declined (the durable method statements are already promoted — `TOOLBOX.md` for the clean-state rule and `docs/knowledge/proving-a-race-is-closed.md` for the invariant rule; this leaf records a scope decision, which belongs in `docs/decisions/`).
+- Commit: `REASONBRAID-REPAIR-0087 (leaf SIGNOFF-REPAIR.11.5): assess and sequence the verification strategy`.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
@@ -1898,6 +1905,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.5`: `REASONBRAID-REPAIR-0087 (leaf SIGNOFF-REPAIR.11.5): assess and sequence the verification strategy`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.26`: `REASONBRAID-REPAIR-0086 (leaf SIGNOFF-REPAIR.11.4.3.1.2.26): write every conformance stub before any scenario can spawn`.
 

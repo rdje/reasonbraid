@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Assess and sequence the verification strategy (`SIGNOFF-REPAIR.11.5`)
+
+- All four proposals accepted in principle and sequenced rather than started, with one new lane added ahead of three of them: a clean-state lane, then the failed-first control doctrine, then the adversarial concurrency lane, then the pipeline-stage registry, then the deterministic simulator.
+- The evidence strengthened after the proposal was written: ten defects repaired in total, none of them a wrong return value and none reachable by MCP. `REPAIR-0086`'s invariant control fails against the superseded design while every conformance scenario still passes, which is the failed-first proposal demonstrated.
+- The new lane goes first because two of the three "remote-only" failures needed only a CLEAN machine, not a remote one, and each was reproduced by one command after costing CI round-trips.
+- MCP's placement is unchanged and better evidenced: a conformance lane, never the correctness lane.
+- Recorded as `docs/decisions/2026-09-12_verification-strategy-assessment.md`.
+
 ## 2026-09-12 — Write every conformance stub before any scenario can spawn (`SIGNOFF-REPAIR.11.4.3.1.2.26`)
 
 - Remote CI reported `failed to spawn …/conformance-stubs/codex-14645/codex: Text file busy` — intermittently, since the same suite passed in the run immediately before.

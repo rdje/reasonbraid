@@ -155,6 +155,7 @@
 - [`2026-09-11_mechanized-document-invariants.md`](docs/decisions/2026-09-11_mechanized-document-invariants.md)
 - [`2026-09-11_owned-extraction-input.md`](docs/decisions/2026-09-11_owned-extraction-input.md)
 - [`2026-09-11_recreated-schema-privileges.md`](docs/decisions/2026-09-11_recreated-schema-privileges.md)
+- [`2026-09-12_verification-strategy-assessment.md`](docs/decisions/2026-09-12_verification-strategy-assessment.md)
 
 ## Promoted lessons
 

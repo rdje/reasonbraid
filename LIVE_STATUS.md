@@ -327,3 +327,14 @@ stubs also stopped naming their directory from the clock, on measured evidence
 of their own. The remote cause remains UNPROVED and no remote-CI green claim is
 made: the instrument was pushed so the next run names the cause rather than
 having it guessed.
+
+The first remote CI failure is root-caused and repaired under .11.4.3.1.2.19.
+The instrument pushed as REPAIR-0072 made the next run name its cause: Linux
+ETXTBSY, `execve` refusing a stub still open for writing while a parallel thread
+forked to spawn. macOS does not enforce it, so every local run had passed.
+REPAIR-0072's stub-naming change was NOT the cause and the evidence says so —
+the failing path already carried that naming and the failure moved between
+adapters. REPAIR-0073 writes one stub per adapter kind per process behind a
+OnceLock, removing the race rather than retrying around it. All adapter targets
+pass locally, which is explicitly not evidence about Linux; remote confirmation
+is still required and no CI-green claim is made.

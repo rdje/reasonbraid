@@ -4,32 +4,49 @@
 //! (spawn, JSONL parsing, exit-status verdicts, kill) — only the provider is fake.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
-static NEXT_STUB: AtomicU64 = AtomicU64::new(0);
-
-fn stub_dir(name: &str) -> PathBuf {
-    let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    // A scenario name plus a clock reading is not a unique directory: scenario
-    // names repeat across adapters, this host returns byte-identical
-    // `subsec_nanos` for consecutive calls, and `create_dir_all` succeeds on an
-    // existing directory rather than refusing. Two stubs could therefore share a
-    // directory while one is being written and the other executed. The counter
-    // is unique within the process and the process id across processes — the
-    // same shape as `.11.4.3.1.2.17`, `.7.3.3.1` and `.7.4.1`.
-    let sequence = NEXT_STUB.fetch_add(1, Ordering::Relaxed);
-    let dir = base
-        .join("conformance-stubs")
-        .join(format!("{name}-{}-{sequence}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// One stub per adapter kind per process, written ONCE before any scenario can
+/// spawn.
+///
+/// The scripts branch on the prompt, so a per-scenario copy never carried any
+/// information — and copying them was actively harmful. On Linux, `execve`
+/// returns `ETXTBSY` ("Text file busy") for a file that is still open for
+/// writing anywhere: with several conformance tests in parallel threads, one
+/// thread writing a stub while another forks to spawn gives that child the
+/// open write descriptor, and the exec then fails. Remote CI reported exactly
+/// that — `failed to spawn …/conformance-stubs/lose-14317-1/claude: Text file
+/// busy (os error 26)` — while macOS does not enforce it, which is why this
+/// passed locally for the project's whole life.
+///
+/// A `OnceLock` publishes the path only after the write and the chmod have
+/// finished, so there is exactly one write per process and no window at all.
+/// The process id in the directory keeps concurrent test BINARIES apart. This
+/// removes the race rather than retrying around it.
+fn stub_once(slot: &'static OnceLock<PathBuf>, file: &str, script: &str) -> PathBuf {
+    slot.get_or_init(|| {
+        let base = std::env::var_os("CARGO_TARGET_TMPDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        let dir = base
+            .join("conformance-stubs")
+            .join(format!("{file}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(file);
+        std::fs::write(&path, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    })
+    .clone()
 }
 
 /// The `codex` stub: branches on the prompt (the LAST argument).
-pub fn codex_binary(name: &str) -> PathBuf {
-    let path = stub_dir(name).join("codex");
+pub fn codex_binary(_name: &str) -> PathBuf {
+    static CODEX: OnceLock<PathBuf> = OnceLock::new();
     let script = r#"#!/bin/sh
 # The adapter invokes: <binary> exec --json ... <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
@@ -58,18 +75,12 @@ case "$last" in
     ;;
 esac
 "#;
-    std::fs::write(&path, script).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    path
+    stub_once(&CODEX, "codex", script)
 }
 
 /// The `claude` stub: branches on the prompt (the LAST argument).
-pub fn claude_binary(name: &str) -> PathBuf {
-    let path = stub_dir(name).join("claude");
+pub fn claude_binary(_name: &str) -> PathBuf {
+    static CLAUDE: OnceLock<PathBuf> = OnceLock::new();
     let script = r#"#!/bin/sh
 # The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
@@ -103,11 +114,5 @@ case "$last" in
     ;;
 esac
 "#;
-    std::fs::write(&path, script).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    path
+    stub_once(&CLAUDE, "claude", script)
 }

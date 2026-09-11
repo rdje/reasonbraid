@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — ETXTBSY, and the value of labelling a guess as a guess
+
+- The instrument paid for itself in one cycle. Making `FailedBeforeDispatch` carry its `reason` turned "the lose trigger refused instead of dispatching" into "failed to spawn …/claude: Text file busy (os error 26)" — a diagnosis instead of a symptom, from a machine I cannot attach to.
+- `ETXTBSY` is Linux refusing `execve` on a file still open for writing ANYWHERE. Three conformance tests run in parallel threads; one writes a stub while another forks to spawn, the forked child inherits the open write descriptor, and the exec fails. macOS does not enforce it, so every local run had passed for the project's whole life. This is the sharpest example yet of why the remote lane is not optional.
+- My candidate cause was wrong, and I could tell immediately BECAUSE I had labelled it. The failing path was `lose-14317-1` — the naming I had just introduced — so directories were already distinct, and the failure had moved from codex to claude. Had I shipped that change as "the fix", I would now be retracting a claim; having shipped it as "a measured defect, not a proved cause", I am simply reporting which hypothesis survived.
+- The repair was structural once the cause was known: the two scripts branch on the prompt, so per-scenario copies never carried information. One stub per adapter kind per process, published by a `OnceLock` only after write and chmod. No `ETXTBSY` retry loop — a retry would have made the symptom rarer and the defect permanent.
+- promotion: declined (this records a platform fact and a method note; the durable rules already exist — build the instrument before guessing, and a refusal must name its cause).
+
 ## 2026-09-11 — The harness could not say why it refused
 
 - First remote CI run of the project, and it failed where local passes — which is the entire argument for running it. `claude` passed on the same runner and `codex` did not, so it is environment-dependent and scenario-specific.

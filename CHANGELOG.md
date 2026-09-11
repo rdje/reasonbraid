@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Write each conformance stub once (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
+
+- The instrument from REPAIR-0072 did its job: the next remote run named the cause — `failed to spawn .../conformance-stubs/lose-14317-1/claude: Text file busy (os error 26)`. Linux `ETXTBSY`: `execve` refuses a file still open for writing, and one thread writing a stub while another forks to spawn hands that child the open write descriptor.
+- REPAIR-0072's stub-naming change was NOT the cause, and the evidence says so: the failing path already carried its pid-and-counter naming, and the failure moved from `codex` to `claude`. That leaf deliberately said "measured defect, not a proved cause", which is what makes this a correction rather than a retraction.
+- The two stub scripts branch on the prompt, so the per-scenario copies carried no information and only created the window. `stub_once` now writes one stub per adapter kind per process, with a `OnceLock` publishing the path only after the write and chmod complete. The race is removed, not retried around.
+- All adapter targets pass locally, which is explicitly not evidence about the Linux behaviour being repaired; the remote run is the measurement.
+
 ## 2026-09-11 — Make a conformance refusal name its cause (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
 
 - The project's first remote CI run failed: `doctrines` and `supply-chain` pass, `rust` fails at `codex_adapter_passes_the_conformance_suite` with "the lose trigger refused instead of dispatching". The suite passes locally and the Claude scenario passes on the same runner.

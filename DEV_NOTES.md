@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The branch that only runs on a stranger's machine
+
+- The `pg_guard` parent creation had a race I could reproduce on this machine 346 times in 640 tries, and it had never once failed a local test run. Both facts are true and the reconciliation is the whole lesson: the racing branch is guarded by `if !parent.exists()`, and after the first local run the parent always exists. The branch is dead code here and live code on every fresh checkout.
+- So the defect was not Linux-only, not timing-only, and not environmental in any interesting way. It was **warm-state-only-invisible**. My local suite was not testing the code CI was running.
+- That is the second time today. The git fixtures read the developer's ambient identity and could not have passed on any clean machine; this one cannot fail on any dirty one. Both were reproduced locally within minutes once I asked what my machine HAS that the runner lacks, rather than what the runner has that my machine lacks. I had the question backwards for most of the day, and paid for it in CI round-trips.
+- Worth being precise about what remains genuinely remote: `ETXTBSY`, the 108-byte `sun_path` limit, and inode reuse are real kernel differences a macOS box cannot exhibit at any state. Accumulated local state is not in that category, and conflating the two is what made "remote-only" feel like a bigger class than it is. Promoted the distinction to `TOOLBOX.md`.
+- promotion: accepted — `TOOLBOX.md` gains a section and a cold-tree probe row.
+
 ## 2026-09-11 — The cleanup that only ran on failure
 
 - Repairing the acquisition's colliding name, I found the defect the census had not: the success path removed nothing. The doc comment said "the caller owns its cleanup", and there is no production caller — only the receipt, which reads the digest and walks away. So every successful acquisition left a bare repository in the ambient temporary directory forever, and only FAILURES were cleaned up. A contract that names an owner who does not exist is not a contract.

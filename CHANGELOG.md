@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Stop racing for the guard fixture's parent (`SIGNOFF-REPAIR.11.4.3.1.2.25`)
+
+- `pg_guard.rs` created its control parent only when the path was absent, then unwrapped the result. That is a check-then-act, and these fixtures run in parallel threads, so all but one loser panicked with `AlreadyExists`.
+- It was never Linux-only. A probe of the exact shape lost 346 of 640 creations on the development machine. It had never fired in a local suite because `target/` stays warm between runs, making the racing branch dead code; a fresh checkout runs it every time. Removing the control directory reproduces the identical CI failure here.
+- The fix accepts `AlreadyExists`, as every other shared-parent creation in the workspace already does. Six consecutive cold-tree runs pass; the unrepaired code fails the first.
+- Promoted to `TOOLBOX.md`: "remote-only" is a hypothesis, not a category — two of today's three remote-only failures were reproduced locally by removing accumulated local state.
+
 ## 2026-09-11 — Own the Git acquisition workspace (`SIGNOFF-REPAIR.7.2.1`)
 
 - The production R1 acquisition named its working directory from the process id and a nanosecond field in the ambient temporary directory, then created it with a call that adopts an occupied path. Reproduced verbatim: 2000 names gave 501 distinct values with every collision between adjacent calls, `create_dir_all` returned `Ok` over another acquisition's pack, and the error path then deleted it. Two concurrent acquisitions share the process id by construction.

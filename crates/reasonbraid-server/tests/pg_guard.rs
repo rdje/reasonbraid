@@ -29,8 +29,20 @@ impl Fixture {
         let mut parent = root;
         for part in ["target", "pg-guard-controls"] {
             parent.push(part);
-            if !parent.exists() {
-                fs::DirBuilder::new().mode(0o700).create(&parent).unwrap();
+            // Creating only when the path is ABSENT is a check-then-act: these
+            // tests run in parallel threads, so several see the same missing
+            // parent and all but one lose the create. It never fired locally
+            // because `target/` stays warm between runs and the racing branch
+            // is then dead code; a fresh checkout runs it every time, which is
+            // why only CI saw it. An existing directory is the outcome this
+            // wants, so it is accepted rather than raced for.
+            match fs::DirBuilder::new().mode(0o700).create(&parent) {
+                Ok(()) => (),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+                Err(error) => panic!(
+                    "guard fixture storage {} refused: {error}",
+                    parent.display()
+                ),
             }
             let metadata = fs::symlink_metadata(&parent).unwrap();
             assert!(metadata.is_dir() && metadata.dev() == volume);

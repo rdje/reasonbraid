@@ -1661,6 +1661,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.25 — Stop racing for the guard fixture's parent
+
+- Status: `done`; REPAIR-0083. The remote `check` failure exposed once REPAIR-0080 cleared the git tests ahead of it.
+- Reproduce: run 34646239276, `pg_guard.rs:33`, `called Result::unwrap() on an Err value: Os { code: 17, kind: AlreadyExists }`, `7 passed; 1 failed`.
+- Root cause: `if !parent.exists() { create(..).unwrap() }` is a check-then-act. These fixtures run in parallel threads, so several see the same missing parent and all but one lose the create.
+- **It was never Linux-only.** A probe of the exact shape lost 346 of 640 creations on THIS machine. It had never fired in a local suite because `target/` stays warm between runs, which makes the racing branch dead code; a fresh checkout runs it every time. Proved both ways here: with the parent removed the suite fails `7 passed; 1 failed`, the identical CI failure, and with it present the same binary passes `8 passed`.
+- Fix: accept `AlreadyExists`, which is what every other shared-parent creation in the workspace already does. An existing directory is the outcome the code wants.
+- Verification: six consecutive COLD-tree runs pass `8 passed; 0 failed`; the unrepaired code fails the first. Strict lint and the doctrine gates pass.
+- Census: `if !<path>.exists()` guarding a create appears exactly once in the workspace — this site. The other `exists()` guards are worker-binary checks, and every other shared-parent creation already tolerates `AlreadyExists`. The UUID-named leaf creations are exclusive by design and correctly refuse a collision.
+- Promoted to `TOOLBOX.md`: "remote-only" is a hypothesis, not a category. Two of today's three remote-only failures were reproduced locally in minutes by removing accumulated local state — the developer's git identity, and a warm `target/`.
+- Commit: `REASONBRAID-REPAIR-0083 (leaf SIGNOFF-REPAIR.11.4.3.1.2.25): stop racing for the guard fixture's parent`.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.24 — Give the git fixtures their own commit identity
 
 - Status: `done`; REPAIR-0080. The last known remote `check` failure.
@@ -1866,6 +1878,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.25`: `REASONBRAID-REPAIR-0083 (leaf SIGNOFF-REPAIR.11.4.3.1.2.25): stop racing for the guard fixture's parent`.
 
 - `SIGNOFF-REPAIR.7.2.1`: `REASONBRAID-REPAIR-0082 (leaf SIGNOFF-REPAIR.7.2.1): own the Git acquisition workspace`.
 

@@ -369,3 +369,9 @@ workspace: it is now exclusively created under .project-data/git on the
 repository volume, proved by identity before removal, and released when the last
 holder drops, which also closes a leak that ran on every SUCCESSFUL acquisition.
 97 server lib tests, strict lint and the rendered book pass locally.
+
+REPAIR-0083 repairs the check-then-act in the pg_guard fixture parent, the sole
+instance of that shape in the workspace. It was never Linux-only: a probe lost
+346 of 640 creations locally, and the suite reproduces the exact CI failure here
+once the warm control directory is removed. Six consecutive cold-tree runs pass.
+No remote-green claim is made until the runner confirms it.

@@ -16,6 +16,28 @@ guess a root cause.
   output that pinpoints WHY+WHERE, STOP — run a tool, build one, or escalate. Never loop
   on analysis.
 
+## "Remote-only" is a hypothesis, not a category
+
+A failure that only happens on CI is not automatically a failure that needs CI to
+observe. Before accepting one as remote-only, name what the runner has that this
+machine does not — or, more usefully, what this machine has that the runner does
+not — and take it away. Two of the three remote-only failures repaired on
+2026-09-11 were reproduced locally within minutes this way, after hours of
+round-trips:
+
+- Four `git::tests::*` failed with `AuthorMissing` because the fixtures read the
+  developer's ambient git identity. Suppressing git configuration reproduced it
+  exactly, and exposed a fourth broken site the first repair had missed.
+- A `pg_guard` fixture failed a check-then-act race that had never once fired
+  locally, because `target/` stays warm between local runs and the racing branch
+  is then dead code. `rm -rf` the control directory and the same test fails here
+  on the first try.
+
+The genuine kernel differences — `ETXTBSY`, the 108-byte `sun_path` limit, inode
+reuse — do need a Linux runner. **Accumulated local state does not.** A cold tree
+and a clean environment are instruments, and they cost one command instead of one
+CI round-trip. Reach for them before spending a push.
+
 ## The 3-step UNKNOWN protocol (adapt the specific tools to your domain)
 
 1. **WIDEN** — dump the full picture: enumerate all cases/states, the broadest inventory,
@@ -40,6 +62,7 @@ agent should be able to reach for the right tool without reading the source. -->
 | `scripts/run_pg_tests.sh` | named suites with test-side ownership checks in a supervised PostgreSQL 16 cluster; `--list` shows names; no names runs the broad collection | `bash scripts/run_pg_tests.sh authority command_api` |
 | Site authority controls | explicit operator gate, tenant-only denial, actual-parent liveness, audit rollback and ordered revocation | `RB_DEMO=0 bash scripts/run_pg_tests.sh site_authority` |
 | Protected operator CLI | explicit deployment-local endpoint and operator role; issue/list/disable site authority and inspect audit | `python3 -B scripts/project_env.py target/debug/rb-site --help` |
+| cold-tree probe | whether a failure needs a REMOTE or merely a clean one — a fixture whose setup branch only runs on a fresh checkout is dead code on a warm `target/` | `rm -rf target/<control-dir> && cargo test …`, repeated, since the race is probabilistic |
 | clean-machine git probe | whether a test depends on the developer's ambient git identity — the `AuthorMissing` class that passes locally and fails on any clean runner | `env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 cargo test …` |
 | `scripts/check_book_links.sh` | which intra-book links do not resolve, with the page and target named; `--self-test` proves anchor stripping, external-scheme skipping and inline-code immunity | `bash scripts/check_book_links.sh [--self-test]` |
 | `scripts/check_file_termination.sh` | which tracked text files do not end with exactly one newline, and whether each is a reviewed generated/digest-bound exception; `--self-test` proves the classifier | `bash scripts/check_file_termination.sh [--self-test]` |

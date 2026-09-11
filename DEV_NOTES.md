@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A census keyed on the last instance finds the last instance
+
+- Third time today. `.11.4.3.1.2.17` grepped for a process-id call and missed the conformance stubs, which name from the clock alone. Then the same census recorded four `git.rs` sites as production when all four sit after `#[cfg(test)]`, and MISSED the one real production site at `git.rs:700` because that call spans several lines and the grep was single-line.
+- Wrong in both directions at once: it flagged test code as production and let a production defect through. An inaccurate census is worse than none, because the next reader trusts it and stops looking.
+- The concept-level census found in one pass what three token censuses missed: `env::temp_dir()` returns 8 sites across 3 files, and a clock-in-a-path search returns the node-journal fixtures. Census the CONCEPT — an ambient temporary directory, a clock in a name — not the spelling that happened to be in front of you.
+- `git.rs:700` is the genuine find: `acquire_blocking` clones into an ambient temporary directory named from the process id and a nanosecond field, created with `create_dir_all`, which succeeds on an existing directory instead of refusing. Every element of the R2 defect, in R1, untouched. Two concurrent acquisitions can clone into one directory, so a receipt could describe another acquisition's repository.
+- The deeper finding is not the site but the silence around it: §13 has required repository-volume storage for the project's whole life, and eight places ignore it, because prose is not a check. That is the same conclusion `VISIBILITY-POLICY` and `FILE-TERMINATION` reached from different directions today.
+- promotion: declined (the durable rules exist already — a name proposes identity and only exclusive creation proves it, and a rule nothing checks is a suggestion; this records a method correction and an inventory).
+
 ## 2026-09-11 — ETXTBSY, and the value of labelling a guess as a guess
 
 - The instrument paid for itself in one cycle. Making `FailedBeforeDispatch` carry its `reason` turned "the lose trigger refused instead of dispatching" into "failed to spawn …/claude: Text file busy (os error 26)" — a diagnosis instead of a symptom, from a machine I cannot attach to.

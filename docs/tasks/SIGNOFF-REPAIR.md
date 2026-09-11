@@ -1629,8 +1629,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - Status: `pending`; the proved cause from `.11.4.3.1.2.20`.
 - Sources: `crates/reasonbraid-browse/src/lifetime.rs:69-71` overrides `TMPDIR`/`TMP`/`TEMP` into the per-invocation workspace, nesting Chrome's singleton socket 228 bytes deep against a 108-byte `sun_path` limit on Linux. macOS does not use `process_singleton_posix.cc`, so the development platform cannot observe it.
-- Owns: a short repository-derived temporary directory for the browser, retaining the §13 requirement that project data stays on the repository volume and the worker's per-invocation isolation; plus an explicit startup check that the socket budget fits, refusing with a named error instead of allowing a `FATAL` abort. Requalify the sixteen browser integration controls, and state plainly that a macOS pass is not evidence for the Linux path this repairs.
-- Verification / commit: pending.
+- Owns: a temporary directory whose path fits Chrome's socket budget, retaining §13 repository-volume storage and the worker's per-invocation isolation. Requalify the sixteen browser integration controls, and state plainly that a macOS pass is not evidence for the Linux path this repairs.
+- The arithmetic decided the design before any code was written. Chrome's socket suffix is 45 bytes, so TMPDIR has a 63-byte budget. Measured candidates: today's absolute path 183; a short temporary directory under the existing fixture 132; a short temporary directory under a SHORTENED fixture 67 — still over. Shortening names cannot fix this at any reasonable aggression, because the harness gives each command its own fake repository root and the worker derives storage from it. Only a relative path escapes the nesting: 3 bytes.
+- Fix: `crates/reasonbraid-browse/src/lifetime.rs` sets `TMPDIR`, `TMP` and `TEMP` to the RELATIVE `tmp`. The child's working directory is already `self.workspace.path`, so it resolves exactly where the absolute value did. Every other variable stays absolute, so the profile, cache, config, data, state and crash isolation the controls assert is unchanged.
+- Why this cannot regress: if Chrome canonicalises `TMPDIR` it resolves against that same working directory and produces precisely the absolute path used before, which is today's behaviour. The change is therefore strictly no worse on any platform, and strictly better wherever the socket budget binds.
+- Verification: the sixteen browser integration controls pass under the pinned runtime locally (31.27s), alongside the five production lifetime controls; strict `-D warnings` lint for the crate and workspace format pass. A macOS pass is explicitly NOT evidence for the Linux singleton path being repaired — macOS does not use `process_singleton_posix.cc` at all — so the remote run is the measurement.
+- Verification / commit: REPAIR-0078; remote confirmation required.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.21 — Enforce the storage-locality policy that nothing checks
 
@@ -1835,6 +1839,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.22`: `REASONBRAID-REPAIR-0078 (leaf SIGNOFF-REPAIR.11.4.3.1.2.22): fit Chrome's singleton socket in its path budget`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.20`: `REASONBRAID-REPAIR-0074 (leaf SIGNOFF-REPAIR.11.4.3.1.2.20): retain the browser worker's own stderr in CI`.
 

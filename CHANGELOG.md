@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Fit Chrome's singleton socket in its path budget (`SIGNOFF-REPAIR.11.4.3.1.2.22`)
+
+- Chrome aborted on Linux with `FATAL:process_singleton_posix.cc:313] Socket path too long`: 228 bytes against a 108-byte `sun_path`. It places that socket under the temporary directory precisely to keep the path short, and the worker's absolute per-invocation TMPDIR defeated the mitigation.
+- Arithmetic chose the fix before any code was written. The socket suffix is 45 bytes, leaving TMPDIR 63: today's absolute path measures 183, a short temp directory under the existing fixture 132, and a short temp directory under a shortened fixture 67 — still over. Shortening names cannot fix it, because the harness gives each command its own fake repository root and the worker derives storage from it.
+- `TMPDIR`, `TMP` and `TEMP` become the relative `tmp`. The child's working directory is already the workspace, so it resolves where the absolute value did, at 3 bytes instead of 183. Every other variable stays absolute, so the isolation the controls assert is unchanged.
+- It cannot regress: if Chrome canonicalises TMPDIR it resolves against that same working directory and reproduces today's exact absolute path. Sixteen browser integration controls, five production lifetime controls, strict lint and format pass locally — which is explicitly not evidence for the Linux singleton path, since macOS does not use it.
+
 ## 2026-09-11 — Root-cause the browser CI failure: a socket path 120 bytes over the limit
 
 - Chrome's own stderr, once the instrument finally delivered it: `FATAL:process_singleton_posix.cc:313] Socket path too long`, then `Received signal 6`. The socket path measures 228 bytes against a `sun_path` capacity of 108.

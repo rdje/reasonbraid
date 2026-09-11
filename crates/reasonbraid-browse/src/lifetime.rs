@@ -65,10 +65,28 @@ impl Lifetime {
             .stderr(Stdio::piped())
             .process_group(0)
             .kill_on_drop(true);
+        // Chrome's process singleton binds a Unix domain socket under the
+        // temporary directory, and `sun_path` holds 108 bytes. It places the
+        // socket there PRECISELY to keep that path short, so an absolute
+        // TMPDIR pointing into this per-invocation workspace defeats the
+        // vendor's own mitigation: on a CI runner the result measured 228
+        // bytes and Chrome aborted with
+        // `FATAL:process_singleton_posix.cc:313] Socket path too long`.
+        //
+        // Shortening names cannot fix it. With a 45-byte socket suffix the
+        // budget is 63 bytes, and even a short temp directory under a short
+        // fixture root measures 67. The child's working directory is already
+        // this workspace, so a RELATIVE temporary directory resolves to the
+        // same place while costing 3 bytes instead of 183.
+        //
+        // This cannot regress: should Chrome canonicalise TMPDIR, it resolves
+        // against that same working directory and yields exactly the absolute
+        // path used before. Every other variable stays absolute, so the
+        // profile, cache and state isolation the controls assert is unchanged.
+        for (key, relative) in [("TMPDIR", "tmp"), ("TMP", "tmp"), ("TEMP", "tmp")] {
+            command.env(key, relative);
+        }
         for (key, directory) in [
-            ("TMPDIR", "tmp"),
-            ("TMP", "tmp"),
-            ("TEMP", "tmp"),
             ("XDG_CACHE_HOME", "cache"),
             ("XDG_CONFIG_HOME", "config"),
             ("CHROME_CONFIG_HOME", "config"),

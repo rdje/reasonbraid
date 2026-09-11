@@ -6,48 +6,64 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// One stub per adapter kind per process, written ONCE before any scenario can
-/// spawn.
+/// EVERY stub, written before ANY scenario can spawn.
 ///
-/// The scripts branch on the prompt, so a per-scenario copy never carried any
-/// information — and copying them was actively harmful. On Linux, `execve`
-/// returns `ETXTBSY` ("Text file busy") for a file that is still open for
-/// writing anywhere: with several conformance tests in parallel threads, one
-/// thread writing a stub while another forks to spawn gives that child the
-/// open write descriptor, and the exec then fails. Remote CI reported exactly
-/// that — `failed to spawn …/conformance-stubs/lose-14317-1/claude: Text file
-/// busy (os error 26)` — while macOS does not enforce it, which is why this
-/// passed locally for the project's whole life.
+/// On Linux, `execve` returns `ETXTBSY` ("Text file busy") for a file that is
+/// still open for writing ANYWHERE in the system. A `fork` copies the whole
+/// descriptor table, so a thread that forks to spawn one stub inherits the
+/// open write descriptor of a DIFFERENT stub that another thread happens to be
+/// writing, and holds it until its own `exec` completes.
 ///
-/// A `OnceLock` publishes the path only after the write and the chmod have
-/// finished, so there is exactly one write per process and no window at all.
-/// The process id in the directory keeps concurrent test BINARIES apart. This
-/// removes the race rather than retrying around it.
-fn stub_once(slot: &'static OnceLock<PathBuf>, file: &str, script: &str) -> PathBuf {
-    slot.get_or_init(|| {
+/// The superseded version gave each adapter kind its own `OnceLock` and its
+/// comment claimed that left "no window at all". That was wrong, and remote CI
+/// disproved it: `failed to spawn …/conformance-stubs/codex-14645/codex: Text
+/// file busy (os error 26)`, with the write that leaked into the fork being
+/// the CLAUDE stub's. One lock per kind serialises each stub against itself
+/// and against nothing else.
+///
+/// One lock for ALL of them closes it. `get_or_init` blocks every other thread
+/// until the initializer returns, so no scenario can hold a stub path — and
+/// therefore cannot spawn — until every write and chmod has finished. The race
+/// is removed rather than retried around. macOS does not enforce `ETXTBSY` at
+/// all, which is why this passed locally for the project's whole life.
+struct Stubs {
+    codex: PathBuf,
+    claude: PathBuf,
+}
+
+static STUBS: OnceLock<Stubs> = OnceLock::new();
+
+fn stubs() -> &'static Stubs {
+    STUBS.get_or_init(|| {
         let base = std::env::var_os("CARGO_TARGET_TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+        // The process id keeps concurrent test BINARIES apart; within this
+        // process the lock keeps the writes apart from every spawn.
         let dir = base
             .join("conformance-stubs")
-            .join(format!("{file}-{}", std::process::id()));
+            .join(format!("process-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(file);
-        std::fs::write(&path, script).unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        Stubs {
+            codex: write_stub(&dir, "codex", CODEX_SCRIPT),
+            claude: write_stub(&dir, "claude", CLAUDE_SCRIPT),
         }
-        path
     })
-    .clone()
 }
 
-/// The `codex` stub: branches on the prompt (the LAST argument).
-pub fn codex_binary(_name: &str) -> PathBuf {
-    static CODEX: OnceLock<PathBuf> = OnceLock::new();
-    let script = r#"#!/bin/sh
+fn write_stub(dir: &std::path::Path, file: &str, script: &str) -> PathBuf {
+    let path = dir.join(file);
+    std::fs::write(&path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    path
+}
+
+/// The `codex` provider script.
+const CODEX_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> exec --json ... <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
@@ -75,13 +91,9 @@ case "$last" in
     ;;
 esac
 "#;
-    stub_once(&CODEX, "codex", script)
-}
 
-/// The `claude` stub: branches on the prompt (the LAST argument).
-pub fn claude_binary(_name: &str) -> PathBuf {
-    static CLAUDE: OnceLock<PathBuf> = OnceLock::new();
-    let script = r#"#!/bin/sh
+/// The `claude` provider script.
+const CLAUDE_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
@@ -114,5 +126,13 @@ case "$last" in
     ;;
 esac
 "#;
-    stub_once(&CLAUDE, "claude", script)
+
+/// The `codex` stub: branches on the prompt (the LAST argument).
+pub fn codex_binary(_name: &str) -> PathBuf {
+    stubs().codex.clone()
+}
+
+/// The `claude` stub: branches on the prompt (the LAST argument).
+pub fn claude_binary(_name: &str) -> PathBuf {
+    stubs().claude.clone()
 }

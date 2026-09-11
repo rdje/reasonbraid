@@ -159,3 +159,4 @@
 ## Promoted lessons
 
 - [`proving-a-path-still-names-what-you-created.md`](docs/knowledge/proving-a-path-still-names-what-you-created.md) — how do I prove a path still names the file or directory I created; why did (dev, ino) identity pass on macOS and fail on Linux; does an open descriptor protect identity; can a link-count check be reused for a directory?
+- [`proving-a-race-is-closed.md`](docs/knowledge/proving-a-race-is-closed.md) — how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race?

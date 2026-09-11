@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Write every conformance stub before any scenario can spawn (`SIGNOFF-REPAIR.11.4.3.1.2.26`)
+
+- Remote CI reported `failed to spawn …/conformance-stubs/codex-14645/codex: Text file busy` — intermittently, since the same suite passed in the run immediately before.
+- This corrects the earlier repair's own record. Giving each adapter kind its own `OnceLock` serialises each stub against itself and nothing else, so its claim of "no window at all" was false: `execve` refuses a file open for writing anywhere, and `fork` copies the descriptor table, so the thread forking to spawn one stub inherits the open write descriptor of another stub being written.
+- One `OnceLock` now holds every stub. `get_or_init` blocks all other threads until it returns, so no scenario can hold any stub path — and therefore cannot spawn — until every write has finished.
+- Verified by invariant rather than symptom, because macOS does not enforce `ETXTBSY` at any timing. A new control asserts that holding either stub path implies every stub is written and executable; it FAILS against the superseded design while all three scenarios still pass, which is exactly why the race shipped.
+
 ## 2026-09-11 — Enforce storage locality and prove fixture names (`SIGNOFF-REPAIR.11.4.3.1.2.21`)
 
 - §13 says project-owned data lives on the repository's own volume and that a name must be proved, not proposed. It was prose for the life of the project and was breached in 26 places: 8 ambient temporary directories and 18 clock-derived paths across 16 files. The census found 18, not the "roughly ten" the finding estimated.

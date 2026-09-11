@@ -1670,6 +1670,15 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.26 — Write every conformance stub before any scenario can spawn
+
+- Status: `done`; REPAIR-0086.
+- Reproduce: run 34647830995, `codex:lose`, `failed to spawn …/conformance-stubs/codex-14645/codex: Text file busy (os error 26)`. INTERMITTENT — the same suite passed in run 34646239276 immediately before, so this is a race, not a regression.
+- Root cause, and it is a correction to `.11.4.3.1.2.17`'s own record: that repair gave each adapter kind its own `OnceLock` and its comment claimed the result left "no window at all". That claim was false. One lock per kind serialises each stub against itself and against nothing else. `execve` refuses a file open for writing ANYWHERE, and `fork` copies the whole descriptor table — so the thread forking to spawn the CLAUDE stub inherits the open write descriptor of the CODEX stub another thread is writing, and holds it until its own `exec`. The failing exec was codex's, and the leaked descriptor was claude's write.
+- Fix: ONE `OnceLock` holding every stub. `get_or_init` blocks all other threads until the initializer returns, so no scenario can hold any stub path — and therefore cannot spawn — until every write and chmod has finished. The window is removed rather than retried around.
+- Verified by INVARIANT, not by symptom, because macOS does not enforce `ETXTBSY` at any timing and the failure cannot be reproduced here at all. The new control asserts that holding either stub path implies every stub is already written, non-empty and executable. Falsified both ways: restored against the superseded per-kind locks it FAILS — `…/codex-54781/claude is not written yet` — while all three conformance scenarios still pass, which is exactly why the race shipped; against the repair all four pass. Strict `-D warnings` adapter lint passes.
+- The general lesson, recorded because it cost a second round: a claim that a race is closed is a claim about what CANNOT happen, and a suite of passing scenarios is not evidence for it. Assert the invariant that makes the race impossible, so a regression fails on the development platform instead of on the runner.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.25 — Stop racing for the guard fixture's parent
 
 - Status: `done`; REPAIR-0083. The remote `check` failure exposed once REPAIR-0080 cleared the git tests ahead of it.
@@ -1889,6 +1898,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.26`: `REASONBRAID-REPAIR-0086 (leaf SIGNOFF-REPAIR.11.4.3.1.2.26): write every conformance stub before any scenario can spawn`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.21`: `REASONBRAID-REPAIR-0085 (leaf SIGNOFF-REPAIR.11.4.3.1.2.21): enforce storage locality and prove fixture names`.
 

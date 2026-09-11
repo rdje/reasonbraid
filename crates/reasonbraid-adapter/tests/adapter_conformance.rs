@@ -85,6 +85,43 @@ fn claude(name: &str, prompt: &str, trigger: Trigger) -> ConformanceScenario<Cla
     }
 }
 
+/// The invariant that closes the `ETXTBSY` race (`SIGNOFF-REPAIR.11.4.3.1.2.26`).
+///
+/// Linux refuses to `execve` a file that is open for writing ANYWHERE, and a
+/// `fork` copies the whole descriptor table — so a thread forking to spawn one
+/// stub can inherit the open write descriptor of a DIFFERENT stub another
+/// thread is writing. Holding EITHER path must therefore imply that EVERY stub
+/// is already written and closed, which is what the shared `OnceLock` buys.
+///
+/// This asserts the invariant, not the symptom: macOS does not enforce
+/// `ETXTBSY` at any timing, so the failure itself cannot be reproduced here.
+/// A per-kind lock would fail this control while still passing every scenario.
+#[test]
+fn holding_one_stub_path_means_every_stub_is_already_written() {
+    for path in [
+        stubs::codex_binary("invariant"),
+        stubs::claude_binary("invariant"),
+    ] {
+        let directory = path.parent().expect("the stub directory");
+        for name in ["codex", "claude"] {
+            let sibling = directory.join(name);
+            let metadata = std::fs::metadata(&sibling)
+                .unwrap_or_else(|e| panic!("{} is not written yet: {e}", sibling.display()));
+            assert!(metadata.len() > 0, "{} is empty", sibling.display());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    metadata.permissions().mode() & 0o111,
+                    0o111,
+                    "{} is not executable yet",
+                    sibling.display()
+                );
+            }
+        }
+    }
+}
+
 /// The fake adapter passes every §19.4 checkable item against its own corpus.
 #[tokio::test]
 async fn fake_adapter_passes_the_conformance_suite() {

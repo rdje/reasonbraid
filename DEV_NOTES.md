@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — A passing suite is not evidence that a race is closed
+
+- The stub `ETXTBSY` came back, and the earlier repair's comment had said in as many words that it left "no window at all". It did not. One `OnceLock` per adapter kind serialises each stub against itself and against nothing else, and the descriptor that leaks into a `fork` belongs to a DIFFERENT stub than the one failing to exec. I wrote that comment, and I believed it because the suite went green.
+- That is the part worth keeping. A claim that a race is closed is a claim about what CANNOT happen, and no number of passing scenarios establishes it — least of all on a platform that does not enforce the rule being violated. macOS cannot produce `ETXTBSY` at any timing, so every local run was silent by construction.
+- So this repair asserts the INVARIANT instead: holding either stub path must imply every stub is already written and executable. That control fails against the superseded design while all three conformance scenarios still pass — which is precisely the shape of the original mistake, now caught on the development machine instead of on the runner.
+- Third time today that the durable fix was an instrument rather than a code change: suppress ambient git config, remove the warm `target/`, assert the invariant. The pattern underneath all three is that the development platform is silent about the thing that fails, so the test has to be written against the CAUSE rather than the effect.
+- promotion: accepted — `docs/knowledge/proving-a-race-is-closed.md`.
+
 ## 2026-09-11 — Checking the thing I was about to "repair on principle"
 
 - I had carried a note that the extract test helper shared the inode-reuse weakness REPAIR-0079 fixed, and was about to open a leaf for it. It does not. It holds an open `File` for the owner's life and compares the path against that LIVE descriptor plus `nlink == 1` — the same shape as the repaired production owner. The weak form was comparing against a `Metadata` captured at creation with the descriptor already closed, which is a different thing that happens to look similar in a grep.

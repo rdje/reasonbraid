@@ -1645,6 +1645,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Note on method, recorded because it cost three attempts: censusing for a token drawn from the last instance finds the last instance. Census the CONCEPT — here an ambient temporary directory, and a clock in a path — not the spelling that happened to be in front of you.
 - Verification / commit: pending.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.23 — Prove input identity against the descriptor, not an inode number
+
+- Status: `active`; a defect in REPAIR-0063's own repair, found by Linux CI.
+- The browser repair landed: run 34620840899 shows every `reasonbraid-browse` control passing, with `render_succeeded: true` and one worker reporting `stderr_bytes: 0` where it previously reported 403. `book` and `pg-tests` pass. The `check` job now fails elsewhere.
+- Reproduce: `extraction_input::tests::a_replaced_input_is_retained_and_its_successor_survives` fails at `extraction_input.rs:431` with `a changed identity must refuse: ()` — `release` returned success where it must refuse.
+- Root cause: `verify` compared a stored `(device, inode)` pair. **Linux reuses an inode number as soon as it is freed**, so a file deleted and immediately replaced can present the same pair. A standalone probe confirms both halves of this on the development platform: an open file reports `nlink = 1` while linked and `nlink = 0` after unlink, and macOS hands the successor a DIFFERENT inode (…892 against …891) — which is exactly why the defect was invisible locally.
+- Severity: this is not merely a failing test. `release` deleting a file it did not create is the precise outcome the identity check exists to prevent, and the control was right while the implementation was weaker than its own leaf claimed.
+- Fix: `OwnedInput` holds the open `File` for its whole life and `verify` refuses when the descriptor reports zero links, before comparing the path's `(device, inode)` against the descriptor's. An unlinked file still open reports zero links whatever number the replacement was given, so the check no longer depends on a number the kernel may hand out again.
+- Verification: nine owner controls pass, strict `-D warnings` server lint and workspace format pass. The mechanism is proved by probe rather than assumed; the Linux behaviour it repairs is confirmed by the remote run.
+- Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
+- Verification / commit: REPAIR-0079; remote confirmation required.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 
 - Status: `done`; owns the unexpected visibility result and checkpoint stop before any publication. Authenticated gh repo view reports rdje/reasonbraid isPrivate=false, default main; existing Git transport reports remote main b932c054023ea127520e74cfaf95b9bdf1ea47fe. README.md:4 and docs/adr/001-uncleared-working-name.md:36 require private visibility until named clearance. No clearance or public-push authorization has been established.

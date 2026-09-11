@@ -18,7 +18,7 @@
 //! Deliberately absent: any temporary-directory or home fallback, and any
 //! recursive deletion. The store removes one file it created, or nothing.
 
-use std::fs::{DirBuilder, Metadata, OpenOptions};
+use std::fs::{DirBuilder, File, Metadata, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
@@ -39,8 +39,10 @@ const MAX_CANDIDATES: usize = 64;
 pub struct OwnedInput {
     root: PathBuf,
     path: PathBuf,
-    /// (device, inode) of the file THIS owner created.
-    identity: (u64, u64),
+    /// The open handle to the file THIS owner created. It is held for the
+    /// owner's whole life so identity can be proved against the descriptor
+    /// rather than against a number that the kernel may hand out again.
+    file: File,
     digest: String,
     released: bool,
     reported: bool,
@@ -78,10 +80,12 @@ impl OwnedInput {
         // uid, so it is also the reference for checking that every parent is
         // OURS — without reaching outside the standard library for geteuid.
         let created = file.metadata()?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
         let owner = Self {
             root: root.to_path_buf(),
             path,
-            identity: (created.dev(), created.ino()),
+            file,
             digest: crate::fetcher::digest_sha256_hex(bytes),
             released: false,
             reported: false,
@@ -92,8 +96,6 @@ impl OwnedInput {
             let _ = std::fs::remove_file(&owner.path);
             return Err(error);
         }
-        file.write_all(bytes)?;
-        file.sync_all()?;
         Ok(owner)
     }
 
@@ -162,10 +164,26 @@ impl OwnedInput {
         }
     }
 
+    /// Prove the path still names the file this owner created.
+    ///
+    /// A (device, inode) pair is NOT sufficient on its own: Linux reuses an
+    /// inode number as soon as it is freed, so a file deleted and immediately
+    /// replaced can present the same pair and defeat the comparison. Linux CI
+    /// demonstrated exactly that — `release` returned success for a successor
+    /// this owner never created, which is the deletion the check exists to
+    /// prevent. The open descriptor settles it: an unlinked file still open
+    /// reports zero links, whatever number the replacement was given.
     fn verify(&self) -> io::Result<()> {
+        let created = self.file.metadata()?;
+        if created.nlink() == 0 {
+            return Err(io::Error::other(format!(
+                "the extraction input {} identity changed; it is retained",
+                self.relative().display()
+            )));
+        }
         let metadata = std::fs::symlink_metadata(&self.path)?;
         if !metadata.is_file()
-            || (metadata.dev(), metadata.ino()) != self.identity
+            || (metadata.dev(), metadata.ino()) != (created.dev(), created.ino())
             || metadata.nlink() != 1
         {
             return Err(io::Error::other(format!(

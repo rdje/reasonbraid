@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Prove input identity against the descriptor (`SIGNOFF-REPAIR.11.4.3.1.2.23`)
+
+- The browser repair landed on Linux: every `reasonbraid-browse` control passes, with `render_succeeded: true` and a worker reporting `stderr_bytes: 0` where it had reported 403.
+- Linux CI then found a defect in REPAIR-0063's own repair. `OwnedInput::verify` compared a stored `(device, inode)` pair, and Linux reuses an inode number as soon as it is freed, so a file deleted and immediately replaced presented the same pair and `release` returned success for a successor it never created — the exact deletion the check exists to prevent.
+- A probe confirms both halves on the development platform: an open file reports one link while linked and zero after unlink, and macOS hands the successor a different inode, which is why the defect was invisible locally.
+- The owner now holds its open handle for life and refuses when the descriptor reports zero links, so identity no longer depends on a number the kernel may hand out again. Nine owner controls, strict lint and format pass.
+
 ## 2026-09-11 — Fit Chrome's singleton socket in its path budget (`SIGNOFF-REPAIR.11.4.3.1.2.22`)
 
 - Chrome aborted on Linux with `FATAL:process_singleton_posix.cc:313] Socket path too long`: 228 bytes against a 108-byte `sun_path`. It places that socket under the temporary directory precisely to keep the path short, and the worker's absolute per-invocation TMPDIR defeated the mitigation.

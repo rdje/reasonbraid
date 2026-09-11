@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Retain the browser worker's own stderr in CI (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
+
+- The conformance repair held and `pg-tests` succeeded remotely for the first time — the full PostgreSQL collection on a runner. The `check` job now fails in `reasonbraid-browse`: six tests with `browser_launch_failed`, "browser exited before publishing a loopback endpoint".
+- Two candidates are already ruled out by the same log: the launcher verified the pinned executable's exact version, so the binary runs, and `--no-sandbox` and `--headless` are already passed.
+- The worker retains up to 64 KiB of Chrome's own stderr for a failed invocation, and the workflow was discarding it. One `if: failure()` upload now keeps it, so the next run carries the cause instead of the symptom. The cause remains unproved and no repair of it is claimed.
+
 ## 2026-09-11 — Write each conformance stub once (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
 
 - The instrument from REPAIR-0072 did its job: the next remote run named the cause — `failed to spawn .../conformance-stubs/lose-14317-1/claude: Text file busy (os error 26)`. Linux `ETXTBSY`: `execve` refuses a file still open for writing, and one thread writing a stub while another forks to spawn hands that child the open write descriptor.

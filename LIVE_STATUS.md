@@ -338,3 +338,12 @@ adapters. REPAIR-0073 writes one stub per adapter kind per process behind a
 OnceLock, removing the race rather than retrying around it. All adapter targets
 pass locally, which is explicitly not evidence about Linux; remote confirmation
 is still required and no CI-green claim is made.
+
+The conformance repair held on the runner and pg-tests SUCCEEDED remotely for
+the first time — the full PostgreSQL collection with its demonstration, on a
+Linux runner. The `check` job now fails in reasonbraid-browse: six tests report
+browser_launch_failed, "browser exited before publishing a loopback endpoint",
+with zero gated navigations observed. The pinned executable's version was
+verified by the launcher and --no-sandbox/--headless are already passed, so
+neither is the cause. REPAIR-0074 retains the worker's own stderr on failure so
+the next run names it. The cause is UNPROVED and no repair of it is claimed.

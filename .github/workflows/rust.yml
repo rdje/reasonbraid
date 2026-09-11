@@ -38,6 +38,22 @@ jobs:
             target/ci-browser/*/version.log
           if-no-files-found: ignore
 
+      # The worker already writes the browser's own stderr, its ownership and
+      # completion receipts for a failed or unconfirmed invocation. Without this
+      # they never leave the runner, so a launch failure arrives as a symptom
+      # with no cause — the gap that cost a CI cycle in .11.4.3.1.2.19.
+      - name: Retain browser worker evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-worker-evidence
+          path: |
+            target/browser-lifetime-controls/**/browser.stderr
+            target/browser-lifetime-controls/**/owner.json
+            target/browser-lifetime-controls/**/completion.json
+            target/browser-lifetime-controls/**/*.json
+          if-no-files-found: ignore
+
   pg-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

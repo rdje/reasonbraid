@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A name that describes the shape instead of the guarantee
+
+- `uuid_like_suffix()` returned `format!("{:x}{:x}", nanos, pid)`. It looks like a UUID and has none of the distinctness a UUID exists to provide. Measured on this host: 8 collisions in 10 calls, 918 in 1,000, 269 among 400 across eight threads. It minted `snp_`, `drv_` and `asn_` primary keys — evidence identity.
+- Answer "what does a collision DO" before changing anything. The three columns are `TEXT NOT NULL PRIMARY KEY`, so the insert is refused and no row can hold another's identity: there is nothing to reconcile. That single question turned a frightening finding into a bounded one, and it is the question the acceptance criterion demanded first.
+- The real damage was downstream of the collision, not in it. Every storage failure maps to `ReferenceMissing`, the handler maps that to HTTP 400, and the R2 pipeline discards the failed snapshot with `if let Ok(snapshot)` while still reporting a successful acquisition. A lost write, misreported as the caller's fault, with the acquisition still claiming to have produced evidence.
+- Three copies of one defective algorithm became three defects. Centralising the minting was not tidiness — it is the difference between fixing a bug and fixing a bug three times, badly, on three different days.
+- promotion: declined (the durable rule is recorded in `docs/decisions/2026-09-11_owned-extraction-input.md` — a name proposes identity, only exclusive construction proves it; this applies it to identifiers and adds measurements).
+
 ## 2026-09-11 — A clock is not a source of uniqueness
 
 - Third instance of one family in one day. `.7.3.3.1` found it in the production R2 input span, `.11.4.3.1.2.12` in the extractor fixtures, and now `pg_guard` names its directory `{pid}-{nanos}`. Measured here: six consecutive `time_ns()` samples are byte-identical, so the stamp separates nothing between concurrent callers.

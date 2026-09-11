@@ -125,7 +125,7 @@ pub async fn submit(
     if let Some(existing) = existing {
         return Ok(existing);
     }
-    let assessment_id = format!("asn_{}", suffix());
+    let assessment_id = crate::snapshots::evidence_id("asn");
     sqlx::query(
         "INSERT INTO claim_assessments \
          (assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
@@ -230,13 +230,4 @@ impl From<AssessmentRow> for StoredAssessment {
             created_at: row.created_at,
         }
     }
-}
-
-fn suffix() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{:x}{:x}", nanos, std::process::id())
 }

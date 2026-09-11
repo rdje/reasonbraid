@@ -162,7 +162,7 @@ pub async fn submit(
     if !reference_exists {
         return Err(SnapshotError::ReferenceMissing);
     }
-    let snapshot_id = format!("snp_{}", uuid_like_suffix());
+    let snapshot_id = evidence_id("snp");
     sqlx::query(
         "INSERT INTO snapshot_objects (digest, bytes) VALUES ($1, $2) \
          ON CONFLICT (digest) DO NOTHING",
@@ -326,13 +326,20 @@ pub async fn tombstone(
     Ok(result.rows_affected() > 0)
 }
 
-fn uuid_like_suffix() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{:x}{:x}", nanos, std::process::id())
+/// Mint one evidence identifier.
+///
+/// The superseded `uuid_like_suffix` was `format!("{:x}{:x}", nanos, pid)` — a
+/// shape that resembles a UUID without the single property a UUID is for. A
+/// probe of that exact expression on this host measured 8 collisions in 10
+/// sequential calls, 918 in 1,000, and 269 among 400 across eight threads:
+/// roughly one distinct value per twelve calls, because the realtime clock
+/// advances far more slowly than the work between calls. These identifiers are
+/// PRIMARY KEYs for evidence rows, so a collision loses a snapshot, a
+/// derivation or an assessment.
+///
+/// A v7 UUID is time-ordered like the old shape and distinct by construction.
+pub(crate) fn evidence_id(prefix: &str) -> String {
+    format!("{prefix}_{}", uuid::Uuid::now_v7().simple())
 }
 
 /// The retention classes' TTLs (the §12.9 enforcement): the audit class
@@ -422,4 +429,46 @@ pub async fn stale(
             refreshed_at: row.refreshed_at,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The property the superseded clock-and-process-id shape did not have.
+    /// Eight threads mint fifty identifiers each; all four hundred are distinct.
+    /// A probe of the old expression produced 269 collisions in this shape.
+    #[test]
+    fn evidence_identifiers_stay_distinct_under_concurrency() {
+        let handles: Vec<_> = (0..8)
+            .map(|_| std::thread::spawn(|| (0..50).map(|_| evidence_id("snp")).collect::<Vec<_>>()))
+            .collect();
+        let minted: Vec<String> = handles
+            .into_iter()
+            .flat_map(|handle| handle.join().expect("the minter finished"))
+            .collect();
+        let distinct: std::collections::HashSet<&String> = minted.iter().collect();
+        assert_eq!(minted.len(), 400);
+        assert_eq!(
+            distinct.len(),
+            400,
+            "{} of 400 evidence identifiers collided",
+            400 - distinct.len()
+        );
+        assert!(minted.iter().all(|id| id.starts_with("snp_")));
+    }
+
+    /// Rapid SEQUENTIAL calls were the worse case: the old shape returned two
+    /// distinct values for ten calls.
+    #[test]
+    fn rapid_sequential_identifiers_stay_distinct() {
+        let minted: Vec<String> = (0..1_000).map(|_| evidence_id("drv")).collect();
+        let distinct: std::collections::HashSet<&String> = minted.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            1_000,
+            "{} of 1000 sequential identifiers collided",
+            1_000 - distinct.len()
+        );
+    }
 }

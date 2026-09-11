@@ -104,7 +104,7 @@ pub async fn submit(
     if let Some(existing) = existing {
         return Ok(existing);
     }
-    let derivation_id = format!("drv_{}", suffix());
+    let derivation_id = crate::snapshots::evidence_id("drv");
     sqlx::query(
         "INSERT INTO derivations \
          (derivation_id, parent_snapshot_id, derived_kind, derived_digest, content, \
@@ -166,13 +166,4 @@ impl From<DerivationRow> for StoredDerivation {
             derived_at: row.derived_at,
         }
     }
-}
-
-fn suffix() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{:x}{:x}", nanos, std::process::id())
 }

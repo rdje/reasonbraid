@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Mint evidence identifiers that are actually distinct (`SIGNOFF-REPAIR.7.4.1`)
+
+- `snapshots.rs`, `claims.rs` and `derivations.rs` each minted durable evidence identifiers from `format!("{:x}{:x}", nanos, pid)` — a function literally named `uuid_like_suffix`, resembling a UUID in shape and not in the one property a UUID is for. A probe of that exact expression measured 8 collisions in 10 sequential calls, 918 in 1,000, and 269 among 400 across eight threads: about one distinct value per twelve calls.
+- Establish the consequence rather than assume it: all three columns are `TEXT NOT NULL PRIMARY KEY`, so a collision is a refused insert and no stored row can hold another's identity. The damage is that every storage failure is then reported as `ReferenceMissing` and mapped to HTTP 400, blaming the caller's input, while the R2 pipeline discards the failed snapshot and still reports a successful acquisition.
+- Replace all three with one `evidence_id` minting `uuid::Uuid::now_v7()` — time-ordered like the old shape, distinct by construction. Two controls measure the property directly: 400 concurrent and 1,000 rapid sequential identifiers, all distinct.
+- The storage-failure misclassification is diagnosed and routed to `.7.4.2` rather than fixed in passing: it changes three error types and their wire mapping and deserves its own injected-fault qualification.
+
 ## 2026-09-11 — Name guard fixtures without a clock (`SIGNOFF-REPAIR.11.4.3.1.2.17`)
 
 - The source-5c8609e checkpoint stops at `02-check`: `pg_guard` panics creating its fixture directory because `Fixture::new` names it `{pid}-{nanos}`, six consecutive `time_ns()` samples on this host are byte-identical, and three tests call it in parallel threads of one process. The PostgreSQL runner's `--test-threads=1` is why this suite always passed there and only fails under `make check`.

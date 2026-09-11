@@ -273,3 +273,14 @@ owners: evidence identifiers minted from the same shape, measured at about one
 distinct value per twelve calls (.7.4.1), and four ambient Git scratch paths
 built from the process id alone (.7.2.1). The full checkpoint has NOT passed.
 Qualification categories are unchanged.
+
+Evidence identity .7.4.1 is repaired under REPAIR-0068. Snapshot, derivation and
+claim-assessment identifiers were minted from a clock and a process id, measured
+at about one distinct value per twelve calls; all three now use one `evidence_id`
+built on a v7 UUID, with controls measuring 400 concurrent and 1,000 rapid
+sequential identifiers all distinct. Because the three columns are primary keys a
+collision was always a refused insert, so no stored row can hold another's
+identity and there is nothing to reconcile. The storage-failure misclassification
+the diagnosis exposed — every fault reported as `ReferenceMissing` and mapped to
+HTTP 400, with the R2 pipeline still reporting a successful acquisition — is
+routed to .7.4.2. Qualification categories are unchanged.

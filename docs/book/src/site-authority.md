@@ -128,6 +128,7 @@ recording the repeat request's reason separately.
 | Malformed JSON, missing/unknown fields, invalid name or reason | 400 `invalid_command`; no site audit |
 | Wrong content type or oversized body | 415 or 413 `invalid_command`; no site audit |
 | No usable site grant and actual boundary for the action | 403 `site_authority_required`, with committed `audit_id` |
+| A caller that cannot even resolve `public.site_audit` | 403 `site_authority_required` — the privilege probe reads the catalogue by OID, so a missing schema `USAGE` is still answered as "not an operator", never as a dependency failure |
 | Authorized pairing names an undeclared region | 400 `undeclared_region`, with committed `audit_id` |
 | Database, lock-timeout or audit-insert failure | 500 `dependency_unavailable`; no receipt is fabricated |
 

@@ -244,3 +244,21 @@ One gap is explicit with its census: no live test drives a SUCCESSFUL R2
 acquisition through to a snapshot and derivation, because the live R2 test
 refuses at the loopback destination gate. Concrete owner: .7.3.3.4.
 Qualification categories are unchanged; no full-CI or push claim follows.
+
+The source-165cb3a full checkpoint STOPPED at its fourth command
+(`04-pg-demo rc=101`, 3,137s): 36 of 40 suites started, 35 passed with 259 tests,
+and `site_authority` returned `9 passed; 1 failed`. Four suites, the
+demonstration and gates five to eight never ran. REPAIR-0065 root-causes it to
+`migration_upgrade` recreating `public` with `DROP SCHEMA … CASCADE; CREATE
+SCHEMA public`, which drops the PUBLIC `USAGE` grant a fresh database ships, so
+every later non-owner role could not resolve a qualified name. The fixture now
+restores the owner and the grant through one helper, and the site privilege
+probe resolves the audit table by catalogue OID so an unprivileged caller is
+refused `OperatorRequired` (403) rather than `Error::Sql` (500). This was a
+misclassification, not an escalation: the forensic copy shows the outsider never
+held operator membership. The reproduced sequence and the affected family of six
+suites now pass; the new control is falsified against the unchanged query.
+The full checkpoint has NOT passed and no push claim follows.
+`02-check` took 3,922s with only 940s accounted; that gap is owned by
+.11.4.3.1.2.15. Qualification categories are unchanged. Evidence:
+docs/tasks/artifacts/signoff_review/site-operator-schema-usage.md.

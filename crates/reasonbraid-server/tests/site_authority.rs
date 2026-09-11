@@ -281,10 +281,11 @@ async fn role_subjects_and_invalid_issuance_have_explicit_contracts() {
             ..valid.clone()
         },
     ] {
-        assert!(matches!(
-            site::issue_boundary(&pool, &invalid, &reason("invalid scope")).await,
-            Err(Error::InvalidInput(_))
-        ));
+        let outcome = site::issue_boundary(&pool, &invalid, &reason("invalid scope")).await;
+        assert!(
+            matches!(outcome, Err(Error::InvalidInput(_))),
+            "an invalid scope must be refused InvalidInput; it received {outcome:?}"
+        );
     }
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM public.site_boundaries")
         .fetch_one(&pool)
@@ -596,6 +597,54 @@ async fn wait_for(pool: &PgPool, query: &str) {
 const WAIT_GUARD: &str = "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'active' AND wait_event_type = 'Lock' AND query LIKE 'SELECT guard_id FROM public.site_authority_guard%'";
 const WAIT_AUDIT: &str = "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'active' AND wait_event = 'advisory' AND query LIKE 'INSERT INTO public.site_audit%'";
 
+/// A caller that cannot even resolve a qualified name is still a caller who is
+/// not an operator, and must be told so.
+///
+/// `migration_upgrade` recreates `public` and a manually created schema carries
+/// no PUBLIC grant, so every later suite ran with non-owner roles lacking USAGE.
+/// The privilege probe then raised SQLSTATE 42501 and the service reported a
+/// dependency failure instead of the refusal. The probe now identifies the audit
+/// table by catalogue OID, which needs no schema privilege.
+///
+/// The grant is restored BEFORE the assertion runs, so a failing expectation can
+/// never leave this shared database without USAGE on `public`.
+#[tokio::test]
+async fn a_caller_without_schema_usage_is_still_refused_as_a_non_operator() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let outsider = format!("site_test_{}", uuid::Uuid::now_v7().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE ROLE {outsider} LOGIN; GRANT pg_read_all_settings TO {outsider}"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let outsider_pool = role_pool(&outsider).await;
+    let scope = scope(&[Action::RegionDeclare]);
+
+    sqlx::query("REVOKE USAGE ON SCHEMA public FROM PUBLIC")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let outcome = site::issue_boundary(&outsider_pool, &scope, &reason("no schema usage")).await;
+    let probe: Result<i64, _> = sqlx::query_scalar("SELECT COUNT(*) FROM public.site_audit")
+        .fetch_one(&outsider_pool)
+        .await;
+    sqlx::query("GRANT USAGE ON SCHEMA public TO PUBLIC")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert!(
+        probe.is_err(),
+        "this control is only meaningful while the outsider genuinely lacks schema USAGE"
+    );
+    assert!(
+        matches!(outcome, Err(Error::OperatorRequired)),
+        "a caller without schema USAGE must still be refused OperatorRequired; it received {outcome:?}"
+    );
+}
+
 #[tokio::test]
 async fn issuance_uses_database_identity_and_rechecks_membership_after_waiting() {
     let _guard = guard().await;
@@ -607,10 +656,12 @@ async fn issuance_uses_database_identity_and_rechecks_membership_after_waiting()
         .execute(&pool).await.unwrap();
     let outsider_pool = role_pool(&outsider).await;
     let scope = scope(&[Action::RegionDeclare]);
-    assert!(matches!(
-        site::issue_boundary(&outsider_pool, &scope, &reason("unprivileged attempt")).await,
-        Err(Error::OperatorRequired)
-    ));
+    let outcome =
+        site::issue_boundary(&outsider_pool, &scope, &reason("unprivileged attempt")).await;
+    assert!(
+        matches!(outcome, Err(Error::OperatorRequired)),
+        "an unprivileged database login must be refused OperatorRequired; it received {outcome:?}"
+    );
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM public.site_audit")
         .fetch_one(&pool)
         .await
@@ -703,10 +754,11 @@ async fn audit_failure_rolls_back_the_registry_effect() {
     provision(&pool, &actor, &scope(&[Action::RegionDeclare])).await;
     sqlx::raw_sql("CREATE FUNCTION public.site_test_audit_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'region_declare' THEN RAISE EXCEPTION 'injected audit failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER site_test_audit_gate BEFORE INSERT ON public.site_audit FOR EACH ROW EXECUTE FUNCTION public.site_test_audit_gate()")
         .execute(&pool).await.unwrap();
-    assert!(matches!(
-        site::execute(&pool, &actor, &declare("site-test-audit-rollback")).await,
-        Err(Error::Sql(_))
-    ));
+    let outcome = site::execute(&pool, &actor, &declare("site-test-audit-rollback")).await;
+    assert!(
+        matches!(outcome, Err(Error::Sql(_))),
+        "a failed audit insert must surface as Sql; it received {outcome:?}"
+    );
     assert_eq!(registry_count(&pool).await, 0);
     let attempts: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM public.site_audit WHERE action = 'region_declare'",

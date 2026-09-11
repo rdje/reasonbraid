@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Restore the recreated schema's grant and refuse non-operators honestly (`SIGNOFF-REPAIR.11.4.3.1.2.14`)
+
+- Root-cause the full checkpoint's stop at `04-pg-demo`: `migration_upgrade` recreates `public` with `DROP SCHEMA … CASCADE; CREATE SCHEMA public`, and a manually created schema does not inherit the default ACL a fresh database ships. A direct catalogue comparison shows the failing database's `{postgres=UC/postgres}` against a pristine `{pg_database_owner=UC/…,=U/pg_database_owner}` — PUBLIC's `USAGE` is gone, so every later non-owner role cannot resolve a qualified name.
+- Restore the owner and the PUBLIC grant through one helper used by all four recreate sites: a fixture that mutates database-wide privilege state owns restoring it, as the cleanup plans already do for rows.
+- Resolve the site privilege probe's audit table by catalogue OID instead of a qualified name, so a caller without schema `USAGE` is refused `OperatorRequired` (403) rather than `Error::Sql` (500 `dependency_unavailable`). This was a misclassification, not an escalation — the forensic copy shows the outsider never held operator membership.
+- Make three opaque refusal assertions report the value they received; the reproduction then named SQLSTATE 42501 immediately. The new control is falsified against the unchanged production query, restores the shared grant before asserting, and proves its own precondition held.
+- The reproduced two-suite sequence and the affected family of six suites (30 tests) pass with the cluster stopped and removed. The full checkpoint has NOT passed: four suites, the demonstration and gates five to eight remain unrun.
+
 ## 2026-09-11 — Bind R2 responses to owned input bytes (`SIGNOFF-REPAIR.7.3.3.3.2`)
 
 - Replace the R2 handler's ambient temporary-directory span with one bound call: the acquired bytes become a private owned input, the worker reads it, and the input is released only when no reader can still hold it. No `std::env::temp_dir()` use remains in the R2 path, including the adjacent spawner fixture.

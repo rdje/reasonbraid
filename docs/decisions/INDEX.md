@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-11_recreated-schema-privileges.md](docs/decisions/2026-09-11_recreated-schema-privileges.md) | decision | a fixture restores the owner and PUBLIC grant it drops by recreating a schema; a privilege probe resolves by catalogue OID so refusals stay honest |
 | [2026-09-11_owned-extraction-input.md](docs/decisions/2026-09-11_owned-extraction-input.md) | decision | prove extraction input ownership by exclusive creation on the repository volume; delete only with a finished reader and an unchanged identity |
 | [2026-09-11_mechanized-document-invariants.md](docs/decisions/2026-09-11_mechanized-document-invariants.md) | decision | enforce the public-visibility policy and the book's frontier claim mechanically; delete duplicated facts rather than re-synchronizing them |
 | [2026-09-11_extraction-worker-completion.md](docs/decisions/2026-09-11_extraction-worker-completion.md) | decision | report direct extraction worker completion through one bounded stop/reap; never abandon a live child or claim an unobserved termination |

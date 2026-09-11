@@ -117,6 +117,15 @@ make secret-scan
 make book
 ```
 
+Drive them with a script that records a receipt per command and STOPS at the
+first failure, and read those receipts — never the driver's exit status. A
+`165cb3a` checkpoint run was reported "completed (exit code 0)" by its caller
+because the invocation ended `run.sh …; echo "DRIVER EXIT rc=$?"`: the shell's
+status was the echo's, and the real result — `CHECKPOINT STOPPED at 04-pg-demo`
+— was only in the driver's own summary. A command whose last statement is an
+`echo` has thrown its status away. A checkpoint that stopped is a FAILED
+checkpoint, never a partial pass, however many earlier gates were green.
+
 These are the required checkpoint commands, not a claim they have passed now.
 All six project command jobs now use the local CI launcher. Python discovery,
 worker builds, required browser presence, explicit full demo and pinned book build

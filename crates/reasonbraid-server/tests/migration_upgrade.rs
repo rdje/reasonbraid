@@ -17,6 +17,28 @@ use sqlx::migrate::Migrator;
 
 static UPGRADE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
+/// Recreate `public` the way this suite needs — and restore the two properties
+/// a MANUALLY created schema silently loses.
+///
+/// A fresh database ships `public` owned by `pg_database_owner` with
+/// `GRANT USAGE ... TO PUBLIC`; `CREATE SCHEMA public` gives it to the creating
+/// role with no PUBLIC grant at all. Every later suite in this shared cluster
+/// then runs in a database where a non-owner role cannot even resolve a
+/// qualified name, which is how this fixture silently broke `site_authority`
+/// twenty suites later. A fixture that mutates database-wide privilege state
+/// owns restoring it, exactly as the cleanup plans own their rows.
+async fn recreate_public_schema(pool: &sqlx::PgPool) {
+    sqlx::raw_sql(
+        "DROP SCHEMA public CASCADE; \
+         CREATE SCHEMA public; \
+         ALTER SCHEMA public OWNER TO pg_database_owner; \
+         GRANT USAGE ON SCHEMA public TO PUBLIC",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 /// The coordination namespace must cover identity and standalone authority
 /// stores without inventing identity rows or rewriting historical evidence.
 #[tokio::test]
@@ -42,14 +64,7 @@ async fn tenant_guard_upgrade_preserves_namespaces_and_backfills_exactly_once() 
         no_tx: false,
         locking: true,
     };
-    sqlx::query("DROP SCHEMA public CASCADE")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("CREATE SCHEMA public")
-        .execute(&pool)
-        .await
-        .unwrap();
+    recreate_public_schema(&pool).await;
     through(55).run(&pool).await.unwrap();
     let identity = "ten_00000000-0000-7000-8000-000000000151";
     let boundary = "ten_00000000-0000-7000-8000-000000000152";
@@ -194,14 +209,7 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
         locking: true,
     };
     // The upgrade path starts from a CLEAN pre-upgrade database.
-    sqlx::query("DROP SCHEMA public CASCADE")
-        .execute(&pool)
-        .await
-        .expect("drop schema");
-    sqlx::query("CREATE SCHEMA public")
-        .execute(&pool)
-        .await
-        .expect("create schema");
+    recreate_public_schema(&pool).await;
     prefix
         .run(&pool)
         .await
@@ -313,14 +321,7 @@ async fn evaluation_provenance_upgrade_preserves_legacy_records_without_inferenc
         Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
             .await
             .unwrap();
-    sqlx::query("DROP SCHEMA public CASCADE")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("CREATE SCHEMA public")
-        .execute(&pool)
-        .await
-        .unwrap();
+    recreate_public_schema(&pool).await;
     let through = |version| Migrator {
         migrations: std::borrow::Cow::Owned(
             migrator
@@ -475,10 +476,7 @@ async fn bootstrap_request_upgrade_preserves_legacy_rows_and_enforces_binding_co
         no_tx: false,
         locking: true,
     };
-    sqlx::raw_sql("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
-        .execute(&pool)
-        .await
-        .unwrap();
+    recreate_public_schema(&pool).await;
     prefix.run(&pool).await.unwrap();
     let tenant = reasonbraid_core::TenantId::new().to_string();
     sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'legacy bootstrap tenant')")

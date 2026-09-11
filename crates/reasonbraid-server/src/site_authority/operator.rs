@@ -8,13 +8,25 @@ async fn operator_identity(tx: &mut Tx<'_>) -> Result<(String, bool, bool), Erro
     // a transaction, even after a concurrent REVOKE and a guard-lock wait.
     // This static SQL has no caller interpolation. The queued-revocation test
     // must continue to exercise a reused physical connection.
+    // The audit table is identified by OID from the catalogue, never by a
+    // qualified NAME. Resolving `'public.site_audit'` requires USAGE on the
+    // schema, so a caller without it raised SQLSTATE 42501 and the service
+    // reported a dependency failure when the truth was simply that the caller
+    // is not an operator. The catalogue is readable by every role, so this form
+    // keeps the refusal honest. A missing table yields false, not NULL.
     let row = sqlx::Executor::fetch_one(
         &mut **tx,
         "SELECT SESSION_USER::TEXT, r.rolsuper OR EXISTS ( \
              SELECT 1 FROM pg_catalog.pg_roles operator_role \
              WHERE operator_role.rolname = 'reasonbraid_site_operator' \
                AND pg_catalog.pg_has_role(r.oid, operator_role.oid, 'MEMBER')), \
-             pg_catalog.has_table_privilege(CURRENT_USER, 'public.site_audit', 'INSERT') \
+             COALESCE(( \
+                 SELECT pg_catalog.has_table_privilege(CURRENT_USER, audit_table.oid, 'INSERT') \
+                 FROM pg_catalog.pg_class audit_table \
+                 JOIN pg_catalog.pg_namespace audit_schema \
+                   ON audit_schema.oid = audit_table.relnamespace \
+                 WHERE audit_schema.nspname = 'public' \
+                   AND audit_table.relname = 'site_audit'), false) \
          FROM pg_catalog.pg_roles r WHERE r.rolname = SESSION_USER",
     )
     .await?;

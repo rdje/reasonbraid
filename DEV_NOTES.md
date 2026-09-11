@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The exit code said zero and the checkpoint had stopped
+
+- The background invocation ended `run.sh …; echo "DRIVER EXIT rc=$?"`, so the shell's status was the echo's and the harness reported "completed (exit code 0)" for a checkpoint that stopped at its fourth command. The driver's own `summary.txt` said `CHECKPOINT STOPPED at 04-pg-demo`. A command whose last statement is an `echo` has thrown its status away; read the receipts, never the caller's status.
+- `assert!(matches!(x, Err(Expected)))` discards exactly the evidence a diagnosis needs. Making three refusal assertions name what they received turned a cluster autopsy into one printed line: SQLSTATE 42501, `permission denied for schema public`.
+- Root cause re-derived from the catalogue rather than reasoned about: the failing database's `public` is `postgres|{postgres=UC/postgres}`, a pristine one is `pg_database_owner|{pg_database_owner=UC/…,=U/pg_database_owner}`. The `=U/` entry is PUBLIC's USAGE. `CREATE SCHEMA public` does not inherit a database's default ACL, so `migration_upgrade` silently removed the ability of every later non-owner role to resolve a qualified name — twenty suites before the symptom.
+- Two defects, not one. The fixture owns restoring database-wide privilege state, exactly as the cleanup plans own their rows — an ACL is not a row any plan deletes. And the service must publish the reason it actually has: `has_table_privilege(CURRENT_USER, 'public.site_audit', 'INSERT')` needs schema USAGE to resolve a NAME, so it reported a dependency failure to a caller whose real problem was not being an operator. The catalogue OID form needs no schema privilege.
+- A control that must disturb shared state restores it BEFORE asserting, so a failing expectation cannot leave the disturbance behind; and it proves its own precondition held during the call, so a later change that quietly restores the grant cannot turn it into a control that tests nothing.
+- Narrowing beat brute force: alone it passed, the three immediate predecessors did not reproduce it, and the failing cluster's own server log named the statement. `migration_upgrade site_authority` then reproduced it in two suites instead of thirty-six.
+- promotion: promoted → `docs/decisions/2026-09-11_recreated-schema-privileges.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.14`.
+
 ## 2026-09-11 — An exhaustive match is a design tool, not a chore
 
 - The R2 handler trusted the worker's receipt because it arrived. The worker's `parent_digest` is computed over the file it read and the caller knows the digest of the bytes it supplied; nothing joined the two, so a response describing another document would have been persisted as a snapshot and its derivations. `.7.3.3.1` had reproduced the wrong-owner responses; the missing piece was a caller that acts on the disagreement.

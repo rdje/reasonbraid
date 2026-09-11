@@ -65,6 +65,22 @@ apply to code changes.
 9. In the completion message, report: the commit ID, the exact commit message, the tracked
    files in the commit, the current `LIVE_STATUS.md` snapshot, and whether it changed.
 
+## Push cadence
+
+Commit per completed leaf; **push in batches of about 300 commits**, after the
+full local checkpoint passes (`docs/ci.md`). A push is not a per-commit
+operation: the remote is public, each push spends CI minutes, and a green local
+checkpoint is what earns the right to push at all.
+
+**The one standing exception is turning remote CI green.** While a remote gate is
+red, each push IS the measurement — the runner is the only instrument that can
+observe a Linux-only or environment-dependent failure, so pushing one repair at a
+time is correct and deliberate. Return to the 300-commit cadence as soon as the
+remote is green, and say so explicitly in the leaf that closes it.
+
+Provenance: director instruction 2026-09-11, during the first remote-CI repair
+sequence.
+
 ## Pre-commit safety rules
 
 - Do not add `git_message_brief.txt` to git.

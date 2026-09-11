@@ -1657,6 +1657,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.24 — Give the git fixtures their own commit identity
+
+- Status: `done`; REPAIR-0080. The last known remote `check` failure.
+- Reproduce: run 34623064813 returns `88 passed; 4 failed`, all four `git::tests::*`, with the cause now named by the fixture itself — `the commit writes: AuthorMissing`.
+- Root cause: `repo.commit` resolves its signature from git configuration, so four fixture commits silently borrowed whatever identity the developer's machine carried. A runner has none and `gix` refuses. These tests could never have passed on a clean machine, and passed here only because of a global config file that is not part of the repository.
+- **Reproduced LOCALLY, which removes CI from this loop.** `env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1` reproduces the runner's condition exactly: against the unrepaired source it prints `AuthorMissing` three times, and it exposed a FOURTH commit site the first pass had missed. Recorded in `TOOLBOX.md` as a reusable probe — the first instrument today that observes a remote-only failure class without a remote.
+- Fix: a `fixture_identity` signature used by all four `commit_as` calls, so the fixture owns its identity the same way it owns its storage. The email uses the reserved `.invalid` domain.
+- Verification: with ambient git configuration suppressed, all six git tests pass; with the developer's normal configuration they also pass, so nothing regressed. The falsification is direct — the unrepaired fixtures fail under the same suppression. Strict `-D warnings` server lint and workspace format pass.
+- Commit: `REASONBRAID-REPAIR-0080 (leaf SIGNOFF-REPAIR.11.4.3.1.2.24): give the git fixtures their own commit identity`.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 
 - Status: `done`; owns the unexpected visibility result and checkpoint stop before any publication. Authenticated gh repo view reports rdje/reasonbraid isPrivate=false, default main; existing Git transport reports remote main b932c054023ea127520e74cfaf95b9bdf1ea47fe. README.md:4 and docs/adr/001-uncleared-working-name.md:36 require private visibility until named clearance. No clearance or public-push authorization has been established.
@@ -1851,6 +1861,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.24`: `REASONBRAID-REPAIR-0080 (leaf SIGNOFF-REPAIR.11.4.3.1.2.24): give the git fixtures their own commit identity`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.22`: `REASONBRAID-REPAIR-0078 (leaf SIGNOFF-REPAIR.11.4.3.1.2.22): fit Chrome's singleton socket in its path budget`.
 

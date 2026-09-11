@@ -347,3 +347,15 @@ with zero gated navigations observed. The pinned executable's version was
 verified by the launcher and --no-sandbox/--headless are already passed, so
 neither is the cause. REPAIR-0074 retains the worker's own stderr on failure so
 the next run names it. The cause is UNPROVED and no repair of it is claimed.
+
+The browse failure is repaired and remote-confirmed: relative TMPDIR keeps
+Chrome's singleton socket inside the 108-byte limit and all browse controls pass
+with render_succeeded true. The remaining known `check` failure was four
+git::tests::* reporting AuthorMissing, whose cause is proved: gix resolves a
+commit signature from git configuration and the fixtures borrowed the
+developer's. REPAIR-0080 gives them their own identity. It is the first
+remote-only failure reproduced LOCALLY — suppressing ambient git configuration
+recreates the runner's condition — and that probe exposed a fourth commit site
+the first pass missed. Six git tests pass both with ambient configuration
+suppressed and with it present. Remote confirmation of the whole `check` job is
+still required and no CI-green claim is made.

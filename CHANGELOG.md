@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Give the git fixtures their own commit identity (`SIGNOFF-REPAIR.11.4.3.1.2.24`)
+
+- The last known remote `check` failure: four `git::tests::*` with `the commit writes: AuthorMissing`. `repo.commit` resolves its signature from git configuration, so the fixtures borrowed whatever identity the developer's machine carried. They could never have passed on a clean machine.
+- Reproduced locally by suppressing ambient git configuration, which removes CI from this loop and immediately exposed a fourth commit site the first pass had missed. The probe is recorded in `TOOLBOX.md`.
+- All four commits now pass an explicit `fixture_identity`, so the fixture owns its identity the way it owns its storage. Six git tests pass both with ambient configuration suppressed and with it present; the unrepaired fixtures fail under suppression.
+
 ## 2026-09-11 — Prove input identity against the descriptor (`SIGNOFF-REPAIR.11.4.3.1.2.23`)
 
 - The browser repair landed on Linux: every `reasonbraid-browse` control passes, with `render_succeeded: true` and a worker reporting `stderr_bytes: 0` where it had reported 403.

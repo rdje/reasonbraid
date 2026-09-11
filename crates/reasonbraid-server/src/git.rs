@@ -1097,6 +1097,22 @@ mod tests {
     }
 
     /// A source repository: a blob, a nested tree, one commit.
+    /// The fixture's OWN commit identity.
+    ///
+    /// `repo.commit` resolves its signature from git configuration, so these
+    /// fixtures silently borrowed whatever identity the developer's machine
+    /// happened to carry. A CI runner has none and `gix` refused with
+    /// `AuthorMissing`, so the tests passed locally for the project's whole
+    /// life and could not pass anywhere clean. A fixture owns its identity the
+    /// same way it owns its storage.
+    fn fixture_identity() -> gix::actor::SignatureRef<'static> {
+        gix::actor::SignatureRef {
+            name: "ReasonBraid Fixture".into(),
+            email: "fixture@reasonbraid.invalid".into(),
+            time: "0 +0000",
+        }
+    }
+
     fn source_repo(dir: &std::path::Path) -> gix::ObjectId {
         let repo = gix::init(dir).expect("the source repo inits");
         let blob = repo.write_blob(b"hello world").expect("the blob writes");
@@ -1127,9 +1143,16 @@ mod tests {
             })
             .expect("the tree writes")
             .detach();
-        repo.commit("HEAD", "first", tree, gix::commit::NO_PARENT_IDS)
-            .expect("the commit writes")
-            .detach()
+        repo.commit_as(
+            fixture_identity(),
+            fixture_identity(),
+            "HEAD",
+            "first",
+            tree,
+            gix::commit::NO_PARENT_IDS,
+        )
+        .expect("the commit writes")
+        .detach()
     }
 
     fn acquire_local(
@@ -1201,7 +1224,14 @@ mod tests {
                 .expect("the tree writes")
                 .detach();
             let sub_commit = repo
-                .commit("HEAD", "sub", tree, gix::commit::NO_PARENT_IDS)
+                .commit_as(
+                    fixture_identity(),
+                    fixture_identity(),
+                    "HEAD",
+                    "sub",
+                    tree,
+                    gix::commit::NO_PARENT_IDS,
+                )
                 .expect("the sub commit writes")
                 .detach();
             // A second commit whose tree carries a gitlink to the first.
@@ -1215,8 +1245,15 @@ mod tests {
                 })
                 .expect("the gitlink tree writes")
                 .detach();
-            repo.commit("HEAD", "with-submodule", gitlink_tree, [sub_commit])
-                .expect("the gitlink commit writes");
+            repo.commit_as(
+                fixture_identity(),
+                fixture_identity(),
+                "HEAD",
+                "with-submodule",
+                gitlink_tree,
+                [sub_commit],
+            )
+            .expect("the gitlink commit writes");
         }
         match acquire_local(&sub_dir, &GitLimits::default()) {
             Err(GitError::Refused {
@@ -1245,8 +1282,15 @@ mod tests {
                 })
                 .expect("the pointer tree writes")
                 .detach();
-            repo.commit("HEAD", "lfs", tree, gix::commit::NO_PARENT_IDS)
-                .expect("the lfs commit writes");
+            repo.commit_as(
+                fixture_identity(),
+                fixture_identity(),
+                "HEAD",
+                "lfs",
+                tree,
+                gix::commit::NO_PARENT_IDS,
+            )
+            .expect("the lfs commit writes");
         }
         match acquire_local(&lfs_dir, &GitLimits::default()) {
             Err(GitError::Refused {

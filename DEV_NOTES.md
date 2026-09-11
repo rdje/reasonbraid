@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The first remote-only failure class I could reproduce without a remote
+
+- Four `git::tests::*` failed on the runner with `the commit writes: AuthorMissing`. `gix`'s `repo.commit` resolves its signature from git configuration, so four fixture commits silently borrowed whatever identity the developer's machine carried. A clean runner has none.
+- The important part is not the fix but the reproduction. `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1` recreates the runner's condition on this machine exactly, and it earned its keep immediately: after I repaired three sites and believed I was done, the probe failed with `5 passed; 1 failed` and named a FOURTH site I had missed. Without it I would have spent a full remote round-trip learning that.
+- That is four Linux-or-clean-machine-only defects today — ETXTBSY, the singleton socket path, inode reuse, and this — and this is the first one an instrument could observe locally. The distinction worth keeping: ETXTBSY and inode reuse are genuine kernel differences that macOS cannot exhibit, but this one was never about Linux at all. It was about a machine without the developer's dotfiles. I had been treating "remote-only" as one category when it is two, and only one of them needs a remote.
+- The generalizable rule: a test that reads ambient user configuration is not a test of the code, it is a test of the machine. The fixture now owns its identity the same way it owns its storage, under the reserved `.invalid` domain.
+- promotion: declined (this is an instance of the existing fixture-ownership rule, now with a probe recorded in `TOOLBOX.md`).
+
 ## 2026-09-11 — Not libraries: a 228-byte path against a 108-byte limit
 
 - Chrome named it once the evidence finally reached me: `FATAL:process_singleton_posix.cc:313] Socket path too long`, then `Received signal 6`. The missing-runtime-library hypothesis — which fit every observation I had — is DENIED. It was a Unix domain socket path limit all along: 228 bytes against `sun_path`'s 108.

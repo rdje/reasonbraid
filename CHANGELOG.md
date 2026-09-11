@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Remote CI is green for the first time
+
+- Run 34652116508 for `c17841c`: `rust` success with all three jobs green (`book`, `check`, `pg-tests`), alongside `doctrines` and `supply-chain`. The `check` job reports 669 tests passed and 0 failed suites.
+- Verified three ways: re-derived from the API rather than a notification, falsified for hidden skips (the one skipped step is `if: failure()` and correctly does not run on a green build), and durability confirmed with `origin/main` still at `c17841c`.
+- It closes a repair sequence in which every push cleared a real defect and exposed the next, none a repeat: `ETXTBSY`, the 108-byte `sun_path` limit, inode reuse, `AuthorMissing`, a `pg_guard` check-then-act, and a conformance stub race.
+- **Push cadence returns to ~300 commits**, per `COMMIT.md`. The exception that made each push a measurement no longer applies.
+- The clean-state lane's first full local run immediately found its own defect, and it is the mirror image of the others: a browse navigation-deadline control that passes on the runner and fails here, reporting `browser_cleanup_unconfirmed` where it expects `time_budget_exceeded`. Owned by `SIGNOFF-REPAIR.11.4.3.1.2.27`, unrepaired and not claimed as fixed.
+
 ## 2026-09-12 — Assess and sequence the verification strategy (`SIGNOFF-REPAIR.11.5`)
 
 - All four proposals accepted in principle and sequenced rather than started, with one new lane added ahead of three of them: a clean-state lane, then the failed-first control doctrine, then the adversarial concurrency lane, then the pipeline-stage registry, then the deterministic simulator.

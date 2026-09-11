@@ -1677,6 +1677,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.27 — A navigation deadline reports cleanup, not the budget, on a slow host
+
+- Status: `pending`; found by the first full run of the clean-state lane adopted in `.11.5`.
+- Finding: `crates/reasonbraid-browse/tests/browser_roundtrip.rs:570` asserts the response error kind is `time_budget_exceeded`. On this development machine it is `browser_cleanup_unconfirmed`, with the budget preserved only in the message — `"time_budget_exceeded: the render exceeded the 30-second budget; browser stderr completion unconfirmed"`.
+- NOT a cold-tree defect and NOT introduced here: it fails identically warm, and `git log 9523819..HEAD -- crates/reasonbraid-browse/` is empty, so nothing in this session touched the crate. A pinned Chrome IS present locally, so the test ran for real.
+- This is the MIRROR IMAGE of the day's other environment findings, and worth stating as such: every previous one hid from the development machine and appeared on the runner. This one hides from the runner and appears here — run 34652116508 passes the same test.
+- Measured: the witness reports `elapsed_ms: 41027` against a 30-second budget, and the worker's own terminal receipt says `group_cleanup_confirmed: true` with `cleanup_error: null`. So the process GROUP was cleaned up and only the browser's stderr completion went unobserved. Two different cleanup facts, and the response carries the stricter one.
+- Owns: decide which fact the response should carry when a deadline fires AND stderr completion is unconfirmed. There is a genuine doctrine tension to settle rather than paper over — the project's rule is never to claim an unobserved termination, which argues the current behaviour is RIGHT and the assertion too strict; against that, a caller needs to know the budget was the cause. Resolve it deliberately, then make the control assert the resolved contract on a fast and a slow host.
+- Do NOT simply widen the budget: that hides the finding instead of settling it.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.26 — Write every conformance stub before any scenario can spawn
 
 - Status: `done`; REPAIR-0086.
@@ -1685,6 +1695,9 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Fix: ONE `OnceLock` holding every stub. `get_or_init` blocks all other threads until the initializer returns, so no scenario can hold any stub path — and therefore cannot spawn — until every write and chmod has finished. The window is removed rather than retried around.
 - Verified by INVARIANT, not by symptom, because macOS does not enforce `ETXTBSY` at any timing and the failure cannot be reproduced here at all. The new control asserts that holding either stub path implies every stub is already written, non-empty and executable. Falsified both ways: restored against the superseded per-kind locks it FAILS — `…/codex-54781/claude is not written yet` — while all three conformance scenarios still pass, which is exactly why the race shipped; against the repair all four pass. Strict `-D warnings` adapter lint passes.
 - The general lesson, recorded because it cost a second round: a claim that a race is closed is a claim about what CANNOT happen, and a suite of passing scenarios is not evidence for it. Assert the invariant that makes the race impossible, so a regression fails on the development platform instead of on the runner.
+- **CONFIRMED GREEN ON THE RUNNER.** Run 34652116508 for `c17841c`: `rust` success with all three jobs green (`book`, `check`, `pg-tests`), alongside `doctrines` and `supply-chain`. Re-derived from the API rather than from a notification; falsified for hidden skips — the single skipped step is `Retain browser worker evidence on failure`, which is `if: failure()` and correctly does not run on a green build; durability confirmed, `origin/main` is still `c17841c`. The `check` job reports **669 tests passed, 0 failed suites**. The 8 `render_succeeded: true` against 5 `false` is expected — the browse suite deliberately exercises failure paths.
+- **This is the first fully green remote CI in the project's history, and it closes the remote-CI repair sequence.** Each push in it cleared a real defect and exposed the next; none was a repeat: `ETXTBSY`, the 108-byte `sun_path` limit, inode reuse, `AuthorMissing`, a `pg_guard` check-then-act, and this stub race.
+- **PUSH CADENCE RETURNS TO ~300 COMMITS**, which `COMMIT.md` requires this closing leaf to state explicitly. The standing exception — that while a remote gate is red each push IS the measurement — no longer applies. Pushes resume in batches after a passing full local checkpoint.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.25 — Stop racing for the guard fixture's parent
 

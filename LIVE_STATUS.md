@@ -383,3 +383,10 @@ time rather than the same one recurring: the four AuthorMissing git tests are
 confirmed fixed on the runner, the pg_guard race is fixed, and the current
 failure is an intermittent ETXTBSY in the conformance stubs which PASSED in the
 preceding run. No remote-green claim is made.
+
+REMOTE CI IS GREEN. Run 34652116508 for c17841c passes rust (book, check,
+pg-tests), doctrines and supply-chain, with 669 tests passed and 0 failed suites
+in check. Verified by re-derivation from the API, falsified for hidden skips,
+and durable at origin/main. Push cadence returns to ~300 commits per COMMIT.md.
+One new local-only defect is open and NOT fixed: a browse navigation-deadline
+control that passes remotely and fails here, owned by .11.4.3.1.2.27.

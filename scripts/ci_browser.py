@@ -241,6 +241,26 @@ def execute(release: Release, workspace: Path, environment: dict[str, str],
     if log.stat().st_size > 4096 or log.read_text().strip() != "Google Chrome for Testing " + VERSION:
         raise ValueError("browser executable returned an unexpected version")
     receipt["version_verified"] = True
+    # `--version` parses a flag and exits: it proves the binary loads, not that
+    # the rendering stack can. Chrome resolves libnss, libgbm, libxkbcommon and
+    # friends only when a browser actually starts, so a host can pass the version
+    # check and still be unable to render. On Linux, enumerate every unresolved
+    # shared object directly — a census of the population, not a sample of it.
+    # The result is recorded either way: an empty list is evidence too.
+    if platform.system() == "Linux":
+        missing: list[str] = []
+        probe = subprocess.run(["ldd", str(binary)], capture_output=True, text=True,
+                               timeout=VERSION_SECONDS, check=False)
+        for line in probe.stdout.splitlines():
+            if "not found" in line:
+                missing.append(line.strip())
+        (workspace / "shared-objects.log").write_text(probe.stdout)
+        receipt["unresolved_shared_objects"] = missing
+        if missing:
+            raise ValueError(
+                "the browser executable has unresolved shared objects; install its "
+                "runtime dependencies: " + "; ".join(missing)
+            )
     code = 0
     if command:
         receipt["state"] = "running"

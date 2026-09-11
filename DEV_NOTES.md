@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A second copy of a fact is a defect with a delay fuse
+
+- The superseded private-visibility instruction survived two corrections: `.2.3` applied the director's ruling, `.2.4` caught a missed CI-guide sentence, and the book introduction plus the governance charter still carried it on 2026-09-11. Neither correction was careless. The instrument was: a hand-run census measures a moving corpus once.
+- The book roadmap page named `SIGNOFF-REPAIR.3.3.4.3.3.3.3` as the current frontier seven committed leaves later. That is the same failure with a different surface — the page held a SECOND copy of a fact `docs/tasks/SIGNOFF-REPAIR.md` owns, and nothing compared them. Both defects land on the review surface the director actually reads, which is where they are least likely to be noticed and most likely to mislead.
+- Prefer deleting the copy to re-synchronizing it. The roadmap page now routes to the per-leaf maintained qualification page; the check therefore enforces the weaker sufficient rule (a page may name the frontier only if it matches row 1) and passes when a page names none.
+- Precision is what makes an allowlist a review rather than a bypass. A broad private-repository match yields 30 tracked hits, mostly private files, private channels and private overlays; an allowlist that long would be skimmed. The instruction-shaped pattern yields 5, of which 3 are legitimate — a prohibition, a negation and a preserved historical quotation — and each is listed verbatim with its reason. A stale entry breaches too, so the list describes what is there.
+- Both checks were falsified before being trusted: reintroducing the exact old sentence and the exact old frontier claim each returns rc=1, and each `--self-test` proves the matcher fires on the observed leak shapes while staying silent on unrelated senses. Writing the check is not the evidence; watching it fail on the defect it was written for is.
+- The check caught its own task leaf quoting the superseded instruction verbatim. The leaf now describes the defect by location and shape, and the exact wording stays where it belongs — the preserved evidence record and Git history.
+- promotion: promoted → `docs/decisions/2026-09-11_mechanized-document-invariants.md`; owner `SIGNOFF-REPAIR.11.4.3.1.2.13`.
+
 ## 2026-09-11 — A returned error does not end ownership of the process that produced it
 
 - The eight permanent controls ran first against the unchanged 9,196-byte spawner and returned `7 passed; 1 failed` in 46.10 seconds: `an_early_request_failure_never_abandons_a_live_worker` reported pid 39486 still in the process table after `run_extraction` returned `RequestFailed`. Seven siblings passed, scoping the defect to the early-return paths rather than the exchange.

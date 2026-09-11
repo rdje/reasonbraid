@@ -20,6 +20,21 @@ set -uo pipefail
 #     echo "PROJECT: rustfmt drift — run 'cargo fmt --all'" >&2; exit 1
 #   fi
 
+# The director's public-repository correction (`.11.4.3.1.2.3`): the superseded
+# private instruction had already leaked past two hand-run censuses, so every
+# private-visibility sentence is now reviewed mechanically.
+if ! scripts/check_visibility_policy.sh >/dev/null 2>&1; then
+    scripts/check_visibility_policy.sh >&2
+    exit 1
+fi
+
+# The book may not hold a SECOND, unchecked copy of the task tree's frontier
+# (`.11.4.3.1.2.13`): a stale pointer misleads the review surface itself.
+if ! scripts/check_book_frontier.sh >/dev/null 2>&1; then
+    scripts/check_book_frontier.sh >&2
+    exit 1
+fi
+
 # The SDK compatibility matrix (`.4.2`): the token + the evidence artifacts
 # must agree with the code — the matrix is evidence-bound, never prose-bound.
 if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then

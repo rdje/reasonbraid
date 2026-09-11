@@ -27,9 +27,12 @@ accountable owner for architecture decisions and release/security gate records
 | Release / security gate record owner | Richard DJE | `2026-09-06_accountable-owners.md` |
 | Operators (deployment, recovery) | to be named as the project gains hosts | §4.1 |
 
-One person fills both accountable roles while the repository is private and
-pre-clearance; a separation-of-duties split requires a new decision record, not
-an edit of this one.
+One person fills both accountable roles while the project is pre-clearance and
+has no second named owner; a separation-of-duties split requires a new decision
+record, not an edit of this one. Repository visibility is not the condition —
+this repository is public and must remain public
+(`docs/decisions/2026-09-09_public-repository-policy.md`), and going public did
+not by itself create the second owner this clause is waiting for.
 
 ## Authority sources
 

@@ -16,9 +16,12 @@ authorization, visibility, state transitions, ordering, idempotency, budgets,
 quorum, approval, publication, and deployment. Model output remains untrusted
 content until deterministic rules and authorized actors accept it.
 
-**Working name.** `ReasonBraid` is not yet legally cleared. Keep the repository
-private until ADR-001 (Phase 0) records the naming decision. Wire type names
-stay product-neutral where practical.
+**Working name.** `ReasonBraid` is not yet legally cleared, and ADR-001 records
+that open naming gate. Repository visibility is authorized independently of it:
+this project is public and must remain public (the director's 2026-09-09
+correction). Wire type names stay product-neutral where practical, so a rename
+stays mechanical. A public repository cannot provide a confidential embargo —
+`SECURITY.md` describes how to report something sensitively.
 
 This book is the public documentation surface. It stays in lockstep with the
 code: when a slice changes user-visible behavior this book already covers, the

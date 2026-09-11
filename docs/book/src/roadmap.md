@@ -90,53 +90,18 @@ recorded in `docs/tasks/PHASE-4.md` (`done`).
 Phases 5–7 have historical exit records: G5 withdrew the quality-lift claim;
 G3 completed machinery while binding use remained gated; G6/G7 did not qualify
 Internet exposure. Phase 8 has reached regional routing; store-and-forward,
-export/import and G8 remain incomplete. Phase 9 has not started.
+export/import and G8 remain incomplete. Phase 9 has not started. `PHASE-8.5.3`
+resumes after its corrective prerequisites.
 
-The current frontier is `SIGNOFF-REPAIR.3.3.4.3.3.3.3`: durable CLI bootstrap
-request persistence and state publication. Server keyed recovery passes 73
-selected controls (72 live / one pure), the final eleven-control fixture rerun,
-three-crate all-target strict lint and final fixture lint. All results/shutdown
-are consumed and four owned clusters are absent. The server can recover an
-original committed bootstrap by its persisted request ID; the CLI has not yet
-implemented that persistence. Complete enrollment ordering
-`.3.3.4.3.3.2` passes 97 selected controls (96 live / one pure), final focused
-strict lint and rendered book checks; all results/shutdown consumed and three
-owned clusters absent. Typed rollback support `.3.3.4.3.3.1` passes 89 selected
-controls (88 live / one pure), focused strict lint and rendered book checks; all
-results/shutdown consumed and both owned clusters absent. Standalone authority/status integration passes 85 selected
-controls (84 live / one pure), focused strict lint and book checks; all results
-and shutdown are consumed, with three owned clusters absent. Grant error
-classification `.3.3.4.3.1` passes 56 live authority/HTTP/card controls and focused
-strict lint; all results/shutdown are consumed and four owned clusters absent.
-The [authority chapter](authority.md) documents the Rust error-type migration,
-safe HTTP storage failures and preserved structural refusals. The source census
-maps 42 named-call locations and their transitive effect paths into bounded
-children. Foundation qualification passes 35 controls (34 live / one pure),
-28 migration-directory rebuild/cache checks and four-crate strict lint. This
-includes the repaired cancelled-BEGIN pooling defect and the previously stale
-authority executable. All results/shutdown are consumed and owned clusters/probes
-removed. Application guard and final-effect integration remain subsequent work.
-Exact scoped receipt readback passes 18 live authority tests
-and 30 HTTP tests, with strict lint and all results/shutdown consumed.
-The seven HTTP inspection receipt producers pass 45 live authority/API tests,
-ten pure evaluator tests and strict lint; all results and shutdown are consumed.
-Provenance and strict selector
-decoding pass 51 core units, seven metadata/subject controls, 44 live
-authority/HTTP/upgrade tests and strict lint; all results consumed and the owned
-cluster removed. Frozen-read eligibility
-passes all 40 live authority/command API tests, ten pure controls and strict lint;
-all results are consumed and the owned cluster removed. Actual-parent command selection is
-complete with 37 live authority/command API tests, six evaluator controls and strict
-focused lint passed; all results are consumed and the owned cluster removed. Bound authority evaluation
-is corrected; 51 core unit + 3 subject tests, six evaluator controls, 32 live
-authority/command API tests and strict core/server lint pass. All results are
-consumed and the owned cluster stopped/removed.
-Core subject serialization is corrected; 49 unit + 3 subject controls and 40 live
-compatibility tests pass. The site service, protected operator CLI and all seven registry HTTP
-operations are implemented and verified: the selected security run passed 58
-tests and the final corrected HTTP/registry run passed 12, with strict lint. Tenant-bound revocation is corrected with 34 focused tests and
-strict lint. The disposable runner and test-side connection ownership proof are complete,
-with focused suites and verified shutdown. The full-read source census and its repair leaves are in
-`docs/tasks/SIGNOFF-REPAIR.md`. Resume `PHASE-8.5.3` after the corrective prerequisites.
-Current statuses are summarized in `LIVE_STATUS.md`; `docs/tasks/PROGRAM.md` maps
-the complete frozen roadmap to execution trees.
+This page describes the frozen plan and the phase-level position. It does not
+restate the corrective frontier: that moves with every committed leaf, and a
+second copy of it here would be stale the next day. **[Current qualification and
+repairs](qualification-review.md)** is the maintained view — what is repaired,
+what each repair actually measured, and what remains open. `LIVE_STATUS.md`
+carries the same snapshot at the repository root, `docs/tasks/SIGNOFF-REPAIR.md`
+owns the frontier itself, and `docs/tasks/PROGRAM.md` maps the complete frozen
+roadmap to its execution trees.
+
+The full-read source census and its repair leaves are in
+`docs/tasks/SIGNOFF-REPAIR.md`; the underlying records are in
+`docs/tasks/artifacts/signoff_review/INDEX.md`.

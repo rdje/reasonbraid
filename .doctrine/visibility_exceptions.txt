@@ -1,0 +1,21 @@
+# VISIBILITY-POLICY exceptions — scripts/check_visibility_policy.sh
+#
+# This repository is public and must remain public (the director's 2026-09-09
+# correction, docs/decisions/2026-09-09_public-repository-policy.md). Some
+# sentences legitimately name a PRIVATE repository: a prohibition, a negation,
+# or a historical line quoted inside preserved evidence. Each one is listed here
+# verbatim, with its reason, so that a NEW or REWORDED private-visibility
+# sentence fails the check instead of slipping through a hand-run census.
+#
+# Format: <tracked path><TAB><exact trimmed line>
+# Add an entry only after confirming the sentence does NOT instruct privacy.
+
+# A prohibition: public Git cannot provide an embargo, so do not go private for it.
+docs/book/src/deployment.md	public Git to provide an embargo or make this repository private for that purpose.
+
+# A negation: the point of the sentence is that a local instruction proves nothing.
+docs/decisions/2026-09-09_publication-precondition.md	A local instruction to keep a repository private does not prove its remote
+
+# A preserved historical quotation of the superseded README line, inside the
+# evidence record that reproduced the conflict. Quoting it is the evidence.
+docs/tasks/artifacts/signoff_review/publication-precondition.md	README.md:4 says: “Keep this repository **private** until that ADR’s clearance gate

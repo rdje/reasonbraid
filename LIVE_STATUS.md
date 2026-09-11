@@ -204,3 +204,16 @@ Exclusive same-volume inputs and digest-bound cleanup remain .7.3.3.3; pipes,
 descendants and aggregate retained storage remain .7.3.4. No HTTP, database,
 full-CI or push claim follows. Qualification categories remain unchanged.
 Evidence: docs/tasks/artifacts/signoff_review/extraction-worker-completion.md.
+
+
+The 2026-09-11 book read found the superseded private-visibility instruction
+still live in the book introduction and the governance charter after two hand-run
+corrections, and the book roadmap page naming a frontier seven committed leaves
+stale. REPAIR-0061 corrects both statements against the unchanged director
+ruling, removes the duplicated frontier in favour of the per-leaf maintained
+qualification page, and registers two self-tested checks — VISIBILITY-POLICY and
+BOOK-FRONTIER — each falsified by reintroducing the exact defect it exists for.
+Documentation and enforcement only: no visibility, remote, production or
+qualification-category change. Decision:
+docs/decisions/2026-09-11_mechanized-document-invariants.md.
+

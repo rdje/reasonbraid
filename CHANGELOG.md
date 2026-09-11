@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Mechanize the visibility policy and drop the duplicated book frontier (`SIGNOFF-REPAIR.11.4.3.1.2.13`)
+
+- Correct the two places where the superseded private-visibility instruction survived two hand-run censuses: the book's introduction and the governance charter's single-owner clause. The accepted director correction is unchanged; no visibility, remote or release setting moves.
+- Remove the book roadmap page's second copy of the corrective frontier — it named a leaf seven committed leaves after that leaf closed — and route the reader to the per-leaf maintained qualification page instead of re-synchronizing a duplicate.
+- Add two registered checks with self-tests and negative controls: `VISIBILITY-POLICY` reviews every private-visibility sentence against a verbatim allowlist (a new, reworded or stale entry breaches), and `BOOK-FRONTIER` refuses a book page naming a frontier the task tree does not. Both were falsified by reintroducing the exact defects they exist for.
+
 ## 2026-09-11 — Own direct extraction worker completion (`SIGNOFF-REPAIR.7.3.3.2.2`)
 
 - Permanent process-fact controls reproduce the defect on the unchanged spawner: `7 passed; 1 failed`, an early request failure returning while its direct worker was still in the process table. The controlled worker closes stdin and waits on an explicit release; an 8 MiB media type forces the real `EPIPE` write path.

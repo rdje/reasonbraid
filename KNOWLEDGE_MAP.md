@@ -152,3 +152,4 @@
 - [`2026-09-10_state-lock-release.md`](docs/decisions/2026-09-10_state-lock-release.md)
 - [`2026-09-10_state-writer-lock-lifetime.md`](docs/decisions/2026-09-10_state-writer-lock-lifetime.md)
 - [`2026-09-11_extraction-worker-completion.md`](docs/decisions/2026-09-11_extraction-worker-completion.md)
+- [`2026-09-11_mechanized-document-invariants.md`](docs/decisions/2026-09-11_mechanized-document-invariants.md)

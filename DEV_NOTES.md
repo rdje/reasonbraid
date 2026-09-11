@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — Find out whose seconds they are before you shrink the gate
+
+- An hour-long checkpoint invites exactly one reflex: cut something. The honest first move is to ask where the hour goes, and the answer here was not in the gate at all — it was macOS validating each freshly written executable on its first run, ~21.9s apiece on this volume and ~0.15s on the boot volume.
+- Both cheap instruments beat the expensive reasoning. The Linux runner had already run the same four commands and its own log said 444s with 4.2% unaccounted, from a COLD checkout — an oracle I did not build and did not have to pay for. Then copying one binary to each volume and timing its first execution settled the cause in ninety seconds. I had been composing an argument about `--all-features` feature unification; the experiment made the argument unnecessary.
+- The leaf's own leading candidate was wrong, and it was right to say so out loud. Nine rustdoc doctest-harness builds sounded plausible and cost at most 8%. A candidate recorded honestly as a candidate is exactly what let the measurement replace it without embarrassment.
+- The deliverable turned out to be a NUMBER, not a repair: one more integration-test file costs about 22 seconds of every future checkpoint. That converts the next throughput argument from taste into arithmetic, which is the whole point of measuring.
+- The uncomfortable part is worth stating: this is the first evidence that §13's storage-locality policy has a real, large, previously invisible cost on this machine. The policy is sound and I am not proposing to weaken it — but the director should know the price, and the two levers that could change it are theirs, not mine.
+- promotion: accepted — `TOOLBOX.md`, "A slow gate is a measurement, not a verdict on the gate".
+
 ## 2026-09-12 — A control that is host-dependent is telling you something
 
 - The navigation-deadline control passed on the runner and failed on this machine, and nothing in the code under test was host-specific. The tempting reading is "flaky test, widen the assertion". The actual reading is that the field it asserted was written from two independent facts, so every assertion about it was silently a conjunction — including a clause about host speed that the author never meant to write.

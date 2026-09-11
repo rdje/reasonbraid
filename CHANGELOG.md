@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Where the checkpoint's missing hour goes (`SIGNOFF-REPAIR.11.4.3.1.2.15`)
+
+- The full checkpoint's `02-check` took 3,922s and reported 940s of it. The other 2,982s is now measured: **macOS first-execution validation of each newly written executable on the repository volume, ~21.9s apiece**, paid once per file identity and cached afterwards. The same bytes cost ~0.15s on the boot volume — about 150x, across four pairs with a spread under 0.8s.
+- The cost is **fixed, not size-proportional** (81.6 MB costs 21.25s; 2.3 MB costs 21.6s), the process is blocked throughout (`user 0.00 sys 0.00`), only Apple's own XProtect/syspolicyd stack is present, and `com.apple.provenance` is kernel-managed so there is no file-level lever.
+- **Two hypotheses were refuted by measurement rather than by argument.** The leaf's own leading candidate — nine rustdoc doctest-harness builds — is at most 8% of the run. And the duration is not inherent to the gate: the same four commands on the Linux runner, from a COLD checkout, take **444s with 18.7s (4.2%) unaccounted**, compiling 514 crates in less time than this machine compiles 12 warm.
+- The number to plan with: **one more integration-test file costs about 22 seconds of every future checkpoint here**, whatever it tests.
+- `scripts/measure_check_phases.py` is tracked, so this is re-derivable by one command instead of inferred from cargo's summaries. It also splits the doc/non-doc phases `cargo test --all` hides.
+- Two levers exist and are deliberately NOT taken, because both are the director's and neither is a change this repository can make in its own sources: a macOS security setting, and the repository's volume — which is the first evidence that §13's storage-locality policy carries a large, previously invisible cost.
+- No gate was weakened, skipped or reordered; the phase split runs strictly more than `make check` does. Recorded as `docs/decisions/2026-09-12_checkpoint-cost-model.md`, with evidence in `docs/tasks/artifacts/signoff_review/checkpoint-wall-time.md`.
+- This unblocks `SIGNOFF-REPAIR.11.5`, which made explaining the gap the gate on every new verification lane.
+
 ## 2026-09-12 — A render refusal survives an unconfirmed cleanup (`SIGNOFF-REPAIR.11.4.3.1.2.27`)
 
 - The browse worker returned ONE `kind` for two independent facts. When cleanup could not be confirmed it wrote `browser_cleanup_unconfirmed` into `kind` and kept the render's own kind only as a prefix inside the human message — so a caller reading `kind` lost the fact it had to act on (its own budget, its own selector) and received an operator's fact about a stray process instead.

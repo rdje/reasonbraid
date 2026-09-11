@@ -402,3 +402,18 @@ escaped-writer condition remains real and unrepaired — it is now reported
 honestly instead of overwriting a result. One new defect is open and NOT fixed:
 a leaf's first Status line can be contradicted later in its own section, which
 left .7.4.1 on the frontier seven commits after it closed, owned by .11.4.4.
+
+The checkpoint's unexplained hour is now ACCOUNTED under .11.4.3.1.2.15
+(REPAIR-0090), which unblocks .11.5's verification lanes. Of 02-check's 3,922
+seconds, cargo reported 813 and the harnesses 127; the other 2,982 are macOS
+first-execution validation of each newly written executable on the repository
+volume at about 21.9 seconds apiece, fixed rather than size-proportional, cached
+per file identity, against about 0.15 seconds on the boot volume. It is not
+inherent to the gate: the same four commands on the Linux runner, from a cold
+checkout, take 444 seconds with 18.7 (4.2%) unaccounted. The leaf's own leading
+candidate, nine rustdoc doctest-harness builds, is at most 8% and is refuted.
+Planning number: one more integration-test file costs about 22 seconds of every
+future checkpoint. scripts/measure_check_phases.py makes this re-derivable by one
+command. Two levers -- a macOS security setting and the repository's volume --
+are named and NOT taken; both are the director's, and this is the first evidence
+that the section 13 storage-locality policy carries a large hidden cost here.

@@ -70,6 +70,38 @@ refuses before fixture writes. See
 
 ## Scheduled pre-push checkpoint
 
+### What the checkpoint costs, and why
+
+`02-check` took 3,922 s at source `165cb3a` while cargo's own summaries accounted
+for 813 s of compilation and 127 s of test execution. The remaining 2,982 s is
+now measured rather than inferred: it is **macOS first-execution validation of
+each newly written executable on the repository volume, ~21.9 s apiece**, paid
+once per file identity and cached afterwards. The same bytes cost ~0.15 s on the
+boot volume, the cost is fixed rather than size-proportional, and the process is
+blocked throughout (`user 0.00 sys 0.00`).
+
+It is not inherent to the gate. The `check` job on the Linux runner executes the
+same four commands from a COLD checkout in **444 s with 18.7 s (4.2 %)
+unaccounted**, compiling 514 crates in less time than this machine compiles 12
+warm. A slow local checkpoint is therefore a statement about the machine, not a
+reason to shrink the gate.
+
+Plan with this number: **one more integration-test file costs about 22 seconds of
+every future checkpoint**, whatever it tests.
+
+Measure it again with the tracked instrument, which times each phase separately
+and splits the doc/non-doc phases `cargo test --all` hides:
+
+```bash
+python3 -B scripts/project_env.py python3 -B scripts/measure_check_phases.py
+```
+
+Its receipt names `accounted_seconds` against `unaccounted_seconds`, so the next
+reader compares like with like. Full evidence and the two levers that are the
+director's to decide:
+`docs/tasks/artifacts/signoff_review/checkpoint-wall-time.md` and
+`docs/decisions/2026-09-12_checkpoint-cost-model.md`.
+
 Fourteen node-fixture cleanup callers now use the checked dependency-plan helper.
 Actual MCP-listener→identity and spend-breaker→CLI sequences pass; the affected
 caller census runs every cleanup plan successfully, but its feature assertions

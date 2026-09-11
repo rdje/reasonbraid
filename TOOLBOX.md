@@ -48,6 +48,31 @@ CI round-trip. Reach for them before spending a push.
 The point is to convert "it's broken somewhere" into "line X of function Y rejects input Z
 because predicate P is false" before writing a single line of fix.
 
+## A slow gate is a measurement, not a verdict on the gate
+
+Before shrinking a gate because it is slow, find out whose seconds they are.
+The full checkpoint's `02-check` took 3,922s and reported 940s of it. The
+remaining 2,982s was not clippy, not the test suites and not rustdoc: it was
+macOS validating each freshly written executable on its FIRST run, ~21.9s
+apiece on the repository volume against ~0.15s on the boot volume — a fixed
+cost, cached per file identity, with the process blocked throughout
+(`user 0.00 sys 0.00`).
+
+Two instruments settled it, and neither was expensive:
+
+- **The oracle you did not build.** The Linux runner already runs the same
+  commands, and its own log reports 444s with 18.7s unaccounted — from a COLD
+  checkout. A local number that is 8.8x a remote one for the same work is a
+  statement about the machine, not about the gate.
+- **The same bytes in two places.** Copy one binary to each volume and time its
+  first execution. 21.9s against 0.15s, four pairs, spread under 0.8s. That is
+  a controlled experiment costing ninety seconds, and it beats any amount of
+  reading about why a build might be slow.
+
+The practical consequence is a number to plan with: **one more integration-test
+file costs about 22 seconds of every future checkpoint here**, whatever it
+tests. Publish that, and the next throughput argument is about evidence.
+
 ## This project's toolbox
 
 <!-- Fill this in as your project grows. List each diagnostic tool, what question it
@@ -57,6 +82,7 @@ agent should be able to reach for the right tool without reading the source. -->
 | Tool | Answers | How to invoke |
 | --- | --- | --- |
 | `scripts/project_env.py` | selected repository-local stores; verified copying of locked Cargo cache data; literal-argument command execution | `python3 -B scripts/project_env.py --print` or append a command |
+| `scripts/measure_check_phases.py` | where `make check`'s wall time actually goes — each phase on its own clock, plus the doc/non-doc split `cargo test --all` hides; the receipt names `accounted_seconds` vs `unaccounted_seconds` | `python3 -B scripts/project_env.py python3 -B scripts/measure_check_phases.py [--only <phase>]` |
 | `scripts/ci_browser.py` | exact verified testing browser; local installation, version and consumed command receipts | `python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py --verify-only` or `-- cargo test -p reasonbraid-browse --test browser_roundtrip --locked` |
 | `rb-journal` (`crates/reasonbraid-node`) | journal health (durability profile, `quick_check`, counts), pending attempts/events, ambiguous attempts with boundary history — without opening SQLite by hand | `rb-journal inspect\|pending\|ambiguous <node.db> [--json]` |
 | `scripts/run_pg_tests.sh` | named suites with test-side ownership checks in a supervised PostgreSQL 16 cluster; `--list` shows names; no names runs the broad collection | `bash scripts/run_pg_tests.sh authority command_api` |

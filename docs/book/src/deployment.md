@@ -550,9 +550,30 @@ and task shutdown. Chrome is closed, its direct child reaped, its group observed
 absent and the CDP/network/stderr tasks consumed. Bounded TERM/KILL requests may be
 needed; a refused inspection or signal is never evidence of absence.
 
-A render result cannot bypass failed cleanup. The worker instead emits
-`browser_cleanup_unconfirmed`, preserving the original render error in the message
-when present. A consumed successful invocation removes only its verified original
+A render result cannot bypass failed cleanup, and a refusal carries **two**
+facts rather than one. Every error object states `cleanup_confirmed`, and adds
+`cleanup_error` when cleanup could not be confirmed. `kind` names the render's
+own outcome — the budget you set, the selector you supplied — because that is
+the fact the caller acts on; the cleanup fields are the fact an operator acts on.
+Only a render that SUCCEEDED under unconfirmed cleanup is named for the cleanup
+itself, as `browser_cleanup_unconfirmed`: it has no failure of its own to report
+and must not read as complete while a browser may still be running. A refusal
+raised before any browser was spawned reports `cleanup_confirmed: true` with no
+`cleanup_error`, which means what it says — nothing was started, so nothing can
+remain. The cleanup detail is also appended to the message, so a consumer that
+reads only `kind` and `message` still receives it.
+
+For example, a tripped 30-second budget on a host where a detached browser
+helper outlived the cleanup budget answers:
+
+```json
+{"error":{"kind":"time_budget_exceeded",
+  "message":"the render exceeded the 30-second budget; browser stderr completion unconfirmed",
+  "cleanup_confirmed":false,
+  "cleanup_error":"browser stderr completion unconfirmed"}}
+```
+
+A consumed successful invocation removes only its verified original
 directory. A failed or unconfirmed invocation retains private `owner.json`,
 `completion.json` and at most 64 KiB of `browser.stderr` when those files can be
 written. Stderr also carries ownership/completion receipts with root-relative

@@ -388,5 +388,17 @@ REMOTE CI IS GREEN. Run 34652116508 for c17841c passes rust (book, check,
 pg-tests), doctrines and supply-chain, with 669 tests passed and 0 failed suites
 in check. Verified by re-derivation from the API, falsified for hidden skips,
 and durable at origin/main. Push cadence returns to ~300 commits per COMMIT.md.
-One new local-only defect is open and NOT fixed: a browse navigation-deadline
-control that passes remotely and fails here, owned by .11.4.3.1.2.27.
+That local-only navigation-deadline defect is now REPAIRED under .11.4.3.1.2.27
+(REPAIR-0089), and it was a product defect rather than a flaky test. The browse
+worker returned one error kind for two independent facts, so an unconfirmed
+cleanup overwrote the render's own kind — eleven distinct kinds, not just the
+budget — and left the caller with an operator's fact. A refusal now carries the
+render's kind plus explicit cleanup_confirmed/cleanup_error fields; only a
+SUCCESSFUL render under unconfirmed cleanup is still named for the cleanup. The
+wire change is additive and the server-side spawner is unaffected. 25 browse
+controls pass with the pinned browser; both strict lints and format pass; the
+controls were falsified against the superseded expression. The underlying
+escaped-writer condition remains real and unrepaired — it is now reported
+honestly instead of overwriting a result. One new defect is open and NOT fixed:
+a leaf's first Status line can be contradicted later in its own section, which
+left .7.4.1 on the frontier seven commits after it closed, owned by .11.4.4.

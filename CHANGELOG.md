@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-12 — A render refusal survives an unconfirmed cleanup (`SIGNOFF-REPAIR.11.4.3.1.2.27`)
+
+- The browse worker returned ONE `kind` for two independent facts. When cleanup could not be confirmed it wrote `browser_cleanup_unconfirmed` into `kind` and kept the render's own kind only as a prefix inside the human message — so a caller reading `kind` lost the fact it had to act on (its own budget, its own selector) and received an operator's fact about a stray process instead.
+- That is why the navigation-deadline control passed on the runner and failed here: it asserted `kind == "time_budget_exceeded"`, and the value of that field depended on whether the host was slow enough for a detached browser helper to outlive the ten-second cleanup budget. The control was not flaky — it was asserting a conjunction nobody intended, and it was reporting a real product defect.
+- Two corrections to the finding as filed, both re-derived: the `group_cleanup_confirmed: true` / `cleanup_error: null` receipt quoted in it is the FIXTURE's, about the worker's own group, not the worker's receipt about the browser; and "it fails identically warm" did not hold — the unchanged control passed here in 31.18s. The trigger is load-dependent, so the repair deliberately does not depend on observing it.
+- **Eleven** distinct render kinds were being relabelled, not one. The budget is simply the kind that exposed it.
+- Fix: a pure `settle(render, cleanup)` combinator, plus `cleanup_confirmed` and an omitted-when-absent `cleanup_error` on the error object. `kind` now names the render's own outcome; the cleanup fact rides beside it. The one corner where the old replacement was doing real work is unchanged — a SUCCESSFUL render under unconfirmed cleanup stays `browser_cleanup_unconfirmed`, because it has no failure of its own to name and must not read as complete while a browser may still be running.
+- Reproduced DETERMINISTICALLY instead of waiting for a slow host: an injected script forks a child, calls `setsid` to leave the browser's process group, and holds the inherited stderr, so no EOF arrives — the exact shape the desktop-runtime diagnosis proved for `chrome_crashpad_handler` and `GoogleUpdater`. Twelve seconds, any host, no browser. Against unchanged production it reproduces the reported symptom; against the repair it passes.
+- Verified: 25 browse controls pass (8 unit + 17 integration, 0 skipped) against the pinned Chrome for Testing runtime; both strict lints and workspace format pass. Falsified both ways — restoring the superseded collapse turns all three new controls RED while the six unrelated ones stay green.
+- The escaped-writer condition itself remains real and unrepaired. It is now reported honestly rather than overwriting the caller's result.
+- Recorded as `docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md`; promoted as `docs/knowledge/one-field-cannot-carry-two-facts.md`.
+- Also found while updating the frontier, and routed rather than fixed inline: a leaf's first `Status:` line can be contradicted by a later one in its own section — `.7.4.1` sat at frontier row 2 seven commits after it closed. Owner `SIGNOFF-REPAIR.11.4.4`.
+
 ## 2026-09-12 — Remote CI is green for the first time
 
 - Run 34652116508 for `c17841c`: `rust` success with all three jobs green (`book`, `check`, `pg-tests`), alongside `doctrines` and `supply-chain`. The `check` job reports 669 tests passed and 0 failed suites.

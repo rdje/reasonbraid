@@ -1054,6 +1054,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.11.4.4 — A leaf's status can be contradicted inside its own section
+
+- Status: `pending`; found while updating the frontier for `.11.4.3.1.2.27`.
+- Finding: `.7.4.1` and `.7.4.2` each open with `Status: `pending`` and then carry `Status: `done`` further down the SAME section, with a real commit (`REPAIR-0068`, `REPAIR-0071`). A careful reader takes the later line; a reader who stops at the first one — or any script that reads the first match — gets the opposite answer. `.7.4.1` was still sitting at row 2 of the Current Frontier as a result, seven commits after it closed.
+- census of the ENFORCERS, which is the claim that can be refuted by one counterexample: `ls scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 21 registered checks, and `grep -ln 'Status:' scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 0; widened to `git grep -ln 'Status: *`' -- scripts knowledge-map .githooks | wc -l` -> 0. No check reads a leaf's status line, so a contradicted status is caught by care alone.
+- census of the AFFECTED LEAVES: not run (the two instances above were found incidentally while editing the frontier, not by enumeration). Enumerating every leaf section carrying two or more `Status:` lines is this leaf's first task, and the count is deliberately not guessed here — a search hit-count is a population, not a defect count, and these must be classified before any number is published.
+- Owns: enumerate the population, decide whether the convention is one status line per leaf or an explicit supersession marker, correct the drifted sections, and mechanize whichever is chosen. A leaf whose own status is ambiguous is not a durability property this project can assert by care.
+- Why it is not fixed inline: the correction is a whole-tree sweep plus a new enforcer, and `.11.4.3.1.2.27` is a browse-worker contract repair. Routing it keeps both commits honest.
+- Prior art for the shape: `BOOK-FRONTIER` guards the BOOK against a stale copy of the frontier. Nothing guards the tree's own rows against a leaf that closed.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.11.5 — Assess the verification strategy for a networked agent platform
 
 - Status: `pending`; captured 2026-09-11 at the director's request. Proposal only — no pivot, and no change to the accepted §19 test strategy.
@@ -1677,15 +1688,19 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
-###### SIGNOFF-REPAIR.11.4.3.1.2.27 — A navigation deadline reports cleanup, not the budget, on a slow host
+###### SIGNOFF-REPAIR.11.4.3.1.2.27 — A render refusal was overwritten by an unconfirmed cleanup
 
-- Status: `pending`; found by the first full run of the clean-state lane adopted in `.11.5`.
-- Finding: `crates/reasonbraid-browse/tests/browser_roundtrip.rs:570` asserts the response error kind is `time_budget_exceeded`. On this development machine it is `browser_cleanup_unconfirmed`, with the budget preserved only in the message — `"time_budget_exceeded: the render exceeded the 30-second budget; browser stderr completion unconfirmed"`.
-- NOT a cold-tree defect and NOT introduced here: it fails identically warm, and `git log 9523819..HEAD -- crates/reasonbraid-browse/` is empty, so nothing in this session touched the crate. A pinned Chrome IS present locally, so the test ran for real.
-- This is the MIRROR IMAGE of the day's other environment findings, and worth stating as such: every previous one hid from the development machine and appeared on the runner. This one hides from the runner and appears here — run 34652116508 passes the same test.
-- Measured: the witness reports `elapsed_ms: 41027` against a 30-second budget, and the worker's own terminal receipt says `group_cleanup_confirmed: true` with `cleanup_error: null`. So the process GROUP was cleaned up and only the browser's stderr completion went unobserved. Two different cleanup facts, and the response carries the stricter one.
-- Owns: decide which fact the response should carry when a deadline fires AND stderr completion is unconfirmed. There is a genuine doctrine tension to settle rather than paper over — the project's rule is never to claim an unobserved termination, which argues the current behaviour is RIGHT and the assertion too strict; against that, a caller needs to know the budget was the cause. Resolve it deliberately, then make the control assert the resolved contract on a fast and a slow host.
-- Do NOT simply widen the budget: that hides the finding instead of settling it.
+- Status: `done`; REPAIR-0089. Found by the first full run of the clean-state lane adopted in `.11.5`.
+- Finding as reported: `crates/reasonbraid-browse/tests/browser_roundtrip.rs` asserts the response error kind is `time_budget_exceeded`; the clean-state run observed `browser_cleanup_unconfirmed`, with the budget preserved only in the message — `"time_budget_exceeded: the render exceeded the 30-second budget; browser stderr completion unconfirmed"`.
+- **Two corrections to that report, both re-derived.** First, `group_cleanup_confirmed: true` / `cleanup_error: null` is the FIXTURE's `worker.json` receipt, which attests the harness observed the WORKER's group absent; the worker's own `browser completion:` receipt is a different fact and must have carried `cleanup_confirmed: false`, or `finish` would not have returned `Err` at all. The two receipts were conflated. Second, "it fails identically warm" did not hold: the unchanged control re-run here passed in 31.18s with `cleanup_confirmed: true`. The condition is load-dependent, so neither one pass nor one failure settles it — and that is precisely why the repair is not allowed to depend on observing it.
+- Reproduce, DETERMINISTICALLY and without a slow host: the new control injects the exact shape the desktop-runtime diagnosis already proved (`browser-checkpoint-timing.md`: detached `chrome_crashpad_handler` and `GoogleUpdater` processes retaining the browser's inherited stderr write endpoint after the group exits). `R3_BROWSER_BIN` names a script that forks a child, calls `setsid` to leave the process group, and holds the inherited stderr; the parent never publishes a DevTools endpoint, so a 1-second render budget trips while launch still waits. Against unchanged production it returns, in 12.119s with no browser: `{"kind":"browser_cleanup_unconfirmed","message":"time_budget_exceeded: the render exceeded the 1-second budget; browser stderr completion unconfirmed"}` — the reported symptom, byte for byte in shape, on demand.
+- Root cause (WHY + WHERE): `crates/reasonbraid-browse/src/main.rs`, the tail of `run_browser`. `Lifetime::finish` returns ONE `Result` that is the conjunction of four independent cleanup facts (process, handler task, network task, stderr task), and the tail used that single Result to REPLACE the response's `kind`, keeping the render's kind only as a prefix inside the human message. One wire field carried two independent facts, so the caller-actionable one was destroyed whenever the operator-actionable one was false. The budget is not special: `grep -n '"[a-z_]*"\.to_owned()' src/main.rs` enumerates the population, and **eleven** distinct kinds reachable once a browser is owned were being relabelled — `time_budget_exceeded`, `browser_launch_failed`, `browser_version_failed`, `page_failed`, `navigation_failed`, `click_failed`, `scroll_failed`, `type_failed`, `text_failed`, `title_failed`, `output_too_large`.
+- The doctrine tension, settled rather than papered over: the rule is never to CLAIM an unobserved termination — it is not a rule to destroy the other fact. Carrying `cleanup_confirmed: false` obeys it exactly and loses nothing. The one corner where the replacement was doing real work is kept unchanged: a SUCCESSFUL render under unconfirmed cleanup stays `browser_cleanup_unconfirmed`, because it has no failure of its own to name and must not read as complete while a browser may still be running. Decision: `docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md`.
+- Fix: a pure `settle(render, cleanup)` combinator plus two new `BrowseError` fields, `cleanup_confirmed` and an omitted-when-absent `cleanup_error`. Additive on the wire — `crates/reasonbraid-server/src/browse.rs` reads the envelope as a `serde_json::Value` and takes only `kind`/`message`. The cleanup detail is deliberately ALSO appended to the message, because that spawner reads only those two keys and the message is today the only channel carrying the operator's fact into its log; both are written from one expression and cannot drift. No cleanup behaviour, budget, timeout or process handling changed, and no assertion was relaxed.
+- The budget was NOT widened, and the assertion was NOT loosened to accept either kind. Accepting either would have cost twice: the control would stop proving that the deadline cancels a real in-flight navigation, and the product defect it was reporting would survive.
+- promotion: accepted — `docs/knowledge/one-field-cannot-carry-two-facts.md`.
+- Routed, not silently widened: having the server-side spawner READ `cleanup_confirmed` instead of relying on the message belongs to the spawner's own integration and is named in `.7.3.1`.
+- Commit: `REASONBRAID-REPAIR-0089 (leaf SIGNOFF-REPAIR.11.4.3.1.2.27): let a render refusal survive an unconfirmed cleanup`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.26 — Write every conformance stub before any scenario can spawn
 
@@ -1885,14 +1900,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.3.1.2` | `active` | checkpoint PASSED at 7233122; perform the authorized push and consume actual remote CI |
-| 2 | `SIGNOFF-REPAIR.7.4.1` | `pending` | measured evidence-identifier collisions: one distinct value per twelve calls |
-| 3 | `SIGNOFF-REPAIR.7.3.3.4` | `pending` | close the live coverage gap on the R2 acquisition success path |
-| 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 4 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 5 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 6 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 7 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.11.4.3.1.2.15` | `pending` | account for the checkpoint's ~2,982 unexplained seconds; `.11.5` makes it the gate on every new verification lane |
+| 2 | `SIGNOFF-REPAIR.7.3.3.4` | `pending` | close the live coverage gap on the R2 acquisition success path |
+| 3 | `SIGNOFF-REPAIR.11.4.4` | `pending` | a leaf's first `Status:` line can be contradicted later in its own section |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -1918,6 +1933,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.27`: `REASONBRAID-REPAIR-0089 (leaf SIGNOFF-REPAIR.11.4.3.1.2.27): let a render refusal survive an unconfirmed cleanup`.
 
 - `SIGNOFF-REPAIR.11.5`: `REASONBRAID-REPAIR-0087 (leaf SIGNOFF-REPAIR.11.5): assess and sequence the verification strategy`.
 
@@ -2201,3 +2218,12 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — the workflow's structure is verified locally: the file contains `browser-worker-evidence` and two `upload-artifact` steps. The effect is observable only on a Linux runner, so the next remote run is the measurement; this commit exists to make that run self-describing, exactly as REPAIR-0072 did for the conformance refusal.
 - [x] **NO REGRESSION** — nothing under `crates/` changes, so no Rust gate is affected; `bash scripts/check_doctrines.sh` prints `=== all doctrines green ===`. The `if: failure()` guard means the step adds nothing to a passing run.
 - [x] **LOCKSTEP** — task tree, `LIVE_STATUS.md`, `MEMORY.md` and `CHANGELOG.md` record that the browser cause is still unproved and that this leaf ships only the instrument. The run's genuine progress is recorded too: `pg-tests` succeeded remotely for the first time, and the conformance repair held. No CI-green claim is made.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.2.27
+
+- [x] **REPRODUCE / ISSUE** — the new control run against UNCHANGED production returns `{"kind":"browser_cleanup_unconfirmed","message":"time_budget_exceeded: the render exceeded the 1-second budget; browser stderr completion unconfirmed"}` and fails at `browser_roundtrip.rs` with `left: String("browser_cleanup_unconfirmed") right: "time_budget_exceeded"`, in 12.119s, deterministically, with no browser and no slow host. The reported clean-state symptom is reproduced on demand rather than waited for: re-running the unchanged real-browser control here PASSED in 31.18s (`elapsed_ms: 31164`, `cleanup_confirmed: true`), so the load-dependent trigger is explicitly NOT the instrument.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-browse/src/main.rs`, the tail of `run_browser`: `if let Err(cleanup) = owner.finish(result.is_ok()).await { … return Err(("browser_cleanup_unconfirmed".to_owned(), detail)) }`. `Lifetime::finish` ANDs four independent cleanup facts into one `Result`, and that one value replaced the response's `kind`. The affected population is a census, not an impression: `grep -n '"[a-z_]*"\.to_owned()' crates/reasonbraid-browse/src/main.rs` enumerates every kind the worker can emit, of which **eleven** are reachable once a browser is owned and were therefore all being relabelled; `browser_missing`, `browser_storage_failed`, `step_budget_exceeded`, `no_steps` and `request_unreadable` return before any `Lifetime` exists and were not.
+- [x] **FIX** — a pure `settle(render, cleanup)` combinator holding the four-case table, plus `BrowseError::cleanup_confirmed` and an omitted-when-absent `cleanup_error`. The success/unconfirmed corner keeps `browser_cleanup_unconfirmed` unchanged, because there the refusal is load-bearing rather than a label. Additive on the wire: `crates/reasonbraid-server/src/browse.rs` reads the envelope as a `serde_json::Value` and takes only `kind`/`message`.
+- [x] **ADDRESSED (verified)** — measured before → after on the same control: `{"kind":"browser_cleanup_unconfirmed","message":"time_budget_exceeded: …; browser stderr completion unconfirmed"}` → `{"cleanup_confirmed":false,"cleanup_error":"browser stderr completion unconfirmed","kind":"time_budget_exceeded","message":"the render exceeded the 1-second budget; browser stderr completion unconfirmed"}`, 12.053s, `test result: ok. 1 passed`. FALSIFIED both ways: restoring the superseded collapse inside `settle` turns all three new controls RED — the pure pair reports `2 failed; 6 passed` with `an unconfirmed cleanup must not overwrite the caller's own fact`, and the end-to-end control reports `1 failed` — while the six unrelated controls stay green, so the controls are keyed on this defect and not on incidental state. The contract is asserted on BOTH hosts: the injected slow host, and the real-browser navigation control which now also asserts `cleanup_confirmed == true` with no `cleanup_error`.
+- [x] **NO REGRESSION** — `python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py -- cargo test -p reasonbraid-browse --locked --all-targets` passes **8 unit + 17 integration = 25 tests, 0 failed, 0 ignored, 0 skipped**, rc=0, against the pinned Chrome for Testing runtime. Strict `cargo clippy -p reasonbraid-browse --all-targets --all-features -- -D warnings` rc=0; the consuming crate's strict `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0; workspace `cargo fmt --all -- --check` clean; `bash scripts/check_doctrines.sh` green.
+- [x] **LOCKSTEP** — task tree and frontier, `docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md` and its index, `docs/knowledge/one-field-cannot-carry-two-facts.md` and the regenerated Knowledge Map, the book's deployment chapter (the sentence that documented the superseded relabelling), `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and the same limits. The escaped-writer condition remains REAL and unrepaired — it is now reported honestly instead of overwriting the caller's result — and no qualification category, gate or checkpoint claim changes.

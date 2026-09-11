@@ -155,9 +155,11 @@
 - [`2026-09-11_mechanized-document-invariants.md`](docs/decisions/2026-09-11_mechanized-document-invariants.md)
 - [`2026-09-11_owned-extraction-input.md`](docs/decisions/2026-09-11_owned-extraction-input.md)
 - [`2026-09-11_recreated-schema-privileges.md`](docs/decisions/2026-09-11_recreated-schema-privileges.md)
+- [`2026-09-12_browse-refusal-carries-two-facts.md`](docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md)
 - [`2026-09-12_verification-strategy-assessment.md`](docs/decisions/2026-09-12_verification-strategy-assessment.md)
 
 ## Promoted lessons
 
+- [`one-field-cannot-carry-two-facts.md`](docs/knowledge/one-field-cannot-carry-two-facts.md) — why does my test pass on CI and fail on my machine; why is a control host-dependent; what does it mean when a field is sometimes overwritten; how do I report two outcomes from one operation; should a failed cleanup replace the error I already have?
 - [`proving-a-path-still-names-what-you-created.md`](docs/knowledge/proving-a-path-still-names-what-you-created.md) — how do I prove a path still names the file or directory I created; why did (dev, ino) identity pass on macOS and fail on Linux; does an open descriptor protect identity; can a link-count check be reused for a directory?
 - [`proving-a-race-is-closed.md`](docs/knowledge/proving-a-race-is-closed.md) — how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race?

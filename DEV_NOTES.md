@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — A control that is host-dependent is telling you something
+
+- The navigation-deadline control passed on the runner and failed on this machine, and nothing in the code under test was host-specific. The tempting reading is "flaky test, widen the assertion". The actual reading is that the field it asserted was written from two independent facts, so every assertion about it was silently a conjunction — including a clause about host speed that the author never meant to write.
+- The product had the same defect the control did. A caller reading `kind` to learn why ITS request failed was handed an operator's fact about a possibly-live process. One field, two audiences, and when they disagreed it served neither.
+- The doctrine tension was real and worth settling rather than dodging: the rule is never to CLAIM an unobserved termination. But that rule is satisfied by CARRYING the cleanup fact, not by destroying the render's. The old code satisfied it by destruction, which is one way, and a lossy one. Exactly one corner needed the old behaviour kept — a SUCCESSFUL render under unconfirmed cleanup, where the refusal is load-bearing rather than a label. Finding that corner before changing anything is the part that took the thinking.
+- The instrument again beat the fix in value. A load-dependent trigger is not a control: it did not fire once on a quiet machine. Injecting the SHAPE — a forked child that calls `setsid` and holds the inherited stderr — reproduces it in twelve seconds on any host with no browser at all. The slow host and the fast host are now both controls that run every time, instead of one that gets waited for.
+- Two claims in the filed finding did not survive re-derivation: a receipt was attributed to the wrong producer, and "it fails identically warm" was contradicted by a passing run. Neither changed the repair, and both are worth the correction — a finding's narrative is evidence about what its author saw, not about what is true.
+- promotion: accepted — `docs/knowledge/one-field-cannot-carry-two-facts.md`.
+
 ## 2026-09-12 — A passing suite is not evidence that a race is closed
 
 - The stub `ETXTBSY` came back, and the earlier repair's comment had said in as many words that it left "no window at all". It did not. One `OnceLock` per adapter kind serialises each stub against itself and against nothing else, and the descriptor that leaks into a `fork` belongs to a DIFFERENT stub than the one failing to exec. I wrote that comment, and I believed it because the suite went green.

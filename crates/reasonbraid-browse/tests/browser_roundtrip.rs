@@ -522,6 +522,12 @@ async fn a_deadline_cancels_launch_but_still_reaps_the_owned_browser() {
             response["error"]["kind"], "time_budget_exceeded",
             "{response}"
         );
+        // The fast-host leg of the same contract the injected slow host asserts.
+        assert_eq!(response["error"]["cleanup_confirmed"], true, "{response}");
+        assert!(
+            response["error"].get("cleanup_error").is_none(),
+            "{response}"
+        );
         assert_eq!(completion(&output.stderr)["cleanup_confirmed"], true);
     })
     .catch_unwind()
@@ -571,6 +577,10 @@ async fn a_real_navigation_deadline_stops_the_browser_and_origin() {
             response["error"]["kind"], "time_budget_exceeded",
             "{response}"
         );
+        // The real-browser fast host asserts the same contract the injected
+        // slow host does: the render's own kind, plus an explicit cleanup fact.
+        assert_eq!(response["error"]["cleanup_confirmed"], true, "{response}");
+        assert!(response["error"].get("cleanup_error").is_none(), "{response}");
         assert!(started.elapsed() >= NAVIGATION_WINDOW);
         assert_eq!(completion(&output.stderr)["cleanup_confirmed"], true);
     })
@@ -891,6 +901,94 @@ async fn a_linked_storage_parent_refuses_before_starting_chrome() {
         assert_eq!(std::fs::read_dir(&target).unwrap().count(), 1);
         eprintln!("linked storage refusal: {}", serde_json::json!({"kind":response["error"]["kind"],"target_unchanged":true,"browser_ownership_emitted":false}));
     }).catch_unwind().await;
+    fixture.finish(result.is_ok()).unwrap();
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+/// The slow-host leg of the response contract (`SIGNOFF-REPAIR.11.4.3.1.2.27`).
+///
+/// A render refusal and an unconfirmed cleanup are two independent facts, and a
+/// slow host produces both at once. Waiting for a slow host to produce them is
+/// not a control: the condition is load-dependent and did not reproduce on a
+/// quiet machine. This injects the exact shape the desktop-runtime diagnosis
+/// proved instead — a process that ESCAPES the browser's group and keeps the
+/// inherited stderr write end open, so no EOF arrives and stderr completion
+/// cannot be confirmed while the group itself exits normally.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_render_refusal_survives_an_unconfirmed_cleanup() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new();
+    let program = fixture.path.join("escaping-browser");
+    // The parent is the "browser": it never publishes a DevTools endpoint, so
+    // the render budget trips while launch is still waiting. Its forked child
+    // leaves the process group with setsid and holds the inherited stderr.
+    std::fs::write(
+        &program,
+        "#!/bin/sh\nexec python3 -B -c '\nimport os, sys, time\nif os.fork() == 0:\n    os.setsid()\n    open(\"escaped.pid\", \"w\").write(str(os.getpid()))\n    time.sleep(25)\n    os._exit(0)\ntime.sleep(60)\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let request = serde_json::json!({"url":"about:blank","steps":[{"action":"navigate","url":"about:blank"}],
+        "limits":{"max_steps":1,"max_output_bytes":1024,"time_budget_secs":1}});
+    let result = AssertUnwindSafe(async {
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_reasonbraid-browse"));
+        command.env("R3_BROWSER_BIN", &program);
+        let started = Instant::now();
+        let output = fixture
+            .command(
+                command,
+                request.to_string().as_bytes(),
+                Duration::from_secs(45),
+            )
+            .await
+            .unwrap();
+        // The owned browser group is gone; only the escaped writer remains.
+        fixture.verify_browser_groups().await.unwrap();
+        assert!(!output.group_stop_requested);
+        let response: serde_json::Value = serde_json::from_str(&output.stdout).unwrap();
+        eprintln!(
+            "unconfirmed-cleanup refusal: {}",
+            serde_json::json!({"error": response["error"], "elapsed_ms": started.elapsed().as_millis()})
+        );
+        // The render's OWN outcome is what the caller must act on, and an
+        // unconfirmed cleanup does not overwrite it.
+        assert_eq!(
+            response["error"]["kind"], "time_budget_exceeded",
+            "{response}"
+        );
+        // The cleanup fact travels beside it, explicit and machine-readable.
+        assert_eq!(response["error"]["cleanup_confirmed"], false, "{response}");
+        assert!(
+            response["error"]["cleanup_error"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("stderr completion unconfirmed")),
+            "{response}"
+        );
+        // The worker's own receipt agrees with the response it returned.
+        let receipt = completion(&output.stderr);
+        assert_eq!(receipt["cleanup_confirmed"], false, "{receipt}");
+        assert_eq!(receipt["render_succeeded"], false, "{receipt}");
+    })
+    .catch_unwind()
+    .await;
+    // The escaped writer is this control's own residue: reap it and prove it.
+    let escaped = std::fs::read_to_string(fixture.path.join("escaped.pid"))
+        .ok()
+        .and_then(|raw| raw.trim().parse::<i32>().ok())
+        .and_then(rustix::process::Pid::from_raw);
+    if let Some(pid) = escaped {
+        let _ = rustix::process::kill_process(pid, rustix::process::Signal::KILL);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while rustix::process::test_kill_process(pid).is_ok() {
+            assert!(
+                Instant::now() < deadline,
+                "the escaped writer outlived its control"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
     fixture.finish(result.is_ok()).unwrap();
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);

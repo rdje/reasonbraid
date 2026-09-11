@@ -216,4 +216,3 @@ BOOK-FRONTIER — each falsified by reintroducing the exact defect it exists for
 Documentation and enforcement only: no visibility, remote, production or
 qualification-category change. Decision:
 docs/decisions/2026-09-11_mechanized-document-invariants.md.
-

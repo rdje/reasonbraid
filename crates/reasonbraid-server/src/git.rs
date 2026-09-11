@@ -26,6 +26,7 @@ use reqwest::blocking as blocking_reqwest;
 use url::Url;
 
 use crate::fetcher::{ClassifiedDns, DestinationResolver, SystemResolver};
+use crate::project_storage::OwnedDirectory;
 use crate::ssrf::SsrfVerdict;
 
 /// The R1 ceilings (the `.3.1` budget vocabulary). The defaults are the
@@ -160,9 +161,19 @@ impl std::error::Error for GitError {}
 
 /// The measured acquisition — the `.3.3` receipt's input shape (minus the
 /// receipt fields the receipt adds). `odb_path` holds the fetched objects for
-/// the `.6` snapshot lane; the caller owns its cleanup.
+/// the `.6` snapshot lane.
+///
+/// The working directory is OWNED here (`SIGNOFF-REPAIR.7.2.1`) rather than
+/// left to the caller: the superseded contract said "the caller owns its
+/// cleanup" and no production caller ever did, so every successful
+/// acquisition leaked a bare repository into an ambient temporary directory.
+/// The owner is shared rather than cloned, so a cloned acquisition keeps the
+/// same directory alive and the last one out removes it exactly once.
 #[derive(Debug, Clone)]
 pub struct GitAcquisition {
+    /// Kept so the fetched objects outlive `acquire`, and removed when the
+    /// last holder drops. Never read directly — `odb_path` addresses it.
+    _workspace: Arc<OwnedDirectory>,
     pub resolved_commit: String,
     pub object_count: u64,
     pub file_count: u64,
@@ -697,28 +708,31 @@ fn acquire_blocking(
     transport_factory: Box<TransportFactory>,
 ) -> Result<GitAcquisition, GitError> {
     let parsed = Url::parse(url).map_err(|_| GitError::UrlUnparseable)?;
-    let target_dir = std::env::temp_dir().join(format!(
-        "r1-acquire-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&target_dir).map_err(|e| GitError::TransferFailed(e.to_string()))?;
-    let result = acquire_into(&target_dir, &parsed, limits, transport_factory);
-    if result.is_err() {
-        std::fs::remove_dir_all(&target_dir).ok();
-    }
-    result
+    // One exclusively created directory on the repository's own volume. The
+    // superseded name — an ambient temporary directory joined with the process
+    // id and a nanosecond field, then `create_dir_all` — was measured at 501
+    // distinct values in 2000 calls with every collision between adjacent
+    // calls, and `create_dir_all` ADOPTS an occupied path. Two concurrent
+    // acquisitions share the process id by construction, so they could clone
+    // into one directory and either one's cleanup would delete the other's
+    // objects.
+    let workspace = Arc::new(
+        OwnedDirectory::create("git", "acquire")
+            .map_err(|e| GitError::TransferFailed(e.to_string()))?,
+    );
+    // On error the workspace is removed by its own `Drop`, which first proves
+    // the path still names the directory this acquisition created. On success
+    // the acquisition keeps it alive for the receipt's digest.
+    acquire_into(workspace, &parsed, limits, transport_factory)
 }
 
 fn acquire_into(
-    target_dir: &std::path::Path,
+    workspace: Arc<OwnedDirectory>,
     url: &Url,
     limits: &GitLimits,
     transport_factory: Box<TransportFactory>,
 ) -> Result<GitAcquisition, GitError> {
+    let target_dir = workspace.path();
     let repo = gix::init_bare(target_dir)
         .map_err(|e| GitError::TransferFailed(format!("the target repository failed: {e}")))?;
     let remote = repo
@@ -842,6 +856,7 @@ fn acquire_into(
         });
     }
     Ok(GitAcquisition {
+        _workspace: workspace,
         resolved_commit: head_id.to_string(),
         object_count,
         file_count: counts.0,
@@ -1159,32 +1174,24 @@ mod tests {
         source_dir: &std::path::Path,
         limits: &GitLimits,
     ) -> Result<GitAcquisition, GitError> {
-        let target_dir = std::env::temp_dir().join(format!(
-            "r1-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&target_dir).expect("the target dir creates");
+        // The same owned workspace production uses, so the fixtures exercise
+        // the real storage boundary instead of an ambient temporary directory.
+        let workspace =
+            Arc::new(OwnedDirectory::create("git", "test-acquire").expect("the workspace creates"));
         let url =
             Url::parse(&format!("file://{}", source_dir.display())).expect("the file url parses");
-        let result = acquire_into(
-            &target_dir,
+        acquire_into(
+            workspace,
             &url,
             limits,
             file_factory(source_dir.to_path_buf()),
-        );
-        if result.is_err() {
-            std::fs::remove_dir_all(&target_dir).ok();
-        }
-        result
+        )
     }
 
     #[test]
     fn the_acquisition_resolves_the_commit_and_measures() {
-        let tmp = std::env::temp_dir().join(format!("r1-src-{}", std::process::id()));
+        let tmp = OwnedDirectory::create("git", "test-src").expect("the fixture workspace creates");
+        let tmp = tmp.path();
         let source_dir = tmp.join("source");
         std::fs::create_dir_all(&source_dir).expect("the source dir creates");
         let first = source_repo(&source_dir);
@@ -1199,13 +1206,12 @@ mod tests {
         );
         assert!(acquisition.odb_bytes > 0);
         assert!(acquisition.odb_path.is_dir());
-        std::fs::remove_dir_all(&tmp).ok();
-        std::fs::remove_dir_all(acquisition.odb_path.parent().expect("the target dir")).ok();
     }
 
     #[test]
     fn the_submodule_and_lfs_entries_refuse_with_their_names() {
-        let tmp = std::env::temp_dir().join(format!("r1-ref-{}", std::process::id()));
+        let tmp = OwnedDirectory::create("git", "test-ref").expect("the fixture workspace creates");
+        let tmp = tmp.path();
 
         // The submodule: a gitlink entry in the tree.
         let sub_dir = tmp.join("sub");
@@ -1298,12 +1304,13 @@ mod tests {
             }) => {}
             other => panic!("the LFS pointer must refuse: {other:?}"),
         }
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
     fn the_receipt_carries_the_commit_the_digest_and_the_manifest() {
-        let tmp = std::env::temp_dir().join(format!("r1-receipt-{}", std::process::id()));
+        let tmp =
+            OwnedDirectory::create("git", "test-receipt").expect("the fixture workspace creates");
+        let tmp = tmp.path();
         let source_dir = tmp.join("source");
         std::fs::create_dir_all(&source_dir).expect("the source dir creates");
         let first = source_repo(&source_dir);
@@ -1340,13 +1347,13 @@ mod tests {
             .contains(&"dir/nested.txt".to_owned()));
         assert!(receipt.manifest.excluded.is_empty());
         assert_eq!(receipt.acquired_at, acquired_at);
-        std::fs::remove_dir_all(&tmp).ok();
-        std::fs::remove_dir_all(acquisition.odb_path.parent().expect("the target dir")).ok();
     }
 
     #[test]
     fn the_budget_ceilings_trip_with_their_names() {
-        let tmp = std::env::temp_dir().join(format!("r1-budget-{}", std::process::id()));
+        let tmp =
+            OwnedDirectory::create("git", "test-budget").expect("the fixture workspace creates");
+        let tmp = tmp.path();
         let source_dir = tmp.join("source");
         std::fs::create_dir_all(&source_dir).expect("the source dir creates");
         source_repo(&source_dir);
@@ -1382,6 +1389,5 @@ mod tests {
             }) => {}
             other => panic!("the object ceiling must trip: {other:?}"),
         }
-        std::fs::remove_dir_all(&tmp).ok();
     }
 }

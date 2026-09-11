@@ -73,6 +73,7 @@ mod outbox;
 pub mod policy;
 mod presence;
 mod profiles;
+pub mod project_storage;
 pub mod projections;
 pub mod publications;
 pub mod publisher;

@@ -776,6 +776,36 @@ an acceptable test dependency. `.7.3.3.4` owns closing that join with a
 policy-allowed local origin, not with a weakened production rule.
 
 
+### Where a Git acquisition works, and when it is removed
+
+An R1 acquisition clones into a working directory before its objects are
+measured and digested. That directory used to be named from the process id and
+a nanosecond field inside the ambient temporary directory, and created with a
+call that adopts an existing path instead of refusing it. Two concurrent
+acquisitions in one server share the process id by construction, so they could
+clone into one directory — and either one's error cleanup then deleted the
+other's objects. A probe measured that naming at 501 distinct values in 2000
+calls, with every collision falling between adjacent calls, and confirmed the
+ambient temporary directory was on a different volume from the checkout.
+
+Acquisitions now use the same owned storage the extraction inputs use, under
+`.project-data/git` below the repository root discovered at runtime. The
+directory is created exclusively — an occupied name is skipped, never adopted —
+mode 0700, with every parent proved to be a directory this process owns on the
+same volume. There is no temporary-directory or home fallback.
+
+The acquisition OWNS that directory for its whole life. The superseded contract
+said the caller owned the cleanup and no caller ever did, so every successful
+acquisition left a bare repository behind; the directory now goes away when the
+last holder of the acquisition drops it, after the receipt has taken its digest.
+Removal first proves the path still names the directory that was created — the
+open descriptor held on it pins the inode, so a replacement cannot present the
+same identity and be deleted in its place. A directory that fails that test is
+retained with its repository-relative path named. Unlike a file, a directory's
+link count is not part of the proof: its links grow as subdirectories appear
+inside it, and macOS was measured still reporting two links on a held descriptor
+after the directory was removed.
+
 ### The extraction worker's completion contract
 
 The server spawns one direct worker process per extraction and owns exactly that

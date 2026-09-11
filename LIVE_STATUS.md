@@ -359,3 +359,13 @@ recreates the runner's condition — and that probe exposed a fourth commit site
 the first pass missed. Six git tests pass both with ambient configuration
 suppressed and with it present. Remote confirmation of the whole `check` job is
 still required and no CI-green claim is made.
+
+REPAIR-0080 is confirmed on the runner: the server library now reports 92
+passed, 0 failed there, with the four AuthorMissing failures gone. The check job
+still fails, on a different and newly exposed defect — a check-then-act in the
+pg_guard fixture parent creation, which loses a race between parallel threads on
+Linux and has never lost it on macOS. REPAIR-0082 owns the R1 acquisition
+workspace: it is now exclusively created under .project-data/git on the
+repository volume, proved by identity before removal, and released when the last
+holder drops, which also closes a leak that ran on every SUCCESSFUL acquisition.
+97 server lib tests, strict lint and the rendered book pass locally.

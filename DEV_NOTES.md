@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The cleanup that only ran on failure
+
+- Repairing the acquisition's colliding name, I found the defect the census had not: the success path removed nothing. The doc comment said "the caller owns its cleanup", and there is no production caller — only the receipt, which reads the digest and walks away. So every successful acquisition left a bare repository in the ambient temporary directory forever, and only FAILURES were cleaned up. A contract that names an owner who does not exist is not a contract.
+- That is the more interesting half. The collision was a real defect and the probe measured it brutally — 501 distinct names in 2000 calls, every collision adjacent — but it needed concurrency to bite. The leak needed nothing at all; it happened on every success since the code was written, and no test noticed because every test cleaned up after itself by hand.
+- The measured surprise: an open descriptor pins a directory's inode (0 reuses in 200 cycles), but macOS still reports `nlink == 2` on that descriptor AFTER the directory is removed. The link-count trick that REPAIR-0079 relied on for FILES carries no signal for directories, and I would have shipped it as a check that silently never fires had I assumed the file case generalized. Two owners, two identity proofs, for a reason.
+- The shared module is the other half of the lesson. `extraction_input` had already proved every storage rule this needed — runtime root discovery, 0700 parents, checked ownership, exclusive creation. Duplicating them into git.rs would have produced two implementations that drift. One of them being right is not the same as the project being right.
+- promotion: declined (an instance of the existing owned-storage rule; the durable additions are the directory-identity fact and the probe, both recorded).
+
 ## 2026-09-11 — The first remote-only failure class I could reproduce without a remote
 
 - Four `git::tests::*` failed on the runner with `the commit writes: AuthorMissing`. `gix`'s `repo.commit` resolves its signature from git configuration, so four fixture commits silently borrowed whatever identity the developer's machine carried. A clean runner has none.

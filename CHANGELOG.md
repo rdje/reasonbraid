@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Own the Git acquisition workspace (`SIGNOFF-REPAIR.7.2.1`)
+
+- The production R1 acquisition named its working directory from the process id and a nanosecond field in the ambient temporary directory, then created it with a call that adopts an occupied path. Reproduced verbatim: 2000 names gave 501 distinct values with every collision between adjacent calls, `create_dir_all` returned `Ok` over another acquisition's pack, and the error path then deleted it. Two concurrent acquisitions share the process id by construction.
+- A second defect the census had not named: nothing removed the directory on SUCCESS, so every successful acquisition leaked a bare repository.
+- New `project_storage` module holds the storage rules `extraction_input` had proved — repository-root discovery, `.project-data/<area>` at 0700, checked parents — now shared instead of duplicated, plus an `OwnedDirectory` that creates exclusively and proves identity before removing. The acquisition owns its workspace and releases it when the last holder drops.
+- Measured rather than assumed: an open descriptor pins a directory's inode, but macOS keeps reporting two links after `rmdir`, so the file owner's link-count check is deliberately not reused for directories.
+- 97 server lib tests pass including five new controls; `.project-data/git` holds no leftovers; strict lint and the rendered book pass.
+
 ## 2026-09-11 — Give the git fixtures their own commit identity (`SIGNOFF-REPAIR.11.4.3.1.2.24`)
 
 - The last known remote `check` failure: four `git::tests::*` with `the commit writes: AuthorMissing`. `repo.commit` resolves its signature from git configuration, so the fixtures borrowed whatever identity the developer's machine carried. They could never have passed on a clean machine.

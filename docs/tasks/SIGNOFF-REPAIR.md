@@ -829,10 +829,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Why the earlier census missed it: it grepped for the process-id call on a single line, and this call spans several. The third such lesson today — a census keyed on the shape of the last instance finds the last instance. The concept-level census that did find it: `git grep -n "env::temp_dir()" -- '*.rs'` returns 8 sites across 3 files, and a clock-in-a-name search returns the fixtures in `reasonbraid-node` (`src/journal.rs:1330,1780`, both after `#[cfg(test)]` at 1320, plus roughly ten more under `tests/`) which share the `pg_guard` collision shape and remain open.
 - Routed from this correction: the ambient-temporary-directory sites are a §13 storage-locality family that no check enforces, and the clock-named node fixtures are the `.11.4.3.1.2.17` family unrepaired in a second crate. Both are owned by `.11.4.3.1.2.21`.
 
-- Status: `pending`; concrete source finding from .11.4.3.1.2.12 same-mechanism census.
-- Sources: crates/reasonbraid-server/src/git.rs:697–713 production acquire_with_factory and test acquire_from at 1131–1162. The production name uses PID plus subsec_nanos, create_dir_all accepts a pre-existing path, and error cleanup recursively removes it. Source evidence establishes no exclusive ownership; overlapping production collision/deletion remains unverified.
-- Owns: preserve and reproduce exact candidate reuse with independently witnessed content/lifetime; replace ambient temporary paths and nonexclusive creation with repository-derived same-volume exclusive ownership; qualify success/error cleanup and existing/replaced paths without deleting another acquisition. Keep transfer/transport semantics and the broader .7.2 network controls separate. Commit a bounded repair after its focused actual acquisition controls, strict lint and book/live evidence.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0082.
+- REPRODUCED, with the production expression run verbatim and the content independently witnessed. 2000 names: **501 distinct, 1499 collisions, and every collision between ADJACENT calls** — so the concurrent case, which shares the process id by construction, is the colliding case. `create_dir_all` on an occupied path returned `Ok(())` with another acquisition's 44-byte pack still present (ADOPTED, not refused), and the production error path's `remove_dir_all` then destroyed it. The ambient temporary directory was measured on a DIFFERENT volume from the checkout.
+- A second production defect the census had not named: on SUCCESS nothing removed the directory. The doc comment said "the caller owns its cleanup" and no production caller ever did, so every successful acquisition leaked a bare repository into the ambient store.
+- Fix: `crates/reasonbraid-server/src/project_storage.rs` holds the storage rules that `extraction_input` had proved, now shared rather than duplicated, plus `OwnedDirectory` — exclusive creation under `.project-data/<area>`, mode 0700, checked parents, and removal that first proves the path still names the created directory. `GitAcquisition` holds the owner in an `Arc`, so the objects outlive `acquire` for the receipt's digest and the directory goes away when the last holder drops.
+- MEASURED, not assumed: an open descriptor pins a directory's inode (0 reuses in 200 create/remove/recreate cycles on the repository volume), but macOS still reports `nlink == 2` on a held descriptor AFTER `rmdir`. So the file owner's link-count check carries no signal for a directory and is deliberately not used; the pinned inode does the work.
+- Also repaired here: all five fixture directories in `git.rs`, which the corrected census named as the §13 locality family. They now use the same owner, so the tests exercise the real storage boundary.
+- Verification: 97 server lib tests pass, including five new `project_storage` controls — 16 simultaneous creators all live and all distinct, an occupied name refused with the first owner's content intact, a replaced workspace retained with its successor's content intact, repository-derived location on the repository volume, and removal on drop. `.project-data/git` holds 0 leftovers after the suite. Strict `-D warnings` all-targets lint and the rendered book pass.
+- Commit: `REASONBRAID-REPAIR-0082 (leaf SIGNOFF-REPAIR.7.2.1): own the Git acquisition workspace`.
 
 ### SIGNOFF-REPAIR.7.3 — Extraction, browser and credential workers
 
@@ -1862,6 +1866,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.7.2.1`: `REASONBRAID-REPAIR-0082 (leaf SIGNOFF-REPAIR.7.2.1): own the Git acquisition workspace`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.24`: `REASONBRAID-REPAIR-0080 (leaf SIGNOFF-REPAIR.11.4.3.1.2.24): give the git fixtures their own commit identity`.
 

@@ -18,9 +18,9 @@
 //! Deliberately absent: any temporary-directory or home fallback, and any
 //! recursive deletion. The store removes one file it created, or nothing.
 
-use std::fs::{DirBuilder, File, Metadata, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use std::time::Duration;
@@ -28,11 +28,13 @@ use std::time::Duration;
 use crate::extraction::{
     run_extraction_reporting, ExtractionError, WorkerCompletion, WorkerLimits, WorkerResponse,
 };
+use crate::project_storage::{self, MAX_CANDIDATES};
 
-/// How many private names may be tried before giving up. A v7 UUID does not
-/// collide in practice; the bound exists so an occupied or hostile directory
-/// ends in a refusal rather than an unbounded loop.
-const MAX_CANDIDATES: usize = 64;
+/// This owner's area under `.project-data`.
+const AREA: &str = "extraction";
+
+/// The subject named in this owner's refusals.
+const SUBJECT: &str = "extraction input";
 
 /// One request's private input file.
 #[derive(Debug)]
@@ -51,7 +53,7 @@ pub struct OwnedInput {
 impl OwnedInput {
     /// Create a private input holding exactly these bytes.
     pub fn create(bytes: &[u8]) -> io::Result<Self> {
-        let root = repository_root()?;
+        let root = project_storage::repository_root()?;
         for _ in 0..MAX_CANDIDATES {
             let name = format!("input-{}", uuid::Uuid::now_v7());
             match Self::create_named(&root, &name, bytes) {
@@ -70,7 +72,7 @@ impl OwnedInput {
     /// The single-candidate path, exposed to the controls that must force an
     /// occupied name — a v7 UUID cannot be made to collide on demand.
     pub(crate) fn create_named(root: &Path, name: &str, bytes: &[u8]) -> io::Result<Self> {
-        let directory = storage(root)?;
+        let directory = project_storage::storage(root, AREA)?;
         let path = directory.join(name);
         let mut options = OpenOptions::new();
         options.write(true).create_new(true).mode(0o600);
@@ -112,9 +114,7 @@ impl OwnedInput {
     /// The repository-relative path, for messages that must never carry a
     /// checkout-specific absolute path.
     pub fn relative(&self) -> &Path {
-        self.path
-            .strip_prefix(&self.root)
-            .unwrap_or(self.path.as_path())
+        project_storage::relative(&self.path, &self.root)
     }
 
     /// Remove the input — but only when no reader can still hold it and the
@@ -195,22 +195,7 @@ impl OwnedInput {
     }
 
     fn check_parents(&self, uid: u32, device: u64) -> io::Result<()> {
-        let mut parent = self.path.parent().map(Path::to_path_buf);
-        while let Some(current) = parent {
-            let metadata = std::fs::symlink_metadata(&current)?;
-            if !owned_directory(&metadata, uid, device) {
-                return Err(io::Error::other(
-                    "the extraction input parent is not an owned on-volume directory",
-                ));
-            }
-            if current == self.root {
-                return Ok(());
-            }
-            parent = current.parent().map(Path::to_path_buf);
-        }
-        Err(io::Error::other(
-            "the extraction input escaped the repository root",
-        ))
+        project_storage::check_parents(&self.path, &self.root, SUBJECT, uid, device)
     }
 }
 
@@ -224,54 +209,6 @@ impl Drop for OwnedInput {
             );
         }
     }
-}
-
-/// A directory this process owns, on the expected volume, not writable by
-/// group or other, and not a symbolic link (`symlink_metadata` never follows).
-fn owned_directory(metadata: &Metadata, uid: u32, device: u64) -> bool {
-    metadata.is_dir()
-        && metadata.dev() == device
-        && metadata.uid() == uid
-        && metadata.mode() & 0o022 == 0
-}
-
-/// The repository root discovered at RUNTIME from the current directory.
-/// Nothing persists an absolute path, so moving the checkout changes these
-/// locations without an edit.
-///
-/// The test is deliberately stricter than the browser worker's `Cargo.toml` +
-/// `migrations` pair: `crates/reasonbraid-node` satisfies that pair, so a
-/// process whose working directory sat there would stop at the crate and place
-/// private storage inside it. `rust-toolchain.toml` exists only at the real
-/// root. (The browser worker's own predicate is not changed here; it is routed
-/// to `SIGNOFF-REPAIR.7.3.2`, which owns that worker's storage boundary.)
-fn repository_root() -> io::Result<PathBuf> {
-    let current = std::env::current_dir()?;
-    current
-        .ancestors()
-        .find(|path| {
-            path.join("Cargo.toml").is_file()
-                && path.join("migrations").is_dir()
-                && path.join("rust-toolchain.toml").is_file()
-        })
-        .map(Path::to_path_buf)
-        .ok_or_else(|| io::Error::other("run the extraction pipeline from within the repository"))
-}
-
-/// `<root>/.project-data/extraction`, created 0700. The parents are checked
-/// against the created file's own ownership afterwards, so creating them here
-/// is not by itself a trust decision.
-fn storage(root: &Path) -> io::Result<PathBuf> {
-    let mut path = root.to_path_buf();
-    for component in [".project-data", "extraction"] {
-        path.push(component);
-        match DirBuilder::new().mode(0o700).create(&path) {
-            Ok(()) => (),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => (),
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(path)
 }
 
 /// Extract one acquired document through an input this process owns.
@@ -391,9 +328,11 @@ mod tests {
     /// adopted. Its bytes and its identity survive untouched.
     #[test]
     fn an_occupied_candidate_name_is_never_opened_or_truncated() {
-        let root = repository_root().expect("the repository root");
+        let root = project_storage::repository_root().expect("the repository root");
         let name = unique_name("occupied");
-        let squatter = storage(&root).expect("the store").join(&name);
+        let squatter = project_storage::storage(&root, AREA)
+            .expect("the store")
+            .join(&name);
         std::fs::write(&squatter, b"another owner's document").expect("the squatter is written");
         let before = std::fs::symlink_metadata(&squatter).expect("the squatter exists");
 
@@ -415,8 +354,8 @@ mod tests {
     /// is written THROUGH it: the target is never reached.
     #[test]
     fn a_symlinked_candidate_name_is_refused_and_its_target_untouched() {
-        let root = repository_root().expect("the repository root");
-        let store = storage(&root).expect("the store");
+        let root = project_storage::repository_root().expect("the repository root");
+        let store = project_storage::storage(&root, AREA).expect("the store");
         let target = store.join(unique_name("link-target"));
         std::fs::write(&target, b"the link target").expect("the target is written");
         let link = store.join(unique_name("link"));

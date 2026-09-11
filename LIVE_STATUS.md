@@ -300,3 +300,22 @@ and must be consumed after it. No external gate closes: G6/G7, name clearance an
 the license decision remain open, historical phase closures remain under
 corrective review, and .7.4.2, .7.2.1, .7.3.3.4, .11.4.3.1.2.15 and .11.5 remain
 open. Evidence: docs/tasks/artifacts/signoff_review/checkpoint-7233122.md.
+
+Evidence storage faults are now reported honestly under REPAIR-0071. Ten map_err
+arms across the snapshot, derivation and claim modules collapsed every storage
+failure into a caller error that the handlers rendered as HTTP 400; each enum now
+carries a Storage variant preserving its SQLx source, the handlers use the
+existing internal_with_log idiom, and the R2 pipeline records an
+`evidence_unstored` acquisition error instead of discarding a failed snapshot
+while reporting a successful acquisition. The control injects a storage fault,
+restores the database before asserting, and requires 500 rather than 400 while a
+genuinely absent reference stays 400; against the unrepaired source it fails
+printing the defect verbatim. Live profiles/evaluation/cards, 92 library tests,
+strict lint and format pass. The R2 leg is qualified at the handler boundary
+only, because a live successful acquisition has no coverage (.7.3.3.4).
+
+Remote CI ran for the first time on a626768: doctrines and supply-chain pass,
+and the rust workflow FAILS at `codex_adapter_passes_the_conformance_suite`
+("the lose trigger refused instead of dispatching"). That suite passes locally,
+so it is environment-dependent and is exactly what remote execution exists to
+find. It is the next repair; no remote-CI green claim is made.

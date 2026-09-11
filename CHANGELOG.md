@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Report evidence storage faults honestly (`SIGNOFF-REPAIR.7.4.2`)
+
+- Ten `map_err` arms across `snapshots.rs`, `derivations.rs` and `claims.rs` collapsed every storage fault into a caller error, and `api.rs` rendered all of them as HTTP 400. A server-side failure told the caller its own reference did not exist.
+- Each enum gains `Storage(sqlx::Error)` with the source reachable through `Error::source`, matching the `GrantCreateError` contract; the handlers use the existing `internal_with_log` idiom so the cause is logged server-side and the wire keeps its safe generic message.
+- The R2 pipeline no longer discards a failed snapshot while still reporting a successful acquisition: it records an `evidence_unstored` acquisition error and returns no receipt.
+- The control installs a trigger that raises on insert, drops it before asserting so a failure cannot leave the shared database rejecting snapshots, and requires 500 rather than 400 — with a companion assertion that an absent reference stays 400. Against the unrepaired source it fails printing the defect verbatim.
+
 ## 2026-09-11 — Repair three dead book links and check the rest (`SIGNOFF-REPAIR.11.4.3.1.2.18`)
 
 - `docs/book/book/cli.html` rendered `href="docs/book/src/cli-state.html"`, a page that does not exist. A census of the whole book found 29 intra-book links with exactly 3 broken, all in the CLI chapters.

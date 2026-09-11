@@ -3225,6 +3225,72 @@ async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
         out
     }
 
+    // A store fault is the SERVER's problem (`.7.4.2`). Before this repair
+    // every storage failure was mapped to `ReferenceMissing` and rendered as
+    // HTTP 400 `invalid_command`, telling the caller its own input was wrong.
+    // The trigger is dropped BEFORE the assertions run, so a failing
+    // expectation cannot leave this shared database rejecting snapshots.
+    sqlx::raw_sql(
+        "CREATE FUNCTION public.evidence_test_gate() RETURNS trigger LANGUAGE plpgsql AS $$ \
+         BEGIN RAISE EXCEPTION 'injected snapshot storage failure'; END; $$; \
+         CREATE TRIGGER evidence_test_gate BEFORE INSERT ON public.evidence_snapshots \
+         FOR EACH ROW EXECUTE FUNCTION public.evidence_test_gate()",
+    )
+    .execute(&pool)
+    .await
+    .expect("install the injected storage fault");
+    let faulted = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&snapshot_body(&digest))
+        .send()
+        .await
+        .expect("snapshot request under the injected fault");
+    let faulted_status = faulted.status().as_u16();
+    let faulted_body: Value = faulted.json().await.unwrap();
+    sqlx::raw_sql(
+        "DROP TRIGGER IF EXISTS evidence_test_gate ON public.evidence_snapshots; \
+         DROP FUNCTION IF EXISTS public.evidence_test_gate()",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the injected storage fault");
+    assert_eq!(
+        faulted_status, 500,
+        "a store fault is the server's, not the caller's: {faulted_body}"
+    );
+    assert_eq!(
+        faulted_body["code"],
+        json!("dependency_unavailable"),
+        "the store fault names itself: {faulted_body}"
+    );
+    assert_ne!(
+        faulted_body["code"],
+        json!("invalid_command"),
+        "a store fault must never be reported as a bad request: {faulted_body}"
+    );
+
+    // And the repair did not turn every refusal into a 500: a genuinely
+    // unknown reference is still the caller's error.
+    let absent = client
+        .post(format!("{base}/v1/snapshots"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&{
+            let mut body = snapshot_body(&digest);
+            body["reference_id"] = json!("res_00000000-0000-7000-8000-0000000000ff");
+            body
+        })
+        .send()
+        .await
+        .expect("snapshot request for an absent reference");
+    let absent_status = absent.status().as_u16();
+    let absent_body: Value = absent.json().await.unwrap();
+    assert_eq!(
+        absent_status, 400,
+        "an absent reference is still the caller's error: {absent_body}"
+    );
+    assert_eq!(absent_body["code"], json!("invalid_command"));
+
     // The submit → the read-back.
     let response = client
         .post(format!("{base}/v1/snapshots"))

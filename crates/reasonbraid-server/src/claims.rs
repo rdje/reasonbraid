@@ -63,16 +63,24 @@ pub struct StoredAssessment {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// Only `Debug` derives: the storage variant carries the original SQLx error
+// so it survives to `std::error::Error::source`, and that error is neither
+// `Clone` nor `Eq`. This matches the `GrantCreateError` contract from `.3.3.4.3.1`.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum AssessmentError {
     UnknownKind(String),
     SnapshotMissing,
     ExcerptAbsent,
+    /// The store itself failed. A database fault does not prove anything
+    /// about the caller's input, and must never be reported as though it did.
+    Storage(sqlx::Error),
 }
 
 impl std::fmt::Display for AssessmentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Storage(_) => write!(f, "the evidence store is unavailable"),
             Self::UnknownKind(kind) => {
                 write!(f, "the assessment `{kind}` is outside the §12.7 vocabulary")
             }
@@ -105,7 +113,7 @@ pub async fn submit(
     .bind(&submission.snapshot_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| AssessmentError::SnapshotMissing)?;
+    .map_err(AssessmentError::Storage)?;
     let bytes = bytes.ok_or(AssessmentError::SnapshotMissing)?;
     let excerpt = submission.excerpt.as_bytes();
     if excerpt.is_empty() || !bytes.windows(excerpt.len()).any(|window| window == excerpt) {
@@ -121,7 +129,7 @@ pub async fn submit(
     .bind(&submission.author)
     .fetch_optional(pool)
     .await
-    .map_err(|_| AssessmentError::SnapshotMissing)?;
+    .map_err(AssessmentError::Storage)?;
     if let Some(existing) = existing {
         return Ok(existing);
     }
@@ -147,7 +155,7 @@ pub async fn submit(
     .bind(&submission.uncertainty)
     .execute(pool)
     .await
-    .map_err(|_| AssessmentError::SnapshotMissing)?;
+    .map_err(AssessmentError::Storage)?;
     Ok(assessment_id)
 }
 

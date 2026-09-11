@@ -111,16 +111,27 @@ pub struct StoredSnapshot {
 }
 
 /// The snapshot's error — every refusal names its reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
+// Only `Debug` derives: the storage variant carries the original SQLx error
+// so it survives to `std::error::Error::source`, and that error is neither
+// `Clone` nor `Eq`. This matches the `GrantCreateError` contract from `.3.3.4.3.1`.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum SnapshotError {
     InvalidDigest(&'static str),
     ReferenceMissing,
-    DigestMismatch { declared: String, actual: String },
+    DigestMismatch {
+        declared: String,
+        actual: String,
+    },
+    /// The store itself failed. A database fault does not prove anything
+    /// about the caller's input, and must never be reported as though it did.
+    Storage(sqlx::Error),
 }
 
 impl std::fmt::Display for SnapshotError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Storage(_) => write!(f, "the evidence store is unavailable"),
             Self::InvalidDigest(reason) => write!(f, "the raw digest is invalid: {reason}"),
             Self::ReferenceMissing => write!(f, "the reference does not exist"),
             Self::DigestMismatch { declared, actual } => write!(
@@ -158,7 +169,7 @@ pub async fn submit(
     .bind(&submission.reference_id)
     .fetch_one(pool)
     .await
-    .map_err(|_| SnapshotError::ReferenceMissing)?;
+    .map_err(SnapshotError::Storage)?;
     if !reference_exists {
         return Err(SnapshotError::ReferenceMissing);
     }
@@ -171,7 +182,7 @@ pub async fn submit(
     .bind(bytes)
     .execute(pool)
     .await
-    .map_err(|_| SnapshotError::ReferenceMissing)?;
+    .map_err(SnapshotError::Storage)?;
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT snapshot_id FROM evidence_snapshots \
          WHERE reference_id = $1 AND raw_digest = $2 LIMIT 1",
@@ -180,7 +191,7 @@ pub async fn submit(
     .bind(&submission.raw_digest)
     .fetch_optional(pool)
     .await
-    .map_err(|_| SnapshotError::ReferenceMissing)?;
+    .map_err(SnapshotError::Storage)?;
     if let Some(existing) = existing {
         // The re-fetch policy: the replay refreshes the freshness record
         // (the re-acquisition happened — the bytes are unchanged, the
@@ -229,7 +240,7 @@ pub async fn submit(
     .bind(submission.fresh_until)
     .execute(pool)
     .await
-    .map_err(|_| SnapshotError::ReferenceMissing)?;
+    .map_err(SnapshotError::Storage)?;
     Ok(SnapshotOutcome {
         snapshot_id,
         replay: false,

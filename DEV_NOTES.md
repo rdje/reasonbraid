@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — Blaming the caller for the server's failure
+
+- Ten `map_err(|_| …Missing)` arms turned every storage fault into "your input does not exist", and the handlers rendered that as HTTP 400. The error message was not merely unhelpful; it was false, and it pointed the reader at the wrong system.
+- The same family `.3.3.4.3.1` repaired for grants — "a database failure does not prove that a grant exceeds its boundary" — reappeared verbatim in the evidence modules. When a defect class is found once, the census for it is cheap and the second instance is usually already written.
+- Narrowing the derives was the interesting trade. `sqlx::Error` is neither `Clone` nor `Eq`, so keeping the source and keeping `#[derive(PartialEq)]` are mutually exclusive. A grep showed nothing outside the modules compared or cloned these errors, so the source won — it is the thing an operator actually needs at three in the morning.
+- The worst part was not the classification but what the R2 pipeline did with it: `if let Ok(snapshot)` discarded the failure and still set `outcome.acquisition`. A caller was told a document had been acquired while no evidence row and no derivation existed. A discarded error is a decision to lie by omission, and `let … else` costs the same number of lines.
+- promotion: declined (the durable rule is already recorded in the authority chapter and `.3.3.4.3.1`: a storage failure is not evidence about the caller's input; this applies it to the evidence modules).
+
 ## 2026-09-11 — A content-matching check also matches a description of that content
 
 - Three links in the book were dead — `docs/book/book/cli.html` rendered a path to a page that does not exist — and `mdbook build` does not validate links, so nothing noticed in the surface the director actually reads. A census found exactly 3 broken of 29.

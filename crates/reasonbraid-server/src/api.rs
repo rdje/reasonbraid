@@ -2025,10 +2025,32 @@ async fn resolve_resource(
                                 chrono::Utc::now(),
                             )
                             .await;
+                            // A failed snapshot is NOT a successful acquisition.
+                            // This path used to discard the error and still set
+                            // `outcome.acquisition`, so a caller was told the
+                            // document had been acquired while no evidence row
+                            // and no derivation existed (`.7.4.2`).
+                            let Ok(snapshot) = snapshot.inspect_err(|error| {
+                                crate::log_event!(
+                                    "acquisition_evidence_unstored",
+                                    "resource_id" => resource_id.clone(),
+                                    "reason" => error.to_string(),
+                                );
+                                outcome.acquisition_error =
+                                    Some(crate::resolvers::AcquisitionError {
+                                        kind: "evidence_unstored".to_owned(),
+                                        message: error.to_string(),
+                                    });
+                            }) else {
+                                // No snapshot, so no derivations and no
+                                // acquisition receipt: the refusal above is the
+                                // whole outcome for this reference.
+                                return Ok(Json(outcome));
+                            };
                             // The derivation graph: every derived chunk is a
                             // Derivation edge — the parent stays addressable
                             // (a chunk is NEVER the original).
-                            if let Ok(snapshot) = snapshot {
+                            {
                                 for chunk in &response.chunks {
                                     let _ = crate::derivations::submit(
                                         &state.pool,
@@ -3237,6 +3259,12 @@ async fn submit_assessment(
     }
     match crate::claims::submit(&state.pool, &submission).await {
         Ok(assessment_id) => Ok(Json(json!({ "assessment_id": assessment_id }))),
+        // A store fault is the server's problem and must not be reported as
+        // though the caller's input were wrong (`.7.4.2`). The cause is logged
+        // server-side; the wire keeps the safe generic message.
+        Err(crate::claims::AssessmentError::Storage(cause)) => Err(
+            ControlApiError::internal_with_log(format!("claim assessment storage failed: {cause}")),
+        ),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
@@ -3296,6 +3324,12 @@ async fn submit_derivation(
     }
     match crate::derivations::submit(&state.pool, &submission).await {
         Ok(derivation_id) => Ok(Json(json!({ "derivation_id": derivation_id }))),
+        // A store fault is the server's problem and must not be reported as
+        // though the caller's input were wrong (`.7.4.2`). The cause is logged
+        // server-side; the wire keeps the safe generic message.
+        Err(crate::derivations::DerivationError::Storage(cause)) => Err(
+            ControlApiError::internal_with_log(format!("derivation storage failed: {cause}")),
+        ),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
@@ -3399,6 +3433,12 @@ async fn submit_snapshot(
         .await
     {
         Ok(outcome) => Ok(Json(outcome)),
+        // A store fault is the server's problem and must not be reported as
+        // though the caller's input were wrong (`.7.4.2`). The cause is logged
+        // server-side; the wire keeps the safe generic message.
+        Err(crate::snapshots::SnapshotError::Storage(cause)) => Err(
+            ControlApiError::internal_with_log(format!("snapshot storage failed: {cause}")),
+        ),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }

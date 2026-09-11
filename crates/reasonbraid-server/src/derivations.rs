@@ -37,16 +37,27 @@ pub struct StoredDerivation {
     pub derived_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// Only `Debug` derives: the storage variant carries the original SQLx error
+// so it survives to `std::error::Error::source`, and that error is neither
+// `Clone` nor `Eq`. This matches the `GrantCreateError` contract from `.3.3.4.3.1`.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum DerivationError {
     InvalidDigest,
-    DigestMismatch { declared: String, actual: String },
+    DigestMismatch {
+        declared: String,
+        actual: String,
+    },
     ParentMissing,
+    /// The store itself failed. A database fault does not prove anything
+    /// about the caller's input, and must never be reported as though it did.
+    Storage(sqlx::Error),
 }
 
 impl std::fmt::Display for DerivationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Storage(_) => write!(f, "the evidence store is unavailable"),
             Self::InvalidDigest => write!(f, "the derived digest is not the ADR-011 shape"),
             Self::DigestMismatch { declared, actual } => write!(
                 f,
@@ -87,7 +98,7 @@ pub async fn submit(
     .bind(&submission.parent_snapshot_id)
     .fetch_one(pool)
     .await
-    .map_err(|_| DerivationError::ParentMissing)?;
+    .map_err(DerivationError::Storage)?;
     if !parent_exists {
         return Err(DerivationError::ParentMissing);
     }
@@ -100,7 +111,7 @@ pub async fn submit(
     .bind(&submission.derived_digest)
     .fetch_optional(pool)
     .await
-    .map_err(|_| DerivationError::ParentMissing)?;
+    .map_err(DerivationError::Storage)?;
     if let Some(existing) = existing {
         return Ok(existing);
     }
@@ -120,7 +131,7 @@ pub async fn submit(
     .bind(&submission.source_selector)
     .execute(pool)
     .await
-    .map_err(|_| DerivationError::ParentMissing)?;
+    .map_err(DerivationError::Storage)?;
     Ok(derivation_id)
 }
 

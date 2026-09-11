@@ -1666,6 +1666,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Fix: a `fixture_identity` signature used by all four `commit_as` calls, so the fixture owns its identity the same way it owns its storage. The email uses the reserved `.invalid` domain.
 - Verification: with ambient git configuration suppressed, all six git tests pass; with the developer's normal configuration they also pass, so nothing regressed. The falsification is direct — the unrepaired fixtures fail under the same suppression. Strict `-D warnings` server lint and workspace format pass.
 - Commit: `REASONBRAID-REPAIR-0080 (leaf SIGNOFF-REPAIR.11.4.3.1.2.24): give the git fixtures their own commit identity`.
+- Correction, same leaf: the resume pointer listed two further remote failures that the runner had already proved passing. Re-derived from the runs — 34620840899 failed five (four git plus the extraction-input identity test), 34623064813 failed four (git only), and `writer_release_does_not_wait_for_an_inherited_descriptor` prints `... ok`. So REPAIR-0079 is remotely confirmed and these four git tests were the only remaining failure. A "still open" list must be re-derived from the latest run, never carried forward.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 

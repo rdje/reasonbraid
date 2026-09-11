@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Root-cause the browser CI failure: a socket path 120 bytes over the limit
+
+- Chrome's own stderr, once the instrument finally delivered it: `FATAL:process_singleton_posix.cc:313] Socket path too long`, then `Received signal 6`. The socket path measures 228 bytes against a `sun_path` capacity of 108.
+- The missing-runtime-library hypothesis is DENIED. Every observation had been consistent with it; only Chrome's own words separated the two.
+- Mechanism: the worker overrides TMPDIR into a per-invocation workspace nested under a per-command fixture, and Chrome creates its singleton socket under TMPDIR precisely to keep that path short. The isolation design defeated the vendor's mitigation. macOS never reaches that code path, so no local run could see it.
+- Repair owned by `.11.4.3.1.2.22`: a short repository-derived temporary directory plus an explicit startup budget check that refuses by name instead of allowing a FATAL abort.
+
 ## 2026-09-11 — Correct the browser evidence instrument (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
 
 - REPAIR-0074's upload returned byte COUNTS and no bytes: the artifact held only `worker.json` per fixture, reporting `stderr_bytes: 403` while the 403 bytes themselves stayed on the runner.

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — Not libraries: a 228-byte path against a 108-byte limit
+
+- Chrome named it once the evidence finally reached me: `FATAL:process_singleton_posix.cc:313] Socket path too long`, then `Received signal 6`. The missing-runtime-library hypothesis — which fit every observation I had — is DENIED. It was a Unix domain socket path limit all along: 228 bytes against `sun_path`'s 108.
+- Worth sitting with. That hypothesis survived three rounds of evidence-gathering because every fact was consistent with it: a binary that runs, a version that verifies, a browser that exits instantly, a platform difference. Consistency is not confirmation. Nothing short of Chrome's own words could separate the two, which is exactly why the three instrument failures were worth fixing rather than routing around with a guess.
+- The mechanism is an own-goal: Chrome creates its singleton socket under TMPDIR precisely to keep that path short, and `lifetime.rs:69-71` overrides TMPDIR into a per-invocation workspace nested under a per-command fixture. The project's isolation design defeated the vendor's mitigation. Two 36-character UUIDs account for most of the 228.
+- macOS cannot observe it at any path length, because `process_singleton_posix.cc` is the POSIX/Linux implementation and macOS uses a different singleton entirely. This is the third Linux-only defect today after ETXTBSY and the hidden-file upload default — the development platform is structurally blind to a whole class of failure here.
+- Shortening the names is not a fix: eight-character discriminators remove about 56 bytes and leave 172, still far over. The repository root is variable-length and outside our control, so any design nesting two generated directories under it is one long checkout away from the same crash. The repair has to include a budget check that refuses by name, because a crash the project can predict should be a refusal the project reports.
+- promotion: declined (the durable method rules already exist — build the instrument before guessing, and a refusal must name its cause; this records a platform fact and the denial of a hypothesis).
+
 ## 2026-09-11 — A census keyed on the last instance finds the last instance
 
 - Third time today. `.11.4.3.1.2.17` grepped for a process-id call and missed the conformance stubs, which name from the clock alone. Then the same census recorded four `git.rs` sites as production when all four sit after `#[cfg(test)]`, and MISSED the one real production site at `git.rs:700` because that call spans several lines and the grep was single-line.

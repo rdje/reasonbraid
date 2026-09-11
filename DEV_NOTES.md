@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A clock is not a source of uniqueness
+
+- Third instance of one family in one day. `.7.3.3.1` found it in the production R2 input span, `.11.4.3.1.2.12` in the extractor fixtures, and now `pg_guard` names its directory `{pid}-{nanos}`. Measured here: six consecutive `time_ns()` samples are byte-identical, so the stamp separates nothing between concurrent callers.
+- The suite had always passed because `scripts/run_pg_tests.py` appends `--test-threads=1`. A serialising runner does not make a fixture safe; it makes the defect invisible until some other command runs the same tests in parallel. Pinning threads to "fix" it would have hidden it again.
+- Because it was the third instance I censused the tree instead of fixing one site, and the census found worse than what I was repairing. `snapshots.rs` has a function called `uuid_like_suffix` returning `format!("{:x}{:x}", nanos, pid)` for durable `snp_` identifiers, with the same shape in `claims.rs` and `derivations.rs`. A standalone probe of that exact expression: 8 collisions in 10 calls, 918 in 1,000, 269 among 400 across eight threads. Roughly one distinct value per twelve calls, minting evidence identity.
+- The name told the truth backwards: `uuid_like_suffix` resembles a UUID in shape and not in the single property a UUID is for. A name that describes the appearance rather than the guarantee invites exactly this.
+- Route rather than fix in passing: a production evidence-identity defect gets its own leaf with its own acceptance evidence, because the first question — what a collision actually DOES at each call site — decides whether historical rows need reconciliation. Fixing it inside an unrelated fixture leaf would have skipped that question.
+- promotion: declined (the durable rule is already recorded — `docs/decisions/2026-09-11_owned-extraction-input.md` states that a name proposes ownership and only exclusive creation proves it; this adds measurements, not a new decision).
+
 ## 2026-09-11 — The exit code said zero and the checkpoint had stopped
 
 - The background invocation ended `run.sh …; echo "DRIVER EXIT rc=$?"`, so the shell's status was the echo's and the harness reported "completed (exit code 0)" for a checkpoint that stopped at its fourth command. The driver's own `summary.txt` said `CHECKPOINT STOPPED at 04-pg-demo`. A command whose last statement is an `echo` has thrown its status away; read the receipts, never the caller's status.

@@ -13,20 +13,18 @@ mod pg_cleanup;
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use pg_test_support::Ownership;
 use serde_json::json;
+
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture(PathBuf);
 
 impl Fixture {
     fn new() -> Self {
         let root = pg_test_support::repository_root().unwrap();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
         let volume = fs::metadata(&root).unwrap().dev();
         let mut parent = root;
         for part in ["target", "pg-guard-controls"] {
@@ -37,9 +35,23 @@ impl Fixture {
             let metadata = fs::symlink_metadata(&parent).unwrap();
             assert!(metadata.is_dir() && metadata.dev() == volume);
         }
-        let path = parent.join(format!("{}-{stamp}", std::process::id()));
-        fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
-        Self(path)
+        // A process id and a clock reading do not make a name unique: these
+        // tests run in parallel threads of ONE process, and this host returns
+        // byte-identical `time_ns()` for consecutive calls, so two fixtures
+        // could propose the same directory and the loser's exclusive create
+        // panicked. The counter is unique within the process, the process id
+        // across processes, and the bounded retry covers anything else — a
+        // candidate that is already taken is skipped, never adopted.
+        for _ in 0..64 {
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let path = parent.join(format!("{}-{sequence}", std::process::id()));
+            match fs::DirBuilder::new().mode(0o700).create(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+                Err(error) => panic!("guard fixture creation failed: {error}"),
+            }
+        }
+        panic!("guard fixture names exhausted; existing directories stay untouched");
     }
 
     fn prepare(&self, relative: &str, database: &str, port: u16, pid: u32) {

@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Name guard fixtures without a clock (`SIGNOFF-REPAIR.11.4.3.1.2.17`)
+
+- The source-5c8609e checkpoint stops at `02-check`: `pg_guard` panics creating its fixture directory because `Fixture::new` names it `{pid}-{nanos}`, six consecutive `time_ns()` samples on this host are byte-identical, and three tests call it in parallel threads of one process. The PostgreSQL runner's `--test-threads=1` is why this suite always passed there and only fails under `make check`.
+- Replace the clock with an `AtomicU64` discriminator and skip an occupied candidate instead of panicking on it: 0 failures in 60 parallel runs against 1 in 15 before, with `Drop` still removing every directory.
+- Census the family, since this was its third instance. Two production findings, both with concrete owners: `snapshots.rs`/`claims.rs`/`derivations.rs` mint durable evidence identifiers from the same clock-and-pid shape — a probe of the exact expression measures 918 collisions in 1,000 calls and 269 among 400 across eight threads, about one distinct value per twelve calls (`.7.4.1`) — and `git.rs` builds four ambient temporary paths from the process id alone (`.7.2.1`).
+
 ## 2026-09-11 — Gate file termination (`SIGNOFF-REPAIR.11.4.3.1.2.16`)
 
 - Register `FILE-TERMINATION`: every tracked text file ends with exactly one newline. Deliberately not a `git diff --check` wrapper — `ROADMAP.md` uses trailing double-spaces as Markdown hard line breaks, so that check's whitespace family has a legitimate use here and a blanket rule would teach bypass. A blank line at end of file does not, and is the defect that forced a correction commit.

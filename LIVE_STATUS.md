@@ -262,3 +262,14 @@ The full checkpoint has NOT passed and no push claim follows.
 `02-check` took 3,922s with only 940s accounted; that gap is owned by
 .11.4.3.1.2.15. Qualification categories are unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/site-operator-schema-usage.md.
+
+The re-run checkpoint on source-5c8609e stops earlier, at `02-check` (rc=2,
+2,608s): `pg_guard` panics creating a fixture directory named from the process
+id and a clock reading that this host does not advance between concurrent
+callers. REPAIR-0067 replaces the clock with a monotonic discriminator and skips
+an occupied candidate; 0 failures in 60 parallel runs against 1 in 15 before.
+The family census it triggered found two production instances with concrete
+owners: evidence identifiers minted from the same shape, measured at about one
+distinct value per twelve calls (.7.4.1), and four ambient Git scratch paths
+built from the process id alone (.7.2.1). The full checkpoint has NOT passed.
+Qualification categories are unchanged.

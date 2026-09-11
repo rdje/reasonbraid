@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Correct the browser evidence instrument (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
+
+- REPAIR-0074's upload returned byte COUNTS and no bytes: the artifact held only `worker.json` per fixture, reporting `stderr_bytes: 403` while the 403 bytes themselves stayed on the runner.
+- The glob named `browser.stderr`, `owner.json` and `completion.json` — filenames from the book's description of the PRODUCTION worker's storage. The test harness writes `stdout.log` and `stderr.log` instead. The filenames were inferred rather than read from the code that writes them.
+- The upload now retains `target/browser-lifetime-controls/**` and `.project-data/browser/**` whole. The fixtures are a few hundred bytes each, so filtering bought nothing and cost the evidence.
+- What the counts do establish: the worker exits 0, writes 403 bytes of stderr and 108 of stdout, and confirms group cleanup — so it ran correctly and reported `browser_launch_failed` itself. The browser's own reason remains unproved.
+
 ## 2026-09-11 — Retain the browser worker's own stderr in CI (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
 
 - The conformance repair held and `pg-tests` succeeded remotely for the first time — the full PostgreSQL collection on a runner. The `check` job now fails in `reasonbraid-browse`: six tests with `browser_launch_failed`, "browser exited before publishing a loopback endpoint".

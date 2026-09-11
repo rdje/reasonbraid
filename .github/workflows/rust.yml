@@ -38,20 +38,20 @@ jobs:
             target/ci-browser/*/version.log
           if-no-files-found: ignore
 
-      # The worker already writes the browser's own stderr, its ownership and
-      # completion receipts for a failed or unconfirmed invocation. Without this
-      # they never leave the runner, so a launch failure arrives as a symptom
-      # with no cause — the gap that cost a CI cycle in .11.4.3.1.2.19.
+      # The harness writes stdout.log, stderr.log and worker.json per fixture,
+      # and the production worker keeps its own receipts under .project-data.
+      # Retain the whole tree rather than named files: the first attempt globbed
+      # filenames taken from the book's description of the PRODUCTION worker and
+      # missed the harness's actual `stderr.log`, so a run returned byte COUNTS
+      # and no bytes. The fixtures are a few hundred bytes each.
       - name: Retain browser worker evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-worker-evidence
           path: |
-            target/browser-lifetime-controls/**/browser.stderr
-            target/browser-lifetime-controls/**/owner.json
-            target/browser-lifetime-controls/**/completion.json
-            target/browser-lifetime-controls/**/*.json
+            target/browser-lifetime-controls/**
+            .project-data/browser/**
           if-no-files-found: ignore
 
   pg-tests:

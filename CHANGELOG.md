@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Repair three dead book links and check the rest (`SIGNOFF-REPAIR.11.4.3.1.2.18`)
+
+- `docs/book/book/cli.html` rendered `href="docs/book/src/cli-state.html"`, a page that does not exist. A census of the whole book found 29 intra-book links with exactly 3 broken, all in the CLI chapters.
+- The cause is worth recording: `DOCPATH` requires repo-root-relative references, an author applied that to intra-book navigation, and mdBook resolves a link relative to its own page. The doctrine's intent was satisfied and the navigation broke — in the surface the director reads.
+- Register `BOOK-LINKS` so the book's own navigation is enforced rather than assumed. External URLs stay out of scope deliberately: a network call in a commit hook is a flake generator. The negative control reintroduces the exact original link and is detected.
+
 ## 2026-09-11 — The full pre-push checkpoint passes (`SIGNOFF-REPAIR.11.4.3.1.2`)
 
 - All eight checkpoint commands return 0 at source `7233122`: build, format/strict lint/workspace tests with the pinned browser, Python controls, the full owned PostgreSQL collection with `--demo`, thirteen doctrines, pinned cargo-deny, pinned Gitleaks and the book. Every earlier attempt stopped somewhere.

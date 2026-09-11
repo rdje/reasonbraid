@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A content-matching check also matches a description of that content
+
+- Three links in the book were dead — `docs/book/book/cli.html` rendered a path to a page that does not exist — and `mdbook build` does not validate links, so nothing noticed in the surface the director actually reads. A census found exactly 3 broken of 29.
+- The cause was a doctrine working correctly. `DOCPATH` requires repo-root-relative references so no checkout-specific absolute path is embedded; an author applied that rule to intra-book navigation, where mdBook resolves a link relative to its own page. The intent was satisfied and the navigation broke. A rule can be obeyed and still do damage when its scope is assumed rather than stated.
+- Then the leaf recording that fix was itself blocked by `DOCPATH`, because describing the rule required quoting the literal prefixes it forbids. This is the second time today: `VISIBILITY-POLICY` blocked a leaf that quoted the superseded instruction it exists to catch. It is a general property of any check that matches on content — the documentation of the rule is indistinguishable, to the matcher, from a violation of it.
+- The right response both times was to describe by shape rather than by literal, and to leave the literal where it belongs: in the preserved evidence record and in git history. The alternative — an allowlist entry for every leaf that explains a rule — would erode the check one exception at a time.
+- promotion: declined (the durable rules are the registered `BOOK-LINKS` doctrine and its mirror in DOCTRINE_ENFORCEMENT.md; this records the interaction between checks and their own documentation, which is a working note rather than a new cross-cutting decision).
+
 ## 2026-09-11 — A name that describes the shape instead of the guarantee
 
 - `uuid_like_suffix()` returned `format!("{:x}{:x}", nanos, pid)`. It looks like a UUID and has none of the distinctness a UUID exists to provide. Measured on this host: 8 collisions in 10 calls, 918 in 1,000, 269 among 400 across eight threads. It minted `snp_`, `drv_` and `asn_` primary keys — evidence identity.

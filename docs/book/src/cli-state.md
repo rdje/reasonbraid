@@ -39,7 +39,7 @@ have no qualification claim here.
 
 ## Valid snapshots
 
-Version two adds the implemented [bootstrap recovery record schema](docs/book/src/cli-bootstrap-state.md).
+Version two adds the implemented [bootstrap recovery record schema](cli-bootstrap-state.md).
 New-human enrollment emits those records before HTTP; matching pending work reuses
 its key and other writers refuse. Version-zero/version-one wire shapes remain unchanged.
 
@@ -143,7 +143,7 @@ validates a complete keyed reply, publishes its principal and receipt, then clea
 pending under the same lock. After cleanup, use `--resume-bootstrap` to recover
 the retained historical result if output was lost; a normal no-pending invocation
 intentionally creates another tenant. See the
-[request and recovery examples](docs/book/src/cli-bootstrap-state.md).
+[request and recovery examples](cli-bootstrap-state.md).
 Broader interruption/restart qualification remains open. Successful lock release
 alone is not evidence that repeating an unkeyed request is safe.
 

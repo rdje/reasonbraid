@@ -1566,6 +1566,15 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification / commit: pending.
 
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.18 — Repair three dead book links and check the rest
+
+- Status: `done`; REPAIR-0070. Found by a read-only census taken while the checkpoint ran.
+- Reproduce, from the RENDERED output rather than inference: `docs/book/book/cli.html` contains `href="docs/book/src/cli-state.html"`, and `docs/book/book/docs/book/src/cli-state.html` does not exist — the page is `docs/book/book/cli-state.html`. A census of the whole book finds 29 intra-book links of which exactly 3 do not resolve: `docs/book/src/cli.md:133` and `docs/book/src/cli-state.md:42,146`. The other 26 render correctly from the same pages.
+- Root cause: the `DOCPATH` doctrine requires tracked Markdown to use repo-root-relative references so no checkout-specific absolute path is embedded. An author applied that rule to INTRA-BOOK navigation, where mdBook resolves a link relative to its own page. The doctrine's intent was satisfied and the navigation broke, and `mdbook build` does not validate links — so nothing noticed, in the surface the director actually reads. This is the same shape as `BOOK-FRONTIER`: a rule about the book with no mechanical check over the book's own integrity.
+- Fix: the three links become sibling-relative, which does not breach `DOCPATH` — that check forbids absolute paths that reach into a user's home directory, and a sibling filename is neither. `scripts/check_book_links.sh` then makes the property enforced: every intra-book link must resolve. External URLs are deliberately out of scope, because a network call inside a commit hook is a flake generator, and prose references to repository files are unaffected because the book writes them as inline code rather than as links.
+- Verification: the census returns 0 broken after the fix. `--self-test` verifies eight extractions — anchors stripped, `http`/`https`/`mailto`/`#` skipped, inline-code paths ignored, multiple links per line. The negative control reintroduces the exact original link and the check returns rc=1 naming the page and target; the restored tree returns rc=0. `bash scripts/check_doctrines.sh` prints `=== all doctrines green ===`. Documentation and one check script only; no production source, behavior or qualification category changes.
+- Commit: `REASONBRAID-REPAIR-0070 (leaf SIGNOFF-REPAIR.11.4.3.1.2.18): repair three dead book links and check the rest`. promotion: declined (the durable rule is the registered doctrine and its mirror in DOCTRINE_ENFORCEMENT.md).
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.1 — Audit and contain the publication-precondition conflict
 
 - Status: `done`; owns the unexpected visibility result and checkpoint stop before any publication. Authenticated gh repo view reports rdje/reasonbraid isPrivate=false, default main; existing Git transport reports remote main b932c054023ea127520e74cfaf95b9bdf1ea47fe. README.md:4 and docs/adr/001-uncleared-working-name.md:36 require private visibility until named clearance. No clearance or public-push authorization has been established.
@@ -1760,6 +1769,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.18`: `REASONBRAID-REPAIR-0070 (leaf SIGNOFF-REPAIR.11.4.3.1.2.18): repair three dead book links and check the rest`.
 
 - `SIGNOFF-REPAIR.7.4.1`: `REASONBRAID-REPAIR-0068 (leaf SIGNOFF-REPAIR.7.4.1): mint distinct evidence identifiers`.
 

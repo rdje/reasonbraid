@@ -42,6 +42,13 @@ if ! scripts/check_file_termination.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every intra-book link resolves (`.11.4.3.1.2.18`): mdbook does not check them,
+# so three dead links shipped to the surface the director reads.
+if ! scripts/check_book_links.sh >/dev/null 2>&1; then
+    scripts/check_book_links.sh >&2
+    exit 1
+fi
+
 # The SDK compatibility matrix (`.4.2`): the token + the evidence artifacts
 # must agree with the code — the matrix is evidence-bound, never prose-bound.
 if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then

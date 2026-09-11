@@ -1047,6 +1047,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+### SIGNOFF-REPAIR.11.5 — Assess the verification strategy for a networked agent platform
+
+- Status: `pending`; captured 2026-09-11 at the director's request. Proposal only — no pivot, and no change to the accepted §19 test strategy.
+- Why it was raised: the director asked how this project intends to exercise its corners, given an agent network over a LAN or the Internet, and whether MCP helps. The answer rests on measured evidence rather than opinion: of the six defects repaired in `REPAIR-0060`–`0068`, NONE was a wrong return value. Each was an identity, lifetime, ordering, concurrency or environment property, found by an instrument that asked the operating system or the catalogue a question — `ps`, `pg_namespace.nspacl`, a process-table probe, a distinctness counter, and a stage census.
+- Owns: assess the proposal in `docs/tasks/artifacts/signoff_review/verification-strategy-proposal.md` against ROADMAP §19, and decide which parts become tracked work. Its four ranked proposals are a falsification requirement for new controls, a pipeline-stage coverage registry, the unbuilt `reasonbraid-simulator` with invariants over the event log, and an adversarial concurrency lane. Its MCP finding is that MCP widens reachability and supplies an external conformance yardstick, but caught none of the six defects, is itself unqualified on its wire (`.6.1`–`.6.3` open), and must stay in a conformance lane rather than the correctness lane per ROADMAP §25's stop/reframe trigger.
+- Binding constraint on any outcome: the full checkpoint already takes roughly two hours with about 2,982 seconds unaccounted (`.11.4.3.1.2.15`). New lanes arrive with a tiering story or they get routed around, and a gate people route around is a gate that lies.
+- Verification / commit: pending; this leaf is an assessment, so its acceptance is a recorded decision about scope, not a test run.
+
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
 - Status: `active`; `.11.4.1` rotation is complete, and broader containment/claim reconciliation remain `.11.4.2`–`.11.4.3`.

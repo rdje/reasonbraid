@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Own the extraction input exclusively (`SIGNOFF-REPAIR.7.3.3.3.1`)
+
+- Create one private 0600 extraction input per request under a runtime-discovered repository root, with checked owned same-volume parents, bounded exclusive candidate allocation and no temporary-directory or home fallback. An occupied candidate is skipped whole — never opened, truncated or adopted.
+- Gate removal on both a finished reader (`WorkerCompletion::reader_finished`, added beside `is_consumed`) and an unchanged (device, inode, one link) identity; retain anything else with its repository-relative path named. The store removes one file it created, or nothing.
+- Expose the written bytes' digest in the worker's own `sha256:<hex>` form so a response can be bound to its source. Eleven controls pass, including 32 simultaneous creators holding 32 distinct documents and the real worker describing an owned input by its own digest.
+- One control was itself racy on ambient worker selection. A widening probe and the failed run's own retained input identify it; both controls now serialize selection and 40 repeated runs pass. `api.rs` is unchanged and still carries the superseded span until `.7.3.3.3.2`.
+
 ## 2026-09-11 — Mechanize the visibility policy and drop the duplicated book frontier (`SIGNOFF-REPAIR.11.4.3.1.2.13`)
 
 - Correct the two places where the superseded private-visibility instruction survived two hand-run censuses: the book's introduction and the governance charter's single-owner clause. The accepted director correction is unchanged; no visibility, remote or release setting moves.

@@ -40,6 +40,7 @@ pub mod deployments;
 pub mod derivations;
 pub mod evaluation;
 pub mod extraction;
+pub mod extraction_input;
 pub mod federation;
 pub mod fetcher;
 pub mod git;

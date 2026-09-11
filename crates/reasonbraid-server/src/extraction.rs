@@ -122,11 +122,16 @@ pub enum WorkerCompletion {
 }
 
 impl WorkerCompletion {
-    /// True when this process knows the direct child is finished and reaped.
-    /// A caller that must not delete a worker's input before the reader is
-    /// done checks THIS, never the request's success alone.
+    /// True when a direct child existed and this process reaped it.
     pub fn is_consumed(&self) -> bool {
         matches!(self, Self::Consumed { .. })
+    }
+
+    /// True when no worker process can still be reading this request's input:
+    /// either none was ever started, or this process observed its exit. This —
+    /// never the request's success — is what gates deleting that input.
+    pub fn reader_finished(&self) -> bool {
+        !matches!(self, Self::Unconfirmed { .. })
     }
 }
 

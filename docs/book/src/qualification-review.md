@@ -136,3 +136,14 @@ unobserved termination. Sixteen process/evidence controls, six spawner controls
 tests and strict lint pass. Exclusive same-volume inputs and digest-bound
 cleanup remain .7.3.3.3; pipes, descendants and retained storage remain .7.3.4.
 See `docs/tasks/artifacts/signoff_review/extraction-worker-completion.md`.
+
+Exclusive input ownership .7.3.3.3.1 now provides the store the API will use:
+one private 0600 file per request under a runtime-discovered repository root,
+occupied candidates skipped whole, and removal gated on both a finished reader
+and an unchanged file identity. Eleven controls pass, including 32 simultaneous
+creators holding 32 distinct documents and the real worker describing an owned
+input by its own digest. One control was itself racy and is root-caused by its
+own retained input; both now serialize worker selection. No production caller
+uses the owner yet — `.7.3.3.3.2` wires the R2 API and makes the digest
+comparison a refusal before persistence. See
+`docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.

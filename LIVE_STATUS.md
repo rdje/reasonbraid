@@ -216,3 +216,17 @@ BOOK-FRONTIER — each falsified by reintroducing the exact defect it exists for
 Documentation and enforcement only: no visibility, remote, production or
 qualification-category change. Decision:
 docs/decisions/2026-09-11_mechanized-document-invariants.md.
+
+Exclusive extraction input ownership .7.3.3.3.1 is complete under REPAIR-0063.
+One private 0600 file per request is created under a runtime-discovered
+repository root with checked owned parents; occupied candidates are skipped
+whole and removal requires both a finished reader and an unchanged (device,
+inode, one link) identity, retaining anything else with its relative path named.
+Eleven controls pass — 32 simultaneous creators hold 32 distinct documents, and
+the real worker describes an owned input by its own digest. 90 server library
+tests, 16 completion controls, 12 adjacent extractor tests, strict server lint
+and format pass. One control was itself racy on ambient worker selection; a
+widening probe and its own retained input identify it, and the serialized
+controls pass 40 repeated runs. api.rs is unchanged and still carries the
+superseded span until .7.3.3.3.2. Qualification categories are unchanged.
+Evidence: docs/tasks/artifacts/signoff_review/extraction-owned-input.md.

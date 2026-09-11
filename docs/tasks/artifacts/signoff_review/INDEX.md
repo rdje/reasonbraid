@@ -1,5 +1,6 @@
 # Full-read source census
 
+- [Exclusively owned extraction inputs](docs/tasks/artifacts/signoff_review/extraction-owned-input.md) — `.7.3.3.3.1`: runtime-rooted private store, skipped occupied candidates, identity-checked release gated on a finished reader. Eleven controls plus adjacent suites and strict lint pass; one racy control is root-caused by its own retained input. api.rs wiring stays .7.3.3.3.2.
 - [Direct extraction worker completion](docs/tasks/artifacts/signoff_review/extraction-worker-completion.md) — `.7.3.3.2.2`: reproduced abandoned live worker after an early request failure; one bounded stop/reap and explicit never-started/consumed/unconfirmed evidence. 22 controls, strict lint and adjacent suites pass; pipes/descendants stay .7.3.4 and exclusive inputs stay .7.3.3.3.
 - [Production extraction input boundary](docs/tasks/artifacts/signoff_review/extraction-input-boundary.md) — `.7.3.3.1`: six native-clock path collisions and eight wrong-owner actual-worker results; staged completion/storage repair follows.
 

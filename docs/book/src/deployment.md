@@ -733,6 +733,38 @@ repository workspace. They do not qualify hostile concurrent directory changes o
 the server's still-pending production R2 input/worker isolation boundary.
 
 
+### Where an extraction input lives, and when it is deleted
+
+An extraction request's acquired bytes reach the worker through a file. A name
+built from a process id and a nanosecond field is a guess about uniqueness, and
+a write that truncates whatever is already there turns that guess into another
+request's loss — which is exactly what `.7.3.3.1` reproduced.
+
+The server now creates one private file per request, mode 0600, under
+`.project-data/extraction` below the repository root it discovers at runtime
+from the current directory. Nothing persists an absolute path, so moving the
+checkout moves the store; there is no temporary-directory or home fallback, and
+an unusable location refuses rather than writing somewhere quieter. Every parent
+is proved to be a directory this process owns, on the same volume, and not
+writable by group or other. An occupied candidate name is skipped whole — never
+opened, truncated or adopted.
+
+Deleting that input needs two facts, and a successful response is neither: no
+worker may still be able to read it (none was started, or the spawner observed
+its exit), and the file must still be the exact one created — same device, same
+inode, one link. A file failing either test is retained, with its
+repository-relative path printed. For example, an unconfirmed worker leaves its
+input in place and says so, and a file that something else replaced is never
+deleted. The store removes one file it created, or nothing.
+
+The owner also exposes the digest of the bytes it wrote, in the worker's own
+`sha256:<hex>` form, so a response can be bound to the source that produced it.
+`.7.3.3.3.2` wires the R2 API onto this owner and makes that comparison a
+refusal before anything is persisted; until then the API keeps its superseded
+span. Evidence:
+`docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
+
+
 ### The extraction worker's completion contract
 
 The server spawns one direct worker process per extraction and owns exactly that

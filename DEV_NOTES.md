@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — The retained input identified the control that failed
+
+- A name proposes an input; exclusive creation proves one. The superseded span picks `<pid>-<subsec_nanos>` under an ambient temp dir and truncates whatever holds it, which is why 32 callers produced six shared paths. The replacement creates one 0600 file per request with `create_new` over at most 64 v7-UUID candidates and SKIPS an occupied candidate whole rather than opening or adopting it.
+- Parent ownership is checked without adding a dependency: a file this process just created carries this process's effective uid, so that file is the reference for proving each parent is ours, same-device and not group/other-writable. Reaching for `geteuid` would have added a crate to answer a question the filesystem already answered.
+- Deletion needs two independent facts and a successful response is neither: no reader can still hold the input, and the file is still the exact one created (device, inode, one link). `NeverStarted` releases — no child existed — while `Unconfirmed` retains. Gating on `is_consumed` instead would litter the private store on every absent binary and failed spawn while proving nothing extra, which is why `reader_finished` exists as a separate predicate.
+- A runtime root predicate must identify the REAL root. `Cargo.toml` + `migrations` is satisfied by `crates/reasonbraid-node`, so a process working there would have placed private storage inside that crate. `rust-toolchain.toml` exists only at the root. The browser worker still carries the weaker pair; that is routed to its owner rather than changed in passing.
+- One control failed once and then passed 40 times. Two independent observations closed it instead of a rerun: a probe that widens the `R2_WORKER_BIN` window shows an unsynchronized caller receiving a sibling's worker and its `sha256:0000…` digest, and the failed run's RETAINED input held the caller's own bytes — so the response was wrong, not the input, and only one control asserts digest equality. The retention mechanism this leaf added produced the evidence that identified its own failing control.
+- The defect was the same class the leaf exists to repair: ambient shared state standing in for owned state, this time in the controls themselves. Worth remembering that a test harness is production for the purposes of that mistake.
+- promotion: promoted → `docs/decisions/2026-09-11_owned-extraction-input.md`; owner `SIGNOFF-REPAIR.7.3.3.3.1`.
+
 ## 2026-09-11 — A second copy of a fact is a defect with a delay fuse
 
 - The superseded private-visibility instruction survived two corrections: `.2.3` applied the director's ruling, `.2.4` caught a missed CI-guide sentence, and the book introduction plus the governance charter still carried it on 2026-09-11. Neither correction was careless. The instrument was: a hand-run census measures a moving corpus once.

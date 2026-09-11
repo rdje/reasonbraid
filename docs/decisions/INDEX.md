@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-11_extraction-worker-completion.md](docs/decisions/2026-09-11_extraction-worker-completion.md) | decision | report direct extraction worker completion through one bounded stop/reap; never abandon a live child or claim an unobserved termination |
 | [2026-09-10_extraction-input-boundary.md](docs/decisions/2026-09-10_extraction-input-boundary.md) | decision | reproduced production input interference; require worker completion, exclusive ownership and source digest binding before cleanup/persistence |
 | [2026-09-10_extraction-fixture-ownership.md](docs/decisions/2026-09-10_extraction-fixture-ownership.md) | decision | exclusive extraction fixture creation, witnessed native-clock collisions and separately owned production acquisition risk |
 | [2026-09-10_state-lock-release.md](docs/decisions/2026-09-10_state-lock-release.md) | decision | explicitly release acquired flock ownership while preserving successor exclusion and abrupt-process-loss boundaries |

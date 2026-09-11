@@ -733,6 +733,47 @@ repository workspace. They do not qualify hostile concurrent directory changes o
 the server's still-pending production R2 input/worker isolation boundary.
 
 
+### The extraction worker's completion contract
+
+The server spawns one direct worker process per extraction and owns exactly that
+process. Every return now says which of three things is true about it: no child
+was started (the worker binary was absent, or the spawn failed), this process
+observed the child's exit and reaped it, or a bounded stop left that unresolved.
+These are separate facts from the request's own outcome — a named refusal is
+still a finished worker, and a tripped time budget says nothing by itself about
+whether the stop was observed.
+
+Every exit path passes through one bounded stop and reap. A worker whose stdin
+is already closed gets 500 ms to finish on its own before the stop escalates to
+a signal; a tripped time budget skips that grace, because the killing budget is
+the quarantine's enforcement. The whole cleanup is capped at five seconds, so a
+worker that ignores the signal cannot hold its caller open. A stop request that
+fails is recorded in the evidence and the wait continues; it never becomes a
+claimed termination.
+
+For example, a request write that fails after the worker has closed its stdin
+used to return while that worker was still running with nobody waiting for it.
+A permanent control reproduces exactly that and asks the operating system
+whether the recorded pid is still in the process table — a reaped child has no
+entry, and a killed-but-unreaped child is still a zombie entry, so one
+observation covers stop and reap together.
+
+Callers read the completion through `run_extraction_reporting`; the established
+`run_extraction` keeps its call shape and error classification and is what the
+R2 API still uses. An input whose reader has not been confirmed finished must be
+retained, so `.7.3.3.3` migrates that caller before it gates input cleanup on
+this evidence. The error vocabulary is unchanged; only the timeout message
+dropped a kill it had not confirmed.
+
+This is evidence about one process. Descendants that worker may start, pipe
+pressure, total deadlines and aggregate retained storage remain `.7.3.4`; the
+spawner still drains stdout only after the child exits. Sixteen process and
+evidence controls plus six spawner controls pass, four of them deliberately
+synthetic injections — no cooperative worker reproduces an unkillable process on
+demand. See
+`docs/tasks/artifacts/signoff_review/extraction-worker-completion.md`.
+
+
 The subsequent production-boundary diagnosis under .7.3.3.1 uses the exact
 server input-name/write span and unchanged extraction module/worker. With 32
 simultaneous input owners, six paths collide and eight worker responses describe

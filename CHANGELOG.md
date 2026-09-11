@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Own direct extraction worker completion (`SIGNOFF-REPAIR.7.3.3.2.2`)
+
+- Permanent process-fact controls reproduce the defect on the unchanged spawner: `7 passed; 1 failed`, an early request failure returning while its direct worker was still in the process table. The controlled worker closes stdin and waits on an explicit release; an 8 MiB media type forces the real `EPIPE` write path.
+- One bounded stop and reap now owns every exit path (500 ms grace, zero grace after a tripped budget, five-second cap). Every return reports never-started, consumed or explicitly unconfirmed completion, and a failed stop request is recorded rather than read as a termination. Two piped-handle panics became typed refusals and the timeout message dropped a kill it had not confirmed.
+- 16 process/evidence controls, 6 spawner controls (four synthetic injections), 81 server library tests, 12 adjacent extractor tests, strict server lint and workspace format pass; `api.rs` is byte-identical and the error vocabulary is unchanged. Exclusive same-volume inputs and digest-bound cleanup remain `.7.3.3.3`; pipes, descendants and aggregate storage remain `.7.3.4`. No HTTP, database, full-CI or push claim.
+
 ## 2026-09-11 — Preserve the requested clean handoff (`SIGNOFF-REPAIR.7.3.3.2.1`)
 
 - Record the direct-worker completion diagnostic plan and pending implementation child before any new probe or production edit. PNT is paused at the director's request; resume .7.3.3.2.2 from durable task/live pointers.

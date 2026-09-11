@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — A returned error does not end ownership of the process that produced it
+
+- The eight permanent controls ran first against the unchanged 9,196-byte spawner and returned `7 passed; 1 failed` in 46.10 seconds: `an_early_request_failure_never_abandons_a_live_worker` reported pid 39486 still in the process table after `run_extraction` returned `RequestFailed`. Seven siblings passed, scoping the defect to the early-return paths rather than the exchange.
+- Root cause: `?` propagated the write and `try_wait` failures while the frame still owned its `std::process::Child`, and dropping a `Child` neither waits nor signals. The timeout branch called `kill` then an unbounded `wait` and discarded both results, so a failed stop was indistinguishable from a confirmed one.
+- `exchange` now performs the request/response and returns; one bounded `stop_and_reap` owns every exit path with a 500 ms grace, a zero grace after a tripped budget and a five-second total cap. `WorkerCompletion` reports `NeverStarted`, `Consumed { success, status }` or `Unconfirmed { pid, detail }`. A failed stop request is recorded in the evidence and the wait continues.
+- The process-table probe is the measurement that covers both halves: a reaped child has no entry and a killed-but-unreaped child is still a zombie entry, so one observation proves stop AND reap. Four `Unconfirmed` controls are explicitly synthetic injections against a private `DirectChild` seam; no cooperative worker reproduces an unkillable process or an unreadable status on demand.
+- `run_extraction` keeps its signature and delegates, so `api.rs` stays byte-identical and the five `ExtractionError` variants keep their classification; only the timeout message dropped the "(the worker was killed)" clause it had not verified. 16 + 6 controls, 81 library tests, 12 adjacent extractor tests, strict lint and format pass. Exclusive inputs/digest binding stay `.7.3.3.3`, pipes/descendants/retention stay `.7.3.4`, and the browse worker's identical unverified timeout wording stays `.7.3.1`.
+- promotion: promoted → `docs/decisions/2026-09-11_extraction-worker-completion.md`; owner `SIGNOFF-REPAIR.7.3.3.2.2`.
+
 ## 2026-09-10 — Bind extraction results to owned input bytes
 
 - Byte-identical 479-byte production input acquisition span plus unchanged server module/actual worker reproduces six shared paths and eight wrong-owner responses among 32 callers. All 24 unique inputs and five original identities remain preserved. Independent source/file/chunk digest reconciliation distinguishes input interference from parser corruption; two unchanged-worker positive controls pass.

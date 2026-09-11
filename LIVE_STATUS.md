@@ -189,3 +189,18 @@ claimed. Direct-worker completion .7.3.3.2 and exclusive input/digest integratio
 .7.3.3.3 precede the full checkpoint; larger transport/retention limits stay .7.3.4.
 Qualification categories remain unchanged. Evidence:
 docs/tasks/artifacts/signoff_review/extraction-input-boundary.md.
+
+
+Direct-worker completion .7.3.3.2 is repaired and qualified under REPAIR-0060.
+The permanent controls first reproduced the defect on the unchanged spawner:
+`7 passed; 1 failed`, with an early request failure leaving pid 39486 in the
+process table after the spawner returned. Every exit path now passes through one
+bounded stop and reap, and every return reports never-started, consumed or
+explicitly unconfirmed completion; a failed stop request is recorded rather than
+read as a termination. Sixteen process/evidence controls, six spawner controls
+(four synthetic injections), 81 server library tests, twelve adjacent extractor
+tests, strict server lint and workspace format pass; api.rs is byte-identical.
+Exclusive same-volume inputs and digest-bound cleanup remain .7.3.3.3; pipes,
+descendants and aggregate retained storage remain .7.3.4. No HTTP, database,
+full-CI or push claim follows. Qualification categories remain unchanged.
+Evidence: docs/tasks/artifacts/signoff_review/extraction-worker-completion.md.

@@ -125,3 +125,14 @@ input, and a response for different bytes must be refused before persistence.
 Unconfirmed reader completion must retain its input. Pipe/output bounds,
 descendant containment and aggregate retained-storage limits remain .7.3.4.
 See `docs/tasks/artifacts/signoff_review/extraction-input-boundary.md`.
+
+Direct-worker completion .7.3.3.2 is now repaired and qualified. The permanent
+controls first reproduced the defect on the unchanged spawner: an early request
+failure returned while its worker was still in the process table. Every exit
+path now passes through one bounded stop and reap, and every return reports
+never-started, consumed or explicitly unconfirmed completion without claiming an
+unobserved termination. Sixteen process/evidence controls, six spawner controls
+(four synthetic injections), 81 server library tests, twelve adjacent extractor
+tests and strict lint pass. Exclusive same-volume inputs and digest-bound
+cleanup remain .7.3.3.3; pipes, descendants and retained storage remain .7.3.4.
+See `docs/tasks/artifacts/signoff_review/extraction-worker-completion.md`.

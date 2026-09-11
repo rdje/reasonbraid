@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — Checking the thing I was about to "repair on principle"
+
+- I had carried a note that the extract test helper shared the inode-reuse weakness REPAIR-0079 fixed, and was about to open a leaf for it. It does not. It holds an open `File` for the owner's life and compares the path against that LIVE descriptor plus `nlink == 1` — the same shape as the repaired production owner. The weak form was comparing against a `Metadata` captured at creation with the descriptor already closed, which is a different thing that happens to look similar in a grep.
+- Second false entry I have had to correct in a durable record today, both the same class: a claim carried forward from an earlier reading instead of re-derived. The first was a "still open" remote failure list the runner had already cleared. Writing it down does not make it true later.
+- The measurement, for the record: on APFS a successor at the same path never reused the inode in either case — 0 of 300 with the descriptor held, 0 of 300 with it closed. So this machine cannot tell the sound shape from the unsound one, which is exactly why the unsound one survived here until ext4 exposed it. A probe that cannot fail is not evidence, and I should say so when reporting one.
+- promotion: accepted — `docs/knowledge/proving-a-path-still-names-what-you-created.md`, which answers the identity question for both files and directories and records the platform's blindness to it.
+- And promoting it found a defect in the promotion machinery itself. The LESSON-PROMOTION gate offers `docs/knowledge/<slug>.md` as one of its two remedies, the Knowledge Map generator scanned only `subsystems.md`, `docs/tasks/` and `docs/decisions/`, and `docs/knowledge/` did not exist. So that remedy produced a record no one could find by question — **precisely the defect the gate exists to stop**, reachable by following the gate's own instructions. The gate went green on a promotion that had not actually promoted anything.
+- Worth stating plainly: a gate that checks for the ARTIFACT of a remedy rather than the EFFECT of it can certify its own failure mode. I only caught it because I checked whether the map listed the file, which the gate never asked me to do. The generator now indexes `docs/knowledge/` and prints each record's `answers:` line, so the map is searchable by question rather than filename.
+
 ## 2026-09-11 — The branch that only runs on a stranger's machine
 
 - The `pg_guard` parent creation had a race I could reproduce on this machine 346 times in 640 tries, and it had never once failed a local test run. Both facts are true and the reconciliation is the whole lesson: the racing branch is guarded by `if !parent.exists()`, and after the first local run the parent always exists. The branch is dead code here and live code on every fresh checkout.

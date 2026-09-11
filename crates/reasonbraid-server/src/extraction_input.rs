@@ -23,7 +23,11 @@ use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-use crate::extraction::WorkerCompletion;
+use std::time::Duration;
+
+use crate::extraction::{
+    run_extraction_reporting, ExtractionError, WorkerCompletion, WorkerLimits, WorkerResponse,
+};
 
 /// How many private names may be tried before giving up. A v7 UUID does not
 /// collide in practice; the bound exists so an occupied or hostile directory
@@ -39,6 +43,7 @@ pub struct OwnedInput {
     identity: (u64, u64),
     digest: String,
     released: bool,
+    reported: bool,
 }
 
 impl OwnedInput {
@@ -79,6 +84,7 @@ impl OwnedInput {
             identity: (created.dev(), created.ino()),
             digest: crate::fetcher::digest_sha256_hex(bytes),
             released: false,
+            reported: false,
         };
         if let Err(error) = owner.check_parents(created.uid(), created.dev()) {
             // Our own file, created moments ago under a parent we now distrust:
@@ -115,7 +121,30 @@ impl OwnedInput {
     /// An unconfirmed reader may still hold the path open, so the input is
     /// retained and the completion evidence is named. A changed identity means
     /// something replaced the file; that successor is never deleted.
+    ///
+    /// A retention is REPORTED here exactly once, so a caller that cannot act
+    /// on the error may discard it without the fact going unrecorded.
     pub fn release(&mut self, completion: &WorkerCompletion) -> io::Result<()> {
+        match self.remove(completion) {
+            Ok(()) => {
+                self.released = true;
+                Ok(())
+            }
+            Err(error) => {
+                if !self.reported {
+                    self.reported = true;
+                    crate::log_event!(
+                        "extraction_input_retained",
+                        "input" => self.relative().display().to_string(),
+                        "reason" => error.to_string(),
+                    );
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn remove(&self, completion: &WorkerCompletion) -> io::Result<()> {
         if !completion.reader_finished() {
             return Err(io::Error::other(format!(
                 "the extraction input {} is retained: {completion}",
@@ -125,10 +154,7 @@ impl OwnedInput {
         self.verify()?;
         std::fs::remove_file(&self.path)?;
         match std::fs::symlink_metadata(&self.path) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                self.released = true;
-                Ok(())
-            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             _ => Err(io::Error::other(format!(
                 "the extraction input {} removal is unconfirmed",
                 self.relative().display()
@@ -172,10 +198,11 @@ impl OwnedInput {
 
 impl Drop for OwnedInput {
     fn drop(&mut self) {
-        if !self.released {
-            eprintln!(
-                "retained extraction input: {} (its reader was never confirmed finished)",
-                self.relative().display()
+        if !self.released && !self.reported {
+            crate::log_event!(
+                "extraction_input_retained",
+                "input" => self.relative().display().to_string(),
+                "reason" => "the owner was dropped without releasing the input",
             );
         }
     }
@@ -227,6 +254,38 @@ fn storage(root: &Path) -> io::Result<PathBuf> {
         }
     }
     Ok(path)
+}
+
+/// Extract one acquired document through an input this process owns.
+///
+/// This is the whole R2 boundary in one call: the bytes become a private file,
+/// the worker reads that file, the response is BOUND to the bytes that were
+/// supplied, and the input is released only once no reader can still hold it.
+/// A response describing anything else is refused here — before a caller can
+/// persist a snapshot, a derivation or a receipt from it.
+pub fn extract_acquired_bytes(
+    bytes: &[u8],
+    media_type: &str,
+    limits: WorkerLimits,
+    time_budget: Duration,
+) -> Result<WorkerResponse, ExtractionError> {
+    let mut input = OwnedInput::create(bytes).map_err(|error| {
+        ExtractionError::RequestFailed(format!("the extraction input is unavailable: {error}"))
+    })?;
+    let run = run_extraction_reporting(input.path(), media_type, limits, time_budget);
+    let result = match run.result {
+        Ok(response) if response.parent_digest != input.digest() => {
+            Err(ExtractionError::SourceMismatch {
+                expected: input.digest().to_owned(),
+                received: response.parent_digest,
+            })
+        }
+        other => other,
+    };
+    // A retained input is reported by its owner exactly once; nothing here can
+    // safely delete a file whose reader may still hold it.
+    let _ = input.release(&run.completion);
+    result
 }
 
 #[cfg(test)]

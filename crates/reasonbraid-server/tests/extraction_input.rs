@@ -14,8 +14,10 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
-use reasonbraid_server::extraction::{run_extraction_reporting, worker_path, WorkerLimits};
-use reasonbraid_server::extraction_input::OwnedInput;
+use reasonbraid_server::extraction::{
+    run_extraction_reporting, worker_path, ExtractionError, WorkerLimits, WorkerResponse,
+};
+use reasonbraid_server::extraction_input::{extract_acquired_bytes, OwnedInput};
 
 const FEED: &[u8] = br#"<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -148,4 +150,164 @@ fn a_response_describing_other_bytes_disagrees_with_the_owned_input() {
         .release(&run.completion)
         .expect("the input is released");
     std::fs::remove_file(&stub).expect("the control removes its own stub");
+}
+
+// ---------------------------------------------------------------------------
+// The whole R2 boundary in one call (`.7.3.3.3.2`): the bytes become an owned
+// input, the worker reads it, the response is bound to those bytes, and the
+// input is released only once no reader can hold it. This is the entrypoint the
+// R2 API now uses, so these controls cover the API's extraction leg without a
+// database or an HTTP origin.
+// ---------------------------------------------------------------------------
+
+fn run_bound(media_type: &str, bytes: &[u8]) -> Result<WorkerResponse, ExtractionError> {
+    let guard = worker_selection();
+    let result = extract_acquired_bytes(
+        bytes,
+        media_type,
+        WorkerLimits::default(),
+        Duration::from_secs(30),
+    );
+    drop(guard);
+    result
+}
+
+fn run_bound_against(
+    stub: &std::path::Path,
+    bytes: &[u8],
+) -> Result<WorkerResponse, ExtractionError> {
+    let guard = worker_selection();
+    std::env::set_var("R2_WORKER_BIN", stub);
+    let result = extract_acquired_bytes(
+        bytes,
+        "application/atom+xml",
+        WorkerLimits::default(),
+        Duration::from_secs(30),
+    );
+    std::env::remove_var("R2_WORKER_BIN");
+    drop(guard);
+    result
+}
+
+fn executable_stub(name: &str, body: &str) -> PathBuf {
+    let path = scratch(name);
+    std::fs::write(&path, body).expect("the stub is written");
+    let mut permissions = std::fs::metadata(&path)
+        .expect("stub metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o700);
+    std::fs::set_permissions(&path, permissions).expect("the stub is executable");
+    path
+}
+
+/// The ordinary success path, end to end through the real worker.
+#[test]
+fn the_bound_extraction_returns_a_receipt_for_the_supplied_bytes() {
+    if !worker_path().exists() {
+        println!("SKIP: the extraction worker is absent — run `cargo test --all`");
+        return;
+    }
+    let response = run_bound("application/atom+xml", FEED).expect("the real worker responds");
+    assert_eq!(
+        response.parent_digest,
+        reasonbraid_server::fetcher::digest_sha256_hex(FEED),
+        "the receipt describes exactly the supplied bytes"
+    );
+    assert!(response
+        .chunks
+        .iter()
+        .any(|chunk| chunk.text.contains("Owned Input Feed")));
+}
+
+/// A named worker refusal survives the boundary verbatim.
+#[test]
+fn a_named_refusal_survives_the_bound_extraction() {
+    if !worker_path().exists() {
+        println!("SKIP: the extraction worker is absent — run `cargo test --all`");
+        return;
+    }
+    match run_bound("application/atom+xml", b"not a feed") {
+        Err(ExtractionError::WorkerRefused { kind, .. }) => assert_eq!(kind, "feed_unreadable"),
+        other => panic!("the named refusal must survive: {other:?}"),
+    }
+}
+
+/// THE refusal this child exists for: a response describing bytes the caller
+/// never supplied is rejected, with both digests named, so nothing derived from
+/// it can be persisted.
+#[test]
+fn a_response_for_other_bytes_is_refused_before_it_can_be_persisted() {
+    let stub = executable_stub(
+        "mismatch-worker.sh",
+        "#!/bin/sh\ncat > /dev/null\nprintf '%s\\n' '{\"parent_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"chunks\":[{\"digest\":\"sha256:aa\",\"text\":\"another document\"}],\"excluded\":[],\"extractor_version\":\"0.1.0\"}'\n",
+    );
+    match run_bound_against(&stub, FEED) {
+        Err(ExtractionError::SourceMismatch { expected, received }) => {
+            assert_eq!(
+                expected,
+                reasonbraid_server::fetcher::digest_sha256_hex(FEED)
+            );
+            assert_eq!(
+                received,
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            );
+        }
+        other => panic!("a response for other bytes must be refused: {other:?}"),
+    }
+    std::fs::remove_file(&stub).expect("the control removes its own stub");
+}
+
+/// A worker failure keeps its own classification through the boundary.
+#[test]
+fn a_worker_failure_keeps_its_classification_through_the_boundary() {
+    let stub = executable_stub("failing-worker.sh", "#!/bin/sh\ncat > /dev/null\nexit 3\n");
+    match run_bound_against(&stub, FEED) {
+        Err(ExtractionError::RequestFailed(detail)) => {
+            assert!(detail.contains("the worker exited with"), "{detail}");
+        }
+        other => panic!("a worker failure must surface: {other:?}"),
+    }
+    std::fs::remove_file(&stub).expect("the control removes its own stub");
+}
+
+/// Concurrent requests never see each other's document: each receipt describes
+/// the bytes its own caller supplied. This is the property the superseded
+/// process-id-and-nanoseconds input could not provide.
+#[test]
+fn concurrent_bound_extractions_each_describe_their_own_document() {
+    if !worker_path().exists() {
+        println!("SKIP: the extraction worker is absent — run `cargo test --all`");
+        return;
+    }
+    let callers: Vec<_> = (0..8u32)
+        .map(|index| {
+            std::thread::spawn(move || {
+                let bytes = format!(
+                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">\n  <title>Caller {index}</title>\n  <entry><title>Entry {index}</title><summary>body {index}</summary></entry>\n</feed>"
+                )
+                .into_bytes();
+                let response = run_bound("application/atom+xml", &bytes)
+                    .unwrap_or_else(|error| panic!("caller {index} failed: {error}"));
+                (index, bytes, response)
+            })
+        })
+        .collect();
+    for handle in callers {
+        let (index, bytes, response) = handle.join().expect("the caller finished");
+        assert_eq!(
+            response.parent_digest,
+            reasonbraid_server::fetcher::digest_sha256_hex(&bytes),
+            "caller {index} received a receipt for its own document"
+        );
+        let joined: String = response
+            .chunks
+            .iter()
+            .map(|chunk| chunk.text.as_str())
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(
+            joined.contains(&format!("Caller {index}")),
+            "caller {index} received another caller's text: {joined}"
+        );
+    }
 }

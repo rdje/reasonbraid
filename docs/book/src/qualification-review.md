@@ -144,6 +144,12 @@ and an unchanged file identity. Eleven controls pass, including 32 simultaneous
 creators holding 32 distinct documents and the real worker describing an owned
 input by its own digest. One control was itself racy and is root-caused by its
 own retained input; both now serialize worker selection. No production caller
-uses the owner yet — `.7.3.3.3.2` wires the R2 API and makes the digest
-comparison a refusal before persistence. See
-`docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
+uses the owner yet at that child. `.7.3.3.3.2` then wires the R2 API onto it:
+the handler's extraction leg is one bound call, and a response whose parent
+digest is not the supplied bytes' digest is refused as
+`extraction_source_mismatch` before any snapshot or derivation is written. Seven
+integration controls, the live `profiles` suite (31 passed) and strict lint pass.
+The production R2 input boundary `.7.3.3` is complete. One gap is explicit: no
+live test drives a successful acquisition through to a snapshot and derivation,
+because the live R2 test refuses at the loopback gate; `.7.3.3.4` owns that join.
+See `docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.

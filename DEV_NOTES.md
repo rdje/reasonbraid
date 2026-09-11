@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-11 — An exhaustive match is a design tool, not a chore
+
+- The R2 handler trusted the worker's receipt because it arrived. The worker's `parent_digest` is computed over the file it read and the caller knows the digest of the bytes it supplied; nothing joined the two, so a response describing another document would have been persisted as a snapshot and its derivations. `.7.3.3.1` had reproduced the wrong-owner responses; the missing piece was a caller that acts on the disagreement.
+- Adding `ExtractionError::SourceMismatch` as a NAMED variant made the compiler demand the handler's decision. A wildcard arm or a fold into `RequestFailed` would have compiled silently and produced a generic `extraction_failed` on the wire, hiding a misattribution behind a transport-shaped word. Keeping the enum exhaustively matched is what turned a new failure mode into a forced, reviewed mapping.
+- Collapsing the handler's twenty-five-line span into one `extract_acquired_bytes` call is what made the leg testable at all: the same seven controls that cover the boundary now cover the handler's use of it, with no database and no HTTP origin. A boundary that only exists inlined inside a handler can only be tested through the handler.
+- The wiring exposed a coverage gap worth more than the fix: no live test drives a SUCCESSFUL R2 acquisition through to a snapshot and derivation, because the live R2 test refuses at the loopback destination gate. That join is exactly where the misattribution would have become a persisted wrong record — a plausible reason an input defect survived a full historical phase closure. It is stated with its census and owned by `.7.3.3.4`, which must add a policy-allowed local origin rather than weaken a production rule.
+- promotion: declined (the durable contract is `docs/decisions/2026-09-11_owned-extraction-input.md`, which this child implements without changing it); owner `SIGNOFF-REPAIR.7.3.3.3.2`.
+
 ## 2026-09-11 — The retained input identified the control that failed
 
 - A name proposes an input; exclusive creation proves one. The superseded span picks `<pid>-<subsec_nanos>` under an ambient temp dir and truncates whatever holds it, which is why 32 callers produced six shared paths. The replacement creates one 0600 file per request with `create_new` over at most 64 v7-UUID candidates and SKIPS an occupied candidate whole rather than opening or adopting it.

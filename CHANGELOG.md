@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-11 — Bind R2 responses to owned input bytes (`SIGNOFF-REPAIR.7.3.3.3.2`)
+
+- Replace the R2 handler's ambient temporary-directory span with one bound call: the acquired bytes become a private owned input, the worker reads it, and the input is released only when no reader can still hold it. No `std::env::temp_dir()` use remains in the R2 path, including the adjacent spawner fixture.
+- Refuse a response whose `parent_digest` is not the digest of the bytes this request supplied, with the named `ExtractionError::SourceMismatch` and the wire kind `extraction_source_mismatch`, before any snapshot, derivation or receipt is written. The enum stays exhaustively matched, so the handler could not compile without mapping it.
+- Seven integration controls pass, including the mismatch refusal naming both digests, a preserved `feed_unreadable` refusal, a worker failure keeping its classification, and eight concurrent callers each receiving a receipt for their own document. 90 server library tests, 16 completion controls, 12 adjacent extractor tests, strict lint and format pass; the live adjacent `profiles` suite passes 31 tests.
+- State one gap with its census and give it an owner: no live test drives a SUCCESSFUL R2 acquisition through to a snapshot and derivation, because the live R2 test refuses at the loopback destination gate. `.7.3.3.4` owns closing that join with a policy-allowed local origin.
+
 ## 2026-09-11 — Own the extraction input exclusively (`SIGNOFF-REPAIR.7.3.3.3.1`)
 
 - Create one private 0600 extraction input per request under a runtime-discovered repository root, with checked owned same-volume parents, bounded exclusive candidate allocation and no temporary-directory or home fallback. An occupied candidate is skipped whole — never opened, truncated or adopted.

@@ -1982,27 +1982,16 @@ async fn resolve_resource(
                     });
                 }
                 Ok(document) => {
-                    let input_path = std::env::temp_dir().join(format!(
-                        "r2-input-{}-{}",
-                        std::process::id(),
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.subsec_nanos())
-                            .unwrap_or(0)
-                    ));
-                    let written = std::fs::write(&input_path, &document.bytes);
-                    let extraction = match written {
-                        Err(error) => Err(crate::extraction::ExtractionError::RequestFailed(
-                            error.to_string(),
-                        )),
-                        Ok(()) => crate::extraction::run_extraction(
-                            &input_path,
-                            &hint,
-                            crate::extraction::WorkerLimits::default(),
-                            std::time::Duration::from_secs(60),
-                        ),
-                    };
-                    std::fs::remove_file(&input_path).ok();
+                    // The acquired bytes become an input this process OWNS: a
+                    // private file on the repository volume, released only once
+                    // no worker can still be reading it, and a response bound to
+                    // the exact bytes supplied (`.7.3.3.3`).
+                    let extraction = crate::extraction_input::extract_acquired_bytes(
+                        &document.bytes,
+                        &hint,
+                        crate::extraction::WorkerLimits::default(),
+                        std::time::Duration::from_secs(60),
+                    );
                     match extraction {
                         Ok(response) => {
                             let snapshot = crate::snapshots::submit(
@@ -2085,6 +2074,11 @@ async fn resolve_resource(
                                 crate::extraction::ExtractionError::WorkerRefused {
                                     kind, ..
                                 } => kind,
+                                // A response for other bytes never becomes a
+                                // snapshot, a derivation or a receipt.
+                                crate::extraction::ExtractionError::SourceMismatch { .. } => {
+                                    "extraction_source_mismatch"
+                                }
                             };
                             outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
                                 kind: kind.to_owned(),

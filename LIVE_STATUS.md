@@ -230,3 +230,17 @@ widening probe and its own retained input identify it, and the serialized
 controls pass 40 repeated runs. api.rs is unchanged and still carries the
 superseded span until .7.3.3.3.2. Qualification categories are unchanged.
 Evidence: docs/tasks/artifacts/signoff_review/extraction-owned-input.md.
+
+The R2 wiring .7.3.3.3.2 is complete under REPAIR-0064, closing the production
+input boundary .7.3.3. The handler's extraction leg is one bound call: the
+acquired bytes become an owned private input, and a response whose parent digest
+is not that input's digest is refused as `extraction_source_mismatch` before any
+snapshot, derivation or receipt write. Seven integration controls pass, including
+the mismatch refusal naming both digests and eight concurrent callers each
+receiving their own document. 90 server library tests, 16 completion controls,
+12 adjacent extractor tests, strict server lint and format pass, and the live
+adjacent profiles suite passes 31 tests with its cluster stopped and removed.
+One gap is explicit with its census: no live test drives a SUCCESSFUL R2
+acquisition through to a snapshot and derivation, because the live R2 test
+refuses at the loopback destination gate. Concrete owner: .7.3.3.4.
+Qualification categories are unchanged; no full-CI or push claim follows.

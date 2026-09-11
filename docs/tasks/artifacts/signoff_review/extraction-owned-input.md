@@ -130,3 +130,53 @@ it. The retained input is left in place as evidence.
 - Synchronous pipes, total deadlines, descendant containment and aggregate
   retained storage remain `SIGNOFF-REPAIR.7.3.4`. No HTTP handler, database
   write, full CI run or public push is claimed.
+
+---
+
+## The wiring (`SIGNOFF-REPAIR.7.3.3.3.2`, REPAIR-0064)
+
+At `b9eb9e8`, `git grep -n "temp_dir" -- crates/reasonbraid-server/src/api.rs
+crates/reasonbraid-server/src/extraction.rs` returned two live uses: the R2
+handler's input span and the adjacent in-module spawner fixture. The handler
+removed its path unconditionally after every result and compared nothing about
+the response, so a receipt describing other bytes would have been persisted as a
+snapshot and its derivations. After the wiring the same command returns nothing.
+
+`extract_acquired_bytes` performs the whole boundary in one call — owned private
+input, spawner call, digest binding, release gated on the reader being finished —
+and the handler's twenty-five-line span becomes that call.
+`ExtractionError::SourceMismatch { expected, received }` is a named variant; the
+enum stays exhaustively matched, so the handler could not compile without mapping
+it, and it maps to the wire kind `extraction_source_mismatch`. The refusal
+therefore happens before any snapshot, derivation or receipt write.
+
+| Control | Result |
+| --- | --- |
+| `the_bound_extraction_returns_a_receipt_for_the_supplied_bytes` | the real worker's receipt is the digest of the supplied bytes |
+| `a_named_refusal_survives_the_bound_extraction` | `feed_unreadable` survives verbatim |
+| `a_response_for_other_bytes_is_refused_before_it_can_be_persisted` | a stub returning `sha256:0000…` produces `SourceMismatch` naming both digests |
+| `a_worker_failure_keeps_its_classification_through_the_boundary` | a nonzero exit stays `RequestFailed` |
+| `concurrent_bound_extractions_each_describe_their_own_document` | eight simultaneous callers each receive their own document's digest and text |
+
+Seven integration controls pass in 0.66s; 90 server library tests, 16 completion
+controls, 12 adjacent extractor tests, strict server lint (1m25s) and workspace
+format pass. The live adjacent `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles`
+returns `31 passed; 0 failed` in 34.29s, including the R2 resolver control, and
+its disposable cluster reports `stopped and removed`.
+
+### The live coverage gap this exposed, with its census
+
+No live test drives a SUCCESSFUL R2 acquisition through to a snapshot and a
+derivation. The census: `git grep -n "R2_RESOLVER_ID\|r2-extract-worker\|
+extraction_version" -- 'crates/**/tests/*.rs'` returns exactly two hits — a
+resolver-ranking assertion and a hand-submitted derivation — and
+`git grep -n "acquisition\"\]" -- 'crates/**/tests/*.rs'` returns none. The live
+R2 test refuses at the loopback SSRF gate before reaching the extraction leg, and
+an outbound Internet fetch is not an acceptable test dependency.
+
+That join is exactly where the misattribution would have become a persisted wrong
+record, and its absence is a plausible reason the input defect survived a full
+historical phase closure. The extraction leg itself is now covered against the
+exact function the handler calls. The missing join has the concrete owner
+`SIGNOFF-REPAIR.7.3.3.4`, which must supply a policy-allowed local origin rather
+than weaken the production destination rules.

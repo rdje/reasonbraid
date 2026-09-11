@@ -79,7 +79,16 @@ pub enum ExtractionError {
     SpawnFailed(String),
     RequestFailed(String),
     TimedOut,
-    WorkerRefused { kind: String, message: String },
+    WorkerRefused {
+        kind: String,
+        message: String,
+    },
+    /// The worker described bytes this caller never supplied. The response is
+    /// refused before anything derived from it is persisted.
+    SourceMismatch {
+        expected: String,
+        received: String,
+    },
 }
 
 impl fmt::Display for ExtractionError {
@@ -96,6 +105,11 @@ impl fmt::Display for ExtractionError {
             Self::WorkerRefused { kind, message } => {
                 write!(f, "the worker refused: {kind}: {message}")
             }
+            Self::SourceMismatch { expected, received } => write!(
+                f,
+                "the worker described a different source: the supplied bytes are {expected}, \
+                 the response names {received}"
+            ),
         }
     }
 }
@@ -565,7 +579,8 @@ mod tests {
 
     /// The spawner roundtrip against the REAL worker binary (the workspace
     /// builds it beside the server's own — the skip keeps the -p-only run
-    /// green like the profiles' DATABASE_URL skip).
+    /// green like the profiles' DATABASE_URL skip). The input is an OWNED
+    /// one: this fixture no longer writes into an ambient temporary directory.
     #[test]
     fn the_spawner_extracts_through_the_worker_and_surfaces_the_refusal() {
         let binary = worker_path();
@@ -575,22 +590,15 @@ mod tests {
             );
             return;
         }
-        let input_path = std::env::temp_dir().join(format!(
-            "r2-server-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-        ));
-        let feed = r#"<?xml version="1.0" encoding="utf-8"?>
+        let feed = br#"<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Spawner Feed</title>
   <entry><title>One</title><summary>the first</summary></entry>
 </feed>"#;
-        std::fs::write(&input_path, feed).expect("the input writes");
+        let mut input =
+            crate::extraction_input::OwnedInput::create(feed).expect("the input is created");
         let run = run_extraction_reporting(
-            &input_path,
+            input.path(),
             "application/atom+xml",
             WorkerLimits::default(),
             Duration::from_secs(30),
@@ -602,6 +610,11 @@ mod tests {
         );
         let response = run.result.expect("the extraction runs");
         assert!(response.parent_digest.starts_with("sha256:"));
+        assert_eq!(
+            response.parent_digest,
+            input.digest(),
+            "the receipt describes the bytes this fixture owns"
+        );
         assert_eq!(response.extractor_version, "0.1.0");
         let joined: String = response
             .chunks
@@ -611,12 +624,16 @@ mod tests {
             .join("|");
         assert!(joined.contains("Spawner Feed"), "{joined}");
         assert!(joined.contains("One"), "{joined}");
+        input
+            .release(&run.completion)
+            .expect("the input is released");
 
         // The worker's refusal surfaces verbatim with its kind, and the
         // refusing worker is still a finished, reaped one.
-        std::fs::write(&input_path, b"not a feed").expect("the input rewrites");
+        let mut refused = crate::extraction_input::OwnedInput::create(b"not a feed")
+            .expect("the input is created");
         let run = run_extraction_reporting(
-            &input_path,
+            refused.path(),
             "application/atom+xml",
             WorkerLimits::default(),
             Duration::from_secs(30),
@@ -633,6 +650,6 @@ mod tests {
             }
             other => panic!("the refusal must surface: {other:?}"),
         }
-        std::fs::remove_file(&input_path).ok();
+        refused.release(&run.completion).expect("released");
     }
 }

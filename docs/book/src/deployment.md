@@ -758,11 +758,22 @@ input in place and says so, and a file that something else replaced is never
 deleted. The store removes one file it created, or nothing.
 
 The owner also exposes the digest of the bytes it wrote, in the worker's own
-`sha256:<hex>` form, so a response can be bound to the source that produced it.
-`.7.3.3.3.2` wires the R2 API onto this owner and makes that comparison a
-refusal before anything is persisted; until then the API keeps its superseded
-span. Evidence:
+`sha256:<hex>` form, and the R2 handler now binds every response to it. A
+receipt whose `parent_digest` is not the digest of the bytes this request
+supplied is refused with the kind `extraction_source_mismatch`, before any
+snapshot, derivation or receipt is written — an acquisition is not accepted
+merely because a response arrived. The handler's whole extraction leg is one
+call, so the same controls that cover the boundary cover the handler's use of
+it: a preserved `feed_unreadable` refusal, a worker failure keeping its own
+classification, the mismatch refusal naming both digests, and eight concurrent
+callers each receiving a receipt for their own document. Evidence:
 `docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
+
+One gap is stated rather than implied: no live test yet drives a SUCCESSFUL R2
+acquisition through to a snapshot and a derivation, because the live R2 test
+refuses at the loopback destination gate and an outbound Internet fetch is not
+an acceptable test dependency. `.7.3.3.4` owns closing that join with a
+policy-allowed local origin, not with a weakened production rule.
 
 
 ### The extraction worker's completion contract

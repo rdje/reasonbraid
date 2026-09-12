@@ -45,12 +45,12 @@ mod state;
 pub use authority::{
     actor_handle_for_subject, boundary_active_at, delegation_scope_is_subset, grant_active_at,
     grant_exceeds_boundary, policy_digest, ActionClass, AdministrativeEffectRecord,
-    AdministrativeOperation, AdministrativeOutcome, AdministrativeReason, AdministrativeTargetId,
-    AdministrativeTextError, AuthorityGrant, AuthorizationDecisionRecord, AuthorizationEvaluation,
-    BoundaryStatus, BoundaryViolation, CacheVerdict, CachedDecision, CachedDecisionKind, Decision,
-    DelegationConstraints, EnrollmentAuthorityBoundary, FailMode, GrantAction, GrantStatus,
-    GrantSubject, ResourceTarget, RiskClass, TargetSelector, TenantAdminInspection,
-    UnknownAuthorityName, CACHED_ALLOW_TTL_SECONDS,
+    AdministrativeOperation, AdministrativeOutcome, AdministrativeReason, AdministrativeRefusal,
+    AdministrativeTargetId, AdministrativeTextError, AuthorityGrant, AuthorizationDecisionRecord,
+    AuthorizationEvaluation, BoundaryStatus, BoundaryViolation, CacheVerdict, CachedDecision,
+    CachedDecisionKind, Decision, DelegationConstraints, EnrollmentAuthorityBoundary, FailMode,
+    GrantAction, GrantStatus, GrantSubject, ResourceTarget, RiskClass, TargetSelector,
+    TenantAdminInspection, UnknownAuthorityName, CACHED_ALLOW_TTL_SECONDS,
 };
 pub use budget::{BudgetDimensions, BudgetError, ReservationReference};
 pub use envelope::{

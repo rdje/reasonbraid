@@ -587,7 +587,7 @@ mod effect;
 mod evaluation;
 pub use effect::{
     AdministrativeEffectRecord, AdministrativeOperation, AdministrativeOutcome,
-    AdministrativeReason, AdministrativeTargetId, AdministrativeTextError,
+    AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId, AdministrativeTextError,
 };
 pub use evaluation::{AuthorizationEvaluation, TenantAdminInspection};
 

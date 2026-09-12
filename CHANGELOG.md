@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-12 — The stored refusal code named the wrong vocabulary (`SIGNOFF-REPAIR.3.3.4.7.3`)
+
+- `.7.1` typed `AdministrativeOutcome::Refused`'s code as the §9.8 `KnownReasonCode` registry, reasoning that reusing the existing registry would make the record and the response agree about which refusal happened. Building `.8`'s 404 path showed it does the opposite: the HTTP surface answers 404 with `code: "not_found"`, and that registry has no such value.
+- ⚠️ **This is the sixth instance of `.11.6`'s pattern and it is mine** — a vocabulary reasoned carefully from source without measuring the population it had to cover. The reasoning was sound and the set was wrong, and only building the first consumer exposed it.
+- ⭐ **The obvious fix was rejected by a census, again.** "Add `NotFound` to the registry" assumes the gap is one value. Extracting the registry's wire names and every `code: "…"` literal across tracked `crates/*/src`: the registry holds **20** codes, the product emits **19** distinct ones, **10 of those are absent from the registry** (`classification_unqualified`, `commit_outcome_unconfirmed`, `idempotency_conflict`, `locator_digest_conflict`, `not_found`, `quota_exceeded`, `quota_unconfigured`, `storm_control`, `unknown`, `unknown_node`) and **11 registry codes are never emitted**. Patching one value would have hidden nine more.
+- A second census decided the replacement rather than taste: parsing all 14 administrative handler bodies for `ControlApiError::` constructors and classifying them — `unauthorized` is the admission's own denial and already the admission record's job, and the internal/storage failures roll back rather than commit an effect — leaves exactly **three** domain refusals of an admitted operation: `invalid_command`, `invalid_transition`, `not_found`. Those are now `AdministrativeRefusal`, and their wire names are literally the strings the response body carries, so the invariant holds by construction rather than by coincidence.
+- The stored `outcome` JSON's `kind` vocabulary and migration 0058's `CHECK` are untouched: only the refusal's inner field changed, so no migration is needed.
+- Validation: `cargo test -p reasonbraid-core` returns **68 passed / 0 failed**, with the refusal control rewritten to round-trip all three codes and to refuse four outside them — including `quota_exceeded`, a real code the product emits elsewhere and still not one of these. Strict core lint and `cargo fmt --all -- --check` rc=0.
+- Routed out, because it is wider than this family's to certify: the §9.8 registry drift itself is `SIGNOFF-REPAIR.11.7`, with the two-way census attached and "measured and deliberately divergent" left available as a legitimate outcome.
+
 ## 2026-09-12 — Store the final administrative effect with the mutation it describes (`SIGNOFF-REPAIR.3.3.4.7.2`)
 
 - `.7.1` defined the effect representation and it had nowhere to live: `git grep -n "administrative_effects" -- migrations/ crates/*/src/` returned nothing. An operator could read an admission's `allowed` and had no row anywhere saying what the local mutation then did.

@@ -515,7 +515,7 @@ The outcome is the fact an admission cannot carry:
 | --- | --- |
 | `applied` | The protected target changed. |
 | `no_op` | The request was already satisfied — the repeated-revocation shape. No protected state and no revocation epoch changed, and the detail says what was already true. |
-| `refused` | A domain rule refused AFTER admission. No protected state and no revocation epoch changed. It carries the §9.8 reason code the request's own response used, so the record and the response cannot disagree about which refusal happened. |
+| `refused` | A domain rule refused AFTER admission. No protected state and no revocation epoch changed. It carries the exact code the request's own response used — `invalid_command`, `invalid_transition` or `not_found` — so the record and the response cannot disagree about which refusal happened. |
 
 The fourteen operations are the administrative mutations this repair family owns:
 grant and boundary revocation; breaker arm and reset; node enrollment-token
@@ -553,9 +553,9 @@ Decoding is strict, because this is evidence:
   nonblank, at most 256 UTF-8 bytes and free of control characters, while a
   reason has the same shape with a 1 024-byte limit — the bounds the site
   registry already publishes, so an operator meets one rule rather than two;
-- a `refused` outcome naming a reason code outside the §9.8 registry is a decode
-  **failure**, not a guessed outcome. This build writes these codes, so a code it
-  cannot name means the row did not come from a build it understands;
+- a `refused` outcome naming a code outside those three is a decode **failure**,
+  not a guessed outcome. This build writes these codes, so a code it cannot name
+  means the row did not come from a build it understands;
 - `submitted_reason` must be **present**, as `null` when the operation takes no
   reason. This record has no history, so a missing member is malformed evidence
   rather than an absent reason.
@@ -605,6 +605,18 @@ The database constrains the `kind` discriminant of both JSON columns to the
 closed vocabularies above; everything below the discriminant is the codec's to
 enforce, which is why a row can pass the column constraint and still be refused
 on the way out.
+
+The three refusal codes are their own small vocabulary rather than the §9.8
+reason-code registry, and the reason is worth stating because the first attempt
+went the other way. Reusing §9.8 looked like exactly the right move — one
+registry, no drift. Measuring it said otherwise: the registry publishes 20 codes,
+the product emits 19 distinct ones, **10 of which the registry does not contain**,
+including the `not_found` that a revocation's 404 returns. So a record typed
+against §9.8 could not say what the response said. These three are instead what
+the administrative handlers actually refuse an admitted operation with, and their
+wire names are literally the strings in the response body. The registry's own
+reconciliation is tracked separately as `SIGNOFF-REPAIR.11.7`; it is a wider
+finding than this chapter.
 
 ### Ordering a thread command against an authority change
 

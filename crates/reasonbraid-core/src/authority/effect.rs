@@ -31,7 +31,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::evaluation::object_only;
-use crate::error::KnownReasonCode;
 use crate::id::{AgentRoleId, AuthorizationRecordId, TenantId};
 
 /// Why a bounded administrative text field was refused.
@@ -134,7 +133,7 @@ impl<'de> Deserialize<'de> for AdministrativeTargetId {
 ///
 /// It carries two different senses, and the field name says which: a *submitted*
 /// reason is what the caller wrote, and an outcome *detail* is what the server
-/// determined. Neither is a reason code; that is [`KnownReasonCode`].
+/// determined. Neither is a reason code; that is [`AdministrativeRefusal`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct AdministrativeReason(String);
@@ -160,6 +159,65 @@ impl std::fmt::Display for AdministrativeReason {
 impl<'de> Deserialize<'de> for AdministrativeReason {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Self::new(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Why an ADMITTED administrative operation was refused by a domain rule.
+///
+/// ⛔ Deliberately NOT `reasonbraid_core::ReasonCode`, and the census is why.
+/// `.7.1` reached for the §9.8 registry so that the record and the response
+/// could not disagree, and measuring it produced the opposite: the HTTP surface
+/// answers 404 with `not_found`, which that registry does not contain, and 10 of
+/// the 19 codes the product emits are absent from it. The registry's own
+/// reconciliation is `SIGNOFF-REPAIR.11.7`.
+///
+/// These three are what the fourteen administrative handlers actually refuse an
+/// admitted operation with, measured from their bodies: `unauthorized` is the
+/// admission's own denial and already the admission record's job, and the
+/// internal/storage failures roll back rather than commit an effect. The wire
+/// names are literally the strings the HTTP response carries, so the invariant
+/// holds by construction rather than by coincidence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdministrativeRefusal {
+    /// The request was malformed for this operation — a reason outside its
+    /// bounds, an identifier this route cannot use.
+    InvalidCommand,
+    /// The target exists and is not in a state this operation can move.
+    InvalidTransition,
+    /// No such target in this tenant. Missing and foreign are ONE answer, so
+    /// this code leaks no existence; it names only the id the caller supplied.
+    NotFound,
+}
+
+impl AdministrativeRefusal {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidCommand => "invalid_command",
+            Self::InvalidTransition => "invalid_transition",
+            Self::NotFound => "not_found",
+        }
+    }
+
+    pub const CODES: [&'static str; 3] = ["invalid_command", "invalid_transition", "not_found"];
+}
+
+impl std::fmt::Display for AdministrativeRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AdministrativeRefusal {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "invalid_command" => Self::InvalidCommand,
+            "invalid_transition" => Self::InvalidTransition,
+            "not_found" => Self::NotFound,
+            unknown => {
+                return Err(serde::de::Error::unknown_variant(unknown, &Self::CODES));
+            }
+        })
     }
 }
 
@@ -280,16 +338,16 @@ pub enum AdministrativeOutcome {
     /// unchanged, and the detail says why nothing was left to do.
     NoOp { detail: AdministrativeReason },
     /// A domain rule refused the operation AFTER admission. Protected state and
-    /// the revocation epoch are unchanged. The code is the §9.8 registry name
-    /// the request's own response used, so the record and the response cannot
+    /// the revocation epoch are unchanged. The code is the exact string the
+    /// request's own response carries, so the record and the response cannot
     /// disagree about which refusal happened.
     ///
     /// ⛔ Closed on purpose: this build writes these codes, so it can only write
-    /// ones it knows. A record naming a code outside the registry is a decode
+    /// ones it knows. A record naming a code outside the set is a decode
     /// failure, never a guessed outcome — the same fail-closed stance stored
     /// authorization evidence already takes.
     Refused {
-        code: KnownReasonCode,
+        code: AdministrativeRefusal,
         detail: AdministrativeReason,
     },
 }
@@ -452,7 +510,7 @@ enum OutcomeWire {
         detail: AdministrativeReason,
     },
     Refused {
-        code: KnownReasonCode,
+        code: AdministrativeRefusal,
         detail: AdministrativeReason,
     },
 }

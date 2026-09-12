@@ -6,6 +6,20 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+`.3.3.4.7.3` (REPAIR-0111) corrects a defect in `.7.1`'s own representation,
+found by its first consumer. The stored refusal code was typed against the §9.8
+`KnownReasonCode` registry so the record and the response could not disagree; the
+registry has no `not_found`, which is exactly what a revocation's 404 returns. A
+census rejected the obvious one-value patch: the registry publishes **20** codes,
+the product emits **19** distinct ones, **10** of those are absent from the
+registry and **11** registry codes are never emitted. A second census — parsing
+all 14 administrative handler bodies — fixed the replacement at **three** domain
+refusals of an admitted operation, `invalid_command`, `invalid_transition` and
+`not_found`, whose wire names are literally the strings the response carries.
+No migration: the `outcome` column's `CHECK` pins only the `kind` discriminant.
+Core: **68 passed / 0 failed**, strict lint rc=0. The registry drift itself is
+routed to `.11.7` with its two-way census attached.
+
 The final administrative effect record now has durable storage under `.3.3.4.7.2`
 (REPAIR-0110). Migration 0058 adds `administrative_effects`, keyed by the
 admission's own `authz_…` id, with the `kind` discriminant of both JSON columns

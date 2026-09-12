@@ -35,7 +35,8 @@ mod tenant_transaction;
 use chrono::{DateTime, TimeZone, Utc};
 use reasonbraid_core::{
     AdministrativeEffectRecord, AdministrativeOperation, AdministrativeOutcome,
-    AdministrativeReason, AdministrativeTargetId, AuthorizationRecordId, KnownReasonCode, TenantId,
+    AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId, AuthorizationRecordId,
+    TenantId,
 };
 use reasonbraid_server::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
 use serde_json::json;
@@ -345,7 +346,7 @@ async fn a_committed_no_op_and_refusal_change_no_protected_state_or_epoch() {
             detail: reason("the grant was already revoked"),
         },
         AdministrativeOutcome::Refused {
-            code: KnownReasonCode::InvalidTransition,
+            code: AdministrativeRefusal::InvalidTransition,
             detail: reason("the grant is not in a revocable state"),
         },
     ] {
@@ -496,9 +497,9 @@ async fn malformed_stored_evidence_is_a_storage_failure_not_a_guessed_outcome() 
             None,
         ),
         (
-            "a refusal naming a code outside the registry",
+            "a refusal naming a code outside the measured set",
             json!({"kind": "breaker_reset"}),
-            json!({"kind": "refused", "code": "quota_exhausted", "detail": "x"}),
+            json!({"kind": "refused", "code": "quota_exceeded", "detail": "x"}),
             None,
         ),
         (

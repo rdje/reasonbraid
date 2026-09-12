@@ -4,9 +4,9 @@
 use chrono::{TimeZone, Utc};
 use reasonbraid_core::{
     actor_handle_for_subject, AdministrativeEffectRecord, AdministrativeOperation,
-    AdministrativeOutcome, AdministrativeReason, AdministrativeTargetId, AdministrativeTextError,
-    AgentRoleId, AuthorizationDecisionRecord, AuthorizationEvaluation, AuthorizationRecordId,
-    Decision, GrantAction, GrantSubject, KnownReasonCode, ResourceTarget, TenantId,
+    AdministrativeOutcome, AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId,
+    AdministrativeTextError, AgentRoleId, AuthorizationDecisionRecord, AuthorizationEvaluation,
+    AuthorizationRecordId, Decision, GrantAction, GrantSubject, ResourceTarget, TenantId,
 };
 use serde_json::json;
 
@@ -218,7 +218,7 @@ fn the_three_outcomes_are_distinct_and_only_applied_asserts_a_change() {
         detail: reason("the grant was already revoked"),
     };
     let refused = AdministrativeOutcome::Refused {
-        code: KnownReasonCode::InvalidTransition,
+        code: AdministrativeRefusal::InvalidTransition,
         detail: reason("the boundary is not in a revocable state"),
     };
     assert!(applied.changed_protected_state());
@@ -236,7 +236,7 @@ fn the_three_outcomes_are_distinct_and_only_applied_asserts_a_change() {
     }
     assert_eq!(
         serde_json::to_value(AdministrativeOutcome::Refused {
-            code: KnownReasonCode::InvalidTransition,
+            code: AdministrativeRefusal::InvalidTransition,
             detail: reason("already revoked"),
         })
         .unwrap(),
@@ -245,13 +245,41 @@ fn the_three_outcomes_are_distinct_and_only_applied_asserts_a_change() {
 }
 
 #[test]
-fn a_refusal_code_outside_the_registry_is_a_decode_failure_not_a_guess() {
+fn a_refusal_code_outside_the_measured_set_is_a_decode_failure_not_a_guess() {
+    // The three codes are the ones the fourteen administrative handlers actually
+    // refuse an admitted operation with, and they are literally the strings the
+    // HTTP response carries.
+    for code in AdministrativeRefusal::CODES {
+        let decoded: AdministrativeOutcome = serde_json::from_value(
+            json!({"kind": "refused", "code": code, "detail": "the target moved"}),
+        )
+        .unwrap_or_else(|e| panic!("`{code}` must decode: {e}"));
+        let AdministrativeOutcome::Refused { code: parsed, .. } = &decoded else {
+            panic!("`{code}` decoded as {decoded:?}")
+        };
+        assert_eq!(parsed.as_str(), code);
+        assert_eq!(serde_json::to_value(&decoded).unwrap()["code"], json!(code));
+    }
+    // ⚠️ `not_found` is the case that made this its own vocabulary: the §9.8
+    // registry does not contain it, and it is exactly what a 404 returns.
+    assert_eq!(AdministrativeRefusal::NotFound.as_str(), "not_found");
     // Fail closed: this build writes these codes, so a code it cannot name means
-    // the row was not written by a build this one understands.
-    assert!(serde_json::from_value::<AdministrativeOutcome>(
-        json!({"kind": "refused", "code": "quota_exhausted", "detail": "x"})
-    )
-    .is_err());
+    // the row was not written by a build this one understands. `quota_exceeded`
+    // is a real code the product emits elsewhere and still not one of these.
+    for outside in [
+        "quota_exhausted",
+        "quota_exceeded",
+        "unauthorized",
+        "dependency_unavailable",
+    ] {
+        assert!(
+            serde_json::from_value::<AdministrativeOutcome>(
+                json!({"kind": "refused", "code": outside, "detail": "x"})
+            )
+            .is_err(),
+            "`{outside}` decoded as an administrative refusal"
+        );
+    }
     // A refusal states both halves; a code with no detail is not a refusal.
     assert!(serde_json::from_value::<AdministrativeOutcome>(
         json!({"kind": "refused", "code": "invalid_transition"})

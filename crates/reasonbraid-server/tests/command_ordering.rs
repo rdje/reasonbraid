@@ -348,3 +348,107 @@ async fn a_shared_guard_and_an_unrelated_tenant_do_not_block_a_command() {
     shared.release().await;
     stranger.release().await;
 }
+
+/// Authority that ends WHILE a command waits must be evaluated after the wait,
+/// not as it stood when the request arrived (`SIGNOFF-REPAIR.3.3.4.4.1`).
+///
+/// The authority chapter publishes this as a contract row. It follows from the
+/// decision time being sampled after the guard and the idempotency claim have
+/// both waited — and until this control existed it was argued rather than
+/// measured, which is the gap `.3.3.4.5` found while building the equivalent
+/// control for the node-result path.
+///
+/// Expiry is time passing rather than an operation, so the fixture makes it
+/// pass: the grant's window is ended underneath the blocked command. What the
+/// control separates is the WAIT — remove `acquire_in_tx` from
+/// `run_thread_command` and the command completes before the authority changes
+/// at all, which is exactly how this behaved before `.3.3.4.4`. It does not
+/// separate `clock_timestamp()` from a process clock read at the same point;
+/// both are after the wait, and the honest claim is the one this asserts.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_grant_that_ends_while_a_command_waits_is_evaluated_after_the_wait() {
+    let Some(pool) = pool().await else { return };
+    let addr = serve(&pool).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let (status, human) = post(
+        &client,
+        format!("{base}/v1/enrollments"),
+        "unused",
+        json!({ "kind": "human", "name": "expirer" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let principal = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_text = human["tenant_id"].as_str().unwrap().to_string();
+    let tenant: TenantId = tenant_text.parse().expect("the tenant id parses");
+
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM event_log WHERE tenant_id = $1")
+        .bind(&tenant_text)
+        .fetch_one(&pool)
+        .await
+        .expect("count events before");
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+
+    let command = {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let tenant_text = tenant_text.clone();
+        tokio::spawn(async move {
+            post(
+                &client,
+                format!("{base}/v1/threads"),
+                &principal,
+                envelope(
+                    "thread.create",
+                    "order-control-3",
+                    json!({
+                        "tenant_id": tenant_text,
+                        "subject": "authority ends underneath",
+                        "objective": "prove the post-wait evaluation",
+                    }),
+                ),
+            )
+            .await
+        })
+    };
+
+    // The command is waiting for the guard; end the caller's authority under it.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let ended = sqlx::query(
+        "UPDATE authority_grants SET expires_at = now() - interval '1 second' \
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(&tenant_text)
+    .bind(&principal)
+    .execute(&pool)
+    .await
+    .expect("end the human's grant")
+    .rows_affected();
+    assert_eq!(ended, 1, "exactly one grant was ended");
+
+    holder.release().await;
+
+    let (status, body) = timeout(Duration::from_secs(10), command)
+        .await
+        .expect("the command completes once the guard is released")
+        .expect("the command task joins");
+    assert_eq!(
+        status, 403,
+        "authority that ended while the command waited must refuse it: {body}"
+    );
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM event_log WHERE tenant_id = $1")
+        .bind(&tenant_text)
+        .fetch_one(&pool)
+        .await
+        .expect("count events after");
+    assert_eq!(
+        before,
+        after,
+        "the refused command wrote {} event row(s)",
+        after - before
+    );
+}

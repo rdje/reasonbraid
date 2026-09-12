@@ -696,9 +696,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Opened: `pending`; raised by `.3.3.4.5` while building the equivalent control for the node-result path.
 - Finding: `docs/book/src/authority.md`'s ordering table publishes "A grant expires while a command waits — the post-wait database time sees it expired" as a contract row. It follows from `database_now_in_tx` being sampled after the guard wait, and it is argued rather than measured: no control ends a grant's validity while a thread command is blocked on the guard and then asserts the refusal.
 - census, run with the producing predicate rather than by eye: `grep -n 'async fn a_\|async fn the_' crates/reasonbraid-server/tests/command_ordering.rs` returns **2** test functions — the exclusive-guard wait and the shared/unrelated-tenant bound — and neither changes authority during the wait. Widened to every authority mutation in the test corpus, `grep -rn 'UPDATE authority_grants' crates/*/tests/*.rs` returns **21** sites across four suites; classifying all 21, every one is a pre-request fixture mutation or a post-assertion restore, and none runs while a request is blocked. `command_api.rs`'s "expired grant" row expires the grant BEFORE the request, which is the different (and already covered) claim.
+- Status: `done`; REPAIR-0106.
 - Owns: the missing control for the thread-command path, in `command_ordering.rs`, holding the exclusive guard, ending the grant underneath the blocked command, releasing, and asserting the refusal plus a zero effect count. `.3.3.4.5` ships exactly that shape for the node-result path, so the pattern is proved and only this row lacks it.
-- Acceptance: the control fails on a build whose decision time is the process clock read before the wait and passes on the shipped one, so it is falsified rather than merely green; the book row then cites a control instead of an argument.
-- Verification / commit: pending.
+- Acceptance, **corrected by building it**: the acceptance as opened said the control must fail on a build whose decision time is the process clock read before the wait. That is not what separates the two builds, and saying so would have been a claim this leaf did not test. `run_thread_command` samples its time AFTER the guard and the idempotency claim, so replacing `database_now_in_tx` with `Utc::now()` at the same point yields the same verdict. What the control actually separates is the WAIT: with `acquire_in_tx` removed the command never waits, so it commits before the authority changes at all — which is precisely how this path behaved before `.3.3.4.4`. The revised acceptance is that the control is falsified against the no-guard build and passes on the shipped one.
+- Falsified by revert-and-re-apply rather than by reading: with the guard acquisition removed from `run_thread_command`, `bash scripts/run_pg_tests.sh command_ordering` returns **1 passed / 2 failed** — the new control fails `left: 200, right: 403` carrying the `thread.created` body it should never have produced, and the sibling wait control fails with `event rows 0 -> 1`, confirming the removal was effective. The shared/unrelated-tenant control passed throughout, so the negative build was not simply broken. `crates/reasonbraid-server/src/api.rs` was then restored with `git checkout --` and `git diff HEAD` over it is empty, so the shipped bytes are the committed ones.
+- Verification: with production restored, `bash scripts/run_pg_tests.sh command_ordering` returns rc=0 — **3 passed / 0 failed**, `pg-tests: stopped and removed target/pg-tests/run-xpakwk4i`, and after `cargo fmt --all` it re-runs at rc=0 with the same 3 passed / 0 failed (`stopped and removed target/pg-tests/run-7x_2fw05`) so the cited command describes the committed bytes. Focused strict lint on the suite, `cargo fmt --all -- --check`, `git diff --check`, `make gate` (17 checks) and `make book` return rc=0.
+- What the control does NOT establish, stated so the book row is not over-read: it says nothing about a database clock versus a process clock, because both are sampled after the wait on this path. The database-time choice remains the right one for a different reason — the grant windows it is compared against live in the database — and that reason is not evidence this control supplies.
+- promotion: declined (the durable statement is the control itself plus the sentence it earns in the book's authority chapter, which now says the rows are controls rather than consequences).
+- Commit: `REASONBRAID-REPAIR-0106 (leaf SIGNOFF-REPAIR.3.3.4.4.1): control the expiry-during-wait row instead of arguing it`.
 
 ##### SIGNOFF-REPAIR.3.3.4.6 — Guard named inspection admissions
 
@@ -2151,9 +2156,8 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1 | `SIGNOFF-REPAIR.3.3.4.6`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 2 | `SIGNOFF-REPAIR.3.3.4.4.1` | `pending` | the ordering chapter's expiry-during-wait row is argued, not controlled |
-| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
-| 4 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
+| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 3 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
 
 
 
@@ -2179,6 +2183,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.4.1`: `REASONBRAID-REPAIR-0106 (leaf SIGNOFF-REPAIR.3.3.4.4.1): control the expiry-during-wait row instead of arguing it`.
 
 - `SIGNOFF-REPAIR.3.3.4.5`: `REASONBRAID-REPAIR-0105 (leaf SIGNOFF-REPAIR.3.3.4.5): guard node results before the lease and stop reporting a rolled-back receipt`.
 
@@ -2521,6 +2527,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.3.4.4.1
+
+- [x] **REPRODUCE / ISSUE** — the census, run with the producing predicate: `grep -n 'async fn a_\|async fn the_' crates/reasonbraid-server/tests/command_ordering.rs` returns **2** test functions, neither of which changes authority during a wait, while `docs/book/src/authority.md` publishes "a grant expires while a command waits" as a contract row. Widened, `grep -rn 'UPDATE authority_grants' crates/*/tests/*.rs` returns **21** sites across four suites and classifying all 21 leaves zero that run while a request is blocked.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `.3.3.4.4` published five contract rows and shipped two controls. The wait and the shared-mode bound were measured; the composition of the wait with the post-wait evaluation was derived from the code and written into the book as though it had been observed. Nothing in the tree could detect the difference, which is the `docs/CLAIM_VERIFICATION.md` §4 gap rather than a code defect.
+- [x] **FIX** — `a_grant_that_ends_while_a_command_waits_is_evaluated_after_the_wait` in `crates/reasonbraid-server/tests/command_ordering.rs`: hold the exclusive guard, submit `thread.create`, end the caller's grant underneath the blocked command, release, and assert `403` plus an unchanged `event_log` count. The authority chapter now says the rows are controls and names what the last one is falsified against. No production source changed.
+- [x] **ADDRESSED (verified)** — `bash scripts/run_pg_tests.sh command_ordering` returns rc=0 with **3 passed / 0 failed**, `pg-tests: stopped and removed target/pg-tests/run-xpakwk4i`, where the suite previously had two controls; after `cargo fmt --all` the same command re-runs at rc=0 (`stopped and removed target/pg-tests/run-7x_2fw05`).
+- [x] **NO REGRESSION** — falsified by revert-and-re-apply: with `acquire_in_tx` removed from `run_thread_command` the same command returns **1 passed / 2 failed** (the new control `left: 200, right: 403` carrying a `thread.created` body, and the sibling wait control `event rows 0 -> 1`), while the shared/unrelated-tenant control passes throughout. `crates/reasonbraid-server/src/api.rs` was restored with `git checkout --` and `git diff HEAD` over it is empty. Focused strict lint on the suite, `cargo fmt --all -- --check`, `git diff --check`, `make gate` (17 checks) and `make book` return rc=0.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope; `docs/book/src/authority.md` gains the sentence that turns its ordering table from an argument into a citation. lockstep: `docs/TASK_TREE.md` unchanged (frontier row 1 is unmoved — this leaf closed row 2).
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.5
 

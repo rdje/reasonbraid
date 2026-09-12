@@ -491,6 +491,14 @@ unchanged; only the live effect entrypoints choose their own current time.
 | Two commands in the same tenant | Both hold the shared guard; neither blocks the other. |
 | A command in an unrelated tenant | Unaffected — the guard is per tenant. |
 
+Each row is a live control in the `command_ordering` suite rather than a
+consequence read off the design: the wait, the shared-mode bound (which covers
+both the concurrent-commands row and the unrelated-tenant row), and the
+post-wait evaluation of authority that ended underneath a blocked command. The
+last of those was argued rather than measured until `SIGNOFF-REPAIR.3.3.4.4.1`
+added it, and it is falsified rather than merely green — with the guard
+acquisition removed, the command completes before the authority changes at all.
+
 This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.

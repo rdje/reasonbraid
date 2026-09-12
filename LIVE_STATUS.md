@@ -6,6 +6,22 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The ordering chapter's expiry-during-wait row is now a control rather than an
+argument under `.3.3.4.4.1` (REPAIR-0106). `.3.3.4.4` published five contract
+rows and shipped two controls; the census behind the finding is
+`grep -n 'async fn a_\|async fn the_' crates/reasonbraid-server/tests/command_ordering.rs`
+returning 2 test functions, and `grep -rn 'UPDATE authority_grants'
+crates/*/tests/*.rs` returning 21 sites across four suites of which none runs
+while a request is blocked. The new control holds the exclusive guard, ends the
+caller's grant underneath the blocked command and asserts 403 with an unchanged
+event count; the suite goes 2 → 3 controls at rc=0. It is falsified rather than
+merely green: with `acquire_in_tx` removed, `command_ordering` returns 1 passed
+/ 2 failed, and `api.rs` was then restored with an empty `git diff HEAD`. The
+acceptance as opened was corrected by building it — the control separates the
+WAIT, not a database clock from a process clock, because both are sampled after
+the wait on this path. No production source changed.
+
+
 Node results are ordered against authority changes under `.3.3.4.5`
 (REPAIR-0105), and the defect was the same shape as `.3.3.4.4` one path
 further on: `node_channel::events` opened a plain transaction, locked the

@@ -4857,6 +4857,16 @@ async fn import_profile_card(
         authority::CardImportResult::GrantRefused(detail) => {
             ControlApiError::invalid_command(detail).into_response()
         }
+        // The label collision used to be a raised unique violation and a `500`
+        // (`SIGNOFF-REPAIR.3.3.4.11.5`). It is a typed refusal now, and it does
+        // NOT decide what a repeated import ought to do — card replay is `.5.3`'s.
+        authority::CardImportResult::LabelTaken { label } => {
+            ControlApiError::invalid_command(format!(
+                "the importing tenant already holds an identity labelled `{label}` — the import \
+                 refuses"
+            ))
+            .into_response()
+        }
         authority::CardImportResult::Imported { role_id } => Json(json!({
             "role_id": role_id,
             "origin_tenant_id": req.card.origin_tenant_id,

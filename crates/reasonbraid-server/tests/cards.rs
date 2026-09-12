@@ -904,3 +904,173 @@ async fn each_import_rung_records_what_it_refused() {
         "the target names the card submitted, not the digest claimed for it: {operation}"
     );
 }
+
+/// 🔴 A card whose display label is already taken in the importing tenant is a
+/// typed refusal that RECORDS itself, not a raised constraint and a `500`
+/// (`SIGNOFF-REPAIR.3.3.4.11.5`). A repeated import of the same card is the
+/// commonest way to reach it; a card from a different origin sharing a label is
+/// another.
+///
+/// ⛔ This asserts the label is taken and that the refusal is recorded. It does
+/// NOT assert what a repeated import ought to do — the ordinary enrollment route
+/// answers a name collision with a replay, and whether a card import should too
+/// is card replay semantics, owned by `SIGNOFF-REPAIR.5.3`.
+#[tokio::test]
+async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "label-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "label-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "label-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports");
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept");
+    }
+
+    let body = json!({
+        "tenant_id": tenant_b,
+        "card": exported["card"].clone(),
+        "digest": exported["digest"].as_str().unwrap(),
+    });
+    let (status, first) = post(&client, &base, "/v1/profiles/cards/import", &b_admin, &body).await;
+    assert_eq!(status, 200, "the first import lands: {first}");
+
+    let roles_before: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM agent_roles WHERE tenant_id = $1")
+            .bind(&tenant_b)
+            .fetch_one(&pool)
+            .await
+            .expect("count roles");
+
+    let response = client
+        .post(format!("{base}/v1/profiles/cards/import"))
+        .header(PRINCIPAL_HEADER, &b_admin)
+        .json(&body)
+        .send()
+        .await
+        .expect("second import");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .map(|v| v.to_str().unwrap().to_string());
+    let refused: Value = response.json().await.expect("second import json");
+
+    assert_eq!(
+        status, 400,
+        "the taken label is a typed refusal, not a storage failure: {refused}"
+    );
+    assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("already holds an identity labelled"),
+        "{refused}"
+    );
+
+    // The refusal is RECORDED — the thing a raised constraint made impossible.
+    let receipt = receipt.expect("the refusal carries its receipt");
+    let (operation, outcome): (Value, Value) = sqlx::query_as(
+        "SELECT operation, outcome FROM administrative_effects WHERE record_id = $1",
+    )
+    .bind(&receipt)
+    .fetch_one(&pool)
+    .await
+    .expect("the refusal's effect record exists");
+    assert_eq!(
+        operation["kind"],
+        json!("profile_card_import"),
+        "{operation}"
+    );
+    assert_eq!(outcome["kind"], json!("refused"), "{outcome}");
+    assert_eq!(outcome["code"], json!("invalid_command"), "{outcome}");
+    assert!(
+        outcome["detail"]
+            .as_str()
+            .unwrap()
+            .contains("already holds an identity labelled"),
+        "the record says what the response said: {outcome}"
+    );
+
+    // And it wrote nothing: the refused import added no second role.
+    let roles_after: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM agent_roles WHERE tenant_id = $1")
+            .bind(&tenant_b)
+            .fetch_one(&pool)
+            .await
+            .expect("count roles");
+    assert_eq!(
+        roles_after, roles_before,
+        "the refused import created no second role"
+    );
+}

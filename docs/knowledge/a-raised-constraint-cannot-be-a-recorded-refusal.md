@@ -1,4 +1,4 @@
-answers: why can I not catch the unique violation and still commit my audit row; why does everything after a constraint error fail until rollback; how do I turn a database refusal into an outcome I can record; when should an INSERT use ON CONFLICT DO NOTHING RETURNING?
+answers: why can I not catch the unique violation and still commit my audit row; why does everything after a constraint error fail until rollback; how do I turn a database refusal into an outcome I can record; when should an INSERT use ON CONFLICT DO NOTHING RETURNING; what should I check before putting a route onto one transaction; why did my new atomic transaction start returning 500 for a case that used to work?
 
 # A raised constraint cannot be a recorded refusal
 
@@ -62,6 +62,35 @@ can be put on a one-transaction shape.
 The same reasoning applies to any check that fails by raising: a deferred
 constraint, an `EXCLUDE`, a trigger that calls `RAISE`. If the failure is a
 domain answer rather than a fault, the query has to hand it back as data.
+
+### Searching for the catch is not enough — enumerate the constraints
+
+The search above finds routes that *already knew* about a constraint. It cannot
+find the ones that never handled it, and those are the dangerous ones: before the
+route was made atomic, an unhandled raise was an ugly `500` that someone might
+eventually notice; afterwards it is an **unrecordable** refusal, because the
+transaction it aborts is now the one carrying the admission and the effect
+record.
+
+So the check that belongs in the work itself is not textual:
+
+> For every `INSERT` and `UPDATE` the newly-atomic transaction contains, list the
+> constraints on the columns it writes, and ask which of them **a caller can
+> trip**. Not "is this statement correct" — "can a request reach this and get a
+> raise, and is that a refusal someone is supposed to be told about?"
+
+Constraints are declared in migrations, not in the handler, so they are exactly
+the thing not in front of you while writing the transaction. `SIGNOFF-REPAIR.3.3.4.11.5`
+is the worked example: the card import wrote a caller-supplied display label into
+two tables carrying `UNIQUE (tenant_id, name)` and `UNIQUE (tenant_id, kind,
+name)`, nothing caught either, and re-importing the same card answered `500` and
+recorded nothing — one leaf after this very record was cited by the leaf that
+made the route atomic.
+
+⚠️ Note the direction of the damage carefully when writing it up. The collision
+always raised; the repair did not introduce it. What the repair changed is that
+the refusal became unrecordable. A correct repair can move a neighbouring defect
+to a worse place, and the honest account says which half is which.
 
 ## Re-verify
 

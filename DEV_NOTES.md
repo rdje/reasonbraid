@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I wrote the rule down, then broke it one leaf later
+
+- `.10.1` promoted `a-raised-constraint-cannot-be-a-recorded-refusal.md`: in PostgreSQL a constraint violation aborts the transaction, so once a route's admission and effect record share that transaction, any refusal a constraint RAISES stops being recordable. I wrote that record. The leaf after it cited it. The leaf after THAT cited it too.
+- ⭐ And then `.11.3` put the card import onto one transaction with two inserts that raise: `agent_roles` on `UNIQUE (tenant_id, name)` and `enrollments` on `UNIQUE (tenant_id, kind, name)`, both fed the card's display label. A second import of the same card answers `500` and records nothing at all. I applied the rule where the previous leaf had pointed at it and did not go looking for the next instance in the code I was writing.
+- ⚠️ The generalisable check is mechanical and I did not run it: **for every INSERT or UPDATE a newly-atomic transaction now contains, list its constraints and ask which of them a caller can trip.** Not "is this code correct" — "which of these can raise, and is that path a refusal someone is supposed to be told about". Constraints are declared somewhere I was not reading while writing the handler.
+- ⭐ The other half is how it was found. `.11.4` is a documentation leaf, its draft carried the sentence "importing the same card twice creates a second local role", and I ran it rather than publishing it. It returned `200` then `500`. Writing documentation forced an enumeration of behaviours that implementing had not: implementing asks "does my path work", documenting asks "what happens for each thing a reader might do".
+- ⚠️ Worth keeping separate: the defect predates `.11.3` — the collision always raised. What `.11.3` changed is that the refusal became UNRECORDABLE, because the record now shares the transaction the raise aborts. A repair can be correct and still move a neighbouring defect to a worse place, and the leaf says so rather than implying the atomicity work introduced it.
+
 ## 2026-09-13 — The plan I wrote at the split was wrong, and the handler said so
 
 - When I split `.3.3.4.11` I wrote into `.11.3`'s leaf that the pure card rungs should move before the transaction, "where they refuse without touching storage". It reads like obviously good hygiene: refuse a malformed card without opening anything.

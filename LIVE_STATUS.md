@@ -6,6 +6,25 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A repeated card import answered `500` and recorded nothing; reproduced and
+closed under `.3.3.4.11.5` (REPAIR-0123).** `agent_roles` carries
+`UNIQUE (tenant_id, name)` and `enrollments` carries `UNIQUE (tenant_id, kind,
+name)`, while the import writes the card's `display_label` into both, so the
+`agent_roles` insert RAISED. ⚠️ Not only a re-import: any card whose label matches
+an identity already in the importing tenant collides. ⭐ Making the import atomic
+at `.11.3` is what turned this from a survivable mess into an unrecordable one —
+a raised constraint aborts the transaction that now also carries the admission
+and the effect record, which is exactly what
+`docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md` said at
+`.10.1` and `.11.3` did not apply to its own inserts. Both inserts now use
+`ON CONFLICT … DO NOTHING RETURNING`; the answer is `400 invalid_command` naming
+the label, with an effect record carrying the same sentence. ⛔ It says the label
+is taken and deliberately does NOT decide what a repeated import ought to do —
+card replay is `.5.3`'s. **4 passed / 0 failed**; the affected set passes **5
+suites / 72 tests**. FALSIFIED **3 passed / 1 failed** against the exact
+pre-`.11.5` sources. ⚠️ Found by running a documentation claim instead of
+publishing it.
+
 🔴 **An orphaned identity on the card-import path was reproduced and closed under
 `.3.3.4.11.3` (REPAIR-0122).** The route committed the grant, the `agent_roles`
 row, the quota row, the enrollment and the cross-domain receipt as one

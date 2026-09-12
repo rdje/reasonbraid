@@ -972,6 +972,25 @@ grant-refusal message, which is now composed by one renderer shared with the
 effect record so the two cannot drift apart. One addition: every answer that
 reached an admission carries the `x-reasonbraid-authorization` receipt.
 
+One refusal is **new**, and it replaces a `500`. `agent_roles` carries
+`UNIQUE (tenant_id, name)` and `enrollments` carries
+`UNIQUE (tenant_id, kind, name)`, while the import writes the card's
+`display_label` into both — so a card whose label is already taken in the
+importing tenant used to raise a constraint violation and answer
+`500 dependency_unavailable`, recording nothing. Re-importing the same card was
+the commonest way to reach it; a card from a different origin sharing a label is
+another. Both inserts now use `ON CONFLICT … DO NOTHING RETURNING`, so the
+collision is a value rather than a raise, and it answers `400 invalid_command`
+with an effect record that says the same thing (`SIGNOFF-REPAIR.3.3.4.11.5`).
+
+⛔ That refusal says the **label is taken**. It deliberately does not decide what
+a repeated import *ought* to do — the ordinary enrollment route answers a
+`(tenant, kind, name)` collision with a replay, returning the original principal
+id, and whether a card import should do the same is card replay semantics owned
+by `SIGNOFF-REPAIR.5.3`. Making the import atomic is also what turned this from a
+survivable mess into an unrecordable one: once the admission and the effect record
+share the transaction, a raised constraint takes them down with it.
+
 With this, the three unguarded bridges that existed only for this route are
 **deleted** rather than left beside their replacements: the unordered grant
 creator, the pool-taking boundary loader whose own comment called itself "an

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-13 — Re-importing a card answered 500 and recorded nothing (`SIGNOFF-REPAIR.3.3.4.11.5`)
+
+- 🔴 Measured on the current route while drafting the next leaf's documentation: `PROBE first import -> 200`, `PROBE second import -> 500 {"code":"dependency_unavailable"}`, and **no administrative effect recorded** for the failed attempt. An admitted request that failed was invisible in the evidence the whole `.7`/`.8` family exists to produce.
+- Root cause from the schema, not the error text: `agent_roles` carries `UNIQUE (tenant_id, name)` and `enrollments` carries `UNIQUE (tenant_id, kind, name)`, while the import writes the card's `display_label` into both. The `agent_roles` insert runs first and RAISES.
+- ⚠️ **It is not only a re-import.** Any card whose display label matches an identity already in the importing tenant collides — two different origin tenants exporting a role called "schema reviewer" is enough.
+- ⭐ **Making the import atomic one leaf earlier is what turned this from a survivable mess into an unrecordable one.** Once the admission and the effect record share the transaction, a raised constraint takes them down with it. `docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md` said exactly this at `.10.1`, and `.11.3` did not apply it to its own inserts.
+- Both inserts now use `ON CONFLICT … DO NOTHING RETURNING`, so zero rows returned IS the refusal with no abort. The answer is `400 invalid_command` naming the label, and the effect record says the same sentence.
+- ⛔ It says the label is TAKEN. It deliberately does not decide what a repeated import ought to do: the ordinary enrollment route answers a `(tenant, kind, name)` collision with a replay, returning the original principal id, and whether a card import should do the same is card replay semantics owned by `.5.3`. Inventing replay here would be deciding another leaf's question on this leaf's finding.
+- Wire: `500 dependency_unavailable` becomes `400 invalid_command`. A `500` is not a contract, so this is a correction rather than a break.
+- Validation: `bash scripts/run_pg_tests.sh cards` rc=0 — **4 passed / 0 failed**. The affected set `cards profiles federation administrative_effects identity_store` rc=0 with **5 suites, 72 tests, zero failures**. Strict server lint, fmt, gate (17 checks), book and link check rc=0.
+- FALSIFIED against the exact pre-`.11.5` sources: **3 passed / 1 failed**, `left: 500, right: 400`, with `duplicate key value violates unique constraint "agent_roles_tenant_id_name_key"` in the log.
+- ⚠️ **The probe that found this was not a test anyone set out to write.** The chapter needed a "what is not here yet" section, its draft said "importing the same card twice creates a second local role", and running it rather than publishing it returned `200` then `500`. Writing documentation is a verification technique.
+
 ## 2026-09-13 — A failed card import left the role, its grant, its quota and its receipt behind (`SIGNOFF-REPAIR.3.3.4.11.3`)
 
 - 🔴 Measured on the unchanged route, with every new profile version row made to fail and nothing else touched: the import answered **`500`** and the imported role was still there — `left: 1, right: 0` — along with its grant, its per-principal quota row, its enrollment and its cross-domain receipt. An identity the directory cannot describe, created by a request that told its caller it had failed.

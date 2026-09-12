@@ -266,6 +266,18 @@ pub enum CardImportResult {
     },
     /// The importing tenant has no active enrollment boundary to issue under.
     NoActiveBoundary,
+    /// The importing tenant already holds an identity under the card's display
+    /// label. A repeated import of the same card lands here, and so does a card
+    /// from a different origin that happens to share a label
+    /// (`SIGNOFF-REPAIR.3.3.4.11.5`).
+    ///
+    /// ⛔ This says the label is taken. It does NOT decide what a repeated import
+    /// ought to do — the ordinary enrollment route answers a name collision with
+    /// a replay, and whether a card import should too is card replay semantics,
+    /// owned by `SIGNOFF-REPAIR.5.3`.
+    LabelTaken {
+        label: String,
+    },
     /// The imported role's grant exceeds the importing boundary, or that boundary
     /// is absent or outside its live window at the guarded evaluation.
     GrantRefused(String),
@@ -352,6 +364,12 @@ pub(crate) async fn import_card_in_one_transaction(
                     detail: bounded_detail(
                         "the tenant has no active enrollment boundary".to_owned(),
                     ),
+                },
+                CardImportResult::LabelTaken { label } => AdministrativeOutcome::Refused {
+                    code: AdministrativeRefusal::InvalidCommand,
+                    detail: bounded_detail(format!(
+                        "the importing tenant already holds an identity labelled `{label}`"
+                    )),
                 },
                 CardImportResult::Denied { .. } => unreachable!("the denial returned above"),
             };
@@ -462,22 +480,49 @@ async fn import_after_admission(
     }
 
     let conn = tx.connection(tenant_id, GuardMode::Exclusive)?;
-    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3)")
-        .bind(&role_id)
-        .bind(&importing)
-        .bind(&card.profile.display_label)
-        .execute(&mut *conn)
-        .await?;
-    // The identity row implies its quota row (the fail-closed write gate, `.3.5.1`).
-    crate::quota::insert_principal_default_in_tx(&mut *conn, &importing, &role_id).await?;
-    sqlx::query(
-        "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, 'role', $3)",
+    // ⛔ `ON CONFLICT … DO NOTHING RETURNING` on BOTH identity inserts, and not as
+    // a defensive habit: `agent_roles` carries `UNIQUE (tenant_id, name)` and
+    // `enrollments` carries `UNIQUE (tenant_id, kind, name)`, while the import
+    // writes the CARD's `display_label` into both. Letting either raise aborts
+    // this transaction — which now also carries the admission and the effect
+    // record — so the refusal could not be recorded at all
+    // (`docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md`).
+    // Zero rows returned IS the refusal, with no abort
+    // (`SIGNOFF-REPAIR.3.3.4.11.5`).
+    let claimed: Option<String> = sqlx::query_scalar(
+        "INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3) \
+         ON CONFLICT (tenant_id, name) DO NOTHING RETURNING role_id",
     )
     .bind(&role_id)
     .bind(&importing)
     .bind(&card.profile.display_label)
-    .execute(&mut *conn)
+    .fetch_optional(&mut *conn)
     .await?;
+    if claimed.is_none() {
+        return Ok(CardImportResult::LabelTaken {
+            label: card.profile.display_label.clone(),
+        });
+    }
+    // The identity row implies its quota row (the fail-closed write gate, `.3.5.1`).
+    crate::quota::insert_principal_default_in_tx(&mut *conn, &importing, &role_id).await?;
+    let enrolled: Option<String> = sqlx::query_scalar(
+        "INSERT INTO enrollments (principal_id, tenant_id, kind, name) \
+         VALUES ($1, $2, 'role', $3) \
+         ON CONFLICT (tenant_id, kind, name) DO NOTHING RETURNING principal_id",
+    )
+    .bind(&role_id)
+    .bind(&importing)
+    .bind(&card.profile.display_label)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if enrolled.is_none() {
+        // Reachable only if `agent_roles` and `enrollments` have diverged for this
+        // tenant and label. The same refusal rather than a second vocabulary: from
+        // the caller's side the label is taken either way.
+        return Ok(CardImportResult::LabelTaken {
+            label: card.profile.display_label.clone(),
+        });
+    }
     // The cross-domain receipt (`.1.4`, ADR-026): the remote reference is the
     // card's digest as the CALLER presented it — it is what that domain's own
     // record is addressed by — and the local reference is the fresh role. The

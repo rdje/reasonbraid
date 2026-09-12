@@ -1024,6 +1024,67 @@ where
     .await
 }
 
+/// The same lookup, bound to the tenant whose authority guard the caller holds
+/// (`SIGNOFF-REPAIR.3.3.4.5`). The fold's effect SQL names the guarded tenant, so
+/// a row that changed between the pre-lock resolution and this guarded read
+/// matches nothing instead of being folded under a guard that does not cover it.
+pub(crate) async fn load_command_for_tenant_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    command_id: &str,
+    tenant_id: &str,
+) -> Result<Option<(String, String, Value)>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_as::<_, (String, String, Value)>(
+        "SELECT tenant_id, thread_id, payload FROM node_inbox \
+         WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3",
+    )
+    .bind(node_id)
+    .bind(command_id)
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await
+}
+
+/// The tenant whose authority guard must be held before a node event's effect is
+/// applied — resolved BEFORE any lock is taken, so the guard can be acquired
+/// first and the node's lease row second (`SIGNOFF-REPAIR.3.3.4.5`).
+///
+/// `None` means the event has no tenant-bound effect: an ordinary channel
+/// receipt, or a command this node's ledger does not hold. Those record their
+/// receipt and change nothing else, so there is nothing to order.
+///
+/// A stored tenant that is not a tenant id is refused rather than folded: an
+/// effect no guard can cover must not be applied unordered.
+async fn result_tenant_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    node_id: &str,
+    payload: &Value,
+) -> Result<Option<reasonbraid_core::TenantId>, ApiError> {
+    let Some((_, command_id)) = crate::api::node_result_command(payload) else {
+        return Ok(None);
+    };
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT tenant_id FROM node_inbox WHERE node_id = $1 AND command_id = $2",
+    )
+    .bind(node_id)
+    .bind(command_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(stored) = stored else {
+        return Ok(None);
+    };
+    stored.parse().map(Some).map_err(|_| {
+        eprintln!(
+            "node channel: node {node_id} command {command_id} stores a tenant id that does not parse"
+        );
+        ApiError::internal()
+    })
+}
+
 // ── HTTP surface ───────────────────────────────────────────────────────────────
 
 /// The node channel router: `/v1/nodes/handshake` (the authenticated reconnect
@@ -1188,6 +1249,26 @@ async fn events(
     // application still commits the receipt (the node DID emit this event) with
     // the rejection stored as the command's idempotent result.
     let mut tx = state.pool.begin().await?;
+    // The tenant authority guard, FIRST — before the lease row, the receipt, the
+    // idempotency claim and every domain lock (`SIGNOFF-REPAIR.3.3.4.5`). The
+    // tenant is resolved from the inbox row by a plain read that takes no lock,
+    // so the guard is genuinely the first lock this transaction holds and no
+    // inversion against the lease is possible. Shared, because node results read
+    // authority and must run concurrently with one another; a revocation takes
+    // the exclusive mode and therefore fences every result that has not already
+    // reached this point.
+    //
+    // Before this, the path took no guard at all, so a node-emitted result and a
+    // revocation had no ordering between them to narrow.
+    let guarded_tenant = result_tenant_in_tx(&mut tx, &req.node_id, &req.payload).await?;
+    if let Some(tenant) = guarded_tenant {
+        crate::authority::transaction::acquire_in_tx(
+            &mut tx,
+            tenant,
+            crate::authority::transaction::GuardMode::Shared,
+        )
+        .await?;
+    }
     // The check-vs-commit window (`.2.2`): the admission check above ran
     // OUTSIDE the transaction — a handshake that lands between then and the
     // apply would have rotated the lease under this write. Re-verify INSIDE,
@@ -1205,13 +1286,24 @@ async fn events(
     )
     .await?;
     if accepted {
-        if let Err(e) =
-            crate::api::apply_node_result_in_tx(&mut *tx, &req.node_id, &req.payload).await
-        {
-            crate::telemetry::metrics().incr("results_rejected");
-            crate::log_event!("thread_result_rejected", "node_id" => &req.node_id, "reason" => e.to_string());
+        if let Some(tenant) = guarded_tenant {
+            if let Err(e) =
+                crate::api::apply_node_result_in_tx(&mut tx, &req.node_id, &req.payload, tenant)
+                    .await
+            {
+                crate::telemetry::metrics().incr("results_rejected");
+                crate::log_event!("thread_result_rejected", "node_id" => &req.node_id, "reason" => e.to_string());
+            }
         }
     }
+    // A REJECTED application is a committed fact: the node did emit this event,
+    // and the refusal is stored as the work command's idempotent result. A SQL
+    // FAILURE is not — it aborts the transaction, so the COMMIT below would be
+    // executed as a ROLLBACK and this handler would answer `accepted: true` for
+    // a receipt that does not exist, which the node would never re-emit. Probe
+    // the transaction's health first, exactly as the tenant guard's own runner
+    // does, so a discarded error cannot become a reported success.
+    sqlx::query("SELECT 1").execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(EventReceipt {
         channel_version: CHANNEL_VERSION,

@@ -5847,6 +5847,24 @@ where
     Ok(())
 }
 
+/// The inbox command whose row binds a node event's effect to a tenant, when the
+/// payload has one at all. `None` is an ordinary channel receipt: it records the
+/// event and changes nothing else, so there is nothing to order and no guard to
+/// take.
+///
+/// ONE classifier, used by `node_channel::events` to resolve the tenant BEFORE
+/// any lock is taken and by [`apply_node_result_in_tx`] to apply the effect under
+/// that guard — so the guard that is held and the effect that is applied can
+/// never disagree about which row binds them (`SIGNOFF-REPAIR.3.3.4.5`).
+pub(crate) fn node_result_command(payload: &Value) -> Option<(&str, &str)> {
+    let kind = payload.get("kind").and_then(|v| v.as_str())?;
+    if kind != "work_result" && kind != "work_dead_lettered" {
+        return None;
+    }
+    let command_id = payload.get("command_id").and_then(|v| v.as_str())?;
+    Some((kind, command_id))
+}
+
 /// The `.6.2` node-result path (called from the node channel's `events` handler):
 /// fold a node-emitted `work_result` into its thread through the SAME
 /// claim → authorize → validate → apply flow a CLI command rides. The idempotency
@@ -5854,50 +5872,57 @@ where
 /// replay — never a second domain effect. The caller owns the transaction; a
 /// rejection is stored as the command's idempotent result and returned as the
 /// error (the receipt still commits — the node DID emit this event).
-pub(crate) async fn apply_node_result_in_tx<'e, E>(
-    mut tx: E,
+///
+/// `guarded_tenant` is the tenant whose authority guard the caller took BEFORE
+/// the node's lease row (`SIGNOFF-REPAIR.3.3.4.5`). Every effect below binds its
+/// SQL to it, which is the guard module's own contract: a row that changed
+/// between the pre-lock resolution and this guarded read matches nothing, so the
+/// fold cannot happen under the wrong tenant's guard.
+pub(crate) async fn apply_node_result_in_tx(
+    tx: &mut sqlx::PgConnection,
     node_id: &str,
     payload: &Value,
-) -> Result<(), ControlApiError>
-where
-    E: std::ops::DerefMut,
-    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
-{
+    guarded_tenant: TenantId,
+) -> Result<(), ControlApiError> {
+    let Some((kind, command_id)) = node_result_command(payload) else {
+        // Ordinary channel events (WP3) are receipts only — nothing to fold.
+        return Ok(());
+    };
     // A node's dead-letter report (`.2.4`): auto-quarantine the inbox row WITH
     // the refusal reason — the terminal fact the operator later replays.
-    if payload.get("kind").and_then(|v| v.as_str()) == Some("work_dead_lettered") {
-        let (Some(command_id), Some(reason)) = (
-            payload.get("command_id").and_then(|v| v.as_str()),
-            payload.get("reason").and_then(|v| v.as_str()),
-        ) else {
+    if kind == "work_dead_lettered" {
+        let Some(reason) = payload.get("reason").and_then(|v| v.as_str()) else {
             return Ok(()); // malformed report — the receipt stands, no domain effect
         };
         crate::telemetry::metrics().incr("dead_letters");
         sqlx::query(
-            "UPDATE node_inbox SET quarantined_at = $3, quarantine_reason = $4 \
-             WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NULL",
+            "UPDATE node_inbox SET quarantined_at = $4, quarantine_reason = $5 \
+             WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 \
+               AND quarantined_at IS NULL",
         )
         .bind(node_id)
         .bind(command_id)
+        .bind(guarded_tenant.to_string())
         .bind(Utc::now())
         .bind(format!("dead-lettered: {reason}"))
         .execute(&mut *tx)
         .await?;
         return Ok(());
     }
-    // Ordinary channel events (WP3) are receipts only — nothing to fold.
-    if payload.get("kind").and_then(|v| v.as_str()) != Some("work_result") {
-        return Ok(());
-    }
-    let Some(command_id) = payload.get("command_id").and_then(|v| v.as_str()) else {
-        return Ok(());
-    };
 
-    // The inbox row binds the result to its tenant/thread scope and work kind.
-    let Some((tenant_raw, thread_raw, work)) =
-        node_channel::load_command_in_tx(&mut *tx, node_id, command_id).await?
+    // The inbox row binds the result to its tenant/thread scope and work kind —
+    // selected BY the guarded tenant, so the row this fold uses is the row whose
+    // guard is held.
+    let Some((tenant_raw, thread_raw, work)) = node_channel::load_command_for_tenant_in_tx(
+        &mut *tx,
+        node_id,
+        command_id,
+        &guarded_tenant.to_string(),
+    )
+    .await?
     else {
-        // Unknown to this node's ledger: the receipt stands, no domain effect.
+        // Unknown to this node's ledger under this tenant: the receipt stands,
+        // no domain effect.
         return Ok(());
     };
     let tenant_id: TenantId = tenant_raw
@@ -5957,7 +5982,11 @@ where
         ClaimOutcome::Fresh => {}
     }
 
-    let now = Utc::now();
+    // DATABASE time, sampled here — after the tenant guard and the idempotency
+    // claim have both waited — not the process clock read before them. Authority
+    // that ended while this result queued is evaluated as it stands now, which is
+    // the same rule the thread-command path adopted in `.3.3.4.4`.
+    let now = crate::authority::transaction::database_now_in_tx(&mut *tx).await?;
     match authorize_in_tx(&mut *tx, &authz, now).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");

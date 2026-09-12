@@ -161,6 +161,63 @@ Two operator actions harden the per-node inbox (both on the control API,
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 
+## Ordering a node result against an authority change
+
+A node-emitted `work_result` folds into its thread through the same
+claim → authorize → validate → apply flow a CLI command rides, so it needs the
+same ordering against a tenant authority change that
+[a thread command has](authority.md#ordering-a-thread-command-against-an-authority-change).
+
+`POST /v1/nodes/events` now takes the tenant's authority guard **first** — before
+the node's lease row, before the receipt, before the idempotency claim and before
+every domain lock. The tenant comes from the inbox row the result names, read by
+a plain lookup that takes no lock, so the guard is genuinely the first lock the
+transaction holds and there is no order to invert. The mode is *shared*: results
+from different nodes in a tenant still run concurrently, while a revocation's
+*exclusive* mode fences every result that has not already passed that point.
+
+This is an ordering that previously did not exist at all, rather than a race
+window that has been narrowed.
+
+The decision time is **database** time sampled after the guard and the
+idempotency claim have both waited, so authority that ended while a result queued
+is evaluated as it stands after the wait. Every effect the fold performs — the
+work command lookup and the dead-letter quarantine — names the guarded tenant in
+its own SQL, so a row that changed between the pre-lock lookup and the guarded
+read matches nothing instead of being applied under a guard that does not cover
+it.
+
+| Order | Result |
+| --- | --- |
+| A revocation holds the exclusive guard when a result arrives | The result waits, then evaluates against the revoked authority. |
+| A result holds its shared guard when a revocation arrives | The result commits; the revocation applies to what follows. |
+| Authority ends while a result waits | The post-wait database time sees it ended, and the fold is refused. |
+| Two results in the same tenant | Both hold the shared guard; neither blocks the other. |
+| A result in an unrelated tenant | Unaffected — the guard is per tenant. |
+| An ordinary channel receipt with no work command | No tenant-bound effect, so no guard: the receipt records and nothing else changes. |
+
+An event with **no tenant-bound effect** takes no guard at all. That is the
+common case for plain channel traffic, and it keeps the ordering from becoming a
+toll on every message the channel carries.
+
+### A rejected result and a failed one are different answers
+
+A **rejected** application is a committed fact: the node did emit the event, so
+its receipt commits, and the refusal is stored as the work command's idempotent
+result. `accepted: true` means *this event id was new*, not *the work applied*.
+
+A **storage failure** is not. It aborts the transaction, so the handler's COMMIT
+would be executed as a ROLLBACK — and the handler used to answer `accepted: true`
+for a receipt that was never written, which the node would then never re-emit.
+The transaction's health is now probed before the commit, exactly as the tenant
+guard's own runner does, so a discarded error cannot be reported as success: the
+request fails with `dependency_unavailable`, nothing is written, and the node's
+redelivery is free to try again.
+
+Node credential and lease proof, partial-result handling and the budget
+settlement guarantees keep their own repair owners; an authority guard does not
+fix those mechanisms.
+
 ## Cached decisions (`.1.5.2`, ADR-008)
 
 The node caches exactly one class of decision: the server's **admission

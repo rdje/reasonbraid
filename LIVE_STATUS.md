@@ -6,6 +6,33 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Node results are ordered against authority changes under `.3.3.4.5`
+(REPAIR-0105), and the defect was the same shape as `.3.3.4.4` one path
+further on: `node_channel::events` opened a plain transaction, locked the
+node's LEASE row, wrote the receipt and folded the result while authorizing on
+the PROCESS clock, with no tenant guard anywhere. Baseline under a held
+exclusive guard: the result ran to completion and wrote both rows
+(`receipts 0 -> 1, contributions 0 -> 1`), authority that ended while a result
+waited was still used to fold, and an exclusive guard could be acquired freely
+while the handler sat blocked on the lease row — the inversion, observed in
+`pg_stat_activity` rather than argued. A SECOND defect was found by these
+controls and had not been suspected: `events` discarded the application's error
+and committed regardless, so a SQL failure's COMMIT ran as a ROLLBACK while the
+handler answered `200 {"accepted":true}` for a receipt that was never written
+(measured with an injected, reverted `event_log` trigger: `node_events` rows 0).
+The repair resolves the effect's tenant with a lock-free read, takes the shared
+guard BEFORE the lease, binds every effect's SQL to that tenant, samples
+`clock_timestamp()` after the guard and idempotency waits, and probes the
+transaction with `SELECT 1` before COMMIT. An ordinary channel receipt takes no
+guard, because it has no tenant-bound effect to order. `node_result_ordering`
+goes **2 passed / 4 failed → 6 passed / 0 failed**; the affected family passes
+at rc=0 with **7 suites, 46 tests, zero failures**
+(`node_result_ordering node_work node_channel node_replacement node_inbox
+quarantine command_ordering`), cluster stopped and removed, and `budget` keeps
+its 7 settlement controls green. Node credential/lease proof, partial-result
+handling and budget settlement guarantees keep their own owners `.4.1`–`.4.5`.
+
+
 Thread commands are ordered against authority changes under `.3.3.4.4`
 (REPAIR-0104). The defect was not a narrow race window: `run_thread_command`
 opened a plain transaction, claimed its idempotency key and authorized on the

@@ -23,7 +23,7 @@ from project_env import ROOT, local_directory, project_environment, toolchain_di
 SERVER_SUITES = (
     "pg_guard atomic_transaction outbox_worker node_channel authority authority_transaction authority_issuance enrollment_transaction bootstrap_recovery budget command_api node_work "
     "aggregate_library identity_store node_enrollment node_inbox invitations backup_restore "
-    "migration_upgrade escalation node_replacement profiles evaluation routing policy rls command_ordering "
+    "migration_upgrade escalation node_replacement profiles evaluation routing policy rls command_ordering node_result_ordering "
     "quota quarantine classification federation cards mcp_listen mcp_write allowlist regions site_authority site_operator_cli site_registry_http"
 ).split()
 SUITES = {name: ("reasonbraid-server", name) for name in SERVER_SUITES}

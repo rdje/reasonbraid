@@ -6,6 +6,22 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+`SIGNOFF-REPAIR.3.4` is censused and split into five children (REPAIR-0128),
+with two defects measured from source and not yet repaired. 🔴 **`evaluate()`
+never reads `grant.delegable`**, so a grant issued as non-delegable backs a
+delegated request exactly as a delegable one does — the flag is read only at
+issuance, and only to check that a delegable grant sits under a delegable
+boundary (`.3.4.1`). 🔴 **The replay hash does not bind the authority context**:
+`request_hash` covers the operation, the actor and `envelope.body`, while
+`authority_context` is a sibling of `body`, so two requests differing only in
+`on_behalf_of` share an idempotency key and the second replays the first's result
+without its own authority being evaluated (`.3.4.2`). Bounded depth is
+deliberately unenforced in the dev profile and says so in a comment; the
+delegate-without-scope pair is unreachable today and is recorded so it is not
+rediscovered as a defect. ⭐ The cached decision's two halves fail in opposite
+directions — a future EPOCH reads as stale, a future `decided_at` does not
+(`.3.4.3`). No production source changed; nothing here is repaired yet.
+
 **`SIGNOFF-REPAIR.3.3.4` is closed at `.13` (REPAIR-0127), and the closure states
 its own limits.** Two tracked instruments re-derive the census rather than
 re-reading it. The direct named-call surface fell **42 → 27** while the corpus

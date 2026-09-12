@@ -1195,14 +1195,89 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: `REASONBRAID-REPAIR-0127 (leaf SIGNOFF-REPAIR.3.3.4.13): reconcile the guard census with instruments, and say what is not certified`.
 
 ### SIGNOFF-REPAIR.3.4 — Delegation and cache freshness
-
-- Status: `pending`.
 - Sources / owned surfaces: `core delegation/cache, authority.rs, command envelopes`.
 - Representation evidence follow-up: the former ADR-009 wire-size assertion used hand-built JSON plus a fixed 64-byte increment, with no actual token encoding or depth 1–3 comparison. `.3.3.1` corrects that claim and verifies the shipped envelope type. This leaf owns the missing comparative prototype/measurements before claiming a wire-size or multi-hop advantage; preserve the development envelope choice without treating a mathematical increment as implementation evidence.
 - Tagged-codec follow-up: `.3.3.3.2.2.1` reproduces Serde unit-marker/sequence acceptance and owns strict evaluation, inspection and nested TargetSelector decoding. Census the remaining tagged authority types, including Decision::Allowed, against their documented wire contracts; reproduce and repair unacceptable unknown-field/alternate-shape behavior with valid-input and schema controls. These remaining types are source candidates, not yet runtime-qualified defects; keep their evidence distinct from the reproduced selector/evaluation cases.
 - Goal and acceptance: Enforce delegability, bounded depth, actor/subject participation and consent; bind replay hashes to target and authority context while preserving approved committed-replay semantics; make cached decision expiry and future-clock behavior explicit.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Status: `active`; censused and split below, as `.3.3.4.10` and `.3.3.4.11` were, because this leaf's own goal line names four different mechanisms and a single leaf would have to qualify all of them at once.
+- **census of what the delegation and cache surface actually does today, run BEFORE the children were drawn.** The producing command, re-runnable at any commit — it asks each question of the function that would have to answer it, rather than of the prose:
+
+  ```sh
+  python3 - <<'EOF'
+  import re, pathlib
+  core = pathlib.Path("crates/reasonbraid-core/src/authority.rs").read_text()
+  srv  = pathlib.Path("crates/reasonbraid-server/src/authority.rs").read_text()
+  api  = pathlib.Path("crates/reasonbraid-server/src/api.rs").read_text()
+  def body(text, name):
+      lines = text.splitlines()
+      marks = [(i, m.group(1)) for i, l in enumerate(lines)
+               for m in [re.match(r'\s*(?:pub(?:\(\w+\))?\s+)?(?:async\s+)?fn\s+(\w+)', l)] if m]
+      for k, (i, n) in enumerate(marks):
+          if n == name:
+              return "\n".join(lines[i:(marks[k+1][0] if k+1 < len(marks) else len(lines))])
+      return ""
+  ev = body(srv, "evaluate")
+  print("evaluate() reads grant.delegable      :", "delegable" in ev)
+  print("evaluate() reads max_delegation_depth :", "max_delegation_depth" in ev)
+  sel = body(pathlib.Path("crates/reasonbraid-server/src/authority/selection.rs").read_text(),
+             "select_authority_in_tx")
+  print("selection checks the delegation scope :", "delegation_scope" in sel,
+        "(guarded by `if let Some(scope)`:", "if let Some(scope)" in sel, ")")
+  print("depth is explicitly discarded         :",
+        bool(re.search(r"let _ = boundary\.max_delegation_depth", core)))
+  rh = body(api, "request_hash")
+  print("request_hash binds the authority ctx  :", "authority_context" in rh or "delegate" in rh)
+  fresh = body(core, "is_fresh")
+  print("is_fresh compares decided_at to now   :", "decided_at" in fresh)
+  print("is_invalidated uses != (future epoch is stale):", "!=" in body(core, "is_invalidated"))
+  EOF
+  ```
+
+- 🔴 **What it measured, and the first line is a defect rather than a gap.** `evaluate()` — the function that decides every command — **never reads `grant.delegable`**. The flag is read in exactly one place, `grant_exceeds_boundary`, and only in the direction `if grant.delegable && !boundary.delegable`: a grant that CLAIMS to be delegable must sit under a delegable boundary. Nothing asks, when a request arrives with `delegate_subject` set, whether the subject's grant permits being delegated at all. A grant issued with `delegable = false` therefore backs a delegated request exactly as a delegable one does. `.3.4.1` owns it.
+- 🔴 **The replay hash does not bind the authority context.** `request_hash` hashes `operation`, the ACTOR's identity and `envelope.body`. `authority_context` is a SIBLING of `body` in the envelope, not part of it, so two requests identical except for `on_behalf_of` produce the same idempotency key and the second replays the first's stored result without its own authority ever being evaluated. `.3.4.2` owns it, including whether the store holds denials — which decides whether this is only an audit defect or also a refusal that can be replayed away.
+- **Bounded depth is deliberately not enforced, and that is not the same as missing.** `let _ = boundary.max_delegation_depth; // dev profile: only direct grants exist; chains are Phase 2` — an explicit, commented decision. `.3.4.1` owns saying so in the book rather than repairing it, because a depth bound with no chains to bound is machinery without a population; the leaf that introduces chains owns enforcing it.
+- **A structural hazard that is NOT currently reachable, recorded so it is not rediscovered as a defect.** `select_authority_in_tx` applies the §16.3 widening check inside `if let Some(scope) = &authz.delegation_scope`, so a `CommandAuthz` with `delegate_subject: Some(_)` and `delegation_scope: None` would delegate with the subject's FULL selector. The only caller that sets a delegate, `delegation_from_envelope`, always sets the scope alongside it, so no request reaches that state today. `.3.4.1` owns making the pair unconstructible rather than merely unused.
+- **The cache's two halves fail in opposite directions, which is worth stating precisely.** `is_invalidated` uses `revocation_epoch != current_epoch`, so a decision claiming a FUTURE epoch reads as stale — it fails safe. `is_fresh` is `now < expires_at` and never looks at `decided_at`, so a decision claiming to have been decided in the future is fresh for as long as its expiry says. `.3.4.3` owns making that explicit and deciding it.
+- The split, five children along the four mechanisms the goal line names plus the two follow-ups this leaf inherited. `.3.4.1` and `.3.4.2` are the two measured defects and come first; `.3.4.3` is a decision about a fail-safe direction; `.3.4.4` and `.3.4.5` are the inherited representation follow-ups, which are census work rather than repairs and are last because neither blocks anything.
+- Verification / commit: per child.
+
+#### SIGNOFF-REPAIR.3.4.1 — Delegability at evaluation
+
+- Opened: `pending`; the first of the two measured defects, and the smallest.
+- Owns: `evaluate()` refusing a delegated request whose SUBJECT's grant is not `delegable`, with the refusal reading like the other decision reasons; the `max_delegation_depth` non-enforcement stated in the book as the deliberate dev-profile decision it is; and the `delegate_subject`-without-`delegation_scope` pair made unconstructible rather than merely unreached.
+- Acceptance: a delegated request on a non-delegable grant is DENIED and the denial is recorded like any other; the same request with the same grant made delegable is allowed; a non-delegated request on a non-delegable grant is unaffected, which is the control that stops the repair from being a blanket refusal; every existing delegation control passes unchanged.
+- ⛔ Not owned: introducing delegation CHAINS, or enforcing a depth over a population of one. The comment says chains are a later phase and this leaf does not make them arrive early.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.3.4.2 — The replay hash and the authority context
+
+- Opened: `pending`; follows `.3.4.1`.
+- Owns: binding the idempotency request hash to the authority context the request was made under, so a replay can only match a request made under the SAME delegation. Establish first whether the idempotency store holds denials as well as successes — that measurement decides whether today's behaviour is an audit defect only, or also a refusal that a second request can replay away.
+- Acceptance: two requests identical except for `on_behalf_of` do not share an idempotency key; a genuine replay — same actor, same body, same authority context — still returns the original result with its original semantics, which is the committed-replay contract this must not break; the recorded hash's inputs are documented as a wire-visible contract rather than changed silently.
+- ⚠️ The hash is a stored value: changing its inputs changes every future key and matches no historical row. That is a migration question, not only a code question, and the leaf must say what happens to keys written by the previous shape rather than assume no one holds one.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.3.4.3 — Cached decision freshness and the future clock
+
+- Opened: `pending`; a decision leaf more than a repair leaf.
+- Owns: deciding and stating what a cached decision whose `decided_at` lies in the future means. `is_fresh` is `now < expires_at` and never reads `decided_at`, so such a decision stays fresh for its full stated window; `is_invalidated`'s `!=` already makes a future EPOCH read as stale, so the two halves currently fail in opposite directions.
+- Acceptance: whichever way it is decided, the rule is one sentence in the book and one control in the suite; a decision with a future `decided_at` behaves the way that sentence says; the existing expiry, epoch-invalidation and always-standing-deny controls pass unchanged.
+- ⚠️ Where the clock comes from matters more than the comparison: if `decided_at` is server-produced and the node only stores it, a future value means server clock skew and refusing it turns skew into an outage. If a node can influence it, refusing is the only safe answer. The leaf must establish which before choosing.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.3.4.4 — The remaining tagged authority codecs
+
+- Opened: `pending`; the follow-up inherited from `.3.3.3.2.2.1`, which reproduced Serde unit-marker and sequence acceptance for the selector and evaluation types and repaired those.
+- Owns: censusing the REMAINING tagged authority types — `Decision::Allowed` among them — against their documented wire contracts, then reproducing and repairing any unacceptable unknown-field or alternate-shape acceptance with valid-input and schema controls.
+- ⛔ These are source CANDIDATES, not runtime-qualified defects. Keep their evidence distinct from `.3.3.3.2.2.1`'s reproduced cases; a type that merely resembles a repaired one is not thereby broken.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.3.4.5 — The ADR-009 envelope measurement
+
+- Opened: `pending`; the follow-up inherited from `.3.3.1`, and the only child here that repairs no code.
+- Owns: the comparative prototype and measurement that the withdrawn ADR-009 wire-size assertion never had. That assertion used hand-built JSON plus a fixed 64-byte increment, with no actual token encoding and no depth 1–3 comparison; `.3.3.1` corrected the claim and verified the shipped envelope type, leaving the measurement itself undone.
+- Acceptance: an actual encoding of both shapes at depths 1–3, measured rather than computed, with the instrument recorded so it re-runs. ⛔ The development envelope choice is PRESERVED whatever the numbers say — this leaf owns the evidence for a claim, not a redesign, and a mathematical increment is not implementation evidence in either direction.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.3.5 — Tenant-owned administration
 
@@ -2621,9 +2696,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness — the last `.3` child, now that `.3.3.4` is closed |
-| 2 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
-| 3 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at seven |
+| 1 | `SIGNOFF-REPAIR.3.4.1` | `pending` | delegability at evaluation: `evaluate()` never reads `grant.delegable`, so a non-delegable grant backs a delegated request |
+| 2 | `SIGNOFF-REPAIR.3.4.2` | `pending` | the replay hash does not bind the authority context, so requests differing only in `on_behalf_of` share an idempotency key |
+| 3 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
+| 4 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at seven |
 
 
 
@@ -2649,6 +2725,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.4`: `REASONBRAID-REPAIR-0128 (leaf SIGNOFF-REPAIR.3.4): census the delegation and cache surface and split it`.
 
 - `SIGNOFF-REPAIR.3.3.4.13`: `REASONBRAID-REPAIR-0127 (leaf SIGNOFF-REPAIR.3.3.4.13): reconcile the guard census with instruments, and say what is not certified`.
 

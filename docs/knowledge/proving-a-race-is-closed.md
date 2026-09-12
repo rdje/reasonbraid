@@ -1,10 +1,10 @@
-answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race; why does my new ordering control pass against the unrepaired code; which lock mode should this operation take?
+answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race; why does my new ordering control pass against the unrepaired code; which lock mode should this operation take; does taking this guard actually order me against the thing I am worried about?
 
 # Proving a race is closed
 
 - **Type:** `knowledge`
 - **Date:** `2026-09-12`
-- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`, `.3.3.4.9`, `.3.3.4.10.1`
+- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`, `.3.3.4.9`, `.3.3.4.10.1`, `.3.3.4.11`
 
 ## The question
 
@@ -92,6 +92,34 @@ Derive it from two questions:
 If both answers are no, shared is correct and exclusive is a cost with no
 invariant behind it — it blocks every concurrent operation in the tenant to buy
 nothing.
+
+## A guard only orders you against operations that take the same guard
+
+Declaring a guard is not the same as being ordered. A guard is a lock on a shared
+row, so it excludes exactly the operations that also take it — and **nothing
+else**. Before writing a guard set into a repair, go and read the operation you
+believe it fences and check that it acquires the same key.
+
+The failure this prevents is not a race; it is a false claim. `.3.3.4.11`'s import
+child was about to declare the origin tenant's guard alongside the importing
+tenant's, to order a card import against a concurrent federation-agreement
+revocation. The guard set was well-formed, the runner sorts it, and it would have
+excluded nothing at all: `federation::revoke` is a bare pool `UPDATE` that takes
+no guard, as are `propose` and `accept`. The leaf, and eventually the book, would
+have asserted an ordering that no code provides.
+
+Two consequences worth keeping separate:
+
+- **What moving a read inside the transaction genuinely buys** is one consistent
+  snapshot with the writes that depend on it. That is real, and usually worth
+  doing on its own.
+- **What a guard buys** is ordering against other guard-takers. If the operation
+  you fear does not take the guard, say so in the leaf and name the leaf where
+  that ordering actually arrives, rather than letting the guard imply it.
+
+State the limit at the SPLIT, not at the closure. A limit found during
+implementation tends to be phrased as a caveat on work already done; a limit
+predeclared is a constraint on what the work may claim.
 
 ## Re-verify
 

@@ -6,6 +6,30 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The profile/card surface `.3.3.4.11` (REPAIR-0118) is censused and split into
+three children before any implementation, and the census changed two of the
+parent's own assumptions. Seven handlers on six route entries, of which exactly
+**three mutate**; `.7.1`'s closed vocabulary assigns this parent two operations
+and deliberately no `ProfileWrite`, because `put_profile` is a self-declaration
+gated by identity with no authorization record at all. ⭐ Unlike `.10`, **all
+three mutations are already tenant-bound**, so there is no tenant-binding repair
+in this family. What is missing is the transaction and the evidence, and three
+defects are measured from source: `profiles::write_profile` computes its version
+as a read-then-write against migration 0019's `UNIQUE (role_id, version)`, so two
+concurrent writes for one role collide and one caller receives **500** instead of
+a serialized second version; `attest_capability` reads the profile on the pool
+and writes through a different transaction, so two administrators attesting
+different capabilities of the same role **silently lose one of the two
+attestations**; and `import_profile_card` commits the grant, role, quota,
+enrollment and receipt and writes the profile only afterwards, so a failure there
+answers 500 leaving an **orphan role with no profile**, having also read its
+admission, its active boundary and its effective agreement outside the
+transaction that uses them. ⚠️ One limit is recorded against the import child in
+advance: `federation::revoke` takes no guard, so no guard set here can fence a
+concurrent agreement revocation — that ordering arrives with `.3.3.4.12`. Guard
+modes are not decided at the split; each child derives its own. Task-tree and
+index only; no production source changed and no repair is claimed.
+
 🔴 **A cross-tenant destructive defect was reproduced and closed under
 `.3.3.4.10.3` (REPAIR-0117).** `node_inbox` has carried a `tenant_id` column
 since migration 0003 and none of the three operator verbs used it. Measured on

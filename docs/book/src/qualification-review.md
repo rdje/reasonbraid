@@ -154,6 +154,31 @@ live test drives a successful acquisition through to a snapshot and derivation,
 because the live R2 test refuses at the loopback gate; `.7.3.3.4` owns that join.
 See `docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
 
+That join is closed under `.7.3.3.4.1`. `ApiState::with_acquisition` lets a
+deployment supply the R0 fetcher its acquisition legs use, while `new`,
+`with_gate` and both existing routers keep building the shipped https-only
+public-destination policy. A live control resolves one reference through three
+deployments differing only in that fetcher — the shipped state refuses at the
+scheme, the shipped destination policy refuses the `loopback` class by name, a
+loopback-admitting policy acquires — then reads the evidence back and asserts
+the snapshot's digest and byte length and the derivation rows' content and
+digests against the bytes the origin actually served. The profiles suite passes
+32 of 32 live, alongside 97 library tests, 23 extraction controls and strict
+lint; the owned cluster was removed. Three reverted injections prove the control
+goes red on a wrong byte, a discarded fetcher and a wrong derivation.
+
+That control also measured a finding: the R2 pack advertises five media types
+its acquisition leg refuses. The R0 sniff accepts a declared content type only
+when it is `text/html`, `application/xhtml+xml` or `text/*`, so a feed served
+under its own `application/atom+xml` is refused `media_type_refused` before the
+worker is reached, while the identical bytes served as `text/xml` succeed. A
+caller is therefore ranked onto a resolver that cannot acquire its document and
+receives an acquisition refusal rather than the explicit `resource_unresolvable_now`
+the resolution contract reserves for "no eligible resolver". The per-format
+census and the repair decision are owned by `SIGNOFF-REPAIR.7.3.3.5`; the live
+mismatch refusal remains `.7.3.3.4.2`. See
+`docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
+
 The full pre-push checkpoint now passes on source `7233122` — the first complete
 run recorded. All eight commands return 0, 40 of 40 database suites run with 291
 tests and no failures, the two-host demonstration reports all acceptance checks

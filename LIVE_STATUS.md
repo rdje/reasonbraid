@@ -245,6 +245,37 @@ acquisition through to a snapshot and derivation, because the live R2 test
 refuses at the loopback destination gate. Concrete owner: .7.3.3.4.
 Qualification categories are unchanged; no full-CI or push claim follows.
 
+That join is closed under .7.3.3.4.1 (REPAIR-0095). `ApiState::with_acquisition`
+lets a deployment supply the R0 fetcher its acquisition legs use, while `new`,
+`with_gate`, `api_router` and `api_router_gated` all keep building the shipped
+https-only public-destination policy. A live control serves one Atom document
+from a local origin and resolves ONE reference through three deployments that
+differ only in that fetcher, so each production gate is measured on its own: the
+shipped state refuses `scheme_not_allowed`, the shipped destination policy
+refuses `destination_refused` naming `loopback`, and a loopback-admitting policy
+acquires. The evidence is then read back and asserted against the served bytes —
+the snapshot's `raw_digest` and `byte_length`, the resolver id and locator, and
+the derivation rows' content and digests — with the refused reference asserted to
+hold zero snapshots. The profiles suite passes 32 of 32 live and its cluster was
+stopped and removed; 97 server library tests, 16 completion controls, seven
+owned-input controls, strict all-target server lint and format pass. Three
+injections, each reverted and re-run green, prove the control goes red: one extra
+served byte (which left the chunk digests identical, so the raw-byte leg is the
+one that caught it), a discarded supplied fetcher, and a derivation whose content
+is not the worker's chunk.
+
+That control also MEASURED a finding rather than inferring it: the R2 pack
+advertises five media types its own acquisition leg refuses. The R0 sniff accepts
+a declared content type only when it is `text/html`, `application/xhtml+xml` or
+`text/*`, so the identical feed succeeds served as `text/xml` and is refused
+`media_type_refused` served as `application/atom+xml`. A caller is therefore
+ranked onto a resolver that cannot acquire its document and receives an
+acquisition refusal instead of the explicit `resource_unresolvable_now` the §12.2
+contract reserves for "no eligible resolver". The per-format census and the
+repair decision are owned by .7.3.3.5; the live mismatch refusal remains
+.7.3.3.4.2. Neither the registry row nor the sniff changes before that census
+exists. Evidence: docs/tasks/artifacts/signoff_review/r2-acquisition-join.md.
+
 The source-165cb3a full checkpoint STOPPED at its fourth command
 (`04-pg-demo rc=101`, 3,137s): 36 of 40 suites started, 35 passed with 259 tests,
 and `site_authority` returned `9 passed; 1 failed`. Four suites, the

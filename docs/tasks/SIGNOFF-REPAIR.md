@@ -946,15 +946,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
   - The R2 format set is `application/pdf`, `application/zip`, `application/x-tar`, `application/atom+xml`, `application/rss+xml` (`crates/reasonbraid-extract/src/main.rs`). A minimal Atom feed is the cleanest served document: text, no binary fixture, and `extract_feed` derives deterministic chunks — the feed title (plus subtitle), then one chunk per entry of title + summary + content.
   - Snapshot/derivation readback uses direct SQL against the runner's owned disposable cluster, which is the pattern `profiles.rs` already uses (`SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id=$1`).
   - The mismatch leg has its own injection point: `crates/reasonbraid-server/src/extraction.rs:183` reads `R2_WORKER_BIN`, so a stub worker can return a wrong `parent_digest` without touching production.
-- Verification / commit: pending; the children carry it.
+- Verification / commit: `.4.1` is REPAIR-0095 (the success join, with the seam); `.4.2` remains pending.
 
 ###### SIGNOFF-REPAIR.7.3.3.4.1 — Drive a successful R2 acquisition through to its snapshot and derivations
 
-- Status: `pending`; the first child, and the one that closes the stated coverage gap.
+- Status: `done`; REPAIR-0095. The stated coverage gap is closed: a successful R2 acquisition now runs through the real HTTP handler to its snapshot and derivations, and the persisted evidence is asserted against the bytes the origin served.
 - Owns: a narrow acquisition seam on `ApiState` that accepts a caller-supplied `Fetcher`, leaving `new`/`with_gate` building the production `Fetcher::new` unchanged; a local Atom-feed origin; and one live control through the real HTTP handler that asserts the persisted evidence describes the bytes actually served — the snapshot's `raw_digest` equals the served document's SHA-256, its `byte_length` equals the served length, and the derivation rows' chunk digests are those `extract_feed` derives from that exact feed.
 - The seam is a test/deployment profile, not a production relaxation: production constructs a different `Fetcher`, and the shipped https-only public-destination policy is not edited. Follow the established `with_gate` precedent, which is already documented in the source as "the test/deployment seam".
 - Acceptance: the control fails against a production-policy fetcher (the loopback refusal it exists to get past), passes with the seam, and asserts digests rather than merely a 200 — a successful acquisition that persisted the wrong bytes must fail it.
-- Verification / commit: pending.
+- Reproduce: at the predecessor commit `git grep -n "R2_RESOLVER_ID\|r2-extract-worker\|extraction_version" -- 'crates/**/tests/*.rs'` returned two hits, neither an acquisition, and `git grep -n 'acquisition"\]' -- 'crates/**/tests/*.rs'` returned none — the census `.7.3.3.3.2` recorded, unchanged at this commit.
+- Fix: `ApiState::with_acquisition` takes the R0 fetcher the acquisition legs use; `with_gate` now delegates to it with the same `Fetcher::new(FetchLimits::default())` it built inline before, so `new`, `with_gate`, `api_router` and `api_router_gated` are behaviourally unchanged and every construction inside the server binary still gets the shipped policy. `api_router_with_acquisition` is the matching router. A caller wanting another destination policy has to write it in its own source.
+- The control's shape is three deployments over ONE reference, so each production gate is isolated rather than bundled: `api_router` refuses `scheme_not_allowed`; the origin's scheme with the SHIPPED destination policy refuses `destination_refused` naming `loopback`; the origin's scheme with a loopback-admitting policy acquires. The R2 registry row's `schemes` are widened to the origin's scheme for the three resolves and restored before anything is asserted, so no later suite in the same database inherits it; the control asserts the migration's `["https"]` baseline first.
+- Design correction found during implementation: the pre-established design did not account for `resolvers::resolve` filtering on the registry row's `schemes @> [reference.scheme]`. Migration 0027 declares `["https"]`, so an honest `http` reference ranks no R2 pack. The reference's `scheme` is caller-supplied and unvalidated against its locator, so claiming `https` for an `http` locator would have made the control pass on false data; the registry row is a deployment fact and is configured as one instead.
+- Verification: the profiles suite passes 32/32 live in the owned disposable cluster, including `the_r2_acquisition_persists_the_served_document_s_own_evidence`; the cluster was stopped and removed. 97 server library tests, 16 completion controls, 7 owned-input integration controls, strict `-D warnings` server lint over all targets and workspace format pass.
+- Falsification (three injections, each reverted and re-run green — `docs/CLAIM_VERIFICATION.md` leg 2): serving ONE extra byte fails the receipt/snapshot digest assertions while the chunk digests stay identical, which is why the raw-byte and derivation legs are both present; neutering `with_acquisition` so it discards the supplied fetcher fails the control at the destination-gate assertion, so the seam is what makes it pass; persisting a derivation whose content is not the worker's chunk fails at the derivations assertion and nowhere earlier.
+- Explicit limit: this qualifies the SUCCESS join. The mismatch refusal's live absence remains `.4.2`, and the acquirable-format finding below is `.7.3.3.5`.
+- Commit: `REASONBRAID-REPAIR-0095 (leaf SIGNOFF-REPAIR.7.3.3.4.1): drive an R2 acquisition to its persisted evidence`. Evidence `docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
 
 ###### SIGNOFF-REPAIR.7.3.3.4.2 — Prove the mismatch refusal persists nothing, live
 
@@ -962,6 +969,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns: a stub worker selected through `R2_WORKER_BIN` that returns a well-formed response whose `parent_digest` is not the digest of the supplied bytes, and a live control asserting the handler refuses it as `extraction_source_mismatch` with **no** `evidence_snapshots` row and **no** `derivations` row for that reference.
 - Why it is separate: `.4.1` needs a destination-policy seam and a real document; this needs a dishonest worker and asserts an ABSENCE. The existing seven integration controls for the mismatch are below the HTTP handler; this one is the live join.
 - Acceptance: the absence is asserted by count over the exact reference, not inferred from a non-200; and the control fails if the refusal is ever moved after persistence.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.7.3.3.5 — Reconcile the R2 pack's advertised formats with what its acquisition leg accepts
+
+- Status: `pending`; opened by `.7.3.3.4.1`, which measured the first instance live rather than inferring it.
+- Finding as measured: the R2 arm serves a reference whose media-type HINT is one of the five formats the pack advertises, but its acquisition leg is the R0 fetcher, whose response sniff accepts a DECLARED content type only when it is `text/html`, `application/xhtml+xml`, or `text/*`. A feed served under its own `application/atom+xml` type is therefore refused `media_type_refused` before the worker is reached. The live control asserts exactly that, against the same bytes that succeed on the sibling path served as `text/xml`.
+- Census (the claim is about a SET, so it carries its enumeration, both directions): `git grep -n "R2_RESOLVER_ID" -- 'crates/**/*.rs'` returns three hits — the constant, the single dispatch arm `crates/reasonbraid-server/src/api.rs:2012`, and the `resolver_id` written into the snapshot. That arm makes exactly one acquisition call, `state.fetcher.fetch`. The declared-type acceptance arms of `sniff_kind` (`crates/reasonbraid-server/src/fetcher.rs:767`) are the three above; migration 0027 advertises `application/pdf`, `application/zip`, `application/x-tar`, `application/atom+xml`, `application/rss+xml`. None of the five is in the accepted set.
+- NOT yet measured, and therefore not claimed: what an UNTYPED response of each of the five formats sniffs to from its bytes. The byte path is a separate branch of the same function and the source reads as though PDF, ZIP and tar would fail its UTF-8/control-character test while a feed would pass — but reading is not measuring, and `.7.3.3.5` owns settling it per format before any statement about the pack's real reach is published.
+- Owns: the per-format census as a mechanical control; then the decision this is currently missing — either the advertised `media_types` are narrowed to what the leg can actually acquire, or the acquisition leg learns the R2 format set under an explicit, bounded rule. The second is a production content-policy change with its own hostile-content surface (`§12.4` sniffing, decompression, quarantine) and does not happen as a side effect of a test.
+- Acceptance: a control that fails on the current code for every format the census proves unacquirable, and a recorded decision naming which of the two repairs was taken and why. Neither the registry row nor the sniff changes before that census exists.
+- Why it matters beyond tidiness: the pack's advertised capability is what `resolvers::resolve` ranks on, so a caller is routed to a resolver that cannot acquire its document and receives an acquisition refusal rather than the explicit `resource_unresolvable_now` the `§12.2` contract reserves for "no eligible resolver". That is a wrong answer, not merely a missing feature.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.7.3.4 — Bound extraction transport and retained storage
@@ -1103,6 +1121,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns: `scripts/check_lockstep_claim.sh`, staged-diff-scoped like `TASK-ACCEPTANCE` and `TABLE-ARITY-RATCHET` — for each staged `docs/tasks/*.md`, take the ADDED lines containing `**LOCKSTEP**`, and require every core live document named there to be in the staged set. Register it and mirror it in `DOCTRINE_ENFORCEMENT.md`.
 - Known false-positive shape, to handle honestly rather than guess at: a box naming a document in order to say it is UNCHANGED. Prose negation detection is fragile, so follow the `GAP-CLAIM-CENSUS` precedent and provide an explicit escape in the same section — `lockstep: <doc> unchanged (<why>)` — rather than parsing intent.
 - Acceptance: the check must FAIL against `6bf0c40`'s staged shape and PASS against `c6a843f`'s, and its `--self-test` must prove both directions.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.4.5.3 — The tree index's frontier is a second copy, and it drifted
+
+- Opened: `pending`; found while updating the frontier for `.7.3.3.4.1`, in the same family as `.1` and `.2` — a rule the project states and nothing checks.
+- Reproduce, exactly: `docs/TASK_TREE.md`'s Active Task Trees row for `SIGNOFF-REPAIR` read `.7.3.3.2.2 — director-requested handoff`, a leaf closed by REPAIR-0060 on 2026-09-11. The tree's own Current Frontier table had moved through many rows since. `COMMIT.md` says to update the index "only if the frontier changes", so the obligation exists and was simply not met, repeatedly and invisibly.
+- Why this is the same defect class as `.1`/`.2`: a fact is duplicated into a second document that nothing derives and nothing gates, so it is stale by construction the first time someone forgets. `docs/CLAIM_VERIFICATION.md` leg 3 states the rule directly — prefer one derived source over N synchronized copies — and the project already applied it once, in `check_book_frontier.sh`, which refuses a BOOK page naming a frontier leaf other than row 1. The index was left out of that repair.
+- Census owed before any rule is proposed, because the obvious rule may again be wrong: how many of the index's fourteen rows carry a frontier claim, how many are derived from their tree's own table, and how many are prose that would be flagged. `.11.4.5.2`'s lesson stands — measure the population before asserting a requirement over it.
+- Owns, provisionally pending that census: either extend `check_book_frontier.sh`'s comparison to `docs/TASK_TREE.md`'s row for an `active` tree, or generate that column from each tree's Current Frontier table so no copy exists to drift. Prefer the generator: it removes the failure mode instead of detecting it.
+- Acceptance: the check must FAIL against the index as it stood at `300de41` (naming `.7.3.3.2.2` while the tree's row 1 was `.7.3.3.4.1`) and PASS against the corrected row, with a two-sided `--self-test`; or, if the generator is chosen, the column has no hand-maintained copy left to test.
+- The stale row itself is corrected in REPAIR-0095 rather than left as a specimen — the reproduction is recorded here with its commit, so the gate can still be falsified against it.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.11.4.4 — A leaf's status can be contradicted inside its own section
@@ -1981,13 +2010,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.3.3.4.1` | `pending` | drive a successful R2 acquisition through to its snapshot and derivations; `.11.5` builds the pipeline-stage registry from it |
-| 2 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
-| 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 4 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 5 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 6 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 7 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.7.3.3.4.2` | `pending` | prove the mismatch refusal persists nothing, live; the seam and the origin `.4.1` built are reused |
+| 2 | `SIGNOFF-REPAIR.7.3.3.5` | `pending` | the R2 pack advertises five formats its acquisition leg refuses; census per format, then the decision |
+| 3 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -2013,6 +2043,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.7.3.3.4.1`: `REASONBRAID-REPAIR-0095 (leaf SIGNOFF-REPAIR.7.3.3.4.1): drive an R2 acquisition to its persisted evidence`.
 
 - `SIGNOFF-REPAIR.11.4.5.1`: `REASONBRAID-REPAIR-0094 (leaf SIGNOFF-REPAIR.11.4.5.1): refuse shell expansion in the doctrine registry`.
 
@@ -2333,6 +2365,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.7.3.3.4.1
+
+- [x] **REPRODUCE / ISSUE** — the coverage gap `.7.3.3.3.2` recorded, re-run unchanged at the predecessor `300de41`: `git grep -n "R2_RESOLVER_ID\|r2-extract-worker\|extraction_version" -- 'crates/**/tests/*.rs'` returns exactly two hits, a resolver-ranking assertion and a hand-submitted derivation, and `git grep -n 'acquisition"\]' -- 'crates/**/tests/*.rs'` returns none. No live test drove acquisition → extraction → snapshot → derivation on a successful document.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-server/src/api.rs`: `ApiState::new` and `with_gate` both hard-coded `Fetcher::new`, whose `.2.1` policy refuses every non-public destination, so the only origin a live test can run — loopback — was unreachable through the handler. A second gate the pre-established design had not accounted for: `resolvers::resolve` filters on the registry row's `schemes @> [reference.scheme]`, and migration 0027 declares `["https"]`, so an honest `http` reference ranks no R2 pack at all.
+- [x] **FIX** — `ApiState::with_acquisition(pool, enabled, broker, fetcher)` takes the R0 fetcher the acquisition legs use, and `with_gate` delegates to it with the same `Fetcher::new(FetchLimits::default())` it built inline before; `api_router_with_acquisition` is the matching router. `new`, `with_gate`, `api_router` and `api_router_gated` are behaviourally unchanged, so every construction inside the server binary still receives the shipped https-only public-destination policy. The shipped policy is not edited.
+- [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` returns `test result: ok. 32 passed; 0 failed` including `the_r2_acquisition_persists_the_served_document_s_own_evidence`, with `pg-tests: stopped and removed target/pg-tests/run-hsk0hhd8`. FALSIFIED three ways, each injection reverted and the suite re-run green: serving one extra byte fails the receipt digest assertion with `sha256:8f1d9f61…` observed against `sha256:561688a4…` expected (and its chunk digests unchanged, so the raw-byte leg is the one that caught it); discarding the supplied fetcher in `with_acquisition` fails at the destination gate with `scheme_not_allowed` observed where `destination_refused` was expected; persisting a derivation whose content is not the worker's chunk fails at the derivations assertion and nowhere earlier.
+- [x] **NO REGRESSION** — `cargo test -p reasonbraid-server --lib` returns `97 passed; 0 failed`; `--test extraction_input --test extraction_completion` returns `7 passed` and `16 passed`; `cargo clippy --locked -p reasonbraid-server --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass; `make gate` prints `=== all doctrines green ===` (15 checks) and `make book` writes the HTML book. The other 31 profiles tests pass unchanged, including the two existing R2/R0 resolver controls.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `docs/TASK_TREE.md`'s index row, the evidence record and its `INDEX.md` entry, `docs/book/src/deployment.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. Two things are explicitly NOT claimed: the live mismatch refusal stays `.7.3.3.4.2` pending, and the advertised-format finding is opened as `.7.3.3.5` with its untyped-byte-sniff half recorded as unmeasured rather than asserted.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.4.5.1
 

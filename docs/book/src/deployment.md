@@ -790,11 +790,40 @@ classification, the mismatch refusal naming both digests, and eight concurrent
 callers each receiving a receipt for their own document. Evidence:
 `docs/tasks/artifacts/signoff_review/extraction-owned-input.md`.
 
-One gap is stated rather than implied: no live test yet drives a SUCCESSFUL R2
-acquisition through to a snapshot and a derivation, because the live R2 test
-refuses at the loopback destination gate and an outbound Internet fetch is not
-an acceptable test dependency. `.7.3.3.4` owns closing that join with a
-policy-allowed local origin, not with a weakened production rule.
+That join is now driven live. A control serves one Atom document from a local
+origin and resolves the SAME reference through three deployments that differ
+only in the R0 fetcher their state was built with, so each production gate is
+visible on its own: the shipped state refuses at the scheme, the origin's scheme
+under the shipped destination policy refuses at the `loopback` class by name,
+and the origin's scheme under a loopback-admitting policy acquires. The
+persisted evidence is then read back and asserted against the bytes the origin
+served — the snapshot's `raw_digest` and `byte_length`, and the `derivations`
+rows' content and digests — rather than against a status code.
+
+The seam this uses is `ApiState::with_acquisition`, which takes the R0 fetcher a
+deployment's acquisition legs use. It relaxes nothing on its own: `new`,
+`with_gate`, `api_router` and `api_router_gated` all still build
+`Fetcher::new`, so the shipped https-only public-destination policy is what the
+server binary runs. A deployment that wants another destination policy has to
+write it in its own source and owns what it admitted.
+
+Three deliberate injections, each reverted, establish that the control can go
+red: serving one extra byte fails the digest assertions (its chunk digests were
+unchanged, so the raw-byte leg is the one that caught it), discarding the
+supplied fetcher fails at the destination gate, and persisting a derivation that
+is not the worker's chunk fails at the derivation assertion and nowhere earlier.
+Evidence: `docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
+
+Two limits stay stated rather than implied. The mismatch refusal's live absence
+of a snapshot and a derivation is still `.7.3.3.4.2`. And the R2 pack advertises
+five media types its own acquisition leg refuses: the R0 sniff accepts a
+declared content type only when it is `text/html`, `application/xhtml+xml` or
+`text/*`, so the same feed that succeeds served as `text/xml` is refused
+`media_type_refused` under its own `application/atom+xml` — measured by that
+control, on the same bytes. What an untyped response of each format sniffs to
+from its bytes is not yet measured. `SIGNOFF-REPAIR.7.3.3.5` owns the per-format
+census and the decision it leads to; neither the registry row nor the sniff
+changes before that census exists.
 
 
 ### Where a Git acquisition works, and when it is removed

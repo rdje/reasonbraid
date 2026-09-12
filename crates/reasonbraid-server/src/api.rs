@@ -440,18 +440,45 @@ impl ApiState {
         )
     }
 
-    /// The test/deployment seam: an explicit gate + a pre-populated broker.
+    /// The test/deployment seam: an explicit gate + a pre-populated broker,
+    /// with the PRODUCTION acquisition fetcher (https-only, the system roots,
+    /// the `.2.1` public-only policy).
     pub fn with_gate(
         pool: PgPool,
         enabled: bool,
         broker: std::sync::Arc<crate::broker::Broker>,
     ) -> Self {
-        Self {
+        Self::with_acquisition(
             pool,
-            fetcher: std::sync::Arc::new(
+            enabled,
+            broker,
+            std::sync::Arc::new(
                 crate::fetcher::Fetcher::new(crate::fetcher::FetchLimits::default())
                     .expect("the built-in R0 fetcher builds (the system roots are present)"),
             ),
+        )
+    }
+
+    /// The acquisition seam (`SIGNOFF-REPAIR.7.3.3.4.1`): the deployment
+    /// supplies the R0 fetcher every acquisition leg uses.
+    ///
+    /// This is a construction profile, not a relaxation: `new` and `with_gate`
+    /// keep building `Fetcher::new`, so the shipped https-only public-destination
+    /// policy is unchanged wherever they are used — which is everywhere the
+    /// server binary constructs its state. A caller that wants another
+    /// destination policy has to say so here, in its own source, and owns what
+    /// it admitted. The live R2 control uses it to acquire from an origin it
+    /// runs itself; production could use it for a deployment whose egress is
+    /// a listed internal mirror.
+    pub fn with_acquisition(
+        pool: PgPool,
+        enabled: bool,
+        broker: std::sync::Arc<crate::broker::Broker>,
+        fetcher: std::sync::Arc<crate::fetcher::Fetcher>,
+    ) -> Self {
+        Self {
+            pool,
+            fetcher,
             git_fetcher: std::sync::Arc::new(crate::git::GitFetcher::new(
                 crate::git::GitLimits::default(),
             )),
@@ -475,6 +502,20 @@ pub fn api_router_gated(
     broker: std::sync::Arc<crate::broker::Broker>,
 ) -> Router {
     api_router_with_state(Arc::new(ApiState::with_gate(pool, enabled, broker)))
+}
+
+/// The acquisition seam's router (`SIGNOFF-REPAIR.7.3.3.4.1`): the same
+/// router over a state whose R0 fetcher the caller supplied. `api_router`
+/// and `api_router_gated` still build the production fetcher.
+pub fn api_router_with_acquisition(
+    pool: PgPool,
+    enabled: bool,
+    broker: std::sync::Arc<crate::broker::Broker>,
+    fetcher: std::sync::Arc<crate::fetcher::Fetcher>,
+) -> Router {
+    api_router_with_state(Arc::new(ApiState::with_acquisition(
+        pool, enabled, broker, fetcher,
+    )))
 }
 
 fn api_router_with_state(state: Arc<ApiState>) -> Router {

@@ -2909,6 +2909,378 @@ async fn the_r2_resolver_ranks_the_hinted_reference_and_the_pipeline_names_the_r
     );
 }
 
+// ── the R2 success join (`SIGNOFF-REPAIR.7.3.3.4.1`) ─────────────────────────
+
+/// The document the local origin serves.
+///
+/// The R0 acquisition leg's sniff accepts `text/*` and HTML; the R2 media-type
+/// HINT is what routes the acquired bytes to the feed parser. Those are two
+/// separate decisions, and this control measures both — including the one that
+/// refuses a feed served under its own `application/atom+xml` type.
+const SERVED_FEED: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Acquisition Join Feed</title>
+  <subtitle>the served document</subtitle>
+  <entry>
+    <title>First entry</title>
+    <summary>the first summary</summary>
+    <content type="text">the first content</content>
+  </entry>
+  <entry>
+    <title>Second entry</title>
+    <summary>the second summary</summary>
+  </entry>
+</feed>"#;
+
+/// The chunks `extract_feed` derives from `SERVED_FEED`: the feed title joined
+/// to its subtitle, then one chunk per entry (title, summary, content). Stated
+/// as literals rather than re-derived with the worker's own parser — a control
+/// that asks the implementation what it should expect proves nothing.
+const EXPECTED_CHUNKS: [&str; 3] = [
+    "Acquisition Join Feed\nthe served document",
+    "First entry\nthe first summary\nthe first content",
+    "Second entry\nthe second summary",
+];
+
+/// The local origin: the same bytes on two paths, differing only in the type
+/// they are served under.
+async fn start_feed_origin() -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    use axum::http::header::CONTENT_TYPE;
+    use axum::response::IntoResponse;
+    let router = axum::Router::new()
+        .route(
+            "/feed.xml",
+            axum::routing::get(|| async {
+                ([(CONTENT_TYPE, "text/xml; charset=utf-8")], SERVED_FEED).into_response()
+            }),
+        )
+        .route(
+            "/typed-feed.xml",
+            axum::routing::get(|| async {
+                ([(CONTENT_TYPE, "application/atom+xml")], SERVED_FEED).into_response()
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind the feed origin");
+    let addr = listener.local_addr().expect("the origin's address");
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, router).await.expect("serve the feed");
+    });
+    (addr, handle)
+}
+
+/// A fetcher for THIS deployment: the origin's scheme and port, with the
+/// destination policy the caller states. Nothing here edits the shipped
+/// policy — `Fetcher::new` still builds it, and `api_router` still uses that.
+fn origin_fetcher(
+    port: u16,
+    policy: std::sync::Arc<
+        dyn Fn(&std::net::IpAddr) -> reasonbraid_server::ssrf::SsrfVerdict + Send + Sync,
+    >,
+) -> std::sync::Arc<reasonbraid_server::fetcher::Fetcher> {
+    use reasonbraid_server::fetcher::{FetchLimits, Fetcher, FetcherConfig};
+    std::sync::Arc::new(
+        Fetcher::from_config(FetcherConfig {
+            limits: FetchLimits::default(),
+            schemes: vec!["http"],
+            ports: vec![port],
+            policy,
+            ..FetcherConfig::default()
+        })
+        .expect("the origin fetcher builds"),
+    )
+}
+
+/// The join `.7.3.3.3.2` left explicitly uncovered: a SUCCESSFUL R2 acquisition
+/// driven through the real HTTP handler, all the way to the snapshot and the
+/// derivations — and the persisted evidence asserted against the bytes the
+/// origin actually served, not against a 200.
+///
+/// Three deployments resolve the SAME reference, differing only in the R0
+/// fetcher their state was built with, so each production gate is isolated:
+///
+/// - `api_router` — the shipped state: refused at the scheme, no evidence;
+/// - the origin's scheme with the shipped destination policy: refused at the
+///   loopback class, no evidence;
+/// - the origin's scheme with a loopback-admitting policy: acquired, extracted,
+///   persisted.
+///
+/// The refusal a feed meets under its own `application/atom+xml` type is
+/// measured here too: the R0 sniff admits `text/*` and HTML only, so the R2
+/// format set is not acquirable through this leg under its declared types.
+/// `SIGNOFF-REPAIR.7.3.3.5` owns that finding.
+#[tokio::test]
+async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let worker = reasonbraid_server::extraction::worker_path();
+    if !worker.exists() {
+        panic!(
+            "the extraction worker is absent at {worker:?}: this control cannot be \
+             reported either way without it — build the workspace binaries \
+             (`cargo build --workspace --bins --locked`) or set R2_WORKER_BIN"
+        );
+    }
+
+    let (origin, _origin_handle) = start_feed_origin().await;
+    let port = origin.port();
+    let broker = || std::sync::Arc::new(reasonbraid_server::broker::Broker::default());
+
+    // The shipped state, unchanged: https-only, the public-destination policy.
+    let shipped = TestServer::start(&pool).await;
+    // The origin's scheme, the SHIPPED destination policy.
+    let public_policy = TestServer::start_with_router(
+        &pool,
+        reasonbraid_server::api_router_with_acquisition(
+            pool.clone(),
+            false,
+            broker(),
+            origin_fetcher(
+                port,
+                std::sync::Arc::new(|ip| reasonbraid_server::ssrf::evaluate(*ip)),
+            ),
+        ),
+    )
+    .await;
+    // The origin's scheme AND a loopback-admitting destination policy: every
+    // other class still answers to the shipped evaluation.
+    let admitting = TestServer::start_with_router(
+        &pool,
+        reasonbraid_server::api_router_with_acquisition(
+            pool.clone(),
+            false,
+            broker(),
+            origin_fetcher(
+                port,
+                std::sync::Arc::new(|ip: &std::net::IpAddr| {
+                    if ip.is_loopback() {
+                        reasonbraid_server::ssrf::SsrfVerdict::Allowed
+                    } else {
+                        reasonbraid_server::ssrf::evaluate(*ip)
+                    }
+                }),
+            ),
+        ),
+    )
+    .await;
+
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &shipped.base(),
+        json!({ "kind": "human", "name": "r2-join-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submit = |locator: String| {
+        let client = client.clone();
+        let base = shipped.base();
+        let human_id = human_id.clone();
+        async move {
+            let (status, body) = post(
+                &client,
+                &base,
+                "/v1/resources",
+                &human_id,
+                &json!({
+                    "original_locator": locator,
+                    "scheme": "http",
+                    "media_type_hint": "application/atom+xml",
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the reference submits: {body}");
+            body["resource_id"].as_str().unwrap().to_string()
+        }
+    };
+    let reference = submit(format!("http://127.0.0.1:{port}/feed.xml")).await;
+    let typed_reference = submit(format!("http://127.0.0.1:{port}/typed-feed.xml")).await;
+
+    // This deployment's R2 pack serves the origin's scheme. The registry row is
+    // a deployment fact, not a code path: the migration ships `["https"]`, and
+    // the original value is restored below before anything is asserted, so no
+    // later suite in this database inherits it.
+    let shipped_schemes: Value = sqlx::query_scalar(
+        "SELECT schemes FROM resolver_capabilities WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the R2 pack is installed");
+    assert_eq!(
+        shipped_schemes,
+        json!(["https"]),
+        "the migration's R2 schemes are the baseline this control widens"
+    );
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .bind(json!(["https", "http"]))
+    .execute(&pool)
+    .await
+    .expect("this deployment's R2 pack also serves the local origin");
+
+    let resolve = |base: String, resource: String| {
+        let client = client.clone();
+        let human_id = human_id.clone();
+        async move {
+            let (status, body) = post(
+                &client,
+                &base,
+                &format!("/v1/resources/{resource}/resolve"),
+                &human_id,
+                &json!({ "required_sandbox": "process", "required_egress": "listed" }),
+            )
+            .await;
+            assert_eq!(status, 200, "the resolution answers: {body}");
+            body
+        }
+    };
+    let refused_scheme = resolve(shipped.base(), reference.clone()).await;
+    let refused_destination = resolve(public_policy.base(), reference.clone()).await;
+    let acquired = resolve(admitting.base(), reference.clone()).await;
+    let refused_type = resolve(admitting.base(), typed_reference.clone()).await;
+
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .bind(&shipped_schemes)
+    .execute(&pool)
+    .await
+    .expect("the shipped R2 schemes are restored");
+
+    // Every deployment ranked the same pack: the acquisition leg is the only
+    // difference between them.
+    for outcome in [
+        &refused_scheme,
+        &refused_destination,
+        &acquired,
+        &refused_type,
+    ] {
+        assert_eq!(
+            outcome["resolvers"],
+            json!(["r2-extract-worker"]),
+            "the R2 pack ranks the hinted reference: {outcome}"
+        );
+    }
+
+    // The shipped state refuses at the scheme, before any socket opens.
+    assert_eq!(
+        refused_scheme["acquisition_error"]["kind"],
+        json!("scheme_not_allowed"),
+        "the shipped https-only fetcher refuses the origin: {refused_scheme}"
+    );
+    assert!(
+        refused_scheme.get("acquisition").is_none(),
+        "a refusal is not an acquisition: {refused_scheme}"
+    );
+    // The shipped DESTINATION policy refuses the loopback class by name — the
+    // gate the seam exists to get past, isolated from the scheme gate.
+    assert_eq!(
+        refused_destination["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the shipped destination policy refuses the origin: {refused_destination}"
+    );
+    assert!(
+        refused_destination["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("loopback"),
+        "the refused class is named: {refused_destination}"
+    );
+    // The same feed under its own declared type never reaches the worker.
+    assert_eq!(
+        refused_type["acquisition_error"]["kind"],
+        json!("media_type_refused"),
+        "the R0 sniff admits text and HTML only: {refused_type}"
+    );
+
+    // The acquisition succeeded, and the receipt describes the served bytes.
+    let served = SERVED_FEED.as_bytes();
+    let served_digest = reasonbraid_server::fetcher::digest_sha256_hex(served);
+    assert!(
+        refused_type["acquisition"].is_null() && acquired["acquisition_error"].is_null(),
+        "the admitting deployment acquired and the typed one did not: \
+         {acquired} / {refused_type}"
+    );
+    assert_eq!(
+        acquired["acquisition"]["parent_digest"],
+        json!(served_digest),
+        "the receipt is bound to the served bytes: {acquired}"
+    );
+
+    // The SNAPSHOT describes the document the origin actually served.
+    let snapshots: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id = $1")
+            .bind(&reference)
+            .fetch_all(&pool)
+            .await
+            .expect("read the snapshots back");
+    assert_eq!(snapshots.len(), 1, "one snapshot: {snapshots:?}");
+    let snapshot = &snapshots[0];
+    assert_eq!(
+        snapshot["raw_digest"],
+        json!(served_digest),
+        "the snapshot's raw digest is the served document's: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["byte_length"],
+        json!(served.len()),
+        "the snapshot's byte length is the served length: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["resolver_id"],
+        json!("r2-extract-worker"),
+        "the R2 pack is recorded as the resolver: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["original_locator"],
+        json!(format!("http://127.0.0.1:{port}/feed.xml")),
+        "the snapshot names the requested locator: {snapshot}"
+    );
+
+    // The DERIVATIONS are the chunks that feed derives — content and digest.
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap();
+    let mut derived: Vec<(String, String)> = sqlx::query_as(
+        "SELECT derived_digest, content FROM derivations WHERE parent_snapshot_id = $1",
+    )
+    .bind(snapshot_id)
+    .fetch_all(&pool)
+    .await
+    .expect("read the derivations back");
+    derived.sort();
+    let mut expected: Vec<(String, String)> = EXPECTED_CHUNKS
+        .iter()
+        .map(|text| {
+            (
+                reasonbraid_server::fetcher::digest_sha256_hex(text.as_bytes()),
+                (*text).to_owned(),
+            )
+        })
+        .collect();
+    expected.sort();
+    assert_eq!(
+        derived, expected,
+        "the derivation rows are the chunks this feed derives"
+    );
+
+    // The refused deployments persisted nothing for their own reference.
+    let typed_snapshots: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&typed_reference)
+            .fetch_one(&pool)
+            .await
+            .expect("count the refused reference's snapshots");
+    assert_eq!(
+        typed_snapshots, 0,
+        "a refused acquisition leaves no evidence behind"
+    );
+}
+
 /// The OPT-IN gate (PHASE-4.5.3): the R3/R5/RX packs resolve ONLY while the
 /// gate is open — closed, the binding-carrying reference is the explicit
 /// unresolvable-now (the disabled pack has no row). Open, the R5 pack ranks

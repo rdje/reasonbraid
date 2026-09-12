@@ -131,12 +131,38 @@ still follows the before/after-replacement rules above. Process death while
 awaiting HTTP preserves the previously published snapshot; it does not prove
 that the server did nothing. Never delete the lock filename to force progress.
 
-## Remaining request recovery
+## Bounded transport
 
-The HTTP client currently has no explicit connect or whole-request timeout.
-A peer that never responds can retain the live writer's local lock until the
-command is cancelled. Bounded HTTP waits and preservation of the request key on
-timeout are owned by the next request-recovery child.
+The CLI's HTTP client has explicit bounds, and they exist because the lock
+above is held across the response: a peer that accepts a connection and never
+answers would otherwise hold it for as long as the process lives.
+
+| Bound | Value | What it is for |
+| --- | --- | --- |
+| Connect | 10 s | a peer that neither accepts nor refuses a dial |
+| Whole request | 60 s | a peer that accepts and never answers; covers the response body |
+| Reply size | 8 MiB | matched to the local-state limit, so a reply the store could never hold is refused instead of buffered |
+
+The whole-request ceiling is deliberately well above the server's own
+15-second whole-operation budget. A legitimate request that waits behind a
+tenant guard is never cut by it — the bound exists for a peer that never
+answers, not to second-guess a server that is working.
+
+A refusal preserves what recovery needs. The pending request keeps its
+ORIGINAL key, the store's exclusion is released, and repeating the command
+reuses that key rather than minting a new one: a new key would be a second
+logical bootstrap against a server that may already hold the first. A timeout
+says nothing about whether the server committed, so nothing here infers a
+rollback from it.
+
+An oversized reply is a named refusal rather than a truncation — a prefix of a
+JSON outcome is not an outcome — and it too retains the pending key.
+
+Redirects are **not followed**. The server base is configured by flag or
+environment, and a redirect would carry a request bearing the development
+principal header, and a bootstrap request key, to a host the operator never
+named. A 3xx from the configured endpoint is reported as the server response
+it is.
 
 The CLI now persists/sends bootstrap_request_id before new-human HTTP enrollment,
 validates a complete keyed reply, publishes its principal and receipt, then clears

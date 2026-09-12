@@ -204,9 +204,13 @@ silent fallback to an unkeyed request against an older server. The public
 run_enroll convenience function follows normal invocation semantics;
 run_enroll_with_recovery exposes the explicit resume choice to Rust callers.
 
-HTTP connect/whole-request and reply-size bounds are the following repair child.
-Broader process/filesystem/server restart qualification also remains open; this
-flow does not claim universal automatic retry or physical power-loss survival.
+HTTP connect, whole-request and reply-size bounds are implemented; see
+[bounded transport](cli-state.md#bounded-transport) for their values and for
+what a refusal preserves. A timed-out or oversized-reply attempt keeps its
+original request key and releases the store, so repeating the command resumes
+the same logical bootstrap. Broader process/filesystem/server restart
+qualification remains open; this flow does not claim universal automatic retry
+or physical power-loss survival.
 
 Completion-capacity preflight is implemented under
 SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1: thirty-one selected controls, the final boundary

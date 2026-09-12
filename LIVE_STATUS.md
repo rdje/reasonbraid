@@ -6,6 +6,32 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The CLI's transport is bounded under `.3.3.4.3.3.3.3.2.3.2` (REPAIR-0101). The
+baseline is the defect stated precisely: against an origin that completes the
+TCP handshake and never answers, `run_enroll` **did not return within 90
+seconds**. That matters more here than in an ordinary client because the CLI
+persists a bootstrap request key BEFORE dispatch and holds the state lock across
+the response — both deliberate — so unbounded, one silent peer held the store for
+the life of the process. The bounds are a 10 s connect ceiling, a 60 s
+whole-request ceiling covering the body, an 8 MiB reply ceiling read in chunks,
+and no redirect following. The 60 s figure is derived rather than chosen: the
+server's whole-operation budget is 15 s and a caller can wait behind another
+caller's operation first, so the worst legitimate case is about 30 s and the
+bound is twice it. The reply ceiling matches the store's own 8 MiB limit,
+because a reply the store could never hold cannot become a published outcome.
+Redirects are refused because the base is operator-configured and a redirect
+would carry the development principal header and a bootstrap key to a host
+nobody named. What survives a refusal is what recovery needs: the ORIGINAL key,
+a released exclusion, and a reused key on the next attempt. Four controls pass
+plus the whole CLI crate at `--all-targets`, with two reverted injections and
+three repeats plus one run under deliberate saturation. Repeat 1 FAILED — `the refusal took 75.032698709s` against a 60-second bound, with a clippy running alongside, because the assertion was `< 75s`. That failure IS the evidence for the margin: wall clock contains the runtime scheduling as well as the deadline, so a margin tight enough to separate 60 from 75 measures the host, not the client, and fails wherever saturation is normal. The margin was widened to 100 s, the declared 60 s value pinned deterministically against the number the book documents, and the reply control timing assertion replaced with a semantic one. Repeats 2 and 3 then passed, and the corrected controls passed again with all 12 cores deliberately saturated (load average 1.86 → 14.15, 134.46 s, 4 of 4) — heavier load than produced the original failure. A first attempt at that loaded run was discarded rather than counted: its clippy was cached, checked one crate and loaded nothing. This bounds ONE process's transport; process death mid-request,
+server restart and filesystem failure remain `.3.3.4.3.3.3.3.3`, and a timeout
+still says nothing about whether the server committed. One census routed out
+rather than folded in: `canonical_server` guards only the bootstrap path while
+`ApiClient::new` has 22 unvalidated call sites, so 1 of 23 construction paths
+checks the configured endpoint — owned by `.3.3.4.3.3.3.3.2.3.3`.
+
+
 The enforcer now runs **17 registered checks**. `INDEX-FRONTIER` (REPAIR-0100)
 extends to the project's own index the rule `BOOK-FRONTIER` already applied to
 the book: `docs/TASK_TREE.md`'s Frontier column may not name a leaf the owning

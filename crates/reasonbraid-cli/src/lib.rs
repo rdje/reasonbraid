@@ -21,6 +21,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use reasonbraid_core::{
     AgentRoleId, AuthorityContext, ClientContext, CommandEnvelope, HumanPrincipalId, RequestId,
@@ -246,18 +247,64 @@ pub struct ApiClient {
     http: reqwest::Client,
 }
 
+/// The dial ceiling. A refused connection fails on its own; this bounds the
+/// case where the peer neither accepts nor refuses.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The WHOLE-request ceiling, covering the response body as well as the
+/// exchange (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2`).
+///
+/// Deliberately well above the server's own 15-second whole-operation budget,
+/// so a legitimate request that waits behind a tenant guard is never cut by
+/// this bound — the ceiling exists for a peer that never answers, not to
+/// second-guess a server that is working.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The reply ceiling, matched to the 8 MiB local-state limit. A reply larger
+/// than the store could ever hold cannot become a published outcome, so reading
+/// it to the end buys nothing and costs unbounded memory.
+pub const MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
+
 impl ApiClient {
     pub fn new(base: impl Into<String>) -> Self {
         Self {
             base: base.into().trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
+            // A client that cannot be built is a programming error here: the
+            // builder's only fallible inputs are TLS and resolver settings,
+            // neither of which this configures.
+            http: reqwest::Client::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
+                // The server base is CONFIGURED, by flag or environment. A
+                // redirect would move a request that carries the dev principal
+                // header — and, for a bootstrap, its request key — to a host the
+                // operator did not name, and the default policy would follow up
+                // to ten of them silently. A 3xx from the configured endpoint is
+                // reported as the server response it is.
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 
     /// Preserve original bytes until the selected response codec validates them.
-    async fn response_body(&self, response: reqwest::Response) -> Result<Vec<u8>, CliError> {
+    ///
+    /// The body is read in chunks against [`MAX_REPLY_BYTES`] rather than with
+    /// `bytes()`, which would buffer whatever the peer sends. An oversized reply
+    /// is a named refusal, not a truncation: a prefix of a JSON outcome is not
+    /// an outcome, and accepting one would be worse than refusing it.
+    async fn response_body(&self, mut response: reqwest::Response) -> Result<Vec<u8>, CliError> {
         let status = response.status().as_u16();
-        let body = response.bytes().await?;
+        let mut body: Vec<u8> = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if body.len() + chunk.len() > MAX_REPLY_BYTES {
+                return Err(CliError::Malformed(format!(
+                    "the server reply exceeds the {MAX_REPLY_BYTES}-byte limit"
+                )));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let body = body;
         if !(200..300).contains(&status) {
             #[derive(Deserialize)]
             struct ErrorBody {

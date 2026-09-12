@@ -503,6 +503,20 @@ pub fn grant_exceeds_boundary(
             detail: "the boundary does not permit delegation".to_string(),
         });
     }
+    // ⛔ `delegable` and `max_delegation_depth` describe grant CHAINS — issuing a
+    // further grant FROM an existing one — and nothing issues such a grant: every
+    // grant's parent is an `enrollment_boundaries` row, never another grant. The
+    // machinery has no producer, so there is no depth to bound.
+    //
+    // ⚠️ They do NOT gate the §16.3 on-behalf-of path, and the distinction is
+    // worth the comment because the names invite the opposite reading.
+    // `SIGNOFF-REPAIR.3.4`'s census read `evaluate()` never consulting
+    // `grant.delegable` as a defect; `.3.4.1` measured that every dev-profile
+    // grant is issued `delegable: false` under a `delegable: false` boundary with
+    // depth 0, so if the flag gated that path the shipped delegation feature
+    // could never have worked. What gates a delegation is §16.3's invariants —
+    // no widening, the actor's OWN authority evaluated alongside the subject's,
+    // and the actor's own participation — all of which are enforced.
     let _ = boundary.max_delegation_depth; // dev profile: only direct grants exist; chains are Phase 2
 
     if grant.valid_from < boundary.valid_from {

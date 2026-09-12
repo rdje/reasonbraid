@@ -913,6 +913,46 @@ This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.
 
+### Acting on behalf of someone else
+
+A command envelope may carry an `authority_context`: the actor keeps its own
+identity, and names a **subject** whose grant is the authority source, with the
+scope it is claiming. §16.3's invariants bound it, and four gates enforce them —
+all four, on every delegated request:
+
+| Gate | What it refuses |
+| --- | --- |
+| the actor's own authority | an actor whose own grant does not cover this action **and this target**. The caller is evaluated against the same target as the subject, so a delegation reaches nothing the actor could not reach alone. |
+| the subject's authority | a subject whose grant does not cover the action or target |
+| the widening invariant | a claimed scope wider than the subject's grant, or narrower than the request's own target |
+| participation | an actor who is not a participant of the thread — **naming a well-placed subject does not launder an outsider in**, and the refusal names the actor, not the subject |
+
+The audit record names the **subject** as the authority source, and the actor as
+the actor; forwarding preserves both.
+
+#### What `delegable` and `max_delegation_depth` do not do
+
+`AuthorityGrant.delegable` and `EnrollmentAuthorityBoundary.max_delegation_depth`
+describe a different mechanism: **grant chains** — issuing a further grant *from*
+an existing one. Nothing issues such a grant. Every grant's parent is an
+enrollment boundary, never another grant, so the machinery has no producer and
+there is no depth to bound. The flag is read in exactly one place, at issuance,
+to refuse a grant that claims to be delegable under a boundary that is not.
+
+⚠️ They do **not** gate the on-behalf-of path above, and the names invite the
+opposite reading. Every dev-profile grant is issued `delegable: false`, under a
+boundary that is `delegable: false` with `max_delegation_depth: 0` — so if the
+flag gated that path, delegation could never have worked at all. Two controls pin
+this, so a reader who notices `evaluate()` never consulting `delegable` finds the
+answer rather than re-deriving a wrong one. `SIGNOFF-REPAIR.3.4`'s own census
+recorded it as a defect before `.3.4.1` measured what the flag is for.
+
+⛔ One thing is genuinely not required: the subject's **consent** to this
+particular actor. Its consequence is bounded to attribution — the actor must
+already hold a covering grant and already be a participant, so it gains no reach,
+only the audit naming the subject alongside it. Chains, and the depth bound that
+would come with them, are a later phase.
+
 ### Administering a federation direction
 
 A federation agreement is **both-sides**: each tenant records its own direction

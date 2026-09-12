@@ -7,11 +7,15 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 ## Qualification correction
 
 `SIGNOFF-REPAIR.3.4` is censused and split into five children (REPAIR-0128),
-with two defects measured from source and not yet repaired. 🔴 **`evaluate()`
-never reads `grant.delegable`**, so a grant issued as non-delegable backs a
-delegated request exactly as a delegable one does — the flag is read only at
-issuance, and only to check that a delegable grant sits under a delegable
-boundary (`.3.4.1`). 🔴 **The replay hash does not bind the authority context**:
+with two defects measured from source and not yet repaired. ⛔ **CORRECTED at `.3.4.1` (REPAIR-0129):** the census recorded `evaluate()`
+never reading `grant.delegable` as a defect. The measurement is right and the
+inference was wrong — `delegable` and `max_delegation_depth` govern grant CHAINS,
+which have no producer (no grant's parent is ever another grant), and §16.3
+conditions delegation on invariants rather than on a flag. A delegated request
+must pass four gates, all enforced: the actor's own authority **for the same
+target**, the subject's authority, the widening invariant, and the actor's own
+thread participation — measured at `403 … is not a participant of this thread`,
+naming the ACTOR. 🔴 **The replay hash does not bind the authority context**:
 `request_hash` covers the operation, the actor and `envelope.body`, while
 `authority_context` is a sibling of `body`, so two requests differing only in
 `on_behalf_of` share an idempotency key and the second replays the first's result

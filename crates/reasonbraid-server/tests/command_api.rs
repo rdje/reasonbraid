@@ -3824,3 +3824,186 @@ async fn enrollment_structural_grant_refusal_remains_a_bad_request() {
         "{body}"
     );
 }
+
+// ── What `delegable` governs, and what actually gates a delegation ────────────
+//
+// `SIGNOFF-REPAIR.3.4`'s census measured that `evaluate()` never reads
+// `grant.delegable` and called it a defect. `.3.4.1` measured what the flag is
+// FOR and found the census's inference wrong: `delegable` and
+// `max_delegation_depth` describe grant CHAINS — re-delegating an issued grant
+// into a further grant — and no code path issues a grant whose parent is another
+// grant, so the machinery has no producer. §16.3 does not condition delegation
+// on a flag; it conditions it on invariants, and those are enforced.
+//
+// These two controls pin that, so the next reader who notices the same thing
+// finds the answer rather than re-deriving a wrong one.
+
+/// Delegation on a NON-delegable grant succeeds, and that is correct.
+///
+/// Every dev-profile grant is issued `delegable: false` under a boundary that is
+/// `delegable: false` with `max_delegation_depth: 0` — so if that flag gated the
+/// on-behalf-of path, the shipped `.1.4.2` feature could never have worked at
+/// all. It governs a chain mechanism that does not exist.
+#[tokio::test]
+async fn delegation_does_not_require_a_delegable_grant_because_that_flag_governs_chains() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "chain-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "chain-role", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let role_grant = role["grant_id"].as_str().unwrap().to_string();
+
+    // The premise, asserted rather than assumed: the subject's grant is NOT
+    // delegable, and neither is its boundary.
+    let (grant_delegable, boundary_delegable, depth): (bool, bool, i32) = sqlx::query_as(
+        "SELECT g.delegable, b.delegable, b.max_delegation_depth \
+         FROM authority_grants g JOIN enrollment_boundaries b ON b.boundary_id = g.boundary_id \
+         WHERE g.grant_id = $1",
+    )
+    .bind(&role_grant)
+    .fetch_one(&pool)
+    .await
+    .expect("the role's grant and its boundary");
+    assert!(!grant_delegable, "the dev grant is issued non-delegable");
+    assert!(!boundary_delegable, "under a non-delegable boundary");
+    assert_eq!(depth, 0, "with no delegation depth at all");
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-chain-c1",
+            json!({ "tenant_id": tenant, "subject": "chain", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread = created["thread_id"].as_str().unwrap().to_string();
+
+    let (status, delegated) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-chain-1",
+            json!({ "tenant_id": tenant, "content": "delegated on a non-delegable grant" }),
+            &role_id,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the delegation succeeds although the grant is not `delegable`: {delegated}"
+    );
+}
+
+/// 🔒 What DOES gate a delegation: the actor must be a participant of the thread
+/// in its own right. A principal who is not cannot borrow one by naming a
+/// subject who is — which is the confused-deputy shape §16.3 exists to refuse.
+#[tokio::test]
+async fn a_non_participant_actor_cannot_borrow_participation_by_delegating() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "consent-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "consent-role", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    // Bob: a different human in the SAME tenant, holding the same full dev
+    // action set as alice, and unrelated to both the thread and the role.
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "consent-bob", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-consent-c1",
+            json!({ "tenant_id": tenant, "subject": "consent", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread = created["thread_id"].as_str().unwrap().to_string();
+
+    let (status, refused) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &bob_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-consent-1",
+            json!({ "tenant_id": tenant, "content": "on behalf of a role that never agreed" }),
+            &role_id,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a non-participant cannot act, delegation or not: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("is not a participant of this thread"),
+        "and the refusal names participation rather than authority: {refused}"
+    );
+    // ⛔ It names BOB. The refusal is about the actor's own standing, not the
+    // subject's — naming a well-placed subject does not launder the actor in.
+    assert!(
+        refused["message"].as_str().unwrap().contains(&bob_id),
+        "the refusal names the ACTOR: {refused}"
+    );
+}

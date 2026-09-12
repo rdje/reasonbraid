@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I was one commit away from breaking a shipped feature to fix a non-defect
+
+- `.3.4`'s census measured, correctly, that `evaluate()` never reads `grant.delegable`. I wrote "🔴 a defect" beside it, split the leaf around repairing it, and published that in the tree, the changelog and the status line. The next slice was going to add the enforcement.
+- ⭐ What stopped me was the fixture, and only because I looked at it before writing code: `dev_grant` issues `delegable: false`, `dev_boundary` is `delegable: false` with `max_delegation_depth: 0`, and the project has a passing acceptance test asserting that delegation SUCCEEDS. If the flag gated that path, the feature could never have worked and that test could never have passed. My "fix" would have turned a green acceptance test red and removed a shipped capability.
+- Following it through: no grant's parent is ever another grant — issuance loads a boundary row, and `parent_or_root_authority` is a string on the boundary. So `delegable` and `max_delegation_depth` describe grant CHAINS, machinery with no producer, exactly as the comment beside the discarded field says. §16.3 conditions delegation on invariants, not on a flag.
+- ⚠️ **The specific failure is worth naming because it will recur: I reasoned about what a field's NAME implies, in a function that does not use it, and did not go looking for the mechanism that does.** A flag being unread is evidence about the flag, not about the path I was worried about. The check that would have caught it in two minutes is the one the fixture handed me anyway — *if this were the gate, could the feature ever have worked?*
+- ⭐ And the gate I never looked for is the one doing the work. A probe — an unrelated human in the same tenant, same full action set, acting on behalf of a role — got `403 … is not a participant of this thread`, naming the ACTOR. Participation is enforced, and naming a well-placed subject does not launder an outsider in. I had been auditing the evaluator; the confused-deputy defence is somewhere else entirely.
+- The leaf ships no behaviour change: two controls pinning the measured behaviour, the fields annotated, the book saying which mechanism is which. The first control asserts the non-delegable premise from the database before exercising the delegation, so it goes red the day the dev profile starts issuing delegable grants — which is the condition under which my original reading would actually become true.
+- ⚠️ I kept the superseded acceptance line in the leaf instead of editing it into agreement with the outcome. A leaf that quietly rewrites its own premise to match what it found reads like it was right all along, and the next person cannot tell a measured reversal from a plan that never changed.
+
 ## 2026-09-13 — My measuring instrument was wrong three times
 
 - `.13` is a reconciliation leaf: confirm the guard census still holds after eight children landed. The tempting shape is to re-read the source and write new numbers. I wrote scripts instead, and all three of my first answers were wrong.

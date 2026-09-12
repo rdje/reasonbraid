@@ -4,7 +4,7 @@ answers: why does the full checkpoint take an hour; where does the checkpoint's 
 
 - **Type:** `decision`
 - **Date:** `2026-09-12`
-- **Status:** accepted; two follow-on levers are the director's, and are NOT taken here
+- **Status:** accepted; its two open levers are closed in `docs/decisions/2026-09-12_checkpoint-gate-authority.md`
 - **Owner:** leaf `SIGNOFF-REPAIR.11.4.3.1.2.15`
 - **Evidence:** `docs/tasks/artifacts/signoff_review/checkpoint-wall-time.md`
 - **Instrument:** `scripts/measure_check_phases.py`
@@ -66,8 +66,14 @@ decision exists to publish.
   selected set per commit — the expensive local run is largely redundant with a
   remote gate that already runs the same commands far more cheaply, and remote CI
   has been green since run 34652116508.
-- **Two levers exist and are deliberately NOT taken here**, because both are the
-  director's and neither is a source change this repository can make:
+- **Two levers were left open here and are now CLOSED** in
+  `docs/decisions/2026-09-12_checkpoint-gate-authority.md` — the macOS setting is
+  rejected (it exempts the shell from validating exactly the untrusted-content
+  workers this project builds, and it cannot be committed), and the volume move is
+  rejected on measured capacity (the repository is 3.77 MiB but its build tree is
+  185 GB against 249 GB free on the boot volume). The lever actually pulled was a
+  third one: the remote run, already a verified superset, becomes the authoritative
+  pre-push gate. For the record, the two originally named were:
   1. a macOS security setting (the system's Developer Tools privacy category is
      the documented category for locally built software) — untested, because
      changing a system security setting is not an autonomous act, and it must be

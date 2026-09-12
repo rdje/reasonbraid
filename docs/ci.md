@@ -70,6 +70,25 @@ refuses before fixture writes. See
 
 ## Scheduled pre-push checkpoint
 
+### Which gate is authoritative
+
+**The remote CI run is the authoritative pre-push gate.** Verified from the
+workflow files rather than from prose: every one of the checkpoint's eight
+commands runs remotely, and two run more strictly there — the check job asserts
+the worker executables exist, and the book job pins and asserts mdBook 0.5.4.
+The remote is also where the defects that escape actually live: all six repaired
+in the recent remote-CI sequence were invisible on the development machine.
+
+Before pushing, run the four cheap local gates (none links or executes a new
+binary, so all cost seconds): `make gate`, `make book`,
+`cargo fmt --all -- --check`, and the Python controls. Then push and **consume
+the remote result** — an unconsumed run is not a gate.
+
+The full local checkpoint below stays available for what it is good at:
+reproducing something without spending a push. It costs over two hours on this
+machine (`01`–`04` alone were 7,447 s at `165cb3a`), so invoke it deliberately.
+The reasoning is `docs/decisions/2026-09-12_checkpoint-gate-authority.md`.
+
 ### What the checkpoint costs, and why
 
 `02-check` took 3,922 s at source `165cb3a` while cargo's own summaries accounted
@@ -119,8 +138,8 @@ under .2.7.4. Exact source reconstruction and declared dependency closure pass;
 the five-consumer sequence passes 22 tests and the consecutive affected collection
 passes all 169 distinct tests (25 original suites plus the guard target), with
 zero skips/ignores. Strict server/MCP/CLI lint and final verification pass; both
-successful databases are removed and prior failures preserved. The complete
-checkpoint still needs to pass before public push/remote CI. Exact results:
+successful databases are removed and prior failures preserved. That record dates from before remote CI had ever run;
+the authoritative gate is now the remote run, per the section above. Exact results:
 docs/tasks/artifacts/signoff_review/node-fixture-cleanup.md and
 docs/tasks/artifacts/signoff_review/participant-removal-authority.md and
 docs/tasks/artifacts/signoff_review/cli-removal-delegation.md and

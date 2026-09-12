@@ -157,6 +157,7 @@
 - [`2026-09-11_recreated-schema-privileges.md`](docs/decisions/2026-09-11_recreated-schema-privileges.md)
 - [`2026-09-12_browse-refusal-carries-two-facts.md`](docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md)
 - [`2026-09-12_checkpoint-cost-model.md`](docs/decisions/2026-09-12_checkpoint-cost-model.md)
+- [`2026-09-12_checkpoint-gate-authority.md`](docs/decisions/2026-09-12_checkpoint-gate-authority.md)
 - [`2026-09-12_verification-strategy-assessment.md`](docs/decisions/2026-09-12_verification-strategy-assessment.md)
 
 ## Promoted lessons

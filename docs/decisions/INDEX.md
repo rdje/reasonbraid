@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-12_checkpoint-gate-authority.md](docs/decisions/2026-09-12_checkpoint-gate-authority.md) | decision | the remote run is the authoritative pre-push gate (a verified superset); the macOS setting and the volume move are both rejected, on measured grounds |
 | [2026-09-12_checkpoint-cost-model.md](docs/decisions/2026-09-12_checkpoint-cost-model.md) | decision | the checkpoint's 2,982 unaccounted seconds are macOS first-execution validation at ~21.9s per new executable on the repository volume; one more test file costs ~22s of every checkpoint |
 | [2026-09-12_browse-refusal-carries-two-facts.md](docs/decisions/2026-09-12_browse-refusal-carries-two-facts.md) | decision | a browser refusal carries the render's own kind AND an explicit cleanup fact; only a SUCCESSFUL render under unconfirmed cleanup is named for the cleanup |
 | [2026-09-12_verification-strategy-assessment.md](docs/decisions/2026-09-12_verification-strategy-assessment.md) | decision | all four verification proposals accepted and sequenced, with a new clean-state lane first; ten defects repaired, none a wrong return value, none reachable by MCP |

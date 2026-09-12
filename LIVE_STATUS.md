@@ -399,9 +399,15 @@ wire change is additive and the server-side spawner is unaffected. 25 browse
 controls pass with the pinned browser; both strict lints and format pass; the
 controls were falsified against the superseded expression. The underlying
 escaped-writer condition remains real and unrepaired — it is now reported
-honestly instead of overwriting a result. One new defect is open and NOT fixed:
-a leaf's first Status line can be contradicted later in its own section, which
-left .7.4.1 on the frontier seven commits after it closed, owned by .11.4.4.
+honestly instead of overwriting a result. That defect is now FIXED and GATED under
+.11.4.4 (REPAIR-0092): five leaf sections asserted two different statuses, which
+is why .7.4.1 sat on the frontier seven commits after closing, and the census
+that found them also found 29 headings at levels 7-11 -- which Markdown does not
+treat as headings at all, so the tree's deepest leaves were invisible as
+structure. Both are repaired without deleting a word and both are now enforced:
+TASK-STATUS and HEADING-DEPTH, each fence-aware, each with a two-sided
+self-test, each falsified against the unrepaired tree. The enforcer runs 15
+checks.
 
 The checkpoint's unexplained hour is now ACCOUNTED under .11.4.3.1.2.15
 (REPAIR-0090), which unblocks .11.5's verification lanes. Of 02-check's 3,922
@@ -415,5 +421,15 @@ candidate, nine rustdoc doctest-harness builds, is at most 8% and is refuted.
 Planning number: one more integration-test file costs about 22 seconds of every
 future checkpoint. scripts/measure_check_phases.py makes this re-derivable by one
 command. Two levers -- a macOS security setting and the repository's volume --
-are named and NOT taken; both are the director's, and this is the first evidence
-that the section 13 storage-locality policy carries a large hidden cost here.
+are now DECIDED and CLOSED under .11.4.3.1.2.28 (REPAIR-0093). The macOS
+Developer Tools setting is rejected: it exempts the shell from validating
+exactly the untrusted-content workers this project builds, and it cannot be
+committed, so no other machine or runner would inherit it. The volume move is
+rejected on measured capacity: the repository is 3.77 MiB but its build tree is
+185 GB, against 249 GB free on the boot volume. The lever actually pulled was on
+neither list -- the REMOTE run is now the authoritative pre-push gate, verified
+from the workflow files as a superset in which two of the eight commands are
+stricter remotely. Nothing is removed, weakened or skipped; only four cheap
+local gates run before a push, and the full checkpoint becomes a deliberate
+diagnostic. The named trade: gate latency is now bounded by the ~300-commit push
+cadence, which remains the director's standing instruction and is unchanged.

@@ -1089,6 +1089,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Defect found in this leaf's own work, and fixed here: the registry entries are bash double-quoted strings, so the backticks in the first TASK-STATUS description ran as command substitution — the enforcer printed `line 36: pending: command not found` and the backticked words vanished from its output. The description is now backtick-free, and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0 for the whole registry.
 - promotion: declined (the durable statement is the doctrine registry itself — both rules are now enforced rather than remembered, which is the strongest form this project has; `DOCTRINE_ENFORCEMENT.md` carries their rationale verbatim).
 - Commit: `REASONBRAID-REPAIR-0092 (leaf SIGNOFF-REPAIR.11.4.4): gate a leaf's status and Markdown's heading ceiling`.
+- Correction, same leaf: its LOCKSTEP box overstated. Two scripted live-doc edits failed their anchor assertions while the commit proceeded, so `MEMORY.md` and `LIVE_STATUS.md` did not carry this leaf at its own commit. Both are corrected in REPAIR-0093, which also records the miss. The lesson is the commit workflow's, not this leaf's: a scripted doc edit that fails must fail the COMMIT, and `git add -A` after a partially-failed script is how a false checklist box gets written.
 
 ### SIGNOFF-REPAIR.11.5 — Assess the verification strategy for a networked agent platform
 
@@ -1723,6 +1724,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Still open in the same run, each needing its own diagnosis: four `git::tests::*` failing at `git.rs:1131`/`1205` (a `gix` commit, plausibly an ambient git identity the runner lacks — not yet proved), `crates/reasonbraid-extract/tests/support/mod.rs:142` which carries the SAME inode-reuse weakness in its `same_file` helper, and `state_store::unix::tests::writer_release_does_not_wait_for_an_inherited_descriptor`.
 - Verification / commit: REPAIR-0079; remote confirmation required.
 
+###### SIGNOFF-REPAIR.11.4.3.1.2.28 — Decide where the expensive gate runs
+
+- Opened: `active`; the director delegated both of `.11.4.3.1.2.15`'s open levers on 2026-09-12.
+- Status: `done`; REPAIR-0093.
+- The question the two levers were really about: the checkpoint costs over two hours here because of a per-executable constant this repository cannot change, so the decision is not how to make the gate cheaper but **which gate is authoritative**.
+- **Lever 1, the macOS Developer Tools setting: REJECTED.** It exempts everything the shell runs from Gatekeeper assessment, on a project that deliberately executes untrusted content — the browser worker renders arbitrary pages, the extraction worker parses hostile documents, and `ROADMAP.md` §16.6 treats every fetched byte as untrusted. It also cannot be committed: it lives in a system preference, so no other machine, no fresh clone and no runner inherits it, and `MEMORY_ARCHITECTURE.md` §2 is explicit that such a store is cache, never the system of record. A performance fix that cannot be committed silently falsifies the published cost model for everyone else.
+- **Lever 2, moving the repository: REJECTED on measured capacity.** `git count-objects -vH` reports the tracked content plus full history at **3.77 MiB** — trivially movable — but `du -sh target` reports **185 GB**, and §13 makes the build tree follow the checkout. `df -h /` shows **249 GB** available on the boot volume, so hosting it there would take 74% of what remains and leave 64 GB on the volume that also carries the OS and the user's home, for a tree that is rewritten continuously. Note also that §13 requires project data on *the repository's own* volume, not on a particular one: there is no policy defect here to repair.
+- **The lever actually pulled, which was on neither list: the remote run becomes the authoritative pre-push gate.** Verified from the workflow files rather than from prose — every one of the checkpoint's eight commands runs remotely, and **two run more strictly** there (the check job asserts the worker executables exist; the book job pins and asserts mdBook 0.5.4). It is a superset, not a reduction. The remote is also where the defects that escape have lived: all six repaired in the recent remote-CI sequence were invisible on this machine.
+- Nothing is removed, weakened, reordered or skipped. The change is *where*, and the where is strictly stronger. Before a push, four cheap local gates run — `make gate`, `make book`, `cargo fmt --all -- --check` and the Python controls — none of which links or executes a new binary, so none pays the constant.
+- The trade is NAMED rather than hidden: with the authoritative gate remote, gate latency is bounded by the ~300-commit push cadence. That cadence is the director's standing instruction of 2026-09-11 and is **not** changed here — it was not one of the delegated findings. One adjacent fact recorded for whenever it is revisited: GitHub-hosted runner minutes are free for public repositories, and this repository is public and must remain so, which weakens the cadence's stated cost rationale.
+- Residual risk, stated: a run of commits could accumulate a failure the focused per-commit checks cannot see. Unchanged mitigations — the pre-commit hook runs the enforcer on every commit, §16's focused checks run per slice, and the full checkpoint is one command away when a change warrants it.
+- Decision: `docs/decisions/2026-09-12_checkpoint-gate-authority.md`, which also closes the two levers left open by `2026-09-12_checkpoint-cost-model.md`.
+- Also completed here, and recorded rather than quietly fixed: `.11.4.4`'s LOCKSTEP was incomplete at its own commit. Two scripted live-doc edits failed their anchor assertions while the commit proceeded, so `MEMORY.md` and `LIVE_STATUS.md` did not carry that leaf when its checklist said they did. Both are corrected in this commit, and a stale second copy the new gate section contradicted — `docs/ci.md`'s "the complete checkpoint still needs to pass before public push" — is reconciled with it.
+- promotion: declined (the durable statements are the decision record and `COMMIT.md`'s push-cadence section, which is where a reader looks before pushing; a knowledge card would be a third copy of a rule that now lives in the workflow doc itself).
+- Commit: `REASONBRAID-REPAIR-0093 (leaf SIGNOFF-REPAIR.11.4.3.1.2.28): make the remote run the authoritative pre-push gate`.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.2.27 — A render refusal was overwritten by an unconfirmed cleanup
 
 - Status: `done`; REPAIR-0089. Found by the first full run of the clean-state lane adopted in `.11.5`.
@@ -1966,6 +1983,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.2.28`: `REASONBRAID-REPAIR-0093 (leaf SIGNOFF-REPAIR.11.4.3.1.2.28): make the remote run the authoritative pre-push gate`.
 
 - `SIGNOFF-REPAIR.11.4.4`: `REASONBRAID-REPAIR-0092 (leaf SIGNOFF-REPAIR.11.4.4): gate a leaf's status and Markdown's heading ceiling`.
 

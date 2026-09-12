@@ -48,8 +48,11 @@ apply to code changes.
 ## Required commit workflow (exact order)
 
 1. Ensure the task is complete and tested.
-2. Run the Rust checks when Rust files changed: `make check` (or `cargo fmt --all --check
-   && cargo clippy --all-targets -- -D warnings && cargo test`). Strict lint must pass.
+2. Run the Rust checks when Rust files changed — focused to what the slice touched
+   (`cargo clippy -p <crate> --all-targets -- -D warnings`, the crate's tests, and
+   `cargo fmt --all -- --check`). Strict lint must pass. A whole-workspace `make check`
+   is the pre-push instrument, not the per-commit one (§16, and the gate-authority
+   record above): it costs over two hours here and the remote run covers it.
 3. Update every relevant tracked doc (`MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`,
    `LIVE_STATUS.md`, `README.md`, the owning `docs/tasks/<TREE>.md`, `docs/decisions/`,
    `docs/book/` as applicable). Treat markdown sync as systematic, not optional.
@@ -67,10 +70,28 @@ apply to code changes.
 
 ## Push cadence
 
-Commit per completed leaf; **push in batches of about 300 commits**, after the
-full local checkpoint passes (`docs/ci.md`). A push is not a per-commit
-operation: the remote is public, each push spends CI minutes, and a green local
-checkpoint is what earns the right to push at all.
+Commit per completed leaf; **push in batches of about 300 commits**. A push is
+not a per-commit operation: the remote is public and each push spends a CI run.
+
+**The authoritative pre-push gate is the REMOTE run, not the local checkpoint**
+(`docs/decisions/2026-09-12_checkpoint-gate-authority.md`). Every one of the
+checkpoint's eight commands runs in CI, two of them more strictly, and the
+remote is where the environment-dependent defects actually surface. Before
+pushing, run the cheap local gates — none of them links or executes a new
+binary, so all four cost seconds:
+
+```bash
+make gate                      # the doctrine enforcer
+make book                      # the rendered book
+cargo fmt --all -- --check     # formatting
+python3 -B scripts/project_env.py python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
+```
+
+Then push and **consume the remote result** — an unconsumed CI run is not a
+gate. The full local checkpoint stays available for reproducing something
+without spending a push; it costs over two hours on this machine, for reasons
+measured in `docs/decisions/2026-09-12_checkpoint-cost-model.md`, so invoke it
+deliberately rather than by habit.
 
 **The one standing exception is turning remote CI green.** While a remote gate is
 red, each push IS the measurement — the runner is the only instrument that can
@@ -105,8 +126,9 @@ cat > git_message_brief.txt <<'EOF'
 - <brief bullet 2>
 EOF
 
-# 2) run checks when Rust changed
-make check
+# 2) run FOCUSED checks when Rust changed (make check is the pre-push instrument)
+cargo fmt --all -- --check
+cargo clippy -p <crate> --all-targets -- -D warnings
 
 # 3) stage intended files only
 git add <tracked-file-1> <tracked-file-2> ...

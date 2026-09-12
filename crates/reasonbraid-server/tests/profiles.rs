@@ -2959,6 +2959,12 @@ async fn start_feed_origin() -> (SocketAddr, tokio::task::JoinHandle<()>) {
             axum::routing::get(|| async {
                 ([(CONTENT_TYPE, "application/atom+xml")], SERVED_FEED).into_response()
             }),
+        )
+        .route(
+            "/unadvertised-feed.xml",
+            axum::routing::get(|| async {
+                ([(CONTENT_TYPE, "application/json")], SERVED_FEED).into_response()
+            }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -3121,10 +3127,11 @@ fn require_extraction_worker() {
 /// - the origin's scheme with a loopback-admitting policy: acquired, extracted,
 ///   persisted.
 ///
-/// The refusal a feed meets under its own `application/atom+xml` type is
-/// measured here too: the R0 sniff admits `text/*` and HTML only, so the R2
-/// format set is not acquirable through this leg under its declared types.
-/// `SIGNOFF-REPAIR.7.3.3.5` owns that finding.
+/// The document's own advertised type is driven here too (`.7.3.3.5.2`): the
+/// same feed served as `application/atom+xml` acquires, because the R2 pack
+/// advertises that type and the acquisition leg admits the RANKED pack's own
+/// advertisement. A type the pack does NOT advertise is still refused, which is
+/// what keeps that widening bounded.
 #[tokio::test]
 async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     let _guard = guard().await;
@@ -3188,6 +3195,13 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
         &format!("http://127.0.0.1:{port}/typed-feed.xml"),
     )
     .await;
+    let unadvertised_reference = submit_hinted(
+        &client,
+        &base,
+        &human_id,
+        &format!("http://127.0.0.1:{port}/unadvertised-feed.xml"),
+    )
+    .await;
 
     // This deployment's R2 pack serves the origin's scheme. The row is restored
     // below before anything is asserted, so no later suite inherits it.
@@ -3212,7 +3226,8 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     let refused_scheme = resolve(shipped.base(), reference.clone()).await;
     let refused_destination = resolve(public_policy.base(), reference.clone()).await;
     let acquired = resolve(admitting.base(), reference.clone()).await;
-    let refused_type = resolve(admitting.base(), typed_reference.clone()).await;
+    let acquired_typed = resolve(admitting.base(), typed_reference.clone()).await;
+    let refused_type = resolve(admitting.base(), unadvertised_reference.clone()).await;
 
     restore_r2_schemes(&pool, &shipped_schemes).await;
 
@@ -3222,6 +3237,7 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
         &refused_scheme,
         &refused_destination,
         &acquired,
+        &acquired_typed,
         &refused_type,
     ] {
         assert_eq!(
@@ -3255,11 +3271,25 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
             .contains("loopback"),
         "the refused class is named: {refused_destination}"
     );
-    // The same feed under its own declared type never reaches the worker.
+    // The same feed under its OWN advertised type now acquires: the pack that
+    // was ranked advertises `application/atom+xml`, so the leg admits it.
+    assert!(
+        acquired_typed["acquisition_error"].is_null(),
+        "an advertised declared type acquires: {acquired_typed}"
+    );
+    assert_eq!(
+        acquired_typed["acquisition"]["parent_digest"],
+        json!(reasonbraid_server::fetcher::digest_sha256_hex(
+            SERVED_FEED.as_bytes()
+        )),
+        "the advertised-type acquisition is bound to the same served bytes: {acquired_typed}"
+    );
+    // A type the pack does NOT advertise is still refused, so the widening is
+    // the advertisement's and not "anything declared".
     assert_eq!(
         refused_type["acquisition_error"]["kind"],
         json!("media_type_refused"),
-        "the R0 sniff admits text and HTML only: {refused_type}"
+        "an unadvertised declared type stays refused: {refused_type}"
     );
 
     // The acquisition succeeded, and the receipt describes the served bytes.
@@ -3267,7 +3297,7 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     let served_digest = reasonbraid_server::fetcher::digest_sha256_hex(served);
     assert!(
         refused_type["acquisition"].is_null() && acquired["acquisition_error"].is_null(),
-        "the admitting deployment acquired and the typed one did not: \
+        "the admitting deployment acquired and the unadvertised one did not: \
          {acquired} / {refused_type}"
     );
     assert_eq!(
@@ -3331,15 +3361,42 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
         "the derivation rows are the chunks this feed derives"
     );
 
-    // The refused deployments persisted nothing for their own reference.
-    let typed_snapshots: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+    // The advertised-type acquisition persisted its own evidence, and the
+    // snapshot records the type the origin declared rather than a sniffed
+    // stand-in.
+    let typed_snapshots: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id = $1")
             .bind(&typed_reference)
+            .fetch_all(&pool)
+            .await
+            .expect("read the advertised-type snapshot back");
+    assert_eq!(
+        typed_snapshots.len(),
+        1,
+        "one snapshot: {typed_snapshots:?}"
+    );
+    assert_eq!(
+        typed_snapshots[0]["media_type"],
+        json!("application/atom+xml"),
+        "the snapshot records the declared type: {}",
+        typed_snapshots[0]
+    );
+    assert_eq!(
+        typed_snapshots[0]["raw_digest"],
+        json!(served_digest),
+        "and the same served bytes: {}",
+        typed_snapshots[0]
+    );
+
+    // The refused reference persisted nothing.
+    let unadvertised_snapshots: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&unadvertised_reference)
             .fetch_one(&pool)
             .await
             .expect("count the refused reference's snapshots");
     assert_eq!(
-        typed_snapshots, 0,
+        unadvertised_snapshots, 0,
         "a refused acquisition leaves no evidence behind"
     );
 }

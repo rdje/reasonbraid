@@ -2015,7 +2015,23 @@ async fn resolve_resource(
             // derives the chunks (the killing budget is the quarantine's
             // enforcement). The reference stays submitted either way.
             let hint = reference.media_type_hint.clone().unwrap_or_default();
-            match state.fetcher.fetch(&reference.original_locator).await {
+            // The pack that was RANKED advertises the formats it exists to
+            // handle, and the acquisition leg admits exactly those in addition
+            // to R0's own accept set — read from the registry row per
+            // resolution, never compiled in
+            // (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`). A
+            // read failure yields the shipped accept set, not a wider one.
+            let admitted = crate::resolvers::advertised_media_types(
+                &state.pool,
+                crate::resolvers::R2_RESOLVER_ID,
+            )
+            .await
+            .unwrap_or_default();
+            match state
+                .fetcher
+                .fetch_admitting(&reference.original_locator, &admitted)
+                .await
+            {
                 Err(error) => {
                     outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
                         kind: error.kind().to_owned(),

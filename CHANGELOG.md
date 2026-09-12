@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Admit the ranked pack's advertised media types (`SIGNOFF-REPAIR.7.3.3.5.2`)
+
+- The repair the census chose. The R2 arm acquired through `Fetcher::fetch` and inherited R0's text-only accept set, while `resolvers::resolve` ranked the pack on an advertisement that accept set cannot satisfy. The pack exists for non-text documents in a sandboxed worker; the shared fetcher was one engine reused, not the architecture.
+- Three pieces: `sniff_kind` takes the ranked pack's advertised types and returns the additive `SniffedKind::DeclaredType` for a declared type in that set; `Fetcher::fetch_admitting` supplies it while `fetch`, `fetch_head` and `fetch_authenticated` pass an empty slice; `resolvers::advertised_media_types` reads the row's own `media_types` **per resolution**, so a deployment that narrows a pack's advertisement narrows what it may acquire in the same act. A missing or malformed row yields an EMPTY set — a bad advertisement must never widen a gate.
+- **The bounds are censused, not asserted.** `git grep -n "fetch_admitting" -- 'crates/**/*.rs'` returns exactly one call site, the R2 arm at `api.rs:2032`. The R0 arm, the R5 authenticated arm and the R3 preflight pass no admitted set. No destination policy, scheme list, SSRF control, byte ceiling, ratio brake, redirect policy or time ceiling changed.
+- **And proved live.** Three injections, each reverted and re-run green: an admitted set that is not the ranked row's fails the advertised-type acquisition; an empty set at the call site fails it identically, so the repair is load-bearing; and adding ONE unadvertised type (`application/json`) makes the unadvertised document acquire and fails the negative control — the decision's bound, demonstrated rather than claimed.
+- `SniffedKind::DeclaredType`'s `as_str` is `application/octet-stream` and cannot be reached through this path: the variant is only produced FROM a declared type, so the snapshot's `content_type.unwrap_or_else(sniffed)` fallback does not fire. The live control asserts the snapshot records `application/atom+xml`, not a stand-in.
+- **One measured fact is deliberately flipped and kept.** `.7.3.3.4.1`'s control recorded `application/atom+xml` as `media_type_refused`. That refusal was the defect, so the control now asserts the acquisition and a new `application/json` path carries the negative case — but the superseded measurement stays recorded, because it is the evidence the repair rests on.
+- Validation: profiles 33/33 live with its cluster removed (R0 and R1 resolver controls unchanged in the same run), 99 library tests, 23 extraction controls, strict all-target server lint, format, a whole-workspace `cargo check --all-targets` at exit 0, gate (15 checks), book.
+
 ## 2026-09-12 — Census the acquisition leg's accept set, and decide (`SIGNOFF-REPAIR.7.3.3.5.1`)
 
 - The finding `.7.3.3.4.1` surfaced got its census before it got a repair, and **the census changed its shape** — which is the entire reason the leaf was decomposed rather than implemented.

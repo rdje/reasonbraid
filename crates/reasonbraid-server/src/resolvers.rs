@@ -202,6 +202,39 @@ pub async fn resolve(
     })
 }
 
+/// The media types a registered resolver advertises, as its own registry row
+/// declares them right now.
+///
+/// The acquisition leg admits these for the pack that was RANKED
+/// (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`), so this is read
+/// per resolution rather than compiled in: a deployment that narrows a pack's
+/// advertisement narrows what that pack may acquire, in the same act.
+///
+/// An absent row or a row whose `media_types` is not an array of strings yields
+/// an EMPTY set, which is R0's own accept set — the shipped behaviour. A
+/// malformed advertisement must not widen a gate.
+pub async fn advertised_media_types(
+    pool: &PgPool,
+    resolver_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let row: Option<Value> =
+        sqlx::query_scalar("SELECT media_types FROM resolver_capabilities WHERE resolver_id = $1")
+            .bind(resolver_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row
+        .as_ref()
+        .and_then(Value::as_array)
+        .map(|types| {
+            types
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
 /// The gate's startup sync: the R3/R5/RX rows exist ONLY while the gate is
 /// open — opening registers them, closing REMOVES them (the resolve never
 /// returns a disabled pack because the disabled pack has no row).

@@ -198,8 +198,17 @@ no subset of the advertisement satisfies it and narrowing the registry row is
 rejected as unable to express the truth. The accepted repair is that the
 acquisition leg admits the ranked resolver's own advertised media types, with
 the destination policy, scheme list and every ceiling explicitly outside the
-change; `SIGNOFF-REPAIR.7.3.3.5.2` implements it. Decision:
-`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`.
+change. Decision: `docs/decisions/2026-09-12_r2-acquisition-accept-set.md`.
+
+`.7.3.3.5.2` ships it. The advertised types are read from the ranked pack's own
+registry row per resolution; `fetch_admitting` carries them and has exactly one
+caller, so R0-ranked acquisitions keep the shipped accept set. A missing or
+malformed row yields an empty set. The live control now acquires the same feed
+served under its own `application/atom+xml` type and records that type on the
+snapshot, while a type the pack does not advertise stays refused — a bound
+proved live by admitting one such type and watching the negative control fail.
+The suite passes 33 of 33 with its cluster removed; the R0 and R1 resolver
+controls pass unchanged in the same run.
 
 The full pre-push checkpoint now passes on source `7233122` — the first complete
 run recorded. All eight commands return 0, 40 of 40 database suites run with 291

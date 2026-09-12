@@ -979,7 +979,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.7.3.3.5 — Reconcile the R2 pack's advertised formats with what its acquisition leg accepts
 
-- Status: `pending`; opened by `.7.3.3.4.1`, which measured the first instance live rather than inferring it.
+- Status: `done`; both children complete — the census and decision are REPAIR-0097 and the implementation is REPAIR-0098. Opened by `.7.3.3.4.1`, which measured the first instance live rather than inferring it.
 - Finding as measured: the R2 arm serves a reference whose media-type HINT is one of the five formats the pack advertises, but its acquisition leg is the R0 fetcher, whose response sniff accepts a DECLARED content type only when it is `text/html`, `application/xhtml+xml`, or `text/*`. A feed served under its own `application/atom+xml` type is therefore refused `media_type_refused` before the worker is reached. The live control asserts exactly that, against the same bytes that succeed on the sibling path served as `text/xml`.
 - Census (the claim is about a SET, so it carries its enumeration, both directions): `git grep -n "R2_RESOLVER_ID" -- 'crates/**/*.rs'` returns three hits — the constant, the single dispatch arm `crates/reasonbraid-server/src/api.rs:2012`, and the `resolver_id` written into the snapshot. That arm makes exactly one acquisition call, `state.fetcher.fetch`. The declared-type acceptance arms of `sniff_kind` (`crates/reasonbraid-server/src/fetcher.rs:767`) are the three above; migration 0027 advertises `application/pdf`, `application/zip`, `application/x-tar`, `application/atom+xml`, `application/rss+xml`. None of the five is in the accepted set.
 - NOT yet measured, and therefore not claimed: what an UNTYPED response of each of the five formats sniffs to from its bytes. The byte path is a separate branch of the same function and the source reads as though PDF, ZIP and tar would fail its UTF-8/control-character test while a feed would pass — but reading is not measuring, and `.7.3.3.5` owns settling it per format before any statement about the pack's real reach is published.
@@ -987,7 +987,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: a control that fails on the current code for every format the census proves unacquirable, and a recorded decision naming which of the two repairs was taken and why. Neither the registry row nor the sniff changes before that census exists.
 - Why it matters beyond tidiness: the pack's advertised capability is what `resolvers::resolve` ranks on, so a caller is routed to a resolver that cannot acquire its document and receives an acquisition refusal rather than the explicit `resource_unresolvable_now` the `§12.2` contract reserves for "no eligible resolver". That is a wrong answer, not merely a missing feature.
 - Decomposition, settled before implementation for the same reason `.7.3.3.4` was: the census and the repair need different things — the census needs no production change and must not presume its own conclusion, and the repair is a content-policy change whose shape the census decides. `.5.1` measures and records the decision; `.5.2` implements it.
-- Verification / commit: `.5.1` carries the census and the decision; `.5.2` the implementation.
+- Verification / commit: `.5.1` is REPAIR-0097 (the census and the decision); `.5.2` is REPAIR-0098 (the implementation, with the bound proved by a live negative control).
 
 ###### SIGNOFF-REPAIR.7.3.3.5.1 — Census the acquisition leg's accept set against the R2 advertisement, and decide
 
@@ -1004,11 +1004,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.7.3.3.5.2 — Implement the repair the census chose
 
-- Status: `pending`; opened with `.5.1` so the sequence is visible, not to be started before the census closes.
+- Status: `done`; REPAIR-0098. Opened with `.5.1` so the sequence was visible, and started only once the census had closed.
 - Owns, now settled by `.5.1`'s decision (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`): the acquisition leg admits the RANKED resolver's own advertised `media_types`, read at resolution time. Narrowing the registry row was rejected on the census, because no subset of the advertisement is accepted.
 - Bounds the decision fixes, and this leaf may not exceed: no change to the destination policy, the scheme list or any SSRF control; no type admitted that the ranked pack does not advertise; no relaxation of an R0-ranked acquisition; the byte ceiling, ratio brake, redirect policy and time ceiling unchanged.
 - Acceptance: the live R2 control acquires a document served under an advertised type without the test having to serve it as `text/*`; the census controls in `fetcher.rs` still pass unchanged for the R0 path; and a negative control proves a type the ranked pack does NOT advertise is still refused.
-- Verification / commit: pending.
+- Fix, in three pieces: `sniff_kind` takes the ranked pack's advertised types and returns the new `SniffedKind::DeclaredType` for a declared type in that set; `Fetcher::fetch_admitting` passes it, with `fetch`, `fetch_head` and `fetch_authenticated` passing an empty slice so R0's shipped accept set is byte-for-byte unchanged; and `resolvers::advertised_media_types` reads the row's own `media_types` per resolution, so a deployment that narrows a pack's advertisement narrows what it may acquire in the same act. A missing or malformed row yields an EMPTY set — a malformed advertisement must never widen a gate.
+- Bounds held, with the census that shows it: `git grep -n "fetch_admitting" -- 'crates/**/*.rs'` returns exactly one call site, `api.rs:2032`, the R2 arm. The R0 arm (`api.rs:1813`), the R5 authenticated arm (`:1879`) and the R3 preflight (`:1960`) are untouched and pass no admitted set. No destination policy, scheme list, SSRF control, byte ceiling, ratio brake, redirect policy or time ceiling changed.
+- `SniffedKind` gains `DeclaredType`, an additive variant. Its `as_str` is `application/octet-stream`, and that label cannot be reached through this path: the variant is only produced FROM a declared type, so the snapshot's `content_type.unwrap_or_else(sniffed)` fallback does not fire for it. The live control asserts the snapshot records `application/atom+xml`, not a sniffed stand-in.
+- Verification: the profiles suite passes 33/33 live with its cluster stopped and removed, including the unchanged R0 and R1 resolver controls; 99 server library tests (19 fetcher, the two census controls among them), 16 completion controls, seven owned-input controls, strict `-D warnings` all-target server lint and workspace format pass.
+- Falsification (three injections, each reverted and re-run green): replacing the registry read so the admitted set is NOT the ranked row's advertisement fails the advertised-type acquisition; passing an empty admitted set at the R2 call site fails it identically, so the repair is load-bearing; and adding ONE unadvertised type (`application/json`) to the admitted set makes the unadvertised document acquire and fails the negative control — which is the bound the decision drew, proved live rather than asserted.
+- One measured fact this repair deliberately FLIPS: `.7.3.3.4.1`'s control recorded `application/atom+xml` as `media_type_refused`. That refusal is the defect, so the control now asserts the acquisition and a new `application/json` path carries the negative case. The superseded measurement stays recorded in `.7.3.3.4.1` and in the decision's census, because it is the evidence the repair rests on.
+- Commit: `REASONBRAID-REPAIR-0098 (leaf SIGNOFF-REPAIR.7.3.3.5.2): admit the ranked pack's advertised media types`. promotion: declined (the durable contract is already `docs/decisions/2026-09-12_r2-acquisition-accept-set.md`, which this child implements without changing it).
 
 #### SIGNOFF-REPAIR.7.3.4 — Bound extraction transport and retained storage
 
@@ -2039,14 +2045,13 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.3.3.5.2` | `pending` | admit the ranked pack's advertised media types at the acquisition leg; the census and decision are done |
-| 2 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
-| 3 | `SIGNOFF-REPAIR.11.4.5.3` | `pending` | the tree index's frontier column drifted to a leaf closed on 2026-09-11; census the rows, then generate or check |
-| 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
+| 2 | `SIGNOFF-REPAIR.11.4.5.3` | `pending` | the tree index's frontier column drifted to a leaf closed on 2026-09-11; census the rows, then generate or check |
+| 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 5 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 6 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 7 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -2072,6 +2077,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.7.3.3.5.2`: `REASONBRAID-REPAIR-0098 (leaf SIGNOFF-REPAIR.7.3.3.5.2): admit the ranked pack's advertised media types`.
 
 - `SIGNOFF-REPAIR.7.3.3.5.1`: `REASONBRAID-REPAIR-0097 (leaf SIGNOFF-REPAIR.7.3.3.5.1): census the acquisition leg's accept set and decide`.
 
@@ -2398,6 +2405,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.7.3.3.5.2
+
+- [x] **REPRODUCE / ISSUE** — `.7.3.3.4.1`'s live control recorded the identical Atom document acquiring as `text/xml` and refused `media_type_refused` as `application/atom+xml`, the type migration 0027 advertises for the pack that was ranked. `.7.3.3.5.1`'s census then measured the rule: the declared accept set is `{text/html, application/xhtml+xml, text/*}` and none of the five advertised types is in it.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-server/src/api.rs:2012`'s R2 arm acquired through `Fetcher::fetch`, inheriting R0's accept set, while `resolvers::resolve` ranked the pack on an advertisement that accept set cannot satisfy. The pack exists for non-text documents in a sandboxed worker (`ROADMAP.md` §12.3 R2); the shared fetcher was the implementation reusing one engine, not the architecture.
+- [x] **FIX** — `sniff_kind` takes the ranked pack's advertised types and returns the additive `SniffedKind::DeclaredType` for a declared type in that set; `Fetcher::fetch_admitting` supplies it while `fetch`/`fetch_head`/`fetch_authenticated` pass an empty slice; `resolvers::advertised_media_types` reads the row's own `media_types` per resolution, returning an EMPTY set for a missing or malformed row so a bad advertisement cannot widen a gate.
+- [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` returns `test result: ok. 33 passed; 0 failed` with `pg-tests: stopped and removed target/pg-tests/run-nrgcy0z0`; the advertised-type reference now acquires and its snapshot records `media_type` `application/atom+xml` with the served document's digest. FALSIFIED three ways, each reverted and re-run green: an admitted set that is not the ranked row's fails the acquisition; an empty admitted set at the R2 call site fails it identically, so the repair is load-bearing; and adding ONE unadvertised type makes the unadvertised document acquire and fails the negative control at `profiles.rs:3289` — the decision's bound, proved live.
+- [x] **NO REGRESSION** — `cargo test -p reasonbraid-server --lib` returns `99 passed; 0 failed`, including both census controls updated to assert BOTH halves; `--test extraction_input --test extraction_completion` return `7 passed` and `16 passed`; strict `-D warnings` all-target server lint and workspace format pass. The unchanged R0 and R1 resolver controls pass in the same live run. Bound census: `git grep -n "fetch_admitting" -- 'crates/**/*.rs'` returns exactly one call site, the R2 arm; the R0 arm, the R5 authenticated arm and the R3 preflight pass no admitted set.
+- [x] **LOCKSTEP** — task tree (both children, the parent's closure, frontier, commit log), `docs/TASK_TREE.md`'s index row, the evidence record, `docs/book/src/deployment.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. One superseded measurement is retained rather than rewritten: `.7.3.3.4.1`'s recorded `media_type_refused` for `application/atom+xml` is the evidence this repair rests on and stays in its leaf.
 
 ## Commit acceptance — SIGNOFF-REPAIR.7.3.3.5.1
 

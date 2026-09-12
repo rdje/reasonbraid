@@ -853,8 +853,19 @@ destination policy, the scheme list, the byte ceiling, the ratio brake, the
 redirect policy and the time ceiling are all outside that change, and an
 R0-ranked acquisition keeps the text/HTML accept set exactly as shipped. The
 decision, its rejected option and the risk it accepts are recorded in
-`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`;
-`SIGNOFF-REPAIR.7.3.3.5.2` implements it.
+`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`.
+
+That repair now ships. `Fetcher::fetch_admitting` takes the ranked pack's
+advertised types, read from its registry row per resolution, and a declared type
+in that set sniffs to the additive `SniffedKind::DeclaredType`. `fetch`,
+`fetch_head` and `fetch_authenticated` pass an empty set, so R0's shipped accept
+set is unchanged — and `fetch_admitting` has exactly one caller, the R2 arm. A
+missing or malformed registry row yields an EMPTY set, because a bad
+advertisement must never widen a gate. The live control now acquires the same
+feed served as `application/atom+xml`, records `application/atom+xml` as the
+snapshot's media type rather than a sniffed stand-in, and still refuses a type
+the pack does not advertise — a bound proved by adding one such type to the
+admitted set and watching the negative control fail.
 
 
 ### Where a Git acquisition works, and when it is removed

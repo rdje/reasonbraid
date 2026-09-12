@@ -292,8 +292,30 @@ scheme list, byte ceiling, ratio brake, redirect policy and time ceiling all
 explicitly outside the change. The controls pass on unchanged production, as a
 census must, and were falsified by adding `application/pdf` to the accept set.
 The census measures the predicate, not real files of each format; a given real
-PDF's untyped verdict depends on that PDF and is not claimed. Implementation is
-.7.3.3.5.2. Decision: docs/decisions/2026-09-12_r2-acquisition-accept-set.md.
+PDF's untyped verdict depends on that PDF and is not claimed. Decision:
+docs/decisions/2026-09-12_r2-acquisition-accept-set.md.
+
+The repair ships under .7.3.3.5.2 (REPAIR-0098). `sniff_kind` takes the ranked
+pack's advertised types and returns the additive `SniffedKind::DeclaredType` for
+a declared type in that set; `Fetcher::fetch_admitting` supplies it while
+`fetch`, `fetch_head` and `fetch_authenticated` pass an empty slice, so R0's
+shipped accept set is byte-for-byte unchanged; and
+`resolvers::advertised_media_types` reads the row's own media_types per
+resolution, returning an EMPTY set for a missing or malformed row so a bad
+advertisement cannot widen a gate. Bound census: `git grep -n "fetch_admitting"
+-- 'crates/**/*.rs'` returns exactly one call site, the R2 arm; the R0 arm, the
+R5 authenticated arm and the R3 preflight pass no admitted set, and no
+destination policy, scheme list, SSRF control or ceiling changed. The profiles
+suite passes 33 of 33 live with its cluster removed, including the unchanged R0
+and R1 resolver controls; 99 library tests, 23 extraction controls, strict
+all-target server lint and format pass, and a whole-workspace `cargo check
+--all-targets` returns 0. Three injections, each reverted and re-run green: an
+admitted set that is not the ranked row's fails the acquisition, an empty set at
+the call site fails it identically, and adding ONE unadvertised type makes the
+unadvertised document acquire and fails the negative control — the decision's
+bound, proved live. One measured fact is deliberately flipped: .7.3.3.4.1's
+recorded `media_type_refused` for `application/atom+xml` was the defect, and it
+stays recorded as the evidence the repair rests on.
 
 The sibling join .7.3.3.4.2 is closed under REPAIR-0096, with no production
 change: the gap was coverage. The seven mismatch controls .7.3.3.3.2 added all

@@ -144,6 +144,50 @@ passes 33/33 live; the cluster was stopped and removed.
 (`admitting_fetcher`, `widen_r2_to_http`/`restore_r2_schemes`, `submit_hinted`,
 `require_extraction_worker`), with its assertions unchanged.
 
+## The advertised-format repair (`.7.3.3.5`, REPAIR-0097 + 0098)
+
+The finding this work surfaced got a census before it got a repair, and the
+census changed the repair.
+
+**Measured (`.5.1`, no production change).** A DECLARED content type is accepted
+only from `{text/html, application/xhtml+xml, text/*}` — three arms, enumerated
+in both directions — and none of migration 0027's five advertised types is in
+it. UNTYPED, the verdict is a property of the BYTES: an all-printable body is
+accepted whatever format it belongs to, and the same body with one non-text byte
+is refused; ZIP and tar cannot reach that branch by construction. The controls
+pass on unchanged production, as a census must, and were falsified by adding
+`application/pdf` to the accept set.
+
+**So the first statement of the finding was the wrong SHAPE.** The leg's rule is
+not about formats, which means no subset of the advertisement satisfies it —
+narrowing the registry row was rejected on that measured ground, not on
+preference (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`).
+
+**Repaired (`.5.2`).** The acquisition leg admits the RANKED pack's own
+advertised media types, read from its registry row per resolution. `sniff_kind`
+gains that parameter and the additive `SniffedKind::DeclaredType`;
+`Fetcher::fetch_admitting` supplies it while `fetch`, `fetch_head` and
+`fetch_authenticated` pass an empty slice, so R0's shipped accept set is unchanged.
+A missing or malformed row yields an EMPTY set — a bad advertisement must not
+widen a gate.
+
+Bound census: `git grep -n "fetch_admitting" -- 'crates/**/*.rs'` returns exactly
+one call site, `api.rs:2032`. The R0 arm, the R5 authenticated arm and the R3
+preflight pass no admitted set, and no destination policy, scheme list, SSRF
+control or ceiling changed.
+
+| injection | result | what it proves |
+| --- | --- | --- |
+| the admitted set is not the ranked row's | the advertised-type acquisition fails | the set really is that row's |
+| an empty admitted set at the R2 call site | fails identically | the repair is load-bearing |
+| ONE unadvertised type added to the set | the unadvertised document acquires and the negative control fails | the decision's bound is live, not asserted |
+
+One measured fact is deliberately FLIPPED: this record's own earlier statement
+that `application/atom+xml` is refused `media_type_refused`. That refusal was the
+defect. It stays recorded here and in `.7.3.3.4.1` because it is the evidence the
+repair rests on, and the live control now carries an `application/json` path for
+the negative case.
+
 ## What this does NOT establish
 
 Both joins are qualified: the success path persists the served document's own

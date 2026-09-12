@@ -175,20 +175,32 @@ impl FetchError {
 
 impl std::error::Error for FetchError {}
 
-/// What the response-type sniff settled on. R0 is text/HTML (§12.3): these are
-/// the ONLY accepted kinds.
+/// What the response-type sniff settled on.
+///
+/// R0's own acquisitions are text/HTML (§12.3) and those two are the only kinds
+/// it produces. `DeclaredType` is the third: a response admitted because the
+/// RANKED resolver advertises its declared content type
+/// (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`). The sniff makes
+/// no claim about such a body beyond "its declared type is one this pack asked
+/// for" — the type itself is in `content_type`, which is `Some` by construction
+/// whenever this variant is produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SniffedKind {
     Html,
     Text,
+    DeclaredType,
 }
 
 impl SniffedKind {
+    /// The media-type label a caller falls back to when the response declared
+    /// none. `DeclaredType` is only produced FROM a declared type, so its label
+    /// is the unclassified-bytes type and the fallback does not fire for it.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Html => "text/html",
             Self::Text => "text/plain",
+            Self::DeclaredType => "application/octet-stream",
         }
     }
 }
@@ -389,8 +401,28 @@ impl Fetcher {
 
     /// GET a document. Every refusal is a typed [`FetchError`]; the time
     /// ceiling wraps the WHOLE acquisition (every hop + the body read).
+    ///
+    /// The accept set is R0's own: `text/html`, `application/xhtml+xml`,
+    /// `text/*`, or an untyped body that is printable. Use
+    /// [`Self::fetch_admitting`] to acquire for a pack that advertises more.
     pub async fn fetch(&self, raw_url: &str) -> Result<FetchedDocument, FetchError> {
-        self.fetch_with(Method::GET, raw_url, None).await
+        self.fetch_with(Method::GET, raw_url, None, &[]).await
+    }
+
+    /// GET a document for a RANKED capability pack, admitting the media types
+    /// that pack advertises in addition to R0's own accept set
+    /// (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`).
+    ///
+    /// This widens exactly one gate: which DECLARED content type is accepted.
+    /// The destination policy, the scheme list, the byte ceiling, the
+    /// decompression-ratio brake, the redirect policy and the time ceiling are
+    /// untouched, and an empty `admitted` is identical to [`Self::fetch`].
+    pub async fn fetch_admitting(
+        &self,
+        raw_url: &str,
+        admitted: &[String],
+    ) -> Result<FetchedDocument, FetchError> {
+        self.fetch_with(Method::GET, raw_url, None, admitted).await
     }
 
     /// GET with a per-request Authorization header (the R5 pack's
@@ -405,6 +437,7 @@ impl Fetcher {
             Method::GET,
             raw_url,
             Some(("Authorization", header_value.to_owned())),
+            &[],
         )
         .await
     }
@@ -426,7 +459,7 @@ impl Fetcher {
     /// HEAD a document (the metadata check — no body is read or sniffed from
     /// bytes; the header-only sniff falls back to `Text` when untyped).
     pub async fn fetch_head(&self, raw_url: &str) -> Result<FetchedDocument, FetchError> {
-        self.fetch_with(Method::HEAD, raw_url, None).await
+        self.fetch_with(Method::HEAD, raw_url, None, &[]).await
     }
 
     async fn fetch_with(
@@ -434,6 +467,7 @@ impl Fetcher {
         method: Method,
         raw_url: &str,
         extra_header: Option<(&'static str, String)>,
+        admitted: &[String],
     ) -> Result<FetchedDocument, FetchError> {
         let run = async {
             let mut current = harden_url(
@@ -506,7 +540,7 @@ impl Fetcher {
                 let (bytes, sniffed) = if method == Method::HEAD {
                     // No body to mislead with: the header decides, and an
                     // untyped HEAD is recorded as text.
-                    match sniff_kind(content_type.as_deref(), &[]) {
+                    match sniff_kind(content_type.as_deref(), &[], admitted) {
                         Some(kind) => (Vec::new(), kind),
                         None if content_type.is_none() => (Vec::new(), SniffedKind::Text),
                         None => {
@@ -541,14 +575,15 @@ impl Fetcher {
                     if encoding.as_deref().is_none_or(is_identity_encoding) {
                         check_ratio(declared, bytes.len(), self.limits.max_decompression_ratio)?;
                     }
-                    let sniffed = sniff_kind(content_type.as_deref(), &bytes).ok_or_else(|| {
-                        FetchError::MediaTypeRefused(
-                            content_type
-                                .as_deref()
-                                .unwrap_or("application/octet-stream")
-                                .to_owned(),
-                        )
-                    })?;
+                    let sniffed = sniff_kind(content_type.as_deref(), &bytes, admitted)
+                        .ok_or_else(|| {
+                            FetchError::MediaTypeRefused(
+                                content_type
+                                    .as_deref()
+                                    .unwrap_or("application/octet-stream")
+                                    .to_owned(),
+                            )
+                        })?;
                     (bytes, sniffed)
                 };
                 return Ok(FetchedDocument {
@@ -756,7 +791,11 @@ fn check_ratio(declared: Option<u64>, decoded: usize, limit: f64) -> Result<(), 
 /// The response-type sniff: the header decides first; without a usable header,
 /// the first bytes decide — HTML tags, then a JSON-shaped refusal, then
 /// UTF-8 text; everything else is refused by the caller.
-fn sniff_kind(content_type: Option<&str>, head: &[u8]) -> Option<SniffedKind> {
+/// `admitted` is the RANKED resolver's own advertised media types, supplied by
+/// the caller for this acquisition only. It widens nothing by itself: an empty
+/// slice — what `fetch` passes — leaves R0's text/HTML accept set exactly as
+/// shipped (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`).
+fn sniff_kind(content_type: Option<&str>, head: &[u8], admitted: &[String]) -> Option<SniffedKind> {
     let primary = content_type.map(|ct| {
         ct.split(';')
             .next()
@@ -767,7 +806,17 @@ fn sniff_kind(content_type: Option<&str>, head: &[u8]) -> Option<SniffedKind> {
     match primary.as_deref() {
         Some("text/html") | Some("application/xhtml+xml") => return Some(SniffedKind::Html),
         Some(media) if media.starts_with("text/") => return Some(SniffedKind::Text),
-        Some(_) => return None, // any declared non-text type: refused by the caller
+        // The pack that was ranked asked for this exact type. The comparison is
+        // over the already-lowercased primary type, with the advertisement
+        // lowercased too, so a registry row's casing cannot decide a gate.
+        Some(media)
+            if admitted
+                .iter()
+                .any(|kind| kind.trim().eq_ignore_ascii_case(media)) =>
+        {
+            return Some(SniffedKind::DeclaredType);
+        }
+        Some(_) => return None, // any other declared type: refused by the caller
         None => {}
     }
     let rest = skip_whitespace_and_bom(head);
@@ -945,7 +994,7 @@ mod tests {
             (None, &b""[..], None),
         ] {
             assert_eq!(
-                sniff_kind(content_type, head),
+                sniff_kind(content_type, head, &[]),
                 expected,
                 "content-type {content_type:?} with head {:?}",
                 String::from_utf8_lossy(head)
@@ -972,20 +1021,48 @@ mod tests {
         "application/rss+xml",
     ];
 
-    /// Every type the R2 pack advertises is refused by the leg that acquires
-    /// for it — and the accepted set is enumerated too, because a claim about a
-    /// set carries both directions.
+    /// R0's own accept set refuses every type the R2 pack advertises — and
+    /// admits each of them when that pack is the one RANKED. Both halves, in one
+    /// control, because the repair is exactly the difference between them
+    /// (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`).
     #[test]
-    fn every_r2_advertised_type_is_refused_by_the_acquisition_leg() {
+    fn every_r2_advertised_type_is_refused_by_r0_and_admitted_for_its_own_pack() {
         let body = br#"<?xml version="1.0" encoding="utf-8"?><feed><title>x</title></feed>"#;
+        let advertised: Vec<String> = R2_ADVERTISED_MEDIA_TYPES
+            .iter()
+            .map(|kind| (*kind).to_owned())
+            .collect();
         for media in R2_ADVERTISED_MEDIA_TYPES {
             assert_eq!(
-                sniff_kind(Some(media), body),
+                sniff_kind(Some(media), body, &[]),
                 None,
-                "`{media}` is advertised by the R2 registry row and refused here, \
-                 whatever the body is",
+                "`{media}` is outside R0's own accept set, whatever the body is",
+            );
+            assert_eq!(
+                sniff_kind(Some(media), body, &advertised),
+                Some(SniffedKind::DeclaredType),
+                "`{media}` is admitted for the pack that advertises it",
+            );
+            // The parameter is the header's full value: a charset must not
+            // decide a gate, and neither must casing.
+            assert_eq!(
+                sniff_kind(Some(&format!("{media}; charset=utf-8")), body, &advertised),
+                Some(SniffedKind::DeclaredType),
+                "`{media}` with parameters is the same declared type",
             );
         }
+        // A type the ranked pack does NOT advertise stays refused. This is the
+        // half that keeps the widening bounded: the admitted set is the row's,
+        // not "anything declared".
+        for outsider in ["application/json", "application/octet-stream", "image/png"] {
+            assert_eq!(
+                sniff_kind(Some(outsider), body, &advertised),
+                None,
+                "`{outsider}` is outside the advertisement and stays refused",
+            );
+        }
+        // An empty admitted set is byte-for-byte R0's shipped behaviour.
+        assert_eq!(sniff_kind(Some("application/pdf"), body, &[]), None);
         // The other direction: the COMPLETE declared-type accept set. Adding a
         // sixth arm to `sniff_kind` without revisiting this census fails here.
         for (media, expected) in [
@@ -996,7 +1073,7 @@ mod tests {
             ("text/anything-at-all", Some(SniffedKind::Text)),
         ] {
             assert_eq!(
-                sniff_kind(Some(media), body),
+                sniff_kind(Some(media), body, &[]),
                 expected,
                 "the declared-type accept set is `text/html`, \
                  `application/xhtml+xml` and `text/*` — `{media}`",
@@ -1017,7 +1094,7 @@ mod tests {
         // A PDF body that happens to be entirely printable is ACCEPTED untyped.
         let textual_pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
         assert_eq!(
-            sniff_kind(None, textual_pdf),
+            sniff_kind(None, textual_pdf, &[]),
             Some(SniffedKind::Text),
             "an all-printable body is accepted untyped, whatever format it is",
         );
@@ -1026,7 +1103,7 @@ mod tests {
         let mut binary_pdf = textual_pdf.to_vec();
         binary_pdf.extend_from_slice(b"stream\n\x00\x01\x02\nendstream\n");
         assert_eq!(
-            sniff_kind(None, &binary_pdf),
+            sniff_kind(None, &binary_pdf, &[]),
             None,
             "one non-text byte refuses the same document",
         );
@@ -1049,7 +1126,7 @@ mod tests {
         zip_local_header.extend_from_slice(&[0x00, 0x00]); // extra length
         zip_local_header.extend_from_slice(b"ax");
         assert_eq!(
-            sniff_kind(None, &zip_local_header),
+            sniff_kind(None, &zip_local_header, &[]),
             None,
             "a ZIP's local file header carries binary fields by construction",
         );
@@ -1058,7 +1135,7 @@ mod tests {
         tar_header[..2].copy_from_slice(b"ax"); // the NUL-padded 100-byte name
         tar_header[257..262].copy_from_slice(b"ustar");
         assert_eq!(
-            sniff_kind(None, &tar_header),
+            sniff_kind(None, &tar_header, &[]),
             None,
             "a tar header block is NUL-padded fixed-width fields by construction",
         );

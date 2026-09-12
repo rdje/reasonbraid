@@ -6,6 +6,24 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The administrative refusal vocabulary is corrected from three codes to four
+under `.3.3.4.7.4` (REPAIR-0121), and the correction has the same shape as the
+mistake it repairs. `.7.3` classified every `ControlApiError::unauthorized` in
+the fourteen handlers as the admission's own denial — right **thirteen times out
+of fourteen**. The fourteenth is the card import's allowlist rung, which refuses
+an ADMITTED tenant administrator because the importing tenant holds no effective
+federation agreement with the card's origin: a precondition about the two
+tenants, not about the caller's grant. Re-measured across all fourteen handlers
+with a re-runnable census: `handlers not found: none`, exactly one such site.
+`AdministrativeRefusal::Unauthorized` is added so that refusal can be recorded
+without the record and the response disagreeing — the one thing the type exists
+to prevent. ⛔ A denied admission still writes no effect record at all, so a
+`refused` outcome carrying this code always means the request was allowed and the
+operation was not. No migration; migration 0058 pins only the outcome `kind`.
+**68 core tests** and **25 live effect tests** pass; FALSIFIED **9 passed / 1
+failed** by leaving the code on the fail-closed list. ⚠️ This is the seventh
+instance of the pattern `.11.6` censuses and the second inside `.7`.
+
 🔴 **A silent lost update on the audited attestation path was reproduced and
 closed under `.3.3.4.11.2` (REPAIR-0120).** `attest_capability` read the current
 profile on the pool and wrote it back through a different transaction. Measured

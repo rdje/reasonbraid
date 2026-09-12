@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-12 — The fourteenth handler refuses an admitted caller, and the vocabulary had no word for it (`SIGNOFF-REPAIR.3.3.4.7.4`)
+
+- `.7.3` derived the administrative refusal vocabulary by parsing the fourteen handlers for `ControlApiError::` constructors and classifying them by name, concluding that `unauthorized` is always "the admission's own denial and already the admission record's job". Building the card import showed that is true **thirteen times out of fourteen**.
+- The fourteenth is `import_profile_card`'s ALLOWLIST rung: it refuses a caller who WAS admitted — an administrator of their own tenant — because that tenant holds no effective federation agreement with the card's origin. That is a precondition about the two tenants, not about the caller's grant, and the response body carries `code: "unauthorized"`.
+- ⚠️ **This is the seventh instance of the pattern `.11.6` is censusing, and the second one inside `.7`.** `.7.3` wrote "the reasoning was sound and the set was wrong" about its own predecessor; the same sentence applies to it, one rung down. A census that classifies by a constructor's NAME rather than by what each site MEANS will be right wherever the name and the meaning agree, and silently wrong where they do not.
+- The gap is measured to be one value rather than assumed to be one — the census re-runs across all fourteen operations and returns `handlers not found: none` and exactly one domain-refusal site. That is the check `.7.3` itself insisted on when it refused to patch the §9.8 registry with a single value.
+- `AdministrativeRefusal::Unauthorized` is added, its wire name literally the `code` the response body carries, so the invariant that the record and the response cannot disagree keeps holding by construction. Without it the allowlist refusal could not have been recorded at all.
+- ⛔ Not a widening of what writes an effect: a DENIED ADMISSION still writes no effect record, so a `refused` outcome carrying this code always means the request was allowed and the operation was not.
+- No migration — migration 0058's `CHECK` pins only the outcome object's `kind`, and this field lives beneath it. `.7.2`'s layering pays for itself a second time.
+- Validation: `cargo test -p reasonbraid-core --locked` rc=0, **68 tests**; `bash scripts/run_pg_tests.sh administrative_effects` rc=0, **25 passed / 0 failed**, so the stored `kind` vocabulary and migration controls are untouched. Strict lint on both crates, fmt, gate (17 checks), book and link check rc=0.
+- FALSIFIED: leaving `"unauthorized"` on the control's fail-closed list makes it fail at `` `unauthorized` decoded as an administrative refusal `` (**9 passed / 1 failed**), so the control discriminates the change rather than passing either way.
+
 ## 2026-09-12 — Two owners attested two claims and one attestation vanished (`SIGNOFF-REPAIR.3.3.4.11.2`)
 
 - 🔴 The census predicted this from source; the control measured it. Two administrators attesting two DIFFERENT capabilities of one role, against the unchanged route: **both received `200`**, and the profile the role then published carried `code_review` upgraded to `owner_attested` and `schema_design` still `self_asserted`. One administrator's audited attestation was gone, with no error reported to anyone and a perfectly ordinary version 3 to show for it. An audit trail that silently drops an entry is worse than one that refuses — nothing in it says a record is missing.

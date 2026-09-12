@@ -246,7 +246,7 @@ fn the_three_outcomes_are_distinct_and_only_applied_asserts_a_change() {
 
 #[test]
 fn a_refusal_code_outside_the_measured_set_is_a_decode_failure_not_a_guess() {
-    // The three codes are the ones the fourteen administrative handlers actually
+    // The four codes are the ones the fourteen administrative handlers actually
     // refuse an admitted operation with, and they are literally the strings the
     // HTTP response carries.
     for code in AdministrativeRefusal::CODES {
@@ -263,13 +263,20 @@ fn a_refusal_code_outside_the_measured_set_is_a_decode_failure_not_a_guess() {
     // ⚠️ `not_found` is the case that made this its own vocabulary: the §9.8
     // registry does not contain it, and it is exactly what a 404 returns.
     assert_eq!(AdministrativeRefusal::NotFound.as_str(), "not_found");
+    // ⚠️ `unauthorized` was on the OUTSIDE list until `SIGNOFF-REPAIR.3.3.4.7.4`,
+    // because `.7.3`'s census read every `ControlApiError::unauthorized` in the
+    // fourteen handlers as the admission's own denial. That is true thirteen
+    // times; the fourteenth is the card import's allowlist rung, which refuses an
+    // ADMITTED tenant administrator over a missing federation agreement. A code
+    // that names a real post-admission refusal cannot be on the fail-closed list
+    // — the record would have had to disagree with the response to be written.
+    assert_eq!(AdministrativeRefusal::Unauthorized.as_str(), "unauthorized");
     // Fail closed: this build writes these codes, so a code it cannot name means
     // the row was not written by a build this one understands. `quota_exceeded`
     // is a real code the product emits elsewhere and still not one of these.
     for outside in [
         "quota_exhausted",
         "quota_exceeded",
-        "unauthorized",
         "dependency_unavailable",
     ] {
         assert!(

@@ -171,12 +171,21 @@ impl<'de> Deserialize<'de> for AdministrativeReason {
 /// the 19 codes the product emits are absent from it. The registry's own
 /// reconciliation is `SIGNOFF-REPAIR.11.7`.
 ///
-/// These three are what the fourteen administrative handlers actually refuse an
-/// admitted operation with, measured from their bodies: `unauthorized` is the
-/// admission's own denial and already the admission record's job, and the
-/// internal/storage failures roll back rather than commit an effect. The wire
-/// names are literally the strings the HTTP response carries, so the invariant
-/// holds by construction rather than by coincidence.
+/// These four are what the fourteen administrative handlers actually refuse an
+/// admitted operation with, measured from their bodies; the internal/storage
+/// failures roll back rather than commit an effect. The wire names are literally
+/// the strings the HTTP response carries, so the invariant holds by construction
+/// rather than by coincidence.
+///
+/// ⚠️ `Unauthorized` was added by `SIGNOFF-REPAIR.3.3.4.7.4`, correcting `.7.3`'s
+/// own census. That census classified every `ControlApiError::unauthorized` in
+/// the fourteen handlers as the admission's own denial — and was right thirteen
+/// times. The fourteenth is the card import's ALLOWLIST rung, which refuses an
+/// ADMITTED tenant administrator because the importing tenant holds no effective
+/// federation agreement with the origin. Re-measured across all fourteen: exactly
+/// one such site. Without this code that refusal could not be recorded at all
+/// without the record and the response disagreeing, which is the one thing this
+/// type exists to prevent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdministrativeRefusal {
@@ -188,6 +197,17 @@ pub enum AdministrativeRefusal {
     /// No such target in this tenant. Missing and foreign are ONE answer, so
     /// this code leaks no existence; it names only the id the caller supplied.
     NotFound,
+    /// The CALLER was admitted and the OPERATION is still not permitted — a
+    /// precondition about the tenants involved rather than about the caller's
+    /// grant. The card import's allowlist rung is the measured instance: an
+    /// administrator of their own tenant, refused because that tenant holds no
+    /// effective federation agreement with the card's origin.
+    ///
+    /// ⛔ Never the admission's own denial. A denied admission writes no effect
+    /// record at all — the authorization record IS its evidence — so a `refused`
+    /// outcome carrying this code always means the request was allowed and the
+    /// operation was not.
+    Unauthorized,
 }
 
 impl AdministrativeRefusal {
@@ -196,10 +216,16 @@ impl AdministrativeRefusal {
             Self::InvalidCommand => "invalid_command",
             Self::InvalidTransition => "invalid_transition",
             Self::NotFound => "not_found",
+            Self::Unauthorized => "unauthorized",
         }
     }
 
-    pub const CODES: [&'static str; 3] = ["invalid_command", "invalid_transition", "not_found"];
+    pub const CODES: [&'static str; 4] = [
+        "invalid_command",
+        "invalid_transition",
+        "not_found",
+        "unauthorized",
+    ];
 }
 
 impl std::fmt::Display for AdministrativeRefusal {
@@ -214,6 +240,7 @@ impl<'de> Deserialize<'de> for AdministrativeRefusal {
             "invalid_command" => Self::InvalidCommand,
             "invalid_transition" => Self::InvalidTransition,
             "not_found" => Self::NotFound,
+            "unauthorized" => Self::Unauthorized,
             unknown => {
                 return Err(serde::de::Error::unknown_variant(unknown, &Self::CODES));
             }

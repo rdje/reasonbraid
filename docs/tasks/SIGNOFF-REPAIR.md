@@ -797,6 +797,49 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - promotion: declined (the durable statements are already promoted — `docs/knowledge/where-an-invariant-lives.md` covers the layering that made this correction cost no migration, and `.11.6` is the tracked home for the measure-before-proposing pattern, which this leaf extends with a sixth dated instance).
 - Commit: `REASONBRAID-REPAIR-0111 (leaf SIGNOFF-REPAIR.3.3.4.7.3): the stored refusal code names the codes the response actually carries`.
 
+###### SIGNOFF-REPAIR.3.3.4.7.4 — The refusal vocabulary was three and the population is four
+
+- Opened: `done`; REPAIR-0121. A corrective child of `.7`, found by `.7.3`'s own successor consumer rather than by review — the same way `.7.3` itself was found.
+- Finding: `.7.3` census'd what an administrative effect can refuse with by parsing the fourteen handlers for `ControlApiError::` constructors and classifying them, and concluded `unauthorized` is always "the admission's own denial and already the admission record's job". Building `.3.3.4.11.3` showed that is true **thirteen times out of fourteen**. The fourteenth is `import_profile_card`'s ALLOWLIST rung, which refuses a caller who WAS admitted — an administrator of their own tenant — because that tenant holds no effective federation agreement with the card's origin. It is a precondition about the two tenants, not about the caller's grant.
+- ⚠️ This is the SEVENTH instance of `.11.6`'s pattern and the second one inside `.7`: a vocabulary derived from a census that classified by the constructor's NAME rather than by what each site means. `.7.3` wrote "the reasoning was sound and the set was wrong"; the same sentence applies to its own correction one rung down.
+- census, re-run over all fourteen operations' handlers rather than over the one that raised the question. The producing command, re-runnable at any commit — it parses each handler body and separates the admission's denial (whose message begins `authorization denied`) from any other `unauthorized`:
+
+  ```sh
+  python3 - <<'EOF'
+  import re, pathlib
+  src = pathlib.Path("crates/reasonbraid-server/src/api.rs").read_text().splitlines()
+  fns = [(i, m.group(1)) for i, l in enumerate(src)
+         for m in [re.match(r'(?:pub(?:\(crate\))? )?async fn (\w+)', l)] if m]
+  want = ["run_revocation", "run_breaker_administration", "arm_breaker", "reset_breaker",
+          "issue_node_enroll_token", "revoke_node", "replay_command", "quarantine_command",
+          "prune_node_inbox", "import_profile_card", "attest_capability_claim",
+          "propose_federation_agreement", "accept_federation_agreement",
+          "revoke_federation_agreement"]
+  missing, domain = set(want), 0
+  for n, (i, name) in enumerate(fns):
+      if name not in missing: continue
+      missing.discard(name)
+      body = "\n".join(src[i:(fns[n+1][0] if n+1 < len(fns) else len(src))])
+      for m in re.finditer(r'ControlApiError::unauthorized\(\s*(?:format!\()?\s*"([^"]{0,90})', body, re.S):
+          text = " ".join(m.group(1).split())
+          if not text.startswith("authorization denied"):
+              domain += 1
+              print(f"DOMAIN unauthorized in {name}: \"{text}\"")
+  print("handlers not found:", sorted(missing) or "none")
+  print("domain-refusal sites across the fourteen operations:", domain)
+  EOF
+  ```
+
+  It returns `handlers not found: none` and **exactly one** domain-refusal site: `import_profile_card`, `no effective federation agreement with the origin tenant …`. So the gap is one value, measured, rather than assumed to be one value — which is the mistake `.7.3` explicitly refused to make about the §9.8 registry and is worth not making here either.
+- Owns: `AdministrativeRefusal::Unauthorized`, whose wire name is literally `unauthorized` — the `code` an `ControlApiError::unauthorized` body carries — so the stated invariant that the record and the response cannot disagree keeps holding by construction. Without it `.11.3`'s allowlist refusal could not be recorded at all: any of the other three would have made the record say something the response did not.
+- ⛔ NOT a widening of what writes an effect. A DENIED ADMISSION still writes no effect record — the authorization record is its own evidence — so a `refused` outcome carrying this code always means the request was ALLOWED and the operation was not. The variant's own doc says so, and the type cannot be reached from the denial path, which returns before any effect is composed.
+- No migration: migration 0058's `CHECK` pins only the `outcome` object's `kind` (`applied`/`no_op`/`refused`), and this field lives beneath it — the layering `.7.2` chose, paying for itself a second time.
+- Acceptance: the four values round-trip; a code outside them is still a decode failure rather than a guess; `unauthorized` moves OFF the fail-closed list and onto the round-trip list, with the reason recorded beside it; `.7.2`'s live controls pass unchanged.
+- Verification: `python3 -B scripts/project_env.py cargo test -p reasonbraid-core --locked` rc=0 — **68 tests**, including the 10 representation controls; `a_refusal_code_outside_the_measured_set_is_a_decode_failure_not_a_guess` passes with the four-value list and the shortened outside list (`quota_exhausted`, `quota_exceeded`, `dependency_unavailable`). `bash scripts/run_pg_tests.sh administrative_effects` returns rc=0 with **25 passed / 0 failed**, so the stored-vocabulary and migration controls are unaffected. `python3 -B scripts/project_env.py cargo clippy -p reasonbraid-core -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0, `cargo fmt --all -- --check` rc=0, `make gate` 17 checks, `mdbook build` and `bash scripts/check_book_links.sh` rc=0.
+- FALSIFIED: with the variant present but `"unauthorized"` left on the test's fail-closed list, `cargo test -p reasonbraid-core --test administrative_effect` fails at `` `unauthorized` decoded as an administrative refusal `` — the control does discriminate the change rather than passing either way.
+- promotion: declined (the durable statement is `.11.6`'s open census of "measure the population before proposing the rule", which this leaf is the seventh instance of and must not pre-empt; it is recorded in `DEV_NOTES.md` and routed there, exactly as `.11`'s split routed the sixth).
+- Commit: `REASONBRAID-REPAIR-0121 (leaf SIGNOFF-REPAIR.3.3.4.7.4): the fourteenth handler refuses an admitted caller, and the vocabulary had no word for it`.
+
 ##### SIGNOFF-REPAIR.3.3.4.8 — Atomic administrative grant and boundary revocation
 
 - Opened: `pending`; follows `.3`, `.4` and `.7`.
@@ -2527,6 +2570,8 @@ The director resolved the visibility question: public repository visibility is i
 
 ## Commit Log
 
+- `SIGNOFF-REPAIR.3.3.4.7.4`: `REASONBRAID-REPAIR-0121 (leaf SIGNOFF-REPAIR.3.3.4.7.4): the fourteenth handler refuses an admitted caller, and the vocabulary had no word for it`.
+
 - `SIGNOFF-REPAIR.3.3.4.11.2`: `REASONBRAID-REPAIR-0120 (leaf SIGNOFF-REPAIR.3.3.4.11.2): attest the claim in one transaction, and stop losing the other one`.
 
 - `SIGNOFF-REPAIR.3.3.4.11.1`: `REASONBRAID-REPAIR-0119 (leaf SIGNOFF-REPAIR.3.3.4.11.1): serialize the profile writers at the role's own anchor`.
@@ -2890,6 +2935,16 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.3.4.7.4
+
+- [x] **REPRODUCE / ISSUE** — a census over all fourteen administrative operations' handlers, separating the admission's own denial (message beginning `authorization denied`) from every other `ControlApiError::unauthorized`, printed `handlers not found: none` and `domain-refusal sites across the fourteen operations: 1` — `DOMAIN unauthorized in import_profile_card: "no effective federation agreement with the origin tenant `{}` — the import refuses"`. That refusal answers an ADMITTED tenant administrator with body code `unauthorized`, which `AdministrativeRefusal` had no value for, so it could not be recorded without the record and the response disagreeing.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-core/src/authority/effect.rs`'s `AdministrativeRefusal` was derived by `.7.3` from a census that classified `ControlApiError::` sites by the constructor's NAME, reading every `unauthorized` as the admission's own denial. That holds for thirteen of the fourteen; the card import's allowlist rung is a precondition about the two tenants rather than about the caller's grant, and it refuses after a successful admission.
+- [x] **FIX** — a fourth variant `Unauthorized` whose `as_str` is literally `"unauthorized"`, added to `CODES` and to the explicit `Deserialize`, with the doc recording that it is never the admission's denial — a denied admission writes no effect record at all, so this code always means the request was allowed and the operation was not. No migration: migration 0058's `CHECK` pins only the outcome object's `kind`, and this field lives beneath it.
+- [x] **ADDRESSED (verified)** — `python3 -B scripts/project_env.py cargo test -p reasonbraid-core --locked` rc=0, **68 tests**; `a_refusal_code_outside_the_measured_set_is_a_decode_failure_not_a_guess` round-trips all four codes and keeps `quota_exhausted`, `quota_exceeded` and `dependency_unavailable` failing closed. FALSIFIED: leaving `"unauthorized"` on the fail-closed list makes that control fail at `` `unauthorized` decoded as an administrative refusal ``, so it discriminates the change rather than passing either way.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh administrative_effects` rc=0 with **25 passed / 0 failed**, including `the_column_check_and_the_declared_kind_lists_are_the_same_vocabulary` and `malformed_stored_evidence_is_a_storage_failure_not_a_guessed_outcome`; the stored `kind` vocabulary and the migration are untouched. `python3 -B scripts/project_env.py cargo clippy -p reasonbraid-core -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0, `cargo fmt --all -- --check` rc=0, `make gate` prints `=== all doctrines green ===` (17 checks), `mdbook build docs/book` and `bash scripts/check_book_links.sh` rc=0.
+- [x] **LOCKSTEP** — task tree (this leaf, its census command, this checklist, the commit log), `docs/book/src/authority.md` (the outcome table's code list, the "four refusal codes" paragraph and the ⚠️ recording what the correction was and why), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. lockstep: `docs/TASK_TREE.md` unchanged — the tree's frontier row 1 is still `.3.3.4.11.3`, which this unblocks rather than replaces; `docs/decisions/` and `docs/knowledge/` unchanged, the durable statement being `.11.6`'s open census which this must not pre-empt.
+- ⛔ NOT claimed: this adds one measured value. It does not reconcile the §9.8 registry (`.11.7`), does not change which operations write an effect, and does not change any HTTP status or body — `.11.3` is where the new code first gets written to a row.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.11.2
 

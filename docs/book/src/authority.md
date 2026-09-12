@@ -856,11 +856,23 @@ went the other way. Reusing §9.8 looked like exactly the right move — one
 registry, no drift. Measuring it said otherwise: the registry publishes 20 codes,
 the product emits 19 distinct ones, **10 of which the registry does not contain**,
 including the `not_found` that a revocation's 404 returns. So a record typed
-against §9.8 could not say what the response said. These three are instead what
-the administrative handlers actually refuse an admitted operation with, and their
+against §9.8 could not say what the response said. These are instead what the
+administrative handlers actually refuse an admitted operation with, and their
 wire names are literally the strings in the response body. The registry's own
 reconciliation is tracked separately as `SIGNOFF-REPAIR.11.7`; it is a wider
 finding than this chapter.
+
+⚠️ The set was **three** until `SIGNOFF-REPAIR.3.3.4.7.4`, and the correction has
+the same shape as the original mistake. That census classified every
+`unauthorized` in the fourteen handlers as the admission's own denial — which is
+already the authorization record's job and writes no effect — and it was right
+thirteen times. The fourteenth is the card import's **allowlist rung**, which
+refuses a caller who WAS admitted, because the importing tenant holds no
+effective federation agreement with the card's origin: a precondition about the
+two tenants, not about the caller's grant. Re-measured across all fourteen
+handlers, there is exactly one such site. A denied admission still writes no
+effect record at all, so a `refused` outcome carrying `unauthorized` always means
+the request was allowed and the operation was not.
 
 ### Ordering a thread command against an authority change
 

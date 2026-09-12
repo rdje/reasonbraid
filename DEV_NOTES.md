@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — A census that classifies by name is right exactly where the name is honest
+
+- `.7.3` is one of this tree's better leaves. It caught `.7.1` typing the refusal code against a registry that did not contain `not_found`, refused to patch that registry with a single value because it had not measured whether the gap WAS one value, and produced a purpose-built vocabulary from a census of what the fourteen handlers actually refuse with. Careful work.
+- ⭐ It still got the set wrong, and the mechanism is worth naming precisely: it classified each `ControlApiError::` site by the CONSTRUCTOR'S NAME. `unauthorized` was read as "the admission's own denial", which is already the authorization record's job and writes no effect. That reading is correct thirteen times. The fourteenth site spells `unauthorized` and means something else entirely — the importing tenant has no federation agreement with the card's origin, which is a fact about two tenants and not about the caller's grant. Same constructor, different meaning, and a name-based census cannot see the difference.
+- The correction is one value, and I measured that it is one value rather than assuming it — re-running the census across all fourteen operations, separating the admission's denial by its message shape. `handlers not found: none`, one domain-refusal site. That is exactly the check `.7.3` insisted on for the registry and did not apply to its own classification.
+- ⚠️ The generalisable form: **a census whose classifier is a name is a census of names.** When the thing being counted is MEANING, at least one instance has to be read rather than matched, and the ones to read are where the name is doing the most work. Here, thirteen agreeing sites made the fourteenth look like more of the same.
+- I did not promote this to `docs/knowledge/`. `.11.6` already owns the open census of "measure the population before proposing the rule", this is its seventh instance, and writing the record now would decide that census's answer for it. Routed there instead.
+
 ## 2026-09-12 — A version collision and a lost update look like one bug and are two
 
 - `.11.1` made concurrent profile writers serialize at the role's anchor, and that felt like it had closed the concurrency story for this family. Coming into the attestation I nearly reused the conclusion: the writers serialize now, so two attestations will queue and both will land.

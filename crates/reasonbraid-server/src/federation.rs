@@ -130,3 +130,31 @@ pub async fn has_effective_recruitment_agreement(
     .await?;
     Ok(pair == (true, true))
 }
+
+/// The same bilateral read on a caller-owned transaction, so the rung and the
+/// writes that depend on it share ONE snapshot (`SIGNOFF-REPAIR.3.3.4.11.3`).
+///
+/// ⚠️ A snapshot is all it buys, and the limit is worth stating where the
+/// function lives rather than only where it is called. [`propose`], [`accept`]
+/// and [`revoke`] above take NO tenant authority guard, so holding one — even the
+/// origin tenant's — orders this read against none of them. `SIGNOFF-REPAIR.3.3.4.12`
+/// owns putting the three direction verbs on the guarded shape; until then, an
+/// import is not fenced against a concurrent revocation and must not claim to be.
+pub(crate) async fn has_effective_recruitment_agreement_in_tx(
+    tx: &mut sqlx::PgConnection,
+    tenant_a: &str,
+    tenant_b: &str,
+) -> Result<bool, sqlx::Error> {
+    let pair: (bool, bool) = sqlx::query_as(
+        "SELECT \
+             COALESCE((SELECT recruitment FROM federation_agreements \
+                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted'), false), \
+             COALESCE((SELECT recruitment FROM federation_agreements \
+                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted'), false)",
+    )
+    .bind(tenant_a)
+    .bind(tenant_b)
+    .fetch_one(&mut *tx)
+    .await?;
+    Ok(pair == (true, true))
+}

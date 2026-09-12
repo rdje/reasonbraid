@@ -49,8 +49,8 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::authority::{
-    self, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError, GrantRefused,
-    GuardMode, TenantTransaction,
+    self, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError, GuardMode,
+    TenantTransaction,
 };
 use crate::budget;
 use crate::node_channel;
@@ -166,25 +166,18 @@ impl ControlApiError {
     /// Retain caller-specific structural refusal prose while keeping missing
     /// authority and unavailable storage out of the violation list.
     fn grant_creation(error: GrantCreateError, refusal_context: &str) -> Self {
-        match error {
-            GrantCreateError::MissingBoundary { boundary_id } => {
-                Self::invalid_command(format!("boundary `{boundary_id}` does not exist"))
-            }
-            GrantCreateError::Refused(GrantRefused { violations }) => {
-                Self::invalid_command(format!(
-                    "{refusal_context}: {}",
-                    violations
-                        .iter()
-                        .map(|v| v.to_string())
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                ))
-            }
-            GrantCreateError::Storage(error) => error.into(),
-            GrantCreateError::Transaction(error) => error.into(),
-            GrantCreateError::BoundaryNotLive { boundary_id } => Self::invalid_command(format!(
-                "boundary `{boundary_id}` is not live for grant issuance"
-            )),
+        // The domain refusals' wording lives in ONE place, so the response and
+        // the administrative effect record that describes the same refusal
+        // cannot drift apart (`SIGNOFF-REPAIR.3.3.4.11.3`).
+        match authority::grant_refusal_message(&error, refusal_context) {
+            Some(message) => Self::invalid_command(message),
+            None => match error {
+                GrantCreateError::Storage(error) => error.into(),
+                GrantCreateError::Transaction(error) => error.into(),
+                refusal => Self::internal_with_log(format!(
+                    "an unrendered grant refusal reached the HTTP surface: {refusal}"
+                )),
+            },
         }
     }
 
@@ -817,7 +810,7 @@ fn dev_boundary(tenant_id: &TenantId, now: DateTime<Utc>) -> EnrollmentAuthority
     }
 }
 
-fn dev_grant(
+pub(crate) fn dev_grant(
     boundary: &EnrollmentAuthorityBoundary,
     issuer: HumanPrincipalId,
     subject: GrantSubject,
@@ -4821,98 +4814,57 @@ async fn import_profile_card(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<ImportCardRequest>,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    // The pure rungs first — no storage before the card proves itself.
-    crate::cards::verify_pure_rungs(&req.card, &req.digest)
-        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-    // The allowlist rung: the effective recruitment agreement with the origin.
-    if !crate::federation::has_effective_recruitment_agreement(
+    // The card's own digest, re-derived before the transaction because it is the
+    // effect record's TARGET and must exist even when a rung refuses. It is pure
+    // — no storage is touched and nothing is refused by computing it — so running
+    // it before the admission leaks nothing.
+    let card_digest = crate::cards::digest_of(&req.card).map_err(|e| {
+        ControlApiError::internal_with_log(format!("the submitted card does not digest: {e}"))
+    })?;
+    let import = authority::import_card_in_one_transaction(
         &state.pool,
-        &req.tenant_id.to_string(),
-        &req.card.origin_tenant_id,
-    )
-    .await?
-    {
-        return Err(ControlApiError::unauthorized(format!(
-            "no effective federation agreement with the origin tenant `{}` — the import refuses",
-            req.card.origin_tenant_id
-        )));
-    }
-    // The capability rung + the local identity: the fresh role, the default
-    // grant under the importing boundary (the boundary-checked evaluation),
-    // and the enrollment row — the enroll's role-branch shape.
-    let boundary = authority::load_active_boundary_for_tenant(&state.pool, &req.tenant_id)
-        .await?
-        .ok_or_else(|| {
-            ControlApiError::invalid_command(
-                "the tenant has no active enrollment boundary — the import refuses",
-            )
-        })?;
-    let role = GrantSubject::Role(AgentRoleId::new());
-    let role_id = role.id_string();
-    let grant = dev_grant(
-        &boundary,
-        HumanPrincipalId::new(),
-        role.clone(),
-        vec![
-            GrantAction::ThreadContribute,
-            GrantAction::ThreadInvitationRespond,
-        ],
-    );
-    let mut tx = state.pool.begin().await?;
-    authority::create_grant_unordered_in_tx(&mut *tx, &grant)
-        .await
-        .map_err(|error| {
-            ControlApiError::grant_creation(
-                error,
-                "the imported role's grant exceeds the importing boundary",
-            )
-        })?;
-    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, $3)")
-        .bind(&role_id)
-        .bind(req.tenant_id.to_string())
-        .bind(req.card.profile.display_label.clone())
-        .execute(&mut *tx)
-        .await?;
-    // The imported role's per-principal quota (`.3.5.1`) — the identity row
-    // implies its quota row (the fail-closed write gate).
-    crate::quota::insert_principal_default_in_tx(&mut *tx, &req.tenant_id.to_string(), &role_id)
-        .await?;
-    sqlx::query(
-        "INSERT INTO enrollments (principal_id, tenant_id, kind, name) VALUES ($1, $2, 'role', $3)",
-    )
-    .bind(&role_id)
-    .bind(req.tenant_id.to_string())
-    .bind(req.card.profile.display_label.clone())
-    .execute(&mut *tx)
-    .await?;
-    // The cross-domain receipt (`.1.4`, ADR-026): the remote reference is
-    // the card's digest (the remote domain's own re-derivable record);
-    // the local reference is the fresh role — the receipt CROSS-REFERENCES,
-    // it never merges the chains.
-    crate::receipts::record_in_tx(
-        &mut *tx,
-        &req.tenant_id.to_string(),
-        &req.card.origin_tenant_id,
-        crate::receipts::KIND_CARD_IMPORT,
+        &principal,
+        req.tenant_id,
+        &req.card,
         &req.digest,
-        &role_id,
+        &card_digest,
     )
     .await?;
-    tx.commit().await?;
-    // The profile from the card (the content-addressed write path).
-    crate::profiles::write_profile(&state.pool, &role_id, &role_id, &req.card.profile)
-        .await
-        .map_err(|e| {
-            ControlApiError::internal_with_log(format!("the imported profile fails to write: {e}"))
-        })?;
-    Ok(Json(json!({
-        "role_id": role_id,
-        "origin_tenant_id": req.card.origin_tenant_id,
-        "origin_role_id": req.card.origin_role_id,
-    })))
+    let receipt = import.record_id;
+    let response = match import.result {
+        authority::CardImportResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // The rung messages are `CardError`'s own, unchanged.
+        authority::CardImportResult::CardRefused(detail) => {
+            ControlApiError::invalid_command(detail).into_response()
+        }
+        authority::CardImportResult::NoAgreement { origin_tenant } => {
+            ControlApiError::unauthorized(format!(
+                "no effective federation agreement with the origin tenant `{origin_tenant}` — the \
+                 import refuses"
+            ))
+            .into_response()
+        }
+        authority::CardImportResult::NoActiveBoundary => ControlApiError::invalid_command(
+            "the tenant has no active enrollment boundary — the import refuses",
+        )
+        .into_response(),
+        authority::CardImportResult::GrantRefused(detail) => {
+            ControlApiError::invalid_command(detail).into_response()
+        }
+        authority::CardImportResult::Imported { role_id } => Json(json!({
+            "role_id": role_id,
+            "origin_tenant_id": req.card.origin_tenant_id,
+            "origin_role_id": req.card.origin_role_id,
+        }))
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 /// `GET /v1/profiles/{role_id}/versions` — the content-addressed history.

@@ -108,19 +108,13 @@ async fn issuance_parent(
     }
 }
 
-/// Read the current active boundary in a shared guarded transaction. Callers that
-/// use it after this returns must provide their own complete effect transaction;
-/// card import remains an explicit temporary bridge until its complete integration.
-pub(crate) async fn load_active_boundary_for_tenant(
-    pool: &PgPool,
-    tenant: &TenantId,
-) -> Result<Option<EnrollmentAuthorityBoundary>, AuthorityTransactionError> {
-    let tenant = *tenant;
-    transact(pool, &[(tenant, GuardMode::Shared)], move |tx| {
-        Box::pin(async move { load_active_boundary_in_guard(tx, tenant).await })
-    })
-    .await
-}
+// `load_active_boundary_for_tenant` used to live here: a pool-taking shared-guard
+// read whose own comment called it "an explicit temporary bridge until its
+// complete integration" for card import. `SIGNOFF-REPAIR.3.3.4.11.3` integrated
+// it — the import reads its boundary with `load_active_boundary_in_guard` inside
+// the transaction that then issues the grant against it, so a boundary revoked
+// between the read and the issuance is no longer possible. Removed rather than
+// left for a future caller to reintroduce the gap.
 
 /// Load active policy through the current transaction. An exclusive issuance
 /// context satisfies this read scope without another pool acquisition/guard.

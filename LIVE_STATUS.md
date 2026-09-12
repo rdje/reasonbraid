@@ -6,6 +6,28 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **An orphaned identity on the card-import path was reproduced and closed under
+`.3.3.4.11.3` (REPAIR-0122).** The route committed the grant, the `agent_roles`
+row, the quota row, the enrollment and the cross-domain receipt as one
+transaction and then wrote the profile on the connection pool. Measured with
+every new profile version row made to fail: the import answered **`500`** and
+left the role behind (`left: 1, right: 0`) with its grant, quota, enrollment and
+receipt durable. It also read its admission, its boundary and its federation
+agreement outside the transaction that used them. The whole ladder now runs in
+ONE transaction under the importing tenant's **exclusive** guard — derived,
+because the import issues a grant and issuance asserts that scope. ⚠️ An existing
+`cards.rs` assertion caught an unintended change to the grant-refusal message
+during development; the response and the effect record now share ONE renderer, so
+two descriptions of one refusal are the same string by construction. Three
+superseded bridges are deleted: the unordered grant creator, the pool-taking
+boundary loader and the pool-taking profile writer. **3 passed / 0 failed**; the
+affected set passes **9 suites / 156 tests**. FALSIFIED **1 passed / 2 failed**
+against the exact pre-`.11.3` sources. ⛔ Moving the agreement read inside buys
+snapshot consistency and NOTHING more — `federation::{propose,accept,revoke}` take
+no guard, so nothing here fences a concurrent revocation; `.3.3.4.12` owns it.
+`.3.3.4.11`'s three transaction children have landed; `.11.4` still owes the
+profile/card book chapter.
+
 The administrative refusal vocabulary is corrected from three codes to four
 under `.3.3.4.7.4` (REPAIR-0121), and the correction has the same shape as the
 mistake it repairs. `.7.3` classified every `ControlApiError::unauthorized` in

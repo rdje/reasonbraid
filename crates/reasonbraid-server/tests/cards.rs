@@ -535,3 +535,372 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
         "the read surface also carries the agreement receipts"
     );
 }
+
+// ── The atomic import (`SIGNOFF-REPAIR.3.3.4.11.3`) ───────────────────────────
+//
+// The superseded route committed the grant, the `agent_roles` row, the quota
+// row, the enrollment row and the cross-domain receipt as one transaction, and
+// then wrote the profile ON THE POOL. A failure there answered 500 with an
+// imported identity already durable and no profile behind it.
+
+/// 🔴 THE discriminating control: a profile write that cannot succeed must leave
+/// NOTHING behind — no role, no grant, no quota row, no enrollment, no receipt,
+/// and no admission. Against the superseded route every one of those survived a
+/// request that told the caller it had failed.
+#[tokio::test]
+async fn a_profile_write_failure_leaves_no_imported_identity_behind() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "atomic-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "atomic-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "atomic-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports: {exported}");
+    let card = exported["card"].clone();
+    let digest = exported["digest"].as_str().unwrap().to_string();
+
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept");
+    }
+
+    let count = |sql: &'static str, bind: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(sql)
+                .bind(bind)
+                .fetch_one(&pool)
+                .await
+                .expect("count")
+        }
+    };
+    let roles_before = count(
+        "SELECT count(*) FROM agent_roles WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let grants_before = count(
+        "SELECT count(*) FROM authority_grants WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let receipts_before = count(
+        "SELECT count(*) FROM cross_domain_receipts WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    // Tenant B's own bootstrap already owns quota rows, so this is a
+    // before/after comparison rather than a count of zero.
+    let quotas_before = count(
+        "SELECT count(*) FROM usage_quotas WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    // Likewise for admissions: B's own propose and accept each committed one.
+    let admissions_before = count(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+
+    // Make every NEW profile version row fail, touching no existing row: NOT
+    // VALID applies to new rows only. The suite is single-threaded, so this is
+    // the only writer while it stands.
+    sqlx::query(
+        "ALTER TABLE profile_versions \
+         ADD CONSTRAINT signoff_repair_3_3_4_11_3_profile_fault CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("install the profile-write fault");
+
+    // ⛔ Ordering: observe everything, REMOVE THE FAULT, and only then assert.
+    // An assertion that fires while the fault stands leaks it into every later
+    // test in the suite, for a reason that has nothing to do with them.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &b_admin,
+        &json!({ "tenant_id": tenant_b, "card": card, "digest": digest }),
+    )
+    .await;
+    let roles_after = count(
+        "SELECT count(*) FROM agent_roles WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let grants_after = count(
+        "SELECT count(*) FROM authority_grants WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let receipts_after = count(
+        "SELECT count(*) FROM cross_domain_receipts WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let enrollments_after = count(
+        "SELECT count(*) FROM enrollments WHERE tenant_id = $1 AND kind = 'role'",
+        tenant_b.clone(),
+    )
+    .await;
+    let quotas_after = count(
+        "SELECT count(*) FROM usage_quotas WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+    let admissions_after = count(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1",
+        tenant_b.clone(),
+    )
+    .await;
+
+    sqlx::query(
+        "ALTER TABLE profile_versions DROP CONSTRAINT signoff_repair_3_3_4_11_3_profile_fault",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the profile-write fault");
+
+    assert_eq!(
+        status, 500,
+        "a profile write failure is not reported as success: {body}"
+    );
+    assert_eq!(
+        roles_after, roles_before,
+        "the refused import left no imported role"
+    );
+    assert_eq!(
+        grants_after, grants_before,
+        "the refused import left no grant"
+    );
+    assert_eq!(
+        receipts_after, receipts_before,
+        "the refused import left no cross-domain receipt"
+    );
+    assert_eq!(
+        enrollments_after, 0,
+        "the refused import left no role enrollment"
+    );
+    assert_eq!(
+        quotas_after, quotas_before,
+        "the refused import left no per-principal quota row"
+    );
+    assert_eq!(
+        admissions_after, admissions_before,
+        "the import's own admission rolled back with the writes it permitted"
+    );
+
+    // And the route recovers: the same import now succeeds completely.
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &b_admin,
+        &json!({ "tenant_id": tenant_b, "card": exported["card"].clone(), "digest": exported["digest"].as_str().unwrap() }),
+    )
+    .await;
+    assert_eq!(status, 200, "the import recovers: {imported}");
+    let local = imported["role_id"].as_str().unwrap().to_string();
+    let (status, profile) = get(&client, &base, &format!("/v1/profiles/{local}"), &b_admin).await;
+    assert_eq!(status, 200, "the imported profile is readable: {profile}");
+}
+
+/// Each rung's refusal is RECORDED, and the allowlist rung is the one post-
+/// admission refusal in the fourteen administrative operations that answers
+/// `unauthorized` (`SIGNOFF-REPAIR.3.3.4.7.4`).
+#[tokio::test]
+async fn each_import_rung_records_what_it_refused() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human_a) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "rung-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "rung-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+    let (status, human_b) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "rung-b" })).await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports");
+    let card = exported["card"].clone();
+    let digest = exported["digest"].as_str().unwrap().to_string();
+
+    let recorded = |receipt: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_as::<_, (Value, Value)>(
+                "SELECT operation, outcome FROM administrative_effects WHERE record_id = $1",
+            )
+            .bind(receipt)
+            .fetch_one(&pool)
+            .await
+            .expect("the effect record exists")
+        }
+    };
+    let import = |body: Value, principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/profiles/cards/import"))
+                .header(PRINCIPAL_HEADER, principal)
+                .json(&body)
+                .send()
+                .await
+                .expect("import request");
+            let status = response.status().as_u16();
+            let receipt = response
+                .headers()
+                .get("x-reasonbraid-authorization")
+                .map(|v| v.to_str().unwrap().to_string());
+            let body: Value = response.json().await.expect("import json");
+            (status, receipt, body)
+        }
+    };
+
+    // The ALLOWLIST rung, with no agreement in place. 403 with body code
+    // `unauthorized`, and the record must say the same word.
+    let (status, receipt, body) = import(
+        json!({ "tenant_id": tenant_b, "card": card.clone(), "digest": digest }),
+        b_admin.clone(),
+    )
+    .await;
+    assert_eq!(status, 403, "the no-agreement import refuses: {body}");
+    assert_eq!(body["code"], json!("unauthorized"), "{body}");
+    let (operation, outcome) = recorded(receipt.expect("the refusal carries its receipt")).await;
+    assert_eq!(
+        operation["kind"],
+        json!("profile_card_import"),
+        "{operation}"
+    );
+    assert_eq!(
+        operation["card_digest"],
+        json!(exported["digest"].as_str().unwrap()),
+        "the target is the card's own digest: {operation}"
+    );
+    assert_eq!(outcome["kind"], json!("refused"), "{outcome}");
+    assert_eq!(
+        outcome["code"],
+        json!("unauthorized"),
+        "the record says exactly what the response said: {outcome}"
+    );
+
+    // The DIGEST rung, with a tampered card. The presented digest no longer
+    // re-derives, and the record's target is the digest of the card that was
+    // actually submitted — which still exists, and is not the presented string.
+    let mut tampered = card.clone();
+    tampered["profile"]["purpose"] = json!("tampered after the export");
+    let (status, receipt, body) = import(
+        json!({ "tenant_id": tenant_b, "card": tampered.clone(), "digest": exported["digest"].as_str().unwrap() }),
+        b_admin.clone(),
+    )
+    .await;
+    assert_eq!(status, 400, "the tampered card refuses: {body}");
+    assert_eq!(body["code"], json!("invalid_command"), "{body}");
+    let (operation, outcome) = recorded(receipt.expect("the refusal carries its receipt")).await;
+    assert_eq!(outcome["kind"], json!("refused"), "{outcome}");
+    assert_eq!(outcome["code"], json!("invalid_command"), "{outcome}");
+    assert_ne!(
+        operation["card_digest"],
+        json!(exported["digest"].as_str().unwrap()),
+        "the target names the card submitted, not the digest claimed for it: {operation}"
+    );
+}

@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The plan I wrote at the split was wrong, and the handler said so
+
+- When I split `.3.3.4.11` I wrote into `.11.3`'s leaf that the pure card rungs should move before the transaction, "where they refuse without touching storage". It reads like obviously good hygiene: refuse a malformed card without opening anything.
+- ⭐ Re-reading the handler before implementing killed it. The superseded route admits FIRST — `authorize_tenant_admin`, then `verify_pure_rungs` — so moving the rungs earlier would change who learns what: a caller who is not this tenant's administrator, submitting a malformed card, currently gets `403` and would have started getting `400`. A validation result handed to someone who was about to be refused.
+- That is the third time in this parent that the plan lost to a measurement, and the pattern across the three is consistent: each time, the plan was reasoning about what the code SHOULD look like and the measurement was about what it DOES. The split is worth writing anyway — it decided the children and their order correctly — but a plan's instruction is a hypothesis, not an instruction.
+- ⚠️ I said so in the leaf rather than quietly doing the other thing. A leaf that silently deviates from its own stated plan leaves the next reader unable to tell a considered reversal from a forgotten line.
+
+## 2026-09-13 — The test that was already there caught the wire change
+
+- Routing the import's grant refusal through `GrantCreateError`'s own `Display` looked like a tidy simplification. `cards.rs` disagreed immediately: it asserts the message begins `the imported role's grant exceeds the importing boundary: `, which is the refusal CONTEXT the HTTP layer supplies, not anything the error type knows.
+- ⭐ The useful part is what the fix had to be. Copying the context string into the service would have made two sources for one sentence, and the effect record has to carry the SAME sentence as the response — that is the invariant the whole record type exists for. So the wording moved into one renderer, `grant_refusal_message`, that both the HTTP mapper and the effect record call.
+- ⚠️ Note what shape of bug this would otherwise have been: not a broken feature, but a record and a response describing the same refusal in two different words, six months apart, after someone edited one of them. Exactly the drift the effect record was introduced to prevent, reintroduced inside the mechanism meant to prevent it.
+- The general form worth carrying: when a value must appear in two places by invariant, the fix for a near-miss is never "make the second copy match" — it is to delete the second copy.
+
 ## 2026-09-12 — A census that classifies by name is right exactly where the name is honest
 
 - `.7.3` is one of this tree's better leaves. It caught `.7.1` typing the refusal code against a registry that did not contain `not_found`, refused to patch that registry with a single value because it had not measured whether the gap WAS one value, and produced a purpose-built vocabulary from a census of what the fourteen handlers actually refuse with. Careful work.

@@ -39,9 +39,7 @@ mod issuance;
 pub(crate) mod transaction;
 
 pub use issuance::{create_boundary, create_grant};
-pub(crate) use issuance::{
-    create_grant_in_guard, load_active_boundary_for_tenant, load_active_boundary_in_guard,
-};
+pub(crate) use issuance::{create_grant_in_guard, load_active_boundary_in_guard};
 pub use transaction::GuardError as AuthorityTransactionError;
 pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTransaction};
 
@@ -61,7 +59,10 @@ pub(crate) use node_admin::{
     revoke_node_in_one_transaction, NodeRevokeResult, PruneResult, QuarantineResult, ReplayResult,
     TokenIssueResult,
 };
-pub(crate) use profile_admin::{attest_capability_in_one_transaction, AttestResult};
+pub(crate) use profile_admin::{
+    attest_capability_in_one_transaction, import_card_in_one_transaction, AttestResult,
+    CardImportResult,
+};
 pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 pub(crate) use revocation::{revoke_in_one_transaction, RevocationResult, RevocationTarget};
@@ -98,6 +99,36 @@ pub enum AuthorizationOutcome {
         reason: String,
         record_id: String,
     },
+}
+
+/// The message a DOMAIN grant refusal shows, composed once so the HTTP response
+/// and the administrative effect record cannot drift apart.
+///
+/// `None` for the storage and transaction variants: those are not refusals of an
+/// admitted operation, they roll it back, and inventing a message for them would
+/// be exactly the disagreement the effect record exists to prevent
+/// (`SIGNOFF-REPAIR.3.3.4.11.3`).
+pub(crate) fn grant_refusal_message(
+    error: &GrantCreateError,
+    refusal_context: &str,
+) -> Option<String> {
+    match error {
+        GrantCreateError::MissingBoundary { boundary_id } => {
+            Some(format!("boundary `{boundary_id}` does not exist"))
+        }
+        GrantCreateError::Refused(GrantRefused { violations }) => Some(format!(
+            "{refusal_context}: {}",
+            violations
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        )),
+        GrantCreateError::BoundaryNotLive { boundary_id } => Some(format!(
+            "boundary `{boundary_id}` is not live for grant issuance"
+        )),
+        GrantCreateError::Storage(_) | GrantCreateError::Transaction(_) => None,
+    }
 }
 
 /// The typed failure of [`create_grant`] when the grant exceeds its boundary.
@@ -281,35 +312,15 @@ where
     Ok(())
 }
 
-/// Temporary unordered card-import bridge: load, structural check and insertion
-/// on the caller's executor. It provides neither a tenant guard nor the guarded
-/// service's issuance-time check. Migrate the remaining caller under `.3.3.4.11`;
-/// complete development enrollment already uses the same-context guarded helper.
-/// Do not add new callers.
-pub(crate) async fn create_grant_unordered_in_tx<'e, E>(
-    mut tx: E,
-    grant: &AuthorityGrant,
-) -> Result<(), GrantCreateError>
-where
-    E: std::ops::DerefMut,
-    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
-{
-    let boundary = load_boundary_by_id_in_tx(&mut *tx, &grant.boundary_id)
-        .await
-        .map_err(|error| match error {
-            sqlx::Error::RowNotFound => GrantCreateError::MissingBoundary {
-                boundary_id: grant.boundary_id.clone(),
-            },
-            error => GrantCreateError::Storage(error),
-        })?;
-    let violations = grant_exceeds_boundary(&boundary, grant);
-    if !violations.is_empty() {
-        return Err(GrantCreateError::Refused(GrantRefused { violations }));
-    }
-
-    insert_grant_row(&mut *tx, grant).await?;
-    Ok(())
-}
+// `create_grant_unordered_in_tx` used to live here: a temporary bridge that
+// loaded a boundary, checked the grant structurally and inserted it on the
+// caller's executor, with NO tenant guard and none of the guarded service's
+// issuance-time liveness check. Its own comment named `.3.3.4.11` as the leaf
+// that would migrate its last caller. `SIGNOFF-REPAIR.3.3.4.11.3` did: the card
+// import now creates its grant with `create_grant_in_guard` inside the same
+// exclusive-guard transaction that admits the caller and writes every row. The
+// bridge is removed rather than left as a second, unordered way to issue
+// authority — the same disposal `.8` gave the two superseded revocation services.
 
 /// Row insertion only: callers must establish the relevant authority contract.
 async fn insert_grant_row<E>(mut tx: E, grant: &AuthorityGrant) -> Result<(), sqlx::Error>

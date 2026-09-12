@@ -440,26 +440,12 @@ pub async fn write_profile_in_tx(
     })
 }
 
-/// The pool-taking form: one transaction around [`write_profile_in_tx`], holding
-/// database time sampled inside it.
-///
-/// There is ONE writer, not two — this is a thin wrapper, kept for the callers
-/// `.11.2` and `.11.3` have not yet moved onto their own guarded transactions.
-/// It takes no tenant authority guard, and deliberately: the routes that reach
-/// it here are gated on identity rather than on a grant, so there is no
-/// authority decision for a guard to order them against.
-pub async fn write_profile(
-    pool: &PgPool,
-    role_id: &str,
-    writer: &str,
-    profile: &AgentProfile,
-) -> Result<CurrentProfile, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    let at = crate::authority::transaction::database_now_in_tx(&mut tx).await?;
-    let written = write_profile_in_tx(&mut tx, role_id, writer, profile, at).await?;
-    tx.commit().await?;
-    Ok(written)
-}
+// The pool-taking `write_profile` used to live here, as a thin wrapper opening
+// its own transaction around the writer above. `SIGNOFF-REPAIR.3.3.4.11.1`
+// introduced it for the callers that had not yet moved; `.11.2` moved the
+// attestation and `.11.3` moved the card import, so it has no callers left.
+// Removed rather than kept: every remaining writer runs inside a transaction its
+// caller owns, which is the property the whole family exists to establish.
 
 /// Read the CURRENT profile (the `.1.3` leaf adds the per-reader filtering).
 pub async fn current_profile(

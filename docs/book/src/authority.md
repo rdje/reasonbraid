@@ -913,6 +913,71 @@ This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.
 
+### Importing a portable agent card
+
+`POST /v1/profiles/cards/import` runs the ADR-027 ladder over a card and, if
+every rung passes, creates a fresh LOCAL role under the importing tenant's own
+boundary. The card's self-asserted capabilities never confer authority — the
+local grant is the only authority that acts, which is the ADR-026 invariant.
+
+It runs ONE transaction under the importing tenant's **exclusive** authority
+guard (`SIGNOFF-REPAIR.3.3.4.11.3`), and the mode is derived rather than chosen:
+the import **issues a grant**, and authority issuance takes the exclusive guard,
+so a shared acquisition could not create the grant at all.
+
+Everything is now inside that transaction, in this order:
+
+| Step | What it does |
+| --- | --- |
+| Admission | `tenant_admin` for the importing tenant, evaluated on the transaction's own connection at database time sampled after the guard wait. |
+| Digest and compatibility rungs | Pure. The digest must re-derive from the card's own canonical bytes, and the schema version must be the supported one. |
+| Allowlist rung | The EFFECTIVE recruitment agreement with the origin — both sides accepted, both carrying `recruitment`. |
+| Boundary | The importing tenant's active enrollment boundary, read in the same transaction that then issues against it. |
+| Grant, identity, quota, enrollment, receipt | The default local grant, the `agent_roles` row, the per-principal quota row, the enrollment row and the cross-domain receipt. |
+| **Profile** | The card's profile, written as the local role's first version. |
+| Effect record | `profile_card_import`, with the outcome. |
+
+🔴 The last two lines are the repair. The superseded route committed everything
+above the profile and then wrote the profile **on the connection pool**:
+
+| | Superseded route | Now |
+| --- | --- | --- |
+| A profile write that fails | `500`, with the role, its grant, its quota row, its enrollment and its receipt already durable | `500`, and nothing was written |
+| What the directory then held | an identity with no profile to describe it | — |
+
+The boundary and the agreement were read outside the transaction that used them
+too, so a boundary revoked in between produced a grant checked against authority
+that had already ended.
+
+⚠️ **What the guard does not do, stated because it would otherwise be assumed.**
+Moving the agreement read inside the transaction buys one consistent snapshot
+with the writes that depend on it. It does **not** order the import against a
+concurrent agreement revocation: `federation::propose`, `accept` and `revoke` take
+no tenant authority guard at all, so no guard set here can fence them. That
+ordering arrives with `SIGNOFF-REPAIR.3.3.4.12`, which owns the three direction
+verbs.
+
+The effect record's target is the digest the server **re-derives** from the
+submitted card, not the one the caller presented. On every path but one they are
+the same string; when the digest rung refuses, the presented value is by
+definition not a digest of that card, while the re-derived one still names the
+card the request actually carried.
+
+The allowlist rung is the reason the refusal vocabulary has four codes rather
+than three: it refuses a caller who *was* admitted, answering `403` with body
+code `unauthorized`, and the record says the same word.
+
+The wire is unchanged — every status, body code and message, including the
+grant-refusal message, which is now composed by one renderer shared with the
+effect record so the two cannot drift apart. One addition: every answer that
+reached an admission carries the `x-reasonbraid-authorization` receipt.
+
+With this, the three unguarded bridges that existed only for this route are
+**deleted** rather than left beside their replacements: the unordered grant
+creator, the pool-taking boundary loader whose own comment called itself "an
+explicit temporary bridge until its complete integration", and the pool-taking
+profile writer.
+
 ### Attesting a capability claim
 
 `POST /v1/profiles/{role_id}/attest` is the owner's path: §10.1 lets a role

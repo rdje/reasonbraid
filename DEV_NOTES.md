@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — A published census without its instrument is a number you cannot re-take
+
+- The leaf said "repeat writer/caller census". I nearly repeated it by writing a fresh script from the recorded table and comparing totals. That would have produced 39-vs-42 and an confident story about migration — built on a predicate I had reconstructed from prose, which is exactly the shape `docs/CLAIM_VERIFICATION.md` warns about: a check and the thing it checks sharing a parent, agreeing, and carrying no information.
+- What made it real was making the new script reproduce the OLD numbers first. All four — file count, byte count, corpus SHA-256, hit count — at the baseline commit. That single run is what converts "my number differs from theirs" into "the source changed", and it costs one command.
+- So the deliverable turned out to be the instrument, not the number. `.3.3.4.1` did careful work and published a table and a hash; what it did not publish was the thing that produced them. **A measurement whose producer is not tracked can be read but not re-taken**, and every later leaf that needs to compare has to choose between trusting it and rebuilding it badly.
+- The per-file diff mattered more than I expected. The total moved by −3, which reads like "three things migrated". The truth was two unrelated events: a module split moving three calls with net zero change, and three call sites of a different function disappearing entirely. A total would have merged them, and either story alone would have been wrong.
+- **Two of this leaf's four deliverables came back "already done", and that is a legitimate result I had to resist dressing up.** There are no obsolete bridges to remove, and the ownership table needs no correction. Writing "measured; nothing to do" is more useful than manufacturing a change to justify the leaf — but it is only useful if the measurement is shown, which is why the 86/10/all-tests-functions breakdown is in the record rather than the conclusion alone.
+- I deliberately did not edit `tenant-authority-paths.md` to match today's numbers. It is a historical measurement at its own baseline and this record is the comparison against it; rewriting it would have destroyed the thing that makes the comparison meaningful. The same instinct that says "keep the docs current" wants to update it, and that instinct is wrong for evidence.
+- promotion: declined (the durable form is `scripts/census_authority_paths.py` itself, whose header carries the baseline reproduction as its own check — an instrument that cannot be forgotten in the way a method statement can).
+
 ## 2026-09-12 — I routed a finding out with a severity I had not measured
 
 - One leaf ago I wrote this finding down as "an inconsistency… not a reachable escalation by a third party" and moved on. That judgement was reasoned from reading `canonical_server` and counting call sites, and it was defensible. It was also a severity claim I had not tested. The reproduction took ten minutes and showed the request going out with `authorization: Basic b3BlcmF0b3I6c2VjcmV0`.

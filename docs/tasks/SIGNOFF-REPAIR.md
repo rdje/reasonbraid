@@ -644,9 +644,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.3.3.4.3.4 — Reconcile authority writer coverage
 
-- Status: `pending`; follows `.3.3`.
+- Status: `done`; REPAIR-0103.
 - Owns: repeat writer/caller census, remove obsolete bridges where consumers have migrated, identify the remaining import/node-epoch paths with their exact owners and qualify the selected authority/enrollment/upgrade compatibility set. Book and source claims name the integrated service paths; no complete administrative-effect or repository-wide cancellation claim.
-- Verification / commit: pending.
+- **The census had no tracked instrument, and that had to be fixed before any number was comparable.** `.3.3.4.1` left a 42-location table and a corpus SHA-256, but its producer lived in the session that ran it. Rebuilding the predicate by eye yields something that looks like a comparison while differing by a name. `scripts/census_authority_paths.py` is now that producer, tracked, with a `<sha>` mode; its correctness check is exact reproduction of the recorded baseline at `1ba6184` — 101 files, 1,749,975 bytes, SHA-256 `340c4af6…`, 42 locations, all four matching. This is `docs/CLAIM_VERIFICATION.md` leg 3 applied to someone else's earlier measurement.
+- census result: the corpus grew to **111 files / 1,971,693 bytes** while direct named-call locations fell **42 → 39**. A per-file diff separates two events a total would have merged: three calls MOVED from `authority.rs` into the new `authority/issuance.rs` (net zero, a module split), and three `create_grant_in_tx` sites genuinely went away — `git grep -n "\bcreate_grant_in_tx\b" -- 'crates/**/*.rs'` now returns nothing at all, not even a declaration, because the guarded issuance service replaced it in `.3.3.4.3.2`/`.3.3.4.3.3.2` and the bridge was removed with its last caller.
+- Obsolete bridges: **none remain**, which is a result rather than an absence of work. Over the nine authority and site-authority modules, 86 functions are declared and 10 have zero non-declaration references — all 10 `#[test]` functions reached by the harness, so false positives of a lexical predicate. Zero production functions are declared without a caller.
+- Remaining unguarded families, re-verified rather than assumed: 18 guarded connections exist (`api.rs` 8, `api/bootstrap.rs` 4, `authority/issuance.rs` 6). `revoke_node` (`api.rs:1524`) still calls `bump_revocation_epoch` on a RAW transaction at `:1571`, and `import_profile_card` (`api.rs:4791`) still proceeds past `authorize_tenant_admin` with no guard. Both match their recorded owners `.3.3.4.10` and `.3.3.4.11`, so `tenant-authority-paths.md` needs no correction — worth recording, because an ownership table nobody re-checks is the same failure shape as the frontier column that drifted for 39 commits.
+- Verification: `RB_DEMO=0 bash scripts/run_pg_tests.sh authority authority_transaction authority_issuance enrollment_transaction bootstrap_recovery migration_upgrade command_api` returns **rc=0 with 109 tests across seven suites** (22, 16, 14, 9, 11, 4, 33) and `pg-tests: stopped and removed target/pg-tests/run-touut7ci`. The runner's status was captured BEFORE any filter. `migration_upgrade` is in the set deliberately: the subject is a module split plus a removed bridge, and what a split puts at risk is whether an upgrade path still reads what earlier writers wrote.
+- Falsification of the instrument, not only of the result: the baseline reproduction IS the falsifiable step — a predicate altered by one name stops reproducing `340c4af6…`/42 and the script says so, which is why the current 39 can be attributed to source change rather than to a rebuilt predicate.
+- Explicit limits, unchanged from `.3.3.4.1` and not widened by re-running it: bounded and lexical, blind to dynamic dispatch, aliasing and arbitrary SQL, and not a security-boundary proof.
+- Commit: `REASONBRAID-REPAIR-0103 (leaf SIGNOFF-REPAIR.3.3.4.3.4): re-derive authority writer coverage from a tracked instrument`. Evidence `docs/tasks/artifacts/signoff_review/authority-writer-coverage.md`.
 
 ##### SIGNOFF-REPAIR.3.3.4.4 — Order thread commands against authority changes
 
@@ -2112,11 +2119,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 2 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 3 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
-| 5 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
+| 1 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 2 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 4 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
 
 
 
@@ -2142,6 +2148,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.3.4`: `REASONBRAID-REPAIR-0103 (leaf SIGNOFF-REPAIR.3.3.4.3.4): re-derive authority writer coverage from a tracked instrument`.
 
 - `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3`: `REASONBRAID-REPAIR-0102 (leaf SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3): check the configured endpoint on every verb`.
 
@@ -2478,6 +2486,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.3.4.3.4
+
+- [x] **REPRODUCE / ISSUE** — `.3.3.4.1`'s census existed only as a table plus a corpus hash; its producer was not tracked, so the census could not be repeated, which is what this leaf's first deliverable requires. `python3 -B scripts/census_authority_paths.py 1ba6184` now reproduces all four recorded figures exactly (101 files, 1,749,975 bytes, SHA-256 `340c4af6…`, 42 locations).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the measurement was published without its instrument, so re-measuring meant rebuilding the predicate from prose. A predicate differing by one name produces a number that looks comparable and is not. Nothing in the tree could detect that.
+- [x] **FIX** — `scripts/census_authority_paths.py`, tracked, with a `<sha>` mode and its baseline reproduction documented in its own header as the check that keeps later comparisons meaningful. No production source changed: this leaf is a census and a qualification run.
+- [x] **ADDRESSED (verified)** — current corpus 111 files / 1,971,693 bytes, 39 direct named-call locations. The per-file diff attributes the −3 exactly: three calls moved into `authority/issuance.rs` (net zero) and three `create_grant_in_tx` sites went away, that name now having zero references including its declaration. Obsolete bridges: 86 declared functions across nine authority modules, 10 unreferenced, all 10 `#[test]` functions — zero production functions declared without a caller.
+- [x] **NO REGRESSION** — `RB_DEMO=0 bash scripts/run_pg_tests.sh authority authority_transaction authority_issuance enrollment_transaction bootstrap_recovery migration_upgrade command_api` returns rc=0 with 109 tests across seven suites, cluster stopped and removed; status captured before any filter. `make gate` (17 checks) and `make book` pass. No Rust source changed, so no lint delta exists to report.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), the evidence record and its `INDEX.md` entry, `docs/TASK_TREE.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. `tenant-authority-paths.md` is deliberately NOT edited: it is the `.3.3.4.1` census at its own baseline, this record is the comparison against it, and rewriting a historical measurement to match a later one destroys the evidence the comparison rests on.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3
 

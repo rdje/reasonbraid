@@ -6,6 +6,32 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Authority writer coverage is re-derived under `.3.3.4.3.4` (REPAIR-0103), and
+the first finding was about the evidence rather than the code: `.3.3.4.1`'s
+census existed as a table plus a corpus hash with **no tracked producer**, so it
+could not be repeated and a rebuilt predicate would have looked comparable while
+differing by a name. `scripts/census_authority_paths.py` is now that instrument,
+with a `<sha>` mode, and its correctness check is exact reproduction of the
+recorded baseline at `1ba6184` — 101 files, 1,749,975 bytes, SHA-256 `340c4af6…`
+and 42 locations, all four matching. Only because they match is the new number
+evidence. Re-run at the current commit: the corpus has grown to 111 files /
+1,971,693 bytes while direct named-call locations fell 42 → 39, and a per-file
+diff separates two events a total would have merged — three calls MOVED into the
+new `authority/issuance.rs` (net zero, a module split), and three
+`create_grant_in_tx` sites genuinely went away, that name now having zero
+references including its declaration. Obsolete bridges: none remain — 86
+functions declared across nine authority modules, 10 unreferenced, all 10
+`#[test]` functions reached by the harness. The two unguarded families are
+re-verified rather than assumed: `revoke_node` still calls
+`bump_revocation_epoch` on a raw transaction and `import_profile_card` still has
+no guard, both matching their recorded owners `.3.3.4.10` and `.3.3.4.11`, so
+the ownership table needs no correction. The compatibility set passes live at
+rc=0 — 109 tests across seven suites including `migration_upgrade`, cluster
+stopped and removed. Limits are unchanged and not widened by re-running the
+instrument: bounded, lexical, blind to dynamic dispatch and arbitrary SQL, and
+not a security-boundary proof.
+
+
 The CLI's configured endpoint is checked on every verb under
 `.3.3.4.3.3.3.3.2.3.3` (REPAIR-0102), and the reproduction upgraded the finding
 from reasoned to demonstrated: pointed at

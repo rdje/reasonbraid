@@ -18,6 +18,13 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+// The guard primitive itself, compiled from the exact production source, so the
+// ordering control below holds the same key the import takes
+// (`SIGNOFF-REPAIR.3.3.4.12.1`).
+#[allow(dead_code)]
+#[path = "../src/authority/transaction.rs"]
+mod tenant_transaction;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -1163,4 +1170,185 @@ async fn only_the_full_class_exports_the_portable_card() {
         refused["message"], refused_stranger["message"],
         "the two refusals are the same answer"
     );
+}
+
+/// 🔴 THE `.3.3.4.12.1` control: an import must be ordered against the ORIGIN
+/// tenant's own authority operations, not only the importing tenant's.
+///
+/// `.11.3` predeclared this limit and `.12` closed half of it: with the
+/// direction verbs taking their own tenant's EXCLUSIVE guard, an import was
+/// fenced against the IMPORTING tenant revoking its direction and still not
+/// against the ORIGIN tenant revoking its side. The import now declares both
+/// keys in one sorted set, so a holder of the ORIGIN tenant's guard fences it.
+///
+/// ⚠️ The holder is EXCLUSIVE on the ORIGIN key, which is precisely what a
+/// direction revocation takes there. Against the superseded shape this control
+/// does not fail slowly — it does not block at all, because that transaction
+/// never declared the origin's key.
+#[tokio::test]
+async fn an_import_is_fenced_by_the_origin_tenants_own_guard() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "fence-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {a}");
+    let a_admin = a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "fence-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+    let (status, b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "fence-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {b}");
+    let b_admin = b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = b["tenant_id"].as_str().unwrap().to_string();
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports");
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept");
+    }
+
+    // Hold the ORIGIN tenant's key exclusively — the key its own direction
+    // revocation takes. The importing tenant's key is untouched.
+    let origin: reasonbraid_core::TenantId = tenant_a.parse().expect("a tenant id");
+    let holder = hold(&pool, origin, tenant_transaction::GuardMode::Exclusive).await;
+
+    let (base2, client2, admin2, body2) = (
+        base.clone(),
+        client.clone(),
+        b_admin.clone(),
+        json!({
+            "tenant_id": tenant_b,
+            "card": exported["card"].clone(),
+            "digest": exported["digest"].as_str().unwrap(),
+        }),
+    );
+    let request = tokio::spawn(async move {
+        post(
+            &client2,
+            &base2,
+            "/v1/profiles/cards/import",
+            &admin2,
+            &body2,
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        !request.is_finished(),
+        "the import waits on the ORIGIN tenant's guard"
+    );
+    let roles_mid: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM agent_roles WHERE tenant_id = $1")
+            .bind(&tenant_b)
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+    holder.release().await;
+
+    let (status, body) = tokio::time::timeout(std::time::Duration::from_secs(10), request)
+        .await
+        .expect("the import completes once the origin's guard is released")
+        .expect("the request task joins");
+    assert_eq!(roles_mid, 0, "nothing was written while it waited: {body}");
+    assert_eq!(status, 200, "and it then succeeds normally: {body}");
+}
+
+/// Hold one tenant's authority guard until released.
+struct Holder {
+    release: tokio::sync::oneshot::Sender<()>,
+    job: tokio::task::JoinHandle<()>,
+}
+
+async fn hold(
+    pool: &PgPool,
+    tenant: reasonbraid_core::TenantId,
+    mode: tenant_transaction::GuardMode,
+) -> Holder {
+    let pool = pool.clone();
+    let (entered_tx, entered) = tokio::sync::oneshot::channel();
+    let (release, release_rx) = tokio::sync::oneshot::channel();
+    let job = tokio::spawn(async move {
+        tenant_transaction::transact(&pool, &[(tenant, mode)], move |_| {
+            Box::pin(async move {
+                let _ = entered_tx.send(());
+                let _ = release_rx.await;
+                Ok::<(), tenant_transaction::GuardError>(())
+            })
+        })
+        .await
+        .expect("the holder's guarded transaction completes");
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered)
+        .await
+        .expect("the holder acquires its guard")
+        .expect("the holder reports entry");
+    Holder { release, job }
+}
+
+impl Holder {
+    async fn release(self) {
+        let _ = self.release.send(());
+        tokio::time::timeout(std::time::Duration::from_secs(5), self.job)
+            .await
+            .expect("the holder finishes")
+            .expect("the holder's task joins");
+    }
 }

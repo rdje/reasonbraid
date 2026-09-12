@@ -317,7 +317,27 @@ pub(crate) async fn import_card_in_one_transaction(
     let card = card.clone();
     let presented_digest = presented_digest.to_owned();
     let card_digest = card_digest.to_owned();
-    transact(pool, &[(tenant_id, GuardMode::Exclusive)], move |tx| {
+    // ⛔ The ORIGIN tenant is declared alongside the importing one
+    // (`SIGNOFF-REPAIR.3.3.4.12.1`), because this transaction READS the origin's
+    // federation agreement row and the guard contract says to declare every
+    // tenant whose domain state is used. The runner sorts the set, which is what
+    // prevents lock inversion — a second `acquire_in_tx` call could not, and a
+    // later upgrade is not available by design.
+    //
+    // Shared for the origin: this reads its agreement and mutates nothing of
+    // its, and a direction revocation takes that key EXCLUSIVELY
+    // (`SIGNOFF-REPAIR.3.3.4.12`), so shared is what gets fenced by it.
+    //
+    // An origin id that does not parse as a tenant id declares no second key:
+    // there is no such tenant, so there is no state to order against, and the
+    // allowlist rung refuses inside the transaction exactly as it always has.
+    // Parsing happens here, before the transaction, so it must not become a
+    // refusal of its own — that would move a card check ahead of the admission.
+    let mut guards = vec![(tenant_id, GuardMode::Exclusive)];
+    if let Ok(origin) = card.origin_tenant_id.parse::<TenantId>() {
+        guards.push((origin, GuardMode::Shared));
+    }
+    transact(pool, &guards, move |tx| {
         Box::pin(async move {
             let at = tx.database_now().await?;
             let authz = CommandAuthz {

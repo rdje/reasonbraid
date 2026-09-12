@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The card import now declares both tenants' guards (`SIGNOFF-REPAIR.3.3.4.12.1`)
+
+- `.11.3` predeclared a limit before it could be closed: moving the federation-agreement read inside the import's transaction bought one consistent snapshot and NOT an ordering, because the direction verbs took no guard at all. `.12` gave them one and closed the importing half. This closes the other half.
+- The import declares its guard set as the importing tenant EXCLUSIVE — it issues a grant — plus the ORIGIN tenant SHARED, because it reads the origin's agreement row and the guard contract says to declare every tenant whose domain state is used. A direction revocation takes its own tenant's key exclusively, so shared is exactly what gets fenced by it.
+- ⛔ Declared to the RUNNER as one set, never two acquisitions and never a later upgrade: the sorted acquisition is the whole anti-inversion mechanism, and the guard API deliberately offers no upgrade on an existing context.
+- An origin id that does not parse as a tenant id declares no second key, and the reason is ordering rather than tidiness — the set is built before the transaction opens, so turning a parse failure into a refusal there would move a card check AHEAD of the admission, the same wire-ordering mistake `.11.3` declined to make with the pure rungs. Self-import needs no special case: the runner normalizes a duplicate key to its strongest mode.
+- Validation: `bash scripts/run_pg_tests.sh cards` rc=0 — **6 passed / 0 failed**. The affected set `cards federation profiles administrative_effects authority_transaction` rc=0 with **5 suites, 89 tests, zero failures**. Strict server lint, fmt, gate (17 checks), book and link check rc=0.
+- FALSIFIED against the exact pre-`.12.1` source: **5 passed / 1 failed**, at `the import waits on the ORIGIN tenant's guard`. ⚠️ It does not fail slowly — the old import does not block AT ALL, because that transaction never declared the origin's key. The cleanest discrimination in this family: the fixture holds a key the old code had no reason to want.
+- ⚠️ The fixture is an EXCLUSIVE holder on the ORIGIN key, a third shape after `.9`'s shared holder and `.11.3`'s injected fault, and deriving it took the same two questions: the repair moves the origin tenant from NO key to a shared one, so the holder must take that key in a mode excluding shared.
+
 ## 2026-09-13 — The three federation directions, each in one transaction (`SIGNOFF-REPAIR.3.3.4.12`)
 
 - All three verbs were the `.9` shape exactly: an admission in an already-committed shared-guard transaction, then a mutation ON THE POOL — `propose` and `revoke` as bare statements, `accept` in its own untenanted transaction — with no guard, no effect record and no receipt on any of them. ⭐ As at `.11`, their tenant predicates were already correct: every statement matches on `(tenant_id, remote_tenant_id)` with the caller's own admitted tenant, which is what the both-sides pairing is for.

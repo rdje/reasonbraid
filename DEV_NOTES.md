@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — A limit I wrote down two days ago closed itself in three commits
+
+- At `.11`'s split I checked what a guard would actually fence before writing it into the import, found that `federation::{propose,accept,revoke}` took no guard at all, and wrote the limit into the leaf: moving the agreement read inside buys a snapshot and not an ordering. That went into `proving-a-race-is-closed.md` as "a guard only orders you against operations that take the same guard".
+- ⭐ Three commits later the limit is gone, and the sequence is the argument for writing limits down at all. `.12` put the direction verbs on their own tenant's exclusive guard — for its own reasons, nothing to do with the import — and that closed the importing half. `.12.1` then declared the origin's key and closed the rest. Neither step needed me to remember the problem; the leaf said it, twice, in the place the next reader would be.
+- ⚠️ The counterfactual is what makes it worth a note. Had I written "the import is ordered against agreement revocation" at `.11.3` — which the guard set made it *look* like — nothing would have prompted `.12.1`, and the book would have carried a false ordering claim indefinitely. A predeclared limit is a task the project can find; a glossed one is not.
+- The falsification is the cleanest in this family and says something about fixture design: the control holds the ORIGIN tenant's key, and against the superseded code the import does not block slowly, it does not block at all. The best discriminating fixture is often one that holds something the old code had no reason to want.
+
 ## 2026-09-13 — The check I wrote yesterday found a bug today
 
 - `.11.5` promoted a procedure into `a-raised-constraint-cannot-be-a-recorded-refusal.md`: before putting a route on one transaction, list the constraints on every column its writes touch and ask which of them a caller can trip. I wrote it because I had just failed to do it.

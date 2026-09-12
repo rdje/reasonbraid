@@ -969,13 +969,18 @@ existence check on an id the caller already holds.
 which is `BEGIN` time — the instant *before* the guard and admission waits the
 acceptance queued behind.
 
-⚠️ **What this does and does not fence.** A card import holds the **importing**
-tenant's guard, so it is now ordered against that tenant revoking its own
-direction. It is still **not** ordered against the **origin** tenant revoking
-its side, because that revocation takes the origin's guard and the import does
-not hold it. Closing that needs the import to declare both keys in one
-predeclared sorted set, which is `SIGNOFF-REPAIR.3.3.4.12.1`. Until then, the
-honest statement is that half the race is closed.
+**What this fences, including the other side.** A card import declares BOTH
+tenants in one predeclared sorted set (`SIGNOFF-REPAIR.3.3.4.12.1`): the
+importing tenant exclusive, because it issues a grant, and the origin tenant
+shared, because it reads the origin's agreement row. Since each direction verb
+takes its own tenant's key exclusively, an import is now fenced by a revocation
+from **either** side.
+
+The set is declared to the runner, which sorts it, and that is what prevents lock
+inversion — two single acquisitions could not, and the guard API deliberately
+offers no later upgrade. An origin id that does not parse as a tenant id declares
+no second key: there is no such tenant, so there is no state to order against,
+and the allowlist rung refuses inside the transaction exactly as it always has.
 
 ⛔ Re-proposing with **different** terms resets an accepted direction to
 `proposed` and clears its acceptance. That is preserved exactly as it was — it is

@@ -250,10 +250,11 @@ What the import creates, all in one transaction: the local role's identity row,
 its default grant, its per-principal quota row, its enrollment row, a
 cross-domain receipt naming the card's digest and the new local role, and the
 profile itself. **A failure at any point leaves none of it**, and every refusal
-past the admission is recorded as an administrative effect. See [Importing a
-portable agent card](authority.md#importing-a-portable-agent-card) for the
-transaction and its measured limits, including the one guarantee the import does
-**not** yet make about concurrent agreement revocation.
+past the admission is recorded as an administrative effect. The import is also
+ordered against an agreement revocation from either side, because it declares
+both tenants' authority guards in one sorted set. See [Importing a portable agent
+card](authority.md#importing-a-portable-agent-card) for the transaction and its
+measured limits.
 
 The receipt **cross-references**; it never merges the two domains' chains. The
 remote reference is the card's digest — what the origin's own records are

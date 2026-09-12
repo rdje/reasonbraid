@@ -6,6 +6,22 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The card import's revocation race is now **closed on both sides** under
+`.3.3.4.12.1` (REPAIR-0126). `.11.3` predeclared the limit, `.12` closed the
+importing half by putting the direction verbs on their own tenant's exclusive
+guard, and the import now declares BOTH tenants in one predeclared sorted set —
+the importing tenant exclusive because it issues a grant, the origin tenant
+shared because it reads the origin's agreement row. The set goes to the runner,
+which sorts it; two acquisitions could not prevent inversion and the guard API
+offers no later upgrade. An origin id that does not parse declares no second key,
+because the set is built before the transaction and a refusal there would move a
+card check ahead of the admission. **6 passed / 0 failed**; the affected set
+passes **5 suites / 89 tests**. FALSIFIED **5 passed / 1 failed** at `the import
+waits on the ORIGIN tenant's guard` — and the superseded import does not block at
+all there, having never declared the key. ⛔ Still `.5.3`'s: what an effective
+agreement guarantees a consumer ACROSS a change, since a re-proposal with
+different terms still ends an agreement without a revoke.
+
 The three federation direction verbs are now ONE guarded transaction each under
 `.3.3.4.12` (REPAIR-0125): admission, mutation, the acceptance's cross-domain
 receipt and the effect record share a commit under the LOCAL tenant's

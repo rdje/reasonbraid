@@ -864,9 +864,51 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.3.3.4.10 — Node administrative transaction integration
 
-- Status: `pending`; split token issuance, certificate revocation and inbox mutation into separate children before implementing.
+- Status: `active`; the split below is this leaf's own first act, and it is now done — the children implement.
 - Owns: guard-before-effect and final evidence for issue_node_enroll_token, revoke_node, replay/quarantine/prune. Couple target-tenant verification inside each transaction with the `.3.5` owner and annotate matched findings there; preserve zero-change epoch behavior. Certificate/token redemption and lease-lifecycle use of the guard remain `.4.1`/`.4.2`.
 - Acceptance: each route family has observed revocation ordering, tenant isolation, no protected effect after evidence failure, and exact no-op/recovery controls. Replay's cached-decision rebinding remains `.3.4`; do not refresh stale evidence as a side effect of adding a guard.
+- **census of the five routes, run BEFORE the children were drawn**, so the split follows what the handlers do rather than what their names suggest. The producing command, re-runnable at any commit — it parses each `async fn` body and reports whether every mutation it issues carries a `tenant_id` predicate:
+
+  ```sh
+  python3 - <<'EOF'
+  import re, pathlib
+  lines = pathlib.Path("crates/reasonbraid-server/src/api.rs").read_text().splitlines()
+  fns = [(i, re.match(r'async fn (\w+)', l).group(1)) for i, l in enumerate(lines) if re.match(r'async fn \w+', l)]
+  want = {"issue_node_enroll_token", "revoke_node", "replay_command", "quarantine_command", "prune_node_inbox"}
+  for n, (i, name) in enumerate(fns):
+      if name not in want: continue
+      end = fns[n+1][0] if n+1 < len(fns) else len(lines)
+      for m in re.findall(r'"((?:INSERT|UPDATE|DELETE)\b[^"]*)"', "\n".join(lines[i:end]), re.S):
+          flat = " ".join(m.replace("\\", " ").split())
+          print(name, "tenant-bound" if "tenant_id" in flat else "NOT tenant-bound", flat[:110])
+  EOF
+  ```
+
+- What it measured, and it is worse than the parent's note assumed: **four of the five mutations carry no tenant predicate at all.** `replay_command`, `quarantine_command` and `prune_node_inbox` select `node_inbox` rows by `node_id` (and `command_id`) alone; `revoke_node`'s `UPDATE node_certificates` matches on `node_id` alone, its tenant-bound existence probe being a SEPARATE pool query outside the mutation's transaction and therefore check-then-act. Only `issue_node_enroll_token` names a tenant — and only as a column VALUE it stamps on the new row, never as a predicate proving the node is the caller's. So the admission proves the caller administers tenant T and every one of the five then addresses a target it has not shown belongs to T.
+- Ownership of that finding is NOT moved here: `.3.5` owns "use real target ownership inside the mutation transaction" and its foreign/nonexistent-node fixtures. This parent owns putting the verification INSIDE the transaction that mutates, which is the half that cannot be done from `.3.5` without the guard. Each child below annotates its matched finding there rather than re-deriving it.
+- Transaction shape today, measured the same way: `issue_node_enroll_token` and `quarantine_command` mutate **on the pool** with no transaction at all — `quarantine_command` doing a check and then a conditional UPDATE as two separate pool statements — while `revoke_node`, `replay_command` and `prune_node_inbox` open their own `pool.begin()` transaction under NO guard. Two of the five are therefore the `.9` shape and three are the `.8` shape.
+- The split, three children as the parent instructed, drawn along the three different state machines rather than along the five routes: token issuance is an insert with a uniqueness refusal, node revocation is a certificate mutation that bumps the tenant's epoch, and the inbox verbs share one table and one operator surface. The `.7.1` census assigned exactly five operations to this parent, and the children below carry 1 + 1 + 3 of them.
+- Verification / commit: per child.
+
+###### SIGNOFF-REPAIR.3.3.4.10.1 — Node enrollment-token issuance
+
+- Status: `pending`; the smallest of the three, and the one whose current shape is closest to `.9`'s.
+- Owns: `issue_node_enroll_token` — admission, the tenant-bound target check, the token INSERT and the final effect (`NodeEnrollTokenIssue`) in ONE guarded transaction. Preserve the existing response (`token_id`, `nonce`, `expires_at`), the server-generated opaque id and nonce, the caller's `ttl_seconds` default of 3600, and the typed `409 invalid_command` that the 0008 unique index produces when an unused token is outstanding — that refusal is an established contract, not a database error to be reshaped.
+- Acceptance: a revocation holding the tenant guard fences the issuance and the post-wait admission sees authority that ended; the outstanding-token 409 records `refused`/`invalid_command` while committing no token; an evidence failure rolls the token back; a foreign node id leaves the other tenant's rows and epoch unchanged. The token's own REDEMPTION path stays `.4.1` — this leaf issues, it does not qualify consumption.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.4.10.2 — Node certificate revocation
+
+- Status: `pending`; follows `.10.1`.
+- Owns: `revoke_node` — admission, tenant-bound certificate selection, the revocation, the epoch bump and the final effect (`NodeRevoke`) in ONE guarded transaction, replacing the separate pool existence probe that today decides on state the mutation never re-reads. The submitted reason is REQUIRED on the wire already and is discarded after a blankness check; this leaf persists it with the effect and gives it `AdministrativeReason`'s bounds, documented and tested as the wire change it is — the same change `.8` made for revocation, not a new invention.
+- Acceptance: both revocation race orders; a node with no active certificate records `no_op` or `refused` with the epoch unchanged; a foreign or absent node id is one identical answer that changes no row and no epoch in the other tenant; evidence failure rolls back the certificate change AND the epoch bump together. Lease lifecycle and handshake refusal remain `.4.1`/`.4.2`; this leaf does not qualify what a revoked node then experiences.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.3.3.4.10.3 — Node inbox administration
+
+- Status: `pending`; follows `.10.2`. Three operator verbs over one table, so one child — but three DISTINCT transaction bodies, because their state machines differ and forcing them into a shared body would be the mistake `.8` avoided only because its two targets genuinely were the same machine.
+- Owns: `replay_command`, `quarantine_command` and `prune_node_inbox` — admission, tenant-bound row selection, the mutation and the final effect (`NodeCommandReplay`, `NodeCommandQuarantine`, `NodeInboxPrune`) in one guarded transaction each. Quarantine's two-statement pool sequence becomes one locked read and write. Prune keeps its measured `before`/`deleted`/`after` receipt and the §16.11 rule that a quarantined row is NEVER deleted; the counts must be read inside the same transaction as the delete, which they already are.
+- Acceptance: each verb has observed revocation ordering with a SHARED-guard holder (an exclusive holder cannot discriminate this repair — `docs/knowledge/proving-a-race-is-closed.md`); a replay of a live command and a re-quarantine record their refusals without mutating; a prune that deletes nothing records `no_op` with the counts it measured; foreign `node_id` and `command_id` leave every row unchanged. ⛔ Replay's cached-decision rebinding stays `.3.4`: this leaf may not change WHICH decision facts a replay refreshes, only the transaction they are refreshed in.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.3.3.4.11 — Profile/card administrative transaction integration
@@ -2316,7 +2358,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.10` | `pending` | node administrative transactions: split token issuance, certificate revocation and inbox mutation into children before implementing |
+| 1 | `SIGNOFF-REPAIR.3.3.4.10.1` | `pending` | node enrollment-token issuance onto the guarded effect transaction |
 | 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 | 3 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
 

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Check the configured endpoint on every verb (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3`)
+
+- **Measuring it made it worse than the note that routed it here.** The previous leaf recorded this as "an inconsistency" reasoned from source. The reproduction points an ordinary verb at `http://operator:secret@127.0.0.1:<port>` with an origin that records what it receives, and the origin recorded `POST /v1/enrollments HTTP/1.1` carrying **`authorization: Basic b3BlcmF0b3I6c2VjcmV0`** — base64 of `operator:secret`. The transport does not ignore URL userinfo; it converts it into credentials on the wire.
+- The control asserts on what the ORIGIN received rather than on the client's account of its own refusal, because the whole claim is that nothing was sent. It also asserts the refusal does not echo the credential it refused.
+- **Fix:** `ApiClient::for_base` canonicalises through the same `canonical_server` the bootstrap path has always used, and `ApiClient::new` becomes crate-private — so the only construction reachable from outside the crate is the checked one, and the unchecked one survives exactly where the base was already validated. All **22** `lib.rs` call sites migrated.
+- A deliberate difference, stated so it is not read as an oversight: a live configured base is NORMALISED (an uppercase scheme is accepted) while a bootstrap record's stored server identity must already be canonical. Configuration input and a durable binding that a later recovery compares against are different things.
+- Severity unchanged by the measurement, and stated plainly: the base is the operator's own configuration, so this is hardening, not a third-party escalation. It is worth doing because a credential silently leaving for whatever host the base names is a poor failure mode even when the operator typed it.
+- Validation: the reproduction control fails on the unrepaired code printing the recorded Basic header, and passes after. The whole CLI crate passes `--all-targets` at rc=0 (12 library, 4 bootstrap-state, 5 end-to-end, 5 transport, 4 state-publication, 12 state-writers), with the status captured BEFORE any pipe. Gate (17 checks), book.
+
 ## 2026-09-12 — Bound the CLI's transport without losing its recovery key (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2`)
 
 - **The baseline is the defect stated precisely:** against an origin that completes the TCP handshake and then never answers, `run_enroll` **did not return within 90 seconds**. The control does not FAIL on unrepaired production — it does not RETURN, and an outer bound is what turns the hang into a measurement. A refused connection fails fast on its own; only a silent ACCEPTED connection can hold a caller open.

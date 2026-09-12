@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — I routed a finding out with a severity I had not measured
+
+- One leaf ago I wrote this finding down as "an inconsistency… not a reachable escalation by a third party" and moved on. That judgement was reasoned from reading `canonical_server` and counting call sites, and it was defensible. It was also a severity claim I had not tested. The reproduction took ten minutes and showed the request going out with `authorization: Basic b3BlcmF0b3I6c2VjcmV0`.
+- The severity did not actually change — it is still the operator's own configuration — but **what I knew about it did**. "The transport probably ignores userinfo" and "the transport converts userinfo into credentials and sends them" are different facts, and I had written the routing note as though the first were established.
+- The lesson is narrower and more useful than "measure more": **when routing a finding OUT, the severity travels with it, and a severity is a claim.** A leaf that receives a routed finding inherits whatever confidence the routing note expressed. Mine said "inconsistency", which is a word that invites deprioritisation.
+- Asserting on what the ORIGIN recorded rather than on the client's error message is the part of this control I would reuse. A refusal's own text tells you what the client believes it did; only the peer can tell you what actually left the machine. For anything shaped "nothing was sent", the assertion belongs on the far side.
+- I also made `ApiClient::new` crate-private rather than leaving a checked and an unchecked constructor side by side in the public surface. Two constructors where one validates is an invitation, and the unchecked one has exactly one legitimate caller — the path that already validated.
+- ⚠️ A scripted application of these edits failed halfway: an `&&` chain broke at a heredoc, so one script ran that should not have and left a `__SUITE__` placeholder in the tree. It was caught by grepping for the placeholder before committing. The pattern that saved the rest is the one already in these scripts — **assert every anchor before writing any file** — so the script that could not find its anchor wrote nothing at all rather than half of it. That is the same defence that `.11.4.5.2` exists to enforce, arriving from the other direction.
+- promotion: declined (the durable form is the checked constructor plus the crate-private unchecked one — a shape that cannot be forgotten — and the control that measures the wire).
+
 ## 2026-09-12 — A test that hangs is not a test that fails, and a pipe ate an exit code
 
 - The baseline control for this leaf does not go red on unrepaired production. It **hangs**, which is a different observation and needs different machinery: an outer `tokio::time::timeout` that converts "never returned" into a recorded failure with a duration attached. I nearly wrote the control without one and would have had a test that simply never finished — indistinguishable, in CI, from a stuck runner.

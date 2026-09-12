@@ -340,3 +340,73 @@ async fn a_redirect_off_the_configured_endpoint_is_not_followed() {
         "the redirect target was never contacted: {rendered}"
     );
 }
+
+// ── the configured endpoint (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3`) ──────────
+
+/// An origin that records what it was actually sent, so a control can assert on
+/// the REQUEST rather than on the client's own account of it.
+async fn recording_origin() -> (SocketAddr, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind the recording origin");
+    let addr = listener.local_addr().expect("the origin's address");
+    let sink = std::sync::Arc::clone(&seen);
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let sink = std::sync::Arc::clone(&sink);
+            tokio::spawn(async move {
+                let mut buf = [0u8; 8192];
+                if let Ok(n) = stream.read(&mut buf).await {
+                    sink.lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&buf[..n]).into_owned());
+                }
+                let _ = stream
+                    .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            });
+        }
+    });
+    (addr, seen)
+}
+
+/// An ordinary verb must refuse a credential-bearing configured base BEFORE any
+/// socket opens.
+///
+/// `canonical_server` already refuses URL credentials, a query and a fragment —
+/// but only on the bootstrap path. `ApiClient::new` has 22 call sites in
+/// `lib.rs` that validate nothing, so 1 of 23 construction paths checks the
+/// base, and the transport forwards userinfo as Basic credentials.
+///
+/// The assertion is on what the ORIGIN received, because the point is that
+/// nothing was sent at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ordinary_verb_refuses_a_credential_bearing_base_before_dispatch() {
+    let fixture = Fixture::new("endpoint-credentials");
+    let (addr, seen) = recording_origin().await;
+    let cfg = Config {
+        server_base: format!("http://operator:secret@{addr}"),
+        state_dir: fixture.0.join("store"),
+    };
+
+    let result = tokio::time::timeout(
+        OUTER_BOUND,
+        reasonbraid_cli::run_enroll(&cfg, "role", "reviewer", Some("ten_x"), None, true),
+    )
+    .await
+    .expect("the refusal returns promptly");
+    let error = result.expect_err("a credential-bearing base is not a usable endpoint");
+
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "the endpoint was contacted despite carrying URL credentials: {:?}",
+        seen.lock().unwrap()
+    );
+    let rendered = error.to_string();
+    assert!(
+        !rendered.contains("secret"),
+        "the refusal must not echo the credential it refused: {rendered}"
+    );
+}

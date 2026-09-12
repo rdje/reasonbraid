@@ -164,6 +164,23 @@ principal header, and a bootstrap request key, to a host the operator never
 named. A 3xx from the configured endpoint is reported as the server response
 it is.
 
+## The configured endpoint is checked
+
+Every verb now canonicalises `--server` / `REASONBRAID_SERVER` before opening a
+socket, using the same check the bootstrap path has always applied: an absolute
+HTTP(S) URL, at most 4096 bytes, with **no URL credentials, query or fragment**.
+
+This is not a cosmetic tidy-up. A base carrying userinfo is not ignored by the
+transport — it is sent as Basic credentials, and a control measured exactly
+that on the wire before the check was added. A base with credentials, a query
+or a fragment is refused, and the refusal does not echo the credential it
+refused.
+
+A live configured base is NORMALISED (an uppercase scheme is accepted), while a
+bootstrap record's stored server identity must already be canonical. Those are
+deliberately different: one is configuration input, the other is a durable
+binding that a later recovery compares against.
+
 The CLI now persists/sends bootstrap_request_id before new-human HTTP enrollment,
 validates a complete keyed reply, publishes its principal and receipt, then clears
 pending under the same lock. After cleanup, use `--resume-bootstrap` to recover

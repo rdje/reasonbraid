@@ -615,13 +615,19 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3 — Validate the configured endpoint for every verb, not only bootstrap
 
-- Status: `pending`; opened by `.2.3.2`'s endpoint reconciliation, with its census rather than an impression.
+- Status: `done`; REPAIR-0102. Opened by `.2.3.2`'s endpoint reconciliation, with its census rather than an impression.
 - census: `git grep -n "canonical_server" -- crates/reasonbraid-cli/src/` returns the definition plus two uses, both on the bootstrap path (`bootstrap_flow.rs:94` and the state validator). `ApiClient::new` has **22** call sites in `lib.rs`, none of which validate. One of 23 construction paths checks the endpoint.
 - What the unvalidated paths allow: `canonical_server` refuses URL credentials, a query and a fragment, and requires an absolute HTTP(S) URL. An ordinary verb accepts whatever `--server` or `REASONBRAID_SERVER` holds, so a base carrying userinfo would be sent as Basic credentials by the transport.
 - Severity, stated rather than inflated: the input is the operator's own configuration, not untrusted content, so this is an inconsistency and a hardening opportunity — not a reachable escalation by a third party. It is tracked because the two halves of one contract disagreeing is exactly how a later reader concludes the wrong one is authoritative.
 - Owns: one fallible client construction that canonicalises the base once, with the 22 call sites migrated, and a control proving an ordinary verb refuses a credential-bearing base before dispatch.
 - Acceptance: the refusal happens BEFORE any socket is opened, the existing bootstrap behaviour is unchanged, and a control fails on the current code.
-- Verification / commit: pending.
+- Reproduce, and it upgraded the finding: the control points an ordinary verb at `http://operator:secret@127.0.0.1:<port>` with an origin that records what it actually receives. Against the unrepaired CLI the origin recorded `POST /v1/enrollments HTTP/1.1` carrying **`authorization: Basic b3BlcmF0b3I6c2VjcmV0`** — base64 of `operator:secret`. So the transport does not ignore userinfo, it converts it into credentials on the wire. The leaf opened this as an inconsistency reasoned from source; measuring it made it a demonstrated behaviour.
+- The assertion is on what the ORIGIN received, not on the client's own account of its refusal, because the whole claim is that nothing was sent at all. It also asserts the refusal message does not echo the credential it refused.
+- Fix: `ApiClient::for_base` canonicalises through the same `canonical_server` the bootstrap path has always used, and `ApiClient::new` becomes crate-private — so the only construction reachable from outside the crate is the checked one, and the unchecked one survives exactly where the base was already validated. All 22 `lib.rs` call sites migrated; `bootstrap_flow` keeps `new` because it canonicalises first.
+- A deliberate difference from the bootstrap path, stated so it is not read as an oversight: bootstrap requires its STORED identity to be already canonical (`canonical_server(x) != x` is an error) because that value is a durable binding; a live configured base is NORMALISED instead, so an uppercase scheme is accepted rather than refused. Storage identity and configuration input are different things.
+- Severity, unchanged by the measurement and stated plainly: the input is the operator's own configuration, so this is hardening, not a third-party escalation. It is worth doing because a credential silently leaving for whatever host the base names is a poor failure mode even when the operator typed it.
+- Verification: the reproduction control passes after the repair and FAILS on the unrepaired code, printing the recorded Basic header. The whole CLI crate passes `--all-targets` at **rc=0** — 12 library, 4 bootstrap-state, 5 end-to-end, 5 transport, 4 state-publication and 12 state-writers tests — with the run status captured BEFORE any pipe, after an earlier run in this session reported exit 0 through a `grep` while a test had failed.
+- Commit: `REASONBRAID-REPAIR-0102 (leaf SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3): check the configured endpoint on every verb`.
 
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4 — Reconcile request recovery integration and focused compatibility
 
@@ -2088,11 +2094,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3` | `pending` | validate the configured endpoint for every verb; 1 of 23 client constructions checks it |
-| 2 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 3 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 4 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 5 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 2 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 3 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -2118,6 +2123,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3`: `REASONBRAID-REPAIR-0102 (leaf SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3): check the configured endpoint on every verb`.
 
 - `SIGNOFF-REPAIR.11.4.5.3`: `REASONBRAID-REPAIR-0100 (leaf SIGNOFF-REPAIR.11.4.5.3): gate the tree index against its own trees`.
 
@@ -2452,6 +2459,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3
+
+- [x] **REPRODUCE / ISSUE** — pointed at `http://operator:secret@127.0.0.1:<port>`, an ordinary verb dispatched, and the recording origin captured `POST /v1/enrollments HTTP/1.1` carrying `authorization: Basic b3BlcmF0b3I6c2VjcmV0`. The control fails on the unrepaired code printing that exact header.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-cli/src/lib.rs`: `ApiClient::new` accepted any base verbatim and had 22 call sites; `canonical_server` guarded only the bootstrap path (`bootstrap_flow.rs:94`), so 1 of 23 construction paths checked the configured endpoint, and the transport forwards URL userinfo as Basic credentials.
+- [x] **FIX** — `ApiClient::for_base` canonicalises through that same `canonical_server`; `ApiClient::new` becomes crate-private so the only construction reachable from outside the crate is the checked one, and the unchecked one survives only where the base was already validated. All 22 call sites migrated.
+- [x] **ADDRESSED (verified)** — `cargo test -p reasonbraid-cli --test http_bounds an_ordinary_verb` passes; the origin recorded nothing, and the refusal does not echo the credential. The assertion is on what the ORIGIN received rather than on the client's own error text, because the claim is that nothing was sent.
+- [x] **NO REGRESSION** — the whole CLI crate passes `--all-targets` at **rc=0** (12 library, 4 bootstrap-state, 5 end-to-end, 5 transport, 4 state-publication, 12 state-writers), with the status captured BEFORE any pipe. The path-bearing base used by the redirect control still works, so a base with a path prefix is unaffected. Strict lint and workspace format pass; `make gate` (17 checks) and `make book` pass.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `docs/TASK_TREE.md`, `docs/book/src/cli-state.md` and `cli.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2
 

@@ -266,7 +266,10 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
 
 impl ApiClient {
-    pub fn new(base: impl Into<String>) -> Self {
+    /// The only construction that does not check its base. Crate-private, and
+    /// used exactly where the base has ALREADY been canonicalised — the
+    /// bootstrap flow validates `request.server` before it gets here.
+    pub(crate) fn new(base: impl Into<String>) -> Self {
         Self {
             base: base.into().trim_end_matches('/').to_string(),
             // A client that cannot be built is a programming error here: the
@@ -285,6 +288,20 @@ impl ApiClient {
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
         }
+    }
+
+    /// Build a client for a CONFIGURED endpoint, checking it first
+    /// (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.3`).
+    ///
+    /// `--server` and `REASONBRAID_SERVER` were previously accepted verbatim by
+    /// every verb except bootstrap. A base carrying userinfo is not a typo the
+    /// transport ignores: it is sent as Basic credentials, which a control
+    /// measured as `authorization: Basic …` on the wire. The same canonical
+    /// check the bootstrap path has always applied now guards every verb, so a
+    /// base with credentials, a query or a fragment is refused BEFORE a socket
+    /// opens.
+    pub fn for_base(base: &str) -> Result<Self, CliError> {
+        Ok(Self::new(crate::bootstrap_state::canonical_server(base)?))
     }
 
     /// Preserve original bytes until the selected response codec validates them.
@@ -642,7 +659,7 @@ pub async fn run_enroll_with_recovery(
         ));
     }
     let mut writer = state_store::Writer::open(&cfg.state_dir)?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let mut body = json!({ "kind": kind, "name": name });
     if let Some(t) = tenant {
         body["tenant_id"] = json!(t);
@@ -786,7 +803,7 @@ async fn run_thread_create_in_store(
     purpose: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let tenant = principal.tenant.as_deref().ok_or_else(|| {
         CliError::usage("the acting principal has no tenant — pass --tenant".to_string())
     })?;
@@ -869,7 +886,7 @@ pub async fn run_thread_verb(
     principal: &PrincipalRef,
     args: &ThreadVerbArgs,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let tenant = resolve_tenant(state, &args.thread_id, principal, args.tenant.as_deref())?;
     let mut full = args.body.clone();
     let obj = full.as_object_mut().expect("verb body is an object");
@@ -911,7 +928,7 @@ pub async fn run_inspect_thread(
     tenant_explicit: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let tenant = resolve_tenant(state, thread_id, principal, tenant_explicit)?;
     let tenant_q = format!("tenant_id={tenant}");
     let thread = client
@@ -1018,7 +1035,7 @@ pub async fn run_inspect_budget(
     tenant_explicit: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let tenant = resolve_tenant(state, thread_id, principal, tenant_explicit)?;
     let budget = client
         .get(
@@ -1074,7 +1091,7 @@ pub async fn run_inspect_threads(
     tenant_explicit: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let tenant = tenant_explicit
         .or(principal.tenant.as_deref())
         .ok_or_else(|| {
@@ -1125,7 +1142,7 @@ pub async fn run_issue_node_token(
     ttl_seconds: Option<i64>,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let mut body = json!({
         "tenant_id": tenant,
         "node_id": node_id,
@@ -1159,7 +1176,7 @@ pub async fn run_revoke_node(
     reason: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .revoke_node(
             &principal.id,
@@ -1190,7 +1207,7 @@ pub async fn run_quarantine_command(
     reason: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .quarantine_command(
             &principal.id,
@@ -1224,7 +1241,7 @@ pub async fn run_replay_command(
     command_id: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .replay_command(
             &principal.id,
@@ -1254,7 +1271,7 @@ pub async fn run_inspect_node_inbox(
     node_id: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .inspect_node_inbox(&principal.id, tenant, node_id)
         .await?;
@@ -1297,7 +1314,7 @@ pub async fn run_prune_node_inbox(
     min_age_seconds: i64,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .prune_node_inbox(
             &principal.id,
@@ -1333,7 +1350,7 @@ pub async fn run_grant_revoke(
     reason: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .post_admin(
             &principal.id,
@@ -1360,7 +1377,7 @@ pub async fn run_boundary_revoke(
     reason: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .post_admin(
             &principal.id,
@@ -1387,7 +1404,7 @@ pub async fn run_inspect_grants(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/grants", tenant)
         .await?;
@@ -1418,7 +1435,7 @@ pub async fn run_inspect_boundaries(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/boundaries", tenant)
         .await?;
@@ -1451,7 +1468,7 @@ pub async fn run_inspect_incarnations(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/incarnations", tenant)
         .await?;
@@ -1487,7 +1504,7 @@ pub async fn run_breaker_arm(
 ) -> Result<String, CliError> {
     let threshold: serde_json::Value = serde_json::from_str(threshold)
         .map_err(|e| CliError::usage(format!("--threshold is not JSON: {e}")))?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .arm_breaker(
             &principal.id,
@@ -1510,7 +1527,7 @@ pub async fn run_breaker_reset(
     tenant: &str,
     json_out: bool,
 ) -> Result<String, CliError> {
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .reset_breaker(&principal.id, json!({ "tenant_id": tenant }))
         .await?;
@@ -1534,7 +1551,7 @@ pub async fn run_inspect_usage(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/usage", tenant)
         .await?;
@@ -1579,7 +1596,7 @@ pub async fn run_inspect_breakers(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/breakers", tenant)
         .await?;
@@ -1609,7 +1626,7 @@ pub async fn run_inspect_runs(
     let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
         CliError::usage("cannot determine the tenant — pass --tenant".to_string())
     })?;
-    let client = ApiClient::new(&cfg.server_base);
+    let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .get_admin(&principal.id, "/v1/admin/runs", tenant)
         .await?;

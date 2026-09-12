@@ -6,6 +6,24 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The CLI's configured endpoint is checked on every verb under
+`.3.3.4.3.3.3.3.2.3.3` (REPAIR-0102), and the reproduction upgraded the finding
+from reasoned to demonstrated: pointed at
+`http://operator:secret@127.0.0.1:<port>`, an ordinary verb sent
+`authorization: Basic b3BlcmF0b3I6c2VjcmV0` — the transport converts URL
+userinfo into credentials on the wire rather than ignoring it.
+`ApiClient::for_base` now canonicalises through the same `canonical_server` the
+bootstrap path has always used, and `ApiClient::new` is crate-private, so the
+only construction reachable from outside the crate is the checked one; all 22
+`lib.rs` call sites are migrated. The control asserts on what the ORIGIN
+received, because the claim is that nothing was sent, and that the refusal does
+not echo the credential. A live base is normalised while a stored bootstrap
+identity must already be canonical — configuration input and a durable binding
+are deliberately different. The whole CLI crate passes `--all-targets` at **rc=0** — 12 library, 4 bootstrap-state, 5 end-to-end, 5 transport, 4 state-publication and 12 state-writers tests — with the run status captured BEFORE any pipe, after an earlier run in this session reported exit 0 through a `grep` while a test had failed. Severity is unchanged by the
+measurement: the input is the operator's own configuration, so this is hardening
+rather than a third-party escalation.
+
+
 The CLI's transport is bounded under `.3.3.4.3.3.3.3.2.3.2` (REPAIR-0101). The
 baseline is the defect stated precisely: against an origin that completes the
 TCP handshake and never answers, `run_enroll` **did not return within 90

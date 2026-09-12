@@ -6,6 +6,29 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A concurrency defect on the profile write surface was reproduced and closed
+under `.3.3.4.11.1` (REPAIR-0119).** The writer computed its version as a
+read-then-write against migration 0019's `UNIQUE (role_id, version)`. Measured on
+the unchanged route with four concurrent writers for one role, run twice: **five
+of the eight answered `500`**, logging `duplicate key value violates unique
+constraint "profile_versions_role_id_version_key"`. A role rewriting its own
+profile from two places at once lost writes to an internal error. ⭐ The
+serialization now happens at the role's own anchor row, created INSIDE the
+acquisition — `SELECT … FOR UPDATE` over a row that does not exist yet locks
+nothing, so a lock-only fix would have protected every write except a role's
+first. The `UNIQUE` constraint is kept as the backstop that proves the lock
+works. ⭐ The route takes NO tenant authority guard, derived rather than skipped:
+it is gated on identity, evaluates no grant and produces no authorization record,
+so there is no authority decision to order it against. `written_at` is now the
+transaction's own database time; status codes, response fields and the content
+addressing are unchanged. **35 passed / 0 failed**; the affected set passes
+**4 suites / 62 tests**. FALSIFIED **34 passed / 1 failed** against the exact
+pre-`.11.1` sources. ⚠️ The discriminating control is probabilistic and labelled
+as such — no lock-holding fixture can discriminate this repair, because both
+shapes contend on the same anchor row at different points. ⚠️ Newly tracked, not
+merely noted: the `/v1/profiles` surface has **no book chapter**, owned as
+`.3.3.4.11.4`.
+
 The profile/card surface `.3.3.4.11` (REPAIR-0118) is censused and split into
 three children before any implementation, and the census changed two of the
 parent's own assumptions. Seven handlers on six route entries, of which exactly

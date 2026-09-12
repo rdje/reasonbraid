@@ -901,6 +901,55 @@ This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.
 
+### Serializing a profile write, where no authority is being decided
+
+Not every write that needs a transaction needs a **guard**, and the profile
+writer is the worked example of the difference (`SIGNOFF-REPAIR.3.3.4.11.1`).
+
+`PUT /v1/profiles/{role_id}` is gated on identity — only the role itself writes
+its own profile, the owner's path being the attestation verb — so it evaluates no
+grant and produces no authorization record. There is no authority decision for a
+tenant guard to order it against, and taking one would block every concurrent
+operation in the tenant to buy nothing. It takes no guard, deliberately. The two
+admitted routes in the same family, capability attestation and card import, do
+take one, because theirs are admissions.
+
+What it does need is **serialization against itself**. Every write is a new
+content-addressed version, and the version number is per role, so two concurrent
+writers for one role must not choose the same number. `profile_versions` carries
+`UNIQUE (role_id, version)`, and leaving that constraint to decide was measured
+to be the wrong answer twice over:
+
+- It refuses rather than queues. Two writers read the current version, both add
+  one, and the second receives a `500` carrying `duplicate key value violates
+  unique constraint`, where it should have received the next version.
+- A constraint violation **aborts the transaction**, so once a write has to
+  record anything about itself — an admission, an administrative effect — the
+  refusal cannot commit alongside the evidence at all.
+
+So the writers serialize at the role's own anchor row in `agent_profiles`, and
+the anchor is created **inside** the acquisition rather than before it:
+
+```sql
+INSERT INTO agent_profiles (role_id, current_version, updated_at)
+VALUES ($1, 0, $2) ON CONFLICT (role_id) DO NOTHING;
+SELECT current_version FROM agent_profiles WHERE role_id = $1 FOR UPDATE;
+```
+
+The order matters and is not cosmetic: `SELECT … FOR UPDATE` over a row that does
+not exist yet matches nothing, locks nothing and returns immediately, so a
+lock-only fix would protect every write except a role's **first** — the one case
+where the anchor has not been created. This is the same two-step the tenant
+authority guards themselves use for first-use acquisition. The `UNIQUE`
+constraint stays as the backstop that proves the lock is working; it should
+never fire.
+
+One wire-visible value changes and nothing else: `written_at` is now the write
+transaction's own database time rather than a process clock read taken before
+the anchor wait, so a writer that queued behind another records when it actually
+wrote. Status codes, the response fields and the content addressing — identical
+content still hashes identically — are unchanged.
+
 ### Tenant transaction foundation and remaining integration
 
 The selected contract in `SIGNOFF-REPAIR.3.3.4.1` keeps a shared tenant-authority

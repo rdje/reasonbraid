@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The control that passed by luck
+
+- The first version of this leaf's discriminating control raced two writers, twice. Against the unrepaired writer it failed — but it failed on the SECOND pair, having passed the first. One run earlier in the sequence it would have gone the other way.
+- ⭐ That is a control which can accidentally pass against the defect it exists to catch, and a control that can pass against the defect is not evidence. I did not notice it from reading the test; I noticed it from the baseline output naming `the third concurrent write` when I had expected the first.
+- The fix was not a cleverer assertion but more pressure: four writers over two rounds, one round with no anchor row and one with it present, asserting eight consecutive versions and four surviving distinct payloads. Against the unrepaired writer that produces five duplicate-key violations out of eight, which is a margin rather than a coin flip.
+- ⚠️ What I could NOT do is make it deterministic, and the reason is worth keeping: a lock-holding fixture cannot discriminate this repair in either direction. The superseded writer's closing upsert and the repaired writer's `FOR UPDATE` contend on the same anchor row, so a held lock blocks both. The thing that changed is WHERE in each sequence the contention happens — before choosing a version number rather than after having written it — and that has no observable signature except the outcome under real concurrency. So the honest report is "probabilistic, with the margin stated", not "closed".
+- The second control passes at the baseline too. It is labelled a regression control in the suite and in the leaf rather than counted as proof — the same discipline `.10.1` established.
+
 ## 2026-09-12 — A census that finds nothing is still a result
 
 - `.10`'s census found four of five node mutations addressing targets nobody had shown belonged to the caller, and one of them deleted another tenant's rows. Coming into `.11` with that fresh, the obvious move was to go looking for the same shape again — the parent's note even pointed that way.

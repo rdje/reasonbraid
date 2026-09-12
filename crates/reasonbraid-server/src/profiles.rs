@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use chrono::{DateTime, Utc};
 
@@ -332,13 +332,28 @@ pub struct CurrentProfile {
     pub written_at: DateTime<Utc>,
 }
 
-/// Write (or replace) the profile: a NEW version row, the current pointer
+/// Write (or replace) the profile on the caller's OWN transaction
+/// (`SIGNOFF-REPAIR.3.3.4.11.1`): a NEW version row, the current pointer
 /// advanced, the writer recorded. The content hash is server-computed.
-pub async fn write_profile(
-    pool: &PgPool,
+///
+/// ⛔ The caller supplies a connection that is already inside a transaction, so
+/// the version this writes and whatever else that transaction does share ONE
+/// commit. That is what `.11.2`'s attestation and `.11.3`'s card import need and
+/// what the pool-taking form below cannot give them: a function that opens its
+/// own transaction can only ever be a second commit, and it would reach for a
+/// second pool connection while the caller holds rows it needs — two
+/// connections blocking each other through the pool, where no deadlock detector
+/// sees a cycle and only `lock_timeout` ends it.
+///
+/// `at` is the caller's own evaluation time, so a caller that sampled database
+/// time after its guard wait records that instant here rather than a second,
+/// later reading.
+pub async fn write_profile_in_tx(
+    tx: &mut PgConnection,
     role_id: &str,
     writer: &str,
     profile: &AgentProfile,
+    at: DateTime<Utc>,
 ) -> Result<CurrentProfile, sqlx::Error> {
     let hash = content_hash(profile).map_err(|e| {
         sqlx::Error::Decode(Box::new(std::io::Error::new(
@@ -347,9 +362,12 @@ pub async fn write_profile(
         )))
     })?;
     let profile_json = serde_json::to_value(profile).expect("the typed profile serializes");
-    let mut tx = pool.begin().await?;
 
-    // The role must exist (the agent_roles row is the identity anchor).
+    // The role must exist (the `agent_roles` row is the identity anchor). This
+    // runs BEFORE the anchor insert on purpose: the anchor's foreign key would
+    // otherwise RAISE for an unknown role, and a raised violation aborts the
+    // caller's whole transaction rather than returning a typed refusal
+    // (`docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md`).
     let role_exists: Option<bool> =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_roles WHERE role_id = $1)")
             .bind(role_id)
@@ -362,15 +380,32 @@ pub async fn write_profile(
         ))));
     }
 
-    let current: i32 =
-        sqlx::query_scalar("SELECT current_version FROM agent_profiles WHERE role_id = $1")
-            .bind(role_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .unwrap_or(0);
+    // ⛔ Acquire the role's version anchor, creating it INSIDE the acquisition.
+    // The superseded writer read `current_version`, added one and inserted under
+    // `UNIQUE (role_id, version)`, so two concurrent writers both read N, both
+    // wrote N+1, and the constraint turned the second into a raised violation
+    // the route could only answer `500`. A row lock alone does not fix that:
+    // `SELECT … FOR UPDATE` over a row that does not exist yet matches nothing,
+    // locks nothing and returns immediately, so it would protect every write
+    // except a role's first. Insert-then-lock is the same two-step
+    // `transaction::acquire_in_tx` uses for the tenant guards, for the same
+    // reason (`docs/knowledge/serializing-writers-at-a-row-that-may-not-exist.md`).
+    sqlx::query(
+        "INSERT INTO agent_profiles (role_id, current_version, updated_at) \
+         VALUES ($1, 0, $2) ON CONFLICT (role_id) DO NOTHING",
+    )
+    .bind(role_id)
+    .bind(at)
+    .execute(&mut *tx)
+    .await?;
+    let current: i32 = sqlx::query_scalar(
+        "SELECT current_version FROM agent_profiles WHERE role_id = $1 FOR UPDATE",
+    )
+    .bind(role_id)
+    .fetch_one(&mut *tx)
+    .await?;
     let next = current + 1;
 
-    let now = Utc::now();
     sqlx::query(
         "INSERT INTO profile_versions (version_id, role_id, version, content_hash, profile, written_by, written_at) \
          VALUES ('pver_' || gen_random_uuid()::text, $1, $2, $3, $4, $5, $6)",
@@ -380,30 +415,50 @@ pub async fn write_profile(
     .bind(&hash)
     .bind(&profile_json)
     .bind(writer)
-    .bind(now)
+    .bind(at)
     .execute(&mut *tx)
     .await?;
 
+    // The anchor exists and is locked, so this is a plain UPDATE rather than the
+    // upsert the superseded writer needed.
     sqlx::query(
-        "INSERT INTO agent_profiles (role_id, current_version, updated_at) \
-         VALUES ($1, $2, $3) \
-         ON CONFLICT (role_id) DO UPDATE SET current_version = $2, updated_at = $3",
+        "UPDATE agent_profiles SET current_version = $2, updated_at = $3 WHERE role_id = $1",
     )
     .bind(role_id)
     .bind(next)
-    .bind(now)
+    .bind(at)
     .execute(&mut *tx)
     .await?;
 
-    tx.commit().await?;
     Ok(CurrentProfile {
         role_id: role_id.to_string(),
         version: next,
         content_hash: hash,
         profile: profile_json,
         written_by: writer.to_string(),
-        written_at: now,
+        written_at: at,
     })
+}
+
+/// The pool-taking form: one transaction around [`write_profile_in_tx`], holding
+/// database time sampled inside it.
+///
+/// There is ONE writer, not two — this is a thin wrapper, kept for the callers
+/// `.11.2` and `.11.3` have not yet moved onto their own guarded transactions.
+/// It takes no tenant authority guard, and deliberately: the routes that reach
+/// it here are gated on identity rather than on a grant, so there is no
+/// authority decision for a guard to order them against.
+pub async fn write_profile(
+    pool: &PgPool,
+    role_id: &str,
+    writer: &str,
+    profile: &AgentProfile,
+) -> Result<CurrentProfile, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let at = crate::authority::transaction::database_now_in_tx(&mut tx).await?;
+    let written = write_profile_in_tx(&mut tx, role_id, writer, profile, at).await?;
+    tx.commit().await?;
+    Ok(written)
 }
 
 /// Read the CURRENT profile (the `.1.3` leaf adds the per-reader filtering).

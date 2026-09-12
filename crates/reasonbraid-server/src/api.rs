@@ -4531,6 +4531,18 @@ async fn role_tenant(pool: &PgPool, role_id: &str) -> Result<Option<String>, sql
         .await
 }
 
+/// The same lookup on a caller-owned transaction, so a route that gates on the
+/// role's existence and then writes reads ONE snapshot (`SIGNOFF-REPAIR.3.3.4.11.1`).
+async fn role_tenant_in_tx(
+    tx: &mut sqlx::PgConnection,
+    role_id: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT tenant_id FROM agent_roles WHERE role_id = $1")
+        .bind(role_id)
+        .fetch_optional(&mut *tx)
+        .await
+}
+
 /// The shared read gate for `.1.2` (the `.1.3` leaf adds the per-reader
 /// filtering): the role itself or its tenant owner sees the full profile.
 async fn authorize_profile_read(
@@ -4566,25 +4578,6 @@ async fn put_profile(
             "only the role itself may write its profile (the owner attests via /attest)",
         ));
     }
-    let Some(tenant) = role_tenant(&state.pool, &role_id).await? else {
-        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
-    };
-    // The lineage link, when present, must name a real incarnation of THIS role.
-    if let Some(incarnation_id) = &profile.incarnation_id {
-        let exists: Option<bool> = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM incarnations WHERE incarnation_id = $1 AND role_id = $2)",
-        )
-        .bind(incarnation_id)
-        .bind(&role_id)
-        .fetch_optional(&state.pool)
-        .await?;
-        if !exists.unwrap_or(false) {
-            return Err(ControlApiError::invalid_command(format!(
-                "incarnation `{incarnation_id}` is not an incarnation of `{role_id}`"
-            )));
-        }
-    }
-    let _ = tenant;
     // The provenance gate: a role's own write may declare only SELF-ASSERTED
     // claims — the owner_attested/benchmarked/certified upgrades ride the
     // audited attest verb (§10.1: the provenance is shown, never self-granted).
@@ -4601,9 +4594,38 @@ async fn put_profile(
         )));
     }
     let writer = actor_handle_for_subject(&principal).to_string();
-    let written = crate::profiles::write_profile(&state.pool, &role_id, &writer, &profile)
+    // ONE transaction (`SIGNOFF-REPAIR.3.3.4.11.1`): the role's existence, the
+    // lineage check and the version write share a single snapshot and a single
+    // commit, so a refusal cannot leave a version row or an advanced anchor
+    // behind and the check can no longer read a different snapshot from the
+    // write. It takes no tenant authority guard, and deliberately so: this route
+    // is gated on identity — only the role itself writes its own profile — and
+    // evaluates no grant, so there is no authority decision for a guard to order
+    // it against. `.11.2` and `.11.3` DO take one, because theirs are admitted.
+    let mut tx = state.pool.begin().await?;
+    let at = crate::authority::transaction::database_now_in_tx(&mut tx).await?;
+    if role_tenant_in_tx(&mut tx, &role_id).await?.is_none() {
+        return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
+    }
+    // The lineage link, when present, must name a real incarnation of THIS role.
+    if let Some(incarnation_id) = &profile.incarnation_id {
+        let exists: Option<bool> = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM incarnations WHERE incarnation_id = $1 AND role_id = $2)",
+        )
+        .bind(incarnation_id)
+        .bind(&role_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if !exists.unwrap_or(false) {
+            return Err(ControlApiError::invalid_command(format!(
+                "incarnation `{incarnation_id}` is not an incarnation of `{role_id}`"
+            )));
+        }
+    }
+    let written = crate::profiles::write_profile_in_tx(&mut tx, &role_id, &writer, &profile, at)
         .await
         .map_err(|e| profile_error(e, &role_id))?;
+    tx.commit().await?;
     Ok(Json(written))
 }
 

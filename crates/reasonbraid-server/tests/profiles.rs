@@ -6448,3 +6448,183 @@ async fn the_synthesis_record_is_derived_content() {
         "{refused}"
     );
 }
+
+// ── The role/version anchor (`SIGNOFF-REPAIR.3.3.4.11.1`) ─────────────────────
+//
+// The writer computed its next version as a read-then-write: read
+// `current_version`, add one, insert under migration 0019's
+// `UNIQUE (role_id, version)`. Two concurrent writers for one role therefore
+// both read N, both wrote N+1, and the constraint turned the second into a
+// RAISED violation the handler could only answer `500`. The repair serializes
+// them at the role's own anchor row, which the writer now creates inside its
+// acquisition because `SELECT … FOR UPDATE` over a row that does not exist yet
+// locks nothing (`docs/knowledge/serializing-writers-at-a-row-that-may-not-exist.md`).
+
+/// Concurrent writes for the SAME role all succeed, with consecutive versions
+/// and every payload readable. This is the discriminating control: against the
+/// superseded read-then-write it reports a `500` carrying
+/// `duplicate key value violates unique constraint "profile_versions_role_id_version_key"`.
+///
+/// ⚠️ It is PROBABILISTIC, not deterministic, and that is a property of the
+/// repair rather than of the fixture. No lock-holding fixture can discriminate
+/// this one: the superseded writer's closing upsert and the repaired writer's
+/// `SELECT … FOR UPDATE` contend on the SAME anchor row, so a held lock blocks
+/// both. What changed is WHERE in each sequence the contention happens — the
+/// repaired writer contends BEFORE it chooses a version number, the superseded
+/// one after it had already written that number — and the only externally
+/// visible consequence of that is the outcome under real concurrency. Four
+/// writers over two rounds is what makes a false pass negligible rather than
+/// merely unlikely; a single pair passed by luck on one baseline run.
+#[tokio::test]
+async fn concurrent_profile_writes_serialize_at_the_role_anchor() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "anchor-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "anchor-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/profiles/{role_id}");
+
+    // Each writer sends DISTINCT content, so a lost update is visible as a
+    // missing content hash rather than hidden behind an identical one.
+    let bodies: Vec<Value> = (0..4)
+        .map(|n| {
+            let mut body = profile(json!([{ "taxonomy_id": "code_review" }]));
+            body["interests"] = json!([format!("writer {n}")]);
+            body
+        })
+        .collect();
+
+    // ROUND 1 races with NO anchor row in place — the case a lock-only repair
+    // silently fails, because a row lock over an absent row is a no-op.
+    let round_one = tokio::join!(
+        put(&client, &base, &path, &role_id, &bodies[0]),
+        put(&client, &base, &path, &role_id, &bodies[1]),
+        put(&client, &base, &path, &role_id, &bodies[2]),
+        put(&client, &base, &path, &role_id, &bodies[3]),
+    );
+    // ROUND 2 races with the anchor already present.
+    let round_two = tokio::join!(
+        put(&client, &base, &path, &role_id, &bodies[0]),
+        put(&client, &base, &path, &role_id, &bodies[1]),
+        put(&client, &base, &path, &role_id, &bodies[2]),
+        put(&client, &base, &path, &role_id, &bodies[3]),
+    );
+
+    let mut versions = Vec::new();
+    for (round, results) in [(1, round_one), (2, round_two)] {
+        for (n, (status, body)) in [results.0, results.1, results.2, results.3]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(*status, 200, "round {round} writer {n}: {body}");
+            versions.push(body["version"].as_i64().expect("a version"));
+        }
+    }
+    versions.sort_unstable();
+    assert_eq!(
+        versions,
+        (1..=8).collect::<Vec<i64>>(),
+        "eight writers take eight consecutive versions"
+    );
+
+    // Serializing must not drop a payload: every version is stored, and the
+    // four distinct contents are all present.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/versions"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the history reads: {listed}");
+    let rows = listed["versions"].as_array().unwrap();
+    assert_eq!(rows.len(), 8, "every version is stored: {listed}");
+    let distinct: std::collections::BTreeSet<&str> = rows
+        .iter()
+        .map(|r| r["content_hash"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        distinct.len(),
+        4,
+        "all four distinct payloads survived: {listed}"
+    );
+}
+
+/// The write is ONE transaction now, so a refused lineage link leaves no
+/// version row and no advanced anchor behind — the check and the write can no
+/// longer see two different snapshots.
+///
+/// ⚠️ REGRESSION control, labelled as one rather than presented as proof: it
+/// PASSES against the superseded code too, because that code also ran the
+/// lineage check before calling the writer. What it defends is the ordering
+/// staying that way now that both halves live in one transaction, where a
+/// reordering would be silent. The discriminating control for this leaf is the
+/// concurrency one above.
+#[tokio::test]
+async fn a_refused_lineage_link_leaves_no_version_and_no_anchor() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lineage-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "lineage-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    let mut body = profile(json!([]));
+    body["incarnation_id"] = json!("inc_does_not_exist");
+    let (status, refused) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(status, 400, "the dangling lineage refuses: {refused}");
+
+    let versions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM profile_versions WHERE role_id = $1")
+            .bind(&role_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count versions");
+    assert_eq!(versions, 0, "the refusal wrote no version row");
+    let anchors: i64 = sqlx::query_scalar("SELECT count(*) FROM agent_profiles WHERE role_id = $1")
+        .bind(&role_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count anchors");
+    assert_eq!(anchors, 0, "the refusal left no anchor row behind");
+}

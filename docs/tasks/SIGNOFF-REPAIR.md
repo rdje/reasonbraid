@@ -1238,6 +1238,24 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - promotion: declined (the durable method statements are already promoted — `TOOLBOX.md` for the clean-state rule and `docs/knowledge/proving-a-race-is-closed.md` for the invariant rule; this leaf records a scope decision, which belongs in `docs/decisions/`).
 - Commit: `REASONBRAID-REPAIR-0087 (leaf SIGNOFF-REPAIR.11.5): assess and sequence the verification strategy`.
 
+### SIGNOFF-REPAIR.11.6 — A rule, threshold or severity proposed before its population is measured
+
+- Opened: `pending`; raised from this session's own measured experience, not from a general principle someone liked.
+- The observation: five times in one session, a rule/threshold/severity that was reasoned carefully from source was **changed by the first measurement of the population it quantified over**. This is distinct from `.11.5`'s accepted item (1), which requires a CONTROL to have failed on its defect; this is about the SHAPE of a rule before any control exists.
+- The five instances, each with its own leaf and commit so the pattern is auditable rather than remembered:
+  - `.11.4.5.2` (REPAIR-0099): the obvious "closing a leaf must stage `MEMORY.md`" would have asserted a rule the project does not follow (6/10), flagged four innocent commits, and still missed the defect. The census moved the rule's KEY to the author's own claim.
+  - `.7.3.3.5.1` (REPAIR-0097): "narrow the advertised media types" was not merely worse, it was **unexpressible** — no subset of the advertisement is accepted, because the leg's rule is not format-shaped at all.
+  - `.11.4.5.3` (REPAIR-0100): the preferred GENERATOR would have destroyed accurate curated prose in 13 of 14 rows, and blanket equality would have flagged `PHASE-8`'s legitimately different cell.
+  - `.3.3.4.3.3.3.3.2.3.2` (REPAIR-0101): a deadline assertion of `< 75 s` for a 60 s bound failed at 75.03 s under load — the margin was measuring the host's scheduling, not the client's ceiling.
+  - `.3.3.4.3.3.3.3.2.3.3` (REPAIR-0102): a severity routed out as "an inconsistency" turned out to put `authorization: Basic …` on the wire. The grade did not change; what was KNOWN about it did.
+- What is already covered, so this does not duplicate an existing gate: `GAP-CLAIM-CENSUS` enforces the census for one sentence shape — a "nothing checks X" claim. Four of the five instances above are outside that shape.
+- census of that overlap, run with the GATE'S OWN predicate rather than by eye — extract `CLAIM_RE` from `scripts/check_gap_claims.sh` and count added task-tree lines matching it in each of the five commits: `1dbdb77` 0, `a21f7a5` 0, `bb52b4d` **1**, `179110b` 0, `2bec2ff` 0. So four of five add no sentence of that shape at all, and the one that does (`bb52b4d`) carried its census and passed. The existing gate is therefore not a duplicate of what this leaf is about, and that is measured rather than asserted — which the gate itself insisted on, by refusing this leaf's first draft for making exactly this claim without one.
+- census owed before any rule, and the irony is deliberate: this leaf must not propose its own gate before measuring whether the pattern generalises beyond five instances in one session. Count, across the tree's history, how many leaves record a rule/threshold/severity that a later leaf revised, and how many were revised by measurement rather than by preference.
+- Owns: that census; then a decision between three honest outcomes — a mechanizable gate, a `TOOLBOX.md` method statement with no gate, or an explicit "measured and not worth mechanizing". The third is a legitimate result and must stay available, or the census is theatre.
+- Acceptance: the census is recorded with the command that produced it, and the decision names which of the three was taken and why. No gate ships without the census, which is the rule this leaf is about.
+- Explicit limit: five instances in one session by one author is a population with an obvious bias, and the census must be capable of refuting the pattern rather than confirming it.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
 - Status: `active`; `.11.4.1` rotation is complete, and broader containment/claim reconciliation remain `.11.4.2`–`.11.4.3`.
@@ -2098,6 +2116,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | 2 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
 | 3 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
 | 4 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 5 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
 
 
 

@@ -494,11 +494,11 @@ An admission record says a caller **was allowed to ask**. It says nothing about
 what the local mutation then did. Collapsing the two would let an operator read
 `allowed` as `applied`, so the final effect is a separate, additive record.
 
-⛔ **Nothing writes one yet.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
-representation; the storage and the writer are `.7.2`, and grant/boundary
-revocation is the first route to produce one, under `.8`. This section describes
-a contract the integration children fill, exactly as the tenant guard was
-qualified as a primitive before any route used it.
+⛔ **No route writes one yet.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
+representation and `.7.2` gives it durable storage; grant/boundary revocation is
+the first route to produce one, under `.8`. This section describes a contract the
+integration children fill, exactly as the tenant guard was qualified as a
+primitive before any route used it.
 
 An effect record names four things:
 
@@ -565,6 +565,46 @@ authorization record's JSON is byte-identical, and an effect is a separate row
 rather than a new field on the admission. And it makes no historical claim — an
 absent effect record means the outcome was never recorded, never that an
 operation succeeded or failed.
+
+#### Where the effect is written, and what its absence means
+
+Migration 0058 adds `administrative_effects`, keyed by the admission's own
+`authz_…` id. It is additive in the strict sense: no existing table, column or
+row changes, nothing is backfilled, and the one index it adds to
+`authorization_records` exists only so an effect can reference both an admission
+and that admission's tenant in a single foreign key. That composite key is why an
+effect **cannot** cite another tenant's admission — a structural bound rather
+than a rule the writer is trusted to follow.
+
+The writer runs on the caller's **own** transaction, and both halves of that
+matter:
+
+| Property | What provides it |
+| --- | --- |
+| Evidence and mutation commit together | They are the same transaction, so there is no window in which one exists without the other. |
+| An evidence failure rolls the protected write back | Same transaction again: a rejected effect aborts the mutation rather than leaving it unexplained. |
+| The whole thing is ordered against an authority change | The caller's tenant authority guard, which it already holds. The writer takes no guard of its own — that would be a second acquisition on a connection that already has one. |
+
+Reading is an **exact own-tenant lookup** by admission id: the tenant filter is
+applied before the row is decoded, so a foreign tenant's malformed evidence is
+indistinguishable from an absent record and cannot become an existence oracle.
+There is no list, no pagination and no query language.
+
+Two failure answers are deliberately different, and an operator acts on them
+differently:
+
+- **absent** — no outcome was ever recorded for that admission. Every request
+  admitted before this table existed reads that way, and so does every route
+  that has not yet been migrated onto the writer. It does **not** mean the
+  operation did nothing, and it does not mean the operation succeeded.
+- **a storage failure** — the row exists and this build cannot read it. The
+  reader never guesses `applied` and never downgrades an outcome it does not
+  recognise into one it does.
+
+The database constrains the `kind` discriminant of both JSON columns to the
+closed vocabularies above; everything below the discriminant is the codec's to
+enforce, which is why a row can pass the column constraint and still be refused
+on the way out.
 
 ### Ordering a thread command against an authority change
 

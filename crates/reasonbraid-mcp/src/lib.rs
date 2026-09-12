@@ -648,6 +648,7 @@ mod tests {
                 "budget_reservations",
                 "budget_ceilings",
                 "spend_breakers",
+                "administrative_effects",
                 "authorization_records",
                 "authority_grants",
                 "enrollments",

@@ -55,6 +55,7 @@ async fn pool() -> Option<PgPool> {
             "node_inbox",
             "budget_reservations",
             "budget_ceilings",
+            "administrative_effects",
             "authorization_records",
             "authority_grants",
             "enrollments",

@@ -103,6 +103,7 @@ pub use api::{
 };
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
+    load_tenant_administrative_effect, record_administrative_effect_in_tx,
     AuthorityTransactionError, AuthorizationOutcome, AuthorizedApplyError, CommandAuthz,
     GrantCreateError, GrantRefused,
 };

@@ -46,9 +46,11 @@ pub(crate) use issuance::{
 pub use transaction::GuardError as AuthorityTransactionError;
 pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTransaction};
 
+mod effects;
 mod records;
 mod selection;
 
+pub use effects::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
 pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 

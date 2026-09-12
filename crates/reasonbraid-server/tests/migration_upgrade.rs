@@ -111,6 +111,9 @@ async fn tenant_guard_upgrade_preserves_namespaces_and_backfills_exactly_once() 
         .await
         .unwrap();
     }
+    // NOT a cleanup plan: this snapshots the pre-upgrade schema at version 55,
+    // so it must name only tables that exist THERE. `administrative_effects`
+    // arrives with 0058 and deliberately has no row to preserve.
     let tables = [
         "tenants",
         "enrollment_boundaries",

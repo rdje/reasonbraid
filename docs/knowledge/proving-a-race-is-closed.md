@@ -1,10 +1,10 @@
-answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race; why does my new ordering control pass against the unrepaired code?
+answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race; why does my new ordering control pass against the unrepaired code; which lock mode should this operation take?
 
 # Proving a race is closed
 
 - **Type:** `knowledge`
 - **Date:** `2026-09-12`
-- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`, `.3.3.4.9`
+- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`, `.3.3.4.9`, `.3.3.4.10.1`
 
 ## The question
 
@@ -63,6 +63,35 @@ the fixture must hold a lock the old mode was NOT excluded by. Ask what the
 superseded code acquired before choosing the holder's mode, rather than copying
 the holder from the previous leaf — the previous leaf was repairing a path whose
 old shape may have differed.
+
+## Sometimes NO fixture can discriminate, and that has to be said
+
+Take the rule above one step further. If the repair puts an operation under the
+SAME lock mode the superseded code already took, then neither holder mode
+distinguishes them: exclusive fences both, shared fences neither. No concurrency
+fixture can falsify that repair, because concurrency is not what changed.
+
+When that happens, find what did change — usually atomicity: the mutation and its
+evidence now share one commit, so making the evidence unwritable must roll the
+mutation back, and on the old shape it does not. That control discriminates, and
+the ordering control beside it is a REGRESSION control. Label it as one. A suite
+that presents a control which cannot fail as proof of a repair is worse than one
+that omits it.
+
+## Deriving the mode is part of the repair
+
+The same leaf sequence produced three different correct answers — exclusive for
+one family, shared for the next — so the mode is not a house style to inherit.
+Derive it from two questions:
+
+1. Is there a classify-then-write over a row that **may not exist**? A row lock
+   cannot cover an absent row, so only tenant-level exclusion makes that exact.
+2. Does anything this operation must be ordered against hold the SHARED guard?
+   If so, exclusion is what buys the ordering.
+
+If both answers are no, shared is correct and exclusive is a cost with no
+invariant behind it — it blocks every concurrent operation in the tenant to buy
+nothing.
 
 ## Re-verify
 

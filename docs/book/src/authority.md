@@ -582,20 +582,68 @@ be unreachable, because there is no list endpoint. Neither verb takes a caller
 reason, so neither records one — `submitted_reason` is `null`, and adding a reason
 requirement to either would be a wire change to be documented and tested as one.
 
+### Issuing a node enrollment token
+
+An operator issues a one-time token bound to a tenant, an expected node id, a
+host claim, a nonce and an expiry; the node consumes it once at
+`POST /v1/nodes/enroll`. The issuing route used to admit the caller in its own
+transaction and then insert **on the connection pool**, with nothing recording
+what the request finally did.
+
+It now runs one transaction under the tenant's **shared** authority guard,
+holding the decision time, the admission, the token insert and the final effect
+record.
+
+**The guard is shared here, and that is a different answer from the breaker's on
+purpose.** Deciding whether a token was issued or refused is not a
+read-then-write over a row that may not exist — a single insert that does nothing
+on conflict returns either the new token or no row at all, which is the whole
+decision. Contention over the same node id is already settled by the partial
+unique index that allows one unused token per node. And issuance touches nothing
+the reservation path reads. What the guard still has to do is fence the request
+against an authority change, and a revocation's exclusive mode does that against
+a shared holder. Taking the exclusive guard would have bought no invariant and
+blocked every concurrent thread command in the tenant.
+
+| Request | Result |
+| --- | --- |
+| An eligible administrator issues a token for a node with none outstanding | 200 with the token id, nonce and expiry; the effect records `applied`. |
+| An unused token for that node is already outstanding | 409 `invalid_command` with the established message; the effect records `refused`/`invalid_command`, and no token is created. |
+| The caller does not administer the named tenant | 403; no token, and no effect — the admission record already says denied. |
+| `node_id` is not a valid node identity | 400, **before any admission exists** — and therefore with no receipt, because there is no record to name. |
+
+`expires_at` is now the transaction's own database time plus the requested TTL
+(3 600 seconds by default), so a token's lifetime runs from the instant the
+decision was made rather than from a process clock read before the guard wait.
+Every answer that reached an admission carries the
+`x-reasonbraid-authorization` receipt; the validation refusal above deliberately
+does not.
+
+**What this route does not check, and who does.** `node_enrollment_tokens` has no
+foreign key to `nodes`, because a token is issued *before* the node it names
+exists. There is therefore no target row to bind to the caller's tenant at
+issuance: the row is stamped with the admitted tenant, and whether a node may
+later enroll into that tenant is lineage enforced at **redemption**, owned by
+`SIGNOFF-REPAIR.4.1`. One related limit is recorded rather than implied: the
+one-unused-token index is global rather than per tenant, so two tenants cannot
+hold outstanding tokens for the same node identity at once. `SIGNOFF-REPAIR.3.5`
+owns that.
+
 ### The final administrative effect record
 
 An admission record says a caller **was allowed to ask**. It says nothing about
 what the local mutation then did. Collapsing the two would let an operator read
 `allowed` as `applied`, so the final effect is a separate, additive record.
 
-**Two families write one today.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
+**Three families write one today.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
 representation, `.7.2` gives it durable storage, `.8` makes grant and boundary
 revocation its first producer — described under [one transaction, from the
 admission to the evidence](#one-transaction-from-the-admission-to-the-evidence) —
-and `.9` adds [spend-breaker administration](#arming-and-resetting-a-spend-breaker).
-The remaining administrative families adopt it in `.10` through `.12`; until each
-does, its operations have no effect record, which reads as an absence and never
-as a success.
+`.9` adds [spend-breaker administration](#arming-and-resetting-a-spend-breaker),
+and `.10.1` adds [node enrollment-token issuance](#issuing-a-node-enrollment-token).
+The rest of node administration follows in `.10.2`–`.10.3`, then `.11` and `.12`;
+until each does, its operations have no effect record, which reads as an absence
+and never as a success.
 
 An effect record names four things:
 

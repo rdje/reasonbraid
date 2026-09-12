@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The previous leaf's answer was the wrong default for this one
+
+- Two leaves ago I derived, carefully, that breaker administration needs the tenant's EXCLUSIVE guard, and wrote down why. One leaf later the obvious move was to reach for the same mode again — three administrative families in a row, one shape. Re-deriving instead produced the opposite answer: token issuance takes the SHARED guard.
+- ⭐ The reasons are specific, and that is what makes them checkable. `.9` needed exclusion because classifying `applied` against `no_op` was a read-then-write over a row that might not exist, and a row lock cannot cover an absent row. Issuance has no such classification: one insert that does nothing on conflict returns the token or returns nothing, and that IS the decision. `.9` also wanted ordering against in-flight reservations, which hold the shared guard; issuance touches nothing the reservation path reads. Neither reason survived the move, so neither should the mode.
+- The cost of getting this wrong is invisible in tests and real in production: an exclusive guard on a token issuance blocks every concurrent thread command in that tenant for the life of the transaction, to buy an invariant that nothing needs.
+- ⚠️ And it changes what a falsification can establish. `.9`'s lesson was that an exclusive-holder fixture cannot discriminate a repair whose old shape admitted under a shared guard. Here it is stronger: the repair ITSELF takes the shared guard, so NEITHER holder mode discriminates anything. The property that actually changed is atomicity — the token and its evidence are one commit — so the evidence-rollback control is the only discriminating one, and it reports `left: 200, right: 500` on the old shape. The ordering control is a regression control and is labelled as one in the suite. A control that cannot fail is not evidence, and saying which of my controls is which is part of the evidence.
+
+## 2026-09-12 — A constraint violation is not a refusal I can record
+
+- Issuance's established contract is a typed `409` when an unused token for that node is already outstanding, produced by letting a partial unique index raise and catching `is_unique_violation`. Moving the route onto one transaction made that unworkable in a way that has nothing to do with error handling: in PostgreSQL a constraint violation ABORTS the transaction, so every statement after it fails until rollback.
+- ⭐ The consequence is the interesting part. The refusal has to COMMIT — the admission and the `refused` effect record are the evidence that an admitted caller asked for something impossible — and a raised violation makes committing anything impossible. The catch-and-translate shape and the one-transaction shape are incompatible, not merely awkward together.
+- `INSERT … ON CONFLICT DO NOTHING RETURNING` is the resolution: zero rows returned IS the refusal, with no abort, so the same 409 now arrives with its outcome durably recorded beside it. The wire is byte-identical and the transaction survives.
+- The generalisation for `.10.2` and `.10.3`: any administrative refusal that a database constraint currently produces by raising has to be converted to a value before it can be recorded as an outcome. That is a shape to look for in each remaining family, not a one-off.
+
 ## 2026-09-12 — My ordering control was green against the code it was written to catch
 
 - The repair was "put the operation under the tenant's exclusive guard". The control looked like the obvious one and was copied from the leaf before it: hold the tenant's guard EXCLUSIVELY, start the request, assert it waits, end the caller's authority underneath it, release, assert 403. Green. It was also green against the **unrepaired** code, which is the part I nearly shipped as evidence.

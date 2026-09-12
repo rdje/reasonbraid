@@ -205,6 +205,12 @@ $ rb node issue-token --node rol_… --host-claim dev-host --as alice --tenant t
 { "token_id": "ntk_…", "nonce": "…", "expires_at": "…" }
 ```
 
+Issuance is one guarded transaction since `SIGNOFF-REPAIR.3.3.4.10.1`: the
+admission, the token and a durable record of the outcome share a single commit,
+and the HTTP response carries `x-reasonbraid-authorization` (`curl -i` retains
+it). The expiry runs from the transaction's own database time. See
+[issuing a node enrollment token](authority.md#issuing-a-node-enrollment-token).
+
 The token is bound to the tenant, the expected node id, the host claim, and the
 nonce; it is consumed ONCE by the node (`rb-node --enroll-token … --enroll-nonce
 … --node-secret …`) before any channel traffic. The node id may be a `nod_…`

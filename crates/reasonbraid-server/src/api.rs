@@ -1083,13 +1083,30 @@ pub struct IssueNodeTokenResponse {
     pub expires_at: String,
 }
 
-/// Issue a one-time node enrollment token. `tenant_admin` authority only — the
-/// decision is audited by [`authorize`], and the token row is the issuance record.
+/// Issue a one-time node enrollment token.
+///
+/// Since `SIGNOFF-REPAIR.3.3.4.10.1` the admission, the token INSERT and the
+/// final effect record share ONE transaction under the tenant's SHARED authority
+/// guard. Before this the handler admitted through `authorize_guarded` — its own
+/// transaction — and then inserted **on the connection pool**, outside any
+/// transaction, so nothing ordered the write against the admission that
+/// permitted it and no record said what the request finally did.
+///
+/// The guard is shared rather than exclusive, and that is derived rather than
+/// inherited from `.9`: the refusal is decided atomically by a single
+/// `ON CONFLICT DO NOTHING RETURNING`, same-node contention is already
+/// serialized by the partial unique index, and a revocation's exclusive mode
+/// fences this transaction whole either way.
+///
+/// Every answer carries the `x-reasonbraid-authorization` receipt naming the
+/// admission — which is the effect record's id when one was written. The
+/// validation refusal below is deliberately OUTSIDE that: it happens before any
+/// admission exists, so there is no receipt to name.
 async fn issue_node_enroll_token(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<IssueNodeTokenRequest>,
-) -> Result<Json<IssueNodeTokenResponse>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if !crate::node_channel::is_valid_node_identity(&req.node_id) {
         return Err(ControlApiError::invalid_command(format!(
@@ -1099,65 +1116,50 @@ async fn issue_node_enroll_token(
         )));
     }
 
-    let authz = CommandAuthz {
-        delegation_scope: None,
-        actor: actor_handle_for_subject(&principal),
-        principal: principal.clone(),
-        delegate_subject: None,
-        action: GrantAction::TenantAdmin,
-        target: ResourceTarget::Tenant {
-            tenant_id: req.tenant_id,
-        },
-    };
-    match authority::authorize_guarded(&state.pool, &authz).await? {
-        AuthorizationOutcome::Denied { reason, record_id } => {
-            crate::telemetry::metrics().incr("authorization_denials");
-            return Err(ControlApiError::unauthorized(format!(
-                "authorization denied ({record_id}): {reason}"
-            )));
-        }
-        AuthorizationOutcome::Allowed { .. } => {}
-    }
-
-    let now = Utc::now();
-    let ttl = chrono::Duration::seconds(req.ttl_seconds.unwrap_or(3600));
-    // The token id and nonce are server-generated, opaque, and unguessable
-    // (`gen_random_uuid()`; no client-chosen fields). One UNUSED token per node
-    // (the 0008 unique index): a re-issue while one is outstanding is a TYPED
-    // refusal, never a database error on the wire.
-    let issued: Result<(String, String, chrono::DateTime<Utc>), sqlx::Error> = sqlx::query_as(
-        "INSERT INTO node_enrollment_tokens \
-         (token_id, tenant_id, node_id, host_claim, nonce, expires_at) \
-         VALUES ('ntk_' || gen_random_uuid()::text, $1, $2, $3, gen_random_uuid()::text, $4) \
-         RETURNING token_id, nonce, expires_at",
+    let issue = authority::issue_enrollment_token_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.host_claim,
+        chrono::Duration::seconds(req.ttl_seconds.unwrap_or(3600)),
     )
-    .bind(req.tenant_id.to_string())
-    .bind(&req.node_id)
-    .bind(&req.host_claim)
-    .bind(now + ttl)
-    .fetch_one(&state.pool)
-    .await;
-    let (token_id, nonce, expires_at) = match issued {
-        Ok(row) => row,
-        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
-            return Err(ControlApiError {
-                status: StatusCode::CONFLICT,
-                code: "invalid_command",
-                message: format!(
-                    "an unused enrollment token for node `{}` already exists — \
-                     consume or expire it before issuing another",
-                    req.node_id
-                ),
-            })
+    .await?;
+    let receipt = issue.record_id;
+    let response = match issue.result {
+        authority::TokenIssueResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
         }
-        Err(e) => return Err(e.into()),
+        // One UNUSED token per node (migration 0018's partial index): a re-issue
+        // while one is outstanding is a TYPED refusal, never a database error on
+        // the wire. The status, code and message are unchanged.
+        authority::TokenIssueResult::AlreadyOutstanding => ControlApiError {
+            status: StatusCode::CONFLICT,
+            code: "invalid_command",
+            message: format!(
+                "an unused enrollment token for node `{}` already exists — \
+                 consume or expire it before issuing another",
+                req.node_id
+            ),
+        }
+        .into_response(),
+        authority::TokenIssueResult::Issued {
+            token_id,
+            nonce,
+            expires_at,
+        } => Json(IssueNodeTokenResponse {
+            token_id,
+            nonce,
+            // Database time from inside the transaction plus the requested TTL,
+            // so the token's lifetime runs from the instant the decision was
+            // made rather than from a process clock read before the guard wait.
+            expires_at: expires_at.to_rfc3339(),
+        })
+        .into_response(),
     };
-
-    Ok(Json(IssueNodeTokenResponse {
-        token_id,
-        nonce,
-        expires_at: expires_at.to_rfc3339(),
-    }))
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 // ── Node inbox hardening (admin side, PHASE-1.2.3) ──────────────────────────────

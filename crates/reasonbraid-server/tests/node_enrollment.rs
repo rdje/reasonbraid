@@ -680,3 +680,368 @@ async fn enrollment_writes_the_incarnation_row_with_its_facts() {
         .expect("count tenant incarnations");
     assert_eq!(total, 1, "still exactly the role node's incarnation");
 }
+
+// ── Token issuance as one guarded transaction (`SIGNOFF-REPAIR.3.3.4.10.1`) ──
+//
+// The FIRST of this parent's three children. What is under test is the
+// transaction, not the token: the admission, the INSERT and the final effect
+// record now share one commit under the tenant's SHARED authority guard, where
+// the admission used to commit in its own transaction and the INSERT then ran on
+// the connection pool with nothing recording what it did.
+//
+// ⚠️ The guard here is SHARED, so a lock-holding fixture cannot discriminate this
+// repair in either mode — the superseded admission took the shared guard too.
+// What discriminates is ATOMICITY, and the evidence-rollback control below is
+// the one that goes red on the old shape. The ordering control that follows it
+// is a REGRESSION control, and is labelled as one rather than presented as proof.
+
+use reasonbraid_core::{
+    AdministrativeOperation, AdministrativeOutcome, AdministrativeRefusal, TenantId,
+};
+use reasonbraid_server::load_tenant_administrative_effect;
+
+/// The issuance POST, returning status, the receipt and the body. Every answer
+/// that reached an admission carries the receipt — that is the contract.
+async fn issue(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    body: Value,
+) -> (u16, Option<String>, Value) {
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll-tokens"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&body)
+        .send()
+        .await
+        .expect("issuance request");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .map(|v| v.to_str().expect("an ASCII receipt").to_owned());
+    (
+        status,
+        receipt,
+        response.json().await.expect("issuance json"),
+    )
+}
+
+async fn token_count(pool: &PgPool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM node_enrollment_tokens")
+        .fetch_one(pool)
+        .await
+        .expect("count tokens")
+}
+
+async fn effect_count(pool: &PgPool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM administrative_effects")
+        .fetch_one(pool)
+        .await
+        .expect("count effects")
+}
+
+async fn effect_of(
+    pool: &PgPool,
+    tenant: &str,
+    receipt: Option<String>,
+) -> Option<reasonbraid_core::AdministrativeEffectRecord> {
+    let tenant: TenantId = tenant.parse().expect("a tenant id");
+    load_tenant_administrative_effect(
+        pool,
+        tenant,
+        receipt
+            .expect("every admitted answer carries its receipt")
+            .parse()
+            .expect("the receipt is a record id"),
+    )
+    .await
+    .expect("read the effect back")
+}
+
+#[tokio::test]
+async fn issuance_commits_its_admission_token_and_effect_together() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000001a1";
+
+    let (status, receipt, body) = issue(
+        &client,
+        &base,
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "an eligible administrator issues: {body}");
+    assert!(body["token_id"].as_str().unwrap().starts_with("ntk_"));
+    assert!(!body["nonce"].as_str().unwrap().is_empty());
+    assert_eq!(token_count(&pool).await, 1);
+
+    let effect = effect_of(&pool, &tenant, receipt)
+        .await
+        .expect("the effect committed with its token");
+    assert_eq!(
+        effect.operation,
+        AdministrativeOperation::NodeEnrollTokenIssue {
+            node_id: reasonbraid_core::AdministrativeTargetId::new(node_id).unwrap()
+        }
+    );
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(
+        effect.submitted_reason, None,
+        "issuance takes no caller reason, so none is invented"
+    );
+
+    // `expires_at` is now database time from inside the transaction plus the
+    // TTL, so it agrees with the instant the decision was made rather than with
+    // a process clock read before the guard wait. The default TTL is 3600 s.
+    let expires: chrono::DateTime<chrono::Utc> = body["expires_at"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .expect("an RFC3339 expiry");
+    let gap = (expires - effect.effected_at).num_seconds();
+    assert_eq!(
+        gap, 3600,
+        "the expiry is exactly the TTL after the transaction's own decision time"
+    );
+}
+
+#[tokio::test]
+async fn an_outstanding_token_is_refused_and_the_refusal_is_recorded() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000001a2";
+    let body = json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-a" });
+
+    let (status, _, _) = issue(&client, &base, &alice, body.clone()).await;
+    assert_eq!(status, 200);
+
+    // ⛔ The established contract, byte for byte: 409 `invalid_command` with the
+    // same message. Its NEW property is that the refusal now commits — under a
+    // raising unique violation the transaction would abort and take the
+    // admission and the effect record with it.
+    let (status, receipt, refused) = issue(&client, &base, &alice, body).await;
+    assert_eq!(status, 409, "a re-issue is refused: {refused}");
+    assert_eq!(refused["code"], json!("invalid_command"));
+    assert!(refused["message"]
+        .as_str()
+        .unwrap()
+        .contains("already exists"));
+    assert_eq!(token_count(&pool).await, 1, "the refusal issued no token");
+
+    let effect = effect_of(&pool, &tenant, receipt)
+        .await
+        .expect("an admitted caller's refused operation is recorded");
+    let AdministrativeOutcome::Refused { code, detail } = &effect.outcome else {
+        panic!("expected a recorded refusal, got {:?}", effect.outcome)
+    };
+    // The record names the code the RESPONSE carries.
+    assert_eq!(*code, AdministrativeRefusal::InvalidCommand);
+    assert_eq!(refused["code"], json!(code.as_str()));
+    assert!(detail.as_str().contains("already outstanding"), "{detail}");
+    assert!(!effect.outcome.changed_protected_state());
+}
+
+#[tokio::test]
+async fn a_denied_issuance_records_no_effect_and_no_token() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, _alice) = bootstrap_admin(&client, &base).await;
+    let (status, role) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({ "kind": "role", "name": "ordinary", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let outsider = role["principal_id"].as_str().unwrap().to_string();
+
+    let (status, receipt, body) = issue(
+        &client,
+        &base,
+        &outsider,
+        json!({
+            "tenant_id": tenant,
+            "node_id": "nod_00000000-0000-7000-8000-0000000001a3",
+            "host_claim": "host-a",
+        }),
+    )
+    .await;
+    assert_eq!(status, 403, "a role without tenant_admin is denied: {body}");
+    assert_eq!(token_count(&pool).await, 0, "the denial issued no token");
+    assert_eq!(
+        effect_count(&pool).await,
+        0,
+        "a denial never became an operation; the admission record already says denied"
+    );
+    assert!(effect_of(&pool, &tenant, receipt).await.is_none());
+}
+
+#[tokio::test]
+async fn a_malformed_node_identity_is_refused_before_any_admission_exists() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+
+    let (status, receipt, body) = issue(
+        &client,
+        &base,
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": "not-a-node", "host_claim": "host-a" }),
+    )
+    .await;
+    assert_eq!(status, 400, "a malformed node identity is refused: {body}");
+    // Deliberately NO receipt: this refusal happens before the transaction that
+    // would create an admission, so there is no record to name. An answer that
+    // named one would be advertising a record that does not exist.
+    assert!(
+        receipt.is_none(),
+        "a pre-admission refusal names no admission"
+    );
+    assert_eq!(token_count(&pool).await, 0);
+    assert_eq!(effect_count(&pool).await, 0);
+}
+
+#[tokio::test]
+async fn a_foreign_tenant_issues_nothing_and_leaves_the_other_tenant_untouched() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant_a, alice) = bootstrap_admin(&client, &base).await;
+    // A second tenant with its own administrator.
+    let (status, bob) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({ "kind": "human", "name": "bob" }),
+    )
+    .await;
+    assert_eq!(status, 200, "bootstrap bob: {bob}");
+    let tenant_b = bob["tenant_id"].as_str().unwrap().to_string();
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+
+    // Bob issues in his own tenant.
+    let (status, _, _) = issue(
+        &client,
+        &base,
+        &bob_id,
+        json!({
+            "tenant_id": tenant_b,
+            "node_id": "nod_00000000-0000-7000-8000-0000000001b1",
+            "host_claim": "host-b",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let before = token_count(&pool).await;
+    let b_effects = effect_count(&pool).await;
+
+    // Alice names BOB's tenant. Her grant does not select it.
+    let (status, _, body) = issue(
+        &client,
+        &base,
+        &alice,
+        json!({
+            "tenant_id": tenant_b,
+            "node_id": "nod_00000000-0000-7000-8000-0000000001b2",
+            "host_claim": "host-b",
+        }),
+    )
+    .await;
+    assert_eq!(status, 403, "issuing into another tenant is denied: {body}");
+    assert_eq!(token_count(&pool).await, before, "no token was created");
+    assert_eq!(
+        effect_count(&pool).await,
+        b_effects,
+        "a denial records no effect in any tenant"
+    );
+    // Alice's own tenant is untouched by the attempt.
+    let a_tokens: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM node_enrollment_tokens WHERE tenant_id = $1")
+            .bind(&tenant_a)
+            .fetch_one(&pool)
+            .await
+            .expect("count alice's tokens");
+    assert_eq!(a_tokens, 0);
+}
+
+#[tokio::test]
+async fn an_evidence_failure_rolls_the_token_back_and_the_route_recovers() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let body = json!({
+        "tenant_id": tenant,
+        "node_id": "nod_00000000-0000-7000-8000-0000000001c1",
+        "host_claim": "host-a",
+    });
+
+    // ⛔ THE discriminating control for this child. The guard mode is shared, so
+    // no lock-holding fixture can tell this repair from the one it replaced;
+    // what changed is that the token and its evidence are ONE commit. Under the
+    // superseded shape the token was inserted on the pool and no effect was
+    // written at all, so this control cannot even be expressed against it.
+    //
+    // NOT VALID applies to new rows only, leaving existing evidence untouched.
+    sqlx::query(
+        "ALTER TABLE administrative_effects \
+         ADD CONSTRAINT signoff_repair_3_3_4_10_1_evidence_fault CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("install the evidence fault");
+
+    // Observe, REMOVE THE FAULT, then assert: an assertion that fires while the
+    // fault stands leaks it into every later test in the suite.
+    let (status, receipt, refused) = issue(&client, &base, &alice, body.clone()).await;
+    let tokens_after_fault = token_count(&pool).await;
+
+    sqlx::query(
+        "ALTER TABLE administrative_effects \
+         DROP CONSTRAINT signoff_repair_3_3_4_10_1_evidence_fault",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the evidence fault");
+
+    assert_eq!(
+        status, 500,
+        "an evidence failure is not reported as success: {refused}"
+    );
+    assert!(
+        receipt.is_none(),
+        "a transaction that did not commit advertises no receipt"
+    );
+    assert_eq!(
+        tokens_after_fault, 0,
+        "the token did not survive its evidence"
+    );
+
+    // Exact recovery: with the fault gone the same request succeeds and records.
+    let (status, receipt, body2) = issue(&client, &base, &alice, body).await;
+    assert_eq!(status, 200, "the route recovers: {body2}");
+    assert_eq!(token_count(&pool).await, 1);
+    let effect = effect_of(&pool, &tenant, receipt).await.expect("recorded");
+    assert!(effect.outcome.changed_protected_state());
+}

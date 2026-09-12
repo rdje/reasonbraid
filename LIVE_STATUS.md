@@ -6,6 +6,31 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Node administration `.3.3.4.10` is censused and split (REPAIR-0114), and its
+first child `.10.1` (REPAIR-0115) puts enrollment-token issuance onto the guarded
+effect transaction. The census measured something worse than the parent's note
+assumed: **four of the five node administrative mutations carry no tenant
+predicate at all** — the three inbox verbs and the certificate revocation select
+rows by `node_id` alone, and revocation's tenant-bound existence probe is a
+separate pool query outside the mutation's transaction. That finding is annotated
+at `.3.5`, which owns real target ownership; `.10` owns putting the verification
+inside the mutating transaction. `.10.1` takes the **shared** guard, not the
+exclusive one `.9` took, and the reasons are measured: the refusal is decided
+atomically by one insert that does nothing on conflict, same-node contention is
+already settled by the partial unique index, and issuance touches nothing the
+reservation path reads. `expires_at` now runs from the transaction's own database
+time; every admitted answer carries the receipt, and the pre-admission validation
+refusal deliberately does not. **11 passed / 0 failed**; the affected set passes
+**6 suites / 84 tests**. FALSIFIED **7 passed / 4 failed** against the exact
+pre-`.10.1` handler, where the token COMMITS although its evidence could not be
+written (`left: 200, right: 500`). ⚠️ A shared-guard repair cannot be falsified by
+a lock-holding fixture in EITHER mode, because the superseded admission took the
+shared guard too — the discriminator is atomicity, and the ordering property is
+labelled a regression control rather than presented as proof. ⚠️ Reproduced and
+routed to `.3.5`, not introduced here: the one-unused-token index is global rather
+than per tenant, so one tenant's outstanding token both reveals itself to, and
+blocks, another tenant's administrator for the same node identity.
+
 Spend-breaker arm and reset are now ONE guarded transaction under `.3.3.4.9`
 (REPAIR-0113) — the SECOND family onto the effect transaction, and previously the
 weakest administrative path in the server: each verb admitted the caller under a

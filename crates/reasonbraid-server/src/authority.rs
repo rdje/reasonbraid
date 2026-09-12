@@ -47,12 +47,14 @@ pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTrans
 
 mod breaker;
 mod effects;
+mod node_admin;
 mod records;
 mod revocation;
 mod selection;
 
 pub(crate) use breaker::{administer_breaker_in_one_transaction, BreakerCommand, BreakerResult};
 pub use effects::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
+pub(crate) use node_admin::{issue_enrollment_token_in_one_transaction, TokenIssueResult};
 pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 pub(crate) use revocation::{revoke_in_one_transaction, RevocationResult, RevocationTarget};

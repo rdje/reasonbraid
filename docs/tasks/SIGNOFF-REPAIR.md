@@ -1076,6 +1076,35 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.11.4.5 — Repair the two defects this session's own work introduced
+
+- Opened: `active`; the director asked whether the two defects recorded in REPAIR-0092/0093 were being FIXED or merely written down. They were written down. Recording a defect is the first step, not the fix, and the second had been left as prose in a project whose whole thesis is that a rule living only in a doc is a suggestion.
+- Status: `active`; child `.1` is done, child `.2` is pending with its census already measured.
+- Both defects are in the ENFORCEMENT SPINE itself — the driver that runs on every commit and in CI — which is why they get a leaf rather than a footnote.
+- Verification / commit: per child.
+
+##### SIGNOFF-REPAIR.11.4.5.1 — The doctrine registry is data, so it must not be executable
+
+- Status: `done`; REPAIR-0094.
+- Reproduce: each registry entry is a bash DOUBLE-quoted string, so backticks in a description are command substitution. The description added in REPAIR-0092 contained them, and the enforcer printed `line 36: - : command not found` and `line 36: pending: command not found` while rendering that description with the backticked words silently MISSING — bash had executed them and substituted the empty result.
+- Why the instance fix was not enough: REPAIR-0092 removed the backticks and censused the other rows, but left the trap armed. Every other doctrine description in `DOCTRINE_ENFORCEMENT.md` uses backticks, so copying one into the registry is the natural next move, and the only symptom is stderr noise plus words vanishing from a description nobody re-reads.
+- The half that matters more than the output damage: the driver **executes** whatever a description contains, in the pre-commit hook and in CI. Today it ran `- Status:` and `pending` and got "command not found". A description carrying `$(...)` would be run the same way.
+- Fix: a self-guard at the top of `scripts/check_doctrines.sh` that reads its own SOURCE TEXT and refuses a backtick, `$(`, `${` or a bare `$` inside the registry block, placed BEFORE the array assignment — the only placement that prevents the execution rather than reporting it afterwards.
+- Verification: 15 checks green. FALSIFIED by reintroducing the exact original text — the guard exits 1, names line 12 and the offending entry, and no check runs; restoring the repair returns `=== all doctrines green ===`.
+- Commit: `REASONBRAID-REPAIR-0094 (leaf SIGNOFF-REPAIR.11.4.5.1): refuse shell expansion in the doctrine registry`.
+
+##### SIGNOFF-REPAIR.11.4.5.2 — A LOCKSTEP box may not claim a document the commit does not touch
+
+- Status: `pending`; the census is done and decisive, the check is not yet written.
+- Reproduce: commit `6bf0c40` (REPAIR-0092) carries a ticked LOCKSTEP box naming `MEMORY.md` and `LIVE_STATUS.md`, and staged neither. Cause chain: a scripted multi-edit hit a failed `assert`, the script exited non-zero, the compound command ran `git add -A && git commit` regardless, and `-A` staged whatever partial state existed. The commit succeeded with a checklist box that was false.
+- Why `TASK-ACCEPTANCE` cannot catch it: that gate proves the box is TICKED and CITES something re-runnable. It does not and cannot prove the cited edit landed. This is the complementary half.
+- census, run before proposing any rule, because the obvious rule is wrong: over the last 25 commits, 10 close a leaf, and of those `CHANGELOG.md` is staged 10/10 but `MEMORY.md` only 6/10, `LIVE_STATUS.md` 7/10 and `DEV_NOTES.md` 7/10. A blanket "closing a leaf must stage MEMORY" would assert a rule the project does not follow, would flag four pre-existing commits, and would not even catch `6bf0c40`, which did stage `CHANGELOG.md`.
+- census of the rule that DOES hold: of the 6 commits in that window adding a `**LOCKSTEP**` bullet naming a core live document, exactly **one — `6bf0c40`, this session's own — named a document it did not stage**. Zero false positives across the rest. Keying the gate on the author's own CLAIM rather than on a blanket requirement is what makes it sound: a leaf that does not claim `MEMORY.md` is not required to stage it.
+- Owns: `scripts/check_lockstep_claim.sh`, staged-diff-scoped like `TASK-ACCEPTANCE` and `TABLE-ARITY-RATCHET` — for each staged `docs/tasks/*.md`, take the ADDED lines containing `**LOCKSTEP**`, and require every core live document named there to be in the staged set. Register it and mirror it in `DOCTRINE_ENFORCEMENT.md`.
+- Known false-positive shape, to handle honestly rather than guess at: a box naming a document in order to say it is UNCHANGED. Prose negation detection is fragile, so follow the `GAP-CLAIM-CENSUS` precedent and provide an explicit escape in the same section — `lockstep: <doc> unchanged (<why>)` — rather than parsing intent.
+- Acceptance: the check must FAIL against `6bf0c40`'s staged shape and PASS against `c6a843f`'s, and its `--self-test` must prove both directions.
+- Verification / commit: pending.
+
 #### SIGNOFF-REPAIR.11.4.4 — A leaf's status can be contradicted inside its own section
 
 - Opened: `pending`; found while updating the frontier for `.11.4.3.1.2.27`.
@@ -1953,11 +1982,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1 | `SIGNOFF-REPAIR.7.3.3.4.1` | `pending` | drive a successful R2 acquisition through to its snapshot and derivations; `.11.5` builds the pipeline-stage registry from it |
-| 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 8 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 2 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
+| 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 4 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 5 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 6 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 7 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -1983,6 +2013,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.5.1`: `REASONBRAID-REPAIR-0094 (leaf SIGNOFF-REPAIR.11.4.5.1): refuse shell expansion in the doctrine registry`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.28`: `REASONBRAID-REPAIR-0093 (leaf SIGNOFF-REPAIR.11.4.3.1.2.28): make the remote run the authoritative pre-push gate`.
 
@@ -2301,3 +2333,12 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.5.1
+
+- [x] **REPRODUCE / ISSUE** — the enforcer printed `line 36: - : command not found` and `line 36: pending: command not found`, and rendered the TASK-STATUS description with its backticked words silently missing, because bash executed them as command substitution when assigning the registry array.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `scripts/check_doctrines.sh`: every registry entry is a bash DOUBLE-quoted string, so a backtick is command substitution rather than a Markdown code span. REPAIR-0092 fixed the instance and censused the rest but left the trap armed, and the driver executes whatever a description contains — on every commit through the pre-commit hook, and in CI.
+- [x] **FIX** — a self-guard reading the script's own source text, refusing a backtick, `$(`, `${` or bare `$` inside the registry block, placed BEFORE the array assignment so a breach is refused rather than executed. Prose in the registry; backticks stay in `DOCTRINE_ENFORCEMENT.md`, which is Markdown.
+- [x] **ADDRESSED (verified)** — the enforcer runs `=== all doctrines green ===` with 15 checks. FALSIFIED by restoring the exact original text: the guard exits 1 with `DOCTRINE-REGISTRY: the registry must contain no shell expansion — it is data, not code.`, names line 12 and the offending entry, and no check runs; restoring the repair returns all-green.
+- [x] **NO REGRESSION** — all 15 registered checks still pass and no check's behaviour changed; the guard only adds a precondition to the driver. No Rust source changed.
+- [x] **LOCKSTEP** — task tree, frontier, commit log, `DOCTRINE_ENFORCEMENT.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. The sibling defect is NOT claimed fixed: `.11.4.5.2` is pending with its census recorded, and it sits at frontier row 2.

@@ -18,6 +18,36 @@ set -uo pipefail   # deliberately NOT -e: run ALL checks, collect every result, 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+# --- Self-guard: the registry is DATA, so it must not be executable ----------
+#
+# Each entry below is a bash DOUBLE-quoted string, so a backtick or a `$(...)`
+# inside a description is command substitution — bash RUNS it when the array is
+# assigned, in the pre-commit hook and in CI. This is not hypothetical: a
+# description written with backticks around `- Status:` and `pending` printed
+# "line 36: pending: command not found" and rendered with those words silently
+# missing, because bash had executed them and substituted the empty result.
+#
+# The output damage is the visible half. The other half is that the driver every
+# commit and every CI run depends on will execute whatever a description happens
+# to contain. A registry is data; this refuses to let it be anything else.
+#
+# The scan reads this file's SOURCE TEXT and runs BEFORE the assignment below,
+# so a breach is refused rather than executed. Describe a check in prose here and
+# keep the backticked spelling for DOCTRINE_ENFORCEMENT.md, which is Markdown.
+registry_source() {
+  awk '/^DOCTRINES=\(/{inside=1; next} inside && /^\)/{exit} inside' "$1"
+}
+if offending="$(registry_source "${BASH_SOURCE[0]}" | grep -nE '`|\$\(|\$\{|\$[A-Za-z_]')"; then
+  echo "DOCTRINE-REGISTRY: the registry must contain no shell expansion — it is data, not code." >&2
+  printf '%s\n' "$offending" | sed 's/^/    /' >&2
+  echo "  A backtick or \$(...) here is command substitution: bash RUNS it when the" >&2
+  echo "  array is assigned, in the pre-commit hook and in CI, and the substituted" >&2
+  echo "  result silently replaces the words in the rendered description." >&2
+  echo "  Write the description in plain prose; DOCTRINE_ENFORCEMENT.md is where the" >&2
+  echo "  backticked spelling belongs, because that file is Markdown." >&2
+  exit 1
+fi
+
 # Universal registry. Each entry: "ID|what it proves|relative/path/to/check.sh"
 DOCTRINES=(
   "MEMORY-ARCH|durable 4-layer memory architecture invariants (MEMORY_ARCHITECTURE.md)|scripts/check_memory_architecture.sh"

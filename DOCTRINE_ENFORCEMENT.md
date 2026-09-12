@@ -52,7 +52,12 @@ own build gates, format checks, invariant proofs, etc.
 1. Write `scripts/check_<name>.sh` — cheap, deterministic, self-describing; exit nonzero
    with a one-line stderr message on breach. Keep it fast (heavy proofs belong in CI).
 2. Register it — universal → the `DOCTRINES` array in the driver; project → append it to
-   `scripts/check_doctrines.project.sh`.
+   `scripts/check_doctrines.project.sh`. ⛔ **Write the registry description in plain prose:**
+   each entry is a bash double-quoted string, so a backtick or `$(…)` there is command
+   substitution that the driver EXECUTES on every commit and in CI — measured once, it
+   printed `pending: command not found` and rendered the description with those words
+   silently missing. A self-guard at the top of the driver now refuses it before the
+   array is assigned. The backticked spelling belongs in the table above, which is Markdown.
 3. Mirror it in the table above (this file is the human-readable mirror of the registry).
 
 ## The task-acceptance checklist (every code-change leaf must pass)

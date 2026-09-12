@@ -433,3 +433,12 @@ stricter remotely. Nothing is removed, weakened or skipped; only four cheap
 local gates run before a push, and the full checkpoint becomes a deliberate
 diagnostic. The named trade: gate latency is now bounded by the ~300-commit push
 cadence, which remains the director's standing instruction and is unchanged.
+
+Two defects introduced by this session's own work are now task-tree owned under
+.11.4.5. The doctrine registry could contain shell expansion -- and the driver
+EXECUTED it, on every commit and in CI -- which is fixed and falsified under
+.11.4.5.1 (REPAIR-0094) by a self-guard that runs before the registry is
+assigned. The second, a LOCKSTEP box claiming a document its commit did not
+touch, is NOT fixed: its census is done and decisive (1 breach in 6 commits,
+zero false positives, and the obvious blanket rule measured and rejected), and
+it sits at frontier row 2 with its acceptance recorded.

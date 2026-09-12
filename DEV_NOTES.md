@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The census found a defect the leaf was not looking for
+
+- I opened the leaf for one thing — five leaves whose status contradicts itself — and the instrument I wrote to count them returned an absurd number: one section holding 18 status lines. The temptation was to fix the regex and move on. The absurd number was the finding: the tree uses `#######` and deeper, Markdown stops at 6, and those lines are not headings at all. 29 of them. The deepest leaves of the project's primary work-memory file were invisible as structure to anything that parses headings.
+- That is worth stating as a rule: **when an instrument returns a number that cannot be right, the instrument is usually fine and the corpus is wrong.** I nearly "fixed" a correct regex.
+- Both remedies preserve everything. `- Opened:` is what the stale line always meant, and the leaf id carries depth better than hashes ever did — the identifier `TREE.3.3.4.3.3.3.3.2.3.2` is ten levels of hierarchy in a string that renders anywhere.
+- Then I broke my own gate while writing it. The registry rows are bash double-quoted strings; my backticks became command substitution, the enforcer printed `pending: command not found`, and the description rendered with words missing. It was in the output the whole time. Reading tool output rather than skimming for the green tick is the only reason it did not ship.
+- promotion: declined (the durable form of both lessons is the registry itself — they are enforced now, not remembered, and `DOCTRINE_ENFORCEMENT.md` carries the measured rationale).
+
 ## 2026-09-12 — Find out whose seconds they are before you shrink the gate
 
 - An hour-long checkpoint invites exactly one reflex: cut something. The honest first move is to ask where the hour goes, and the answer here was not in the gate at all — it was macOS validating each freshly written executable on its first run, ~21.9s apiece on this volume and ~0.15s on the boot volume.

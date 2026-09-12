@@ -30,6 +30,8 @@ DOCTRINES=(
   "LESSON-PROMOTION|a new dated lesson in DEV_NOTES.md is PROMOTED to the retrievable layer (docs/knowledge or a decisions record gaining answers:) or EXPLICITLY DECLINED in its leaf — never silently dropped|scripts/check_lesson_promotion.sh"
   "ROUTING-EVIDENCE|a task leaf that routes a finding OUT to another tree records a ROUTING EVIDENCE section — what was measured, and whether the finding reproduces outside the family it is sent to|scripts/check_routing_evidence.sh"
   "GAP-CLAIM-CENSUS|a task leaf that ADDS a nothing-checks-X claim records the census it rests on, in the same section — such a sentence quantifies over the whole tree and is false the moment one reader exists|scripts/check_gap_claims.sh"
+  "HEADING-DEPTH|no tracked Markdown carries an ATX heading deeper than level 6 — seven hashes is a PARAGRAPH in GFM, so a tree that encodes depth in heading level silently stops being structure and its deepest leaves are attributed to the heading above them|scripts/check_heading_depth.sh"
+  "TASK-STATUS|a task-tree leaf carries exactly ONE Status line — a later one silently supersedes an earlier one, the frontier is written from these lines, and a leaf that closed while its first line still said pending sat on the frontier for seven commits|scripts/check_task_status.sh"
   "TABLE-ARITY-RATCHET|a staged markdown file may not RAISE the number of table rows whose cell count disagrees with their header — GFM silently drops the extra cells or pads the missing ones|scripts/check_table_arity.sh"
 )
 # Optional derived-artifact sync check (present only when the subsystem exists).

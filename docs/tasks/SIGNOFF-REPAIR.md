@@ -421,7 +421,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: observed revocation/issuance ordering and queued expiry; no orphan identity/grant/quota on storage refusal; concurrent same-name enrollment has one identity and honest replay. Frozen/new/foreign tenant and original snapshot controls. Card import's complete identity/grant/profile/receipt transaction remains `.11`.
 - Verification / commit: pending.
 
-####### SIGNOFF-REPAIR.3.3.4.3.3.1 — Support typed errors that roll back guarded work
+###### SIGNOFF-REPAIR.3.3.4.3.3.1 — Support typed errors that roll back guarded work
 
 - Status: `done`; REPAIR-0024. All 89 selected controls and focused strict lint pass; all results/shutdown consumed and both owned clusters absent.
 - Owns: private typed-error transaction entrypoint sharing the qualified connection/guard/lifetime implementation, while existing fixed-GuardError entrypoints retain their contract; standalone create_grant adopts the typed callback so its returned grant refusal rolls back provisional coordination state. Files: authority/transaction.rs, authority/issuance.rs, authority_issuance/authority_transaction tests, and matching book/live/decision evidence. No complete enrollment change yet.
@@ -435,7 +435,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Lockstep: roadmap/task frontier, MEMORY, LIVE_STATUS, CHANGELOG, DEV_NOTES, authority/qualification/roadmap book pages, transaction decision/INDEX, source evidence index and superseded historical adapter record updated. LIVE_STATUS categories and README objective/layout/commands unchanged; README remains 52 lines / 2,054 bytes. Full enrollment integration and dev caller/issuer policy remain separate owners.
 - Commit: REASONBRAID-REPAIR-0024.
 
-####### SIGNOFF-REPAIR.3.3.4.3.3.2 — Integrate and qualify the complete enrollment transaction
+###### SIGNOFF-REPAIR.3.3.4.3.3.2 — Integrate and qualify the complete enrollment transaction
 
 - Status: `done`; REPAIR-0025. Complete enrollment ordering/rollback passes 97 selected controls, final focused strict lint and book checks; all results/shutdown consumed and three owned clusters absent. Bootstrap recovery is explicitly tracked in the next child.
 - Owns: guard before enrollment replay and all authority/identity/quota/enrollment work, same-context boundary/grant helpers, fresh database time after relevant waits, typed rollback/error mapping, exact successful/replayed response compatibility and dev issuer semantics. Refine source/model/helper visibility choices after reading the complete handler and schemas; do not move validation ahead of replay without preserving its current behavior.
@@ -451,7 +451,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Lockstep: roadmap/task frontier, MEMORY, LIVE_STATUS, CHANGELOG, DEV_NOTES, authority/CLI/qualification/roadmap book pages, transaction decision/INDEX and source evidence index updated. README objective/layout/commands unchanged (52 lines / 2,054 bytes); LIVE_STATUS categories unchanged. Only card import retains the searched unordered grant/standalone boundary call pair. A newly identified client bootstrap-recovery source gap is tracked at `.3.3.4.3.3.3`, explicitly limited in the book and selected next; no complete client recovery or caller/issuer-admission claim.
 - Commit: REASONBRAID-REPAIR-0025.
 
-####### SIGNOFF-REPAIR.3.3.4.3.3.3 — Qualify and repair recovery of uncertain new-tenant bootstrap
+###### SIGNOFF-REPAIR.3.3.4.3.3.3 — Qualify and repair recovery of uncertain new-tenant bootstrap
 
 - Status: `active`; predecessor 01bd473 committed with all thirteen doctrines green, brief zero/untracked, clean tree and consumed escalated handoff census (handoff: OK). Split runtime qualification/contract, server protocol and CLI durable recovery before product changes.
 - Source candidate / gap census: api.rs enroll generates a fresh TenantId when tenant_id is absent; EnrollRequest has no stable bootstrap request key; the router exposes POST /v1/enrollments only and no tenant/bootstrap lookup route. ControlApiError's commit_outcome_unconfirmed response carries no generated tenant/principal identifier. CLI run_enroll builds kind/name plus optional tenant/actions, then stores IDs only after a successful response. Searches of the complete server route file, enrollment models/body, CLI enrollment send/state flow and current repair tree found no end-to-end bootstrap reconciliation contract. Existing request retry without tenant_id generates another tenant; names are only tenant-scoped. The qualified primitive proves COMMIT may finish after acknowledgment timeout, but a matched new-bootstrap response-loss/commit-timeout reproduction is still pending. This is a client recovery gap candidate, not a claim that the controlled rollback faults committed.
@@ -459,7 +459,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Immediate mitigation in the current book: new bootstrap uncertainty may require operator database reconciliation because a client has not received its generated tenant ID; do not suggest that retrying an identical name safely recovers it. Mark the remaining repair explicitly, rather than treating a truthful unconfirmed error as a complete recovery protocol.
 - Verification / commit: pending; next after REPAIR-0025.
 
-######## SIGNOFF-REPAIR.3.3.4.3.3.3.1 — Reproduce bootstrap uncertainty and select the recovery contract
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.1 — Reproduce bootstrap uncertainty and select the recovery contract
 
 - Status: `done`; REPAIR-0026. Actual bootstrap uncertainty/readback is qualified by 25 selected controls and focused strict lint; the explicit recovery contract is selected, with server/CLI implementation pending.
 - Owns: full request/response/router, CLI send/state persistence and candidate identity/schema source review; owned runtime probe of an actual new-bootstrap commit acknowledgment timeout followed by later authoritative committed readback, missing client identifiers and distinct repeated no-key bootstrap. Define a bounded explicit request identity, outcome replay/conflict and CLI pending-state contract that preserves intentional distinct new tenants and existing no-key behavior. No server/client recovery implementation in this child.
@@ -471,7 +471,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - promotion: promoted → docs/decisions/2026-09-09_bootstrap-recovery.md, indexed with four retrievable answers. Root live docs, roadmap/frontier, authority/CLI/qualification/roadmap book pages and evidence index synced; LIVE_STATUS categories and README objective/layout/commands unchanged. Hook-derived knowledge-map update is owned by this new decision record.
 - Commit: REASONBRAID-REPAIR-0026.
 
-######## SIGNOFF-REPAIR.3.3.4.3.3.3.2 — Implement and qualify explicit server bootstrap recovery
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.2 — Implement and qualify explicit server bootstrap recovery
 
 - Status: `done`; predecessor 8407501 committed with all thirteen doctrines green, zero/untracked brief, clean tree and consumed escalated handoff census (handoff: OK). The selected contract is docs/decisions/2026-09-09_bootstrap-recovery.md.
 - Owns: bounded optional request identity and durable outcome binding within the guarded bootstrap transaction, exact successful replay/conflict/error behavior, safe existing-tenant collision handling and same-volume migration delivery. Preserve existing no-key semantics and normal tenant-scoped replay; no claim of keyed recovery for callers that omit the key. Include matched feature baseline, both concurrent orders, failure/uncertainty/readback, strict decoding and regression evidence. Full caller/issuer admission remains `.3.5`.
@@ -489,13 +489,13 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **FIX / LOCKSTEP:** canonical optional request field, private bounded guarded coordinator/strict codec, migration 0057 and 24 named FK cleanup lists; artifact/decision/roadmap/book/live-doc synchronization with accurate no-key/CLI limits. The sampled new plaintext fixture's native trust lookup is removed and broader .11.2 work explicitly owned. Director semantic introspection discussion is preserved as a .6.4 assessment proposal. README 52 lines/2054 bytes and LIVE_STATUS category values are unchanged.
 - Commit workflow: REPAIR-0027; exact commit message and resulting ID are recoverable from the leaf-bearing Git history. All verification is complete; next child is durable CLI persistence.
 
-######## SIGNOFF-REPAIR.3.3.4.3.3.3.3 — Persist and recover the CLI bootstrap request
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3 — Persist and recover the CLI bootstrap request
 
 - Status: `active`; clean transition after 8c08558, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. Refine into bounded publication/recovery children from the committed server protocol and local-state source review before product edits.
 - Owns: durable bounded request identity before sending a new-tenant bootstrap, exact pending request/reply recovery across response loss and local-state write interruption, payload-conflict refusal, successful completion/cleanup, deliberate new requests remaining distinct, project-local storage and live CLI qualification. Do not automatically retry unconfirmed work without the keyed authoritative outcome mechanism.
 - Verification / commit: pending.
 
-######### SIGNOFF-REPAIR.3.3.4.3.3.3.3.1 — Qualify durable local state publication and writer exclusion
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.1 — Qualify durable local state publication and writer exclusion
 
 - Status: `done`; durable storage REPAIR-0028 and whole-writer REPAIR-0029 are qualified. Parent activated only after clean 8c08558 and consumed handoff census. Own this bounded prerequisite before pending HTTP recovery.
 - Source census at 8c08558, before REPAIR-0028: CLI lib.rs Config/StateFile, run_enroll and run_thread_create are the only current state writers; main.rs eagerly reads state before dispatch. StateFile::save writes in place with no synchronization or lock. CLI live harness has two fixed target_tmp directories and sets an absolute runtime state path containing lexical parent components. rb-site already requires a discovered repository and fails closed when Unix storage verification is unavailable. No preexisting common Rust project-root/state-store helper or fs2/fs4 dependency was found; cached rustix 1.1.4 provides safe openat/renameat/unlinkat/flock/fsync and Apple fullfsync wrappers.
@@ -505,7 +505,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Integration boundary: both state writers must merge under the same process lock; local publication must precede reporting success. This child does not yet persist a bootstrap request before HTTP and must leave that limitation explicit. Pending request/reply handling belongs to .2; end-to-end interruption/restart coverage to .3.
 - Verification / commits: REPAIR-0028 qualifies twelve storage/library controls; REPAIR-0029 qualifies nineteen selected controls, final all-target CLI strict lint and book checks. All results/shutdown consumed; unique fixtures and the owned CLI PostgreSQL cluster absent. Pending request/recovery retains the following child.
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1 — Implement qualified durable local state storage
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.1 — Implement qualified durable local state storage
 
 - Status: `done`; REPAIR-0028. One bounded StateFile storage-API slice. Baseline, filesystem contract and its implementation are combined before any product edit so the desired regression controls will be green at commit. The separately drafted uncommitted mechanism-only/implementation children are refined into this unit; no published child is abandoned.
 - Root cause observed before product changes: `cargo test --locked -p reasonbraid-cli --test state_publication -- --nocapture --test-threads=1` returned rc=101, one pass/three failures (48.89s build, 0.02s execution). The old reader sees replacement bytes; symlink and hardlink saves both succeed and modify the separate owned target; save ignores an independently held OS lock. Missing-state load creates no directory. Python holder readiness/kill/wait were consumed; unique fixtures are absent. File and directory fsync/fullfsync probes pass on repository device 16777244; the exact probe is removed. Evidence: docs/tasks/artifacts/signoff_review/cli-state-publication.md.
@@ -520,7 +520,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **FIX / LOCKSTEP:** strict bounded repository-volume StateFile load/save, process-lifetime lock, synchronized descriptor-relative replacement, exact reserved-work preservation/recovery and explicit unsupported-platform refusal. Canonicalize the existing live fixture root helper only. New decision/book page, source evidence, roadmap and live-doc pointers describe the full-snapshot boundary accurately. README remains 52 lines/2054 bytes; LIVE_STATUS category values unchanged.
 - Commit workflow: REPAIR-0028; exact message and resulting ID are recoverable from the leaf-bearing Git history. Following .1.2 integrates actual CLI read/modify/write lifetimes, then pending request flow and restart qualification continue.
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.2 — Integrate both CLI state writers under one lock
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.1.2 — Integrate both CLI state writers under one lock
 
 - Historical qualification correction (2026-09-10, .11.4.3.1.2.11.1): the earlier release controls did not retain an inherited descriptor. The actual library now reproduces post-completion/error/cancellation contention with such a child; explicit-release repair .2.11.2 now supplies the missing normal-release control and correction. Preserve original controls and do not generalize their single-owner process-loss result.
 
@@ -535,7 +535,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **FIX / LOCKSTEP:** one private held store before HTTP through fresh selection/merge/synchronized publication; preserved public explicit-principal API, new named entrypoint and no eager writer read in main. Unique live CLI fixtures, bounded child output/wait and consumed server/pool shutdown replace fixed startup deletion/unbounded fixtures. Book, decision, roadmap, live-doc and artifact pointers agree; the new bounded-HTTP risk is explicitly owned by the pending-request child. README remains 52 lines/2054 bytes; LIVE_STATUS category values unchanged.
 - Commit workflow: REPAIR-0029; exact message and resulting ID are recoverable from the leaf-bearing Git history. Pending request/reply/deadline protocol remains .3.2; no unkeyed server-replay guarantee is inferred from local exclusion.
 
-######### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2 — Persist and recover the pending bootstrap request
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2 — Persist and recover the pending bootstrap request
 
 - Status: `active`; follows clean f2c29c3, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. Refine this protocol into bounded children before product edits.
 - Owns: bounded strict pending request/version/server binding, canonical client RequestId before HTTP, exact request reuse, pending conflict refusal, strict complete response validation, same locked state merge and durable pending cleanup only after publication. Retain the key after transport/commit/reply/state-write uncertainty. Preserve deliberate new invocation and existing-tenant semantics. Use only the qualified storage primitive; no direct in-place writer or ambiguous stale-lock bypass.
@@ -544,7 +544,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Contract boundaries: canonical request key and canonical configured server URL, exact name/effective request binding, saved original ignored action input for stable resends, strict complete outcome/key/source-ID checks, no plaintext URL credentials/query/fragment in persisted endpoint identity, and no claim that a URL proves a replacement database is the same authoritative store. A changed server/name refuses unresolved pending work. Preserve all unrelated maps and refuse malformed metadata before effects. Intermediate persistence needs a borrowed Writer method so a successful pending publication does not release the guard.
 - Verification / commit: each bounded child below gets matched controls and a complete commit. The final parent claim waits for all children; the following .3 still owns broader interruption/restart qualification.
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1 — Qualify the versioned bootstrap recovery record
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.1 — Qualify the versioned bootstrap recovery record
 
 - Status: `done`; REPAIR-0030. First bounded protocol prerequisite activated after clean f2c29c3.
 - Owns before edits: strict public data records in a private bootstrap_state module/reexports, StateFile optional recovery metadata and explicit version-two validation, root/record/object shape checks, canonical request/endpoint/outcome binding, preserved legacy format and bounded serialization. Extend the private Writer with a borrowed persistence method reused by consuming publish, retaining exclusion across multiple snapshots. Name all actual StateFile struct-literal callers before changing its shape; the source census finds only the library definition and three test constructors, all using Default update syntax.
@@ -559,7 +559,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **FIX / LOCKSTEP:** strict version-two public recovery records and preserved legacy shape; exact encoded-replacement continuity against current disk state, borrowed synchronized persistence and pending refusal in ordinary writers. The book/decision describe bounded retained history, explicit recovery intent and actual current CLI limitations. All startup observations/deadline/result/retry evidence is retained; no OS security setting, attribute or signature change. README 52 lines/2054 bytes and LIVE_STATUS category values unchanged.
 - Commit workflow: REPAIR-0030; exact message/resulting ID are recoverable from leaf-bearing Git history. Keyed CLI/explicit-resume flow remains .2.2, deadlines .2.3, reconciliation .2.4 and broader restart qualification .3.
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.2 — Persist the request and recover a complete keyed outcome
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.2 — Persist the request and recover a complete keyed outcome
 
 - Status: `done`; REPAIR-0031. Activated after clean b8dd415, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census.
 - Owns: integrate new-human enrollment before HTTP, canonical stable server/request binding, exact pending reuse/conflict refusal, strict keyed response validation, staged durable principal/completed-receipt publication and pending cleanup under one guard. Add --resume-bootstrap for explicit recovery from pending or the retained most recent completed request; refuse missing/conflicting recovery rather than silently creating a new tenant. Preserve normal intentional fresh invocation and existing-tenant behavior. Qualify the output-acknowledgment boundary with a real process and owned stdout backpressure; do not infer user receipt from file publication. Keep public enrollment convenience behavior compatible through a deliberate recovery entrypoint.
@@ -574,14 +574,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit workflow: REPAIR-0031; exact message/resulting ID are recoverable from leaf-bearing Git history. All unique writer/e2e/record/state/unit/sync-probe fixtures and owned cluster absent. After clean commit and consumed handoff census, activate .2.3.1 for actual capacity reproduction and pre-dispatch repair, then .2.3.2 transport/reply bounds. Reconciliation and broader interruption qualification remain .2.4 and .3; no complete-client/power-loss or authenticated endpoint-continuity claim.
 
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3 — Bound HTTP waits without losing pending request identity
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3 — Bound HTTP waits without losing pending request identity
 
 - Status: `active`; follows clean a3fca5e and consumed handoff census. Capacity preflight takes priority before peer deadline integration; bounded children are explicit below.
 - Newly owned source-risk follow-up before measurement: pending publication and outcome publication have different encoded sizes. A near-limit valid preexisting map may admit the pending snapshot but reject the completed receipt/mapping after remote creation. The .2.2 source audit owns a bounded serialization-size counterexample under target/cli-bootstrap-controls; this child owns matched real-CLI reproduction and a pre-dispatch capacity check, with exact preserved bytes/zero-request refusal and adjacent fitting positive controls. Do not mistake a retained key for proof that the current store has capacity to publish completion. Existing local-write recovery claims remain limited to retained identity and reported uncertainty.
 - Owns: reproduce the pinned no-timeout behavior using an owned stalled response, choose explicit connect/whole-request budgets, retain pending identity on transport/timeout and release local exclusion. Preserve real error phase and forbid automatic fresh-key retry after an uncertain response. Qualify same-key successful recovery, malformed/oversized replies and ordinary CLI HTTP compatibility. Any wider client behavior change must be explicit in docs and focused controls.
 - Verification / commit: pending.
 
-########### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1 — Refuse bootstrap dispatch when completion cannot fit
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1 — Refuse bootstrap dispatch when completion cannot fit
 
 - Status: `done`; REPAIR-0032, activated after clean a3fca5e, thirteen green doctrines, zero/untracked brief and consumed escalated census.
 - Owns: reproduce the near-limit pending-versus-completion capacity case with the real CLI and an owned loopback dispatch counter, then validate completion capacity before new remote creation under the existing guard. Use the real state codec and exact canonical outcome/source field bounds, preserving all unrelated maps and existing pending identity. Refusal must preserve original bytes, send zero HTTP and release exclusion; a fitting adjacent control must still complete and preserve maps. No invented server outcome may be published or returned as evidence. Qualify any sizing placeholder by the validated wire representation rather than a hand-maintained magic byte allowance.
@@ -595,19 +595,19 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit workflow: REPAIR-0032; exact message/resulting ID are recoverable from the leaf-bearing history. All jobs/results and unique fixture lifetimes consumed. After clean commit/brief and escalated handoff census, the scheduled pre-push checkpoint is .11.4.3.1; return afterward to .2.3.2 bounded transport, .2.4 reconciliation and .3 restart qualification.
 
 
-########### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2 — Bound transport and reply resources while preserving recovery
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2 — Bound transport and reply resources while preserving recovery
 
 - Status: `pending`; follows completion-capacity preflight.
 - Owns: stalled-peer baseline, explicit connect/whole-request and reply-size bounds, retained original pending identity on refusal/timeout, released exclusion and successful same-key recovery. Preserve error phase and ordinary CLI HTTP behavior, with selected strict lint/book/live checks. Reconcile configured endpoint/redirect behavior as part of the same bounded transport review without widening caller or server trust claims.
 - Verification / commit: pending.
 
-########## SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4 — Reconcile request recovery integration and focused compatibility
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4 — Reconcile request recovery integration and focused compatibility
 
 - Status: `pending`; follows schema, keyed flow and bounded HTTP.
 - Owns: exact request/state/API consumer census, removal of obsolete recovery paths, completion of book examples and selected real CLI/server compatibility. Reconcile all intermediate limitations and carry remaining process/filesystem/server interruption cases into the .3 qualification leaf. No complete power-loss, endpoint-authentication or universal automatic-retry claim.
 - Verification / commit: pending.
 
-######### SIGNOFF-REPAIR.3.3.4.3.3.3.3.3 — Qualify CLI interruption, restart and compatibility
+###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.3 — Qualify CLI interruption, restart and compatibility
 
 - Status: `pending`; refine from the implemented server/client/store protocol.
 - Inherited-descriptor boundary added by .11.4.3.1.2.11.1 before further changes: qualify abrupt writer death with a surviving inherited lock reference, exact descendant lifetime/cleanup and safe recovery policy. Normal Drop cannot establish that crash guarantee; never unlink a lock or treat same-user unrelated processes as authorized cleanup. This concrete restart work remains pending, separate from the immediate normal/error/cancellation release repair.
@@ -1078,18 +1078,21 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.11.4.4 — A leaf's status can be contradicted inside its own section
 
-- Status: `pending`; found while updating the frontier for `.11.4.3.1.2.27`.
-- Finding: `.7.4.1` and `.7.4.2` each open with `Status: `pending`` and then carry `Status: `done`` further down the SAME section, with a real commit (`REPAIR-0068`, `REPAIR-0071`). A careful reader takes the later line; a reader who stops at the first one — or any script that reads the first match — gets the opposite answer. `.7.4.1` was still sitting at row 2 of the Current Frontier as a result, seven commits after it closed.
-- census of the ENFORCERS, which is the claim that can be refuted by one counterexample: `ls scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 21 registered checks, and `grep -ln 'Status:' scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 0; widened to `git grep -ln 'Status: *`' -- scripts knowledge-map .githooks | wc -l` -> 0. No check reads a leaf's status line, so a contradicted status is caught by care alone.
-- census of the AFFECTED LEAVES: not run (the two instances above were found incidentally while editing the frontier, not by enumeration). Enumerating every leaf section carrying two or more `Status:` lines is this leaf's first task, and the count is deliberately not guessed here — a search hit-count is a population, not a defect count, and these must be classified before any number is published.
-- Owns: enumerate the population, decide whether the convention is one status line per leaf or an explicit supersession marker, correct the drifted sections, and mechanize whichever is chosen. A leaf whose own status is ambiguous is not a durability property this project can assert by care.
-- Why it is not fixed inline: the correction is a whole-tree sweep plus a new enforcer, and `.11.4.3.1.2.27` is a browse-worker contract repair. Routing it keeps both commits honest.
-- Prior art for the shape: `BOOK-FRONTIER` guards the BOOK against a stale copy of the frontier. Nothing guards the tree's own rows against a leaf that closed.
-- Verification / commit: pending.
+- Opened: `pending`; found while updating the frontier for `.11.4.3.1.2.27`.
+- Status: `done`; REPAIR-0092. Two defects, both mechanized.
+- Finding as opened: `.7.4.1` and `.7.4.2` each began `Status: pending` and carried `Status: done` further down the SAME section, with a real commit. A careful reader takes the later line; a reader who stops at the first — or any tool that takes the first match, which is the obvious way to write it — gets the opposite answer. `.7.4.1` sat at Current Frontier row 2 for seven commits after it closed, for exactly that reason.
+- census of the ENFORCERS, the claim one counterexample refutes: `ls scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 21 registered checks, `grep -ln 'Status:' scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 0, widened to `git grep -ln 'Status: *`' -- scripts knowledge-map .githooks | wc -l` -> 0. Nothing read a leaf's status line.
+- census of the AFFECTED LEAVES, run here: **5 sections** across every tracked tree, all in `SIGNOFF-REPAIR.md` — `.11.5`, `.11.4.3.1.2.14`, `.7.4.1`, `.7.4.2`, `.11.4.3.1.2.21`. Each opened with one state and closed with another, and never revised the first.
+- **A SECOND defect, found BY that census and not suspected when the leaf was opened.** The first census reported one section holding 18 status lines. It holds one, and had swallowed five children: the tree uses `#######` and deeper for its nested leaves, and **an ATX heading stops at level 6 in CommonMark and GFM alike**. Seven hashes is a paragraph that starts with hashes. Measured across the trees: **29 such lines, at levels 7 through 11, every one in `SIGNOFF-REPAIR.md`**. Their content belongs, for any heading-aware reader, to the nearest real heading above them — which is why the tree's deepest leaves, the ones under active work, were invisible as structure to the project's own instruments.
+- Fix: the opening line becomes `- Opened:`, which is what it always meant, so one `- Status:` states what is true now and every word of provenance survives; and every over-deep heading is capped at `######`, because the leaf id already carries the depth and carries it further than six levels ever could. 5 statuses renamed, 29 headings demoted, nothing deleted.
+- Mechanized both, so neither can recur: `scripts/check_task_status.sh` (TASK-STATUS) and `scripts/check_heading_depth.sh` (HEADING-DEPTH), each with a `--self-test`, both registered in `scripts/check_doctrines.sh` and mirrored in `DOCTRINE_ENFORCEMENT.md`. Both skip fenced code blocks, so a template or a shell comment inside a fence is not a breach.
+- Defect found in this leaf's own work, and fixed here: the registry entries are bash double-quoted strings, so the backticks in the first TASK-STATUS description ran as command substitution — the enforcer printed `line 36: pending: command not found` and the backticked words vanished from its output. The description is now backtick-free, and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0 for the whole registry.
+- promotion: declined (the durable statement is the doctrine registry itself — both rules are now enforced rather than remembered, which is the strongest form this project has; `DOCTRINE_ENFORCEMENT.md` carries their rationale verbatim).
+- Commit: `REASONBRAID-REPAIR-0092 (leaf SIGNOFF-REPAIR.11.4.4): gate a leaf's status and Markdown's heading ceiling`.
 
 ### SIGNOFF-REPAIR.11.5 — Assess the verification strategy for a networked agent platform
 
-- Status: `pending`; captured 2026-09-11 at the director's request. Proposal only — no pivot, and no change to the accepted §19 test strategy.
+- Opened: `pending`; captured 2026-09-11 at the director's request. Proposal only — no pivot, and no change to the accepted §19 test strategy.
 - Why it was raised: the director asked how this project intends to exercise its corners, given an agent network over a LAN or the Internet, and whether MCP helps. The answer rests on measured evidence rather than opinion: of the six defects repaired in `REPAIR-0060`–`0068`, NONE was a wrong return value. Each was an identity, lifetime, ordering, concurrency or environment property, found by an instrument that asked the operating system or the catalogue a question — `ps`, `pg_namespace.nspacl`, a process-table probe, a distinctness counter, and a stage census.
 - Owns: assess the proposal in `docs/tasks/artifacts/signoff_review/verification-strategy-proposal.md` against ROADMAP §19, and decide which parts become tracked work. Its four ranked proposals are a falsification requirement for new controls, a pipeline-stage coverage registry, the unbuilt `reasonbraid-simulator` with invariants over the event log, and an adversarial concurrency lane. Its MCP finding is that MCP widens reachability and supplies an external conformance yardstick, but caught none of the six defects, is itself unqualified on its wire (`.6.1`–`.6.3` open), and must stay in a conformance lane rather than the correctness lane per ROADMAP §25's stop/reframe trigger.
 - Binding constraint on any outcome: the full checkpoint already takes roughly two hours with about 2,982 seconds unaccounted (`.11.4.3.1.2.15`). New lanes arrive with a tiering story or they get routed around, and a gate people route around is a gate that lies.
@@ -1160,7 +1163,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: every project-owned compiler/package/cache/temp/output path derives from the checkout; installed image tools remain documented read-only inputs. Wire the existing Python unit and live runner controls, build required worker binaries before runtime checks, require the demo explicitly and make skip boundaries visible. Qualify launcher routing/locality/refusal controls and syntax locally; actual GitHub execution is later evidence. Do not claim browser qualification from an absent-browser skip. Any larger independent defect gets its own child.
 - Verification / commit: REPAIR-0034–0036 qualify the launchers, scanner setup and complete source wiring. Eight environment and thirteen scanner controls, eight archive checks, native version/redaction probes, fifty combined Python controls and YAML/shell/omission/book checks pass. Full runtime gates remain separate; see each child for exact scope.
 
-####### SIGNOFF-REPAIR.11.4.3.1.3.1 — Provide the repository-local CI environment launcher
+###### SIGNOFF-REPAIR.11.4.3.1.3.1 — Provide the repository-local CI environment launcher
 
 - Status: `done`; REPAIR-0034.
 - Owns before changes: new scripts/ci_env.py, focused scripts/tests/test_ci_env.py controls and task-owned target/ci-workflow-controls probes. Reuse project_env store validation and the existing supervised installer process primitive; do not refactor unrelated runner behavior. Establish local stores before any installer/command, provision the repository-pinned compiler only when requested, preserve installed OS/rustup as read-only inputs, and exec the requested command from the current root with bounded installer cleanup. Remove the documented ambient database/provider/scanner overrides in CI; do not claim an arbitrary filesystem sandbox.
@@ -1169,7 +1172,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: REPAIR-0034; after clean commit/brief and consumed handoff census, select .3.2 scanner setup.
 - promotion: promoted → docs/decisions/2026-09-09_ci-environment.md, indexed with three answers. CI/deployment guidance, task/frontier, live records and hook-derived map updated; README and LIVE_STATUS categories unchanged.
 
-####### SIGNOFF-REPAIR.11.4.3.1.3.2 — Pin and contain CI scanner installation
+###### SIGNOFF-REPAIR.11.4.3.1.3.2 — Pin and contain CI scanner installation
 
 - Status: `done`; REPAIR-0035 after clean 674c3b1 and consumed handoff census.
 - Owns before changes: scripts/ci_scanners.py and focused scripts/tests/test_ci_scanners.py if a dedicated driver is needed; target/ci-workflow-controls/scanners source/download/fixture probes; scanner installation/check driver, exact source/version/checksum probes, focused integrity/locality/refusal controls and supply-chain tool documentation. Read-only git ls-remote resolved cargo-deny-action v1 to ef301417264190a1eb9f26fcf171642070085c5b, rc=0. Retrieved v1 Dockerfile declares Rust 1.71.0 and cargo-deny 0.14.21; the local policy and lockfile require the modern pinned toolchain/cargo-deny 0.20.2 path. Source mismatch is established; remote runtime failure is not claimed.
@@ -1181,7 +1184,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: REPAIR-0035; after clean commit/brief and consumed handoff census, select .3.3 workflow wiring.
 - promotion: promoted → docs/decisions/2026-09-09_ci-scanners.md with four indexed answers. Operator CI/book guidance, task/frontier and live records synchronized; README, policy values and LIVE_STATUS categories unchanged.
 
-####### SIGNOFF-REPAIR.11.4.3.1.3.3 — Wire complete local CI commands into workflows
+###### SIGNOFF-REPAIR.11.4.3.1.3.3 — Wire complete local CI commands into workflows
 
 - Status: `done`; REPAIR-0036 after clean f07e214 and consumed handoff census.
 - Owns before changes: .github/workflows/{rust,doctrines,supply-chain}.yml, narrowly required command glue and focused workflow-routing/syntax probes under target/ci-workflow-controls/wiring. Include book build verification with a pinned on-volume tool if needed to complete the checkpoint matrix; no change to book content/qualification is inferred from wiring. Installed runner OS/rustup/PostgreSQL/browser inputs are read-only dependencies whose presence/version must be checked. Replace ambient/default action stores with the qualified launcher/scanner path; wire all Python controls, worker binaries, explicit full demo, and required browser availability/execution reporting. Preserve strict gates and normal push/PR triggering.
@@ -1213,7 +1216,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 - Closure: fifteen final integration controls, five separately recorded unchanged-source unit controls, strict lint and native/source/book evidence qualify the worker/test lifetime prerequisite. All results consumed; twenty-six final groups absent, nine historical failed fixtures retained. Exact matrix and limits: docs/tasks/artifacts/signoff_review/browser-combined-qualification.md. Compiler-artifact .6 is next before full checkpoint .2.
 
-####### SIGNOFF-REPAIR.11.4.3.1.5.1 — Bound browser test origins and worker process groups
+###### SIGNOFF-REPAIR.11.4.3.1.5.1 — Bound browser test origins and worker process groups
 
 - Status: `done`; REPAIR-0038.
 - Owns before changes: crates/reasonbraid-browse/tests/browser_roundtrip.rs, crates/reasonbraid-browse/tests/support/mod.rs, necessary dev-dependency edges in its Cargo.toml/Cargo.lock, and generated target/browser-lifetime-controls evidence. Production main.rs is read-only in this child. Reuse existing pinned process/Unix primitives where possible; installed Chrome, Rust and OS inspection tools are necessary read-only inputs. All origins, logs, worker input/output, profiles and fixture directories derive from the repository volume.
@@ -1226,7 +1229,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: REPAIR-0038; after clean brief/commit and consumed handoff census, select production browser ownership .5.2. Production main.rs and README are unchanged; lockfile adds only two already-locked test edges. No full CI, remote result or push is claimed.
 - promotion: promoted → docs/decisions/2026-09-09_browser-test-lifetimes.md with three indexed answers. CI/book guidance, live records and task frontier align; qualification categories unchanged.
 
-####### SIGNOFF-REPAIR.11.4.3.1.5.2 — Own production browser storage and shutdown across every outcome
+###### SIGNOFF-REPAIR.11.4.3.1.5.2 — Own production browser storage and shutdown across every outcome
 
 - Status: `done`; REPAIR-0039.
 - Owns before changes: production main.rs and narrowly required modules/dependencies, unique private on-volume profile/cache/scratch, explicit browser process ownership through launch/connect/render and bounded success/error/timeout shutdown, joined handler/network tasks and safe retention when cleanup cannot be confirmed. Inspect the pinned APIs before selecting the minimal complete ownership mechanism; do not rely on cancelling Browser::launch followed by background Drop as proof of reaping. Broader network/sandbox/resource policy remains .7.2.
@@ -1242,7 +1245,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: REPAIR-0039; combined .5.3 follows only after clean brief/commit and consumed handoff census. Parent transport/termination .7.3.1, retained-data/container .7.3.2 and uncaptured startup waits .11.2 remain open; no full CI, remote result or push.
 - promotion: promoted → docs/decisions/2026-09-09_browser-production-lifetimes.md, three indexed answers; live/book/task records align without changing qualification categories.
 
-####### SIGNOFF-REPAIR.11.4.3.1.5.3 — Close the browser lifetime qualification matrix
+###### SIGNOFF-REPAIR.11.4.3.1.5.3 — Close the browser lifetime qualification matrix
 
 - Status: `done`; REPAIR-0040.
 - Owns: combined real-browser failure/concurrency regression, source/skip/process/store census and live/book checkpoint reconciliation after .5.1/.5.2 are committed. Any broader defect gets a concrete owner before repair; no absent-browser or ignored-provider pass is counted as runtime qualification.
@@ -1340,7 +1343,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: preserve original failures; make cleanup respect the existing live foreign keys without disabling constraints, broad CASCADE, reordered-suite concealment or production behavior changes. Qualify the actual affected fixtures with relevant MCP/budget residue and independently inspect the remaining dependency graph. Add durable regression coverage proportionate to this repeated fixture-contract failure; retain historical failed databases, consume all checks/cleanup, sync live/book/task records and commit before the full checkpoint resumes. Broader operational and arbitrary fixture-safety work remains .11.2/.11.3.
 - Verification: children .2.7.1–.4 are complete; all original 25 plans now use checked cleanup, and the final 169-test affected sequence passes. Original failures and intermediate partial censuses remain historically accurate. REPAIR-0048/0049/0053/0054 carry the primitive, caller closures and final coverage; separate REPAIR-0050/0051/0052 correct exposed authority/CLI/clock defects. Full checkpoint .2 remains pending.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.7.1 — Qualify a shared fixture cleanup-plan check
+###### SIGNOFF-REPAIR.11.4.3.1.2.7.1 — Qualify a shared fixture cleanup-plan check
 
 - Status: `done`; bounded first child of .2.7.
 - Owns before changes: shared test-only cleanup support under crates/reasonbraid-server/tests/support, focused existing PostgreSQL guard tests, actual MCP-listen → identity, selected spend-breaker → CLI and node-work → partial-fixture reproductions, and diagnostic records under target/fixture-dependency-controls. Use the current disposable-database ownership gate and consumed process supervisors; preserve every original failed database/log.
@@ -1356,7 +1359,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — format, strict all-target/all-feature server lint, book and independent source/rendered/process verification pass, exit zero. Fourteen recorded groups are absent; 336 other existing source files, twenty-five caller plans, production schema/manifests/suite registry, README and LIVE_STATUS categories are unchanged. Nine rendered markers and git diff --check pass. All outcomes are consumed; original failures remain preserved, with no full-CI or push claim.
 - [x] **FIX / LOCKSTEP** — explicit child-before-parent validation on one verified connection precedes all DELETE statements; typed refusals and SQL causes survive. The artifact, indexed decision, book/CI guide, live records and task frontier describe the qualified primitive, non-atomic late-error limit and pending caller migrations accurately.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.7.2 — Repair and adopt checked node-fixture plans
+###### SIGNOFF-REPAIR.11.4.3.1.2.7.2 — Repair and adopt checked node-fixture plans
 
 - Status: `done`; started from clean 4e087d525055cb6ef7b02ff1fad52388dddd02da after REPAIR-0048, thirteen green doctrines, zero/untracked brief and consumed native handoff census. Diagnostics and final receipts live under target/node-fixture-controls.
 - Owns: the fourteen original explicit node-plan fixtures named in .2.7, their missing MCP-listener entry and the CLI spend-breaker entry, explicit declarations for any existing cascade-dependent resource tables, integration with the qualified shared checker and actual affected fixture regressions with representative live residue. Keep each fixture's unrelated deployment-state policy intact; .2.6's certificate regression remains mandatory.
@@ -1377,7 +1380,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — format, strict all-target/all-feature server/CLI lint, book and independent scope/process/rendered checks return zero. Thirty-six recorded groups are absent; eight successful databases are removed and all four new/three earlier failure databases remain stopped. The two affected assertion failures reproduce with exact pre-edit fixtures and unchanged production bytes; their repair remains explicitly required under .2.8/.2.9. All 325 other existing source files, eleven other plans, production/schema/manifests/registry, README and LIVE_STATUS categories are unchanged; twelve rendered markers and diff checks pass. All results are consumed; no whole-suite/full-CI green claim.
 - [x] **FIX / LOCKSTEP** — fourteen callers now use the qualified checker with listener/breaker and explicit cascade descendants. The artifact, indexed fact, book, CI/live records and task frontier record the correct bounded repair, precise failed-feature outcomes and next fix owners. No application assertion or production referential action changes.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.7.3 — Close partial fixture dependency plans
+###### SIGNOFF-REPAIR.11.4.3.1.2.7.3 — Close partial fixture dependency plans
 
 - Status: `done`; started from clean afbf7c49fceddce6e0f9d639098baa129f61a52d after REPAIR-0052, thirteen green doctrines, zero/untracked brief and consumed native handoff census. The fourteen-plan migration and immediate server/CLI/retention prerequisites .2.8/.2.10/.2.9 are committed. Own source/live-FK census, unchanged node-work→consumer baselines, exact plan migrations and qualification diagnostics under target/partial-fixture-controls.
 - Owns: cards, quota, classification, mcp_listen, federation and quarantine fixture plans; reproduce their relevant missing-parent/child cases, declare the necessary transitive dependencies in valid order and use the checked cleanup helper. Expand into smaller children if actual runtime behavior exceeds a safe common fixture repair. Do not change feature assertions to disguise an application defect.
@@ -1393,7 +1396,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - [x] **NO REGRESSION** — strict server lint, format, source/receipt/process verification pass; fourteen distinct live tests with repeated runs separated, 335 other source files unchanged, seven successful databases removed and all six baselines preserved. Twenty of the original 25 plans are checked; remaining five are separately owned, with no all-fixture/full-CI claim.
 - [x] **LOCKSTEP** — live docs, deployment book, CI guide, task/program/index and indexed evidence/decision synchronized; book and nine rendered markers pass, README and status categories unchanged.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.7.4 — Reconcile fixture-plan coverage before checkpoint
+###### SIGNOFF-REPAIR.11.4.3.1.2.7.4 — Reconcile fixture-plan coverage before checkpoint
 
 - Status: `done`; started from clean ba9ed845205431861cfce4bede25f5ee3f7a300c after REPAIR-0053, empty/untracked brief and consumed native handoff census. Raw evidence: target/fixture-coverage-controls.
 - Owns: inspect/adopt the shared check for the five remaining explicit DELETE-loop plans (regions, allowlist, rls, mcp_write and the MCP library test fixture), rederive exact source/live-schema coverage and retain explicit boundaries for other fixture shapes. Consume broad affected PostgreSQL regression and update the full-checkpoint execution census before returning to .11.4.3.1.2. Every newly found application or unrelated fixture defect gets its concrete owner before repair.
@@ -1481,7 +1484,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Decomposition: .2.11.1 establishes/preserves the failure and controlled mechanism, including normal release, error/cancellation and process-loss boundaries as relevant, then commits its completed diagnostic unit. .2.11.2 owns the bounded correction and permanent meaningful controls after that evidence; refine further children if the actual repair exceeds a safe slice. Full checkpoint remains incomplete and cannot be pushed as passed.
 - Acceptance: distinguish valid exclusion from stale/unintended lock retention with actual process/FD evidence; retain all original failures, preserve state and early-refusal behavior, qualify the full default-concurrent writer suite plus focused state/CLI controls and strict lint/book. Synchronize historical storage/writer claims with any proved contract limitation, and own any remaining concrete mechanism before advancing.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.11.1 — Preserve and reproduce the lock-lifetime failure
+###### SIGNOFF-REPAIR.11.4.3.1.2.11.1 — Preserve and reproduce the lock-lifetime failure
 
 - Status: `done`; REPAIR-0055 diagnostic unit; production correction remains .2.11.2.
 - Owns: original source-8d1504d checkpoint disposition and all diagnostic probes listed by .2.11, before instrumentation or source changes. Preserve original test executable/source identities; use uniquely owned on-volume probe fixtures and consume every subprocess, with explicit failure retention. Verify installed OS/toolchain contracts from primary documentation when interpreting flock/fork/exec behavior. A different source or a compilation-only result cannot count as reproduction.
@@ -1495,7 +1498,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - promotion: promoted → docs/decisions/2026-09-10_state-writer-lock-lifetime.md; evidence docs/tasks/artifacts/signoff_review/state-writer-lock-lifetime.md.
 - Verification / commit: book returns zero in 0.150356 seconds; nine rendered markers pass, README stays 52 lines/2017 bytes and all LIVE_STATUS categories are unchanged. REPAIR-0055 commits this diagnosis before selecting the production repair. No runtime process remains outstanding.
 
-####### SIGNOFF-REPAIR.11.4.3.1.2.11.2 — Correct the proved state-writer lock-lifetime mechanism
+###### SIGNOFF-REPAIR.11.4.3.1.2.11.2 — Correct the proved state-writer lock-lifetime mechanism
 
 - Status: `done`; REPAIR-0056 follows clean 4c40abb5050a4e949ced48c7445d70bcd417ec1c, cleared/untracked brief, thirteen green doctrines and consumed native handoff OK.
 - Owns: a private explicit-release lock guard in state_store.rs, constructed immediately after successful flock and retained through validation, HTTP and every publication. Drop explicitly unlocks the shared open-file description before File close; preserve nonblocking acquisition, CLOEXEC, exact identity/type checks, synchronization and all snapshot behavior. Do not change locking primitives, blanket-serialize tests or add contention retries. Abrupt inherited-owner death remains the separately owned restart boundary.
@@ -1545,7 +1548,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.14 — Diagnose and repair the ordering-dependent site-operator refusal
 
-- Status: `active`; opened from the source-165cb3a full checkpoint.
+- Opened: `active`; opened from the source-165cb3a full checkpoint.
 - Reproduce: the checkpoint's fourth command stops at rc=101 after 3,137 seconds. Thirty-six of forty suites started and thirty-five pass (259 tests); `site_authority` returns `9 passed; 1 failed`. `issuance_uses_database_identity_and_rechecks_membership_after_waiting` fails at `crates/reasonbraid-server/tests/site_authority.rs:610`, where an unprivileged database login must be refused `Error::OperatorRequired`. The same suite alone in a fresh owned cluster passes all ten. Four later suites, the demonstration and checkpoint gates five to eight never ran; the failed cluster is retained at `target/pg-tests/run-d4kvj1l5`.
 - Forensics on a COPY of the retained cluster (the original bytes are untouched): the outsider role is a member of `pg_read_all_settings` only, and the member role is additionally in `reasonbraid_site_operator`. Role setup was therefore correct and this is not a mis-seeded fixture. The end-of-suite `site_boundaries`/`site_audit` counts are accumulated by the tests that ran after the failure, so they do not isolate the failing instant.
 - Owns: make the refusal assertion report the value it actually received — `assert!(matches!(…))` discards exactly the evidence a diagnosis needs, and that opacity is itself the first defect. Then reproduce the ordering dependence with a narrowed predecessor sequence rather than the whole collection, establish whether the outsider was ALLOWED (a privilege-boundary defect) or refused with a different error (a classification or environment defect), and repair the proved cause. Preserve the retained failed cluster and every original assertion; no weakened privilege check and no skipped control.
@@ -1602,7 +1605,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.7.4.1 — Replace clock-and-process-id evidence identifiers
 
-- Status: `pending`; measured finding from the `.11.4.3.1.2.17` census.
+- Opened: `pending`; measured finding from the `.11.4.3.1.2.17` census.
 - Sources: `crates/reasonbraid-server/src/snapshots.rs:329-336`, `claims.rs:241` and `derivations.rs:177`. A function named `uuid_like_suffix` returns `format!("{:x}{:x}", nanos, std::process::id())` and supplies the suffix for `snp_…` snapshot identifiers and their claim/derivation counterparts. It is not UUID-like in the one property that matters.
 - Measured on this host with a standalone probe of the exact expression: 0 collisions in 2 calls, 8 in 10, 90 in 100, 918 in 1,000, and 269 among 400 produced by eight threads — about one distinct value per twelve calls, because the realtime clock advances far more slowly than the work between calls.
 - Owns: establish what a collision actually does at each of the three call sites before changing anything — a refused insert, a replay path that adopts an existing row as "the same" evidence, or a silently misattributed citation are three different severities, and the answer decides whether historical rows need reconciliation. Then mint identifiers from the `uuid` crate's v7 generator the server already depends on, and add controls that prove distinctness under concurrency rather than under a sleep. Evidence integrity is the claim at stake: `ROADMAP.md` §12.6 requires every cited snapshot to link its own reference, bytes and receipt.
@@ -1617,7 +1620,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.7.4.2 — Stop reporting evidence storage faults as caller errors
 
-- Status: `pending`; diagnosed under `.7.4.1`, repaired separately because it changes three error types and their wire mapping.
+- Opened: `pending`; diagnosed under `.7.4.1`, repaired separately because it changes three error types and their wire mapping.
 - Sources: `crates/reasonbraid-server/src/snapshots.rs` maps every storage failure to `SnapshotError::ReferenceMissing`; `derivations.rs` and `claims.rs` carry the same shape with `ParentMissing` and `SnapshotMissing`. `api.rs:3402` maps every `SnapshotError` to `invalid_command`, so a server fault becomes HTTP 400 blaming the caller's input. `api.rs:1997` then discards a failed snapshot with `if let Ok(snapshot)` while still reporting the acquisition as successful, so the evidence is silently absent.
 - Owns: give each of the three error types a distinct storage variant that preserves the original SQLx source, map it to a safe 500 at the HTTP boundary while keeping the genuine missing-reference and missing-parent refusals as 400s, and make the R2 pipeline surface a failed snapshot rather than reporting a successful acquisition with no evidence behind it. Qualify each with an injected storage fault, as `.3.3.4.3.1` did.
 - Status: `done`; REPAIR-0071.
@@ -1692,7 +1695,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.2.21 — Enforce the storage-locality policy that nothing checks
 
-- Status: `pending`; opened from the corrected census in `.7.2.1`.
+- Opened: `pending`; opened from the corrected census in `.7.2.1`.
 - The finding: §13 of the project's own policy states that all project-owned data must live on the repository volume and that tools must never default to an ambient system temporary directory or a user-home cache. Nothing enforces it, and `git grep -n "env::temp_dir()" -- '*.rs'` returns 8 sites across `crates/reasonbraid-server/src/git.rs` (6), `crates/reasonbraid-server/tests/backup_restore.rs` and `crates/reasonbraid-release-tool/tests/manifest.rs`. One is production (`git.rs:700`, owned by `.7.2.1`); the rest are fixtures writing project data off-volume.
 - The second family in the same census: clock-derived fixture directory names with `create_dir_all`, which adopts an existing directory rather than refusing. `crates/reasonbraid-node/src/journal.rs:1330` and `:1780` (both after `#[cfg(test)]` at 1320) and roughly ten files under `crates/reasonbraid-node/tests/` share the shape repaired in `.11.4.3.1.2.17`. `target/journal-tests` holds 954 MB of their residue.
 - Owns: a registered check that refuses `std::env::temp_dir()` in tracked Rust, with a verbatim allowlist for any genuinely required exception, in the idiom of `VISIBILITY-POLICY` and `FILE-TERMINATION`; and the repair of the clock-named node fixtures. A policy stated in prose for the life of the project and breached in eight places is the definition of a rule nothing checks.
@@ -1933,8 +1936,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1 | `SIGNOFF-REPAIR.7.3.3.4.1` | `pending` | drive a successful R2 acquisition through to its snapshot and derivations; `.11.5` builds the pipeline-stage registry from it |
-| 2 | `SIGNOFF-REPAIR.11.4.4` | `pending` | a leaf's first `Status:` line can be contradicted later in its own section |
-| 3 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
 | 5 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
 | 6 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
 | 7 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
@@ -1964,6 +1966,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.4`: `REASONBRAID-REPAIR-0092 (leaf SIGNOFF-REPAIR.11.4.4): gate a leaf's status and Markdown's heading ceiling`.
 
 - `SIGNOFF-REPAIR.11.4.3.1.2.15`: `REASONBRAID-REPAIR-0090 (leaf SIGNOFF-REPAIR.11.4.3.1.2.15): account for the checkpoint's unexplained wall time`.
 
@@ -2269,3 +2273,12 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — the phase run (`target/check-phases/run-20260911T224102Z/phases.json`) attributes the hour: `fmt` 0.8s, `clippy` 293.1s, `build-bins` 10.4s, `test-compile` 61.3s, **`test-run` 3,162.8s** (0.26s compile, 119.52s across 88 harness blocks), `test-doc` 310.5s (207s rustdoc compile, 0.00s across 9 blocks). Two candidates are refuted by measurement rather than argument: the doc phase is at most 8% of the run, and the same commands on a COLD Linux runner (run 34652116508, re-derived from that job's own log) take 444s with 381s compile across **514** `Compiling` lines, 44.28s harness time and **18.7s (4.2%) unaccounted**. The browser launcher was cleared too: its `version.log` lands ~20s after clippy ends.
 - [x] **NO REGRESSION** — no product source, gate, budget or command changed; the only tracked code added is a new diagnostic script, and the phase split runs strictly MORE than `make check` does, never less. `bash scripts/check_doctrines.sh` prints `=== all doctrines green ===`, and the measurement run itself returned rc=0 with every phase passing, which is a full pass of the gate's own commands.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `docs/decisions/2026-09-12_checkpoint-cost-model.md` and its index, `docs/tasks/artifacts/signoff_review/checkpoint-wall-time.md`, `TOOLBOX.md` (the instrument row and the promoted lesson), `docs/ci.md`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same numbers and the same limits: the residual above 88 binaries is modelled and not censused, compile durations remain cache-dependent and are not part of the claim, and no qualification, gate or checkpoint-pass claim changes.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.4
+
+- [x] **REPRODUCE / ISSUE** — a census over every tracked tree found **5 sections** asserting two different statuses (`.11.5`, `.11.4.3.1.2.14`, `.7.4.1`, `.7.4.2`, `.11.4.3.1.2.21`), and `.7.4.1` had sat at Current Frontier row 2 for seven commits after closing because the row was written from its stale first line. The same census, re-run with any `#`-run as a section boundary, exposed a second defect nobody suspected: **29 headings at levels 7-11**, which GFM does not treat as headings at all — the first census had reported one section holding 18 status lines when it held one and had swallowed five children.
+- [x] **ROOT CAUSE (WHY + WHERE)** — two independent causes in `docs/tasks/SIGNOFF-REPAIR.md`. (1) The convention that grew was to APPEND a closing status and leave the opening line untouched, so the first `- Status:` is stale by construction and any first-match reader takes it; `ls scripts/check_*.sh knowledge-map/scripts/check_*.sh | wc -l` -> 21 and `grep -ln 'Status:' …| wc -l` -> 0, so nothing checked it. (2) Hierarchy was encoded in heading DEPTH, and an ATX heading stops at 6: past that the file keeps looking nested while every heading-aware reader attributes the content to the heading above.
+- [x] **FIX** — the stale opening line becomes `- Opened:` (5 sections, every word preserved), and every over-deep heading is capped at `######` (29 lines), because the leaf id already carries the depth. Then both rules are mechanized rather than remembered: `scripts/check_task_status.sh` and `scripts/check_heading_depth.sh`, each fence-aware and each with a `--self-test`, registered in the enforcer and mirrored in `DOCTRINE_ENFORCEMENT.md`.
+- [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
+- [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
+- [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Gate a leaf's status, and Markdown's heading ceiling (`SIGNOFF-REPAIR.11.4.4`)
+
+- Five leaf sections asserted two different statuses, because the convention that grew was to APPEND a closing status and leave the opening line untouched. The first line is therefore stale by construction, and any first-match reader takes it — which is why `.7.4.1` sat at frontier row 2 for seven commits after it closed. 21 registered doctrine checks, **0** of which read a leaf's status line.
+- The census that found them found a second defect nobody suspected: the tree encodes hierarchy in heading DEPTH, and **an ATX heading stops at level 6**. `#######` is a paragraph that starts with hashes, in CommonMark and GFM alike. **29 lines at levels 7–11**, whose content belongs — for any heading-aware reader, including this project's own generators — to the nearest real heading above them. The first census reported one section holding 18 status lines; it held one, and had swallowed five children.
+- Fixed without deleting a word: the opening line becomes `- Opened:`, which is what it always meant, and every over-deep heading is capped at `######` because the leaf id already carries the depth — further than six levels ever could.
+- Both rules are now **enforced rather than remembered**: `TASK-STATUS` and `HEADING-DEPTH`, each fence-aware, each with a two-sided `--self-test`, both falsified against the unrepaired tree before being trusted. The enforcer now runs 15 checks.
+- A defect in this leaf's own work, caught by reading the enforcer's output: backticks inside a bash double-quoted registry string ran as command substitution, so the enforcer printed `line 36: pending: command not found` and the backticked words vanished from its description. Fixed, with a census confirming no other row carries one.
+
 ## 2026-09-12 — Decompose the R2 acquisition coverage gap (`SIGNOFF-REPAIR.7.3.3.4`)
 
 - The leaf needed two unrelated fixtures — a destination-policy seam for the success path, a dishonest stub worker for the mismatch refusal — so it became `.4.1` and `.4.2` before any implementation, per the tree's execution contract.

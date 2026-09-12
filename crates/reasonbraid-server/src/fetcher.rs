@@ -953,6 +953,117 @@ mod tests {
         }
     }
 
+    // ---- the census: this leg's accept set vs the R2 advertisement -------
+    //
+    // `SIGNOFF-REPAIR.7.3.3.5.1`. The R2 arm of the resolution path acquires
+    // through THIS fetcher, and the registry row it is ranked on advertises a
+    // format set. These two controls measure the relationship between them.
+    // They are a census, not a regression: they PASS on unchanged production,
+    // and their job is to make the mismatch a fact rather than a reading.
+
+    /// migration `0027_r2_extract_worker_entry.sql`'s `media_types`, verbatim.
+    /// Stated here so the census enumerates the advertisement rather than
+    /// whatever the author remembered of it.
+    const R2_ADVERTISED_MEDIA_TYPES: [&str; 5] = [
+        "application/pdf",
+        "application/zip",
+        "application/x-tar",
+        "application/atom+xml",
+        "application/rss+xml",
+    ];
+
+    /// Every type the R2 pack advertises is refused by the leg that acquires
+    /// for it — and the accepted set is enumerated too, because a claim about a
+    /// set carries both directions.
+    #[test]
+    fn every_r2_advertised_type_is_refused_by_the_acquisition_leg() {
+        let body = br#"<?xml version="1.0" encoding="utf-8"?><feed><title>x</title></feed>"#;
+        for media in R2_ADVERTISED_MEDIA_TYPES {
+            assert_eq!(
+                sniff_kind(Some(media), body),
+                None,
+                "`{media}` is advertised by the R2 registry row and refused here, \
+                 whatever the body is",
+            );
+        }
+        // The other direction: the COMPLETE declared-type accept set. Adding a
+        // sixth arm to `sniff_kind` without revisiting this census fails here.
+        for (media, expected) in [
+            ("text/html", Some(SniffedKind::Html)),
+            ("application/xhtml+xml", Some(SniffedKind::Html)),
+            ("text/xml", Some(SniffedKind::Text)),
+            ("text/plain", Some(SniffedKind::Text)),
+            ("text/anything-at-all", Some(SniffedKind::Text)),
+        ] {
+            assert_eq!(
+                sniff_kind(Some(media), body),
+                expected,
+                "the declared-type accept set is `text/html`, \
+                 `application/xhtml+xml` and `text/*` — `{media}`",
+            );
+        }
+    }
+
+    /// Untyped, the verdict is a property of the BYTES, not of the format.
+    ///
+    /// This is the part that disciplines the finding's shape: "the five
+    /// advertised formats are unacquirable" is the wrong claim, because an
+    /// untyped body is judged by its content. A document whose bytes happen to
+    /// be text passes whatever format it belongs to; the same document with one
+    /// NUL does not. So the leg cannot honour a FORMAT-shaped advertisement at
+    /// all — its rule is not about formats.
+    #[test]
+    fn an_untyped_body_is_judged_by_its_bytes_not_by_its_format() {
+        // A PDF body that happens to be entirely printable is ACCEPTED untyped.
+        let textual_pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n";
+        assert_eq!(
+            sniff_kind(None, textual_pdf),
+            Some(SniffedKind::Text),
+            "an all-printable body is accepted untyped, whatever format it is",
+        );
+        // The same document with one NUL — which any real PDF carries in its
+        // object streams and its binary-marker comment — is REFUSED.
+        let mut binary_pdf = textual_pdf.to_vec();
+        binary_pdf.extend_from_slice(b"stream\n\x00\x01\x02\nendstream\n");
+        assert_eq!(
+            sniff_kind(None, &binary_pdf),
+            None,
+            "one non-text byte refuses the same document",
+        );
+
+        // ZIP and tar cannot reach that branch at all, and the reason is
+        // structural rather than incidental: both formats begin with
+        // fixed-width binary fields. A ZIP local file header is
+        // `PK\x03\x04` followed by nine little-endian integer fields, and a
+        // tar header is a 512-byte block whose 100-byte name field is
+        // NUL-padded. Neither can be all-printable.
+        let mut zip_local_header = b"PK\x03\x04".to_vec();
+        zip_local_header.extend_from_slice(&[0x14, 0x00]); // version needed
+        zip_local_header.extend_from_slice(&[0x00, 0x00]); // flags
+        zip_local_header.extend_from_slice(&[0x00, 0x00]); // method: stored
+        zip_local_header.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // time+date
+        zip_local_header.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // crc32
+        zip_local_header.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // compressed
+        zip_local_header.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // uncompressed
+        zip_local_header.extend_from_slice(&[0x01, 0x00]); // name length
+        zip_local_header.extend_from_slice(&[0x00, 0x00]); // extra length
+        zip_local_header.extend_from_slice(b"ax");
+        assert_eq!(
+            sniff_kind(None, &zip_local_header),
+            None,
+            "a ZIP's local file header carries binary fields by construction",
+        );
+
+        let mut tar_header = vec![0u8; 512];
+        tar_header[..2].copy_from_slice(b"ax"); // the NUL-padded 100-byte name
+        tar_header[257..262].copy_from_slice(b"ustar");
+        assert_eq!(
+            sniff_kind(None, &tar_header),
+            None,
+            "a tar header block is NUL-padded fixed-width fields by construction",
+        );
+    }
+
     // ---- pure: the decompression-ratio brake ----------------------------
 
     #[test]

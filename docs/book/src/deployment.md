@@ -834,6 +834,28 @@ from its bytes is not yet measured. `SIGNOFF-REPAIR.7.3.3.5` owns the per-format
 census and the decision it leads to; neither the registry row nor the sniff
 changes before that census exists.
 
+That census is now run, and it changed the finding's shape. A declared content
+type is accepted only when it is `text/html`, `application/xhtml+xml` or any
+`text/*` — three arms, enumerated in both directions by a control in the
+fetcher's own module. With NO declared type the verdict is a property of the
+BYTES rather than of the format: an all-printable body is accepted whatever
+format it belongs to, and the same body with one non-text byte is refused. ZIP
+and tar cannot reach that branch at all, structurally — a ZIP local file header
+is `PK\x03\x04` followed by nine little-endian integer fields, and a tar header
+is a 512-byte block with a NUL-padded 100-byte name.
+
+So "the five advertised formats are unacquirable" is true but the wrong shape:
+the leg's rule is not about formats, and no subset of the advertisement
+satisfies it. Narrowing the registry row is therefore rejected — it cannot
+express the truth — and the accepted repair is that the acquisition leg admits
+the RANKED resolver's own advertised media types, read at resolution time. The
+destination policy, the scheme list, the byte ceiling, the ratio brake, the
+redirect policy and the time ceiling are all outside that change, and an
+R0-ranked acquisition keeps the text/HTML accept set exactly as shipped. The
+decision, its rejected option and the risk it accepts are recorded in
+`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`;
+`SIGNOFF-REPAIR.7.3.3.5.2` implements it.
+
 
 ### Where a Git acquisition works, and when it is removed
 

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Census the acquisition leg's accept set, and decide (`SIGNOFF-REPAIR.7.3.3.5.1`)
+
+- The finding `.7.3.3.4.1` surfaced got its census before it got a repair, and **the census changed its shape** — which is the entire reason the leaf was decomposed rather than implemented.
+- **Declared content type:** all five types migration 0027 advertises for `r2-extract-worker` are refused, and the complete accepted set is `text/html`, `application/xhtml+xml` and any `text/*`. Three arms, enumerated in both directions, so a fourth added later fails the census instead of passing unnoticed.
+- **No content type:** the verdict is a property of the BYTES, not of the format. An all-printable body is accepted whatever format it belongs to; the same body with one non-text byte is refused. ZIP and tar cannot reach that branch at all, structurally — a ZIP local file header is `PK\x03\x04` plus nine little-endian integer fields, and a tar header is a 512-byte block with a NUL-padded 100-byte name.
+- **So "the five advertised formats are unacquirable" is true but the wrong SHAPE.** The leg's rule is not about formats, which means no subset of the advertisement satisfies it. **Narrowing the registry row is rejected on that measured ground** — it cannot express the truth, and narrowing to what the leg does accept would advertise `text/*`, which is the R0 pack's own row.
+- **Decision:** the acquisition leg admits the RANKED resolver's own advertised media types, read at resolution time. Explicitly outside the change: the destination policy, the scheme list, every SSRF control, any type the ranked pack does not advertise, R0-ranked acquisitions, and the byte/ratio/redirect/time ceilings. The risk it accepts — bytes that were never fetched now reaching a parser — is stated rather than buried, and `.7.3.4` still owns pipe bounds and descendant containment.
+- No production behaviour changed: the leaf's own acceptance forbids it until the census exists, and the census is the deliverable. `.7.3.3.5.2` implements the repair.
+- The controls pass on unchanged production, as a census must, and were falsified by adding `application/pdf` to the accept set — which fails the advertisement control and leaves the untyped one untouched, because the two measure different things.
+- Stated limit: the census measures the PREDICATE, not real files. A given real PDF's untyped verdict depends on that PDF and is not claimed; the ZIP and tar statements are structural facts of those formats applied to a measured predicate.
+- Validation: 19 fetcher controls, 97 library tests, strict all-target server lint, format, gate (15 checks), book.
+
 ## 2026-09-12 — Prove the R2 mismatch refusal persists nothing (`SIGNOFF-REPAIR.7.3.3.4.2`)
 
 - The sibling join, and **no production change**: the gap was coverage. The seven mismatch controls `.7.3.3.3.2` added all call `extract_acquired_bytes` directly and never reach a database — `git grep -n "PgPool\|sqlx" -- crates/reasonbraid-server/tests/extraction_input.rs` returns nothing. They prove the refusal is RAISED; nothing proved the handler HONOURS it.

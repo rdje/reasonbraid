@@ -275,6 +275,26 @@ contract reserves for "no eligible resolver". The per-format census and the
 repair decision are owned by .7.3.3.5. Neither the registry row nor the sniff
 changes before that census exists.
 
+The census is complete under .7.3.3.5.1 (REPAIR-0097), with NO production
+behaviour change, and it changed the finding's shape. Two mechanical controls in
+the fetcher's own module measure the predicate: a DECLARED content type is
+accepted only from `text/html`, `application/xhtml+xml` and any `text/*` — three
+arms, enumerated in both directions — and all five advertised types are refused.
+UNTYPED, the verdict is a property of the bytes rather than of the format: an
+all-printable body is accepted whatever format it belongs to, and the same body
+with one non-text byte is refused; ZIP and tar cannot reach that branch by
+construction. So "the five advertised formats are unacquirable" is true but the
+wrong SHAPE — the leg's rule is not about formats, and no subset of the
+advertisement satisfies it. Narrowing the registry row is rejected on that
+measured ground; the accepted repair is that the acquisition leg admits the
+RANKED resolver's own advertised media types, with the destination policy,
+scheme list, byte ceiling, ratio brake, redirect policy and time ceiling all
+explicitly outside the change. The controls pass on unchanged production, as a
+census must, and were falsified by adding `application/pdf` to the accept set.
+The census measures the predicate, not real files of each format; a given real
+PDF's untyped verdict depends on that PDF and is not claimed. Implementation is
+.7.3.3.5.2. Decision: docs/decisions/2026-09-12_r2-acquisition-accept-set.md.
+
 The sibling join .7.3.3.4.2 is closed under REPAIR-0096, with no production
 change: the gap was coverage. The seven mismatch controls .7.3.3.3.2 added all
 call extract_acquired_bytes directly and never reach a database, so they prove

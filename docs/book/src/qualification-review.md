@@ -189,6 +189,18 @@ the resolution contract reserves for "no eligible resolver". The per-format
 census and the repair decision are owned by `SIGNOFF-REPAIR.7.3.3.5`. See
 `docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
 
+The census is complete under `.7.3.3.5.1`, with no production change, and it
+disciplined the finding. A declared type is accepted only from `text/html`,
+`application/xhtml+xml` and `text/*`; untyped, the verdict depends on whether
+the bytes are printable, not on the format, and ZIP and tar cannot pass that
+branch by construction. The leg's rule is therefore not format-shaped at all, so
+no subset of the advertisement satisfies it and narrowing the registry row is
+rejected as unable to express the truth. The accepted repair is that the
+acquisition leg admits the ranked resolver's own advertised media types, with
+the destination policy, scheme list and every ceiling explicitly outside the
+change; `SIGNOFF-REPAIR.7.3.3.5.2` implements it. Decision:
+`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`.
+
 The full pre-push checkpoint now passes on source `7233122` — the first complete
 run recorded. All eight commands return 0, 40 of 40 database suites run with 291
 tests and no failures, the two-host demonstration reports all acceptance checks

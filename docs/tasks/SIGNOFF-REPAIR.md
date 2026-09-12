@@ -986,6 +986,28 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns: the per-format census as a mechanical control; then the decision this is currently missing — either the advertised `media_types` are narrowed to what the leg can actually acquire, or the acquisition leg learns the R2 format set under an explicit, bounded rule. The second is a production content-policy change with its own hostile-content surface (`§12.4` sniffing, decompression, quarantine) and does not happen as a side effect of a test.
 - Acceptance: a control that fails on the current code for every format the census proves unacquirable, and a recorded decision naming which of the two repairs was taken and why. Neither the registry row nor the sniff changes before that census exists.
 - Why it matters beyond tidiness: the pack's advertised capability is what `resolvers::resolve` ranks on, so a caller is routed to a resolver that cannot acquire its document and receives an acquisition refusal rather than the explicit `resource_unresolvable_now` the `§12.2` contract reserves for "no eligible resolver". That is a wrong answer, not merely a missing feature.
+- Decomposition, settled before implementation for the same reason `.7.3.3.4` was: the census and the repair need different things — the census needs no production change and must not presume its own conclusion, and the repair is a content-policy change whose shape the census decides. `.5.1` measures and records the decision; `.5.2` implements it.
+- Verification / commit: `.5.1` carries the census and the decision; `.5.2` the implementation.
+
+###### SIGNOFF-REPAIR.7.3.3.5.1 — Census the acquisition leg's accept set against the R2 advertisement, and decide
+
+- Status: `done`; REPAIR-0097. The census is mechanical and the decision is recorded.
+- Owns: a mechanical control over `sniff_kind`'s accept set — every one of migration 0027's five advertised types in the declared path, both directions of the accepted set, and the untyped path's actual decision rule — plus a decision record naming which repair is taken and why.
+- The census must answer a question the finding's first statement did not: the untyped path's verdict may be a property of the BYTES rather than of the format, in which case "the five formats are unacquirable" is the wrong shape of claim and the repair that follows from it would be wrong too.
+- Acceptance: the control passes on unchanged production (it is a census, not a regression), enumerates the advertised list verbatim from the migration rather than from memory, and states both directions; the decision record names the rejected option and why.
+- **The census DID change the finding's shape, which is why it came first.** Declared: all five advertised types are refused, and the complete accepted set is `text/html`, `application/xhtml+xml` and any `text/*` — three arms, enumerated both directions. Untyped: the verdict is a property of the BYTES, not of the format — an all-printable body is accepted whatever format it belongs to, and the same body with one non-text byte is refused. ZIP and tar cannot reach that branch at all, structurally: a ZIP local file header is `PK\x03\x04` plus nine little-endian integer fields, and a tar header is a 512-byte block with a NUL-padded 100-byte name.
+- Consequence for the repair: "the five formats are unacquirable" is true but the wrong SHAPE. The leg's rule is not about formats, so no subset of the advertisement satisfies it — narrowing the registry row cannot express the truth, and the option was rejected on that measured ground rather than on preference.
+- Fix: `crates/reasonbraid-server/src/fetcher.rs` gains two controls in its own test module, where `sniff_kind` lives. No production behaviour changes — the leaf's acceptance forbids it until the census exists, and the census is the deliverable.
+- Verification: `cargo test -p reasonbraid-server --lib fetcher::` returns `19 passed; 0 failed`; 97 library tests, strict `-D warnings` all-target server lint, workspace format, `make gate` (15 checks) and `make book` pass. FALSIFIED by adding `application/pdf` to `sniff_kind`'s accepted arms: the advertisement control fails with `left: Some(Text), right: None` naming the type, and the untyped control is unaffected — the two measure different things. Reverted and re-run green.
+- Explicit limit: the census measures the PREDICATE. It does not measure real files of each format, and does not claim a given real PDF is unacquirable untyped — that depends on the PDF. The ZIP and tar statements are structural facts of those formats applied to a measured predicate, and are labelled as such.
+- Commit: `REASONBRAID-REPAIR-0097 (leaf SIGNOFF-REPAIR.7.3.3.5.1): census the acquisition leg's accept set and decide`. Decision `docs/decisions/2026-09-12_r2-acquisition-accept-set.md`; promotion: promoted → that record, three indexed answers.
+
+###### SIGNOFF-REPAIR.7.3.3.5.2 — Implement the repair the census chose
+
+- Status: `pending`; opened with `.5.1` so the sequence is visible, not to be started before the census closes.
+- Owns, now settled by `.5.1`'s decision (`docs/decisions/2026-09-12_r2-acquisition-accept-set.md`): the acquisition leg admits the RANKED resolver's own advertised `media_types`, read at resolution time. Narrowing the registry row was rejected on the census, because no subset of the advertisement is accepted.
+- Bounds the decision fixes, and this leaf may not exceed: no change to the destination policy, the scheme list or any SSRF control; no type admitted that the ranked pack does not advertise; no relaxation of an R0-ranked acquisition; the byte ceiling, ratio brake, redirect policy and time ceiling unchanged.
+- Acceptance: the live R2 control acquires a document served under an advertised type without the test having to serve it as `text/*`; the census controls in `fetcher.rs` still pass unchanged for the R0 path; and a negative control proves a type the ranked pack does NOT advertise is still refused.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.7.3.4 — Bound extraction transport and retained storage
@@ -2017,7 +2039,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.3.3.5` | `pending` | the R2 pack advertises five formats its acquisition leg refuses; census per format, then the decision |
+| 1 | `SIGNOFF-REPAIR.7.3.3.5.2` | `pending` | admit the ranked pack's advertised media types at the acquisition leg; the census and decision are done |
 | 2 | `SIGNOFF-REPAIR.11.4.5.2` | `pending` | a LOCKSTEP box may not claim a document the commit does not touch; census done, gate not written |
 | 3 | `SIGNOFF-REPAIR.11.4.5.3` | `pending` | the tree index's frontier column drifted to a leaf closed on 2026-09-11; census the rows, then generate or check |
 | 4 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
@@ -2050,6 +2072,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.7.3.3.5.1`: `REASONBRAID-REPAIR-0097 (leaf SIGNOFF-REPAIR.7.3.3.5.1): census the acquisition leg's accept set and decide`.
 
 - `SIGNOFF-REPAIR.7.3.3.4.2`: `REASONBRAID-REPAIR-0096 (leaf SIGNOFF-REPAIR.7.3.3.4.2): prove the R2 mismatch refusal persists nothing`.
 
@@ -2374,6 +2398,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.7.3.3.5.1
+
+- [x] **REPRODUCE / ISSUE** — `.7.3.3.4.1` measured one live instance: the identical Atom document succeeds served as `text/xml` and is refused `media_type_refused` served as `application/atom+xml`, which migration `0027_r2_extract_worker_entry.sql` advertises for `r2-extract-worker`. What was NOT measured was the shape of the rule behind that refusal.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `crates/reasonbraid-server/src/fetcher.rs`'s `sniff_kind` accepts a DECLARED content type only from `{text/html, application/xhtml+xml, text/*}` and, untyped, decides on whether the bytes are printable. The R2 arm (`api.rs:2012`) acquires through this one function — `git grep -n "R2_RESOLVER_ID" -- 'crates/**/*.rs'` returns three hits and that arm makes exactly one acquisition call. The leg's rule is not format-shaped, so a format-shaped advertisement cannot be satisfied by it.
+- [x] **FIX** — no production behaviour change, which this leaf's acceptance requires: two census controls in `fetcher.rs`'s own test module, plus `docs/decisions/2026-09-12_r2-acquisition-accept-set.md` recording the decision and naming the rejected option.
+- [x] **ADDRESSED (verified)** — `cargo test -p reasonbraid-server --lib fetcher::` returns `19 passed; 0 failed`; the two new controls pass on unchanged production, as a census must. FALSIFIED by adding `Some("application/pdf") => return Some(SniffedKind::Text)` to `sniff_kind`: the advertisement control fails at `fetcher.rs:983` with `left: Some(Text)`, `right: None`, naming the type, while the untyped control is unaffected — the two measure different things. Reverted and re-run green.
+- [x] **NO REGRESSION** — `cargo test -p reasonbraid-server --lib` returns `97 passed; 0 failed`; `cargo clippy --locked -p reasonbraid-server --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass; `make gate` prints `=== all doctrines green ===` (15 checks) and `make book` writes the HTML book. The 17 pre-existing fetcher controls, including `sniff_kind_decides_header_first_then_magic`, pass unchanged.
+- [x] **LOCKSTEP** — task tree (the decomposition, both children, frontier, commit log), the decision record and `docs/decisions/INDEX.md`, the regenerated `KNOWLEDGE_MAP.md`, `docs/book/src/deployment.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. Explicitly NOT claimed: no real file of any format was measured, and no repair is implemented — `.7.3.3.5.2` owns that.
 
 ## Commit acceptance — SIGNOFF-REPAIR.7.3.3.4.2
 

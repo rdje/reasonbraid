@@ -1189,11 +1189,45 @@ checks pass, including both HTTP commit-failure routes. All results/shutdown are
 consumed and the three owned clusters are absent.
 The source census covers 42 direct named-call locations across 101 tracked Rust
 source files, plus transitive HTTP/MCP/node/state-service and authority mutations.
-Command/node transactions, inspection admissions, final effect records and the
-remaining administrative families retain their separate integration children.
 The exact scope and remaining policy owners are recorded in
 `docs/tasks/artifacts/signoff_review/tenant-authority-paths.md` and
 `docs/decisions/2026-09-09_tenant-authority-transaction-order.md`.
+
+#### What is on the shape, and what is not
+
+`SIGNOFF-REPAIR.3.3.4.13` re-derived that census after `.8`–`.12.1` landed, with
+instruments rather than a re-reading. The direct named-call surface fell from 42
+locations to **27** while the corpus grew from 101 files to 118 — the shape the
+integration predicted, since callers stopped naming an authority function
+themselves and started entering a guarded service that names it once.
+
+A second instrument classifies each of the **118 registered routes** by the gate
+it actually reaches, following delegation rather than reading one handler body:
+
+| Gate reached | Routes | Of which mutate |
+| --- | --- | --- |
+| **guarded transaction** | **18** | **18** |
+| pool tenant-admin inspection | 9 | 0 |
+| pool tenant-admin | 11 | 3 |
+| pool authorize | 6 | 1 |
+| identity only | 74 | 42 |
+
+⛔ **Read the last three rows carefully.** 46 mutating routes do not run on a
+guarded transaction. Every one has a named repair owner — policy (`.9.1`),
+evaluation and routing (`.8.2`), evidence (`.7.4`), recruitment (`.5.2`),
+resolvers and resources (`.7.1`), deployment (`.9.3`), regions (`.3.2`), adapters
+(`.10.1`/`.10.2`), workflow (`.8.1`), directory matching (`.5.1`) — and being
+owned is not being repaired. This chapter certifies the eighteen and says nothing
+about the forty-six beyond naming who owns them.
+
+The one route deliberately excluded rather than deferred is
+`PUT /v1/profiles/{role_id}`: it is gated on identity rather than on a grant, so
+it produces no authorization record and there is no admission for a guard to
+order. It is [serialized instead](#serializing-a-profile-write-where-no-authority-is-being-decided).
+
+No obsolete bypassing executor remains: 84 functions are declared across the
+authority modules, 10 are never called, and all 10 are `#[test]` functions the
+harness reaches by name.
 
 ### Standalone issuance and status services
 

@@ -149,6 +149,97 @@ separately owned caller/target/consent policy already passes.
 | node journal/worker epoch cache and cached dispatch | `.3.4`, `.4.4` | Local invalidation input is not an authority-store mutation |
 | schema upgrade, restore and test fixture authority writes | `.11.3` and owned test runners | Maintenance/owned-fixture scope; no claim that an app guard fences arbitrary DB-owner SQL |
 
+## Reconciliation at `SIGNOFF-REPAIR.3.3.4.13`
+
+The table above was written at the design leaf, before any child had landed. This
+section re-derives it after `.8` through `.12.1`, with instruments rather than a
+re-reading, so the reconciliation is repeatable instead of asserted.
+
+### The named-call census, re-run
+
+`scripts/census_authority_paths.py` reproduces its own recorded baseline exactly
+— `1ba6184`: 101 files, 1,749,975 bytes, SHA-256
+`340c4af65db88e48496797c650bbce851bdfde47aaaefac5d93565cd38d26c2c`, 42 direct
+named-call locations — which is what makes the comparison below meaningful rather
+than a comparison of two different questions.
+
+At the reconciliation commit it reads **118 tracked Rust source files, 2,135,430
+bytes**, SHA-256 `add446084b35d9dcfa1f2931591e272cdfc5f17e58504b5a8fa4154ac9b5f3ae`,
+and **27 direct named-call locations** — down from 42 at the baseline and 39 at
+the `.11.4.3` re-run. The corpus grew by 17 files while the direct-call surface
+shrank by 15 locations, which is the shape the integration predicted: callers
+moved from naming an authority function themselves to entering a guarded service
+that names it once.
+
+### The route admission census, new
+
+`scripts/census_admission_paths.py` is this leaf's own instrument and answers the
+question the named-call census cannot: for each registered route, which gate does
+it actually reach? It follows local calls to a fixed point, because a handler that
+delegates — `/v1/admin/grants/{grant_id}/revoke` calls `run_revocation`, and the
+admission is one level down — is otherwise classified by what its own body happens
+to contain. Five routes were wrong that way in a first, non-transitive version.
+
+Over 118 registered route handlers:
+
+| Gate reached | Routes | Of which mutate |
+| --- | --- | --- |
+| guarded transaction | 18 | 18 |
+| pool `authorize_tenant_admin` inspection | 9 | 0 |
+| pool `authorize_tenant_admin` | 11 | 3 |
+| pool `authorize_guarded` | 6 | 1 |
+| identity only (`resolve_principal`) | 74 | 42 |
+
+⛔ "Mutates" is taken from the route's own declared HTTP verb, not from reading
+code, and the reason is a measurement: an earlier version followed calls across
+the whole crate to find `INSERT`/`UPDATE` statements and over-approximated to
+uselessness — 53 of 118 routes classified as reaching the thread-command path, 41
+as reaching a guarded transaction, both false. A lexical name-matching closure
+does not survive leaving the handler file. The instrument's docstring records this.
+
+### Every mutating route off the guarded shape has a named owner
+
+**46** mutating routes do not reach a guarded transaction. Each falls in a family
+the table above already owns, and none is unowned:
+
+| Route family | Count | Owner |
+| --- | --- | --- |
+| `/v1/policies`, `/v1/policy-*` | 15 | `.9.1` |
+| `/v1/evaluations/*`, `/v1/routing/*` | 9 | `.8.2` |
+| `/v1/snapshots`, `/v1/assessments`, `/v1/derivations` | 5 | `.7.4` |
+| `/v1/calls` (open, close, respond) | 3 | `.5.2` |
+| `/v1/resolvers`, `/v1/resources` | 3 | `.7.1` |
+| `/v1/deployments`, `/v1/deployment-targets` | 3 | `.9.3` |
+| `/v1/admin/regions` | 3 | `.3.2` |
+| `/v1/admin/adapters` | 2 | `.10.1`, `.10.2` |
+| `/v1/workflow-profiles` | 1 | `.8.1` |
+| `/v1/directory/match` | 1 | `.5.1` |
+| `PUT /v1/profiles/{role_id}` | 1 | settled at `.11.1`: identity-gated by design, so there is no admission for a guard to order |
+
+⛔ Being owned is not being repaired, and this section must not be read as one.
+None of these 46 is certified by this closure; each is named so that the closure
+can state what it does NOT cover.
+
+### No obsolete bypassing executor remains
+
+84 functions are declared across the ten authority modules. **10 are never
+referenced outside their own declaration, and all 10 are `#[test]` functions**
+reached by the harness rather than by a call — confirmed by running them: the
+server library's 99 unit tests pass, the ten among them by name.
+
+⚠️ The first run of this check reported two production functions, `insert_grant_row`
+and `load_boundary_by_id_in_tx`, as unreferenced. Both were false: each is
+generic, so `fn name<E>(` never matched a call-shaped pattern and the counter
+compared a call against a declaration it had failed to count. The check now
+excludes declaration LINES by position rather than by pattern. A census whose
+error mode is "reports live code as dead" is worse than no census, and the
+correction is recorded here rather than silently applied.
+
+The three bridges that existed only for the card import — `create_grant_unordered_in_tx`,
+`load_active_boundary_for_tenant` and the pool-taking `profiles::write_profile` —
+were deleted by `.11.3` when its last caller moved, each leaving a comment at its
+former site naming the leaf that retired it.
+
 ## Independent mutation cross-check
 
 A case-insensitive authority-table/epoch reference scan covered all tracked

@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — My measuring instrument was wrong three times
+
+- `.13` is a reconciliation leaf: confirm the guard census still holds after eight children landed. The tempting shape is to re-read the source and write new numbers. I wrote scripts instead, and all three of my first answers were wrong.
+- **Wrong once, scope too small.** The route census read each handler's own body and called five routes unadmitted — `/v1/admin/grants/{grant_id}/revoke` among them, whose handler only calls `run_revocation`. Fixed by following local calls to a fixed point.
+- **Wrong twice, scope too large.** Wanting the `INSERT`/`UPDATE` statements, which now live in `authority/*.rs`, I let the closure cross files. It then classified 53 of 118 routes as reaching the thread-command path and 41 as reaching a guarded transaction. ⭐ The tell was not an error message — both runs succeeded. The tell was that the answer was not *credible*: a census that sorts most things into one bucket is reporting its own method. I dropped the attempt and took "does this mutate" from the route's declared HTTP verb instead, which is a fact the router states rather than one I infer.
+- **Wrong three times, and this one is the dangerous direction.** The dead-code check reported `insert_grant_row` and `load_boundary_by_id_in_tx` as unreferenced production functions. Both are live. They are generic, so `fn name<E>(` never matched my call-shaped pattern, and the counter compared one real call against a declaration it had failed to count. ⚠️ Had I trusted it I would have deleted two working functions on the authority of my own script. An instrument that misses a defect costs a finding; one that reports live code as dead invites damage.
+- What I would keep: the useful scope of a lexical census is an **empirical** property of the codebase, not something to reason out in advance. Run it, look at the distribution, and ask whether a human would believe it. And put the failed attempts in the script's docstring with their numbers — the next person to change the predicate can then see which changes have already been tried and what they cost.
+
+## 2026-09-13 — The closure's job was to say what it does not cover
+
+- Eighteen routes now run on the guarded shape and the temptation at a closing leaf is to lead with that. The number that took longer to produce, and matters more, is the other one: **46 mutating routes do not**, and I had to map every one to an owner before I could write a single sentence of qualification.
+- ⭐ Most were already owned — the design leaf's table had marked several families "checked by `.3.3.4.13`", which is exactly this check, two months of leaves later. That is a task-tree doing its job: a future obligation recorded where the person discharging it would be standing.
+- ⚠️ The phrase I kept rewriting is "being owned is not being repaired". A reconciliation that lists owners reads, at a glance, like a reconciliation that lists fixes. Anyone quoting the eighteen without the forty-six would be quoting something true to say something false, so the sentence is in the leaf, the artifact, the book and the status line — four places, because the number is going to get quoted.
+
 ## 2026-09-13 — A limit I wrote down two days ago closed itself in three commits
 
 - At `.11`'s split I checked what a guard would actually fence before writing it into the import, found that `federation::{propose,accept,revoke}` took no guard at all, and wrote the limit into the leaf: moving the agreement read inside buys a snapshot and not an ordering. That went into `proving-a-race-is-closed.md` as "a guard only orders you against operations that take the same guard".

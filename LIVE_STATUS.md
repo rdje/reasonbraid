@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+**`SIGNOFF-REPAIR.3.3.4` is closed at `.13` (REPAIR-0127), and the closure states
+its own limits.** Two tracked instruments re-derive the census rather than
+re-reading it. The direct named-call surface fell **42 → 27** while the corpus
+grew **101 → 118 files**; a new route census classifies all **118 registered
+routes** by the gate each actually reaches. ✅ **18 routes run on a guarded
+transaction**, all of them mutating: admission, mutation and final-effect evidence
+in one commit under a declared guard, at database time sampled after the wait,
+each mode derived and each repair falsified against its own superseded source.
+⛔ **46 mutating routes do not**, and every one has a named repair owner —
+policy 15, evaluations/routing 9, evidence 5, recruitment 3, resolvers/resources
+3, deployment 3, regions 3, adapters 2, workflow 1, directory matching 1, plus
+`PUT /v1/profiles/{role_id}` which is identity-gated by design. **Being owned is
+not being repaired; this closure certifies none of the 46.** No obsolete
+bypassing executor remains (84 authority functions, 10 unreferenced, all 10
+`#[test]`). ⚠️ Both instruments were wrong before they were right, once in the
+direction of reporting live code as dead; the corrections live in the scripts.
+Broad step: **19 live suites / 262 tests / zero failures**, plus 99 library unit
+tests. The instruments are lexical and bounded — no AST, no dynamic dispatch, no
+runtime SQL — and classify which gate is REACHED, not whether it is the right one.
+
 The card import's revocation race is now **closed on both sides** under
 `.3.3.4.12.1` (REPAIR-0126). `.11.3` predeclared the limit, `.12` closed the
 importing half by putting the direction verbs on their own tenant's exclusive

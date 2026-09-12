@@ -39,7 +39,7 @@ use reasonbraid_core::{
     TenantId,
 };
 use reasonbraid_server::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
 use tenant_transaction::{acquire_in_tx, GuardMode};
 
@@ -687,4 +687,539 @@ async fn the_migration_invents_no_history_and_relabels_no_admission() {
         ],
         "the migration added or removed an authorization_records column"
     );
+}
+
+// ── The first producer: grant and boundary revocation (`SIGNOFF-REPAIR.3.3.4.8`) ──
+//
+// The controls above drive the storage primitive directly. These drive the HTTP
+// route that now writes through it, because the properties `.8` claims are about
+// the ROUTE: that its admission, its mutation and its evidence share one commit
+// under one exclusive guard, where before it ran two guarded transactions with
+// nothing ordering them against each other.
+
+use reasonbraid_server::{api_router, PRINCIPAL_HEADER};
+use std::net::SocketAddr;
+use std::time::Duration;
+use tenant_transaction::{transact, GuardError};
+use tokio::sync::oneshot;
+use tokio::time::timeout;
+
+async fn serve(pool: &PgPool) -> SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind the control API");
+    let addr = listener.local_addr().expect("the listener address");
+    let router = api_router(pool.clone());
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.expect("serve");
+    });
+    addr
+}
+
+async fn enroll(client: &reqwest::Client, base: &str, body: Value) -> Value {
+    let response = client
+        .post(format!("{base}/v1/enrollments"))
+        .json(&body)
+        .send()
+        .await
+        .expect("enrollment request");
+    assert_eq!(response.status().as_u16(), 200, "enrollment must succeed");
+    response.json().await.expect("enrollment json")
+}
+
+/// The revoke POST, returning status, the `x-reasonbraid-authorization` receipt
+/// and the body. Every answer carries the receipt — that is the contract.
+async fn revoke(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    tenant: &str,
+    reason: &str,
+) -> (u16, Option<String>, Value) {
+    let response = client
+        .post(format!("{base}{path}"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({ "tenant_id": tenant, "reason": reason }))
+        .send()
+        .await
+        .expect("revoke request");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .map(|value| value.to_str().expect("an ASCII receipt").to_owned());
+    (status, receipt, response.json().await.expect("revoke json"))
+}
+
+async fn admission_count(pool: &PgPool, tenant: &str) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM authorization_records WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+        .expect("count admissions")
+}
+
+/// A tenant with an administrating human and one role grant to revoke.
+struct Enrolled {
+    tenant: String,
+    admin: String,
+    admin_grant: String,
+    role_grant: String,
+    boundary: String,
+}
+
+async fn enrolled(client: &reqwest::Client, base: &str, name: &str) -> Enrolled {
+    let human = enroll(client, base, json!({ "kind": "human", "name": name })).await;
+    let tenant = human["tenant_id"].as_str().unwrap().to_owned();
+    let role = enroll(
+        client,
+        base,
+        json!({ "kind": "role", "name": format!("{name}-role"), "tenant_id": tenant }),
+    )
+    .await;
+    Enrolled {
+        tenant,
+        admin: human["principal_id"].as_str().unwrap().to_owned(),
+        admin_grant: human["grant_id"].as_str().unwrap().to_owned(),
+        role_grant: role["grant_id"].as_str().unwrap().to_owned(),
+        boundary: human["boundary_id"].as_str().unwrap().to_owned(),
+    }
+}
+
+/// Hold one tenant guard until released, reporting when it is actually held so a
+/// control never races its own fixture. The PRODUCTION runner, so the control
+/// takes the same lock a revocation takes.
+struct Holder {
+    release: oneshot::Sender<()>,
+    job: tokio::task::JoinHandle<()>,
+}
+
+async fn hold(pool: &PgPool, tenant: TenantId, mode: GuardMode) -> Holder {
+    let pool = pool.clone();
+    let (entered_tx, entered) = oneshot::channel();
+    let (release, release_rx) = oneshot::channel();
+    let job = tokio::spawn(async move {
+        transact(&pool, &[(tenant, mode)], move |_| {
+            Box::pin(async move {
+                let _ = entered_tx.send(());
+                let _ = release_rx.await;
+                Ok::<(), GuardError>(())
+            })
+        })
+        .await
+        .expect("the holder's guarded transaction completes");
+    });
+    timeout(Duration::from_secs(5), entered)
+        .await
+        .expect("the holder acquires its guard")
+        .expect("the holder reports entry");
+    Holder { release, job }
+}
+
+impl Holder {
+    async fn release(self) {
+        let _ = self.release.send(());
+        timeout(Duration::from_secs(5), self.job)
+            .await
+            .expect("the holder finishes")
+            .expect("the holder's task joins");
+    }
+}
+
+#[tokio::test]
+async fn a_revocation_commits_its_admission_mutation_and_effect_together() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-applies").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let before = admission_count(&pool, &alice.tenant).await;
+
+    let (status, receipt, body) = revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/grants/{}/revoke", alice.role_grant),
+        &alice.admin,
+        &alice.tenant,
+        "role retired",
+    )
+    .await;
+    assert_eq!(status, 200, "an eligible administrator revokes: {body}");
+    let receipt = receipt.expect("every answer carries its admission receipt");
+    assert_eq!(body["grant_id"], json!(alice.role_grant));
+
+    assert_eq!(grant_status(&pool, &alice.role_grant).await, "revoked");
+    assert_eq!(epoch(&pool, tenant).await, 1);
+    assert_eq!(
+        admission_count(&pool, &alice.tenant).await,
+        before + 1,
+        "exactly one admission per request"
+    );
+
+    let effect = load_tenant_administrative_effect(&pool, tenant, receipt.parse().unwrap())
+        .await
+        .expect("read the effect back")
+        .expect("the effect committed with its mutation");
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(
+        effect.operation,
+        AdministrativeOperation::GrantRevoke {
+            grant_id: target(&alice.role_grant)
+        }
+    );
+    assert_eq!(
+        effect.submitted_reason.as_ref().map(|r| r.as_str()),
+        Some("role retired"),
+        "the submitted reason is persisted with the mutation, not merely validated"
+    );
+    // The recorded instant is the transaction's own database time, so it agrees
+    // with the response rather than with a clock read afterwards.
+    assert_eq!(
+        body["revoked_at"].as_str().unwrap(),
+        effect.effected_at.to_rfc3339()
+    );
+}
+
+#[tokio::test]
+async fn a_repeated_revocation_records_a_no_op_and_advances_no_epoch() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-repeats").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let path = format!("/v1/admin/grants/{}/revoke", alice.role_grant);
+
+    let (status, _, _) = revoke(&client, &base, &path, &alice.admin, &alice.tenant, "first").await;
+    assert_eq!(status, 200);
+    assert_eq!(epoch(&pool, tenant).await, 1);
+
+    let (status, receipt, body) =
+        revoke(&client, &base, &path, &alice.admin, &alice.tenant, "again").await;
+    assert_eq!(status, 409, "a repeat is refused: {body}");
+    assert_eq!(
+        epoch(&pool, tenant).await,
+        1,
+        "a repeated revocation advances no epoch (`SIGNOFF-REPAIR.3.1`)"
+    );
+    let effect = load_tenant_administrative_effect(
+        &pool,
+        tenant,
+        receipt
+            .expect("a refusal carries its receipt")
+            .parse()
+            .unwrap(),
+    )
+    .await
+    .expect("read back")
+    .expect("the no-op is recorded, not merely returned");
+    assert!(!effect.outcome.changed_protected_state());
+    let AdministrativeOutcome::NoOp { detail } = &effect.outcome else {
+        panic!("expected a recorded no-op, got {:?}", effect.outcome)
+    };
+    assert!(detail.as_str().contains("already revoked"));
+}
+
+#[tokio::test]
+async fn a_missing_and_a_foreign_target_are_one_answer_that_records_a_refusal() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-outsider").await;
+    let victim = enrolled(&client, &base, "revocation-victim").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let victim_tenant: TenantId = victim.tenant.parse().unwrap();
+
+    let absent = format!("grt_{}", uuid::Uuid::now_v7());
+    let mut answers = Vec::new();
+    for target_id in [&absent, &victim.role_grant] {
+        let (status, receipt, body) = revoke(
+            &client,
+            &base,
+            &format!("/v1/admin/grants/{target_id}/revoke"),
+            &alice.admin,
+            &alice.tenant,
+            "probing",
+        )
+        .await;
+        assert_eq!(status, 404, "missing and foreign both 404: {body}");
+        let effect = load_tenant_administrative_effect(
+            &pool,
+            tenant,
+            receipt.expect("receipt").parse().unwrap(),
+        )
+        .await
+        .expect("read back")
+        .expect("an admitted caller's refused operation is recorded");
+        let AdministrativeOutcome::Refused { code, .. } = &effect.outcome else {
+            panic!("expected a recorded refusal, got {:?}", effect.outcome)
+        };
+        assert_eq!(*code, AdministrativeRefusal::NotFound);
+        answers.push(body["message"].as_str().unwrap().to_owned());
+    }
+    // The evidence lives in the CALLER's tenant and names only the id the caller
+    // supplied, so the two cases stay indistinguishable to it.
+    assert_ne!(answers[0], answers[1], "each message names its own id");
+    assert_eq!(grant_status(&pool, &victim.role_grant).await, "active");
+    assert_eq!(epoch(&pool, victim_tenant).await, 0);
+    assert_eq!(
+        admission_count(&pool, &victim.tenant).await,
+        0,
+        "a foreign attempt leaves no trace in the victim's tenant"
+    );
+}
+
+#[tokio::test]
+async fn the_reason_bounds_are_a_wire_contract_and_refuse_before_any_effect() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-reason").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let path = format!("/v1/admin/grants/{}/revoke", alice.role_grant);
+
+    // ⚠️ The documented wire change: blankness was already refused; the byte
+    // ceiling and the control-character rule are new.
+    for (label, reason) in [
+        ("blank", "   ".to_owned()),
+        ("a control character", "role\nretired".to_owned()),
+        ("one byte over the ceiling", "x".repeat(1025)),
+    ] {
+        let before = effect_rows(&pool).await;
+        let (status, receipt, body) =
+            revoke(&client, &base, &path, &alice.admin, &alice.tenant, &reason).await;
+        assert_eq!(status, 400, "{label} is refused: {body}");
+        assert_eq!(
+            effect_rows(&pool).await,
+            before,
+            "{label} never became an operation, so it records no effect"
+        );
+        // The admission still commits: an admitted caller who sent something
+        // malformed is a fact worth keeping, and that is the established order.
+        let receipt = receipt.expect("a malformed request still names its admission");
+        assert!(
+            load_tenant_administrative_effect(&pool, tenant, receipt.parse().unwrap())
+                .await
+                .expect("read back")
+                .is_none()
+        );
+        assert_eq!(grant_status(&pool, &alice.role_grant).await, "active");
+    }
+
+    // Exactly at the ceiling succeeds, so the bound is checked at its edge.
+    let (status, _, body) = revoke(
+        &client,
+        &base,
+        &path,
+        &alice.admin,
+        &alice.tenant,
+        &"x".repeat(1024),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a reason exactly at the ceiling is usable: {body}"
+    );
+    assert_eq!(epoch(&pool, tenant).await, 1);
+}
+
+#[tokio::test]
+async fn a_caller_without_administration_is_denied_and_records_no_effect() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-denied").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let role = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "ordinary", "tenant_id": alice.tenant }),
+    )
+    .await;
+    let before = effect_rows(&pool).await;
+
+    let (status, receipt, body) = revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/grants/{}/revoke", alice.role_grant),
+        role["principal_id"].as_str().unwrap(),
+        &alice.tenant,
+        "not mine to revoke",
+    )
+    .await;
+    assert_eq!(status, 403, "a role without tenant_admin is denied: {body}");
+    assert_eq!(
+        effect_rows(&pool).await,
+        before,
+        "a denial never became an operation; the admission record already says denied"
+    );
+    assert!(load_tenant_administrative_effect(
+        &pool,
+        tenant,
+        receipt.expect("a denial names its record").parse().unwrap()
+    )
+    .await
+    .expect("read back")
+    .is_none());
+    assert_eq!(grant_status(&pool, &alice.role_grant).await, "active");
+    assert_eq!(epoch(&pool, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_revocation_waits_for_the_exclusive_guard_and_then_applies() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-waits").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+    let path = format!("/v1/admin/grants/{}/revoke", alice.role_grant);
+    let (base2, client2, admin, tenant_key) = (
+        base.clone(),
+        client.clone(),
+        alice.admin.clone(),
+        alice.tenant.clone(),
+    );
+    let request = tokio::spawn(async move {
+        revoke(
+            &client2,
+            &base2,
+            &path,
+            &admin,
+            &tenant_key,
+            "after the wait",
+        )
+        .await
+    });
+
+    // While the guard is held the revocation cannot have applied. Before
+    // `.3.3.4.8` the mutation ran in its OWN transaction after a shared-guard
+    // admission, so it was not fenced by this at all.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(grant_status(&pool, &alice.role_grant).await, "active");
+    assert_eq!(epoch(&pool, tenant).await, 0);
+    assert!(!request.is_finished(), "the revocation is waiting");
+
+    holder.release().await;
+    let (status, receipt, body) = timeout(Duration::from_secs(10), request)
+        .await
+        .expect("the revocation completes after the guard is released")
+        .expect("the request task joins");
+    assert_eq!(status, 200, "it then applies: {body}");
+    assert_eq!(grant_status(&pool, &alice.role_grant).await, "revoked");
+    assert_eq!(epoch(&pool, tenant).await, 1);
+    assert!(receipt.is_some());
+}
+
+#[tokio::test]
+async fn authority_that_ends_while_a_revocation_waits_refuses_it() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-queued").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+    let path = format!("/v1/admin/grants/{}/revoke", alice.role_grant);
+    let (base2, client2, admin, tenant_key) = (
+        base.clone(),
+        client.clone(),
+        alice.admin.clone(),
+        alice.tenant.clone(),
+    );
+    let request = tokio::spawn(async move {
+        revoke(&client2, &base2, &path, &admin, &tenant_key, "queued").await
+    });
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(!request.is_finished(), "the revocation is waiting");
+
+    // End the caller's OWN administration underneath the blocked request. The
+    // decision time is sampled after the guard wait, so this must be seen.
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&alice.admin_grant)
+        .execute(&pool)
+        .await
+        .expect("end the caller's authority");
+    holder.release().await;
+
+    let (status, receipt, body) = timeout(Duration::from_secs(10), request)
+        .await
+        .expect("the revocation completes")
+        .expect("the request task joins");
+    assert_eq!(
+        status, 403,
+        "authority that ended during the wait is gone: {body}"
+    );
+    assert_eq!(
+        grant_status(&pool, &alice.role_grant).await,
+        "active",
+        "a denied revocation changes no protected target"
+    );
+    // The epoch is still 0, and that is the point: the raw UPDATE above ends the
+    // caller's authority WITHOUT the application's epoch bump, so any advance
+    // here would have had to come from the blocked request itself. It did not.
+    assert_eq!(
+        epoch(&pool, tenant).await,
+        0,
+        "a denied revocation advances no revocation epoch"
+    );
+    assert!(
+        load_tenant_administrative_effect(
+            &pool,
+            tenant,
+            receipt.expect("receipt").parse().unwrap()
+        )
+        .await
+        .expect("read back")
+        .is_none(),
+        "a denial records no effect"
+    );
+}
+
+#[tokio::test]
+async fn a_boundary_revocation_takes_the_same_shape_and_fences_the_next_request() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "revocation-boundary").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let path = format!("/v1/admin/boundaries/{}/revoke", alice.boundary);
+
+    let (status, receipt, body) = revoke(
+        &client,
+        &base,
+        &path,
+        &alice.admin,
+        &alice.tenant,
+        "tenant frozen",
+    )
+    .await;
+    assert_eq!(status, 200, "the boundary revokes: {body}");
+    let effect = load_tenant_administrative_effect(
+        &pool,
+        tenant,
+        receipt.expect("receipt").parse().unwrap(),
+    )
+    .await
+    .expect("read back")
+    .expect("the boundary effect committed");
+    assert_eq!(
+        effect.operation,
+        AdministrativeOperation::BoundaryRevoke {
+            boundary_id: target(&alice.boundary)
+        }
+    );
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(epoch(&pool, tenant).await, 1);
+
+    // A frozen boundary fences the next administrative write, and the repeat is
+    // the recorded no-op rather than a second epoch bump.
+    let (status, _, body) =
+        revoke(&client, &base, &path, &alice.admin, &alice.tenant, "again").await;
+    assert_eq!(
+        status, 403,
+        "the frozen boundary now refuses its own admin: {body}"
+    );
+    assert_eq!(epoch(&pool, tenant).await, 1);
 }

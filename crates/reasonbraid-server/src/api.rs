@@ -4986,36 +4986,95 @@ pub struct RevokeAuthorityRequest {
     pub reason: String,
 }
 
+/// Both revocation routes run ONE guarded transaction (`SIGNOFF-REPAIR.3.3.4.8`):
+/// the admission, the tenant-bound target selection, the status change, the
+/// epoch bump and the final effect record share a single commit under the
+/// tenant's exclusive authority guard. Before this, the handler ran TWO guarded
+/// transactions — a shared-guard admission and then an exclusive-guard service
+/// call — so the admission was a fact about authority that could already have
+/// stopped holding by the time the mutation ran.
+///
+/// Every answer below, including the refusals, carries the
+/// `x-reasonbraid-authorization` receipt naming the admission this request
+/// committed — which is also the effect record's id when one was written.
+/// Without it the effect record would be unreachable: there is no list endpoint.
+/// This follows the inspection routes' established shape, where a denial names
+/// its record too.
+async fn run_revocation(
+    state: &ApiState,
+    headers: &HeaderMap,
+    req: &RevokeAuthorityRequest,
+    target: authority::RevocationTarget,
+    target_id: &str,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(headers)?;
+    let revocation = authority::revoke_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        target,
+        target_id,
+        &req.reason,
+    )
+    .await?;
+    let noun = match target {
+        authority::RevocationTarget::Grant => "grant",
+        authority::RevocationTarget::Boundary => "boundary",
+    };
+    let receipt = revocation.record_id;
+    let response = match revocation.result {
+        authority::RevocationResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::RevocationResult::InvalidReason(detail) => {
+            ControlApiError::invalid_command(format!("the revocation reason is required: {detail}"))
+                .into_response()
+        }
+        // Missing and foreign are ONE answer, so a caller learns nothing about
+        // another tenant's ids (`SIGNOFF-REPAIR.3.1`).
+        authority::RevocationResult::NotFound => {
+            ControlApiError::not_found(format!("no {noun} `{target_id}` in this tenant"))
+                .into_response()
+        }
+        authority::RevocationResult::AlreadyRevoked => {
+            ControlApiError::invalid_transition(format!("{noun} `{target_id}` is already revoked"))
+                .into_response()
+        }
+        authority::RevocationResult::Applied => {
+            let key = match target {
+                authority::RevocationTarget::Grant => "grant_id",
+                authority::RevocationTarget::Boundary => "boundary_id",
+            };
+            Json(json!({
+                key: target_id,
+                "tenant_id": req.tenant_id.to_string(),
+                // Database time from inside the transaction, not a process clock
+                // read after it: this is the instant the decision, the mutation
+                // and the effect record actually share.
+                "revoked_at": revocation.effected_at.to_rfc3339(),
+            }))
+            .into_response()
+        }
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
+}
+
 async fn revoke_grant(
     State(state): State<Arc<ApiState>>,
     Path(grant_id): Path<String>,
     headers: HeaderMap,
     Json(req): Json<RevokeAuthorityRequest>,
-) -> Result<Json<Value>, ControlApiError> {
-    let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    if req.reason.trim().is_empty() {
-        return Err(ControlApiError::invalid_command(
-            "the revocation reason is required (a revocation without a reason is a silent skip)",
-        ));
-    }
-    let Some((tenant, previous)) =
-        authority::revoke_grant(&state.pool, &grant_id, req.tenant_id).await?
-    else {
-        return Err(ControlApiError::not_found(format!(
-            "no grant `{grant_id}` in this tenant"
-        )));
-    };
-    if previous == GrantStatus::Revoked {
-        return Err(ControlApiError::invalid_transition(format!(
-            "grant `{grant_id}` is already revoked"
-        )));
-    }
-    Ok(Json(json!({
-        "grant_id": grant_id,
-        "tenant_id": tenant,
-        "revoked_at": Utc::now().to_rfc3339(),
-    })))
+) -> Result<Response, ControlApiError> {
+    run_revocation(
+        &state,
+        &headers,
+        &req,
+        authority::RevocationTarget::Grant,
+        &grant_id,
+    )
+    .await
 }
 
 async fn revoke_boundary(
@@ -5023,31 +5082,15 @@ async fn revoke_boundary(
     Path(boundary_id): Path<String>,
     headers: HeaderMap,
     Json(req): Json<RevokeAuthorityRequest>,
-) -> Result<Json<Value>, ControlApiError> {
-    let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    if req.reason.trim().is_empty() {
-        return Err(ControlApiError::invalid_command(
-            "the revocation reason is required (a revocation without a reason is a silent skip)",
-        ));
-    }
-    let Some((tenant, previous)) =
-        authority::revoke_boundary(&state.pool, &boundary_id, req.tenant_id).await?
-    else {
-        return Err(ControlApiError::not_found(format!(
-            "no boundary `{boundary_id}` in this tenant"
-        )));
-    };
-    if previous == BoundaryStatus::Revoked {
-        return Err(ControlApiError::invalid_transition(format!(
-            "boundary `{boundary_id}` is already revoked"
-        )));
-    }
-    Ok(Json(json!({
-        "boundary_id": boundary_id,
-        "tenant_id": tenant,
-        "revoked_at": Utc::now().to_rfc3339(),
-    })))
+) -> Result<Response, ControlApiError> {
+    run_revocation(
+        &state,
+        &headers,
+        &req,
+        authority::RevocationTarget::Boundary,
+        &boundary_id,
+    )
+    .await
 }
 
 /// Admit and record a named own-tenant inspection before running its query.

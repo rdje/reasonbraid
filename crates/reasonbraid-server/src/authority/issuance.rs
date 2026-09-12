@@ -2,8 +2,8 @@
 //! they do not authenticate an issuer or join a separate HTTP admission transaction.
 
 use reasonbraid_core::{
-    boundary_active_at, grant_exceeds_boundary, AuthorityGrant, BoundaryStatus,
-    EnrollmentAuthorityBoundary, GrantStatus, TenantId,
+    boundary_active_at, grant_exceeds_boundary, AuthorityGrant, EnrollmentAuthorityBoundary,
+    TenantId,
 };
 use sqlx::{PgConnection, PgPool};
 
@@ -11,8 +11,8 @@ use super::transaction::{
     transact, transact_with_error, GuardError, GuardMode, Limits, TenantTransaction,
 };
 use super::{
-    boundary_from_row, bump_revocation_epoch, insert_boundary_in_tx, insert_grant_row,
-    AuthorityTransactionError, BoundaryRow, GrantCreateError, GrantRefused,
+    boundary_from_row, insert_boundary_in_tx, insert_grant_row, AuthorityTransactionError,
+    BoundaryRow, GrantCreateError, GrantRefused,
 };
 
 /// Insert an enrollment boundary under the tenant's exclusive authority guard.
@@ -144,59 +144,9 @@ pub(crate) async fn load_active_boundary_in_guard(
     .transpose()
 }
 
-/// Guard before the matching target lock; status and epoch commit together.
-/// Missing/foreign targets and already-revoked targets have no epoch effect.
-/// Malformed status is storage failure, not an inferred transitionable state.
-pub(crate) async fn revoke_grant(
-    pool: &PgPool,
-    grant_id: &str,
-    expected_tenant: TenantId,
-) -> Result<Option<(String, GrantStatus)>, AuthorityTransactionError> {
-    let grant_id = grant_id.to_owned();
-    transact(pool, &[(expected_tenant, GuardMode::Exclusive)], move |tx| {
-        Box::pin(async move {
-            let conn = tx.connection(expected_tenant, GuardMode::Exclusive)?;
-            let tenant_key = expected_tenant.to_string();
-            let row: Option<(String, String)> = sqlx::query_as(
-                "SELECT tenant_id, status FROM authority_grants WHERE grant_id = $1 AND tenant_id = $2 FOR UPDATE")
-                .bind(&grant_id).bind(&tenant_key).fetch_optional(&mut *conn).await?;
-            let Some((tenant, status)) = row else { return Ok(None) };
-            let previous = status.parse::<GrantStatus>().map_err(|_| sqlx::Error::Protocol(
-                "stored authority grant status is malformed".into()))?;
-            if previous != GrantStatus::Revoked {
-                sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1 AND tenant_id = $2")
-                    .bind(&grant_id).bind(&tenant_key).execute(&mut *conn).await?;
-                bump_revocation_epoch(conn, &tenant).await?;
-            }
-            Ok(Some((tenant, previous)))
-        })
-    }).await
-}
-
-/// Boundary revocation uses the same exclusive tenant guard as grant issuance.
-/// This does not join the caller's separate HTTP admission until `.3.3.4.8`.
-pub(crate) async fn revoke_boundary(
-    pool: &PgPool,
-    boundary_id: &str,
-    expected_tenant: TenantId,
-) -> Result<Option<(String, BoundaryStatus)>, AuthorityTransactionError> {
-    let boundary_id = boundary_id.to_owned();
-    transact(pool, &[(expected_tenant, GuardMode::Exclusive)], move |tx| {
-        Box::pin(async move {
-            let conn = tx.connection(expected_tenant, GuardMode::Exclusive)?;
-            let tenant_key = expected_tenant.to_string();
-            let row: Option<(String, String)> = sqlx::query_as(
-                "SELECT tenant_id, status FROM enrollment_boundaries WHERE boundary_id = $1 AND tenant_id = $2 FOR UPDATE")
-                .bind(&boundary_id).bind(&tenant_key).fetch_optional(&mut *conn).await?;
-            let Some((tenant, status)) = row else { return Ok(None) };
-            let previous = status.parse::<BoundaryStatus>().map_err(|_| sqlx::Error::Protocol(
-                "stored enrollment boundary status is malformed".into()))?;
-            if previous != BoundaryStatus::Revoked {
-                sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE boundary_id = $1 AND tenant_id = $2")
-                    .bind(&boundary_id).bind(&tenant_key).execute(&mut *conn).await?;
-                bump_revocation_epoch(conn, &tenant).await?;
-            }
-            Ok(Some((tenant, previous)))
-        })
-    }).await
-}
+// `revoke_grant` and `revoke_boundary` used to live here: a second guarded
+// transaction that the HTTP handler ran AFTER its own admission transaction.
+// `SIGNOFF-REPAIR.3.3.4.8` replaced both with one transaction that holds the
+// admission, the target selection, the status change, the epoch bump and the
+// final effect record together (`authority/revocation.rs`), so these are removed
+// rather than left as a second, unordered way to revoke the same rows.

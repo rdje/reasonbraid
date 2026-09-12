@@ -41,18 +41,19 @@ pub(crate) mod transaction;
 pub use issuance::{create_boundary, create_grant};
 pub(crate) use issuance::{
     create_grant_in_guard, load_active_boundary_for_tenant, load_active_boundary_in_guard,
-    revoke_boundary, revoke_grant,
 };
 pub use transaction::GuardError as AuthorityTransactionError;
 pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTransaction};
 
 mod effects;
 mod records;
+mod revocation;
 mod selection;
 
 pub use effects::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
 pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
+pub(crate) use revocation::{revoke_in_one_transaction, RevocationResult, RevocationTarget};
 
 /// The authorization context of one command: the authenticated actor, the grant
 /// holder (the actor, or the delegating subject's principal), the delegated subject

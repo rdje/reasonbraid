@@ -15,6 +15,9 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+#[path = "support/cleanup.rs"]
+mod pg_cleanup;
+
 use std::sync::OnceLock;
 
 use chrono::{Duration, Utc};
@@ -46,18 +49,26 @@ async fn pool() -> Option<PgPool> {
         .await
         .expect("apply migrations");
     // The authority tables belong exclusively to this binary: purge at start.
-    sqlx::query("DELETE FROM authorization_records")
-        .execute(&pool)
-        .await
-        .expect("purge authorization_records");
-    sqlx::query("DELETE FROM authority_grants")
-        .execute(&pool)
-        .await
-        .expect("purge authority_grants");
-    sqlx::query("DELETE FROM enrollment_boundaries")
-        .execute(&pool)
-        .await
-        .expect("purge enrollment_boundaries");
+    //
+    // ⚠️ This used to be three hand-rolled DELETEs in a hand-chosen order, and
+    // it was the ONLY purge of `authorization_records` the checked-plan helper
+    // did not govern. When `SIGNOFF-REPAIR.3.3.4.7.2` gave that table a child,
+    // every checked plan was updated and this one could not be, because nothing
+    // knew it existed — so it failed all 22 tests on a foreign-key violation the
+    // moment an earlier suite in the same database wrote an effect row. The
+    // helper validates the WHOLE declared plan before the first deletion, so the
+    // next child table is caught here by the checker rather than by a red suite.
+    pg_cleanup::delete_tables(
+        &pool,
+        &[
+            "administrative_effects",
+            "authorization_records",
+            "authority_grants",
+            "enrollment_boundaries",
+        ],
+    )
+    .await
+    .expect("purge checked fixture plan");
     Some(pool)
 }
 

@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Grant and boundary revocation are now ONE guarded transaction under `.3.3.4.8`
+(REPAIR-0112), and it is the first route to produce a final effect record. The
+route used to run two guarded transactions — a shared-guard admission, then an
+exclusive-guard service — so a revocation could apply on authority that had
+already stopped holding. One `transact` now holds database time sampled after the
+guard wait, the admission, tenant-bound `FOR UPDATE` selection, the status change,
+the epoch bump and the effect record. The two superseded services are DELETED,
+not deprecated. Every answer including refusals carries
+`x-reasonbraid-authorization`; a 403 or 400 records its admission only, while a
+404 records `refused`/`not_found` in the caller's own tenant, preserving `.3.1`'s
+one indistinguishable answer for missing and foreign. Two documented wire
+changes: the reason gains the 1 024-byte control-character-free contract, and
+`revoked_at` is the transaction's own database time. **16 passed / 0 failed** on
+three independent runs; FALSIFIED **11 passed / 5 failed** — the pre-`.8` shape
+makes `authority_that_ends_while_a_revocation_waits_refuses_it` report
+`left: 200, right: 403`, the revocation applying after the caller's own
+administration ended while it queued. `.9`–`.12` adopt the effect record next;
+until each does, its operations have no effect row, which reads as an absence and
+never as a success.
+
 `.3.3.4.7.3` (REPAIR-0111) corrects a defect in `.7.1`'s own representation,
 found by its first consumer. The stored refusal code was typed against the §9.8
 `KnownReasonCode` registry so the record and the response could not disagree; the

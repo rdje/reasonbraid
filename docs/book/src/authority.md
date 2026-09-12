@@ -482,11 +482,51 @@ epoch to 2. `SIGNOFF-REPAIR.3.1` owns the correction and its focused verificatio
 the corrected API/authority/escalation run passed 34 tests. The contention control
 observed both requests waiting on database locks before releasing the target.
 
-The existing tenant-admin audit records the caller's admission decision. It does
-not yet persist the submitted revocation reason and final effect outcome atomically
-with the mutation. That effect audit, and serialization against revocation of the
-acting administrator's own authority, remain `.3.3`. The target-row lock described
-here does not establish those separate guarantees.
+#### One transaction, from the admission to the evidence
+
+Revocation used to run **two** guarded transactions: the handler admitted the
+caller under a shared guard, then called a service that opened a second one under
+an exclusive guard. Between them the admission could be a fact about authority
+that had already stopped holding, and the submitted reason and the final outcome
+were never recorded with the mutation at all.
+
+Both routes now run one transaction under the tenant's exclusive guard, holding
+the decision time (database time sampled **after** the guard wait), the
+admission, the tenant-bound target selection and row lock, the status change, the
+revocation-epoch bump, and the final effect record.
+
+| Order | Result |
+| --- | --- |
+| A revocation arrives while the tenant's exclusive guard is held | It waits; nothing is applied and no epoch advances until it acquires. |
+| The caller's own administration ends while its revocation queues | The post-wait admission sees it ended: 403, and the target and epoch are unchanged. |
+| An eligible administrator revokes a live target | 200; status becomes revoked, the epoch advances once, and the effect records `applied` with the submitted reason. |
+| The same target is revoked again | 409 and no further epoch increment, with the effect recording `no_op`. |
+| The target is missing, or belongs to another tenant | One identical 404, with the effect recording `refused`/`not_found` in the CALLER's tenant. |
+
+Every answer — including each refusal — carries an
+`x-reasonbraid-authorization` header naming the admission this request
+committed, which is also the effect record's id when one was written. Without it
+the effect record would be unreachable, because there is no list endpoint.
+
+What commits an effect record is narrower than what commits an admission. A 403
+denial and a 400 malformed reason record their admission only: the request never
+became an operation, and the admission record already says what happened. A 404
+does record a refusal, and it leaks nothing — the two cases are indistinguishable
+to the caller, and the record names only the id the caller itself supplied.
+
+`revoked_at` is now the transaction's own database time rather than a process
+clock read after the fact, so the response and the effect record report the same
+instant.
+
+**Wire changes.** The submitted reason was already required; it now also has to
+be at most 1 024 UTF-8 bytes and free of control characters, the same contract
+[site authority](site-authority.md) publishes. A reason exactly at the ceiling is
+accepted; one byte over is `400 invalid_command`, before any effect is recorded.
+And both responses gained the receipt header described above.
+
+Serialization against revocation of the acting administrator's own authority is
+part of this: the admission is evaluated inside the same exclusive guard the
+mutation holds.
 
 ### The final administrative effect record
 
@@ -494,11 +534,13 @@ An admission record says a caller **was allowed to ask**. It says nothing about
 what the local mutation then did. Collapsing the two would let an operator read
 `allowed` as `applied`, so the final effect is a separate, additive record.
 
-⛔ **No route writes one yet.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
-representation and `.7.2` gives it durable storage; grant/boundary revocation is
-the first route to produce one, under `.8`. This section describes a contract the
-integration children fill, exactly as the tenant guard was qualified as a
-primitive before any route used it.
+**One route writes one today.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
+representation, `.7.2` gives it durable storage, and `.8` makes grant and boundary
+revocation its first producer — described under [one transaction, from the
+admission to the evidence](#one-transaction-from-the-admission-to-the-evidence).
+The remaining administrative families adopt it in `.9` through `.12`; until each
+does, its operations have no effect record, which reads as an absence and never
+as a success.
 
 An effect record names four things:
 
@@ -759,9 +801,9 @@ local writes, as described below. Card import still uses the separate guarded
 active-boundary lookup followed by its existing insertion bridge, which does not
 retain that guard or apply the guarded service's time check. Its complete
 transaction owner is `.3.3.4.11`. Node-certificate epoch writes retain `.3.3.4.10`.
-HTTP revocation admission, submitted reason and final effect are still separate
-until `.3.3.4.8`; the service lock does not join the acting administrator's earlier
-admission to that mutation.
+HTTP revocation admission, submitted reason and final effect are now ONE
+transaction under `.3.3.4.8`, described above; the two superseded revocation
+services were removed rather than left as a second, unordered path.
 
 ### Development enrollment transactions
 

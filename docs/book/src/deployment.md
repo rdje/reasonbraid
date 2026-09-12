@@ -814,8 +814,17 @@ supplied fetcher fails at the destination gate, and persisting a derivation that
 is not the worker's chunk fails at the derivation assertion and nowhere earlier.
 Evidence: `docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
 
-Two limits stay stated rather than implied. The mismatch refusal's live absence
-of a snapshot and a derivation is still `.7.3.3.4.2`. And the R2 pack advertises
+The mismatch refusal has its own live control. A dishonest worker, injected
+through the `R2_WORKER_BIN` override the spawner already reads, returns a
+well-formed reply describing bytes the request never supplied; the handler
+refuses it `extraction_source_mismatch` and the control asserts an ABSENCE —
+zero snapshots for that reference, zero derivations joined to it, and the whole
+store's snapshot and derivation counts unchanged across the request. Writing a
+snapshot before reporting the same refusal leaves the refusal's own name intact
+and still fails that control, which is why the counts are there and the error
+kind alone is not enough.
+
+One limit stays stated rather than implied. The R2 pack advertises
 five media types its own acquisition leg refuses: the R0 sniff accepts a
 declared content type only when it is `text/html`, `application/xhtml+xml` or
 `text/*`, so the same feed that succeeds served as `text/xml` is refused

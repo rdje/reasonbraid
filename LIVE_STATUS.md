@@ -272,9 +272,28 @@ a declared content type only when it is `text/html`, `application/xhtml+xml` or
 ranked onto a resolver that cannot acquire its document and receives an
 acquisition refusal instead of the explicit `resource_unresolvable_now` the §12.2
 contract reserves for "no eligible resolver". The per-format census and the
-repair decision are owned by .7.3.3.5; the live mismatch refusal remains
-.7.3.3.4.2. Neither the registry row nor the sniff changes before that census
-exists. Evidence: docs/tasks/artifacts/signoff_review/r2-acquisition-join.md.
+repair decision are owned by .7.3.3.5. Neither the registry row nor the sniff
+changes before that census exists.
+
+The sibling join .7.3.3.4.2 is closed under REPAIR-0096, with no production
+change: the gap was coverage. The seven mismatch controls .7.3.3.3.2 added all
+call extract_acquired_bytes directly and never reach a database, so they prove
+the refusal is RAISED and nothing proved the handler HONOURS it. A dishonest
+worker injected through the existing R2_WORKER_BIN override now returns a
+well-formed reply describing bytes the request never supplied; the handler
+refuses it `extraction_source_mismatch` naming both digests, and the control
+asserts the ABSENCE three ways — zero snapshots for the exact reference, zero
+derivations joined to it through parent_snapshot_id, and the whole store's
+snapshot and derivation counts unchanged across the request. The profiles suite
+passes 33 of 33 live with its cluster stopped and removed; strict all-target
+server lint and format pass. Two injections, each reverted and re-run green:
+removing the digest binding makes the handler accept the foreign document, and
+**writing a snapshot before reporting the same refusal leaves the
+extraction_source_mismatch assertion PASSING while the count fails with left: 1**
+— the evidence that this control measures the absence rather than the error
+kind. Production source is byte-identical to REPAIR-0095 afterwards. The parent
+.7.3.3.4 is complete. Evidence:
+docs/tasks/artifacts/signoff_review/r2-acquisition-join.md.
 
 The source-165cb3a full checkpoint STOPPED at its fourth command
 (`04-pg-demo rc=101`, 3,137s): 36 of 40 suites started, 35 passed with 259 tests,

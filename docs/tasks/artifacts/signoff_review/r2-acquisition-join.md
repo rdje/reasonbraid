@@ -105,13 +105,53 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
 The control refuses rather than skipping when the extraction worker is absent: a
 control that reports neither way is worse than one that stops.
 
+## The mismatch refusal, live (`.7.3.3.4.2`, REPAIR-0096)
+
+The sibling join. The seven controls `.7.3.3.3.2` added all call
+`extract_acquired_bytes` directly and never reach a database —
+`git grep -n "PgPool\|sqlx" -- crates/reasonbraid-server/tests/extraction_input.rs`
+returns nothing. They prove the refusal is RAISED. Nothing proved the HTTP
+handler HONOURS it.
+
+`the_r2_mismatch_refusal_persists_neither_snapshot_nor_derivation` acquires the
+same served document through the same admitting deployment, with a dishonest
+worker injected through the `R2_WORKER_BIN` override the spawner already reads —
+so production is untouched. The reply is deliberately WELL-FORMED: a malformed
+one is refused by the parser and never exercises the digest binding at all. The
+stub is written mode 0700 under a runtime-discovered `target/r2-join-controls`
+and removed by the control itself.
+
+The absence is asserted three ways, because each permits a different defect:
+
+| assertion | what it still permits on its own |
+| --- | --- |
+| zero `evidence_snapshots` for the exact reference | a row written under another reference id |
+| zero `derivations` joined to that reference through `parent_snapshot_id` | the same |
+| whole-table snapshot and derivation counts unchanged across the request | nothing in this purged database |
+
+Falsification — two injections, each reverted and the suite re-run green:
+
+| injection | result | what it proves |
+| --- | --- | --- |
+| the digest binding removed from `extract_acquired_bytes` | fails naming the stub's own `another document` chunk in the receipt | the handler would otherwise persist a foreign document |
+| the refusal KEPT, but a snapshot written before reporting it | the `extraction_source_mismatch` assertion **passes**, and the count fails with `left: 1` | the control measures the ABSENCE, not the error kind — which is the whole point of the leaf |
+
+`git diff --quiet -- crates/reasonbraid-server/src/` confirms production source is
+byte-identical to REPAIR-0095 after both injections were reverted. The suite
+passes 33/33 live; the cluster was stopped and removed.
+
+`.4.1`'s control is refactored onto the helpers this child needed
+(`admitting_fetcher`, `widen_r2_to_http`/`restore_r2_schemes`, `submit_hinted`,
+`require_extraction_worker`), with its assertions unchanged.
+
 ## What this does NOT establish
 
-The SUCCESS join is qualified. The mismatch refusal's live absence of a snapshot
-and a derivation remains `.4.2`. Pipe bounds, descendant containment and
-aggregate retained storage remain `.7.3.4`. This is one document, one format, one
-loopback origin: it is the join that was missing, not a qualification of the R2
-pack's reach.
+Both joins are qualified: the success path persists the served document's own
+evidence, and the mismatch refusal persists nothing. Pipe bounds, descendant
+containment and aggregate retained storage remain `.7.3.4`. This is one document,
+one format, one loopback origin: it is the join that was missing, not a
+qualification of the R2 pack's reach — and the finding below is exactly why that
+distinction matters.
 
 ## The finding this surfaced
 

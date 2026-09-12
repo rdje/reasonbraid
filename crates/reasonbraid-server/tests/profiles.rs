@@ -2992,6 +2992,121 @@ fn origin_fetcher(
     )
 }
 
+/// The deployment both R2 joins acquire through: the origin's scheme and port,
+/// loopback admitted, and every other destination class still answering to the
+/// shipped evaluation.
+fn admitting_fetcher(port: u16) -> std::sync::Arc<reasonbraid_server::fetcher::Fetcher> {
+    origin_fetcher(
+        port,
+        std::sync::Arc::new(|ip: &std::net::IpAddr| {
+            if ip.is_loopback() {
+                reasonbraid_server::ssrf::SsrfVerdict::Allowed
+            } else {
+                reasonbraid_server::ssrf::evaluate(*ip)
+            }
+        }),
+    )
+}
+
+/// Declare that THIS deployment's R2 pack serves the origin's scheme.
+///
+/// The registry row is a deployment fact, not a code path: migration 0027 ships
+/// `["https"]`, which the caller asserts as its baseline here. The row is shared
+/// with every other suite in the same database, so the returned value must be
+/// handed back to `restore_r2_schemes` before anything is asserted.
+async fn widen_r2_to_http(pool: &PgPool) -> Value {
+    let shipped: Value = sqlx::query_scalar(
+        "SELECT schemes FROM resolver_capabilities WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("the R2 pack is installed");
+    assert_eq!(
+        shipped,
+        json!(["https"]),
+        "the migration's R2 schemes are the baseline this control widens"
+    );
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .bind(json!(["https", "http"]))
+    .execute(pool)
+    .await
+    .expect("this deployment's R2 pack also serves the local origin");
+    shipped
+}
+
+async fn restore_r2_schemes(pool: &PgPool, shipped: &Value) {
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r2-extract-worker'",
+    )
+    .bind(shipped)
+    .execute(pool)
+    .await
+    .expect("the shipped R2 schemes are restored");
+}
+
+/// Submit an R2-hinted reference to the origin, with the scheme its locator
+/// actually carries. `resource_references.scheme` is caller-supplied and is NOT
+/// validated against the locator, so a control that wrote `https` here would be
+/// routed on data that is simply false.
+async fn submit_hinted(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    locator: &str,
+) -> String {
+    let (status, body) = post(
+        client,
+        base,
+        "/v1/resources",
+        principal,
+        &json!({
+            "original_locator": locator,
+            "scheme": "http",
+            "media_type_hint": "application/atom+xml",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference submits: {body}");
+    body["resource_id"]
+        .as_str()
+        .expect("the submitted reference id")
+        .to_string()
+}
+
+/// A repository-local, same-volume scratch path (§13): the root is discovered at
+/// runtime from the current directory, so moving the checkout needs no edit and
+/// nothing reaches for a system temporary directory.
+fn control_scratch(name: &str) -> std::path::PathBuf {
+    let root = std::env::current_dir()
+        .expect("cwd")
+        .ancestors()
+        .find(|path| {
+            path.join("Cargo.toml").is_file() && path.join("rust-toolchain.toml").is_file()
+        })
+        .expect("run inside the repository")
+        .to_path_buf();
+    let dir = root.join("target/r2-join-controls");
+    std::fs::create_dir_all(&dir).expect("the control scratch is created");
+    dir.join(format!("{name}-{}", std::process::id()))
+}
+
+/// The extraction worker both R2 joins need. A control whose whole purpose is
+/// closing a stated coverage gap must not be able to report neither way, so an
+/// absent worker stops rather than skipping.
+fn require_extraction_worker() {
+    let worker = reasonbraid_server::extraction::worker_path();
+    assert!(
+        worker.exists(),
+        "the extraction worker is absent at {worker:?}: this control cannot be \
+         reported either way without it — build the workspace binaries \
+         (`cargo build --workspace --bins --locked`) or set R2_WORKER_BIN"
+    );
+}
+
 /// The join `.7.3.3.3.2` left explicitly uncovered: a SUCCESSFUL R2 acquisition
 /// driven through the real HTTP handler, all the way to the snapshot and the
 /// derivations — and the persisted evidence asserted against the bytes the
@@ -3014,14 +3129,7 @@ fn origin_fetcher(
 async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
-    let worker = reasonbraid_server::extraction::worker_path();
-    if !worker.exists() {
-        panic!(
-            "the extraction worker is absent at {worker:?}: this control cannot be \
-             reported either way without it — build the workspace binaries \
-             (`cargo build --workspace --bins --locked`) or set R2_WORKER_BIN"
-        );
-    }
+    require_extraction_worker();
 
     let (origin, _origin_handle) = start_feed_origin().await;
     let port = origin.port();
@@ -3043,24 +3151,14 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
         ),
     )
     .await;
-    // The origin's scheme AND a loopback-admitting destination policy: every
-    // other class still answers to the shipped evaluation.
+    // The origin's scheme AND a loopback-admitting destination policy.
     let admitting = TestServer::start_with_router(
         &pool,
         reasonbraid_server::api_router_with_acquisition(
             pool.clone(),
             false,
             broker(),
-            origin_fetcher(
-                port,
-                std::sync::Arc::new(|ip: &std::net::IpAddr| {
-                    if ip.is_loopback() {
-                        reasonbraid_server::ssrf::SsrfVerdict::Allowed
-                    } else {
-                        reasonbraid_server::ssrf::evaluate(*ip)
-                    }
-                }),
-            ),
+            admitting_fetcher(port),
         ),
     )
     .await;
@@ -3075,53 +3173,25 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
-    let submit = |locator: String| {
-        let client = client.clone();
-        let base = shipped.base();
-        let human_id = human_id.clone();
-        async move {
-            let (status, body) = post(
-                &client,
-                &base,
-                "/v1/resources",
-                &human_id,
-                &json!({
-                    "original_locator": locator,
-                    "scheme": "http",
-                    "media_type_hint": "application/atom+xml",
-                }),
-            )
-            .await;
-            assert_eq!(status, 200, "the reference submits: {body}");
-            body["resource_id"].as_str().unwrap().to_string()
-        }
-    };
-    let reference = submit(format!("http://127.0.0.1:{port}/feed.xml")).await;
-    let typed_reference = submit(format!("http://127.0.0.1:{port}/typed-feed.xml")).await;
+    let base = shipped.base();
+    let reference = submit_hinted(
+        &client,
+        &base,
+        &human_id,
+        &format!("http://127.0.0.1:{port}/feed.xml"),
+    )
+    .await;
+    let typed_reference = submit_hinted(
+        &client,
+        &base,
+        &human_id,
+        &format!("http://127.0.0.1:{port}/typed-feed.xml"),
+    )
+    .await;
 
-    // This deployment's R2 pack serves the origin's scheme. The registry row is
-    // a deployment fact, not a code path: the migration ships `["https"]`, and
-    // the original value is restored below before anything is asserted, so no
-    // later suite in this database inherits it.
-    let shipped_schemes: Value = sqlx::query_scalar(
-        "SELECT schemes FROM resolver_capabilities WHERE resolver_id = 'r2-extract-worker'",
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("the R2 pack is installed");
-    assert_eq!(
-        shipped_schemes,
-        json!(["https"]),
-        "the migration's R2 schemes are the baseline this control widens"
-    );
-    sqlx::query(
-        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
-         WHERE resolver_id = 'r2-extract-worker'",
-    )
-    .bind(json!(["https", "http"]))
-    .execute(&pool)
-    .await
-    .expect("this deployment's R2 pack also serves the local origin");
+    // This deployment's R2 pack serves the origin's scheme. The row is restored
+    // below before anything is asserted, so no later suite inherits it.
+    let shipped_schemes = widen_r2_to_http(&pool).await;
 
     let resolve = |base: String, resource: String| {
         let client = client.clone();
@@ -3144,14 +3214,7 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     let acquired = resolve(admitting.base(), reference.clone()).await;
     let refused_type = resolve(admitting.base(), typed_reference.clone()).await;
 
-    sqlx::query(
-        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
-         WHERE resolver_id = 'r2-extract-worker'",
-    )
-    .bind(&shipped_schemes)
-    .execute(&pool)
-    .await
-    .expect("the shipped R2 schemes are restored");
+    restore_r2_schemes(&pool, &shipped_schemes).await;
 
     // Every deployment ranked the same pack: the acquisition leg is the only
     // difference between them.
@@ -3278,6 +3341,160 @@ async fn the_r2_acquisition_persists_the_served_document_s_own_evidence() {
     assert_eq!(
         typed_snapshots, 0,
         "a refused acquisition leaves no evidence behind"
+    );
+}
+
+/// The mismatch refusal's live join (`SIGNOFF-REPAIR.7.3.3.4.2`): a worker that
+/// describes bytes this request never supplied must persist NOTHING.
+///
+/// The seven controls `.7.3.3.3.2` added sit below the HTTP handler, on
+/// `extract_acquired_bytes`. They prove the refusal happens; they cannot prove
+/// the handler honours it, because they never reach a database. This one does,
+/// and it asserts an ABSENCE by count over the exact reference — a non-200 is
+/// not evidence that nothing was written, and neither is the refusal's own kind.
+///
+/// The dishonest worker is injected through the `R2_WORKER_BIN` override the
+/// spawner already reads, so production is not touched. `R2_WORKER_BIN` is
+/// process-wide: the suite's `guard()` serializes every test in this file, and
+/// the override is removed before anything is asserted.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_r2_mismatch_refusal_persists_neither_snapshot_nor_derivation() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    require_extraction_worker();
+
+    let (origin, _origin_handle) = start_feed_origin().await;
+    let port = origin.port();
+    let admitting = TestServer::start_with_router(
+        &pool,
+        reasonbraid_server::api_router_with_acquisition(
+            pool.clone(),
+            false,
+            std::sync::Arc::new(reasonbraid_server::broker::Broker::default()),
+            admitting_fetcher(port),
+        ),
+    )
+    .await;
+    let base = admitting.base();
+
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "r2-mismatch-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let reference = submit_hinted(
+        &client,
+        &base,
+        &human_id,
+        &format!("http://127.0.0.1:{port}/feed.xml"),
+    )
+    .await;
+
+    // A well-formed response for a document nobody supplied. It is well-formed
+    // deliberately: a malformed reply would be refused by the parser, which is
+    // a different refusal and would not exercise the digest binding at all.
+    let stub = control_scratch("mismatch-worker.sh");
+    std::fs::write(
+        &stub,
+        "#!/bin/sh\ncat > /dev/null\nprintf '%s\\n' '{\"parent_digest\":\
+         \"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\
+         \"chunks\":[{\"digest\":\"sha256:aa\",\"text\":\"another document\"}],\
+         \"excluded\":[],\"extractor_version\":\"0.1.0\"}'\n",
+    )
+    .expect("the stub is written");
+    let mut permissions = std::fs::metadata(&stub)
+        .expect("stub metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o700);
+    std::fs::set_permissions(&stub, permissions).expect("the stub is executable");
+
+    let shipped_schemes = widen_r2_to_http(&pool).await;
+    // The whole-table counts, so a row written under ANY reference is caught —
+    // not only one written under this reference's id.
+    let counts = |pool: PgPool| async move {
+        let snapshots: i64 = sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots")
+            .fetch_one(&pool)
+            .await
+            .expect("count every snapshot");
+        let derivations: i64 = sqlx::query_scalar("SELECT count(*) FROM derivations")
+            .fetch_one(&pool)
+            .await
+            .expect("count every derivation");
+        (snapshots, derivations)
+    };
+    let before = counts(pool.clone()).await;
+
+    std::env::set_var("R2_WORKER_BIN", &stub);
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/resources/{reference}/resolve"),
+        &human_id,
+        &json!({ "required_sandbox": "process", "required_egress": "listed" }),
+    )
+    .await;
+    std::env::remove_var("R2_WORKER_BIN");
+    restore_r2_schemes(&pool, &shipped_schemes).await;
+    std::fs::remove_file(&stub).expect("the control removes its own stub");
+
+    let after = counts(pool.clone()).await;
+
+    assert_eq!(status, 200, "the resolution answers: {refused}");
+    assert_eq!(
+        refused["resolvers"],
+        json!(["r2-extract-worker"]),
+        "the R2 pack ranked the reference: {refused}"
+    );
+    // The acquisition SUCCEEDED and the extraction was refused: this control
+    // fails for the wrong reason if it never got past the destination gate.
+    assert_eq!(
+        refused["acquisition_error"]["kind"],
+        json!("extraction_source_mismatch"),
+        "a response for other bytes is refused by name: {refused}"
+    );
+    let message = refused["acquisition_error"]["message"].as_str().unwrap();
+    let served_digest = reasonbraid_server::fetcher::digest_sha256_hex(SERVED_FEED.as_bytes());
+    assert!(
+        message.contains(&served_digest) && message.contains("sha256:0000000000000000"),
+        "the refusal names both digests: {refused}"
+    );
+    assert!(
+        refused["acquisition"].is_null(),
+        "a refusal is not an acquisition: {refused}"
+    );
+
+    // The absence, by count over the exact reference AND over the whole store.
+    let reference_snapshots: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&reference)
+            .fetch_one(&pool)
+            .await
+            .expect("count this reference's snapshots");
+    assert_eq!(
+        reference_snapshots, 0,
+        "the refused reference has no evidence snapshot"
+    );
+    let reference_derivations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM derivations d \
+         JOIN evidence_snapshots s ON s.snapshot_id = d.parent_snapshot_id \
+         WHERE s.reference_id = $1",
+    )
+    .bind(&reference)
+    .fetch_one(&pool)
+    .await
+    .expect("count this reference's derivations");
+    assert_eq!(
+        reference_derivations, 0,
+        "the refused reference has no derivation"
+    );
+    assert_eq!(
+        before, after,
+        "the refusal wrote nothing anywhere: snapshots/derivations before vs after"
     );
 }
 

@@ -167,7 +167,18 @@ digests against the bytes the origin actually served. The profiles suite passes
 lint; the owned cluster was removed. Three reverted injections prove the control
 goes red on a wrong byte, a discarded fetcher and a wrong derivation.
 
-That control also measured a finding: the R2 pack advertises five media types
+The mismatch refusal has its own live control under `.7.3.3.4.2`. A dishonest
+worker injected through the `R2_WORKER_BIN` override returns a well-formed reply
+describing bytes the request never supplied; the handler refuses it
+`extraction_source_mismatch` and the control asserts an ABSENCE — zero snapshots
+for that reference, zero derivations joined to it, and the whole store's counts
+unchanged across the request. Writing a snapshot before reporting the same
+refusal leaves the refusal's own name intact and still fails that control, which
+is why the counts are there and the error kind alone is not enough. The suite
+passes 33 of 33 live with its cluster removed, and production source is
+byte-identical after both injections were reverted.
+
+That work also measured a finding: the R2 pack advertises five media types
 its acquisition leg refuses. The R0 sniff accepts a declared content type only
 when it is `text/html`, `application/xhtml+xml` or `text/*`, so a feed served
 under its own `application/atom+xml` is refused `media_type_refused` before the
@@ -175,8 +186,7 @@ worker is reached, while the identical bytes served as `text/xml` succeed. A
 caller is therefore ranked onto a resolver that cannot acquire its document and
 receives an acquisition refusal rather than the explicit `resource_unresolvable_now`
 the resolution contract reserves for "no eligible resolver". The per-format
-census and the repair decision are owned by `SIGNOFF-REPAIR.7.3.3.5`; the live
-mismatch refusal remains `.7.3.3.4.2`. See
+census and the repair decision are owned by `SIGNOFF-REPAIR.7.3.3.5`. See
 `docs/tasks/artifacts/signoff_review/r2-acquisition-join.md`.
 
 The full pre-push checkpoint now passes on source `7233122` — the first complete

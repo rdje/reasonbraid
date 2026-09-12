@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Prove the R2 mismatch refusal persists nothing (`SIGNOFF-REPAIR.7.3.3.4.2`)
+
+- The sibling join, and **no production change**: the gap was coverage. The seven mismatch controls `.7.3.3.3.2` added all call `extract_acquired_bytes` directly and never reach a database — `git grep -n "PgPool\|sqlx" -- crates/reasonbraid-server/tests/extraction_input.rs` returns nothing. They prove the refusal is RAISED; nothing proved the handler HONOURS it.
+- A dishonest worker, injected through the `R2_WORKER_BIN` override the spawner already reads, returns a **well-formed** reply describing bytes the request never supplied — well-formed deliberately, because a malformed one is refused by the parser and never exercises the digest binding at all. The handler refuses it `extraction_source_mismatch` naming both digests.
+- **The absence is asserted three ways, because each permits a different defect on its own:** zero `evidence_snapshots` for the exact reference; zero `derivations` joined to it through `parent_snapshot_id`; and the whole store's snapshot and derivation counts unchanged across the request, which catches a row written under any reference.
+- **The decisive falsification kept the refusal and moved persistence in front of it.** The `extraction_source_mismatch` assertion still PASSED; the count failed with `left: 1`. That is the evidence that this control measures the absence rather than the error kind — a control asserting only the kind would have been green on a handler that persisted a foreign document and then complained about it. The second injection removed the digest binding entirely and failed with the stub's own `another document` chunk visible in the receipt.
+- `git diff --quiet -- crates/reasonbraid-server/src/` confirms production source is byte-identical to REPAIR-0095 after both injections were reverted.
+- `.4.1`'s control is refactored onto the helpers this needed, assertions unchanged. The parent `.7.3.3.4` is complete.
+- Also opened: `.11.4.5.3`. `docs/TASK_TREE.md`'s frontier column had drifted to a leaf closed on 2026-09-11 — the same defect class as this session's other two. A census run before claiming it: `git grep -n "TASK_TREE" -- scripts/ .githooks/` hits five files, and classifying all five leaves **zero** reading that column (one asserts the file exists; the rest are a seed script, a README fragment, a comment and a spine file list). The row is corrected; the per-row census and the generate-or-check decision are the leaf's.
+- Validation: profiles 33/33 live with its cluster removed, strict `-D warnings` all-target server lint, workspace format, gate (15 checks), book.
+
 ## 2026-09-12 — Drive an R2 acquisition to its persisted evidence (`SIGNOFF-REPAIR.7.3.3.4.1`)
 
 - The gap `.7.3.3.3.2` stated rather than implied is closed: a SUCCESSFUL R2 acquisition now runs through the real HTTP handler to its snapshot and derivations, and the persisted evidence is asserted against the bytes the origin served — not against a 200.

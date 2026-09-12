@@ -1,4 +1,7 @@
 //! Explicit audit provenance with object-only, duplicate-preserving decoding.
+//!
+//! [`object_only`] is shared with `authority/effect.rs`, which needs the same
+//! refusal of the sequence and unit-marker alternatives for its own tagged types.
 use super::{AuthorizationRecordId, BoundaryStatus, GrantSubject, TargetSelector};
 use crate::ThreadId;
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -47,7 +50,7 @@ impl Default for AuthorizationEvaluation {
 // variants discard extra fields. First require a map, then use empty struct
 // markers for strict field decoding. Passing MapAccess directly preserves
 // duplicate keys; normalizing through serde_json::Value would lose that evidence.
-fn object_only<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub(super) fn object_only<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -57,7 +60,7 @@ where
         type Value = T;
 
         fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("an evaluation metadata object")
+            formatter.write_str("a tagged authority metadata object")
         }
 
         fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<T, A::Error> {

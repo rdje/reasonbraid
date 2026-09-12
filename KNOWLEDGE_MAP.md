@@ -163,6 +163,7 @@
 
 ## Promoted lessons
 
+- [`a-missing-field-is-not-an-absent-value.md`](docs/knowledge/a-missing-field-is-not-an-absent-value.md) — does Option make a serde field required; why did my missing JSON field decode instead of erroring; how do I require a field that may be null; what is the difference between a missing member and a null member; how do I prove a stored record was written by a build that understood it?
 - [`one-field-cannot-carry-two-facts.md`](docs/knowledge/one-field-cannot-carry-two-facts.md) — why does my test pass on CI and fail on my machine; why is a control host-dependent; what does it mean when a field is sometimes overwritten; how do I report two outcomes from one operation; should a failed cleanup replace the error I already have?
 - [`proving-a-path-still-names-what-you-created.md`](docs/knowledge/proving-a-path-still-names-what-you-created.md) — how do I prove a path still names the file or directory I created; why did (dev, ino) identity pass on macOS and fail on Linux; does an open descriptor protect identity; can a link-count check be reused for a directory?
 - [`proving-a-race-is-closed.md`](docs/knowledge/proving-a-race-is-closed.md) — how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race?

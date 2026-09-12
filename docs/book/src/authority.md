@@ -488,6 +488,84 @@ with the mutation. That effect audit, and serialization against revocation of th
 acting administrator's own authority, remain `.3.3`. The target-row lock described
 here does not establish those separate guarantees.
 
+### The final administrative effect record
+
+An admission record says a caller **was allowed to ask**. It says nothing about
+what the local mutation then did. Collapsing the two would let an operator read
+`allowed` as `applied`, so the final effect is a separate, additive record.
+
+⛔ **Nothing writes one yet.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
+representation; the storage and the writer are `.7.2`, and grant/boundary
+revocation is the first route to produce one, under `.8`. This section describes
+a contract the integration children fill, exactly as the tenant guard was
+qualified as a primitive before any route used it.
+
+An effect record names four things:
+
+| Part | Meaning |
+| --- | --- |
+| The admission | The `authz_…` record that permitted this request. It IS the effect's own identifier, so an effect with no admission cannot be represented and there is no second key to keep in step with the first. |
+| The operation | One of a closed set of fourteen administrative mutations, each carrying its own tenant-bound target. |
+| The submitted reason | What the caller wrote, when the operation takes a reason. Four of the fourteen do today; the rest record `null`, and adding a reason requirement to any of them is a wire change that has to be documented and tested as one. |
+| The outcome | `applied`, `no_op`, or `refused`. |
+
+The outcome is the fact an admission cannot carry:
+
+| Outcome | What it asserts |
+| --- | --- |
+| `applied` | The protected target changed. |
+| `no_op` | The request was already satisfied — the repeated-revocation shape. No protected state and no revocation epoch changed, and the detail says what was already true. |
+| `refused` | A domain rule refused AFTER admission. No protected state and no revocation epoch changed. It carries the §9.8 reason code the request's own response used, so the record and the response cannot disagree about which refusal happened. |
+
+The fourteen operations are the administrative mutations this repair family owns:
+grant and boundary revocation; breaker arm and reset; node enrollment-token
+issuance, node revocation, inbox command replay, quarantine and prune; profile
+card import and capability-claim attestation; and the three federation direction
+verbs. They were not chosen by taste — the population was measured first, and the
+four other `tenant_admin`-gated mutations (resolver registration, automatic thread
+creation, recruitment open and close) are deliberately absent because they are
+owned elsewhere and this family cannot certify their gates.
+
+Every variant names a target the **caller supplied**, so the target exists when
+the outcome is `refused` just as it does when the mutation applied. Breaker
+administration names no target field at all: its target is the tenant, which the
+record already carries.
+
+For example, a repeated grant revocation would record:
+
+```json
+{
+  "record_id": "authz_00000000-0000-7000-8000-000000000001",
+  "tenant_id": "ten_00000000-0000-7000-8000-000000000002",
+  "operation": {"kind": "grant_revoke", "grant_id": "grt_hpr_…"},
+  "submitted_reason": "role retired",
+  "outcome": {"kind": "no_op", "detail": "the grant was already revoked"},
+  "effected_at": "2026-09-12T10:30:00Z"
+}
+```
+
+Decoding is strict, because this is evidence:
+
+- an operation, an outcome and a record must each be a JSON **object** — the
+  array and bare-string forms the pinned decoder would otherwise accept are
+  refused, as they already are for evaluation provenance;
+- unknown, duplicate and missing members are errors, and a target identifier is
+  nonblank, at most 256 UTF-8 bytes and free of control characters, while a
+  reason has the same shape with a 1 024-byte limit — the bounds the site
+  registry already publishes, so an operator meets one rule rather than two;
+- a `refused` outcome naming a reason code outside the §9.8 registry is a decode
+  **failure**, not a guessed outcome. This build writes these codes, so a code it
+  cannot name means the row did not come from a build it understands;
+- `submitted_reason` must be **present**, as `null` when the operation takes no
+  reason. This record has no history, so a missing member is malformed evidence
+  rather than an absent reason.
+
+Two things this deliberately does not do. It does not relabel anything: the
+authorization record's JSON is byte-identical, and an effect is a separate row
+rather than a new field on the admission. And it makes no historical claim — an
+absent effect record means the outcome was never recorded, never that an
+operation succeeded or failed.
+
 ### Ordering a thread command against an authority change
 
 A thread command now takes the tenant's authority guard **before** it claims its

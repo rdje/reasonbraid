@@ -583,7 +583,12 @@ impl Decision {
     }
 }
 
+mod effect;
 mod evaluation;
+pub use effect::{
+    AdministrativeEffectRecord, AdministrativeOperation, AdministrativeOutcome,
+    AdministrativeReason, AdministrativeTargetId, AdministrativeTextError,
+};
 pub use evaluation::{AuthorizationEvaluation, TenantAdminInspection};
 
 /// The audit record every command leaves (§4.5/§5 WP5 acceptance): actor, subject if

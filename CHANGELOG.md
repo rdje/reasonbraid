@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Gate a LOCKSTEP box against the commit it claims (`SIGNOFF-REPAIR.11.4.5.2`)
+
+- The half of this session's self-inflicted pair that was recorded but not fixed is now fixed. A ticked `**LOCKSTEP**` box is a claim about ITS OWN commit, and nothing read it: `6bf0c40` shipped a box naming `MEMORY.md` and `LIVE_STATUS.md` and staged neither, after a scripted multi-edit hit a failed assertion and `git add -A && git commit` ran regardless.
+- **`TASK-ACCEPTANCE` cannot catch this and never could.** It proves the box is ticked and cites something re-runnable; it cannot prove the cited edit landed. `LOCKSTEP-CLAIM` is the complementary half, and the enforcer now runs 16 checks.
+- **Keyed on the author's own claim, because the census killed the obvious rule.** Over 25 commits, 10 closed a leaf and `CHANGELOG.md` was staged 10/10 but `MEMORY.md` only 6/10 — a blanket "closing a leaf must stage MEMORY" would have asserted something the project does not do, flagged four innocent commits, and still missed `6bf0c40`, which did stage `CHANGELOG.md`.
+- The claim shape is the BOLD bullet, so narrative that reports on a past box — `c6a843f`'s own "its LOCKSTEP box overstated" lines — is a report, not a claim about this commit, and is deliberately not matched.
+- The honest escape follows the `GAP-CLAIM-CENSUS` precedent instead of parsing intent out of prose: `lockstep: <doc> unchanged (<why>)` in the claim's own heading section. The refusal says explicitly that **deleting the document's name is not a discharge** — the name is the claim, and removing it hides the decision rather than recording it.
+- `--against <sha>` re-runs the predicate over any past commit, which made the leaf's acceptance literally executable: `--against 6bf0c40` fails naming both documents and the exact line, `--against c6a843f` passes.
+- **Re-measured with the finished gate, over a wider window than the rule was designed on:** across the last 30 commits, 11 add a claim and were genuinely exercised — 10 pass, exactly one breaches, zero false positives. The other 19 pass vacuously because they add no claim, and that is recorded so "30 green" is not mistaken for 30 tests.
+- The document list is COMMIT.md's root live documents, and the `--self-test` re-checks that each still appears there, so the list cannot drift away from the document it was taken from.
+- Validation: `--self-test` (2 claim shapes, 2 narrative lines ignored, 3 naming cases incl. a nested path and a longer filename, the escape both ways, 5 documents confirmed in COMMIT.md), the two acceptance runs, gate at 16 checks, book.
+- Sequencing note: `README-STABILITY` refused this commit first, because the ledger had crossed its rotation threshold. The rotation is `DOC-0006` (leaf `.11.4.1.1`), committed separately and immediately before this one so neither commit carries the other's scope.
+
 ## 2026-09-12 — Admit the ranked pack's advertised media types (`SIGNOFF-REPAIR.7.3.3.5.2`)
 
 - The repair the census chose. The R2 arm acquired through `Fetcher::fetch` and inherited R0's text-only accept set, while `resolvers::resolve` ranked the pack on an advertisement that accept set cannot satisfy. The pack exists for non-text documents in a sandboxed worker; the shared fetcher was one engine reused, not the architecture.

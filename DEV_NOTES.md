@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — Make the acceptance executable and it stops being an argument
+
+- The leaf's acceptance was written as "must FAIL against `6bf0c40` and PASS against `c6a843f`". That is a precise sentence and I could have satisfied it by reasoning about the two diffs. Adding an `--against <sha>` mode turned it into two commands, and the difference is not convenience: a mode that replays the predicate over history is the only way to check a gate against the defect that motivated it once that defect is in the past.
+- It also exposed something I would otherwise have reported wrongly. `c6a843f` passes — but it passes **vacuously**, because its LOCKSTEP mentions are narrative prose about a past box, not a bold claim. "Passes" and "was tested" are different facts. Running the gate over 30 commits and splitting them — 11 exercised, 19 vacuous — is the honest report; "30 green" would have been technically true and misleading, the exact shape `docs/CLAIM_VERIFICATION.md` warns about when a search returns a population and the author publishes it as a count.
+- **The refusal text needed a line I did not expect to write.** The cheapest way to satisfy this gate is to delete the document's name from the box, and that is strictly worse than the defect: the box becomes true and the reader loses the record of what the leaf decided. So the refusal says so explicitly. A gate that can be satisfied by deleting the claim needs to say out loud that deleting the claim is not the remedy.
+- I took the document list from COMMIT.md rather than from what I remembered, and then had the `--self-test` re-check that each name still appears there. That is cheap insurance against the exact drift this session already found twice — a fact copied out of its source and then maintained separately.
+- One small thing worth keeping: the self-test caught my own arithmetic. I asserted a heading section for line 9 of an 8-line probe, and the test said so instead of quietly passing. A self-test whose expectations are hand-computed needs to fail loudly when the hand-computation is wrong, which is an argument for asserting exact values rather than "is non-empty".
+- promotion: declined (the durable form is the registered gate itself, which cannot be forgotten, plus its row in `DOCTRINE_ENFORCEMENT.md` carrying the census; a knowledge card would restate what the check now enforces).
+
 ## 2026-09-12 — A widening is only as bounded as the control that tries to exceed it
 
 - The decision listed four things the repair may not do. Writing them was easy; the honest question is whether any of them is *enforced* or merely intended. Two of the four turned out to be checkable cheaply, and I should have reached for both before writing the code rather than after.

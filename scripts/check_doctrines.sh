@@ -63,6 +63,7 @@ DOCTRINES=(
   "HEADING-DEPTH|no tracked Markdown carries an ATX heading deeper than level 6 — seven hashes is a PARAGRAPH in GFM, so a tree that encodes depth in heading level silently stops being structure and its deepest leaves are attributed to the heading above them|scripts/check_heading_depth.sh"
   "TASK-STATUS|a task-tree leaf carries exactly ONE Status line — a later one silently supersedes an earlier one, the frontier is written from these lines, and a leaf that closed while its first line still said pending sat on the frontier for seven commits|scripts/check_task_status.sh"
   "TABLE-ARITY-RATCHET|a staged markdown file may not RAISE the number of table rows whose cell count disagrees with their header — GFM silently drops the extra cells or pads the missing ones|scripts/check_table_arity.sh"
+  "LOCKSTEP-CLAIM|a ticked LOCKSTEP box may not name a core live document the commit does not stage — the box is a claim about THIS commit, and a partially-failed scripted edit staged with add -A is exactly how a false checklist entry ships|scripts/check_lockstep_claim.sh"
 )
 # Optional derived-artifact sync check (present only when the subsystem exists).
 [ -x "knowledge-map/scripts/check_knowledge_map.sh" ] && \

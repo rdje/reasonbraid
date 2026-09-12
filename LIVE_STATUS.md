@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The enforcer now runs **16 registered checks**. `LOCKSTEP-CLAIM` (REPAIR-0099)
+closes the half `TASK-ACCEPTANCE` structurally cannot: that gate proves a leaf's
+box is ticked and cites something re-runnable, never that the cited edit landed.
+A ticked bold LOCKSTEP box may no longer name a core live document the commit
+does not stage. It is keyed on the author's own claim rather than a blanket
+requirement, because the census showed the blanket rule was wrong — over 25
+commits, 10 closed a leaf and CHANGELOG.md was staged 10/10 but MEMORY.md only
+6/10, so "closing a leaf must stage MEMORY" would have asserted something the
+project does not do, flagged four innocent commits, and still missed the defect.
+Re-measured with the finished gate over 30 commits: 11 add a claim and were
+genuinely exercised, 10 pass, exactly one (6bf0c40) breaches, zero false
+positives; the other 19 pass vacuously because they add no claim, and that
+distinction is recorded so 30 green is not read as 30 tests. The honest escape
+is `lockstep: <doc> unchanged (<why>)` in the claim's own section, and the
+refusal says explicitly that deleting the document's name is not a discharge.
+`scripts/check_lockstep_claim.sh --against <sha>` re-runs the predicate over any
+past commit, which is what made the leaf's acceptance executable rather than
+argued.
+
+
 The full startup source read found open invariant failures and coverage gaps.
 Historical phase closure does not establish current production qualification.
 `docs/tasks/SIGNOFF-REPAIR.md` owns reproduction, fixes and requalification;

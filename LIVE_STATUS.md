@@ -6,7 +6,23 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
-The enforcer now runs **16 registered checks**. `LOCKSTEP-CLAIM` (REPAIR-0099)
+The enforcer now runs **17 registered checks**. `INDEX-FRONTIER` (REPAIR-0100)
+extends to the project's own index the rule `BOOK-FRONTIER` already applied to
+the book: `docs/TASK_TREE.md`'s Frontier column may not name a leaf the owning
+tree's row 1 does not. Measured rather than estimated — over the last 60
+commits, 39 breach and 21 genuinely agree, and the drift begins at `1ebfebe`,
+the commit that CLOSED the leaf the row then went on naming for 39 commits. The
+rule is deliberately narrow because the census rejected the obvious one: 8
+completed trees write a dash row and point at the NEXT tree's first leaf, and
+`PHASE-8`'s row 1 is a cross-tree prerequisite its cell summarises accurately,
+so blanket equality would flag legitimate rows. The generator that was this
+leaf's provisional preference was rejected on the same census — it would destroy
+accurate curated prose in 13 of 14 rows. Only an ACTIVE tree whose row 1 names
+its own leaf is checked, which is also the only row that moves. The gate caught
+its own author on its first live run: closing the leaf moved row 1 and the index
+still pointed at the leaf being closed.
+
+The enforcer previously reached 16 checks with `LOCKSTEP-CLAIM`. `LOCKSTEP-CLAIM` (REPAIR-0099)
 closes the half `TASK-ACCEPTANCE` structurally cannot: that gate proves a leaf's
 box is ticked and cites something re-runnable, never that the cited edit landed.
 A ticked bold LOCKSTEP box may no longer name a core live document the commit

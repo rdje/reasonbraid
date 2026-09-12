@@ -1165,7 +1165,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.11.4.5.3 — The tree index's frontier is a second copy, and it drifted
 
-- Opened: `pending`; found while updating the frontier for `.7.3.3.4.1`, in the same family as `.1` and `.2` — a rule the project states and nothing checks.
+- Status: `done`; REPAIR-0100. Found while updating the frontier for `.7.3.3.4.1`, in the same family as `.1` and `.2` — a rule the project states and nothing checks.
 - Reproduce, exactly: `docs/TASK_TREE.md`'s Active Task Trees row for `SIGNOFF-REPAIR` read `.7.3.3.2.2 — director-requested handoff`, a leaf closed by REPAIR-0060 on 2026-09-11. The tree's own Current Frontier table had moved through many rows since. `COMMIT.md` says to update the index "only if the frontier changes", so the obligation exists and was simply not met, repeatedly and invisibly.
 - Why this is the same defect class as `.1`/`.2`: a fact is duplicated into a second document that nothing derives, so it is stale by construction the first time someone forgets. `docs/CLAIM_VERIFICATION.md` leg 3 states the rule directly — prefer one derived source over N synchronized copies — and the project already applied it once, in `check_book_frontier.sh`, which refuses a BOOK page naming a frontier leaf other than row 1. The index was left out of that repair.
 - census of what currently reads the index, run before claiming it is ungated: `git grep -n "TASK_TREE" -- scripts/ .githooks/` returns hits in exactly **five** files, and classifying all five leaves **zero** that read its frontier column — `scripts/bootstrap.sh` seeds the table once, `scripts/check_memory_architecture.sh:50` asserts only that the file EXISTS, `scripts/check_readme_stability.sh:100` carries the path inside a README text fragment, `scripts/check_task_acceptance.sh:63` is a comment about `docs/tasks/<TREE-ID>.md` rather than the index, and `scripts/update_scaffold.sh` lists it as a spine file to sync. One check touches the file at all, and it proves existence, not currency. The population was classified rather than counted, per `.11.4.5.2`'s lesson.
@@ -1173,7 +1173,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns, provisionally pending that census: either extend `check_book_frontier.sh`'s comparison to `docs/TASK_TREE.md`'s row for an `active` tree, or generate that column from each tree's Current Frontier table so no copy exists to drift. Prefer the generator: it removes the failure mode instead of detecting it.
 - Acceptance: the check must FAIL against the index as it stood at `300de41` (naming `.7.3.3.2.2` while the tree's row 1 was `.7.3.3.4.1`) and PASS against the corrected row, with a two-sided `--self-test`; or, if the generator is chosen, the column has no hand-maintained copy left to test.
 - The stale row itself is corrected in REPAIR-0095 rather than left as a specimen — the reproduction is recorded here with its commit, so the gate can still be falsified against it.
-- Verification / commit: pending.
+- **census over all fourteen rows, run before proposing the rule — and it rejected BOTH of this leaf's provisional options.** Measuring each index cell against its tree's Current Frontier row 1: 3 agree, 1 disagrees, 2 claim no leaf, and 8 have no numbered row 1 at all because a completed tree writes a dash row and points its cell at the NEXT tree's first leaf, which is deliberately not a leaf of that tree. The single disagreement is `PHASE-8`, whose row 1 is the cross-tree prerequisite `SIGNOFF-REPAIR.3.3` while its cell says "corrective prerequisite `SIGNOFF-REPAIR`; then `.5.3`" — an accurate summary of rows 1 AND 2, so equality would flag a legitimate row. A blanket "the cell equals row 1" rule is therefore unsound.
+- The GENERATOR, which this leaf provisionally preferred, is rejected on the same census: regenerating the column would destroy accurate curated prose in 13 of 14 rows. Recording the reversal rather than quietly switching, because the preference was written down before the measurement existed.
+- Fix: `scripts/check_tree_index_frontier.sh`, registered as `INDEX-FRONTIER` and mirrored in `DOCTRINE_ENFORCEMENT.md`. The sound rule the census leaves standing is narrow — an ACTIVE tree whose Current Frontier row 1 names a leaf OF THAT TREE must be named by its index cell. Today that is exactly one row, which is also the only row that moves; the rule extends itself the moment another tree becomes active.
+- Root cause, dated rather than estimated: `--against` over the last 60 commits finds **39 breaching and 21 genuinely agreeing** (none vacuous), and the drift begins at `1ebfebe` — REPAIR-0060, the commit that CLOSED `.7.3.3.2.2`. The row was written from the leaf just completed instead of the next one, and nothing re-read it for 39 commits.
+- Verification: `--self-test` passes (numbered row 1 extracted, a completed tree's dash row correctly yields none, four cell shapes normalised including the dot-shorthand and the prerequisite cell). The acceptance runs literally: `--against 300de41` FAILS naming both leaves, the current tree PASSES. `make gate` prints `=== all doctrines green ===` with 17 checks.
+- Commit: `REASONBRAID-REPAIR-0100 (leaf SIGNOFF-REPAIR.11.4.5.3): gate the tree index against its own trees`.
 
 #### SIGNOFF-REPAIR.11.4.4 — A leaf's status can be contradicted inside its own section
 
@@ -2061,12 +2066,11 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.11.4.5.3` | `pending` | the tree index's frontier column drifted to a leaf closed on 2026-09-11; census the rows, then generate or check |
-| 2 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
-| 3 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
-| 4 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 5 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 6 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 1 | `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.2` | `pending` | return to bounded transport/reply recovery after checkpoint |
+| 2 | `SIGNOFF-REPAIR.3.3.4.3.4` | `pending` | reconcile authority writer coverage and remaining bridges |
+| 3 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
+| 4 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 5 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
 
 
 
@@ -2092,6 +2096,10 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.5.3`: `REASONBRAID-REPAIR-0100 (leaf SIGNOFF-REPAIR.11.4.5.3): gate the tree index against its own trees`.
+
+- `SIGNOFF-REPAIR.11.4.1.1`: `REASONBRAID-DOC-0006 (leaf SIGNOFF-REPAIR.11.4.1.1): rotate the changelog a second time`.
 
 - `SIGNOFF-REPAIR.11.4.5.2`: `REASONBRAID-REPAIR-0099 (leaf SIGNOFF-REPAIR.11.4.5.2): gate a LOCKSTEP box against the commit it claims`.
 
@@ -2422,6 +2430,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.5.3
+
+- [x] **REPRODUCE / ISSUE** — `scripts/check_tree_index_frontier.sh --against 300de41` fails: `docs/TASK_TREE.md` row for `SIGNOFF-REPAIR` names `SIGNOFF-REPAIR.7.3.3.2.2` while that tree's own row 1 was `SIGNOFF-REPAIR.7.3.3.4.1`. The same command over the last 60 commits finds 39 breaching and 21 genuinely agreeing, with the drift beginning at `1ebfebe` — the commit that closed the leaf the row went on naming.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `docs/TASK_TREE.md`'s Frontier column is a SECOND copy of a fact each tree owns. Nothing derived it and nothing read it; `scripts/check_book_frontier.sh` fixed this exact shape for the book and was not extended to the index. The row was written from the leaf just completed rather than the next one, which is why it went stale at the moment of a successful commit.
+- [x] **FIX** — `scripts/check_tree_index_frontier.sh`, registered as `INDEX-FRONTIER` and mirrored in `DOCTRINE_ENFORCEMENT.md`. Narrow by measurement: only an ACTIVE tree whose row 1 names a leaf OF THAT TREE is checked. Both of the leaf's provisional options were rejected by its own census — blanket equality would flag `PHASE-8`'s accurate prerequisite summary, and a generator would destroy curated prose in 13 of 14 rows.
+- [x] **ADDRESSED (verified)** — `--self-test` prints `numbered row 1 extracted, a completed tree's dash row correctly yields none, 4 cell shapes normalised`. The stated acceptance runs literally: `--against 300de41` exits 1 naming both leaves, the current tree exits 0. `make gate` prints `=== all doctrines green ===` with 17 checks.
+- [x] **NO REGRESSION** — the 16 pre-existing checks still pass and none changed; no Rust source is touched. Over the 60-commit window the gate's 21 passes are all genuine comparisons rather than vacuous ones, so the pass count is a measurement rather than an absence of input.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log, and `.11.4.1.1`'s rotation entry), `docs/TASK_TREE.md`, `scripts/check_doctrines.sh`'s registry, `DOCTRINE_ENFORCEMENT.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. ⭐ The index row is in that list because **the new gate refused this very commit** and named it: closing `.11.4.5.3` moved the tree's row 1, and the index still pointed at the leaf being closed — the identical shape as the original defect, caught on the gate's first live run, on its own author. The LOCKSTEP box above originally said the index was deliberately not restaged; that claim was wrong and is corrected here rather than deleted.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.4.5.2
 

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The gate refused the commit that introduced it, and it was right
+
+- I wrote the LOCKSTEP box for this leaf saying `docs/TASK_TREE.md` was deliberately not restaged, because its row had been corrected four commits earlier and I had not touched it since. Then the new gate refused the commit: closing the leaf moved the tree's row 1, and the index was still pointing at the leaf being closed. **The identical shape as the defect the leaf exists to fix**, produced by me, in the act of fixing it, and caught on the gate's first live run.
+- That is the strongest evidence a gate can produce, and it is also a warning about my own reasoning: I had checked the index, found it correct, and written down that it needed nothing — without noticing that the very edit I was making would invalidate it. "I verified X" has a timestamp, and mine was before the change.
+- I corrected the box in place rather than deleting the sentence. A checklist that quietly loses a wrong claim reads the same as one that never made it.
+- **The census rejected both options the leaf had written down, and I nearly skipped it because the answer felt obvious.** The leaf said "prefer the generator"; the measurement says a generator would destroy accurate prose in 13 of 14 rows, and that blanket equality would flag `PHASE-8`'s legitimately different cell. Three leaves in a row now where the census changed the repair — `.11.4.5.2`'s blanket rule, `.7.3.3.5`'s narrowing option, and this generator. The pattern is consistent enough to state plainly: **a rule proposed before its population is measured is wrong more often than not in this codebase.**
+- Dating the drift was worth the extra minute. "It drifted" is a fact; "it drifted for 39 commits beginning at the commit that closed the leaf it named" is a mechanism, and the mechanism is what tells you the failure happens at SUCCESS — which is why nobody was looking.
+- The rule covers one row today. I considered that an argument against building it, and it is the opposite: it is the only row that moves, and a rule that covers the moving part is worth more than one that covers thirteen static ones.
+- promotion: declined (the durable form is the registered gate and its `DOCTRINE_ENFORCEMENT.md` row carrying the census; a knowledge card would restate what the check enforces).
+
 ## 2026-09-12 — Make the acceptance executable and it stops being an argument
 
 - The leaf's acceptance was written as "must FAIL against `6bf0c40` and PASS against `c6a843f`". That is a precise sentence and I could have satisfied it by reasoning about the two diffs. Adding an `--against <sha>` mode turned it into two commands, and the difference is not convenience: a mode that replays the predicate over history is the only way to check a gate against the defect that motivated it once that defect is in the past.

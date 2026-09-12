@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Gate the tree index against its own trees (`SIGNOFF-REPAIR.11.4.5.3`)
+
+- The third of this session's self-inflicted defects, and the one with the sharpest root cause. `docs/TASK_TREE.md`'s Frontier column is a SECOND copy of a fact each tree owns, nothing derived it, and `--against` over the last 60 commits finds **39 breaching and 21 genuinely agreeing** — with the drift beginning at `1ebfebe`, **the very commit that closed the leaf the row then kept naming for 39 commits**. The row was written from the leaf just completed rather than the next one, and a successful commit is precisely when it went stale.
+- `BOOK-FRONTIER` fixed this exact shape for the book and was simply not extended to the project's own index. This is that extension.
+- **The census rejected BOTH options the leaf had provisionally written down**, which is the reason it was required before any rule. Blanket "the cell equals row 1" is unsound: 8 completed trees write a dash row and point their cell at the NEXT tree's first leaf, `PHASE-8`'s row 1 is the cross-tree prerequisite `SIGNOFF-REPAIR.3.3` while its cell accurately summarises rows 1 and 2, and 2 rows claim no leaf — equality would flag legitimate rows. And the **generator**, which the leaf preferred, would destroy accurate curated prose in 13 of 14 rows.
+- What survives is narrow and honest: an ACTIVE tree whose row 1 names a leaf OF THAT TREE must be named by its index cell. That is one row today — and it is the only row that moves. The rule extends itself the moment another tree becomes active.
+- **The gate refused this very commit, on its first live run.** Closing `.11.4.5.3` moved the tree's row 1, and the index still pointed at the leaf being closed — the identical shape as the original defect. The LOCKSTEP box had already claimed the index was deliberately not restaged; that claim was wrong, and it is corrected in place rather than deleted.
+- Validation: `--self-test` (numbered row 1 extracted, a completed tree's dash row correctly yields none, 4 cell shapes normalised including the dot-shorthand and the prerequisite cell), `--against 300de41` fails naming both leaves, the current tree passes, gate at 17 checks, book.
+
 ## 2026-09-12 — Gate a LOCKSTEP box against the commit it claims (`SIGNOFF-REPAIR.11.4.5.2`)
 
 - The half of this session's self-inflicted pair that was recorded but not fixed is now fixed. A ticked `**LOCKSTEP**` box is a claim about ITS OWN commit, and nothing read it: `6bf0c40` shipped a box naming `MEMORY.md` and `LIVE_STATUS.md` and staged neither, after a scripted multi-edit hit a failed assertion and `git add -A && git commit` ran regardless.

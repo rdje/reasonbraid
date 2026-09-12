@@ -901,6 +901,55 @@ This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.
 
+### Attesting a capability claim
+
+`POST /v1/profiles/{role_id}/attest` is the owner's path: §10.1 lets a role
+declare its own capabilities, but only as `self_asserted`, and the upgrade to
+`owner_attested` rides this audited verb instead. It is gated on `tenant_admin`
+for the **role's own** tenant — an administrator of another tenant is denied,
+because the admission is evaluated against the tenant the role belongs to, not
+the one the caller administers.
+
+It runs ONE transaction under that tenant's **shared** authority guard
+(`SIGNOFF-REPAIR.3.3.4.11.2`), holding database time sampled after the guard
+wait, the admission on that connection, the role's version anchor taken
+`FOR UPDATE`, the read of the current profile, the single claim's upgrade, the
+new version, and the final effect record.
+
+The mode is shared and the reason is measured rather than inherited: an
+attestation writes no authority and advances no revocation epoch, so it is not a
+revocation in the sense the guard contract means — what it needs is to be fenced
+**by** one, which shared mode gives, since a revocation takes the guard
+exclusively. Exactness against a concurrent attestation comes from the anchor
+lock, at the granularity that actually conflicts.
+
+🔴 What that repaired is not a theoretical window. The superseded route read the
+current profile **on the pool** and wrote it back through a different
+transaction. Two administrators attesting two different capabilities of one role
+each read version N, and each wrote a profile carrying only their own upgrade:
+
+| | Superseded route | Now |
+| --- | --- | --- |
+| Both callers' status | `200` and `200` | `200` and `200` |
+| Claims upgraded in the published profile | **one of the two** | both |
+| Error reported to the losing caller | none | — |
+
+Serializing the writes alone would not have fixed it, which is why the read moved
+too: the losing writer's version *number* was correct while its *content* was
+stale.
+
+The wire is unchanged. The `404` still answers "no profile for this role" and "no
+capability by that taxonomy id" with the same message, and the effect record is
+where they stop being the same fact — both record `refused` with `not_found`,
+alongside the `applied` an upgrade records. One addition: every answer that
+reached an admission carries the `x-reasonbraid-authorization` receipt naming it,
+which is also the effect record's id. The pre-admission `404` for an unknown role
+deliberately carries none — no record exists yet to name.
+
+A repeat attestation of an already-attested claim still writes a new version, as
+it always has, and records `applied` rather than `no_op`: a new version row is
+protected state changing, so `no_op` would be the wrong claim about it.
+
 ### Serializing a profile write, where no authority is being decided
 
 Not every write that needs a transaction needs a **guard**, and the profile

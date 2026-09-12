@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — A version collision and a lost update look like one bug and are two
+
+- `.11.1` made concurrent profile writers serialize at the role's anchor, and that felt like it had closed the concurrency story for this family. Coming into the attestation I nearly reused the conclusion: the writers serialize now, so two attestations will queue and both will land.
+- ⭐ They queue and one still disappears. Serialization fixes WHICH NUMBER each writer takes; it does nothing about WHAT each writer is writing. The second attestation waits politely for the anchor, gets version N+2 — correct, consecutive, no error anywhere — and writes a profile it read before the first attestation existed. The number is right and the content is a rollback of someone else's audited decision.
+- The measurement is blunter than the description: both callers got `200`, and the published profile had `code_review` upgraded and `schema_design` untouched. Nothing in the version history says an entry is missing, which is the property that makes this worse than a refusal.
+- The repair is that the READ moved under the same lock as the write, not that the write got a better lock. ⚠️ The general shape to look for: whenever a repair serializes writers, ask separately whether each writer's INPUT was read inside the same lock. Two questions, two defects, and the first one's fix reads exactly like it should have covered the second.
+- The fixture lesson from `.10.1` applied again and I checked rather than assumed: the superseded route admitted through `authorize_guarded`, which takes the same shared guard the repair takes, so the mode does not change and no lock-holding fixture can discriminate this. What discriminates it is the lost update. The foreign-administrator control passes at the baseline too — `.11`'s census had already measured that this family's tenant predicates were correct — so it is labelled a regression control rather than counted as proof.
+
 ## 2026-09-12 — The control that passed by luck
 
 - The first version of this leaf's discriminating control raced two writers, twice. Against the unrepaired writer it failed — but it failed on the SECOND pair, having passed the first. One run earlier in the sequence it would have gone the other way.

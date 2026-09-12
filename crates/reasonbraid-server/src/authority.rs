@@ -48,6 +48,7 @@ pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTrans
 mod breaker;
 mod effects;
 mod node_admin;
+mod profile_admin;
 mod records;
 mod revocation;
 mod selection;
@@ -60,6 +61,7 @@ pub(crate) use node_admin::{
     revoke_node_in_one_transaction, NodeRevokeResult, PruneResult, QuarantineResult, ReplayResult,
     TokenIssueResult,
 };
+pub(crate) use profile_admin::{attest_capability_in_one_transaction, AttestResult};
 pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 pub(crate) use revocation::{revoke_in_one_transaction, RevocationResult, RevocationTarget};

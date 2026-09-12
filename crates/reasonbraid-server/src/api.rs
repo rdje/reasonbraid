@@ -4963,40 +4963,62 @@ struct AttestRequest {
     evidence_ref: String,
 }
 
-/// `POST /v1/profiles/{role_id}/attest` — tenant_admin-gated (audited); a NEW
-/// version whose writer is the attesting owner.
+/// `POST /v1/profiles/{role_id}/attest` — the owner upgrades one capability
+/// claim's provenance, in ONE guarded transaction (`SIGNOFF-REPAIR.3.3.4.11.2`).
+///
+/// The superseded shape ran three unconnected pieces: the role's tenant on the
+/// pool, an admission in its own transaction, then a read of the current profile
+/// on the pool and a write in a third transaction. The read-modify-write split
+/// across two transactions is what made a concurrent attestation vanish — two
+/// administrators upgrading two different capabilities of one role each read
+/// version N and each wrote a profile carrying only their own upgrade, with no
+/// error on either side.
+///
+/// The role's tenant is still resolved before the transaction, because the guard
+/// set must be declared before the transaction opens; it is re-read inside, under
+/// the guard, and the answer used there is the one the mutation acts on.
+///
+/// Every answer that reached an admission carries the
+/// `x-reasonbraid-authorization` receipt naming it, which is also the effect
+/// record's id. The pre-admission `404` deliberately carries none: no record
+/// exists yet to name.
 async fn attest_capability_claim(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(role_id): Path<String>,
     Json(req): Json<AttestRequest>,
-) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = role_tenant(&state.pool, &role_id).await? else {
         return Err(ControlApiError::not_found(format!("no role `{role_id}`")));
     };
-    authorize_tenant_admin(
+    let attestation = authority::attest_capability_in_one_transaction(
         &state.pool,
         &principal,
         tenant.parse().map_err(|_| ControlApiError::internal())?,
-    )
-    .await?;
-    let writer = actor_handle_for_subject(&principal).to_string();
-    let Some(written) = crate::profiles::attest_capability(
-        &state.pool,
         &role_id,
-        &writer,
         &req.taxonomy_id,
         &req.evidence_ref,
     )
-    .await?
-    else {
-        return Err(ControlApiError::not_found(format!(
+    .await?;
+    let receipt = attestation.record_id;
+    let response = match attestation.result {
+        authority::AttestResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // Unchanged message: "no profile" and "no such capability" stay ONE
+        // answer on the wire, and the effect record is where they stop being the
+        // same fact.
+        authority::AttestResult::NoSuchClaim => ControlApiError::not_found(format!(
             "no profile for `{role_id}` or no capability `{}` in it",
             req.taxonomy_id
-        )));
+        ))
+        .into_response(),
+        authority::AttestResult::Attested(written) => Json(*written).into_response(),
     };
-    Ok(Json(written))
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 // ── Grant/boundary revocation + inspection (`.1.3.2`) ─────────────────────────

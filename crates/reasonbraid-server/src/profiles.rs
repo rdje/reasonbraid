@@ -525,25 +525,87 @@ pub async fn version_list(
     .await
 }
 
-/// The owner's attestation: the named capability claim's provenance upgrades to
-/// `owner_attested` with the evidence reference — a NEW version, writer recorded.
-pub async fn attest_capability(
-    pool: &PgPool,
+/// Take the role's version anchor when — and only when — one already exists.
+///
+/// An absent anchor means the role has no profile at all: [`write_profile_in_tx`]
+/// always creates the anchor before any version row, in the same transaction, so
+/// versions cannot exist without it. Deciding the "no profile" answer from the
+/// anchor's absence therefore costs nothing and, crucially, creates nothing — a
+/// caller that is about to refuse must not leave an anchor row behind as the
+/// trace of a refusal.
+///
+/// `Some` means the lock is HELD for the rest of the caller's transaction, so a
+/// read-modify-write over the current profile is exact against a concurrent
+/// writer (`SIGNOFF-REPAIR.3.3.4.11.2`).
+pub(crate) async fn lock_existing_profile_anchor_in_tx(
+    tx: &mut PgConnection,
+    role_id: &str,
+) -> Result<Option<i32>, sqlx::Error> {
+    sqlx::query_scalar("SELECT current_version FROM agent_profiles WHERE role_id = $1 FOR UPDATE")
+        .bind(role_id)
+        .fetch_optional(&mut *tx)
+        .await
+}
+
+/// Read the CURRENT profile on a caller-owned transaction.
+pub(crate) async fn current_profile_in_tx(
+    tx: &mut PgConnection,
+    role_id: &str,
+) -> Result<Option<CurrentProfile>, sqlx::Error> {
+    let row: Option<(i32, String, Value, String, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT v.version, v.content_hash, v.profile, v.written_by, v.written_at \
+         FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+         WHERE v.role_id = $1 AND v.version = p.current_version",
+    )
+    .bind(role_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    Ok(row.map(
+        |(version, content_hash, profile, written_by, written_at)| CurrentProfile {
+            role_id: role_id.to_string(),
+            version,
+            content_hash,
+            profile,
+            written_by,
+            written_at,
+        },
+    ))
+}
+
+/// The owner's attestation on a caller-owned transaction: the named capability
+/// claim's provenance upgrades to `owner_attested` with the evidence reference —
+/// a NEW version, writer recorded.
+///
+/// ⛔ The caller must already hold the role's version anchor
+/// ([`lock_existing_profile_anchor_in_tx`]). Both halves of this are a
+/// read-modify-write over the SAME profile, and the superseded form ran the read
+/// on the pool and the write in a different transaction: two administrators
+/// attesting two different capabilities of one role each read version N, each
+/// wrote a profile carrying only their own upgrade, and whichever committed
+/// second published a profile in which the first attestation never happened —
+/// with no error on either side. Serializing the writes does not fix that on its
+/// own, because the losing writer's version NUMBER is correct while its CONTENT
+/// is stale; the read has to be inside the same lock as the write.
+///
+/// `Ok(None)` means no profile, or no capability by that taxonomy id — ONE
+/// answer, as the route has always given.
+pub(crate) async fn attest_capability_in_tx(
+    tx: &mut PgConnection,
     role_id: &str,
     writer: &str,
     taxonomy_id: &str,
     evidence_ref: &str,
+    at: DateTime<Utc>,
 ) -> Result<Option<CurrentProfile>, sqlx::Error> {
-    let Some(current) = current_profile(pool, role_id).await? else {
+    let Some(current) = current_profile_in_tx(&mut *tx, role_id).await? else {
         return Ok(None);
     };
-    let mut profile: AgentProfile =
-        serde_json::from_value(current.profile.clone()).map_err(|e| {
-            sqlx::Error::Decode(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                e,
-            )))
-        })?;
+    let mut profile: AgentProfile = serde_json::from_value(current.profile).map_err(|e| {
+        sqlx::Error::Decode(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            e,
+        )))
+    })?;
     let Some(claim) = profile
         .capabilities
         .iter_mut()
@@ -553,6 +615,6 @@ pub async fn attest_capability(
     };
     claim.confidence = ClaimConfidence::OwnerAttested;
     claim.evidence_ref = Some(evidence_ref.to_string());
-    let written = write_profile(pool, role_id, writer, &profile).await?;
+    let written = write_profile_in_tx(&mut *tx, role_id, writer, &profile, at).await?;
     Ok(Some(written))
 }

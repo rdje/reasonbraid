@@ -6,6 +6,27 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A silent lost update on the audited attestation path was reproduced and
+closed under `.3.3.4.11.2` (REPAIR-0120).** `attest_capability` read the current
+profile on the pool and wrote it back through a different transaction. Measured
+on the unchanged route: two administrators attesting two DIFFERENT capabilities
+of one role both received **`200`**, and the published profile carried one
+upgrade and not the other — an audited attestation dropped with no error to
+either caller. ⭐ Serializing the writers, which `.11.1` had already done, would
+not have closed it: the losing writer's version NUMBER was correct while its
+CONTENT was stale, so the READ had to move under the same anchor lock as the
+write. The verb now runs one shared-guard transaction from the admission through
+the anchor lock, the read, the upgrade, the new version and the effect record;
+the mode is shared because an attestation writes no authority and advances no
+revocation epoch. The wire is unchanged — the single `404` still answers both
+idle states and the record distinguishes them — plus the
+`x-reasonbraid-authorization` receipt on every admitted answer. **38 passed /
+0 failed**; the affected set passes **4 suites / 65 tests**. FALSIFIED **36
+passed / 2 failed** against the exact pre-`.11.2` sources. ⚠️ The mode does not
+change in this repair, so no lock-holding fixture discriminates it; the
+discriminating properties are the lost update and atomicity, and the third new
+control is labelled a regression control.
+
 🔴 **A concurrency defect on the profile write surface was reproduced and closed
 under `.3.3.4.11.1` (REPAIR-0119).** The writer computed its version as a
 read-then-write against migration 0019's `UNIQUE (role_id, version)`. Measured on

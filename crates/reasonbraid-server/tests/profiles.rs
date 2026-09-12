@@ -6628,3 +6628,310 @@ async fn a_refused_lineage_link_leaves_no_version_and_no_anchor() {
         .expect("count anchors");
     assert_eq!(anchors, 0, "the refusal left no anchor row behind");
 }
+
+// ── Guarded owner attestation (`SIGNOFF-REPAIR.3.3.4.11.2`) ───────────────────
+//
+// The route ran three unconnected pieces: the role's tenant on the pool, an
+// admission in its own transaction, then a read of the current profile on the
+// pool and a write in a third transaction. The split read-modify-write is what
+// made a concurrent attestation vanish.
+
+/// 🔴 THE discriminating control: two administrators attesting two DIFFERENT
+/// capabilities of the same role must BOTH survive. Against the superseded
+/// route the second write published a profile carrying only its own upgrade,
+/// and the first attestation was gone with no error reported to anyone.
+#[tokio::test]
+async fn two_concurrent_attestations_of_different_claims_both_survive() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "attest-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let owner = human["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "attest-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    let body = profile(json!([
+        { "taxonomy_id": "code_review", "confidence": "self_asserted" },
+        { "taxonomy_id": "schema_design", "confidence": "self_asserted" },
+    ]));
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(status, 200, "the role declares two claims: {written}");
+
+    let attest = format!("/v1/profiles/{role_id}/attest");
+    let review = json!({ "taxonomy_id": "code_review", "evidence_ref": "ev-review" });
+    let schema = json!({ "taxonomy_id": "schema_design", "evidence_ref": "ev-schema" });
+    let (left, right) = tokio::join!(
+        post(&client, &base, &attest, &owner, &review),
+        post(&client, &base, &attest, &owner, &schema),
+    );
+    assert_eq!(left.0, 200, "the first attestation: {:?}", left.1);
+    assert_eq!(right.0, 200, "the second attestation: {:?}", right.1);
+
+    // BOTH upgrades must be in the profile the role now publishes.
+    let (status, current) = get(&client, &base, &format!("/v1/profiles/{role_id}"), &role_id).await;
+    assert_eq!(status, 200, "the current profile reads: {current}");
+    let claims = current["profile"]["capabilities"].as_array().unwrap();
+    let attested: std::collections::BTreeMap<&str, &str> = claims
+        .iter()
+        .map(|c| {
+            (
+                c["taxonomy_id"].as_str().unwrap(),
+                c["confidence"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        attested.get("code_review"),
+        Some(&"owner_attested"),
+        "the first attestation survived: {current}"
+    );
+    assert_eq!(
+        attested.get("schema_design"),
+        Some(&"owner_attested"),
+        "the second attestation survived: {current}"
+    );
+    let evidence: std::collections::BTreeMap<&str, &str> = claims
+        .iter()
+        .map(|c| {
+            (
+                c["taxonomy_id"].as_str().unwrap(),
+                c["evidence_ref"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(evidence.get("code_review"), Some(&"ev-review"), "{current}");
+    assert_eq!(
+        evidence.get("schema_design"),
+        Some(&"ev-schema"),
+        "{current}"
+    );
+}
+
+/// The attestation records what it did, and both of its answers do: an applied
+/// upgrade and a refusal that names no target the caller did not supply.
+#[tokio::test]
+async fn an_attestation_records_its_outcome_and_carries_its_receipt() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "attest-record-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let owner = human["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "attest-record-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let body = profile(json!([{ "taxonomy_id": "code_review", "confidence": "self_asserted" }]));
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(status, 200, "the role declares its claim");
+
+    // The APPLIED answer.
+    let attest = format!("/v1/profiles/{role_id}/attest");
+    let response = client
+        .post(format!("{base}{attest}"))
+        .header(PRINCIPAL_HEADER, &owner)
+        .json(&json!({ "taxonomy_id": "code_review", "evidence_ref": "ev-1" }))
+        .send()
+        .await
+        .expect("attest request");
+    assert_eq!(response.status().as_u16(), 200, "the attestation applies");
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .expect("the attestation carries its receipt")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let written: Value = response.json().await.expect("attest json");
+    let (kind, outcome, effected_at): (Value, Value, chrono::DateTime<chrono::Utc>) =
+        sqlx::query_as(
+            "SELECT operation, outcome, effected_at FROM administrative_effects WHERE record_id = $1",
+        )
+        .bind(&receipt)
+        .fetch_one(&pool)
+        .await
+        .expect("the effect record exists");
+    assert_eq!(kind["kind"], json!("capability_claim_attest"), "{kind}");
+    assert_eq!(kind["role_id"], json!(role_id), "{kind}");
+    assert_eq!(kind["taxonomy_id"], json!("code_review"), "{kind}");
+    assert_eq!(outcome["kind"], json!("applied"), "{outcome}");
+    // Compare INSTANTS, not their spellings: the response serializes UTC as `Z`
+    // and chrono's `to_rfc3339` as `+00:00`, which are the same moment.
+    let written_at: chrono::DateTime<chrono::Utc> = written["written_at"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .expect("the response carries an RFC3339 instant");
+    assert_eq!(
+        written_at, effected_at,
+        "the version is stamped with the transaction's own time"
+    );
+
+    // The REFUSED answer: same wire message for both idle states, and the
+    // record is where they stop being the same fact.
+    let response = client
+        .post(format!("{base}{attest}"))
+        .header(PRINCIPAL_HEADER, &owner)
+        .json(&json!({ "taxonomy_id": "no_such_capability", "evidence_ref": "ev-2" }))
+        .send()
+        .await
+        .expect("attest request");
+    assert_eq!(response.status().as_u16(), 404, "the unknown claim refuses");
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .expect("the refusal carries its receipt too")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let outcome: Value =
+        sqlx::query_scalar("SELECT outcome FROM administrative_effects WHERE record_id = $1")
+            .bind(&receipt)
+            .fetch_one(&pool)
+            .await
+            .expect("the refusal's effect record exists");
+    assert_eq!(outcome["kind"], json!("refused"), "{outcome}");
+    assert_eq!(outcome["code"], json!("not_found"), "{outcome}");
+
+    // The refusal wrote no version: the profile is still at the attested one.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/versions"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the history reads: {listed}");
+    assert_eq!(
+        listed["versions"].as_array().unwrap().len(),
+        2,
+        "the declaration and the attestation, and nothing from the refusal: {listed}"
+    );
+}
+
+/// A foreign tenant's administrator attests nothing and learns nothing: the
+/// admission is evaluated against the ROLE's tenant, so it is simply denied.
+///
+/// ⚠️ REGRESSION control, labelled rather than counted as proof: it PASSES
+/// against the superseded route too, because that route already resolved the
+/// role's tenant and admitted against it. `.11`'s census measured that this
+/// family's tenant predicates were already correct — unlike `.10`'s — so what
+/// this defends is that moving the admission inside the transaction did not
+/// quietly widen it. The discriminating control for this leaf is the concurrent
+/// attestation above.
+#[tokio::test]
+async fn a_foreign_administrator_cannot_attest_another_tenants_role() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner_human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "attest-home" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the home human enrolls: {owner_human}");
+    let home_tenant = owner_human["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "attest-home-agent", "tenant_id": home_tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let body = profile(json!([{ "taxonomy_id": "code_review", "confidence": "self_asserted" }]));
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(status, 200, "the role declares its claim");
+
+    // A DIFFERENT tenant, with its own freshly bootstrapped administrator.
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "attest-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        home_tenant,
+        "the stranger administers a different tenant"
+    );
+
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/attest"),
+        &stranger_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "forged" }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "the foreign administrator is denied: {refused}"
+    );
+
+    // Nothing moved: one version, still self_asserted.
+    let (status, current) = get(&client, &base, &format!("/v1/profiles/{role_id}"), &role_id).await;
+    assert_eq!(status, 200, "the profile reads: {current}");
+    assert_eq!(current["version"], json!(1), "no version was written");
+    assert_eq!(
+        current["profile"]["capabilities"][0]["confidence"],
+        json!("self_asserted"),
+        "the claim was not upgraded: {current}"
+    );
+}

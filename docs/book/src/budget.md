@@ -25,6 +25,21 @@ routing, §14.3 — never clamped). Release returns the unused hold. Expired
 reservations stop holding. An **indeterminate** attempt keeps its hold
 (§14.6: release only amounts not potentially consumed).
 
+## Administering the spend breaker
+
+The per-tenant spend latch is armed and reset through two `tenant_admin` routes.
+Since `SIGNOFF-REPAIR.3.3.4.9` each runs **one** transaction under the tenant's
+exclusive authority guard — the admission, the breaker write and a durable record
+of what the operation finally did share a single commit — so an arm is ordered
+against every in-flight reservation in the tenant and against any change to the
+caller's own authority. The contract, the outcomes and what the `409` deliberately
+does not tell the caller are in
+[arming and resetting a spend breaker](authority.md#arming-and-resetting-a-spend-breaker).
+
+The **trip** is a different thing and keeps its own path: it flips inside the
+caller's reservation transaction the moment recorded spend plus the request
+crosses the threshold, so the latch never lags the ledger it guards.
+
 ## Honest limits (Phase 0)
 
 - Reservation references are unsigned (dev profile); workload-identity

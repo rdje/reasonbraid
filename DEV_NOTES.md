@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — My ordering control was green against the code it was written to catch
+
+- The repair was "put the operation under the tenant's exclusive guard". The control looked like the obvious one and was copied from the leaf before it: hold the tenant's guard EXCLUSIVELY, start the request, assert it waits, end the caller's authority underneath it, release, assert 403. Green. It was also green against the **unrepaired** code, which is the part I nearly shipped as evidence.
+- ⭐ **The reason is a one-word property of the fixture.** The superseded shape admitted through `authorize_guarded`, which takes the tenant's **shared** guard — and shared waits behind exclusive. So an exclusive holder fenced the old design exactly as well as it fenced the new one. The fixture could not distinguish them while looking, in every visible respect, like a passing race control.
+- The discriminating fence is the opposite mode. A **shared** holder excludes the repair's exclusive acquisition and does not exclude the old shape's shared one. Changing `GuardMode::Exclusive` to `GuardMode::Shared` in two fixtures turned "green either way" into `left: 200, right: 403` — the arm applying after the caller's administration had already ended.
+- ⚠️ The generalisation, and it is due immediately: `.10`–`.12` migrate three more administrative families off the SAME `authorize_tenant_admin` shape. Any ordering control copied from `.8`'s exclusive-holder fixture will pass against the unrepaired code. When a repair changes WHICH lock an operation takes, the fixture must hold a lock the OLD mode was not excluded by — so ask what the superseded code acquired, rather than copying the holder from the previous leaf.
+- The deeper habit this corrects: I chose the holder's mode by analogy ("the last leaf held exclusive") rather than by derivation ("what did the old code acquire, and what excludes that?"). The knowledge note already said an invariant control must fail against the superseded design; it did not say that the fixture's own parameters are part of what has to be derived. It does now.
+
+## 2026-09-12 — A deliberate fault is a fixture, and a fixture that leaks is worse than one that fails
+
+- The evidence-rollback control needed every effect insert to fail, so it added `CHECK (false) NOT VALID` to the table, ran the request, dropped the constraint, and asserted. The assertion order was: assert, then drop. The first assertion was wrong, the test panicked, the constraint stayed — and the next eleven tests in the suite failed on a constraint that had nothing to do with any of them.
+- ⭐ The failure LIST diagnosed it before any log was read: a contiguous block of unrelated tests failing at their own first database call is a fixture fault, not eleven regressions. That is the same shape rule that caught a false falsification two leaves ago, applied to a different mechanism.
+- Two repairs, because one was not enough. The control now **observes everything, drops the fault, and only then asserts**, so no assertion can fire while the fault stands. And the suite's own `pool()` fixture issues `DROP CONSTRAINT IF EXISTS` at setup, so if a future edit reintroduces the ordering mistake it costs one test instead of the suite. A fixture that installs a global fault owns its removal on every path, including the panicking one.
+
 ## 2026-09-12 — The defect was the gap between two transactions, and the control had to live in it
 
 - The route already took an exclusive guard. It already locked the target row. It already bumped the epoch in the same transaction as the status change. Reading it, almost everything looked right — and a revocation could still apply on authority that had stopped existing, because the ADMISSION was a different transaction that had already committed. The bug was not in either transaction; it was in the seam.

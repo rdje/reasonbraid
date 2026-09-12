@@ -100,6 +100,18 @@ async fn pool() -> Option<PgPool> {
     )
     .await
     .expect("purge checked fixture plan");
+    // ⚠️ `an_evidence_failure_rolls_the_breaker_mutation_back_and_the_route_recovers`
+    // installs a deliberate CHECK fault on this table. If that control ever dies
+    // before removing it, EVERY later test in the suite fails on a constraint
+    // that has nothing to do with it — all-failing-fast, the broken-fixture
+    // signature. Healing it here makes a leak cost one test instead of the suite.
+    sqlx::query(
+        "ALTER TABLE administrative_effects \
+         DROP CONSTRAINT IF EXISTS signoff_repair_3_3_4_9_evidence_fault",
+    )
+    .execute(&pool)
+    .await
+    .expect("clear any leaked evidence fault");
     Some(pool)
 }
 
@@ -1222,4 +1234,652 @@ async fn a_boundary_revocation_takes_the_same_shape_and_fences_the_next_request(
         "the frozen boundary now refuses its own admin: {body}"
     );
     assert_eq!(epoch(&pool, tenant).await, 1);
+}
+
+// ── Breaker administration (`SIGNOFF-REPAIR.3.3.4.9`) ────────────────────────
+//
+// The SECOND administrative family onto the guarded effect transaction. The
+// properties differ from a revocation's in three ways worth naming, because each
+// is where a control copied from `.8` would be wrong:
+//
+// - neither verb bumps the tenant's revocation epoch, in ANY outcome, including
+//   the successful one — a spend latch is not authority;
+// - the success bodies and the refusal status/message are byte-unchanged, so the
+//   two states the `409` collapses are distinguished only in the RECORD;
+// - `submitted_reason` is `null`, because neither wire body carries a reason.
+
+/// The whole breaker row, as JSON, so a control asserts what actually changed
+/// rather than the columns it remembered to name.
+async fn breaker_row(pool: &PgPool, tenant: &str) -> Option<Value> {
+    sqlx::query_scalar("SELECT to_jsonb(b) FROM spend_breakers b WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_optional(pool)
+        .await
+        .expect("read the breaker row")
+}
+
+/// Arm or reset over HTTP, returning status, the receipt and the body — the same
+/// shape `revoke` returns, because the receipt contract is the same.
+async fn breaker(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    body: Value,
+) -> (u16, Option<String>, Value) {
+    let response = client
+        .post(format!("{base}{path}"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&body)
+        .send()
+        .await
+        .expect("breaker request");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .map(|value| value.to_str().expect("an ASCII receipt").to_owned());
+    (
+        status,
+        receipt,
+        response.json().await.expect("breaker json"),
+    )
+}
+
+async fn arm(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+    threshold: Value,
+) -> (u16, Option<String>, Value) {
+    breaker(
+        client,
+        base,
+        "/v1/admin/breakers",
+        principal,
+        json!({ "tenant_id": tenant, "threshold": threshold }),
+    )
+    .await
+}
+
+async fn reset(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+) -> (u16, Option<String>, Value) {
+    breaker(
+        client,
+        base,
+        "/v1/admin/breakers/reset",
+        principal,
+        json!({ "tenant_id": tenant }),
+    )
+    .await
+}
+
+/// Trip the tenant's breaker the way the reservation path does — a direct UPDATE,
+/// so the fixture never depends on budget arithmetic this leaf does not own.
+async fn trip(pool: &PgPool, tenant: &str) {
+    let affected = sqlx::query(
+        "UPDATE spend_breakers SET tripped_at = now(), tripped_reason = 'fixture trip' \
+         WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .execute(pool)
+    .await
+    .expect("trip the breaker")
+    .rows_affected();
+    assert_eq!(affected, 1, "the fixture trips exactly one armed breaker");
+}
+
+async fn effect_of(
+    pool: &PgPool,
+    tenant: TenantId,
+    receipt: Option<String>,
+) -> Option<AdministrativeEffectRecord> {
+    load_tenant_administrative_effect(
+        pool,
+        tenant,
+        receipt
+            .expect("every breaker answer carries its admission receipt")
+            .parse()
+            .expect("the receipt is a record id"),
+    )
+    .await
+    .expect("read the effect back")
+}
+
+#[tokio::test]
+async fn arming_a_breaker_commits_its_admission_mutation_and_effect_together() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-arms").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    assert!(breaker_row(&pool, &alice.tenant).await.is_none());
+    let before = admission_count(&pool, &alice.tenant).await;
+
+    let (status, receipt, body) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "calls": 10 }),
+    )
+    .await;
+    assert_eq!(status, 200, "an eligible administrator arms: {body}");
+    // The success body is byte-unchanged: this leaf added a header, not a field.
+    assert_eq!(
+        body,
+        json!({ "tenant_id": alice.tenant, "armed": true }),
+        "the success body is unchanged"
+    );
+    assert_eq!(
+        admission_count(&pool, &alice.tenant).await,
+        before + 1,
+        "exactly one admission per request"
+    );
+
+    let row = breaker_row(&pool, &alice.tenant)
+        .await
+        .expect("the breaker committed with its admission");
+    assert_eq!(
+        row["threshold"],
+        json!({ "calls": 10, "input_tokens": null, "output_tokens": null, "wall_clock_seconds": null })
+    );
+    assert_eq!(row["tripped_at"], Value::Null);
+
+    let effect = effect_of(&pool, tenant, receipt)
+        .await
+        .expect("the effect committed with its mutation");
+    assert_eq!(effect.operation, AdministrativeOperation::BreakerArm {});
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(
+        effect.submitted_reason, None,
+        "neither breaker verb takes a caller reason, so none is invented"
+    );
+    // The epoch is the copied-from-`.8` mistake this asserts against: arming is
+    // not an authority change, so it advances nothing.
+    assert_eq!(
+        epoch(&pool, tenant).await,
+        0,
+        "breaker administration advances no revocation epoch"
+    );
+}
+
+#[tokio::test]
+async fn re_arming_the_same_threshold_changes_no_column_and_records_a_no_op() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-rearms").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let threshold = json!({ "calls": 10 });
+
+    let (status, _, _) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        threshold.clone(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let before = breaker_row(&pool, &alice.tenant).await.expect("armed");
+
+    // The SAME threshold on an untripped breaker. `armed_at` is not in the
+    // upsert's DO UPDATE list, so nothing in the row can move — and the whole
+    // row is compared rather than the columns this test remembered to name.
+    let (status, receipt, body) = arm(&client, &base, &alice.admin, &alice.tenant, threshold).await;
+    assert_eq!(status, 200, "the caller still receives success: {body}");
+    assert_eq!(body, json!({ "tenant_id": alice.tenant, "armed": true }));
+    assert_eq!(
+        breaker_row(&pool, &alice.tenant)
+            .await
+            .expect("still armed"),
+        before,
+        "re-arming the same threshold changes no column of the row"
+    );
+
+    let effect = effect_of(&pool, tenant, receipt)
+        .await
+        .expect("the no-op is recorded, not merely returned");
+    assert_eq!(effect.operation, AdministrativeOperation::BreakerArm {});
+    let AdministrativeOutcome::NoOp { detail } = &effect.outcome else {
+        panic!("expected a recorded no-op, got {:?}", effect.outcome)
+    };
+    assert!(detail.as_str().contains("not tripped"), "{detail}");
+    assert!(!effect.outcome.changed_protected_state());
+
+    // A DIFFERENT threshold is a real change, so the same route records `applied`
+    // — the no-op above is about the state, not about the verb.
+    let (status, receipt, _) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "calls": 11 }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(epoch(&pool, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn re_arming_a_tripped_breaker_clears_the_trip_and_records_applied() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-rearms-tripped").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let threshold = json!({ "calls": 10 });
+
+    arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        threshold.clone(),
+    )
+    .await;
+    trip(&pool, &alice.tenant).await;
+
+    // The SAME threshold, but tripped: clearing the trip IS a protected change,
+    // so this is `applied` even though the threshold column does not move.
+    let (status, receipt, _) = arm(&client, &base, &alice.admin, &alice.tenant, threshold).await;
+    assert_eq!(status, 200);
+    let row = breaker_row(&pool, &alice.tenant).await.expect("armed");
+    assert_eq!(row["tripped_at"], Value::Null, "the trip is cleared");
+    assert_eq!(row["tripped_reason"], Value::Null);
+
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    assert!(
+        effect.outcome.changed_protected_state(),
+        "clearing a trip is a protected change: {:?}",
+        effect.outcome
+    );
+    assert_eq!(epoch(&pool, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn resetting_a_tripped_breaker_applies_and_the_two_idle_states_differ_only_in_the_record() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-resets").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    // 1. No breaker armed at all: 409, recorded `refused`/`invalid_transition`.
+    let (status, receipt, unarmed_body) = reset(&client, &base, &alice.admin, &alice.tenant).await;
+    assert_eq!(status, 409, "nothing to reset: {unarmed_body}");
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    assert_eq!(effect.operation, AdministrativeOperation::BreakerReset {});
+    let AdministrativeOutcome::Refused { code, detail } = &effect.outcome else {
+        panic!("expected a recorded refusal, got {:?}", effect.outcome)
+    };
+    // The code the RESPONSE carries, not `not_found`: a breaker operation's
+    // target is the tenant, and the tenant was found.
+    assert_eq!(*code, AdministrativeRefusal::InvalidTransition);
+    assert_eq!(unarmed_body["code"], json!(code.as_str()));
+    assert!(
+        detail.as_str().contains("no spend breaker is armed"),
+        "{detail}"
+    );
+    assert!(breaker_row(&pool, &alice.tenant).await.is_none());
+
+    // 2. Armed but not tripped: the SAME answer, recorded `no_op` instead.
+    arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "calls": 10 }),
+    )
+    .await;
+    let untripped = breaker_row(&pool, &alice.tenant).await.expect("armed");
+    let (status, receipt, idle_body) = reset(&client, &base, &alice.admin, &alice.tenant).await;
+    assert_eq!(status, 409);
+    assert_eq!(
+        idle_body, unarmed_body,
+        "the wire deliberately collapses the two idle states"
+    );
+    assert_eq!(
+        breaker_row(&pool, &alice.tenant)
+            .await
+            .expect("still armed"),
+        untripped,
+        "a refused reset changes no column"
+    );
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    let AdministrativeOutcome::NoOp { detail } = &effect.outcome else {
+        panic!("expected a recorded no-op, got {:?}", effect.outcome)
+    };
+    assert!(detail.as_str().contains("was not tripped"), "{detail}");
+
+    // 3. Tripped: 200, and the latch re-opens.
+    trip(&pool, &alice.tenant).await;
+    let (status, receipt, body) = reset(&client, &base, &alice.admin, &alice.tenant).await;
+    assert_eq!(status, 200, "a tripped breaker resets: {body}");
+    assert_eq!(body, json!({ "tenant_id": alice.tenant, "reset": true }));
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(
+        breaker_row(&pool, &alice.tenant).await.expect("armed")["tripped_at"],
+        Value::Null
+    );
+    // Exact recovery: the latch works again after the reset.
+    trip(&pool, &alice.tenant).await;
+    let (status, _, _) = reset(&client, &base, &alice.admin, &alice.tenant).await;
+    assert_eq!(status, 200, "a reset latch can trip and reset again");
+    assert_eq!(epoch(&pool, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_caller_without_administration_changes_no_breaker_and_records_no_effect() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-denied").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+    let role = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "ordinary", "tenant_id": alice.tenant }),
+    )
+    .await;
+    let outsider = role["principal_id"].as_str().unwrap().to_owned();
+    let before = effect_rows(&pool).await;
+
+    for (label, (status, receipt, body)) in [
+        (
+            "arm",
+            arm(
+                &client,
+                &base,
+                &outsider,
+                &alice.tenant,
+                json!({ "calls": 10 }),
+            )
+            .await,
+        ),
+        (
+            "reset",
+            reset(&client, &base, &outsider, &alice.tenant).await,
+        ),
+    ] {
+        assert_eq!(status, 403, "{label} is denied: {body}");
+        assert_eq!(
+            effect_rows(&pool).await,
+            before,
+            "{label}: a denial never became an operation"
+        );
+        assert!(
+            effect_of(&pool, tenant, receipt).await.is_none(),
+            "{label}: the admission record already says denied"
+        );
+        assert!(
+            breaker_row(&pool, &alice.tenant).await.is_none(),
+            "{label}: no breaker was created"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_foreign_tenant_breaker_is_untouched_and_leaves_no_trace() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-outsider").await;
+    let victim = enrolled(&client, &base, "breaker-victim").await;
+
+    // The victim arms its own breaker through its own administrator.
+    arm(
+        &client,
+        &base,
+        &victim.admin,
+        &victim.tenant,
+        json!({ "calls": 5 }),
+    )
+    .await;
+    let before = breaker_row(&pool, &victim.tenant).await.expect("armed");
+    let victim_admissions = admission_count(&pool, &victim.tenant).await;
+    // ⚠️ Not zero: the victim's own arm above legitimately recorded one. The
+    // property is that the DENIALS add none, so the baseline is measured rather
+    // than assumed.
+    let effects_before = effect_rows(&pool).await;
+
+    // Alice names the VICTIM's tenant. Her grant does not select it, so the
+    // admission is evaluated — and denied — in the tenant she named.
+    for (label, (status, _, body)) in [
+        (
+            "arm",
+            arm(
+                &client,
+                &base,
+                &alice.admin,
+                &victim.tenant,
+                json!({ "calls": 99 }),
+            )
+            .await,
+        ),
+        (
+            "reset",
+            reset(&client, &base, &alice.admin, &victim.tenant).await,
+        ),
+    ] {
+        assert_eq!(status, 403, "{label} across tenants is denied: {body}");
+        assert_eq!(
+            breaker_row(&pool, &victim.tenant).await.expect("intact"),
+            before,
+            "{label}: the foreign breaker is unchanged"
+        );
+    }
+    assert_eq!(
+        admission_count(&pool, &victim.tenant).await,
+        victim_admissions + 2,
+        "the denials are recorded in the tenant the caller named"
+    );
+    assert_eq!(
+        effect_rows(&pool).await,
+        effects_before,
+        "a denial records no effect in any tenant"
+    );
+}
+
+/// ⚠️ The holder is **shared**, and that is the whole point of the control.
+///
+/// An exclusive holder cannot discriminate this repair: the pre-`.9` shape
+/// admitted through `authorize_guarded`, which takes the tenant's SHARED guard
+/// and therefore waits behind an exclusive holder too. A SHARED holder is the
+/// fence the old shape passed straight through — shared does not exclude shared
+/// — while `.9`'s exclusive acquisition must wait for it.
+///
+/// It is also the fence that matters in production: the reservation path
+/// evaluates this latch inside thread-command transactions that hold the shared
+/// guard, so this is the control behind the claim that an arm is ordered against
+/// every in-flight reservation in the tenant.
+#[tokio::test]
+async fn a_breaker_request_waits_for_the_tenants_authority_guard_and_then_applies() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-waits").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    let holder = hold(&pool, tenant, GuardMode::Shared).await;
+    let (base2, client2, admin, tenant_key) = (
+        base.clone(),
+        client.clone(),
+        alice.admin.clone(),
+        alice.tenant.clone(),
+    );
+    let request = tokio::spawn(async move {
+        arm(
+            &client2,
+            &base2,
+            &admin,
+            &tenant_key,
+            json!({ "calls": 10 }),
+        )
+        .await
+    });
+
+    // While ANOTHER operation holds the tenant's guard, nothing can have been
+    // armed. Before this leaf the admission took the same shared mode and the
+    // mutation took nothing at all, so both ran straight through this.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(breaker_row(&pool, &alice.tenant).await.is_none());
+    assert!(!request.is_finished(), "the arm is waiting");
+
+    holder.release().await;
+    let (status, receipt, body) = timeout(Duration::from_secs(10), request)
+        .await
+        .expect("the arm completes after the guard is released")
+        .expect("the request task joins");
+    assert_eq!(status, 200, "it then applies: {body}");
+    assert!(breaker_row(&pool, &alice.tenant).await.is_some());
+    assert!(effect_of(&pool, tenant, receipt).await.is_some());
+}
+
+#[tokio::test]
+async fn authority_that_ends_while_a_breaker_request_waits_refuses_it() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-queued").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    // Shared, for the reason the control above records: an exclusive holder
+    // fences the pre-`.9` shape as well, so it could not tell the two apart.
+    let holder = hold(&pool, tenant, GuardMode::Shared).await;
+    let (base2, client2, admin, tenant_key) = (
+        base.clone(),
+        client.clone(),
+        alice.admin.clone(),
+        alice.tenant.clone(),
+    );
+    let request = tokio::spawn(async move {
+        arm(
+            &client2,
+            &base2,
+            &admin,
+            &tenant_key,
+            json!({ "calls": 10 }),
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(!request.is_finished(), "the arm is waiting");
+
+    // End the caller's OWN administration underneath the blocked request. The
+    // decision time is sampled after the guard wait, so this must be seen.
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&alice.admin_grant)
+        .execute(&pool)
+        .await
+        .expect("end the caller's authority");
+    holder.release().await;
+
+    let (status, receipt, body) = timeout(Duration::from_secs(10), request)
+        .await
+        .expect("the arm completes")
+        .expect("the request task joins");
+    assert_eq!(
+        status, 403,
+        "authority that ended during the wait is gone: {body}"
+    );
+    assert!(
+        breaker_row(&pool, &alice.tenant).await.is_none(),
+        "a denied arm creates no breaker"
+    );
+    assert!(
+        effect_of(&pool, tenant, receipt).await.is_none(),
+        "a denial records no effect"
+    );
+    // The raw UPDATE above ends the caller's authority WITHOUT the application's
+    // epoch bump, so any advance here could only have come from the blocked
+    // request itself. It did not.
+    assert_eq!(epoch(&pool, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn an_evidence_failure_rolls_the_breaker_mutation_back_and_the_route_recovers() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-evidence").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    // Make every effect INSERT fail, without touching any existing row: NOT
+    // VALID skips the rows already stored and applies to new ones only. The
+    // suite runs single-threaded (`--test-threads=1`), so this is the only
+    // writer while it stands.
+    sqlx::query(
+        "ALTER TABLE administrative_effects \
+         ADD CONSTRAINT signoff_repair_3_3_4_9_evidence_fault CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("install the evidence fault");
+
+    // ⛔ Ordering: observe everything, REMOVE THE FAULT, and only then assert.
+    // An assertion that fires between the two leaves the fault installed, and a
+    // leaked fault fails every later test in the suite for a reason that has
+    // nothing to do with them.
+    let (status, receipt, body) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "calls": 10 }),
+    )
+    .await;
+    let armed_after_fault = breaker_row(&pool, &alice.tenant).await;
+    let admissions_after_fault = admission_count(&pool, &alice.tenant).await;
+
+    sqlx::query(
+        "ALTER TABLE administrative_effects DROP CONSTRAINT signoff_repair_3_3_4_9_evidence_fault",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the evidence fault");
+
+    assert_eq!(
+        status, 500,
+        "an evidence failure is not reported as success: {body}"
+    );
+    assert!(
+        receipt.is_none(),
+        "a transaction that did not commit advertises no receipt"
+    );
+    assert!(
+        armed_after_fault.is_none(),
+        "the protected write did not survive its evidence"
+    );
+    // Zero, not one: development enrollment records no authorization record of
+    // its own, so this tenant's ONLY admission would have been the arm's — and
+    // it rolled back in the same transaction as the mutation it permitted.
+    assert_eq!(
+        admissions_after_fault, 0,
+        "the admission rolled back with the write it permitted"
+    );
+
+    // Exact recovery: with the fault gone the same request succeeds and records.
+    let (status, receipt, body) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "calls": 10 }),
+    )
+    .await;
+    assert_eq!(status, 200, "the route recovers: {body}");
+    assert!(breaker_row(&pool, &alice.tenant).await.is_some());
+    let effect = effect_of(&pool, tenant, receipt).await.expect("recorded");
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(epoch(&pool, tenant).await, 0);
 }

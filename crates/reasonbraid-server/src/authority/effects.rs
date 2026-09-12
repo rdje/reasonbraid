@@ -61,6 +61,26 @@ impl TryFrom<EffectRow> for AdministrativeEffectRecord {
     }
 }
 
+/// Bound a SERVER-produced outcome detail.
+///
+/// These details are short and controlled, so the bound cannot be exceeded in
+/// practice; a future longer message is truncated to the fallback rather than
+/// allowed to turn a recorded outcome into a storage error. It lives beside the
+/// record it bounds because every administrative family that writes one needs
+/// it — `SIGNOFF-REPAIR.3.3.4.8` wrote the first, `.9` the second, and a second
+/// copy of the same fallback is exactly the drift this tree keeps repairing.
+///
+/// ⛔ Only for text this server composes. A CALLER's submitted reason is
+/// constructed with [`AdministrativeReason::new`] directly, so that exceeding
+/// the bound is a refusal the caller is told about rather than a silent
+/// substitution.
+pub(super) fn bounded_detail(detail: String) -> AdministrativeReason {
+    AdministrativeReason::new(detail).unwrap_or_else(|_| {
+        AdministrativeReason::new("the operation was refused")
+            .expect("the fallback detail is within bounds")
+    })
+}
+
 /// Record one admitted request's final local outcome on the caller's OWN
 /// transaction.
 ///

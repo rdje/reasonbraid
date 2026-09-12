@@ -1,10 +1,10 @@
-answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race?
+answers: how do I show a race is actually closed; why did a passing test suite still ship a race; what should a concurrency test assert; why is a green local run silent about a Linux-only race; why does my new ordering control pass against the unrepaired code?
 
 # Proving a race is closed
 
 - **Type:** `knowledge`
 - **Date:** `2026-09-12`
-- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`
+- **Owner / source:** leaves `SIGNOFF-REPAIR.11.4.3.1.2.17`, `.11.4.3.1.2.25`, `.11.4.3.1.2.26`, `.3.3.4.9`
 
 ## The question
 
@@ -39,6 +39,30 @@ and the racing branch is dead code on the second run onward.
 
 In both cases the invariant is checkable locally even though the symptom is not.
 Write the test against the CAUSE, not the effect.
+
+## The fence has to be one the old code did not already have
+
+There is a specific way to get this wrong when the repair is "put the operation
+under a lock", and `SIGNOFF-REPAIR.3.3.4.9` walked into it: **the fixture held
+the wrong lock mode.**
+
+The control held the tenant's guard EXCLUSIVELY, issued the request, and
+asserted it waited. It was green. It was also green against the unrepaired code
+— because the superseded shape admitted through a SHARED acquisition, and shared
+waits behind exclusive too. The fixture fenced both designs equally and could
+not tell them apart, while looking exactly like a passing race control.
+
+The discriminating fence was the SHARED holder: the repair's exclusive
+acquisition must wait behind it, and the old shape's shared acquisition walks
+straight through. Swapping one word in the fixture turned a green control into
+`left: 200, right: 403` — the operation applying after the caller's authority had
+already ended.
+
+The rule that generalises: when a repair changes WHICH lock an operation takes,
+the fixture must hold a lock the old mode was NOT excluded by. Ask what the
+superseded code acquired before choosing the holder's mode, rather than copying
+the holder from the previous leaf — the previous leaf was repairing a path whose
+old shape may have differed.
 
 ## Re-verify
 

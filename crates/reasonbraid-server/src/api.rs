@@ -5403,50 +5403,89 @@ pub struct BreakerTenantRequest {
     pub tenant_id: TenantId,
 }
 
+/// Both breaker verbs run ONE guarded transaction (`SIGNOFF-REPAIR.3.3.4.9`):
+/// the admission, the tenant-bound breaker selection, the mutation and the final
+/// effect record share a single commit under the tenant's exclusive authority
+/// guard. Before this, each handler admitted the caller in its own shared-guard
+/// transaction and then ran a bare statement ON THE POOL — no transaction, no
+/// guard, and no record of what the operation finally did.
+///
+/// Every answer, including the refusals, carries the
+/// `x-reasonbraid-authorization` receipt naming the admission this request
+/// committed, which is also the effect record's id when one was written. Without
+/// it the effect record would be unreachable: there is no list endpoint.
+///
+/// The status codes, messages and success bodies below are byte-unchanged. The
+/// two states the `409` deliberately collapses — a breaker that is armed but not
+/// tripped, and no breaker at all — are distinguished in the effect record
+/// instead, which is the fact an admission cannot carry.
+async fn run_breaker_administration(
+    state: &ApiState,
+    headers: &HeaderMap,
+    tenant_id: TenantId,
+    command: authority::BreakerCommand,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(headers)?;
+    let administration = authority::administer_breaker_in_one_transaction(
+        &state.pool,
+        &principal,
+        tenant_id,
+        command,
+    )
+    .await?;
+    let receipt = administration.record_id;
+    let response = match administration.result {
+        authority::BreakerResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // An already-armed breaker answers exactly as a fresh arm does: the
+        // caller asked for a state and has it.
+        authority::BreakerResult::Armed | authority::BreakerResult::AlreadyArmed => {
+            Json(json!({ "tenant_id": tenant_id.to_string(), "armed": true })).into_response()
+        }
+        authority::BreakerResult::Reset => {
+            Json(json!({ "tenant_id": tenant_id.to_string(), "reset": true })).into_response()
+        }
+        authority::BreakerResult::NotTripped | authority::BreakerResult::NotArmed => {
+            ControlApiError::invalid_transition(
+                "no tripped breaker to reset (none armed, or none tripped)",
+            )
+            .into_response()
+        }
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
+}
+
 async fn arm_breaker(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<ArmBreakerRequest>,
-) -> Result<Json<Value>, ControlApiError> {
-    let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    sqlx::query(
-        "INSERT INTO spend_breakers (tenant_id, threshold, tripped_at, tripped_reason) \
-         VALUES ($1, $2, NULL, NULL) \
-         ON CONFLICT (tenant_id) DO UPDATE SET \
-           threshold = EXCLUDED.threshold, tripped_at = NULL, tripped_reason = NULL",
+) -> Result<Response, ControlApiError> {
+    run_breaker_administration(
+        &state,
+        &headers,
+        req.tenant_id,
+        authority::BreakerCommand::Arm {
+            threshold: req.threshold,
+        },
     )
-    .bind(req.tenant_id.to_string())
-    .bind(serde_json::to_value(req.threshold).expect("threshold serializes"))
-    .execute(&state.pool)
-    .await?;
-    Ok(Json(
-        json!({ "tenant_id": req.tenant_id.to_string(), "armed": true }),
-    ))
+    .await
 }
 
 async fn reset_breaker(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<BreakerTenantRequest>,
-) -> Result<Json<Value>, ControlApiError> {
-    let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    let reset = sqlx::query(
-        "UPDATE spend_breakers SET tripped_at = NULL, tripped_reason = NULL \
-         WHERE tenant_id = $1 AND tripped_at IS NOT NULL",
+) -> Result<Response, ControlApiError> {
+    run_breaker_administration(
+        &state,
+        &headers,
+        req.tenant_id,
+        authority::BreakerCommand::Reset,
     )
-    .bind(req.tenant_id.to_string())
-    .execute(&state.pool)
-    .await?;
-    if reset.rows_affected() == 0 {
-        return Err(ControlApiError::invalid_transition(
-            "no tripped breaker to reset (none armed, or none tripped)",
-        ));
-    }
-    Ok(Json(
-        json!({ "tenant_id": req.tenant_id.to_string(), "reset": true }),
-    ))
+    .await
 }
 
 async fn inspect_breakers(

@@ -49,16 +49,22 @@ self-verification beat for the dev loop itself.
 ## Reading historical changes
 
 The root `CHANGELOG.md` is a recent digest; older entries rotate into reachable
-Git history under the existing README policy. The full ledger immediately before
-the current rotation is available from the repository root:
+Git history under the existing README policy. It has rotated four times, and the
+digest's own **"Historical entries and exact retrieval"** footer is the
+authoritative pointer: each rotation names the commit and blob holding the ledger
+immediately before it, so following that chain reaches every dated record back to
+the original 130.
+
+Read the footer rather than a commit id copied here — a second copy of the newest
+link is stale the next time the file rotates, which is exactly what happened to
+this paragraph between the first rotation and the fourth.
 
 ```bash
-git show 25ed7d184203e2d8701800558b785b30c75bb4d0:CHANGELOG.md
+sed -n '/^## Historical entries/,$p' CHANGELOG.md
 ```
 
-That exact snapshot contains all 130 dated records, including the ten corrective
-records retained in the recent digest. `git log --follow -- CHANGELOG.md` finds
-earlier versions. Preserve reachable Git history during handoff; a shallow
-checkout may need the named commit before retrieval. A missing object is a failed
-retrieval. Historical success statements concern their recorded revisions;
-[current qualification](qualification-review.md) remains the current view.
+`git log --follow -- CHANGELOG.md` finds earlier versions. Preserve reachable Git
+history during handoff; a shallow checkout may need the named commit before
+retrieval. A missing object is a failed retrieval. Historical success statements
+concern their recorded revisions; [current qualification](qualification-review.md)
+remains the current view.

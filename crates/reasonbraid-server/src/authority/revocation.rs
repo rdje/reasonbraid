@@ -40,7 +40,7 @@ use reasonbraid_core::{
     GrantAction, GrantSubject, ResourceTarget, TenantId,
 };
 
-use super::effects::record_administrative_effect_in_tx;
+use super::effects::{bounded_detail, record_administrative_effect_in_tx};
 use super::transaction::{transact, GuardError, GuardMode};
 use super::{authorize_in_tx, bump_revocation_epoch, AuthorityTransactionError, CommandAuthz};
 
@@ -273,14 +273,4 @@ pub(crate) async fn revoke_in_one_transaction(
         })
     })
     .await
-}
-
-/// Server-produced outcome details are short and controlled, so this cannot
-/// fail in practice; a future longer message is truncated rather than allowed to
-/// turn a recorded refusal into a storage error.
-fn bounded_detail(detail: String) -> AdministrativeReason {
-    AdministrativeReason::new(detail).unwrap_or_else(|_| {
-        AdministrativeReason::new("the revocation was refused")
-            .expect("the fallback detail is within bounds")
-    })
 }

@@ -320,6 +320,13 @@ refused with the typed reason until the operator resets:
  inspect breakers --as alice
 ```
 
+Both mutating verbs are admitted, applied and recorded in one guarded
+transaction, and their HTTP responses carry `x-reasonbraid-authorization` like
+the revocation verbs do (`curl -i` retains it). A reset answers `409` both when
+no breaker is armed and when one is armed but untripped; the two are
+distinguished in the durable effect record rather than on the wire. See
+[arming and resetting a spend breaker](authority.md#arming-and-resetting-a-spend-breaker).
+
 The usage reconciliation (`.3.3`): the estimates-vs-receipts picture summed
 over the ledger rows — held vs settled vs overrun vs denied, per tenant and
 per thread:

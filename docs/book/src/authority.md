@@ -528,17 +528,72 @@ Serialization against revocation of the acting administrator's own authority is
 part of this: the admission is evaluated inside the same exclusive guard the
 mutation holds.
 
+### Arming and resetting a spend breaker
+
+The [spend circuit breaker](budget.md) is a per-tenant latch, and its two
+administrative verbs were the weakest administrative path in the server. Each
+admitted the caller in its own transaction under a *shared* guard, and then ran
+a bare statement **on the connection pool** — outside any transaction, under no
+guard, and recording nothing about what the operation finally did.
+
+Both now run one transaction under the tenant's **exclusive** authority guard,
+holding the decision time (database time sampled after the guard wait), the
+admission, the tenant-bound breaker selection and row lock, the mutation, and the
+final effect record.
+
+The mode is exclusive for two measured reasons rather than by analogy with
+revocation. Deciding whether an arm actually changed anything is a read-then-write
+over a row that **may not exist**, and a row lock cannot cover an absent row. And
+the reservation path evaluates this latch inside thread-command transactions that
+hold the *shared* guard, so exclusive mode is what orders an arm against every
+in-flight reservation in the tenant — the latch never lags the ledger it guards.
+
+| Order | Result |
+| --- | --- |
+| Another tenant operation holds the authority guard when a breaker request arrives | It waits; nothing is armed or reset until it acquires. |
+| The caller's own administration ends while its request queues | The post-wait admission sees it ended: 403, and no breaker changes. |
+| An administrator arms a breaker that does not exist, or changes its threshold, or re-arms a tripped one | 200; the effect records `applied`. |
+| An administrator re-arms the **same** threshold on an untripped breaker | 200, and the effect records `no_op` — no column of the row changes, because re-arming only rewrites the threshold and clears a trip. |
+| An administrator resets a tripped breaker | 200; the latch re-opens and the effect records `applied`. |
+| An administrator resets a breaker that is armed but not tripped | 409, with the effect recording `no_op`. |
+| An administrator resets when no breaker is armed at all | The **same** 409, with the effect recording `refused`/`invalid_transition`. |
+
+The last two rows are the point. The wire deliberately answers both idle states
+identically — its message has always said `no tripped breaker to reset (none
+armed, or none tripped)` — and the effect record is where they stop being the
+same fact. An operator reading `refused` knows the tenant has no spend ceiling
+armed at all; reading `no_op` knows it has one and it simply has not tripped.
+This leaks nothing: the caller is an admitted administrator of that tenant and
+`GET /v1/admin/breakers` already shows it the same state.
+
+The missing-breaker case records `invalid_transition` rather than `not_found`
+because a breaker operation's target **is the tenant** — which is why
+`breaker_arm` and `breaker_reset` are the two operations that carry no target
+field — and the tenant was found.
+
+Neither verb advances the tenant's revocation epoch, in any outcome including the
+successful one. The epoch invalidates cached authority decisions; a spend latch is
+not authority.
+
+**Wire changes.** Request bodies, success bodies, status codes and messages are
+unchanged. Both routes gained the `x-reasonbraid-authorization` receipt header on
+every answer, for the reason revocation did: without it the effect record would
+be unreachable, because there is no list endpoint. Neither verb takes a caller
+reason, so neither records one — `submitted_reason` is `null`, and adding a reason
+requirement to either would be a wire change to be documented and tested as one.
+
 ### The final administrative effect record
 
 An admission record says a caller **was allowed to ask**. It says nothing about
 what the local mutation then did. Collapsing the two would let an operator read
 `allowed` as `applied`, so the final effect is a separate, additive record.
 
-**One route writes one today.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
-representation, `.7.2` gives it durable storage, and `.8` makes grant and boundary
+**Two families write one today.** `SIGNOFF-REPAIR.3.3.4.7.1` defines the
+representation, `.7.2` gives it durable storage, `.8` makes grant and boundary
 revocation its first producer — described under [one transaction, from the
-admission to the evidence](#one-transaction-from-the-admission-to-the-evidence).
-The remaining administrative families adopt it in `.9` through `.12`; until each
+admission to the evidence](#one-transaction-from-the-admission-to-the-evidence) —
+and `.9` adds [spend-breaker administration](#arming-and-resetting-a-spend-breaker).
+The remaining administrative families adopt it in `.10` through `.12`; until each
 does, its operations have no effect record, which reads as an absence and never
 as a success.
 

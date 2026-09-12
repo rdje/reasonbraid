@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## 2026-09-12 — Breaker administration becomes one transaction, from the admission to the evidence (`SIGNOFF-REPAIR.3.3.4.9`)
+
+- Spend-breaker arm and reset were the **weakest** administrative path in the server, weaker than the shape `.8` replaced. Each admitted the caller through `authorize_tenant_admin` — its own transaction, SHARED guard — and then executed a bare statement **on the connection pool**: no transaction, no guard, and no record anywhere of what the operation finally did.
+- Both verbs now run ONE transaction under the tenant's EXCLUSIVE guard, holding database time sampled after the guard wait, the admission on that same connection, tenant-bound `FOR UPDATE` selection of the breaker row, the mutation, and the final effect record. This is the second family onto the evidence `.7` defined.
+- ⭐ **The exclusive mode is measured, not copied from `.8`.** Classifying `applied` against `no_op` is a read-then-write over a row that may NOT EXIST, and a row lock cannot cover an absent row. And the reservation path evaluates this latch inside thread-command transactions that hold the SHARED guard, so exclusive is what orders an arm against every in-flight reservation in the tenant — `budget.rs`'s own rule that the latch never lags the ledger it guards, now true of administration too.
+- ⭐ **The outcome mapping came from a census of what the handlers actually do, run before it was written.** `git grep -n "spend_breakers" -- 'crates/*/src/*.rs'` returns five sites in two files; only two are administrative mutations. Reading their SQL against migration 0016 says `armed_at` is absent from the arm's `DO UPDATE` list, so re-arming the same threshold on an untripped breaker changes **no column at all** — recorded `no_op`, not `applied`, because `applied` asserts a protected change. And reset's `rows_affected() == 0` covers two different states that its message already admits to collapsing.
+- **No wire change.** Request bodies, success bodies, status codes and messages are byte-unchanged. The one addition is `x-reasonbraid-authorization` on every answer, for `.8`'s reason: without it the effect record is unreachable, since there is no list endpoint. Neither verb takes a caller reason, so `submitted_reason` is `null` rather than a requirement invented here.
+- The `409` that has always collapsed "no breaker armed" and "armed but untripped" still does; the effect record is where they stop being the same fact — `refused`/`invalid_transition` against `no_op`. It records `invalid_transition` rather than `not_found` because a breaker operation's target **is the tenant**, and the tenant was found.
+- Neither verb advances the revocation epoch, in any outcome including the successful one — asserted in the controls, because that is exactly where a copied-from-`.8` mistake would show. The epoch invalidates cached authority decisions; a spend latch is not authority.
+- `bounded_detail` MOVED from `revocation.rs` into `effects.rs` beside the record it bounds: two families now need it, and a second copy of the same fallback is the drift this tree keeps repairing.
+- Validation: `bash scripts/run_pg_tests.sh administrative_effects` returns rc=0 — **25 passed / 0 failed** (the 16 from `.8` plus 9 new). The affected set `administrative_effects command_api budget authority command_ordering` returns rc=0 with **5 suites, 94 tests, zero failures**; clusters stopped and removed. Strict server lint, `cargo fmt --all -- --check` and `mdbook build` pass.
+- FALSIFIED against the **exact** pre-`.9` handlers restored from `HEAD`: **17 passed / 8 failed**. Eight of the nine new controls go red; `a_breaker_request_waits_for_the_tenants_authority_guard_and_then_applies` fails at `breaker_row(...).is_none()` — the arm APPLIED while another operation held the tenant's authority guard — and `authority_that_ends_while_a_breaker_request_waits_refuses_it` reports `left: 200, right: 403`. Seventeen controls passed at that baseline, so the negative build was weakened rather than broken.
+- ⚠️ **The falsification corrected the controls, not only the code, and the mistake generalises to `.10`–`.12`.** Both ordering controls were first written with an EXCLUSIVE holder, copied from `.8`, and were green — green against the unrepaired code too, because the superseded admission took a SHARED guard and therefore waited behind an exclusive holder exactly as the repair does. The discriminating fence is a SHARED holder: exclusive must wait behind it, shared walks straight through. Promoted to `docs/knowledge/proving-a-race-is-closed.md`.
+- ⚠️ A second fixture defect: the evidence-rollback control installs a deliberate `CHECK (false) NOT VALID` and its first version asserted before dropping it; the leak failed the next eleven tests on a constraint unrelated to them. Repaired twice — the control now observes, drops, then asserts, and the suite fixture issues `DROP CONSTRAINT IF EXISTS` so a future leak costs one test instead of the suite.
+- ⚠️ Two control expectations were themselves wrong and the run caught both: a foreign-tenant control assumed zero effect rows when the victim's own legitimate arm had written one, and the rollback control expected an admission "from the enrollment" — development enrollment records none, so 0 is correct and is the stronger assertion.
+- Measured and NOT a defect: an all-`null` threshold does not create a breaker that never trips. `BudgetDimensions::covers` fails closed, so `{}` trips on the first reservation requesting any metered dimension.
+
 ## 2026-09-12 — Revocation becomes one transaction, from the admission to the evidence (`SIGNOFF-REPAIR.3.3.4.8`)
 
 - Grant and boundary revocation ran **two** guarded transactions: the handler admitted the caller under a SHARED guard, then a service opened a second one under an EXCLUSIVE guard. Between them the admission could be a fact about authority that had already stopped holding, and the submitted reason and the final outcome were never recorded with the mutation at all.
@@ -286,121 +303,24 @@
 - The fix accepts `AlreadyExists`, as every other shared-parent creation in the workspace already does. Six consecutive cold-tree runs pass; the unrepaired code fails the first.
 - Promoted to `TOOLBOX.md`: "remote-only" is a hypothesis, not a category — two of today's three remote-only failures were reproduced locally by removing accumulated local state.
 
-## 2026-09-11 — Own the Git acquisition workspace (`SIGNOFF-REPAIR.7.2.1`)
-
-- The production R1 acquisition named its working directory from the process id and a nanosecond field in the ambient temporary directory, then created it with a call that adopts an occupied path. Reproduced verbatim: 2000 names gave 501 distinct values with every collision between adjacent calls, `create_dir_all` returned `Ok` over another acquisition's pack, and the error path then deleted it. Two concurrent acquisitions share the process id by construction.
-- A second defect the census had not named: nothing removed the directory on SUCCESS, so every successful acquisition leaked a bare repository.
-- New `project_storage` module holds the storage rules `extraction_input` had proved — repository-root discovery, `.project-data/<area>` at 0700, checked parents — now shared instead of duplicated, plus an `OwnedDirectory` that creates exclusively and proves identity before removing. The acquisition owns its workspace and releases it when the last holder drops.
-- Measured rather than assumed: an open descriptor pins a directory's inode, but macOS keeps reporting two links after `rmdir`, so the file owner's link-count check is deliberately not reused for directories.
-- 97 server lib tests pass including five new controls; `.project-data/git` holds no leftovers; strict lint and the rendered book pass.
-
-## 2026-09-11 — Give the git fixtures their own commit identity (`SIGNOFF-REPAIR.11.4.3.1.2.24`)
-
-- The last known remote `check` failure: four `git::tests::*` with `the commit writes: AuthorMissing`. `repo.commit` resolves its signature from git configuration, so the fixtures borrowed whatever identity the developer's machine carried. They could never have passed on a clean machine.
-- Reproduced locally by suppressing ambient git configuration, which removes CI from this loop and immediately exposed a fourth commit site the first pass had missed. The probe is recorded in `TOOLBOX.md`.
-- All four commits now pass an explicit `fixture_identity`, so the fixture owns its identity the way it owns its storage. Six git tests pass both with ambient configuration suppressed and with it present; the unrepaired fixtures fail under suppression.
-
-## 2026-09-11 — Prove input identity against the descriptor (`SIGNOFF-REPAIR.11.4.3.1.2.23`)
-
-- The browser repair landed on Linux: every `reasonbraid-browse` control passes, with `render_succeeded: true` and a worker reporting `stderr_bytes: 0` where it had reported 403.
-- Linux CI then found a defect in REPAIR-0063's own repair. `OwnedInput::verify` compared a stored `(device, inode)` pair, and Linux reuses an inode number as soon as it is freed, so a file deleted and immediately replaced presented the same pair and `release` returned success for a successor it never created — the exact deletion the check exists to prevent.
-- A probe confirms both halves on the development platform: an open file reports one link while linked and zero after unlink, and macOS hands the successor a different inode, which is why the defect was invisible locally.
-- The owner now holds its open handle for life and refuses when the descriptor reports zero links, so identity no longer depends on a number the kernel may hand out again. Nine owner controls, strict lint and format pass.
-
-## 2026-09-11 — Fit Chrome's singleton socket in its path budget (`SIGNOFF-REPAIR.11.4.3.1.2.22`)
-
-- Chrome aborted on Linux with `FATAL:process_singleton_posix.cc:313] Socket path too long`: 228 bytes against a 108-byte `sun_path`. It places that socket under the temporary directory precisely to keep the path short, and the worker's absolute per-invocation TMPDIR defeated the mitigation.
-- Arithmetic chose the fix before any code was written. The socket suffix is 45 bytes, leaving TMPDIR 63: today's absolute path measures 183, a short temp directory under the existing fixture 132, and a short temp directory under a shortened fixture 67 — still over. Shortening names cannot fix it, because the harness gives each command its own fake repository root and the worker derives storage from it.
-- `TMPDIR`, `TMP` and `TEMP` become the relative `tmp`. The child's working directory is already the workspace, so it resolves where the absolute value did, at 3 bytes instead of 183. Every other variable stays absolute, so the isolation the controls assert is unchanged.
-- It cannot regress: if Chrome canonicalises TMPDIR it resolves against that same working directory and reproduces today's exact absolute path. Sixteen browser integration controls, five production lifetime controls, strict lint and format pass locally — which is explicitly not evidence for the Linux singleton path, since macOS does not use it.
-
-## 2026-09-11 — Root-cause the browser CI failure: a socket path 120 bytes over the limit
-
-- Chrome's own stderr, once the instrument finally delivered it: `FATAL:process_singleton_posix.cc:313] Socket path too long`, then `Received signal 6`. The socket path measures 228 bytes against a `sun_path` capacity of 108.
-- The missing-runtime-library hypothesis is DENIED. Every observation had been consistent with it; only Chrome's own words separated the two.
-- Mechanism: the worker overrides TMPDIR into a per-invocation workspace nested under a per-command fixture, and Chrome creates its singleton socket under TMPDIR precisely to keep that path short. The isolation design defeated the vendor's mitigation. macOS never reaches that code path, so no local run could see it.
-- Repair owned by `.11.4.3.1.2.22`: a short repository-derived temporary directory plus an explicit startup budget check that refuses by name instead of allowing a FATAL abort.
-
-## 2026-09-11 — Correct the browser evidence instrument (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
-
-- REPAIR-0074's upload returned byte COUNTS and no bytes: the artifact held only `worker.json` per fixture, reporting `stderr_bytes: 403` while the 403 bytes themselves stayed on the runner.
-- The glob named `browser.stderr`, `owner.json` and `completion.json` — filenames from the book's description of the PRODUCTION worker's storage. The test harness writes `stdout.log` and `stderr.log` instead. The filenames were inferred rather than read from the code that writes them.
-- The upload now retains `target/browser-lifetime-controls/**` and `.project-data/browser/**` whole. The fixtures are a few hundred bytes each, so filtering bought nothing and cost the evidence.
-- What the counts do establish: the worker exits 0, writes 403 bytes of stderr and 108 of stdout, and confirms group cleanup — so it ran correctly and reported `browser_launch_failed` itself. The browser's own reason remains unproved.
-
-## 2026-09-11 — Retain the browser worker's own stderr in CI (`SIGNOFF-REPAIR.11.4.3.1.2.20`)
-
-- The conformance repair held and `pg-tests` succeeded remotely for the first time — the full PostgreSQL collection on a runner. The `check` job now fails in `reasonbraid-browse`: six tests with `browser_launch_failed`, "browser exited before publishing a loopback endpoint".
-- Two candidates are already ruled out by the same log: the launcher verified the pinned executable's exact version, so the binary runs, and `--no-sandbox` and `--headless` are already passed.
-- The worker retains up to 64 KiB of Chrome's own stderr for a failed invocation, and the workflow was discarding it. One `if: failure()` upload now keeps it, so the next run carries the cause instead of the symptom. The cause remains unproved and no repair of it is claimed.
-
-## 2026-09-11 — Write each conformance stub once (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
-
-- The instrument from REPAIR-0072 did its job: the next remote run named the cause — `failed to spawn .../conformance-stubs/lose-14317-1/claude: Text file busy (os error 26)`. Linux `ETXTBSY`: `execve` refuses a file still open for writing, and one thread writing a stub while another forks to spawn hands that child the open write descriptor.
-- REPAIR-0072's stub-naming change was NOT the cause, and the evidence says so: the failing path already carried its pid-and-counter naming, and the failure moved from `codex` to `claude`. That leaf deliberately said "measured defect, not a proved cause", which is what makes this a correction rather than a retraction.
-- The two stub scripts branch on the prompt, so the per-scenario copies carried no information and only created the window. `stub_once` now writes one stub per adapter kind per process, with a `OnceLock` publishing the path only after the write and chmod complete. The race is removed, not retried around.
-- All adapter targets pass locally, which is explicitly not evidence about the Linux behaviour being repaired; the remote run is the measurement.
-
-## 2026-09-11 — Make a conformance refusal name its cause (`SIGNOFF-REPAIR.11.4.3.1.2.19`)
-
-- The project's first remote CI run failed: `doctrines` and `supply-chain` pass, `rust` fails at `codex_adapter_passes_the_conformance_suite` with "the lose trigger refused instead of dispatching". The suite passes locally and the Claude scenario passes on the same runner.
-- The diagnosis was blocked by the harness itself: `InvokeOutcome::FailedBeforeDispatch` carries a `reason`, and the certification discarded it at three arms, emitting a fixed sentence. The whole CI log contained no cause, because none was ever produced. The three arms now carry the adapter's own reason.
-- Separately and on its own evidence, the conformance stubs no longer name their directory from the clock: scenario names repeat across adapters, `create_dir_all` succeeds on an existing directory, and 2,446 local stub directories ending in `000` confirm the resolution. This is the fourth instance of that family today.
-- The remote cause remains UNPROVED. The stub-naming repair is made because it is a measured defect, not because it is demonstrated to be the cause; the next remote run is the measurement.
-
-## 2026-09-11 — Report evidence storage faults honestly (`SIGNOFF-REPAIR.7.4.2`)
-
-- Ten `map_err` arms across `snapshots.rs`, `derivations.rs` and `claims.rs` collapsed every storage fault into a caller error, and `api.rs` rendered all of them as HTTP 400. A server-side failure told the caller its own reference did not exist.
-- Each enum gains `Storage(sqlx::Error)` with the source reachable through `Error::source`, matching the `GrantCreateError` contract; the handlers use the existing `internal_with_log` idiom so the cause is logged server-side and the wire keeps its safe generic message.
-- The R2 pipeline no longer discards a failed snapshot while still reporting a successful acquisition: it records an `evidence_unstored` acquisition error and returns no receipt.
-- The control installs a trigger that raises on insert, drops it before asserting so a failure cannot leave the shared database rejecting snapshots, and requires 500 rather than 400 — with a companion assertion that an absent reference stays 400. Against the unrepaired source it fails printing the defect verbatim.
-
-## 2026-09-11 — Repair three dead book links and check the rest (`SIGNOFF-REPAIR.11.4.3.1.2.18`)
-
-- `docs/book/book/cli.html` rendered `href="docs/book/src/cli-state.html"`, a page that does not exist. A census of the whole book found 29 intra-book links with exactly 3 broken, all in the CLI chapters.
-- The cause is worth recording: `DOCPATH` requires repo-root-relative references, an author applied that to intra-book navigation, and mdBook resolves a link relative to its own page. The doctrine's intent was satisfied and the navigation broke — in the surface the director reads.
-- Register `BOOK-LINKS` so the book's own navigation is enforced rather than assumed. External URLs stay out of scope deliberately: a network call in a commit hook is a flake generator. The negative control reintroduces the exact original link and is detected.
-
-## 2026-09-11 — The full pre-push checkpoint passes (`SIGNOFF-REPAIR.11.4.3.1.2`)
-
-- All eight checkpoint commands return 0 at source `7233122`: build, format/strict lint/workspace tests with the pinned browser, Python controls, the full owned PostgreSQL collection with `--demo`, thirteen doctrines, pinned cargo-deny, pinned Gitleaks and the book. Every earlier attempt stopped somewhere.
-- Re-derived from the receipts rather than the exit code: 40 of 40 registered suites, 291 tests passed and 0 failed, the demonstration's `ALL acceptance checks passed`, and both scanners recording `scope: gate` with `exit_code: 0`.
-- Falsified before publishing: zero DATABASE_URL skips, 16 real browser controls instead of an absent-browser early return, and only the deliberately env-gated live-provider dispatches ignored.
-- This satisfies the condition on the already-authorized push. It closes no external gate: G6/G7, name clearance and the license decision remain open, and five repair leaves remain open including the unexplained checkpoint wall time.
-
-## 2026-09-11 — Mint evidence identifiers that are actually distinct (`SIGNOFF-REPAIR.7.4.1`)
-
-- `snapshots.rs`, `claims.rs` and `derivations.rs` each minted durable evidence identifiers from `format!("{:x}{:x}", nanos, pid)` — a function literally named `uuid_like_suffix`, resembling a UUID in shape and not in the one property a UUID is for. A probe of that exact expression measured 8 collisions in 10 sequential calls, 918 in 1,000, and 269 among 400 across eight threads: about one distinct value per twelve calls.
-- Establish the consequence rather than assume it: all three columns are `TEXT NOT NULL PRIMARY KEY`, so a collision is a refused insert and no stored row can hold another's identity. The damage is that every storage failure is then reported as `ReferenceMissing` and mapped to HTTP 400, blaming the caller's input, while the R2 pipeline discards the failed snapshot and still reports a successful acquisition.
-- Replace all three with one `evidence_id` minting `uuid::Uuid::now_v7()` — time-ordered like the old shape, distinct by construction. Two controls measure the property directly: 400 concurrent and 1,000 rapid sequential identifiers, all distinct.
-- The storage-failure misclassification is diagnosed and routed to `.7.4.2` rather than fixed in passing: it changes three error types and their wire mapping and deserves its own injected-fault qualification.
-
-## 2026-09-11 — Name guard fixtures without a clock (`SIGNOFF-REPAIR.11.4.3.1.2.17`)
-
-- The source-5c8609e checkpoint stops at `02-check`: `pg_guard` panics creating its fixture directory because `Fixture::new` names it `{pid}-{nanos}`, six consecutive `time_ns()` samples on this host are byte-identical, and three tests call it in parallel threads of one process. The PostgreSQL runner's `--test-threads=1` is why this suite always passed there and only fails under `make check`.
-- Replace the clock with an `AtomicU64` discriminator and skip an occupied candidate instead of panicking on it: 0 failures in 60 parallel runs against 1 in 15 before, with `Drop` still removing every directory.
-- Census the family, since this was its third instance. Two production findings, both with concrete owners: `snapshots.rs`/`claims.rs`/`derivations.rs` mint durable evidence identifiers from the same clock-and-pid shape — a probe of the exact expression measures 918 collisions in 1,000 calls and 269 among 400 across eight threads, about one distinct value per twelve calls (`.7.4.1`) — and `git.rs` builds four ambient temporary paths from the process id alone (`.7.2.1`).
-
-## 2026-09-11 — Gate file termination (`SIGNOFF-REPAIR.11.4.3.1.2.16`)
-
-- Register `FILE-TERMINATION`: every tracked text file ends with exactly one newline. Deliberately not a `git diff --check` wrapper — `ROADMAP.md` uses trailing double-spaces as Markdown hard line breaks, so that check's whitespace family has a legitimate use here and a blanket rule would teach bypass. A blank line at end of file does not, and is the defect that forced a correction commit.
-- Census first: 642 tracked text files, 9 non-conforming. Two would have been damaged by a naive fix — the schema goldens are produced by a writer that emits no trailing newline, so the WRITER is corrected and the goldens regenerated from it; the benchmark corpus is hashed and published as `prompts_digest`, so it is the one reviewed exception with its reason recorded.
-- Three negative controls each detect their defect (new blank line, stripped terminator, stale exception) and the restored tree passes; `--self-test` covers eight classifications including a Markdown hard break and a binary file.
-
-## 2026-09-11 — Restore the recreated schema's grant and refuse non-operators honestly (`SIGNOFF-REPAIR.11.4.3.1.2.14`)
-
-- Root-cause the full checkpoint's stop at `04-pg-demo`: `migration_upgrade` recreates `public` with `DROP SCHEMA … CASCADE; CREATE SCHEMA public`, and a manually created schema does not inherit the default ACL a fresh database ships. A direct catalogue comparison shows the failing database's `{postgres=UC/postgres}` against a pristine `{pg_database_owner=UC/…,=U/pg_database_owner}` — PUBLIC's `USAGE` is gone, so every later non-owner role cannot resolve a qualified name.
-- Restore the owner and the PUBLIC grant through one helper used by all four recreate sites: a fixture that mutates database-wide privilege state owns restoring it, as the cleanup plans already do for rows.
-- Resolve the site privilege probe's audit table by catalogue OID instead of a qualified name, so a caller without schema `USAGE` is refused `OperatorRequired` (403) rather than `Error::Sql` (500 `dependency_unavailable`). This was a misclassification, not an escalation — the forensic copy shows the outsider never held operator membership.
-- Make three opaque refusal assertions report the value they received; the reproduction then named SQLSTATE 42501 immediately. The new control is falsified against the unchanged production query, restores the shared grant before asserting, and proves its own precondition held.
-- The reproduced two-suite sequence and the affected family of six suites (30 tests) pass with the cluster stopped and removed. The full checkpoint has NOT passed: four suites, the demonstration and gates five to eight remain unrun.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated three times;
+the rotation contract in `README_POLICY.md`. This file has rotated four times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the FOURTH rotation (2026-09-12) from the
+repository root:
+
+```bash
+git show 1faac4e126325c61842fd17f56feeb32b6bd6f5f:CHANGELOG.md
+```
+
+That snapshot is 93,689 bytes and contains 45 dated entries; its Git blob is
+`c32524d1c1a7b042cc6a8647136b8729d66d4ac6`. The newest entry it holds that this digest no longer
+carries is `2026-09-11 — Own the Git acquisition workspace`. It carries the THIRD
+rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the THIRD rotation (2026-09-12) from the
 repository root:

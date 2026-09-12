@@ -913,6 +913,76 @@ This orders a command against an authority change. It is not a claim about
 replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
 automatic-initiation preflight, which remains `.5.2`.
 
+### Administering a federation direction
+
+A federation agreement is **both-sides**: each tenant records its own direction
+row, and the agreement is EFFECTIVE only when both are `accepted` and both carry
+the capability in question. A one-sided proposal widens nothing, and a revoked
+direction falls back to the network pseudonym.
+
+The three verbs — `POST /v1/federation-agreements`, `…/accept` and `…/revoke` —
+each run ONE transaction under the LOCAL tenant's **exclusive** authority guard
+(`SIGNOFF-REPAIR.3.3.4.12`), holding the admission, the direction mutation, the
+acceptance's cross-domain receipt and the final effect record together. Before
+this, each admitted through a shared-guard transaction that had already
+committed and then mutated on the connection pool, with nothing recording what
+the request did.
+
+**One guard key, not two.** Each verb writes only the local tenant's own row —
+the pairing is both-sides precisely so that neither side mutates the other's —
+and the acceptance's receipt is a local row naming a remote reference. A proposal
+additionally reads `tenants` to check its counterparty exists, which is the
+minimal foreign-ID existence probe the guard contract permits.
+
+**Why exclusive.** Not because a direction is a revocation in the epoch sense —
+none of these advances the tenant's revocation epoch. It is the other reason: all
+three are a classify-then-write over a row that **may not exist**, deciding
+`applied` against `no_op` or a refusal from how many rows their statement
+touched, and a row lock cannot cover an absent row. Under `READ COMMITTED` a
+concurrent proposal can insert the direction between another verb's look and its
+write.
+
+The wire is unchanged, and three answers that were previously indistinguishable
+are now distinguished in the record:
+
+| Request | Answer (unchanged) | What the record says |
+| --- | --- | --- |
+| propose a new direction, or change its terms | `200 {"agreement_id":…,"status":"proposed"}` | `applied` |
+| re-propose on **identical** terms | the same `200` | `no_op` — nothing changed |
+| accept a proposed direction | `200 {"status":"accepted"}` | `applied`, with the cross-domain receipt in the same commit |
+| accept one **already accepted** | `409 invalid_transition` | `no_op` — already satisfied |
+| accept one **never proposed**, or revoked | the same `409` | `refused` / `invalid_transition` |
+| revoke a live direction | `200 {"revoked":1}` | `applied` |
+| revoke one already revoked or never recorded | `200 {"revoked":0}` | `no_op` |
+
+One refusal is **new**, and it replaces a `500`.
+`federation_agreements.remote_tenant_id` references `tenants`, so proposing to a
+tenant that does not exist used to raise a foreign-key violation — which, once
+the transaction carries the admission and the effect record, would make the
+refusal unrecordable. The counterparty is now checked before the insert and the
+answer is `404 not_found`, recorded. A proposal has to name a real counterparty,
+so distinguishing a real tenant from an absent one is intrinsic to the operation
+rather than an incidental disclosure; tenant ids are unguessable, so it is an
+existence check on an id the caller already holds.
+
+`accepted_at` is now the transaction's own database time rather than `now()`,
+which is `BEGIN` time — the instant *before* the guard and admission waits the
+acceptance queued behind.
+
+⚠️ **What this does and does not fence.** A card import holds the **importing**
+tenant's guard, so it is now ordered against that tenant revoking its own
+direction. It is still **not** ordered against the **origin** tenant revoking
+its side, because that revocation takes the origin's guard and the import does
+not hold it. Closing that needs the import to declare both keys in one
+predeclared sorted set, which is `SIGNOFF-REPAIR.3.3.4.12.1`. Until then, the
+honest statement is that half the race is closed.
+
+⛔ Re-proposing with **different** terms resets an accepted direction to
+`proposed` and clears its acceptance. That is preserved exactly as it was — it is
+how terms are changed — but it means a direction can stop being effective without
+anyone calling revoke. What the effective-agreement consumers are guaranteed
+across such a change is `SIGNOFF-REPAIR.5.3`'s, not this chapter's.
+
 ### Importing a portable agent card
 
 `POST /v1/profiles/cards/import` runs the ADR-027 ladder over a card and, if

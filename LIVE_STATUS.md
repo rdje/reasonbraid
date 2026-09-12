@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The three federation direction verbs are now ONE guarded transaction each under
+`.3.3.4.12` (REPAIR-0125): admission, mutation, the acceptance's cross-domain
+receipt and the effect record share a commit under the LOCAL tenant's
+**exclusive** guard. All three were the `.9` shape — an already-committed
+shared-guard admission and then a pool mutation — with no guard, record or
+receipt. ⭐ The mode is derived from the classify-then-write-over-a-possibly-absent-row
+reason, not the epoch one: none advances the revocation epoch. 🔴 Proposing to a
+tenant that does not exist RAISED a foreign-key violation and answered **`500`**;
+it is a recorded `404 not_found` now. That defect was found by running the
+enumerate-the-constraints check promoted one commit earlier, on its first use.
+The wire is otherwise unchanged, with three previously indistinguishable idle
+states now separated in the record (an unchanged re-proposal and an
+already-accepted direction as `no_op`, a never-proposed one as `refused`).
+**4 passed / 0 failed**; the affected set passes **4 suites / 72 tests**.
+FALSIFIED **1 passed / 3 failed** against the exact pre-`.12` sources, the
+ordering control failing at `the revocation is waiting`. ⚠️ **Half the card
+import's revocation race is now closed and the leaf says which half**: the import
+holds the importing tenant's key, so an importing-side revocation fences it and
+an ORIGIN-side one still does not. `.3.3.4.12.1` owns the both-tenant guard set.
+
 **`SIGNOFF-REPAIR.3.3.4.11` is closed** (REPAIR-0118/0119/0120/0122/0123/0124,
 plus `.3.3.4.7.4` as REPAIR-0121). The profile/card family's three mutating
 routes each run as one transaction with their evidence: the writer serializes at

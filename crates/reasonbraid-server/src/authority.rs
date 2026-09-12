@@ -45,6 +45,7 @@ pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTrans
 
 mod breaker;
 mod effects;
+mod federation_admin;
 mod node_admin;
 mod profile_admin;
 mod records;
@@ -53,6 +54,10 @@ mod selection;
 
 pub(crate) use breaker::{administer_breaker_in_one_transaction, BreakerCommand, BreakerResult};
 pub use effects::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
+pub(crate) use federation_admin::{
+    accept_direction_in_one_transaction, propose_direction_in_one_transaction,
+    revoke_direction_in_one_transaction, AcceptResult, ProposeResult, RevokeDirectionResult,
+};
 pub(crate) use node_admin::{
     issue_enrollment_token_in_one_transaction, prune_node_inbox_in_one_transaction,
     quarantine_command_in_one_transaction, replay_command_in_one_transaction,

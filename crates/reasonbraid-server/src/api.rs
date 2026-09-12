@@ -1593,26 +1593,60 @@ pub struct FederationAgreementRequest {
     pub recruitment: bool,
 }
 
-/// `POST /v1/federation-agreements` — propose one direction. A proposal
-/// widens NOTHING by itself (the pairing needs the remote side's own row).
+/// The three federation direction verbs each run ONE guarded transaction
+/// (`SIGNOFF-REPAIR.3.3.4.12`): the admission, the direction mutation, the
+/// acceptance's cross-domain receipt and the final effect record share a single
+/// commit under the LOCAL tenant's exclusive authority guard. Before this, each
+/// ran a shared-guard admission that had already committed and then mutated on
+/// the connection pool, with nothing recording what the request finally did.
+///
+/// A direction is the local tenant's own record of a relationship, so the local
+/// administrator is the right and only authority for it; the pairing is
+/// both-sides precisely so that neither side mutates the other's row.
+///
+/// Every answer carries the `x-reasonbraid-authorization` receipt naming the
+/// admission this request committed, which is also the effect record's id.
+///
+/// `POST /v1/federation-agreements` — propose one direction. A proposal widens
+/// NOTHING by itself (the pairing needs the remote side's own row).
 async fn propose_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<FederationAgreementRequest>,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    let agreement_id = crate::federation::propose(
+    let proposal = authority::propose_direction_in_one_transaction(
         &state.pool,
-        &req.tenant_id.to_string(),
-        &req.remote_tenant_id.to_string(),
+        &principal,
+        req.tenant_id,
+        req.remote_tenant_id,
         req.directory_visibility,
         req.recruitment,
     )
     .await?;
-    Ok(Json(
-        json!({ "agreement_id": agreement_id, "status": "proposed" }),
-    ))
+    let receipt = proposal.record_id;
+    let response = match proposal.result {
+        authority::ProposeResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // Previously a RAISED foreign-key violation and a `500`
+        // (`SIGNOFF-REPAIR.3.3.4.12`). A proposal has to name a real
+        // counterparty, so this answer is intrinsic to the operation.
+        authority::ProposeResult::UnknownRemote => ControlApiError::not_found(format!(
+            "no tenant `{}` to federate with",
+            req.remote_tenant_id
+        ))
+        .into_response(),
+        // One answer for both: a re-proposal on identical terms is reported the
+        // same way it always was, and the effect record is where it reads `no_op`.
+        authority::ProposeResult::Proposed { agreement_id }
+        | authority::ProposeResult::Unchanged { agreement_id } => {
+            Json(json!({ "agreement_id": agreement_id, "status": "proposed" })).into_response()
+        }
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 /// The accept/revoke body: the direction this tenant records.
@@ -1630,21 +1664,35 @@ async fn accept_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<FederationAgreementAction>,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    let rows = crate::federation::accept(
+    let acceptance = authority::accept_direction_in_one_transaction(
         &state.pool,
-        &req.tenant_id.to_string(),
-        &req.remote_tenant_id.to_string(),
+        &principal,
+        req.tenant_id,
+        req.remote_tenant_id,
     )
     .await?;
-    if rows == 0 {
-        return Err(ControlApiError::invalid_transition(
-            "no PROPOSED agreement in this direction to accept (the remote side must propose first)",
-        ));
-    }
-    Ok(Json(json!({ "status": "accepted" })))
+    let receipt = acceptance.record_id;
+    let response = match acceptance.result {
+        authority::AcceptResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // The two idle states keep their single message, unchanged; the effect
+        // record distinguishes an already-accepted direction from one that was
+        // never proposed.
+        authority::AcceptResult::AlreadyAccepted | authority::AcceptResult::NothingProposed => {
+            ControlApiError::invalid_transition(
+                "no PROPOSED agreement in this direction to accept (the remote side must propose \
+                 first)",
+            )
+            .into_response()
+        }
+        authority::AcceptResult::Accepted => Json(json!({ "status": "accepted" })).into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 /// `POST /v1/federation-agreements/revoke` — revoke this tenant's
@@ -1653,16 +1701,30 @@ async fn revoke_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<FederationAgreementAction>,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    let rows = crate::federation::revoke(
+    let revocation = authority::revoke_direction_in_one_transaction(
         &state.pool,
-        &req.tenant_id.to_string(),
-        &req.remote_tenant_id.to_string(),
+        &principal,
+        req.tenant_id,
+        req.remote_tenant_id,
     )
     .await?;
-    Ok(Json(json!({ "revoked": rows })))
+    let receipt = revocation.record_id;
+    let response = match revocation.result {
+        authority::RevokeDirectionResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // The existing `revoked` count is preserved exactly: 1 when a live
+        // direction was revoked, 0 when there was nothing to revoke.
+        authority::RevokeDirectionResult::Revoked => Json(json!({ "revoked": 1 })).into_response(),
+        authority::RevokeDirectionResult::NothingToRevoke => {
+            Json(json!({ "revoked": 0 })).into_response()
+        }
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 // ── The operator's offline-known enumeration (PHASE-3.2.2; backlog 27) ─────────

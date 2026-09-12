@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The check I wrote yesterday found a bug today
+
+- `.11.5` promoted a procedure into `a-raised-constraint-cannot-be-a-recorded-refusal.md`: before putting a route on one transaction, list the constraints on every column its writes touch and ask which of them a caller can trip. I wrote it because I had just failed to do it.
+- ⭐ Running it on `.12` took about two minutes and found `federation_agreements.remote_tenant_id REFERENCES tenants (tenant_id)`, with the value caller-supplied. A probe: proposing to a tenant id that does not exist answered `500 dependency_unavailable`. Same shape as the card import's label collision, different table, found before writing the transaction rather than after shipping it.
+- The thing I want to keep is how cheap the procedure is relative to what it catches. It is not a review technique or a mindset; it is "open the migration for each table you write, read the constraint lines, ask which are caller-reachable". Two minutes, and it turns a future `500` into a `404` that a caller can act on and a record that an operator can read.
+- ⚠️ A confirming instance is worth writing down but not re-promoting: the record already says this. What this leaf adds is that it works on first use, which is evidence the procedure is actually runnable rather than a sentiment about carefulness.
+
+## 2026-09-13 — The fixture question, asked for the eighth time
+
+- `.11.2` took the shared guard and no lock-holding fixture could discriminate it, because its superseded shape already admitted under the shared guard. Coming into `.12` the tempting move was to carry that conclusion over — federation directions are a similar-sized administrative family, so presumably the same applies.
+- ⭐ It does not, and the reason is the transition rather than the family. These verbs move from a shared-guard admission plus an unguarded pool mutation to ONE exclusive-guard transaction, which is shared → EXCLUSIVE — exactly the transition a SHARED holder detects. The control failed against the superseded code with `the revocation is waiting`, the same signature `.9` and `.10.2` produced.
+- Eight leaves now, and the rule has held every time: the right fixture is a function of the lock-mode TRANSITION, not of the leaf, the family, or the mode the repair ends in. What keeps catching me out is that the families look alike, and the transitions do not.
+
 ## 2026-09-13 — The cheapest test-design session I have had was writing a chapter
 
 - `.11.4` was supposed to be the easy leaf: the code was finished and qualified, the chapter was transcription. It found a `500`-returning defect, a status code I had wrong, a limit I had understated, and one shipped behaviour with no test anywhere.

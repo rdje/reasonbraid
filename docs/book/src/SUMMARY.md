@@ -7,6 +7,7 @@
 - [The node channel](node-channel.md)
 - [The adapter boundary](adapter-boundary.md)
 - [Authority](authority.md)
+- [Agent profiles and portable cards](profiles.md)
 - [Site authority](site-authority.md)
 - [Budgets](budget.md)
 - [The CLI](cli.md)

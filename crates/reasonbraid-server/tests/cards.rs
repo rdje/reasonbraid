@@ -1074,3 +1074,93 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
         "the refused import created no second role"
     );
 }
+
+/// The export gate the chapter documents, which nothing covered until now: only
+/// the `full` class — the role itself or its tenant administrator — mints the
+/// portable card, because the card carries the UNFILTERED profile. A same-tenant
+/// sibling and a stranger both refuse, and the refusal is the same for both.
+#[tokio::test]
+async fn only_the_full_class_exports_the_portable_card() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "export-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let tenant = owner["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "export-role", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, sibling) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "export-sibling", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the sibling enrolls: {sibling}");
+    let sibling_id = sibling["principal_id"].as_str().unwrap().to_string();
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "export-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+
+    let card = format!("/v1/profiles/{role_id}/card");
+    // The two `full` readers export.
+    for (who, principal) in [
+        ("the role itself", &role_id),
+        ("its tenant admin", &owner_id),
+    ] {
+        let (status, body) = get(&client, &base, &card, principal).await;
+        assert_eq!(status, 200, "{who} exports: {body}");
+        assert!(body["digest"].as_str().unwrap().starts_with("sha256:"));
+    }
+    // A same-tenant sibling reads the TENANT view of the profile but exports
+    // nothing — the card is not a filtered form.
+    let (status, refused) = get(&client, &base, &card, &sibling_id).await;
+    assert_eq!(status, 403, "a tenant sibling cannot export: {refused}");
+    let (status, profile) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &sibling_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "though it reads the filtered profile: {profile}"
+    );
+    assert_eq!(profile["visibility"], json!("tenant"), "{profile}");
+    // A stranger in another tenant refuses identically.
+    let (status, refused_stranger) = get(&client, &base, &card, &stranger_id).await;
+    assert_eq!(status, 403, "a stranger cannot export: {refused_stranger}");
+    assert_eq!(
+        refused["message"], refused_stranger["message"],
+        "the two refusals are the same answer"
+    );
+}

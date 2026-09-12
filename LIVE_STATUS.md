@@ -6,6 +6,25 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+**`SIGNOFF-REPAIR.3.3.4.11` is closed** (REPAIR-0118/0119/0120/0122/0123/0124,
+plus `.3.3.4.7.4` as REPAIR-0121). The profile/card family's three mutating
+routes each run as one transaction with their evidence: the writer serializes at
+the role's version anchor, the attestation holds its read AND write under that
+anchor inside a shared-guard transaction, and the card import runs the whole
+ladder — admission, rungs, grant, identity, quota, enrollment, receipt and the
+PROFILE — inside one exclusive-guard transaction, with three unguarded bridges
+deleted. ⭐ The family's last leaf was the book chapter the surface had never had,
+and it produced two defects and three corrections: a repeated import answered
+`500` (repaired as `.11.5`), an unknown field returns `422` rather than `400`,
+and **an expired capability claim still satisfies a requirement** because the
+eligibility check never reads `expires_at` (owned by `.5.1`). `docs/book/src/profiles.md`
+documents all seven handlers, and
+`docs/knowledge/writing-the-documentation-is-a-verification-pass.md` records the
+method. ⛔ Still open and named rather than implied: card replay and provenance
+(`.5.3`), capability expiry and ranking (`.5.1`), and the import's ordering
+against a concurrent agreement revocation (`.3.3.4.12`, the next frontier row,
+because the three federation direction verbs take no guard at all).
+
 🔴 **A repeated card import answered `500` and recorded nothing; reproduced and
 closed under `.3.3.4.11.5` (REPAIR-0123).** `agent_roles` carries
 `UNIQUE (tenant_id, name)` and `enrollments` carries `UNIQUE (tenant_id, kind,

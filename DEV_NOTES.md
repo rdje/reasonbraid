@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The cheapest test-design session I have had was writing a chapter
+
+- `.11.4` was supposed to be the easy leaf: the code was finished and qualified, the chapter was transcription. It found a `500`-returning defect, a status code I had wrong, a limit I had understated, and one shipped behaviour with no test anywhere.
+- ⭐ The mechanism is not that documentation is magic. It is that the two activities ask different questions. Implementing asks "does my path work" and is answered by the cases I thought of — which are exactly the cases I built and then tested. Documenting asks "what happens for each thing a reader might do", and the "what this does not do yet" section is unwriteable without knowing what actually happens at each edge. That is an enumeration, and enumerations are where untested behaviour lives.
+- The discipline that made it work was small: **do not publish a sentence you have not run.** Not "check the code says so" — send the request, read the answer. Three of four claims I was confident enough to draft were wrong, and I was confident because I remembered writing the handler. The memory is of the path I exercised.
+- ⚠️ The second half is the one I nearly skipped: a chapter is not a control. If prose is the only place a behaviour is asserted, it drifts the first time someone edits the code, silently. So I kept a second list while enumerating — which claim is pinned by which test — traced the ones already covered rather than duplicating them, and found exactly one that was covered nowhere. That one got a test.
+- ⛔ And the exception worth stating: where the enumeration found a DEFECT, the control asserts the repaired behaviour, not the measured one. Writing a test around the `500` would have enshrined it. Document the gap, open the leaf, repair it, then assert what should happen — which is what `.11.5` did.
+
 ## 2026-09-13 — I wrote the rule down, then broke it one leaf later
 
 - `.10.1` promoted `a-raised-constraint-cannot-be-a-recorded-refusal.md`: in PostgreSQL a constraint violation aborts the transaction, so once a route's admission and effect record share that transaction, any refusal a constraint RAISES stops being recordable. I wrote that record. The leaf after it cited it. The leaf after THAT cited it too.

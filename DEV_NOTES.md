@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The cleanup I was about to do was aimed at the smaller half
+
+- The §8 review was due, and I knew exactly what to clean: the compiler cache under `target/debug/incremental`, because that is what the last artifact leaf retired and what everybody means by "the build directory is huge". Then I ran `du -sk target/debug/*`. `deps` is 134 GiB; `incremental` is 59 GiB. The thing I was confident about was the smaller half by more than a factor of two.
+- ⭐ **The reason the wrong half felt obvious is that it is the half with a PROCEDURE.** Incremental sessions have a documented lock protocol, a garbage collector inside the compiler, and a prior leaf that worked out how to touch them safely. `deps` has none of that, so nothing had ever written about it — and "nothing has been written about it" reads, from the inside, exactly like "it is not the problem". Availability of method is not evidence of magnitude.
+- So the useful output of this leaf was not the 573 MB it removed. It was one `du` that reordered the backlog, and a leaf for the part it is not safe to touch yet.
+- On the part I did act on, the check I am most glad about is the **citation guard**: a retained cluster that a tracked file names by id is evidence, and evidence is not rubbish. It costs one `git grep` per candidate and it is the difference between a cleanup tool and a tool that quietly deletes the thing a task record points at. I made it fire in both directions in the self-test, because a guard that always says "no references" is indistinguishable from no guard at all.
+- The age floor turned out to matter for a reason I did not design it for. It is there so a run somebody is still reading survives — and what it actually protected was **this session's own two baselines**, which I would otherwise have deleted minutes after recording their numbers, while the commit citing them was not yet written. A time-based bound caught a causal mistake.
+- The last decision was to leave `--retire` behind `--confirm` and to re-run every check immediately before each removal. A census is a snapshot; the gap between reading it and acting on it is exactly where a cluster becomes live again. Cheap, and it makes the tool safe to run from a script later.
+- promotion: declined (the durable statement IS the tracked instrument and its `--self-test`, now in `TOOLBOX.md`; a method statement about retained clusters is the thing `.11.4.3.1.6` already demonstrated does not survive).
+
 ## 2026-09-12 — I wrote the acceptance criterion before I understood what would separate the builds
 
 - The leaf said the control should fail on a build whose decision time is the process clock read before the wait. It was a sentence I believed, written from the shape of the repair rather than from the code's order of operations. The first thing building the control taught me was that `run_thread_command` samples its time AFTER the guard and the idempotency claim, so a process clock read there gives the same verdict as `clock_timestamp()`. The acceptance named a difference that does not exist.

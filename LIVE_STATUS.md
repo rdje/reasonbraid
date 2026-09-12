@@ -6,6 +6,22 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+The overdue `CLAUDE.md` §8 artifact review ran under `.11.4.3.1.7`
+(REPAIR-0107), with the judgement in a tracked instrument rather than in a
+habit. `scripts/census_pg_test_clusters.py` censused **13 retained PostgreSQL
+clusters / 676,882,885 bytes**, all `state: stopped`, with 0 live servers and 0
+tracked citations, and retired **11 / 573,416,291 bytes** after re-checking
+every condition immediately before each removal; the residue census verified the
+2 survivors, both held back by the age floor because they are this session's own
+baselines. Its `--self-test` fires six refusals plus the citation guard's two
+directions. The measurement corrected the leaf's own starting guess:
+`target/debug/deps` is 134,478,136 KiB against `incremental`'s 58,989,732 KiB,
+so the cache Cargo does NOT collect is the larger one and `.11.4.3.1.6` retired
+only the other. Nothing under `target/debug` was deleted — that directory is
+what the linker resolves by hash — and `.11.4.3.1.8` owns the decision, with
+"measured and not worth acting on" available as a legitimate outcome.
+
+
 The ordering chapter's expiry-during-wait row is now a control rather than an
 argument under `.3.3.4.4.1` (REPAIR-0106). `.3.3.4.4` published five contract
 rows and shipped two controls; the census behind the finding is

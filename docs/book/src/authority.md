@@ -669,6 +669,63 @@ What a revoked node then experiences — the refused handshake, the suspended
 presence, the lease that is not cut — is unchanged and documented in
 [the node channel](node-channel.md).
 
+### Administering a node's inbox
+
+Three operator verbs act on one node's durable inbox: **quarantine** marks one
+command so it is never re-delivered, **replay** reverses that quarantine and
+re-sequences the command to the tail, and **prune** deletes delivered rows older
+than a window. Each now runs one transaction under the tenant's **shared**
+authority guard, holding the admission, a tenant-bound row selection, the
+mutation and the final effect record.
+
+**The repair here is a cross-tenant one.** `node_inbox` has carried a `tenant_id`
+column since the migration that created it, and none of the three verbs used it.
+Measured against the superseded routes, with an administrator of tenant A acting
+on a node whose inbox rows belong to tenant B:
+
+| Verb | Answer before the repair |
+| --- | --- |
+| Quarantine a foreign row | `200` — the row was quarantined |
+| Replay a foreign row | `200` — the row was un-quarantined and re-sequenced |
+| Prune a foreign inbox | `200 {"deleted":2,"before":2,"after":0}` — **both of the other tenant's rows were destroyed** |
+
+Every selection is now bound to the admitted tenant, so a foreign target is
+indistinguishable from an absent one and mutates nothing. A foreign prune reports
+`deleted: 0` with `before: 0`, because the counts describe the inbox the caller is
+allowed to see rather than every row the node happens to hold.
+
+The guard is shared: none of the three writes authority or advances the
+revocation epoch, so none needs to fence other operations. What they need is to be
+fenced BY a revocation, which the shared mode provides. Exactness against another
+administrator comes from a row lock, at the granularity that actually conflicts.
+
+| Request | Result |
+| --- | --- |
+| Quarantine a live command | 200; the effect records `applied` with the submitted reason. |
+| Quarantine a command that is already quarantined | 409; the effect records `no_op`. |
+| Replay a dead-lettered command | 200; the quarantine is reversed and the effect records `applied`. |
+| Replay a command that is not dead-lettered | 409; the effect records `refused`/`invalid_transition`. |
+| Prune, with rows old enough | 200 with the measured `before`/`deleted`/`after`; the effect records `applied`. |
+| Prune, with nothing old enough | 200 with the same measured receipt and `deleted: 0`; the effect records `no_op`. |
+| Any verb naming a command or node outside the caller's tenant | The same answer an absent one gets, and nothing changes. |
+
+**Wire changes.** The quarantine reason was already required; it now also has to
+be at most 1 024 UTF-8 bytes and free of control characters, and it is persisted
+with the effect as well as on the row. Timestamps in the responses
+(`quarantined_at`, `replayed_at`, `cutoff_at`) are the transaction's own database
+time. Every answer carries the `x-reasonbraid-authorization` receipt. One message
+is retired: a replay that lost a concurrent race used to say so, and the row lock
+now makes that state indistinguishable from any other command that is not
+dead-lettered, so it receives that same typed answer instead of a claim about a
+race the lock no longer permits.
+
+The retention rule is unchanged: prune never deletes a **quarantined** row, so an
+age-based sweep cannot destroy quarantine evidence.
+
+Which decision facts a replay refreshes is deliberately not changed here — that
+remains `SIGNOFF-REPAIR.3.4`. Only the transaction they are refreshed in, the
+tenant binding, and the clock they read have moved.
+
 ### The final administrative effect record
 
 An admission record says a caller **was allowed to ask**. It says nothing about
@@ -680,11 +737,12 @@ representation, `.7.2` gives it durable storage, `.8` makes grant and boundary
 revocation its first producer — described under [one transaction, from the
 admission to the evidence](#one-transaction-from-the-admission-to-the-evidence) —
 `.9` adds [spend-breaker administration](#arming-and-resetting-a-spend-breaker),
-`.10.1` adds [node enrollment-token issuance](#issuing-a-node-enrollment-token),
-and `.10.2` adds [node certificate revocation](#revoking-a-nodes-certificates).
-The inbox verbs follow in `.10.3`, then `.11` and `.12`; until each does, its
-operations have no effect record, which reads as an absence and never as a
-success.
+and `.10` adds the five node administrative operations — [token
+issuance](#issuing-a-node-enrollment-token), [certificate
+revocation](#revoking-a-nodes-certificates) and [inbox
+administration](#administering-a-nodes-inbox). `.11` and `.12` follow; until each
+does, its operations have no effect record, which reads as an absence and never
+as a success.
 
 An effect record names four things:
 

@@ -6,6 +6,25 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A cross-tenant destructive defect was reproduced and closed under
+`.3.3.4.10.3` (REPAIR-0117).** `node_inbox` has carried a `tenant_id` column
+since migration 0003 and none of the three operator verbs used it. Measured on
+the superseded routes, with an administrator of tenant A acting on a node whose
+inbox rows belong to tenant B: quarantine answered **200** and quarantined the
+foreign row, replay answered **200** and re-sequenced it, and prune answered
+**200** with `{"deleted":2,"before":2,"after":0}` — **destroying both of the
+other tenant's rows**. It was reachable by any ordinary tenant administrator
+through the supported HTTP surface. ⚠️ Three of this project's own fixtures
+depended on the defect, seeding a node into one tenant and administering it from
+another, which is why nothing caught it; they are CORRECTED, with every original
+feature assertion intact. All three verbs now select bound to the admitted tenant
+inside one shared-guard transaction, the prune's before/after counts are bound
+too, and each records its outcome. **7 passed / 0 failed**; the affected set
+passes **6 suites / 72 tests**. FALSIFIED **3 passed / 4 failed** against the
+exact pre-`.10.3` handlers. `.3.3.4.10` is now closed: all five node
+administrative mutations the parent's census found are one guarded transaction
+with a tenant-bound target and a final effect record.
+
 Node certificate revocation `.3.3.4.10.2` (REPAIR-0116) is now ONE guarded
 transaction, taking the **exclusive** guard — the opposite answer from `.10.1`
 one commit earlier, and derived rather than alternated: it advances the tenant's

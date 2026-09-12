@@ -1211,72 +1211,59 @@ pub struct ReplayResponse {
     pub replayed_at: String,
 }
 
+/// Replay one dead-lettered inbox command.
+///
+/// Since `SIGNOFF-REPAIR.3.3.4.10.3` the admission, the tenant-bound row
+/// selection, the mutation and the final effect record share ONE transaction
+/// under the tenant's SHARED authority guard. Before this the admission ran in
+/// its own transaction and the mutation in a second, unguarded one whose
+/// predicate was `node_id` and `command_id` alone — so an administrator of one
+/// tenant could replay another tenant's inbox row, measured at 200.
 async fn replay_command(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<ReplayRequest>,
-) -> Result<Json<ReplayResponse>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-
-    let mut tx = state.pool.begin().await?;
-    // Only a DEAD-LETTERED command replays: quarantine is the terminal the
-    // replay reverses; a live command re-delivered twice would double-dispatch.
-    let quarantined: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
-        "SELECT quarantined_at FROM node_inbox WHERE node_id = $1 AND command_id = $2",
+    let replay = authority::replay_command_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.command_id,
     )
-    .bind(&req.node_id)
-    .bind(&req.command_id)
-    .fetch_optional(&mut *tx)
     .await?;
-    let Some(existing) = quarantined else {
-        return Err(ControlApiError::not_found(format!(
+    let receipt = replay.record_id;
+    let response = match replay.result {
+        authority::ReplayResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        // Missing and foreign are ONE answer (`SIGNOFF-REPAIR.3.1`).
+        authority::ReplayResult::NotInInbox => ControlApiError::not_found(format!(
             "no command `{}` in node `{}`'s inbox",
             req.command_id, req.node_id
-        )));
-    };
-    if existing.is_none() {
-        return Err(ControlApiError::invalid_transition(
+        ))
+        .into_response(),
+        // ⚠️ This also answers the caller that LOST a concurrent replay. The row
+        // lock makes the two states indistinguishable, and the superseded
+        // "a concurrent replay won" message is retired rather than kept as a
+        // claim about a race the lock no longer permits.
+        authority::ReplayResult::NotDeadLettered => ControlApiError::invalid_transition(
             "the command is not dead-lettered — replay only reverses a quarantine",
-        ));
-    }
-
-    // The fresh admission decision (`.1.5.2` shape): the CURRENT revocation
-    // epoch at replay time, the decision clock restarted. The record + digest
-    // stay bound to the original admission.
-    let revocation_epoch: i64 =
-        sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
-            .bind(req.tenant_id.to_string())
-            .fetch_one(&mut *tx)
-            .await?;
-
-    let affected = sqlx::query(
-        "UPDATE node_inbox SET \
-           quarantined_at = NULL, \
-           quarantine_reason = NULL, \
-           decided_at = $3, \
-           revocation_epoch = $4, \
-           cursor = (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1) \
-         WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NOT NULL",
-    )
-    .bind(&req.node_id)
-    .bind(&req.command_id)
-    .bind(Utc::now())
-    .bind(revocation_epoch)
-    .execute(&mut *tx)
-    .await?;
-    if affected.rows_affected() != 1 {
-        return Err(ControlApiError::invalid_transition(
-            "the command is already replayed (a concurrent replay won)",
-        ));
-    }
-
-    tx.commit().await?;
-    Ok(Json(ReplayResponse {
-        node_id: req.node_id,
-        command_id: req.command_id,
-        replayed_at: Utc::now().to_rfc3339(),
-    }))
+        )
+        .into_response(),
+        authority::ReplayResult::Replayed => Json(ReplayResponse {
+            node_id: req.node_id.clone(),
+            command_id: req.command_id.clone(),
+            // Database time from inside the transaction, so the response and the
+            // refreshed decision report the same instant.
+            replayed_at: replay.effected_at.to_rfc3339(),
+        })
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 /// The `POST /v1/nodes/quarantine` body: an operator quarantines one inbox
@@ -1298,64 +1285,60 @@ pub struct QuarantineResponse {
     pub quarantined_at: String,
 }
 
+/// Quarantine one inbox command, with its reason.
+///
+/// One transaction under the tenant's shared guard since
+/// `SIGNOFF-REPAIR.3.3.4.10.3`. The superseded shape ran a check and a
+/// conditional update as two separate POOL statements with no tenant predicate,
+/// so it both raced itself and mutated other tenants' rows.
 async fn quarantine_command(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<QuarantineRequest>,
-) -> Result<Json<QuarantineResponse>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    if req.reason.trim().is_empty() {
-        return Err(ControlApiError::invalid_command(
-            "the quarantine reason is required (a quarantine without a reason is a silent skip)",
-        ));
-    }
-
-    // The row is the serialization point: quarantine only a command that exists
-    // in THIS node's inbox, and only once (a re-quarantine is a typed refusal,
-    // like the token re-issue).
-    let existing: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
-        "SELECT quarantined_at FROM node_inbox WHERE node_id = $1 AND command_id = $2",
+    let quarantine = authority::quarantine_command_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.command_id,
+        &req.reason,
     )
-    .bind(&req.node_id)
-    .bind(&req.command_id)
-    .fetch_optional(&state.pool)
     .await?;
-    let Some(existing) = existing else {
-        return Err(ControlApiError::invalid_command(format!(
+    let receipt = quarantine.record_id;
+    let response = match quarantine.result {
+        authority::QuarantineResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::QuarantineResult::InvalidReason(detail) => {
+            ControlApiError::invalid_command(format!(
+                "the quarantine reason is required (a quarantine without a reason is a silent \
+                 skip): {detail}"
+            ))
+            .into_response()
+        }
+        authority::QuarantineResult::NotInInbox => ControlApiError::invalid_command(format!(
             "no command `{}` in node `{}`'s inbox",
             req.command_id, req.node_id
-        )));
+        ))
+        .into_response(),
+        authority::QuarantineResult::AlreadyQuarantined { at } => {
+            ControlApiError::invalid_transition(format!(
+                "the command is already quarantined ({at})"
+            ))
+            .into_response()
+        }
+        authority::QuarantineResult::Quarantined { at } => Json(QuarantineResponse {
+            node_id: req.node_id.clone(),
+            command_id: req.command_id.clone(),
+            quarantined_at: at.to_rfc3339(),
+        })
+        .into_response(),
     };
-    if let Some(at) = existing {
-        return Err(ControlApiError::invalid_transition(format!(
-            "the command is already quarantined ({at})"
-        )));
-    }
-
-    let quarantined: Option<DateTime<Utc>> = sqlx::query_scalar(
-        "UPDATE node_inbox SET quarantined_at = $3, quarantine_reason = $4 \
-         WHERE node_id = $1 AND command_id = $2 AND quarantined_at IS NULL \
-         RETURNING quarantined_at",
-    )
-    .bind(&req.node_id)
-    .bind(&req.command_id)
-    .bind(Utc::now())
-    .bind(req.reason.trim())
-    .fetch_optional(&state.pool)
-    .await?;
-    let Some(at) = quarantined else {
-        // A concurrent quarantine won the race.
-        return Err(ControlApiError::invalid_transition(
-            "the command is already quarantined",
-        ));
-    };
-
-    Ok(Json(QuarantineResponse {
-        node_id: req.node_id,
-        command_id: req.command_id,
-        quarantined_at: at.to_rfc3339(),
-    }))
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 /// One inbox row as the inspection surface reports it (`.1.2.3`): the delivery
@@ -1453,53 +1436,66 @@ pub struct PruneInboxResponse {
     pub cutoff_at: String,
 }
 
+/// Prune delivered inbox rows older than a window.
+///
+/// One transaction under the tenant's shared guard since
+/// `SIGNOFF-REPAIR.3.3.4.10.3`. The counts were already measured in one
+/// transaction; what they were NOT was bound to the caller's tenant, so this
+/// verb deleted another tenant's rows and reported them as its own — measured at
+/// `{"deleted":2,"before":2,"after":0}` against a foreign inbox.
+///
+/// The §16.11 preservation rule is unchanged: a quarantined row is never deleted.
 async fn prune_node_inbox(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<PruneInboxRequest>,
-) -> Result<Json<PruneInboxResponse>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    if req.min_age_seconds < 0 {
-        return Err(ControlApiError::invalid_command(
-            "min_age_seconds must be >= 0",
-        ));
-    }
-    // The measured before/after rides ONE transaction: the count, the delete,
-    // and the recount see a consistent ledger, and the response is the
-    // operator's receipt for exactly what was removed.
-    let mut tx = state.pool.begin().await?;
-    let cutoff = Utc::now() - chrono::Duration::seconds(req.min_age_seconds);
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
-        .bind(&req.node_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    // The preservation rule (§16.11, `.1.3.3`): the retention NEVER deletes
-    // a quarantined row — the quarantine fact survives the disposition. A
-    // dead-lettered row is delivered (acknowledged) by definition, so
-    // WITHOUT the exclusion the age-based sweep would destroy the evidence.
-    let deleted = sqlx::query(
-        "DELETE FROM node_inbox \
-         WHERE node_id = $1 AND acknowledged_at IS NOT NULL AND acknowledged_at <= $2 \
-           AND quarantined_at IS NULL",
+    let prune = authority::prune_node_inbox_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        req.min_age_seconds,
     )
-    .bind(&req.node_id)
-    .bind(cutoff)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected() as i64;
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
-        .bind(&req.node_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    tx.commit().await?;
-
-    Ok(Json(PruneInboxResponse {
-        deleted,
-        before,
-        after,
-        cutoff_at: cutoff.to_rfc3339(),
-    }))
+    .await?;
+    let receipt = prune.record_id;
+    let response = match prune.result {
+        authority::PruneResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::PruneResult::InvalidWindow(detail) => {
+            ControlApiError::invalid_command(detail).into_response()
+        }
+        // Both outcomes answer with the same measured receipt: an operator asked
+        // what was removed, and zero is an answer.
+        authority::PruneResult::Pruned {
+            deleted,
+            before,
+            after,
+            cutoff,
+        } => Json(PruneInboxResponse {
+            deleted,
+            before,
+            after,
+            cutoff_at: cutoff.to_rfc3339(),
+        })
+        .into_response(),
+        authority::PruneResult::NothingToPrune {
+            before,
+            after,
+            cutoff,
+        } => Json(PruneInboxResponse {
+            deleted: 0,
+            before,
+            after,
+            cutoff_at: cutoff.to_rfc3339(),
+        })
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 // ── Node revocation (`.1.3.1`) ──────────────────────────────────────────────

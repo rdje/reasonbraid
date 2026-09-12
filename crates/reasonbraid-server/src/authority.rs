@@ -55,7 +55,9 @@ mod selection;
 pub(crate) use breaker::{administer_breaker_in_one_transaction, BreakerCommand, BreakerResult};
 pub use effects::{load_tenant_administrative_effect, record_administrative_effect_in_tx};
 pub(crate) use node_admin::{
-    issue_enrollment_token_in_one_transaction, revoke_node_in_one_transaction, NodeRevokeResult,
+    issue_enrollment_token_in_one_transaction, prune_node_inbox_in_one_transaction,
+    quarantine_command_in_one_transaction, replay_command_in_one_transaction,
+    revoke_node_in_one_transaction, NodeRevokeResult, PruneResult, QuarantineResult, ReplayResult,
     TokenIssueResult,
 };
 pub use records::load_authorization_record;

@@ -239,6 +239,15 @@ A quarantined command is never re-delivered (the reason rides the row);
 pruning deletes only DELIVERED rows older than the window and reports a
 measured before/after — an explicit operator action, never a background sweep.
 
+Since `SIGNOFF-REPAIR.3.3.4.10.3` all three verbs are **bound to your tenant**.
+Before that they were not, and an administrator of one tenant could quarantine,
+replay or prune another tenant's node inbox — a prune destroyed the other
+tenant's rows and reported them as its own. Each verb now runs one guarded
+transaction with a durable record of what it did, and the responses carry
+`x-reasonbraid-authorization`. The `--reason` on a quarantine must be at most
+1 024 bytes with no control characters. See
+[administering a node's inbox](authority.md#administering-a-nodes-inbox).
+
 The revocation verb (`.1.3.1`) completes the node-admin surface — also
 `tenant_admin`-authorized and audited:
 

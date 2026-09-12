@@ -402,3 +402,495 @@ pub(crate) async fn revoke_node_in_one_transaction(
     })
     .await
 }
+
+// ── Node inbox administration (`SIGNOFF-REPAIR.3.3.4.10.3`) ──────────────────
+//
+// Three operator verbs over one table, and three DISTINCT transaction bodies:
+// their state machines differ, and forcing them into a shared body would be the
+// mistake `SIGNOFF-REPAIR.3.3.4.8` avoided only because its two revocation
+// targets genuinely were the same machine.
+//
+// # The defect these close is cross-tenant, and it was measured rather than read
+//
+// `node_inbox` has carried a `tenant_id` column since migration 0003, and none of
+// the three verbs used it. A probe run before this repair, with an administrator
+// of tenant A acting on a node whose inbox rows belong to tenant B:
+//
+//   quarantine a foreign row  -> 200
+//   replay a foreign row      -> 200
+//   prune a foreign inbox     -> 200  {"deleted":2,"before":2,"after":0}
+//
+// The prune DESTROYED both of the other tenant's rows. Each verb now selects
+// bound to the admitted tenant, so a foreign target is indistinguishable from an
+// absent one — `SIGNOFF-REPAIR.3.1`'s rule — and mutates nothing.
+//
+// # Why these three take the SHARED guard
+//
+// None of them writes authority and none advances the revocation epoch, so none
+// is a revocation in the sense `.10.2` is. What they need is to be fenced BY a
+// revocation, and shared mode gives that. Exactness against a concurrent
+// administrator comes from `FOR UPDATE` on the inbox row, which is the
+// granularity that actually conflicts.
+
+/// What a quarantine decided.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuarantineResult {
+    Quarantined {
+        at: DateTime<Utc>,
+    },
+    /// The command is already quarantined — the request is already satisfied.
+    AlreadyQuarantined {
+        at: DateTime<Utc>,
+    },
+    /// No such command in this node's inbox IN THIS TENANT. Missing and foreign
+    /// are one answer.
+    NotInInbox,
+    Denied {
+        reason: String,
+    },
+    InvalidReason(String),
+}
+
+/// What a replay decided.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplayResult {
+    Replayed,
+    /// The command exists and is not dead-lettered, so there is no quarantine to
+    /// reverse.
+    NotDeadLettered,
+    NotInInbox,
+    Denied {
+        reason: String,
+    },
+}
+
+/// What a prune decided. The counts are the operator's receipt and are measured
+/// inside the same transaction as the delete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PruneResult {
+    Pruned {
+        deleted: i64,
+        before: i64,
+        after: i64,
+        cutoff: DateTime<Utc>,
+    },
+    /// Nothing was old enough, or the node has no rows in this tenant at all.
+    /// The counts are still the caller's answer, and so is the cutoff.
+    NothingToPrune {
+        before: i64,
+        after: i64,
+        cutoff: DateTime<Utc>,
+    },
+    Denied {
+        reason: String,
+    },
+    InvalidWindow(String),
+}
+
+/// One admitted inbox administration and what it did.
+#[derive(Debug, Clone)]
+pub struct InboxAdministration<T> {
+    pub record_id: String,
+    /// Database time sampled inside the transaction, after the guard wait.
+    pub effected_at: DateTime<Utc>,
+    pub result: T,
+}
+
+/// The admission every inbox verb shares: shared guard, database time after the
+/// wait, and the admission written on the same connection.
+///
+/// Returning the record id rather than a closure keeps each verb's body its own,
+/// which is the point — they differ below this line.
+macro_rules! admit_or_return {
+    ($conn:expr, $principal:expr, $tenant_id:expr, $at:expr, $denied:expr) => {{
+        let authz = CommandAuthz {
+            actor: actor_handle_for_subject($principal),
+            principal: $principal.clone(),
+            delegate_subject: None,
+            delegation_scope: None,
+            action: GrantAction::TenantAdmin,
+            target: ResourceTarget::Tenant {
+                tenant_id: $tenant_id,
+            },
+        };
+        match authorize_in_tx(&mut *$conn, &authz, $at).await? {
+            super::AuthorizationOutcome::Allowed { record_id, .. } => record_id,
+            super::AuthorizationOutcome::Denied { record_id, reason } => {
+                // The denial record IS the evidence; no operation existed.
+                return Ok(InboxAdministration {
+                    record_id,
+                    effected_at: $at,
+                    result: $denied(reason),
+                });
+            }
+        }
+    }};
+}
+
+/// Quarantine one inbox command, with its reason, in ONE shared-guard transaction.
+pub(crate) async fn quarantine_command_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    command_id: &str,
+    submitted_reason: &str,
+) -> Result<InboxAdministration<QuarantineResult>, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    let command_id = command_id.to_owned();
+    let submitted_reason = submitted_reason.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Shared)], move |tx| {
+        Box::pin(async move {
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Shared)?;
+            let record_id = admit_or_return!(conn, &principal, tenant_id, at, |reason| {
+                QuarantineResult::Denied { reason }
+            });
+
+            let reason = match AdministrativeReason::new(submitted_reason.clone()) {
+                Ok(reason) => reason,
+                Err(error) => {
+                    return Ok(InboxAdministration {
+                        record_id,
+                        effected_at: at,
+                        result: QuarantineResult::InvalidReason(error.to_string()),
+                    })
+                }
+            };
+            let operation = inbox_operation(&node_id, &command_id, true)?;
+
+            // Tenant-bound selection inside the guard, locked before the change.
+            // The tenant predicate is the repair: without it this verb mutated
+            // another tenant's row and answered 200.
+            let row: Option<(Option<DateTime<Utc>>,)> = sqlx::query_as(
+                "SELECT quarantined_at FROM node_inbox \
+                 WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 FOR UPDATE",
+            )
+            .bind(&node_id)
+            .bind(&command_id)
+            .bind(tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
+
+            let (result, effect) = match row {
+                None => (
+                    QuarantineResult::NotInInbox,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidCommand,
+                        detail: bounded_detail(
+                            "no such command in that node's inbox in this tenant".to_owned(),
+                        ),
+                    },
+                ),
+                Some((Some(already),)) => (
+                    QuarantineResult::AlreadyQuarantined { at: already },
+                    AdministrativeOutcome::NoOp {
+                        detail: bounded_detail("the command was already quarantined".to_owned()),
+                    },
+                ),
+                Some((None,)) => {
+                    sqlx::query(
+                        "UPDATE node_inbox SET quarantined_at = $4, quarantine_reason = $5 \
+                         WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3",
+                    )
+                    .bind(&node_id)
+                    .bind(&command_id)
+                    .bind(tenant_id.to_string())
+                    .bind(at)
+                    .bind(reason.as_str())
+                    .execute(&mut *conn)
+                    .await?;
+                    (
+                        QuarantineResult::Quarantined { at },
+                        AdministrativeOutcome::Applied {},
+                    )
+                }
+            };
+
+            record_inbox_effect(
+                &mut *conn,
+                &record_id,
+                tenant_id,
+                operation,
+                Some(reason),
+                effect,
+                at,
+            )
+            .await?;
+            Ok(InboxAdministration {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}
+
+/// Replay one dead-lettered inbox command in ONE shared-guard transaction.
+///
+/// ⛔ Which decision facts a replay refreshes is NOT this leaf's to change —
+/// `SIGNOFF-REPAIR.3.4` owns the cached-decision rebinding. The same two fields
+/// are refreshed as before; only the transaction they are refreshed in, the
+/// tenant binding, and the clock they read have changed.
+pub(crate) async fn replay_command_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    command_id: &str,
+) -> Result<InboxAdministration<ReplayResult>, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    let command_id = command_id.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Shared)], move |tx| {
+        Box::pin(async move {
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Shared)?;
+            let record_id = admit_or_return!(conn, &principal, tenant_id, at, |reason| {
+                ReplayResult::Denied { reason }
+            });
+            let operation = inbox_operation(&node_id, &command_id, false)?;
+
+            let row: Option<(Option<DateTime<Utc>>,)> = sqlx::query_as(
+                "SELECT quarantined_at FROM node_inbox \
+                 WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 FOR UPDATE",
+            )
+            .bind(&node_id)
+            .bind(&command_id)
+            .bind(tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
+
+            let (result, effect) = match row {
+                None => (
+                    ReplayResult::NotInInbox,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::NotFound,
+                        detail: bounded_detail(
+                            "no such command in that node's inbox in this tenant".to_owned(),
+                        ),
+                    },
+                ),
+                // Only a DEAD-LETTERED command replays: quarantine is the
+                // terminal the replay reverses, and a live command re-delivered
+                // twice would double-dispatch.
+                Some((None,)) => (
+                    ReplayResult::NotDeadLettered,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidTransition,
+                        detail: bounded_detail(
+                            "the command is not dead-lettered, so there is no quarantine to reverse"
+                                .to_owned(),
+                        ),
+                    },
+                ),
+                Some((Some(_),)) => {
+                    // The fresh admission decision (`.1.5.2` shape): the CURRENT
+                    // revocation epoch, the decision clock restarted. Read under
+                    // the same guard that fences the writer which advances it.
+                    let epoch: i64 = sqlx::query_scalar(
+                        "SELECT revocation_epoch FROM tenants WHERE tenant_id = $1",
+                    )
+                    .bind(tenant_id.to_string())
+                    .fetch_one(&mut *conn)
+                    .await?;
+                    sqlx::query(
+                        "UPDATE node_inbox SET \
+                           quarantined_at = NULL, \
+                           quarantine_reason = NULL, \
+                           decided_at = $4, \
+                           revocation_epoch = $5, \
+                           cursor = (SELECT COALESCE(MAX(cursor), 0) + 1 \
+                                     FROM node_inbox WHERE node_id = $1) \
+                         WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3",
+                    )
+                    .bind(&node_id)
+                    .bind(&command_id)
+                    .bind(tenant_id.to_string())
+                    .bind(at)
+                    .bind(epoch)
+                    .execute(&mut *conn)
+                    .await?;
+                    (ReplayResult::Replayed, AdministrativeOutcome::Applied {})
+                }
+            };
+
+            record_inbox_effect(
+                &mut *conn, &record_id, tenant_id, operation, None, effect, at,
+            )
+            .await?;
+            Ok(InboxAdministration {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}
+
+/// Prune delivered inbox rows older than a window, in ONE shared-guard
+/// transaction.
+///
+/// The §16.11 preservation rule is unchanged: a QUARANTINED row is never
+/// deleted, because a dead-lettered row is acknowledged by definition and an
+/// age-based sweep would otherwise destroy the quarantine evidence.
+pub(crate) async fn prune_node_inbox_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    min_age_seconds: i64,
+) -> Result<InboxAdministration<PruneResult>, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Shared)], move |tx| {
+        Box::pin(async move {
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Shared)?;
+            let record_id = admit_or_return!(conn, &principal, tenant_id, at, |reason| {
+                PruneResult::Denied { reason }
+            });
+
+            if min_age_seconds < 0 {
+                return Ok(InboxAdministration {
+                    record_id,
+                    effected_at: at,
+                    result: PruneResult::InvalidWindow("min_age_seconds must be >= 0".to_owned()),
+                });
+            }
+            let cutoff = at - Duration::seconds(min_age_seconds);
+            let operation = AdministrativeOperation::NodeInboxPrune {
+                node_id: AdministrativeTargetId::new(node_id.clone()).map_err(|error| {
+                    GuardError::Storage(sqlx::Error::Protocol(format!(
+                        "the prune target id is unusable: {error}"
+                    )))
+                })?,
+            };
+
+            // Every count is tenant-bound too: an operator's before/after receipt
+            // must describe the inbox it is allowed to see, not the node's rows
+            // in some other tenant.
+            let before: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM node_inbox WHERE node_id = $1 AND tenant_id = $2",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .fetch_one(&mut *conn)
+            .await?;
+            let deleted = sqlx::query(
+                "DELETE FROM node_inbox \
+                 WHERE node_id = $1 AND tenant_id = $2 \
+                   AND acknowledged_at IS NOT NULL AND acknowledged_at <= $3 \
+                   AND quarantined_at IS NULL",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .bind(cutoff)
+            .execute(&mut *conn)
+            .await?
+            .rows_affected() as i64;
+            let after: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM node_inbox WHERE node_id = $1 AND tenant_id = $2",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .fetch_one(&mut *conn)
+            .await?;
+
+            let (result, effect) = if deleted > 0 {
+                (
+                    PruneResult::Pruned {
+                        deleted,
+                        before,
+                        after,
+                        cutoff,
+                    },
+                    AdministrativeOutcome::Applied {},
+                )
+            } else {
+                (
+                    PruneResult::NothingToPrune {
+                        before,
+                        after,
+                        cutoff,
+                    },
+                    AdministrativeOutcome::NoOp {
+                        detail: bounded_detail(
+                            "no delivered row in this tenant was older than the window".to_owned(),
+                        ),
+                    },
+                )
+            };
+
+            record_inbox_effect(
+                &mut *conn, &record_id, tenant_id, operation, None, effect, at,
+            )
+            .await?;
+            Ok(InboxAdministration {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}
+
+/// The per-command operation both quarantine and replay name.
+fn inbox_operation(
+    node_id: &str,
+    command_id: &str,
+    quarantine: bool,
+) -> Result<AdministrativeOperation, GuardError> {
+    let unusable = |error: reasonbraid_core::AdministrativeTextError| {
+        GuardError::Storage(sqlx::Error::Protocol(format!(
+            "the inbox target id is unusable: {error}"
+        )))
+    };
+    let node_id = AdministrativeTargetId::new(node_id).map_err(unusable)?;
+    let command_id = AdministrativeTargetId::new(command_id).map_err(unusable)?;
+    Ok(if quarantine {
+        AdministrativeOperation::NodeCommandQuarantine {
+            node_id,
+            command_id,
+        }
+    } else {
+        AdministrativeOperation::NodeCommandReplay {
+            node_id,
+            command_id,
+        }
+    })
+}
+
+/// The one effect write the three verbs share — the record, not the decision.
+#[allow(clippy::too_many_arguments)]
+async fn record_inbox_effect(
+    conn: &mut sqlx::PgConnection,
+    record_id: &str,
+    tenant_id: TenantId,
+    operation: AdministrativeOperation,
+    submitted_reason: Option<AdministrativeReason>,
+    outcome: AdministrativeOutcome,
+    at: DateTime<Utc>,
+) -> Result<(), GuardError> {
+    record_administrative_effect_in_tx(
+        conn,
+        &AdministrativeEffectRecord {
+            record_id: record_id.parse().map_err(|_| {
+                GuardError::Storage(sqlx::Error::Protocol(
+                    "the admission this effect names is not a record id".into(),
+                ))
+            })?,
+            tenant_id,
+            operation,
+            submitted_reason,
+            outcome,
+            effected_at: at,
+        },
+    )
+    .await?;
+    Ok(())
+}

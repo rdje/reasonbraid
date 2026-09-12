@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — The tests were holding the defect in place
+
+- The parent's census said four of five node mutations had no tenant predicate. That is a source reading, and I nearly treated it as a shape to tidy. Running a probe instead turned it into a measurement: an administrator of one tenant quarantined another tenant's inbox row (200), replayed it (200), and pruned its inbox with `{"deleted":2,"before":2,"after":0}` — two of someone else's rows, gone, reported as the caller's own work.
+- ⭐ **The reason it survived is the part worth keeping.** Three of this project's own fixtures seeded a node into a fixed seed tenant and then administered it as an administrator of a different, freshly bootstrapped tenant. They passed. They had to pass — the verbs ignored the tenant, so the mismatch was invisible, and every one of those tests was *asserting a feature while depending on the defect*. Adding the predicate turned all three red in the same second.
+- That is a specific failure mode of fixture design, not of the code: a fixture that supplies a value the production path never reads cannot tell you the path is wrong, and it quietly becomes a reason the path stays wrong. The ones that did NOT depend on it — the other three suites driving the same verbs — had nodes that genuinely belonged to the administering tenant, so they were unaffected. The difference between the two groups is exactly whether the fixture told the truth about ownership.
+- What I would look for next time, and did here: when a census says a predicate is missing, check whether the tests supply a value for it that *differs* from the one the route is given. If they do, the tests are the evidence that nothing reads it.
+- ⚠️ Correcting rather than deleting them mattered. Each of the three asserts something real — the quarantine skip, the typed refusals, the retention window — and those assertions are intact. Only the ownership changed.
+
 ## 2026-09-12 — Three leaves, three fixtures, and the third one is the reason to keep asking
 
 - `.9` took the exclusive guard and a SHARED-holder fixture discriminated it. `.10.1` took the shared guard and NO holder discriminated it, so atomicity carried the falsification. `.10.2` took the exclusive guard again — and the shared-holder fixture works again, for the same reason it did at `.9`.

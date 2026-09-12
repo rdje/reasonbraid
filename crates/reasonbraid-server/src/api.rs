@@ -49,8 +49,8 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::authority::{
-    self, authorize, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError,
-    GrantRefused, GuardMode, TenantTransaction,
+    self, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError, GrantRefused,
+    GuardMode, TenantTransaction,
 };
 use crate::budget;
 use crate::node_channel;
@@ -1109,7 +1109,7 @@ async fn issue_node_enroll_token(
             tenant_id: req.tenant_id,
         },
     };
-    match authorize(&state.pool, &authz, Utc::now()).await? {
+    match authority::authorize_guarded(&state.pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             return Err(ControlApiError::unauthorized(format!(
@@ -1178,7 +1178,7 @@ async fn authorize_tenant_admin(
         action: GrantAction::TenantAdmin,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    match authorize(pool, &authz, Utc::now()).await? {
+    match authority::authorize_guarded(pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             Err(ControlApiError::unauthorized(format!(
@@ -3678,7 +3678,7 @@ async fn create_thread_auto(
         action: GrantAction::ThreadCreateAuto,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    match authorize(&state.pool, &authz, Utc::now()).await? {
+    match authority::authorize_guarded(&state.pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             return Err(ControlApiError::unauthorized(format!(
@@ -3856,7 +3856,7 @@ async fn open_recruitment_call(
                 .map_err(|_| ControlApiError::invalid_command("thread_id is malformed"))?,
         },
     };
-    match authorize(&state.pool, &authz, Utc::now()).await? {
+    match authority::authorize_guarded(&state.pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             return Err(ControlApiError::unauthorized(format!(
@@ -6382,7 +6382,7 @@ where
         action: GrantAction::ThreadInspect,
         target,
     };
-    match authorize(&state.pool, &authz, Utc::now()).await? {
+    match authority::authorize_guarded(&state.pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             Err(ControlApiError::unauthorized(format!(

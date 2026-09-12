@@ -342,8 +342,32 @@ administrator grant in another tenant cannot inspect Alice's inventory.
 Each attributable allow or authority denial commits a `tenant_admin_inspection`
 record before returning protected data. The record keeps the actual selected
 parent status and grant scope, so a read allowed under a revoked parent remains
-distinguishable from ordinary boundary-checked admission. Decision time comes
-from the database clock after acquiring the transaction connection.
+distinguishable from ordinary boundary-checked admission.
+
+That record is evidence, so the admission takes the tenant's **shared authority
+guard** before reading any authority row, and its decision time is database time
+sampled **after** that wait. A revocation holds the guard exclusively, so it
+fences every admission that has not already selected its evidence; admissions
+never fence each other. Without it, the selected parent's status and the grant's
+selector could be read either side of the writer that changes them, and the
+record would carry a mixture.
+
+The same applies to the ordinary standalone admission — thread inspection,
+node-token issuance, automatic thread creation, recruitment calls and every
+`tenant_admin` gate — which now authorizes through the guarded entry point. The
+standalone `authorize` API keeps its explicit timestamp and takes no guard: it
+is the evaluation-time surface a caller drives with a chosen instant, not the
+path a live request uses.
+
+| Order | Result |
+| --- | --- |
+| A revocation holds the exclusive guard when a read arrives | The read waits, then admits against the authority as it then stands. |
+| Authority ends while a read waits | The post-wait database time sees it ended; the read is refused 403. |
+| A boundary is frozen while a read waits | The read is still ADMITTED — the carve-out ignores boundary status, and the ordering does not change that. |
+| Two reads in the same tenant | Both hold the shared guard; neither blocks the other. |
+
+The response queries still run after the admission commits, so a receipt proves
+admission and not a shared snapshot or delivery.
 
 Use `curl -i` to retain the receipt, for example:
 

@@ -1,4 +1,5 @@
-//! Thread commands against authority changes (`SIGNOFF-REPAIR.3.3.4.4`).
+//! Control-API admissions and commands against authority changes
+//! (`SIGNOFF-REPAIR.3.3.4.4`, `.3.3.4.4.1`, `.3.3.4.6`).
 //!
 //! `.3.3.4.2` built the tenant guard and `.3.3.4.3.x` integrated it into the
 //! standalone authority writers, so an issuance and a revocation now serialize
@@ -451,4 +452,275 @@ async fn a_grant_that_ends_while_a_command_waits_is_evaluated_after_the_wait() {
         "the refused command wrote {} event row(s)",
         after - before
     );
+}
+
+async fn get(client: &reqwest::Client, url: String, principal: &str) -> (u16, Value) {
+    let response = client
+        .get(url)
+        .header(PRINCIPAL_HEADER, principal)
+        .send()
+        .await
+        .expect("request");
+    let status = response.status().as_u16();
+    let text = response.text().await.expect("body");
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text })),
+    )
+}
+
+/// One enrolled human and its tenant — the fixture every admission control below
+/// shares.
+async fn enrolled_human(
+    client: &reqwest::Client,
+    base: &str,
+    name: &str,
+) -> (String, String, TenantId) {
+    let (status, human) = post(
+        client,
+        format!("{base}/v1/enrollments"),
+        "unused",
+        json!({ "kind": "human", "name": name }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let principal = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_text = human["tenant_id"].as_str().unwrap().to_string();
+    let tenant: TenantId = tenant_text.parse().expect("the tenant id parses");
+    (principal, tenant_text, tenant)
+}
+
+/// Wait, bounded, for a spawned request to finish; `false` means it is still in
+/// flight, which is what an ordering against a held guard looks like.
+async fn settles_within(job: &tokio::task::JoinHandle<(u16, Value)>, budget: Duration) -> bool {
+    timeout(budget, async {
+        loop {
+            if job.is_finished() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// A named inspection admission must not complete while an EXCLUSIVE tenant
+/// guard is held (`SIGNOFF-REPAIR.3.3.4.6`).
+///
+/// The eight frozen-tenant reads COMMIT an admission record before returning
+/// protected data. Committing it while a revocation holds the tenant's exclusive
+/// guard means the evidence in that record — the selected parent's status, the
+/// grant's scope — was read with no ordering against the writer changing them.
+///
+/// Against the unrepaired path this control FAILS by succeeding.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_inspection_admission_waits_for_an_exclusive_tenant_guard() {
+    let Some(pool) = pool().await else { return };
+    let addr = serve(&pool).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+    let (principal, tenant_text, tenant) = enrolled_human(&client, &base, "inspector").await;
+
+    let before: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(&tenant_text)
+            .fetch_one(&pool)
+            .await
+            .expect("count admissions before");
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+
+    let read = {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let tenant_text = tenant_text.clone();
+        tokio::spawn(async move {
+            get(
+                &client,
+                format!("{base}/v1/admin/grants?tenant_id={tenant_text}"),
+                &principal,
+            )
+            .await
+        })
+    };
+
+    let settled = settles_within(&read, Duration::from_secs(3)).await;
+    let during: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(&tenant_text)
+            .fetch_one(&pool)
+            .await
+            .expect("count admissions during");
+    assert!(
+        !settled,
+        "the inspection admission committed while an exclusive tenant guard was \
+         held: its authority evidence has no ordering against the writer that \
+         changes it (admission rows {before} -> {during})"
+    );
+    assert_eq!(
+        before, during,
+        "the read committed an admission record while the guard was held"
+    );
+
+    holder.release().await;
+
+    let (status, body) = timeout(Duration::from_secs(10), read)
+        .await
+        .expect("the read completes once the guard is released")
+        .expect("the read task joins");
+    assert_eq!(status, 200, "the read succeeds after the wait: {body}");
+}
+
+/// Authority that ends while an inspection waits must be evaluated after the
+/// wait — the same post-wait rule the command path holds.
+#[tokio::test(flavor = "multi_thread")]
+async fn authority_ended_while_an_inspection_waits_is_evaluated_after_the_wait() {
+    let Some(pool) = pool().await else { return };
+    let addr = serve(&pool).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+    let (principal, tenant_text, tenant) =
+        enrolled_human(&client, &base, "expiring-inspector").await;
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+
+    let read = {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let tenant_text = tenant_text.clone();
+        tokio::spawn(async move {
+            get(
+                &client,
+                format!("{base}/v1/admin/boundaries?tenant_id={tenant_text}"),
+                &principal,
+            )
+            .await
+        })
+    };
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let ended = sqlx::query(
+        "UPDATE authority_grants SET expires_at = now() - interval '1 second' \
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(&tenant_text)
+    .bind(&principal)
+    .execute(&pool)
+    .await
+    .expect("end the administrator's grant")
+    .rows_affected();
+    assert_eq!(ended, 1, "exactly one grant was ended");
+
+    holder.release().await;
+
+    let (status, body) = timeout(Duration::from_secs(10), read)
+        .await
+        .expect("the read completes once the guard is released")
+        .expect("the read task joins");
+    assert_eq!(
+        status, 403,
+        "authority that ended while the read waited must refuse it: {body}"
+    );
+}
+
+/// The frozen-boundary exception must SURVIVE the ordering: a boundary revoked
+/// while the read waits still admits its otherwise-eligible administrator,
+/// because the exception ignores boundary status by design.
+///
+/// This is the bound that keeps the guard from turning an approved carve-out
+/// into a refusal, and it is the reason the mode is Shared rather than a fence
+/// on every read.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_boundary_frozen_while_an_inspection_waits_still_admits_it() {
+    let Some(pool) = pool().await else { return };
+    let addr = serve(&pool).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+    let (principal, tenant_text, tenant) = enrolled_human(&client, &base, "frozen-inspector").await;
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+
+    let read = {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let tenant_text = tenant_text.clone();
+        tokio::spawn(async move {
+            get(
+                &client,
+                format!("{base}/v1/admin/grants?tenant_id={tenant_text}"),
+                &principal,
+            )
+            .await
+        })
+    };
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let frozen =
+        sqlx::query("UPDATE enrollment_boundaries SET status = 'revoked' WHERE tenant_id = $1")
+            .bind(&tenant_text)
+            .execute(&pool)
+            .await
+            .expect("freeze the boundary")
+            .rows_affected();
+    assert_eq!(frozen, 1, "exactly one boundary was frozen");
+
+    holder.release().await;
+
+    let (status, body) = timeout(Duration::from_secs(10), read)
+        .await
+        .expect("the read completes once the guard is released")
+        .expect("the read task joins");
+    assert_eq!(
+        status, 200,
+        "the frozen-boundary exception must still admit its administrator: {body}"
+    );
+}
+
+/// The ordinary (non-exception) standalone read admission takes the guard too:
+/// the thread inspection path authorizes through `authorize`, not through the
+/// frozen-tenant evaluator, and its audit record is evidence in the same way.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_inspection_admission_waits_for_an_exclusive_tenant_guard() {
+    let Some(pool) = pool().await else { return };
+    let addr = serve(&pool).await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+    let (principal, tenant_text, tenant) = enrolled_human(&client, &base, "thread-inspector").await;
+
+    let holder = hold(&pool, tenant, GuardMode::Exclusive).await;
+
+    let read = {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let tenant_text = tenant_text.clone();
+        tokio::spawn(async move {
+            get(
+                &client,
+                format!("{base}/v1/threads?tenant_id={tenant_text}"),
+                &principal,
+            )
+            .await
+        })
+    };
+
+    let settled = settles_within(&read, Duration::from_secs(3)).await;
+    assert!(
+        !settled,
+        "the thread inspection admission committed while an exclusive tenant \
+         guard was held: it authorizes through the unguarded standalone entry \
+         point, so its audit evidence has no ordering against an authority writer"
+    );
+
+    holder.release().await;
+
+    let (status, body) = timeout(Duration::from_secs(10), read)
+        .await
+        .expect("the read completes once the guard is released")
+        .expect("the read task joins");
+    assert_eq!(status, 200, "the read succeeds after the wait: {body}");
 }

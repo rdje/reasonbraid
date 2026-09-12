@@ -6,6 +6,28 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Standalone read admissions are ordered against authority changes under
+`.3.3.4.6` (REPAIR-0108). The eight frozen-tenant reads COMMIT a record naming
+the selected parent's status and the grant's selector, and that evidence was
+being selected with no ordering against the writer that changes it; so was the
+ordinary standalone admission behind thread inspection, node-token issuance,
+automatic thread creation, recruitment calls and every `tenant_admin` gate.
+Baseline `command_ordering`: 4 passed / 3 failed — the admission committed under
+a held exclusive guard (`admission rows 0 -> 1`), authority that ended during a
+wait still returned 200, and the thread-inspection admission committed too. The
+repair takes the SHARED guard before any authority row is read and samples
+`clock_timestamp()` after that wait, in `authorize_tenant_admin_inspection` and
+in the new `authorize_guarded`; `authorize` is unchanged as the explicit-time
+standalone API. The nested-transaction hazard was censused first: all 28
+guarded-admission call sites, 0 with an open transaction before them. The
+approved frozen-boundary carve-out keeps its own control, so a boundary revoked
+while a read waits still admits its eligible administrator. `command_ordering`
+goes 4 passed / 3 failed → 7 passed / 0 failed and the affected set passes rc=0
+with 5 suites / 71 tests / zero failures. Response queries still run after the
+admission commits, so a receipt proves admission, not a shared snapshot or
+delivery.
+
+
 The overdue `CLAUDE.md` §8 artifact review ran under `.11.4.3.1.7`
 (REPAIR-0107), with the judgement in a tracked instrument rather than in a
 habit. `scripts/census_pg_test_clusters.py` censused **13 retained PostgreSQL

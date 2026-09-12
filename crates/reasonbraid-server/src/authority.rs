@@ -515,11 +515,18 @@ pub(crate) async fn authorize_tenant_admin_inspection(
     inspection: reasonbraid_core::TenantAdminInspection,
 ) -> Result<AuthorizationOutcome, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    // Sample the database clock after acquiring the transaction's connection;
-    // time spent waiting for the pool is not part of this decision's validity.
-    let at: DateTime<Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
-        .fetch_one(&mut *tx)
-        .await?;
+    // The tenant's authority guard, before any authority row is read
+    // (`SIGNOFF-REPAIR.3.3.4.6`). Shared: inspections read authority and must
+    // run concurrently with one another, while a revocation's exclusive mode
+    // fences every admission that has not already selected its evidence. The
+    // record this commits NAMES the selected parent's status and the grant's
+    // scope, so without the guard that evidence could be read either side of a
+    // writer changing it.
+    transaction::acquire_in_tx(&mut tx, tenant_id, transaction::GuardMode::Shared).await?;
+    // Sample the database clock AFTER the guard wait; time spent waiting for the
+    // pool or for an authority writer is not part of this decision's validity,
+    // and authority that ended during the wait must be evaluated as ended.
+    let at: DateTime<Utc> = transaction::database_now_in_tx(&mut tx).await?;
     let authz = CommandAuthz {
         actor: reasonbraid_core::actor_handle_for_subject(principal),
         principal: principal.clone(),
@@ -646,6 +653,37 @@ pub async fn authorize(
     at: DateTime<Utc>,
 ) -> Result<AuthorizationOutcome, sqlx::Error> {
     let mut tx = pool.begin().await?;
+    let outcome = authorize_in_tx(&mut *tx, authz, at).await?;
+    tx.commit().await?;
+    Ok(outcome)
+}
+
+/// The LIVE standalone admission (`SIGNOFF-REPAIR.3.3.4.6`): the same selection
+/// and audit record as [`authorize`], with the tenant's SHARED authority guard
+/// held across it and the decision time sampled from the database AFTER that
+/// wait.
+///
+/// [`authorize`] keeps its explicit timestamp and takes no guard, because it is
+/// the standalone evaluation-time API the core controls drive with a chosen
+/// instant; this is the entry point a live request uses, where the instant is
+/// not the caller's to choose and the evidence must not be readable either side
+/// of an authority writer.
+///
+/// ⛔ It opens its OWN transaction, so a caller must not already hold a guard on
+/// another connection when it calls this — every production call site is an HTTP
+/// handler that admits first and acts afterwards, in that order.
+pub(crate) async fn authorize_guarded(
+    pool: &PgPool,
+    authz: &CommandAuthz,
+) -> Result<AuthorizationOutcome, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    transaction::acquire_in_tx(
+        &mut tx,
+        *authz.target.tenant_id(),
+        transaction::GuardMode::Shared,
+    )
+    .await?;
+    let at = transaction::database_now_in_tx(&mut tx).await?;
     let outcome = authorize_in_tx(&mut *tx, authz, at).await?;
     tx.commit().await?;
     Ok(outcome)

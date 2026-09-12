@@ -6,6 +6,29 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Thread commands are ordered against authority changes under `.3.3.4.4`
+(REPAIR-0104). The defect was not a narrow race window: `run_thread_command`
+opened a plain transaction, claimed its idempotency key and authorized on the
+PROCESS clock with no tenant guard anywhere, so a command and a revocation had
+no defined order at all. The reproduction is therefore deterministic rather than
+a race — an exclusive guard is what a revocation holds, so the control holds one
+and watches the command run underneath it: `event rows 0 -> 1` at baseline,
+while the sibling control (shared guard, unrelated tenant) passed. A FALSE
+reproduction was caught first and is recorded: `event rows 0 -> 0`, a request
+rejected at deserialization that "completed" without reaching any lock and
+looked exactly like the defect. Asserting the effect count beside the timing is
+what separated them. The repair factors the guard runner's own per-key
+acquisition into `acquire_in_tx`, so both entrypoints take the identical lock
+rather than a reimplementation; the mode is Shared, so commands stay concurrent
+with each other while a revocation's Exclusive mode fences them. Decision time
+is now `clock_timestamp()` sampled after the guard and idempotency waits, so a
+grant that expires while a command is queued is evaluated as expired.
+`authorize_in_tx` keeps its explicit timestamp parameter, so the standalone
+API's documented evaluation-time compatibility is untouched. The FULL owned PostgreSQL collection passes at **rc=0** — 41 commands, 42 suites, **295 tests, zero failures** — with `pg-tests: stopped and removed target/pg-tests/run-n7nqvz4b`. That breadth is the right gate here rather than a focused set: every HTTP and MCP command routes through the transaction this leaf changed, and the new `command_ordering` suite is registered in the runner so it travels with the collection and with CI instead of being run by hand.
+Replay-hash and consent semantics remain `.3.4`; automatic-initiation preflight
+remains `.5.2`.
+
+
 Authority writer coverage is re-derived under `.3.3.4.3.4` (REPAIR-0103), and
 the first finding was about the evidence rather than the code: `.3.3.4.1`'s
 census existed as a table plus a corpus hash with **no tracked producer**, so it

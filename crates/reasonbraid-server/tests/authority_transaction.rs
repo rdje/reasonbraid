@@ -3,6 +3,10 @@
 
 #[path = "support/mod.rs"]
 mod pg_test_support;
+// This suite qualifies the guard runner and uses a subset of the module it
+// compiles in. `database_now_in_tx` is called from `api.rs` and `authority.rs`
+// (`SIGNOFF-REPAIR.3.3.4.4`), so it is unused HERE rather than dead in the crate.
+#[allow(dead_code)]
 #[path = "../src/authority/transaction.rs"]
 mod tenant_transaction;
 

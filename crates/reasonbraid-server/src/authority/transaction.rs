@@ -175,6 +175,58 @@ impl TenantTransaction<'_> {
     }
 }
 
+/// Take ONE tenant's guard on a transaction the caller already owns.
+///
+/// The guard's own runner uses this for each key it holds, so a caller that
+/// cannot adopt the runner — `run_thread_command` owns a long command
+/// transaction with its own error type and early returns — takes the identical
+/// lock rather than a second implementation of it
+/// (`SIGNOFF-REPAIR.3.3.4.4`).
+///
+/// ⛔ It acquires and nothing else. The runner's ordering rule still applies and
+/// is the caller's to honour: a caller taking MORE than one key must use the
+/// runner, because sorting the full key set is what prevents lock inversion and
+/// a sequence of single acquisitions cannot provide it.
+pub(crate) async fn acquire_in_tx(
+    tx: &mut PgConnection,
+    tenant: TenantId,
+    mode: GuardMode,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO tenant_authority_guards (tenant_id) VALUES ($1) \
+         ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .bind(tenant.to_string())
+    .execute(&mut *tx)
+    .await?;
+    let query = match mode {
+        GuardMode::Shared => {
+            "SELECT tenant_id FROM tenant_authority_guards WHERE tenant_id = $1 FOR SHARE"
+        }
+        GuardMode::Exclusive => {
+            "SELECT tenant_id FROM tenant_authority_guards \
+             WHERE tenant_id = $1 FOR NO KEY UPDATE"
+        }
+    };
+    sqlx::query_scalar::<_, String>(query)
+        .bind(tenant.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    Ok(())
+}
+
+/// Sample database time for an evaluation on a caller-owned transaction, after
+/// its preceding waits. `now()`/`CURRENT_TIMESTAMP` would cache BEGIN time,
+/// which is the instant BEFORE the guard and idempotency waits rather than
+/// after them.
+pub(crate) async fn database_now_in_tx(
+    tx: &mut PgConnection,
+) -> Result<DateTime<Utc>, sqlx::Error> {
+    sqlx::query_scalar("SELECT clock_timestamp()")
+        .fetch_one(&mut *tx)
+        .await
+}
+
 pub(crate) async fn transact<T, F>(
     pool: &PgPool,
     guards: &[(TenantId, GuardMode)],
@@ -315,26 +367,7 @@ where
         // Typed UUID order equals byte order of canonical tenant keys. Acquire
         // each full key, including first-use insertion, in that one stable order.
         for (tenant, mode) in &normalized {
-            sqlx::query(
-                "INSERT INTO tenant_authority_guards (tenant_id) VALUES ($1) \
-                 ON CONFLICT (tenant_id) DO NOTHING",
-            )
-            .bind(tenant.to_string())
-            .execute(&mut *transaction)
-            .await
-            .map_err(GuardError::Storage)?;
-            let query = match mode {
-                GuardMode::Shared => {
-                    "SELECT tenant_id FROM tenant_authority_guards WHERE tenant_id = $1 FOR SHARE"
-                }
-                GuardMode::Exclusive => {
-                    "SELECT tenant_id FROM tenant_authority_guards \
-                     WHERE tenant_id = $1 FOR NO KEY UPDATE"
-                }
-            };
-            sqlx::query_scalar::<_, String>(query)
-                .bind(tenant.to_string())
-                .fetch_one(&mut *transaction)
+            acquire_in_tx(&mut transaction, *tenant, *mode)
                 .await
                 .map_err(GuardError::Storage)?;
         }

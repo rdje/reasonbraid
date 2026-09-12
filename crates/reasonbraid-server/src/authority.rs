@@ -36,7 +36,7 @@ use crate::tx::{self, ApplyError, Command, CommandOutcome};
 #[cfg(test)]
 mod evaluation_tests;
 mod issuance;
-mod transaction;
+pub(crate) mod transaction;
 
 pub use issuance::{create_boundary, create_grant};
 pub(crate) use issuance::{
@@ -826,7 +826,17 @@ pub async fn apply_authorized_command(
     cmd: &Command,
 ) -> Result<CommandOutcome, AuthorizedApplyError> {
     let mut tx = pool.begin().await?;
-    match authorize_in_tx(&mut *tx, authz, Utc::now()).await? {
+    // The tenant guard before the aggregate and idempotency locks, and database
+    // time sampled after that wait (`SIGNOFF-REPAIR.3.3.4.4`). Shared: this
+    // authorizes and applies, it does not mutate authority.
+    transaction::acquire_in_tx(
+        &mut tx,
+        *authz.target.tenant_id(),
+        transaction::GuardMode::Shared,
+    )
+    .await?;
+    let now = transaction::database_now_in_tx(&mut tx).await?;
+    match authorize_in_tx(&mut *tx, authz, now).await? {
         AuthorizationOutcome::Allowed { .. } => {
             let outcome = tx::apply_command_in_tx(&mut *tx, cmd).await?;
             tx.commit().await?;

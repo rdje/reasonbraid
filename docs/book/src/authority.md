@@ -464,6 +464,37 @@ with the mutation. That effect audit, and serialization against revocation of th
 acting administrator's own authority, remain `.3.3`. The target-row lock described
 here does not establish those separate guarantees.
 
+### Ordering a thread command against an authority change
+
+A thread command now takes the tenant's authority guard **before** it claims its
+idempotency key, locks the aggregate row, or touches quota and inbox state. The
+mode is *shared*, so commands still run concurrently with one another; a
+revocation takes the *exclusive* mode and therefore fences every command that
+has not already passed that point.
+
+This is an ordering that previously did not exist at all, rather than a race
+window that has been narrowed. Before it, the command path took no guard, so a
+revocation and a command had no defined order between them.
+
+The decision time is now **database** time, sampled after the guard and the
+idempotency claim have both waited, rather than the process clock read before
+them. A grant that expires while a command is queued is evaluated as expired,
+not as it stood when the request arrived. The standalone `authorize` API keeps
+its explicit timestamp parameter, so its documented evaluation-time behaviour is
+unchanged; only the live effect entrypoints choose their own current time.
+
+| Order | Result |
+| --- | --- |
+| A revocation holds the exclusive guard when a command arrives | The command waits, then evaluates against the revoked authority. |
+| A command holds its shared guard when a revocation arrives | The command commits; the revocation applies to what follows. |
+| A grant expires while a command waits | The post-wait database time sees it expired. |
+| Two commands in the same tenant | Both hold the shared guard; neither blocks the other. |
+| A command in an unrelated tenant | Unaffected — the guard is per tenant. |
+
+This orders a command against an authority change. It is not a claim about
+replay-hash or consent semantics, which remain `SIGNOFF-REPAIR.3.4`, nor about
+automatic-initiation preflight, which remains `.5.2`.
+
 ### Tenant transaction foundation and remaining integration
 
 The selected contract in `SIGNOFF-REPAIR.3.3.4.1` keeps a shared tenant-authority

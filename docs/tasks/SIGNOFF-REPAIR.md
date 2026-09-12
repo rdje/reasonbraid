@@ -657,10 +657,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ##### SIGNOFF-REPAIR.3.3.4.4 — Order thread commands against authority changes
 
-- Status: `pending`; follows `.2` and `.3`.
+- Status: `done`; REPAIR-0104.
 - Owns: guarded authorization entrypoint, public standalone authorization/apply APIs, run_thread_command and HTTP/MCP consumers, tenant guard before idempotency/aggregate/quota/inbox locks and fresh database time at live evaluation after earlier waits. Preserve explicit evaluation-time compatibility where the standalone API deliberately accepts a timestamp; live effect entrypoints choose their own current time. Bind guard, authorization and actual effect tenant.
 - Acceptance: observed authority-first contention denies without domain/outbox/dispatch effect; effect-first contention commits before revocation; a queued expiration is evaluated after the wait; unrelated tenants and compatible shared operations progress. Admission/domain refusal/idempotent replay semantics remain explicit. Replay hash/consent changes stay `.3.4`; automatic-initiation preflight semantics stay `.5.2`.
-- Verification / commit: pending.
+- **Reproduce, deterministically rather than by racing.** The defect is not a narrow window: `run_thread_command` opened a plain transaction, claimed the idempotency key, and authorized on `Utc::now()` with no guard anywhere, so it had no ordering against revocation to narrow. An exclusive tenant guard is exactly what a revocation holds, so the control HOLDS one and watches the command underneath it. Baseline: the command ran to completion and wrote its event — `event rows 0 -> 1` — while the guard was held. The sibling control passed at baseline, so the reproduction is not a fixture that blocks everything.
+- ⚠️ A FALSE reproduction was caught before being trusted. The first run "failed" with the intended message but `event rows 0 -> 0`: the request had been rejected at deserialization for a wrong envelope shape and so "completed" without reaching any lock, looking exactly like the defect while proving nothing. Asserting the EFFECT COUNT beside the timing is what separated them; a timing-only control would have been green on a coincidence.
+- Fix: `crates/reasonbraid-server/src/authority/transaction.rs` factors the runner's own per-key acquisition into `acquire_in_tx`, so a caller that already owns a transaction takes the IDENTICAL lock rather than a second implementation. `run_thread_command` takes it Shared before the idempotency claim, and `apply_authorized_command` before its authorize/apply pair. Both then sample `database_now_in_tx` — `clock_timestamp()`, after the guard and idempotency waits — instead of the process clock read before them.
+- Why Shared: commands read authority and must run concurrently with one another; a revocation takes Exclusive and therefore fences every command that has not already passed this point. The mode is what makes the ordering a fence rather than a global serialization.
+- ⛔ `acquire_in_tx` carries an explicit bound in its own doc comment: it acquires ONE key and nothing else. The runner's ordering rule is unchanged and remains the caller's to honour — a caller needing several keys must use the runner, because sorting the full key set is what prevents lock inversion and a sequence of single acquisitions cannot provide it.
+- Preserved deliberately: `authorize_in_tx` keeps its explicit timestamp parameter, so the standalone API's documented evaluation-time compatibility is untouched. Only the live effect entrypoints now choose their own database time, which is what the leaf asked for.
+- Verification: both ordering controls pass (baseline 1 passed / 1 failed). The FULL owned PostgreSQL collection passes at **rc=0** — 41 commands, 42 suites, **295 tests, zero failures** — with `pg-tests: stopped and removed target/pg-tests/run-n7nqvz4b`. That breadth is the right gate here rather than a focused set: every HTTP and MCP command routes through the transaction this leaf changed, and the new `command_ordering` suite is registered in the runner so it travels with the collection and with CI instead of being run by hand.
+- Commit: `REASONBRAID-REPAIR-0104 (leaf SIGNOFF-REPAIR.3.3.4.4): order thread commands against authority changes`.
 
 ##### SIGNOFF-REPAIR.3.3.4.5 — Guard node-result transactions before lease locks
 
@@ -2119,10 +2126,9 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.3.4.4` | `pending` | integrate live command ordering |
-| 2 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
-| 3 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
-| 4 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
+| 1 | `SIGNOFF-REPAIR.3.3.4.5`–`.13` | `pending` | remaining named integration/effect/coverage children |
+| 2 | `SIGNOFF-REPAIR.3.4` | `pending` | delegation bounds and cached-decision freshness |
+| 3 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances |
 
 
 
@@ -2148,6 +2154,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.3.4.4`: `REASONBRAID-REPAIR-0104 (leaf SIGNOFF-REPAIR.3.3.4.4): order thread commands against authority changes`.
 
 - `SIGNOFF-REPAIR.3.3.4.3.4`: `REASONBRAID-REPAIR-0103 (leaf SIGNOFF-REPAIR.3.3.4.3.4): re-derive authority writer coverage from a tracked instrument`.
 
@@ -2486,6 +2494,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.3.4.4
+
+- [x] **REPRODUCE / ISSUE** — with an exclusive tenant guard held, a thread command ran to completion and wrote its event: `event rows 0 -> 1`. The sibling control (shared guard, unrelated tenant) passed at the same baseline, so the reproduction is not a fixture that blocks everything. A first attempt was a FALSE reproduction — `event rows 0 -> 0`, a request rejected at deserialization — and asserting the effect count beside the timing is what caught it.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `api.rs`'s `run_thread_command` opened `pool.begin()`, claimed the idempotency key, then authorized on `Utc::now()`; `authority.rs`'s `apply_authorized_command` did the same. Neither took the tenant guard, so neither had any ordering against a revocation, and both evaluated authority on a process clock read BEFORE their waits.
+- [x] **FIX** — `authority/transaction.rs` factors the runner's own per-key acquisition into `acquire_in_tx` (plus `database_now_in_tx`), so both entrypoints take the IDENTICAL lock rather than a reimplementation. Shared mode, before the idempotency claim; database time sampled after the waits. `authorize_in_tx` keeps its explicit timestamp parameter, preserving the standalone API's compatibility.
+- [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh command_ordering` returns `2 passed; 0 failed` where the baseline was `1 passed; 1 failed`. The command now waits for the exclusive guard, then completes and produces its effect; a shared guard and an unrelated tenant's exclusive guard do not block it.
+- [x] **NO REGRESSION** — The FULL owned PostgreSQL collection passes at **rc=0** — 41 commands, 42 suites, **295 tests, zero failures** — with `pg-tests: stopped and removed target/pg-tests/run-n7nqvz4b`. That breadth is the right gate here rather than a focused set: every HTTP and MCP command routes through the transaction this leaf changed, and the new `command_ordering` suite is registered in the runner so it travels with the collection and with CI instead of being run by hand. The guard runner's own suite is unchanged and passes, which matters because the acquisition it uses is now shared with the command path.
+- [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `docs/TASK_TREE.md`, `scripts/run_pg_tests.py` (the new suite is registered, so it runs in the collection and in CI rather than only by hand), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. `docs/book/src/authority.md` gains the ordering contract.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.3.4
 

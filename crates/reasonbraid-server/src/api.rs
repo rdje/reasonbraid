@@ -5483,6 +5483,23 @@ pub(crate) async fn run_thread_command(
 ) -> Result<(StatusCode, Value), ControlApiError> {
     let mut tx = pool.begin().await?;
 
+    // 0. The tenant authority guard, FIRST — before the idempotency key, the
+    //    aggregate row, the quota rows and the inbox (`SIGNOFF-REPAIR.3.3.4.4`).
+    //    Shared, because commands read authority and must run concurrently with
+    //    each other; a revocation takes the exclusive mode and therefore fences
+    //    every command that has not already reached this point.
+    //
+    //    Ordering here is not a narrower race window — before this, the command
+    //    path took no guard at all, so it had no ordering against revocation to
+    //    narrow. A control holds the exclusive guard and watches a command run
+    //    to completion underneath it.
+    crate::authority::transaction::acquire_in_tx(
+        &mut tx,
+        *tenant_id,
+        crate::authority::transaction::GuardMode::Shared,
+    )
+    .await?;
+
     // 1. Idempotency claim: a replay returns the ORIGINAL stored result verbatim —
     //    the domain is not re-validated against state the original may have changed.
     match tx::claim_idempotency_in_tx(
@@ -5519,7 +5536,11 @@ pub(crate) async fn run_thread_command(
     //    An allowance captures what the delivery needs (`.1.5.2`, ADR-008): the
     //    record id + digest + decision time, plus the tenant's epoch AT DECISION
     //    TIME (read in the same transaction — the dispatch hook carries them).
-    let now = Utc::now();
+    //    The decision time is DATABASE time sampled here, after the guard and the
+    //    idempotency claim have both waited — not the process clock read before
+    //    them. A grant that expired during those waits must not be evaluated as
+    //    though it were still live at the instant the request arrived.
+    let now = crate::authority::transaction::database_now_in_tx(&mut tx).await?;
     let admission = match authorize_in_tx(&mut *tx, authz, now).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");

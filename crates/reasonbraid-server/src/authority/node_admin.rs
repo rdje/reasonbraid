@@ -188,3 +188,217 @@ pub(crate) async fn issue_enrollment_token_in_one_transaction(
     })
     .await
 }
+
+// ── Node certificate revocation (`SIGNOFF-REPAIR.3.3.4.10.2`) ────────────────
+//
+// # Why THIS one takes the exclusive guard
+//
+// Derived, and it lands the other way from `.10.1` above. Node revocation bumps
+// the tenant's revocation epoch, which is what invalidates every cached node-side
+// admission decision — so this IS a revocation in the sense the guard contract
+// means, and `SIGNOFF-REPAIR.3.3.4.8` established that a revocation takes the
+// EXCLUSIVE mode precisely so that it fences every admission which has not
+// already selected its evidence. A shared acquisition here would leave the book's
+// stated ordering false for one of the three writers that advance the epoch.
+//
+// # What the superseded shape got wrong beyond the missing record
+//
+// The tenant-bound existence probe ran as its OWN pool query, and the mutation
+// that followed matched on `node_id` alone — so the check and the act were two
+// different reads of two different snapshots. Both now happen inside one
+// transaction, and the UPDATE carries its own tenant predicate rather than
+// trusting the probe that preceded it.
+
+use reasonbraid_core::AdministrativeReason;
+
+/// What the one transaction decided. Every variant COMMITTED.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeRevokeResult {
+    /// Active certificates were revoked and the tenant's epoch advanced once.
+    Revoked { certificates: i64 },
+    /// The node exists and every certificate it has is already revoked — the
+    /// repeated-revocation shape. No epoch change.
+    AlreadyRevoked,
+    /// The node exists and has never had a certificate to revoke.
+    NoCertificate,
+    /// No such node in the admitted tenant — missing and foreign are one answer.
+    NotFound,
+    /// The caller was refused by the authority evaluated inside the guard.
+    Denied { reason: String },
+    /// The submitted reason is outside its documented bounds.
+    InvalidReason(String),
+}
+
+/// One admitted node revocation and what it did.
+#[derive(Debug, Clone)]
+pub struct NodeRevocation {
+    pub record_id: String,
+    /// Database time sampled inside the transaction, after the guard wait — the
+    /// instant the decision, the mutation and the epoch bump actually share.
+    pub effected_at: DateTime<Utc>,
+    pub result: NodeRevokeResult,
+}
+
+/// Admit, select, revoke and record in ONE exclusive-guard transaction.
+pub(crate) async fn revoke_node_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    submitted_reason: &str,
+) -> Result<NodeRevocation, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    let submitted_reason = submitted_reason.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Exclusive)], move |tx| {
+        Box::pin(async move {
+            // Database time AFTER the guard wait: authority that ended while this
+            // revocation queued must be evaluated as ended.
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Exclusive)?;
+            let authz = CommandAuthz {
+                actor: actor_handle_for_subject(&principal),
+                principal: principal.clone(),
+                delegate_subject: None,
+                delegation_scope: None,
+                action: GrantAction::TenantAdmin,
+                target: ResourceTarget::Tenant { tenant_id },
+            };
+            let record_id = match authorize_in_tx(&mut *conn, &authz, at).await? {
+                super::AuthorizationOutcome::Allowed { record_id, .. } => record_id,
+                super::AuthorizationOutcome::Denied { record_id, reason } => {
+                    return Ok(NodeRevocation {
+                        record_id,
+                        effected_at: at,
+                        result: NodeRevokeResult::Denied { reason },
+                    });
+                }
+            };
+
+            // The reason is checked AFTER admission, preserving the established
+            // order in which a malformed request still leaves an audit record.
+            let reason = match AdministrativeReason::new(submitted_reason.clone()) {
+                Ok(reason) => reason,
+                Err(error) => {
+                    return Ok(NodeRevocation {
+                        record_id,
+                        effected_at: at,
+                        result: NodeRevokeResult::InvalidReason(error.to_string()),
+                    })
+                }
+            };
+            let operation = AdministrativeOperation::NodeRevoke {
+                node_id: AdministrativeTargetId::new(node_id.clone()).map_err(|error| {
+                    GuardError::Storage(sqlx::Error::Protocol(format!(
+                        "the revocation target id is unusable: {error}"
+                    )))
+                })?,
+            };
+
+            // Tenant-bound selection inside the guard, locked before the change.
+            // This replaces a probe that ran on the pool, outside the transaction
+            // whose decision depended on it.
+            let node: Option<(String,)> = sqlx::query_as(
+                "SELECT node_id FROM nodes WHERE node_id = $1 AND tenant_id = $2 FOR UPDATE",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
+
+            let (result, effect) = if node.is_none() {
+                (
+                    NodeRevokeResult::NotFound,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::NotFound,
+                        detail: bounded_detail(
+                            "no enrolled node with that id in this tenant".to_owned(),
+                        ),
+                    },
+                )
+            } else {
+                // The UPDATE carries its own tenant predicate rather than
+                // trusting the select above: the binding is then visible in the
+                // statement that actually writes.
+                let revoked = sqlx::query(
+                    "UPDATE node_certificates c SET revoked_at = $3 \
+                     WHERE c.node_id = $1 AND c.revoked_at IS NULL \
+                       AND EXISTS (SELECT 1 FROM nodes n \
+                                   WHERE n.node_id = c.node_id AND n.tenant_id = $2)",
+                )
+                .bind(&node_id)
+                .bind(tenant_id.to_string())
+                .bind(at)
+                .execute(&mut *conn)
+                .await?
+                .rows_affected() as i64;
+
+                if revoked > 0 {
+                    super::bump_revocation_epoch(&mut *conn, &tenant_id.to_string()).await?;
+                    (
+                        NodeRevokeResult::Revoked {
+                            certificates: revoked,
+                        },
+                        AdministrativeOutcome::Applied {},
+                    )
+                } else {
+                    // The wire answers one 409 either way. The record is where a
+                    // repeat stops being the same fact as a node that never had
+                    // a certificate at all — one extra query, on the refusal
+                    // path only.
+                    let had: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM node_certificates WHERE node_id = $1",
+                    )
+                    .bind(&node_id)
+                    .fetch_one(&mut *conn)
+                    .await?;
+                    if had > 0 {
+                        (
+                            NodeRevokeResult::AlreadyRevoked,
+                            AdministrativeOutcome::NoOp {
+                                detail: bounded_detail(
+                                    "every certificate this node has was already revoked"
+                                        .to_owned(),
+                                ),
+                            },
+                        )
+                    } else {
+                        (
+                            NodeRevokeResult::NoCertificate,
+                            AdministrativeOutcome::Refused {
+                                code: AdministrativeRefusal::InvalidTransition,
+                                detail: bounded_detail(
+                                    "the node has never had a certificate to revoke".to_owned(),
+                                ),
+                            },
+                        )
+                    }
+                }
+            };
+
+            record_administrative_effect_in_tx(
+                &mut *conn,
+                &AdministrativeEffectRecord {
+                    record_id: record_id.parse().map_err(|_| {
+                        GuardError::Storage(sqlx::Error::Protocol(
+                            "the admission this effect names is not a record id".into(),
+                        ))
+                    })?,
+                    tenant_id,
+                    operation,
+                    submitted_reason: Some(reason),
+                    outcome: effect,
+                    effected_at: at,
+                },
+            )
+            .await?;
+
+            Ok(NodeRevocation {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}

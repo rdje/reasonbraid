@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+Node certificate revocation `.3.3.4.10.2` (REPAIR-0116) is now ONE guarded
+transaction, taking the **exclusive** guard — the opposite answer from `.10.1`
+one commit earlier, and derived rather than alternated: it advances the tenant's
+revocation epoch, so it is a revocation in the sense the guard contract means and
+must fence admissions. Its superseded shape ran the tenant-bound existence probe
+as a SEPARATE pool query and then mutated on `node_id` alone, so the check and the
+act read two different snapshots; both are now one transaction, the node row is
+selected `FOR UPDATE` bound to the admitted tenant, and the UPDATE carries its own
+tenant predicate. The submitted reason is PERSISTED with the effect rather than
+checked for blankness and discarded, and gains the 1 024-byte control-character-free
+bounds; `revoked_at` is the transaction's own database time; every answer carries
+the receipt. The single `409` still answers both idle states and the record
+distinguishes a repeat (`no_op`) from a node that never had a certificate
+(`refused`). **30 passed / 0 failed**; the affected set passes **5 suites / 74
+tests**. FALSIFIED **25 passed / 5 failed** against the exact pre-`.10.2` handler,
+where the request COMPLETED while a shared holder held the tenant's guard. ⚠️ The
+discriminating fixture is a SHARED holder here and was ATOMICITY for `.10.1` —
+same parent, same sequence, two different correct fixtures, because one repair
+changed the lock mode and the other did not.
+
 Node administration `.3.3.4.10` is censused and split (REPAIR-0114), and its
 first child `.10.1` (REPAIR-0115) puts enrollment-token issuance onto the guarded
 effect transaction. The census measured something worse than the parent's note

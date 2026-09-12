@@ -253,6 +253,13 @@ presence reads `suspended` — the live lease, if any, is not cut. An unknown
 node is a typed 404; a second revocation (no active certificate left) is a
 typed 409.
 
+Since `SIGNOFF-REPAIR.3.3.4.10.2` the admission, the certificate revocation, the
+epoch bump and a durable record of the outcome share one commit under the
+tenant's exclusive guard, and the response carries
+`x-reasonbraid-authorization`. The `--reason` is now persisted with that record
+and must be at most 1 024 bytes with no control characters. See
+[revoking a node's certificates](authority.md#revoking-a-nodes-certificates).
+
 The authority revocation verbs (`.1.3.2`) require tenant-admin admission and record
 that admission decision:
 

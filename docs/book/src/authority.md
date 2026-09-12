@@ -629,6 +629,46 @@ one-unused-token index is global rather than per tenant, so two tenants cannot
 hold outstanding tokens for the same node identity at once. `SIGNOFF-REPAIR.3.5`
 owns that.
 
+### Revoking a node's certificates
+
+Revoking a node marks its active workload certificates revoked and advances the
+tenant's revocation epoch, so the handshake ladder refuses the certificates at the
+next crossing and every cached node-side admission decision is invalidated.
+
+The route used to do that in three pieces: an admission in its own transaction, a
+tenant-bound existence probe as a **separate pool query**, and then a third
+transaction whose `UPDATE` matched on `node_id` alone. The check and the act read
+two different snapshots, and nothing recorded what the request finally did.
+
+All of it is now one transaction under the tenant's **exclusive** authority guard.
+The mode is exclusive — unlike token issuance, which is shared — because this
+advances the revocation epoch: it is a revocation in the sense the guard contract
+means, and the exclusive mode is what fences every admission that has not already
+selected its evidence. The node row is selected `FOR UPDATE` bound to the admitted
+tenant, and the `UPDATE` carries its own tenant predicate rather than trusting the
+probe that preceded it, so the binding is visible in the statement that writes.
+
+| Request | Result |
+| --- | --- |
+| An eligible administrator revokes a node with active certificates | 200; the certificates are revoked, the epoch advances once, and the effect records `applied` with the submitted reason. |
+| The same node is revoked again | 409 and no further epoch increment, with the effect recording `no_op`. |
+| The node exists but has never had a certificate | The **same** 409, with the effect recording `refused`/`invalid_transition`. |
+| The node is missing, or belongs to another tenant | One identical 404, with the effect recording `refused`/`not_found` in the CALLER's tenant. |
+| The caller does not administer the named tenant | 403; nothing changes and no effect is recorded. |
+| The reason is blank, over 1 024 bytes, or carries a control character | 400 before any effect is recorded; the admission still commits. |
+
+**Wire changes.** The reason was already required; it now also has to be at most
+1 024 UTF-8 bytes and free of control characters — the same contract
+[site authority](site-authority.md) and grant revocation publish — and it is now
+**persisted** with the effect rather than checked for blankness and discarded.
+`revoked_at` is the transaction's own database time, so the response, the
+certificate rows and the effect record report the same instant. Every answer
+carries the `x-reasonbraid-authorization` receipt.
+
+What a revoked node then experiences — the refused handshake, the suspended
+presence, the lease that is not cut — is unchanged and documented in
+[the node channel](node-channel.md).
+
 ### The final administrative effect record
 
 An admission record says a caller **was allowed to ask**. It says nothing about
@@ -640,10 +680,11 @@ representation, `.7.2` gives it durable storage, `.8` makes grant and boundary
 revocation its first producer — described under [one transaction, from the
 admission to the evidence](#one-transaction-from-the-admission-to-the-evidence) —
 `.9` adds [spend-breaker administration](#arming-and-resetting-a-spend-breaker),
-and `.10.1` adds [node enrollment-token issuance](#issuing-a-node-enrollment-token).
-The rest of node administration follows in `.10.2`–`.10.3`, then `.11` and `.12`;
-until each does, its operations have no effect record, which reads as an absence
-and never as a success.
+`.10.1` adds [node enrollment-token issuance](#issuing-a-node-enrollment-token),
+and `.10.2` adds [node certificate revocation](#revoking-a-nodes-certificates).
+The inbox verbs follow in `.10.3`, then `.11` and `.12`; until each does, its
+operations have no effect record, which reads as an absence and never as a
+success.
 
 An effect record names four things:
 

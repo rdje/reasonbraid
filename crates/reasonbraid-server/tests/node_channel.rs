@@ -2174,3 +2174,465 @@ async fn a_stale_epoch_renewal_loses_the_race() {
         .expect("the in-tx verifier accepts the honest pair");
     tx.commit().await.expect("commit");
 }
+
+// ── Node revocation as one guarded transaction (`SIGNOFF-REPAIR.3.3.4.10.2`) ──
+//
+// The SECOND of this parent's three children. The superseded shape ran the
+// tenant-bound existence probe as its OWN pool query and then mutated in a third
+// transaction whose UPDATE matched on `node_id` alone, so the check and the act
+// read two different snapshots — and nothing recorded what the request did.
+//
+// The guard is EXCLUSIVE here, unlike `.10.1`'s, because this bumps the tenant's
+// revocation epoch: it is a revocation in the sense the guard contract means, so
+// a SHARED-guard holder is the fence that discriminates it, exactly as it was for
+// `.9`. An exclusive holder would fence the superseded shape too.
+
+// The PRODUCTION guard module, compiled into this test so a control takes the
+// same lock the server takes rather than a copy of its SQL.
+#[allow(dead_code)]
+#[path = "../src/authority/transaction.rs"]
+mod tenant_transaction;
+
+use tenant_transaction::{transact, GuardError, GuardMode};
+
+/// Hold one tenant guard until released, reporting when it is actually held so a
+/// control never races its own fixture.
+struct TenantGuardHolder {
+    release: tokio::sync::oneshot::Sender<()>,
+    job: tokio::task::JoinHandle<()>,
+}
+
+async fn hold_tenant_guard(
+    pool: &PgPool,
+    tenant: reasonbraid_core::TenantId,
+    mode: GuardMode,
+) -> TenantGuardHolder {
+    let pool = pool.clone();
+    let (entered_tx, entered) = tokio::sync::oneshot::channel();
+    let (release, release_rx) = tokio::sync::oneshot::channel();
+    let job = tokio::spawn(async move {
+        transact(&pool, &[(tenant, mode)], move |_| {
+            Box::pin(async move {
+                let _ = entered_tx.send(());
+                let _ = release_rx.await;
+                Ok::<(), GuardError>(())
+            })
+        })
+        .await
+        .expect("the holder's guarded transaction completes");
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered)
+        .await
+        .expect("the holder acquires its guard")
+        .expect("the holder reports entry");
+    TenantGuardHolder { release, job }
+}
+
+impl TenantGuardHolder {
+    async fn release(self) {
+        let _ = self.release.send(());
+        tokio::time::timeout(std::time::Duration::from_secs(5), self.job)
+            .await
+            .expect("the holder finishes")
+            .expect("the holder's task joins");
+    }
+}
+
+/// The revoke POST, returning status, the receipt and the body.
+async fn revoke_node_request(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+    node_id: &str,
+    reason: &str,
+) -> (u16, Option<String>, Value) {
+    let response = client
+        .post(format!("{base}/v1/nodes/revoke"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({ "tenant_id": tenant, "node_id": node_id, "reason": reason }))
+        .send()
+        .await
+        .expect("revoke request");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .get("x-reasonbraid-authorization")
+        .map(|v| v.to_str().expect("an ASCII receipt").to_owned());
+    (status, receipt, response.json().await.expect("revoke json"))
+}
+
+async fn node_effect(
+    pool: &PgPool,
+    tenant: &str,
+    receipt: Option<String>,
+) -> Option<reasonbraid_core::AdministrativeEffectRecord> {
+    let tenant: reasonbraid_core::TenantId = tenant.parse().expect("a tenant id");
+    reasonbraid_server::load_tenant_administrative_effect(
+        pool,
+        tenant,
+        receipt
+            .expect("every admitted answer carries its receipt")
+            .parse()
+            .expect("the receipt is a record id"),
+    )
+    .await
+    .expect("read the effect back")
+}
+
+async fn tenant_epoch(pool: &PgPool, tenant: &str) -> i64 {
+    sqlx::query_scalar("SELECT revocation_epoch FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(pool)
+        .await
+        .expect("read the revocation epoch")
+}
+
+async fn active_certificates(pool: &PgPool, node_id: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(node_id)
+    .fetch_one(pool)
+    .await
+    .expect("count active certificates")
+}
+
+#[tokio::test]
+async fn node_revocation_commits_its_admission_certificates_epoch_and_effect_together() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000004a1".to_string();
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let epoch_before = tenant_epoch(&pool, &tenant).await;
+    assert!(active_certificates(&pool, &node_id).await >= 1);
+
+    let (status, receipt, body) = revoke_node_request(
+        &client,
+        &server.base_url(),
+        &alice,
+        &tenant,
+        &node_id,
+        "compromised adapter output",
+    )
+    .await;
+    assert_eq!(status, 200, "an eligible administrator revokes: {body}");
+    assert!(body["revoked_certificates"].as_i64().unwrap() >= 1);
+    assert_eq!(active_certificates(&pool, &node_id).await, 0);
+    assert_eq!(
+        tenant_epoch(&pool, &tenant).await,
+        epoch_before + 1,
+        "a node revocation advances the epoch exactly once"
+    );
+
+    let effect = node_effect(&pool, &tenant, receipt)
+        .await
+        .expect("the effect committed with its mutation");
+    assert_eq!(
+        effect.operation,
+        reasonbraid_core::AdministrativeOperation::NodeRevoke {
+            node_id: reasonbraid_core::AdministrativeTargetId::new(node_id.clone()).unwrap()
+        }
+    );
+    assert!(effect.outcome.changed_protected_state());
+    assert_eq!(
+        effect.submitted_reason.as_ref().map(|r| r.as_str()),
+        Some("compromised adapter output"),
+        "the reason is persisted with the mutation, not merely checked for blankness"
+    );
+    // The recorded instant is the transaction's own database time, so it agrees
+    // with the response rather than with a clock read afterwards.
+    assert_eq!(
+        body["revoked_at"].as_str().unwrap(),
+        effect.effected_at.to_rfc3339()
+    );
+    server.crash();
+}
+
+#[tokio::test]
+async fn the_two_idle_revocation_states_share_one_answer_and_differ_in_the_record() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000004a2".to_string();
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    let (status, _, _) = revoke_node_request(
+        &client,
+        &server.base_url(),
+        &alice,
+        &tenant,
+        &node_id,
+        "first",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let epoch_after_first = tenant_epoch(&pool, &tenant).await;
+
+    // Repeat: the node's certificates are all revoked already — the request is
+    // ALREADY SATISFIED, so the record says `no_op` behind the same 409.
+    let (status, receipt, repeat_body) = revoke_node_request(
+        &client,
+        &server.base_url(),
+        &alice,
+        &tenant,
+        &node_id,
+        "again",
+    )
+    .await;
+    assert_eq!(status, 409, "a repeat finds no active certificate");
+    assert_eq!(
+        tenant_epoch(&pool, &tenant).await,
+        epoch_after_first,
+        "a repeated node revocation advances no epoch"
+    );
+    let effect = node_effect(&pool, &tenant, receipt)
+        .await
+        .expect("recorded");
+    let reasonbraid_core::AdministrativeOutcome::NoOp { detail } = &effect.outcome else {
+        panic!("expected a recorded no-op, got {:?}", effect.outcome)
+    };
+    assert!(detail.as_str().contains("already revoked"), "{detail}");
+
+    // A node that never had a certificate: the SAME answer, recorded `refused`.
+    let bare = "nod_00000000-0000-7000-8000-0000000004a3";
+    sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ($1, $2, $3)")
+        .bind(format!("hst_bare_{}", &bare[4..]))
+        .bind(&tenant)
+        .bind(format!("bare-{bare}"))
+        .execute(&pool)
+        .await
+        .expect("seed the host");
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, $2, $3)")
+        .bind(bare)
+        .bind(format!("hst_bare_{}", &bare[4..]))
+        .bind(&tenant)
+        .execute(&pool)
+        .await
+        .expect("seed a node with no certificate");
+
+    let (status, receipt, bare_body) =
+        revoke_node_request(&client, &server.base_url(), &alice, &tenant, bare, "none").await;
+    assert_eq!(status, 409);
+    assert_eq!(
+        bare_body["code"], repeat_body["code"],
+        "the wire deliberately collapses the two idle states"
+    );
+    let effect = node_effect(&pool, &tenant, receipt)
+        .await
+        .expect("recorded");
+    let reasonbraid_core::AdministrativeOutcome::Refused { code, detail } = &effect.outcome else {
+        panic!("expected a recorded refusal, got {:?}", effect.outcome)
+    };
+    assert_eq!(
+        *code,
+        reasonbraid_core::AdministrativeRefusal::InvalidTransition
+    );
+    assert_eq!(bare_body["code"], json!(code.as_str()));
+    assert!(
+        detail.as_str().contains("never had a certificate"),
+        "{detail}"
+    );
+    assert_eq!(tenant_epoch(&pool, &tenant).await, epoch_after_first);
+    server.crash();
+}
+
+#[tokio::test]
+async fn a_missing_or_foreign_node_is_one_answer_that_records_a_refusal() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    // A second tenant with a real, certificated node of its own.
+    let victim = client
+        .post(format!("{}/v1/enrollments", server.base_url()))
+        .json(&json!({ "kind": "human", "name": "victim-admin" }))
+        .send()
+        .await
+        .expect("enroll victim")
+        .json::<Value>()
+        .await
+        .expect("victim json");
+    let victim_tenant = victim["tenant_id"].as_str().unwrap().to_string();
+    let victim_node = "nod_00000000-0000-7000-8000-0000000004b1".to_string();
+    let _ = seed_node_in_tenant(&pool, &victim_tenant, &victim_node).await;
+    let victim_active = active_certificates(&pool, &victim_node).await;
+    let victim_epoch = tenant_epoch(&pool, &victim_tenant).await;
+
+    let absent = "nod_00000000-0000-7000-8000-0000000004bf";
+    let mut messages = Vec::new();
+    for target in [absent, victim_node.as_str()] {
+        let (status, receipt, body) = revoke_node_request(
+            &client,
+            &server.base_url(),
+            &alice,
+            &tenant,
+            target,
+            "probing",
+        )
+        .await;
+        assert_eq!(status, 404, "missing and foreign both 404: {body}");
+        let effect = node_effect(&pool, &tenant, receipt)
+            .await
+            .expect("recorded");
+        let reasonbraid_core::AdministrativeOutcome::Refused { code, .. } = &effect.outcome else {
+            panic!("expected a recorded refusal, got {:?}", effect.outcome)
+        };
+        assert_eq!(*code, reasonbraid_core::AdministrativeRefusal::NotFound);
+        messages.push(body["message"].as_str().unwrap().to_owned());
+    }
+    // The evidence lives in the CALLER's tenant and names only the id it
+    // supplied, so the two cases stay indistinguishable to it.
+    assert_ne!(messages[0], messages[1], "each message names its own id");
+    assert_eq!(
+        active_certificates(&pool, &victim_node).await,
+        victim_active,
+        "the foreign node's certificates are untouched"
+    );
+    assert_eq!(tenant_epoch(&pool, &victim_tenant).await, victim_epoch);
+    let victim_admissions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM authorization_records WHERE tenant_id = $1")
+            .bind(&victim_tenant)
+            .fetch_one(&pool)
+            .await
+            .expect("count victim admissions");
+    assert_eq!(
+        victim_admissions, 0,
+        "a foreign attempt leaves no trace in the victim's tenant"
+    );
+    server.crash();
+}
+
+#[tokio::test]
+async fn the_revocation_reason_bounds_are_a_wire_contract_and_refuse_before_any_effect() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000004c1".to_string();
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    // ⚠️ The documented wire change: blankness was already refused; the byte
+    // ceiling and the control-character rule are new, and they are the same
+    // contract site authority and `.8`'s revocation publish.
+    for (label, reason) in [
+        ("blank", "   ".to_owned()),
+        ("a control character", "compromised\nnode".to_owned()),
+        ("one byte over the ceiling", "x".repeat(1025)),
+    ] {
+        let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM administrative_effects")
+            .fetch_one(&pool)
+            .await
+            .expect("count effects");
+        let (status, receipt, body) = revoke_node_request(
+            &client,
+            &server.base_url(),
+            &alice,
+            &tenant,
+            &node_id,
+            &reason,
+        )
+        .await;
+        assert_eq!(status, 400, "{label} is refused: {body}");
+        let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM administrative_effects")
+            .fetch_one(&pool)
+            .await
+            .expect("count effects");
+        assert_eq!(
+            after, before,
+            "{label} never became an operation, so it records no effect"
+        );
+        // The admission still commits: an admitted caller who sent something
+        // malformed is a fact worth keeping.
+        assert!(
+            node_effect(&pool, &tenant, receipt).await.is_none(),
+            "{label}: the admission exists and carries no effect"
+        );
+        assert!(active_certificates(&pool, &node_id).await >= 1);
+    }
+
+    // Exactly at the ceiling succeeds, so the bound is checked at its edge.
+    let (status, _, body) = revoke_node_request(
+        &client,
+        &server.base_url(),
+        &alice,
+        &tenant,
+        &node_id,
+        &"x".repeat(1024),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a reason exactly at the ceiling is usable: {body}"
+    );
+    server.crash();
+}
+
+#[tokio::test]
+async fn authority_that_ends_while_a_node_revocation_waits_refuses_it() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000004d1".to_string();
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let tenant_typed: reasonbraid_core::TenantId = tenant.parse().unwrap();
+    let epoch_before = tenant_epoch(&pool, &tenant).await;
+
+    // ⚠️ SHARED, and that is what makes this control discriminating: the
+    // superseded admission took the shared guard too, so an EXCLUSIVE holder
+    // would fence the old shape as well and prove nothing. This repair's
+    // exclusive acquisition must wait behind a shared holder; the old shape's
+    // shared admission walked straight through one.
+    let holder = hold_tenant_guard(&pool, tenant_typed, GuardMode::Shared).await;
+    let (base2, client2, admin, tenant2, node2) = (
+        server.base_url(),
+        client.clone(),
+        alice.clone(),
+        tenant.clone(),
+        node_id.clone(),
+    );
+    let request = tokio::spawn(async move {
+        revoke_node_request(&client2, &base2, &admin, &tenant2, &node2, "queued").await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(!request.is_finished(), "the revocation is waiting");
+    assert!(active_certificates(&pool, &node_id).await >= 1);
+
+    // End the caller's OWN administration underneath the blocked request. The
+    // decision time is sampled after the guard wait, so this must be seen.
+    sqlx::query(
+        "UPDATE authority_grants SET status = 'revoked' \
+         WHERE tenant_id = $1 AND subject_id = $2",
+    )
+    .bind(&tenant)
+    .bind(&alice)
+    .execute(&pool)
+    .await
+    .expect("end the caller's authority");
+    holder.release().await;
+
+    let (status, receipt, body) = tokio::time::timeout(std::time::Duration::from_secs(10), request)
+        .await
+        .expect("the revocation completes")
+        .expect("the request task joins");
+    assert_eq!(
+        status, 403,
+        "authority that ended during the wait is gone: {body}"
+    );
+    assert!(
+        active_certificates(&pool, &node_id).await >= 1,
+        "a denied revocation revokes no certificate"
+    );
+    // The raw UPDATE above ends the grant WITHOUT the application's epoch bump,
+    // so any advance here could only have come from the blocked request.
+    assert_eq!(tenant_epoch(&pool, &tenant).await, epoch_before);
+    assert!(
+        node_effect(&pool, &tenant, receipt).await.is_none(),
+        "a denial records no effect"
+    );
+    server.crash();
+}

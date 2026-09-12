@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-12 — Three leaves, three fixtures, and the third one is the reason to keep asking
+
+- `.9` took the exclusive guard and a SHARED-holder fixture discriminated it. `.10.1` took the shared guard and NO holder discriminated it, so atomicity carried the falsification. `.10.2` took the exclusive guard again — and the shared-holder fixture works again, for the same reason it did at `.9`.
+- ⭐ The thing worth writing down is that the right fixture is a function of the TRANSITION, not of the leaf, the family, or the mode the repair ends in. What decides it is: did the operation's lock mode change, and in which direction? Moving shared → exclusive makes a shared holder discriminating. Staying shared → shared makes every holder useless. The mode the repair ends in tells you nothing on its own; `.9` and `.10.2` both end exclusive and got there from the same shared admission, which is why they share a fixture — and `.10.1` ends shared and shares nothing with either.
+- The failure it caught reads exactly as the defect: `the revocation is waiting` — the assertion that the request has not finished — failing, because under the superseded shape the request had already completed while another operation held the tenant's guard. The admission took the shared mode, which does not exclude shared, and the mutation took no guard at all.
+- I wrote this note rather than a third knowledge record because the durable statement is already promoted: `proving-a-race-is-closed.md` gained the mode-derivation questions and the no-fixture-discriminates case one commit ago. This is its third confirming instance, and a lesson that keeps being confirmed does not need to be re-promoted — it needs the leaf to say it was applied, which `.10.2` does.
+
 ## 2026-09-12 — The previous leaf's answer was the wrong default for this one
 
 - Two leaves ago I derived, carefully, that breaker administration needs the tenant's EXCLUSIVE guard, and wrote down why. One leaf later the obvious move was to reach for the same mode again — three administrative families in a row, one shape. Re-deriving instead produced the opposite answer: token issuance takes the SHARED guard.

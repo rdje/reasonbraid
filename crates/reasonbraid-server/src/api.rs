@@ -1523,61 +1523,70 @@ pub struct RevokeNodeResponse {
     pub revoked_at: String,
 }
 
+/// Revoke a node's active workload certificates.
+///
+/// Since `SIGNOFF-REPAIR.3.3.4.10.2` the admission, the tenant-bound node
+/// selection, the certificate revocation, the epoch bump and the final effect
+/// record share ONE transaction under the tenant's EXCLUSIVE authority guard.
+/// Before this the handler admitted in its own transaction, ran a tenant-bound
+/// existence probe as a SEPARATE pool query, and then mutated in a third
+/// transaction whose UPDATE matched on `node_id` alone — so the check and the
+/// act read two different snapshots and neither was ordered against an authority
+/// change.
+///
+/// The mode is exclusive because this bumps the tenant's revocation epoch: it is
+/// a revocation in the sense the guard contract means, and the exclusive mode is
+/// what fences every admission that has not already selected its evidence.
+///
+/// Every answer carries the `x-reasonbraid-authorization` receipt.
 async fn revoke_node(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(req): Json<RevokeNodeRequest>,
-) -> Result<Json<RevokeNodeResponse>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    authorize_tenant_admin(&state.pool, &principal, req.tenant_id).await?;
-    if req.reason.trim().is_empty() {
-        return Err(ControlApiError::invalid_command(
-            "the revocation reason is required (a revocation without a reason is a silent skip)",
-        ));
-    }
-
-    let exists: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM nodes WHERE node_id = $1 AND tenant_id = $2)",
+    let revocation = authority::revoke_node_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.reason,
     )
-    .bind(&req.node_id)
-    .bind(req.tenant_id.to_string())
-    .fetch_optional(&state.pool)
     .await?;
-    if !exists.unwrap_or(false) {
-        return Err(ControlApiError::not_found(format!(
-            "no enrolled node `{}` in this tenant",
-            req.node_id
-        )));
-    }
-
-    let revoked_at = Utc::now();
-    // The cert revocation + the epoch bump commit together (`.1.5.2`, ADR-008):
-    // a node-side cached decision is invalidated the moment the revocation is
-    // durable — the handshake ladder refuses the certs, the epoch refuses the
-    // cache, and neither can observe a window where one landed without the other.
-    let mut tx = state.pool.begin().await?;
-    let result = sqlx::query(
-        "UPDATE node_certificates SET revoked_at = $2 \
-         WHERE node_id = $1 AND revoked_at IS NULL",
-    )
-    .bind(&req.node_id)
-    .bind(revoked_at)
-    .execute(&mut *tx)
-    .await?;
-    if result.rows_affected() == 0 {
-        return Err(ControlApiError::invalid_transition(format!(
-            "node `{}` has no active certificate to revoke",
-            req.node_id
-        )));
-    }
-    authority::bump_revocation_epoch(&mut tx, &req.tenant_id.to_string()).await?;
-    tx.commit().await?;
-
-    Ok(Json(RevokeNodeResponse {
-        node_id: req.node_id,
-        revoked_certificates: result.rows_affected() as i64,
-        revoked_at: revoked_at.to_rfc3339(),
-    }))
+    let receipt = revocation.record_id;
+    let response = match revocation.result {
+        authority::NodeRevokeResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::NodeRevokeResult::InvalidReason(detail) => {
+            ControlApiError::invalid_command(format!("the revocation reason is required: {detail}"))
+                .into_response()
+        }
+        // Missing and foreign are ONE answer, so a caller learns nothing about
+        // another tenant's nodes (`SIGNOFF-REPAIR.3.1`).
+        authority::NodeRevokeResult::NotFound => {
+            ControlApiError::not_found(format!("no enrolled node `{}` in this tenant", req.node_id))
+                .into_response()
+        }
+        // One 409 for both idle states, unchanged. Which one it was is in the
+        // effect record, not on the wire.
+        authority::NodeRevokeResult::AlreadyRevoked
+        | authority::NodeRevokeResult::NoCertificate => ControlApiError::invalid_transition(
+            format!("node `{}` has no active certificate to revoke", req.node_id),
+        )
+        .into_response(),
+        authority::NodeRevokeResult::Revoked { certificates } => Json(RevokeNodeResponse {
+            node_id: req.node_id.clone(),
+            revoked_certificates: certificates,
+            // Database time from inside the transaction, so the response, the
+            // certificate rows and the effect record report the same instant.
+            revoked_at: revocation.effected_at.to_rfc3339(),
+        })
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
 }
 
 // ── The federation trust agreements (PHASE-8.1.2; ADR-026) ─────────────────────

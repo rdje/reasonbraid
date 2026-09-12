@@ -322,299 +322,41 @@
 - Make three opaque refusal assertions report the value they received; the reproduction then named SQLSTATE 42501 immediately. The new control is falsified against the unchanged production query, restores the shared grant before asserting, and proves its own precondition held.
 - The reproduced two-suite sequence and the affected family of six suites (30 tests) pass with the cluster stopped and removed. The full checkpoint has NOT passed: four suites, the demonstration and gates five to eight remain unrun.
 
-## 2026-09-11 — Bind R2 responses to owned input bytes (`SIGNOFF-REPAIR.7.3.3.3.2`)
-
-- Replace the R2 handler's ambient temporary-directory span with one bound call: the acquired bytes become a private owned input, the worker reads it, and the input is released only when no reader can still hold it. No `std::env::temp_dir()` use remains in the R2 path, including the adjacent spawner fixture.
-- Refuse a response whose `parent_digest` is not the digest of the bytes this request supplied, with the named `ExtractionError::SourceMismatch` and the wire kind `extraction_source_mismatch`, before any snapshot, derivation or receipt is written. The enum stays exhaustively matched, so the handler could not compile without mapping it.
-- Seven integration controls pass, including the mismatch refusal naming both digests, a preserved `feed_unreadable` refusal, a worker failure keeping its classification, and eight concurrent callers each receiving a receipt for their own document. 90 server library tests, 16 completion controls, 12 adjacent extractor tests, strict lint and format pass; the live adjacent `profiles` suite passes 31 tests.
-- State one gap with its census and give it an owner: no live test drives a SUCCESSFUL R2 acquisition through to a snapshot and derivation, because the live R2 test refuses at the loopback destination gate. `.7.3.3.4` owns closing that join with a policy-allowed local origin.
-
-## 2026-09-11 — Own the extraction input exclusively (`SIGNOFF-REPAIR.7.3.3.3.1`)
-
-- Create one private 0600 extraction input per request under a runtime-discovered repository root, with checked owned same-volume parents, bounded exclusive candidate allocation and no temporary-directory or home fallback. An occupied candidate is skipped whole — never opened, truncated or adopted.
-- Gate removal on both a finished reader (`WorkerCompletion::reader_finished`, added beside `is_consumed`) and an unchanged (device, inode, one link) identity; retain anything else with its repository-relative path named. The store removes one file it created, or nothing.
-- Expose the written bytes' digest in the worker's own `sha256:<hex>` form so a response can be bound to its source. Eleven controls pass, including 32 simultaneous creators holding 32 distinct documents and the real worker describing an owned input by its own digest.
-- One control was itself racy on ambient worker selection. A widening probe and the failed run's own retained input identify it; both controls now serialize selection and 40 repeated runs pass. `api.rs` is unchanged and still carries the superseded span until `.7.3.3.3.2`.
-
-## 2026-09-11 — Mechanize the visibility policy and drop the duplicated book frontier (`SIGNOFF-REPAIR.11.4.3.1.2.13`)
-
-- Correct the two places where the superseded private-visibility instruction survived two hand-run censuses: the book's introduction and the governance charter's single-owner clause. The accepted director correction is unchanged; no visibility, remote or release setting moves.
-- Remove the book roadmap page's second copy of the corrective frontier — it named a leaf seven committed leaves after that leaf closed — and route the reader to the per-leaf maintained qualification page instead of re-synchronizing a duplicate.
-- Add two registered checks with self-tests and negative controls: `VISIBILITY-POLICY` reviews every private-visibility sentence against a verbatim allowlist (a new, reworded or stale entry breaches), and `BOOK-FRONTIER` refuses a book page naming a frontier the task tree does not. Both were falsified by reintroducing the exact defects they exist for.
-
-## 2026-09-11 — Own direct extraction worker completion (`SIGNOFF-REPAIR.7.3.3.2.2`)
-
-- Permanent process-fact controls reproduce the defect on the unchanged spawner: `7 passed; 1 failed`, an early request failure returning while its direct worker was still in the process table. The controlled worker closes stdin and waits on an explicit release; an 8 MiB media type forces the real `EPIPE` write path.
-- One bounded stop and reap now owns every exit path (500 ms grace, zero grace after a tripped budget, five-second cap). Every return reports never-started, consumed or explicitly unconfirmed completion, and a failed stop request is recorded rather than read as a termination. Two piped-handle panics became typed refusals and the timeout message dropped a kill it had not confirmed.
-- 16 process/evidence controls, 6 spawner controls (four synthetic injections), 81 server library tests, 12 adjacent extractor tests, strict server lint and workspace format pass; `api.rs` is byte-identical and the error vocabulary is unchanged. Exclusive same-volume inputs and digest-bound cleanup remain `.7.3.3.3`; pipes, descendants and aggregate storage remain `.7.3.4`. No HTTP, database, full-CI or push claim.
-
-## 2026-09-11 — Preserve the requested clean handoff (`SIGNOFF-REPAIR.7.3.3.2.1`)
-
-- Record the direct-worker completion diagnostic plan and pending implementation child before any new probe or production edit. PNT is paused at the director's request; resume .7.3.3.2.2 from durable task/live pointers.
-- Preserve all prior evidence and the private unsent OpenAI Support report. Source/book behavior and qualification categories remain unchanged; documentation checks and the native handoff census are the relevant gates.
-
-## 2026-09-10 — Diagnose production extraction input interference (`SIGNOFF-REPAIR.7.3.3.1`)
-
-- Exact production acquisition span and unchanged worker reproduce six shared paths and eight wrong-owner results among 32 callers; two own-input controls pass. Preserve all 24 files, original identities and failed diagnostic attempts. Production code is unchanged; HTTP/database effects remain untested.
-- Own staged direct-worker completion and exclusive input/digest integration before the full checkpoint. Keep broader pipe, descendant and retention bounds explicit; annotate the historical Phase 4 claim and book.
-- Prepare the director-requested private OpenAI Support report with available correlation metadata and clearly missing fields; preserve a redacted incident record without publishing session identifiers or submitting the report.
-
-## 2026-09-10 — Own extraction fixture files exclusively (`SIGNOFF-REPAIR.11.4.3.1.2.12`)
-
-- Preserve the failed PDF checkpoint and reproduce wrong-owner data with both the unchanged extractor executable and the exact original helper/native clock.
-- Replace timestamp/truncating unit and stdio fixtures with exclusively created, repository-local inputs retained through assertions. Add concurrent ownership, existing-file/link refusal and panic/replacement controls without changing parser behavior or dependencies.
-- All twelve selected tests, strict extractor lint/format and three independent locality cases pass; original assertions, parser and 339 other non-Markdown sources are unchanged. Keep historical attribution limits and concrete production/fixture follow-ups. Full checkpoint/public push remain pending.
-
-## 2026-09-10 — Explicitly release state-writer locks (`SIGNOFF-REPAIR.11.4.3.1.2.11.2`)
-
-- Install release ownership immediately after flock acquisition and explicitly unlock before File close, including errors/unwind. Preserve nonblocking exclusion, snapshots and synchronization; correct two successful test probes with the same lifetime.
-- A permanent five-path inherited-descriptor regression fails on unchanged production and passes after correction. All 32 selected CLI tests, the final twelve-writer rerun and six actual-API raw-fork scenarios pass; strict CLI lint and format pass.
-- Preserve all original assertions and 339 other non-Markdown sources. Abrupt owner death with surviving inherited references remains owned by broader restart qualification; full checkpoint/public push remain next.
-
-## 2026-09-10 — Reproduce inherited state-lock retention (`SIGNOFF-REPAIR.11.4.3.1.2.11.1`)
-
-- Preserve source-8d1504d's failed workspace gate: eight other gates pass, PostgreSQL/demo unstarted. Original sources and executable copies match; unchanged concurrent/isolated/serial reruns pass.
-- A controlled actual-CLI probe proves close-only retention across success, HTTP error and cancellation when a forked child retains the descriptor. Three no-child controls release immediately; three child exits release retained locks. Production remains unchanged; .2.11.2 owns the fix and permanent regressions.
-- Independent verification checks all 341 source files and fifty absent process groups. Preserve preliminary observer failure and original evidence. Scope original-cause attribution and inherited-descriptor process-loss limits explicitly.
-
-## 2026-09-10 — Complete explicit fixture-plan coverage (`SIGNOFF-REPAIR.11.4.3.1.2.7.4`)
-
-Migrate the final five fixtures to checked explicit cleanup, preserving each
-original scope and assertion. All 25 original plans are covered; the first
-consumer sequence passes 22 tests and the consecutive affected collection passes
-169 distinct tests. Strict server/MCP/CLI lint, format, book and source/process
-checks pass. Both successful databases are removed and historical failure
-evidence preserved. Production/schema remain unchanged; the full checkpoint
-is next before public push and remote CI.
-
-## 2026-09-10 — Complete six partial fixture plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.3`)
-
-Reproduce each original cleanup failure after real node-work residue. Add only
-its required FK dependencies and adopt checked static plans for cards, quota,
-classification, mcp_listen, federation and quarantine. Preserve original table
-order, feature assertions and deployment CA. All six repaired producer/consumer
-pairs and the consecutive consumer run pass; preserve six failed baselines and
-remove seven successful databases. Five remaining explicit plans retain separate
-coverage ownership before the full checkpoint. Strict server lint, format, book
-and source/process verification pass; production/schema stay unchanged.
-
-## 2026-09-10 — Remove the retention fixture's calendar dependency (`SIGNOFF-REPAIR.11.4.3.1.2.9`)
-
-Derive expiry instants from recorded snapshot creation time. Qualify strict
-one-day/thirty-day boundaries, exact tombstone counts, repeated no-change behavior,
-audit-class preservation and unchanged retention age on replay. The focused
-retention test and all 31 profiles tests pass; preserve the original failures and
-historical caller evidence. Strict server lint, format, book and independent
-source/process verification pass. Production retention policies remain unchanged.
-
-## 2026-09-10 — Match CLI removal delegation to tenant administration (`SIGNOFF-REPAIR.11.4.3.1.2.10`)
-
-Correct participant removal's delegated scope while retaining single-thread scope
-for ordinary existing-thread commands. Real rb controls reproduce the old failure
-and reject a deliberately overbroad mutation before exact restoration. All five
-CLI, six adjacent server invitation and eleven library tests pass, as do strict
-CLI lint, format, book and source/process checks. Preserve expected failures and
-historical caller evidence; retention and remaining fixture repairs stay pending.
-
-## 2026-09-10 — Restore authorized participant removal (`SIGNOFF-REPAIR.11.4.3.1.2.8`)
-
-Correct the handler’s authorization target to Tenant for its existing TenantAdmin
-action. Keep tenant-wide authority and locked tenant/thread binding. New real HTTP
-controls reproduce the old audit target, then verify allowed removal, exact
-no-effect authority/domain refusals and preserved committed-denial replay. All
-six invitation tests plus 22 authority and 33 command-API tests pass. Preserve
-historical evidence and own the CLI delegation-scope companion under .2.10. Ten
-evaluator controls, strict server lint, format, book and independent source/process
-checks pass; three successful databases are removed and failure evidence retained.
-
-
-## 2026-09-10 — Migrate fourteen checked cleanup callers (`SIGNOFF-REPAIR.11.4.3.1.2.7.2`)
-
-Add missing MCP-listener/CLI-breaker dependencies and explicitly declare existing
-resource-cascade children. Preserve original cleanup order, unrelated state and
-feature assertions. Real predecessor→identity/CLI sequences pass; all fourteen
-cleanup callers execute successfully. The affected census records 135 passing
-assertions and two failures, both reproduced with original fixtures: participant
-removal has a tenant-action/thread-target mismatch, and a retention test uses an
-expired calendar assumption. Own their immediate repairs under .2.8/.2.9; retain
-the four failed databases and all results. Strict server/CLI lint, format, book
-and independent scope/process checks pass; production code remains unchanged.
-
-
-## 2026-09-10 — Check complete fixture cleanup plans (`SIGNOFF-REPAIR.11.4.3.1.2.7.1`)
-
-Reproduce MCP-listener, spend-breaker and incarnation residue failures in actual
-producer/consumer suites. Add a shared test-only checker that validates canonical
-table names, supported relations and complete dependency order before deletion,
-including cascade/null/default effects. Preserve typed errors, unrelated rows and
-honest late-error partial effects. All eight guard tests and strict server lint
-pass. Existing fixture callers remain unchanged for the next migration children;
-production code/schema and the failed full-checkpoint status remain unchanged.
-
-## 2026-09-10 — Repair certified-node fixture residue (`SIGNOFF-REPAIR.11.4.3.1.2.6`)
-
-The b0cddfe checkpoint passes nine gates, then fails at identity fixture cleanup
-after thirteen live PostgreSQL suites pass. Reproduce the fresh-versus-node-work
-ordering failure and the exact restrictive certificate FK. Remove certificate
-children before nodes and add a regression that preserves the FK refusal, then
-checks complete hierarchy cleanup. The regression, four fresh identity tests and
-eight node-work plus four identity tests pass; strict server lint, format and book
-pass. Preserve all failed databases/logs. Production behavior is unchanged; MCP
-listener and CLI spend-breaker fixture dependencies have prerequisite owner .2.7.
-Full checkpoint, public push and remote CI remain incomplete.
-
-## 2026-09-10 — Pin the local and CI browser runtime (`SIGNOFF-REPAIR.11.4.3.1.2.5`)
-
-Make test/check and the Rust workflow now use an exact verified Chrome for Testing
-runtime with private local installation, bounded phases and retained failure
-evidence. Four platform archives are qualified; fresh native setup and all sixteen
-browser tests pass. Repair a reproduced shared Python shutdown race: transient
-zombie-group denial requires bounded reaping and confirmed absence. All 67 Python
-controls and final wiring/book/residue checks pass. Preserve the diagnostic failures;
-full checkpoint and public push remain next. README shrinks; production Rust is unchanged.
-
-## 2026-09-10 — Qualify browser phase witnesses (`SIGNOFF-REPAIR.11.4.3.1.2.4`)
-
-Reproduce the full checkpoint's navigation/overlap timing failures with a controlled
-startup delay. Require explicit gated arrivals, retain delayed simultaneous-profile
-proof and record dispatch errors before observer panics. The stronger witness
-exposes detached desktop Chrome updater/crash-report stderr writers; preserve the
-real cleanup refusal and qualify a dedicated testing runtime without changing the
-production worker. Two delayed controls, all sixteen integration controls and strict
-lint pass. Pinning/CI binding is the next owned prerequisite; full CI remains pending.
-Correct the CI guide's missed private-visibility sentence to the public policy.
-
-## 2026-09-09 — Qualify exact history-fixture exceptions (`SIGNOFF-REPAIR.11.4.3.1.2.2`)
-
-Trace both scanner matches to predictable metadata-only test literals. Exclude
-only their immutable commit/file/rule/line fingerprints. Five native controls
-recover each omitted finding and detect identical content in a new commit; the
-actual pinned history scanner passes. Preserve the diagnosed additive-ignore
-probe failure and all results; no file/rule exclusion, Rust change or history rewrite.
-
-## 2026-09-09 — Keep the repository public (`SIGNOFF-REPAIR.11.4.3.1.2.3`)
-
-Apply the director correction that README’s private instruction was wrong: the
-project is public and must remain public. Synchronize ADR/companion/security/risk
-guidance, live records and the book while retaining historical checkpoint evidence.
-Public Git is not a confidential embargo channel. No visibility or production
-change. Read-only remote, guidance, rendered-book and scope checks pass; README
-shrinks to 2,033 bytes / 52 lines. Resume history repair and full checkpoint before push.
-
-## 2026-09-09 — Contain the publication-precondition conflict (`SIGNOFF-REPAIR.11.4.3.1.2.1`)
-
-Independently confirm the remote is public despite the private-repository policy.
-Block publication and record the director decision plus exact history-scan repair
-owners. Preserve passed format/dependency gates, two redacted scanner findings and
-the intentionally interrupted Clippy result; all process cleanup is consumed.
-Correct current-state documentation and retain the full checkpoint as incomplete.
-No visibility change, push, scanner exemption or production change is made.
-
-## 2026-09-09 — Retire verified obsolete compiler sessions (`SIGNOFF-REPAIR.11.4.3.1.6`)
-
-Qualify the pinned macOS compiler locks with native protected-session and
-regeneration controls. Remove 645 frozen, obsolete sessions / 1,984 files /
-5,116,558,334 logical bytes under verified exclusive locks; preserve newest,
-young, partial, hard-linked and evidence-bearing data. Exact residue, unchanged
-retained source/evidence, affected server build and book checks pass. All results
-are consumed; preserve the failed phase assumption and sampler timeout. Production
-bytes are unchanged; the full local/remote checkpoint remains next.
-
-## 2026-09-09 — Qualify browser storage and origin ownership (`SIGNOFF-REPAIR.11.4.3.1.5.3`)
-
-Verify real rendering after moving the runtime root and refusal of linked storage.
-Gate concurrent navigation explicitly instead of relying on a short timing window.
-A native successor-listener control falsifies the old port-reachability assertion;
-require the original listener's close receipt and consumed serving task. Fifteen
-integration controls, strict lint and native/source/book checks pass. Production
-bytes are unchanged; failed evidence and broader qualification owners remain open.
-
-## 2026-09-09 — Own production browser lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.2`)
-
-Reproduce a renderer outliving a successful worker. Give each invocation private
-repository-derived profile/cache/diagnostic storage and explicit process/task
-ownership through cancellable startup, rendering and bounded shutdown. Preserve
-named render refusals; return browser_cleanup_unconfirmed when cleanup fails.
-Five unit/thirteen integration controls, strict lint and native/source/book checks
-pass. Keep failed-run evidence and explicit parent/container/retention follow-ups;
-R3-enabled deployment now requires a repository working directory.
-
-## 2026-09-09 — Bound browser verification lifetimes (`SIGNOFF-REPAIR.11.4.3.1.5.1`)
-
-Give browser tests private local fixtures, bounded I/O/output/process groups and
-consumed origin shutdown. Budget admission runs without a browser; rendering
-keeps explicit qualification boundaries. Eight controls and strict lint pass.
-A real cleanup refusal exposed transient Darwin zombie-group EPERM behavior;
-native reproduction and bounded transient/persistent observation controls preserve
-strict absence checks. Keep the original failed fixture. The worker still requires
-supervisor assistance after rendering; production lifetime repair remains next.
-
-## 2026-09-09 — Isolate publisher test directory ownership (`SIGNOFF-REPAIR.11.4.3.1.4`)
-
-Reproduce a second test process deleting a still-live owner's fixture. Replace
-counter-based removal with exclusive private creation, checked directory identity
-and explicit cleanup after gix handle closure; retain incomplete evidence. Five
-publisher/ownership controls, independent helper owners, two concurrent real test
-executables, strict focused lint and book checks pass. Historical residue is
-unchanged. The slow compiler's native-loader sample is retained under .11.2;
-all results completed naturally and were consumed. Production behavior is unchanged.
-
-## 2026-09-09 — Wire complete CI commands through local stores (`SIGNOFF-REPAIR.11.4.3.1.3.3`)
-
-All six workflow command jobs now use the local launcher. Require workers/Chrome,
-all Python controls, the full owned PG demo and a pinned local book build; use the
-verified scanner drivers and retain only their report/log allowlists. Actual
-synthetic Gitleaks redaction, YAML/shell checks, five omission controls, fifty
-Python tests and the rendered book pass. Full local/remote CI remains pending
-after publisher/browser/cleanup prerequisites; qualification categories unchanged.
-
-## 2026-09-09 — Verify pinned CI scanners before execution (`SIGNOFF-REPAIR.11.4.3.1.3.2`)
-
-Add exact archive/version pins, bounded verified extraction and supervised
-scanner setup/execution in unique local directories. Preserve redacted reports,
-nonzero results and failed evidence; retire only consumed run executables/archives.
-Thirteen controls, final configuration checks, all eight archive identities/layouts
-and native version-only probes pass. The real Gitleaks probe caught an incorrect
-expected version format; its root cause and failure/retry remain recorded.
-Workflow wiring and actual full security gates remain pending.
-
-## 2026-09-09 — Establish CI stores before installation (`SIGNOFF-REPAIR.11.4.3.1.3.1`)
-
-Add a repository-local CI launcher with optional exact pinned compiler setup.
-Clear documented ambient gate overrides; reuse owned process supervision for
-installer failure, timeout and terminal cancellation before command dispatch.
-Eight new and eighteen adjacent controls, final syntax/source identity and book
-checks pass; results consumed, fixtures absent. Installer controls use real
-processes with instrumented tools. Scanner setup and workflow wiring remain next;
-no actual compiler download or remote-CI pass is claimed.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twice; each
-rotation names the commit holding the ledger immediately before it, so the chain
-walks back without guessing.
+the rotation contract in `README_POLICY.md`. This file has rotated three times;
+each rotation names the commit holding the ledger immediately before it, so the
+chain walks back without guessing.
 
-Retrieve the ledger immediately before the SECOND rotation (2026-09-12) from the
+Retrieve the ledger immediately before the THIRD rotation (2026-09-12) from the
 repository root:
+
+```bash
+git show 0cda20cfa12c62269d14e5ea78412d1548deab68:CHANGELOG.md
+```
+
+That snapshot is 94,066 bytes and contains 68 dated entries — the 38 retained
+above plus the 30 rotated out of it, the newest of which is
+`2026-09-11 — Bind R2 responses to owned input bytes`. Its Git blob is
+`75a374a51aa21a1d7d226dc63f6349bd0b9b477f`.
+
+That snapshot in turn carries the SECOND rotation's notice, which names the
+ledger before it:
 
 ```bash
 git show f75106915ff1f1171b332451257388905b05d815:CHANGELOG.md
 ```
 
-That snapshot is 93,956 bytes and contains 91 dated entries — the 61 retained
-above plus the 30 rotated out of it, the newest of which is
-`2026-09-09 — Census the scheduled CI checkpoint`. Its Git blob is
-`b9aacfc467e1729cae1a5e76fe1d0adee6398c1d`.
-
-That snapshot in turn carries the FIRST rotation's notice, which names the
-pre-rotation ledger before it:
+That snapshot is 93,956 bytes and contains 91 dated entries; its Git blob is
+`b9aacfc467e1729cae1a5e76fe1d0adee6398c1d`. It carries the FIRST rotation's
+notice in turn:
 
 ```bash
 git show 25ed7d184203e2d8701800558b785b30c75bb4d0:CHANGELOG.md
 ```
 
-That earlier snapshot contains 130 dated entries. Its Git blob is
+That earliest snapshot contains 130 dated entries. Its Git blob is
 `0bc51d581f9158ebafcef94cfb6717464722c6cb`; exact byte/line counts,
 SHA-256 identities and the first transition's evidence are in
 `docs/decisions/2026-09-09_changelog-rotation.md`. Use

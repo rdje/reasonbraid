@@ -150,7 +150,9 @@ pub async fn respond(
     // The idempotency key is DETERMINISTIC over (thread, principal, body) —
     // the same call replays the original result (the tool is a replay
     // surface exactly like the HTTP envelope).
-    let hash = crate::api::request_hash(crate::threads::OP_CONTRIBUTE, principal, &body);
+    // `None`: the MCP tool sets no delegate (`delegate_subject: None` below), so
+    // it hashes exactly as it always has (`SIGNOFF-REPAIR.3.4.2`).
+    let hash = crate::api::request_hash(crate::threads::OP_CONTRIBUTE, principal, &body, None);
     let key = format!("mcp_respond_{}_{hash}", thread);
     let authz = crate::authority::CommandAuthz {
         delegation_scope: None,

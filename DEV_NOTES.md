@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The order of two steps decided how bad a missing hash input was
+
+- `request_hash` not covering `authority_context` reads like an audit nit: two requests that differ only in who they claim to act for share a key, so the second returns the first's answer. Mildly wrong.
+- ⭐ What decides the severity is that the idempotency claim is step 1 of the command transaction and authorization is step 2. A replay therefore returns **before authorization runs at all**. So the second request is not "authorized and then given a cached answer" — it is never evaluated. I measured it with a revoked subject: `200 replayed=true`, `ok: true`, and zero authorization records for the attempt.
+- ⚠️ The honest framing took a second pass. My first instinct was "unauthorized request succeeds", which overstates it: no new effect is applied, because a replay returns a stored result. The accurate statement is narrower and still serious — an unauthorized request is answered with a success, and the audit has no record it was made. I wrote both halves into the leaf, because the scarier half alone would be wrong and the milder half alone would be complacent.
+- The design question was the stored-value one: a hash is written into rows that already exist, so changing its inputs invalidates history. Appending the context ONLY when there is one makes every undelegated key hash byte-identically — which is nearly all of them — and leaves only historical delegated keys conflicting, in the direction that refuses rather than answers.
+- ⭐ The control asserts both directions in one test: the changed context must conflict, and a genuine replay must still replay. Without the second assertion, "delete the idempotency store" would pass.
+
 ## 2026-09-13 — I was one commit away from breaking a shipped feature to fix a non-defect
 
 - `.3.4`'s census measured, correctly, that `evaluate()` never reads `grant.delegable`. I wrote "🔴 a defect" beside it, split the leaf around repairing it, and published that in the tree, the changelog and the status line. The next slice was going to add the enforcement.

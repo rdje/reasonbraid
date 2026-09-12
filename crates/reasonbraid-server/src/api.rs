@@ -38,9 +38,9 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use reasonbraid_core::{
-    actor_handle_for_subject, AgentRoleId, BoundaryStatus, BudgetDimensions, BudgetError,
-    CommandEnvelope, EnrollmentAuthorityBoundary, GrantAction, GrantStatus, GrantSubject,
-    HumanPrincipalId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
+    actor_handle_for_subject, AgentRoleId, AuthorityContext, BoundaryStatus, BudgetDimensions,
+    BudgetError, CommandEnvelope, EnrollmentAuthorityBoundary, GrantAction, GrantStatus,
+    GrantSubject, HumanPrincipalId, ResourceTarget, RiskClass, TargetSelector, TenantId, ThreadId,
     PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
@@ -387,13 +387,42 @@ fn delegation_from_envelope(
 }
 
 /// The canonical idempotency request hash: operation + presented principal +
-/// canonical (struct-field-order) body JSON, SHA-256 hex.
-pub(crate) fn request_hash(operation: &str, principal: &GrantSubject, body: &Value) -> String {
-    let input = format!(
+/// canonical (struct-field-order) body JSON, and the authority context when the
+/// request carries one. SHA-256 hex.
+///
+/// ⛔ The authority context is part of the hash because the idempotency claim is
+/// made BEFORE authorization, and a replay returns the stored result without
+/// evaluating anything (`SIGNOFF-REPAIR.3.4.2`). Measured on the superseded
+/// shape: a first request delegating to a live role answered `200`, and a second
+/// with the same key and body delegating to a REVOKED role answered
+/// `200 replayed=true` and wrote **zero** authorization records — an
+/// unauthorized delegation told it had succeeded, with no record that it was
+/// ever attempted. `authority_context` is a sibling of `body` in the envelope,
+/// so hashing the body alone could not see it.
+///
+/// ⚠️ A request with NO authority context hashes EXACTLY as before — the
+/// delegated suffix is appended only when there is one. That is deliberate: the
+/// hash is a STORED value, and every historical undelegated key must keep
+/// replaying. A historical DELEGATED key now conflicts instead of replaying,
+/// which is the safe direction (it refuses rather than returning someone else's
+/// result) and is documented as the wire change it is.
+pub(crate) fn request_hash(
+    operation: &str,
+    principal: &GrantSubject,
+    body: &Value,
+    authority: Option<&AuthorityContext>,
+) -> String {
+    let mut input = format!(
         "{operation}\n{}\n{}",
         principal.describe(),
         serde_json::to_string(body).expect("canonical body serializes")
     );
+    if let Some(context) = authority {
+        input.push('\n');
+        input.push_str(
+            &serde_json::to_string(context).expect("the typed authority context serializes"),
+        );
+    }
     let digest = Sha256::digest(input.as_bytes());
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -3820,7 +3849,7 @@ async fn create_thread_auto(
     });
     let mut body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-    let hash = request_hash(threads::OP_CREATE, &principal, &body_value);
+    let hash = request_hash(threads::OP_CREATE, &principal, &body_value, None);
     // `.5.2` (ADR-031): the explicit profile always wins; the routing class
     // resolves through the rule table ONLY when no profile is named (the
     // human authority outranks the rule).
@@ -6118,7 +6147,7 @@ pub(crate) async fn apply_node_result_in_tx(
     } else {
         json!({ "tenant_id": tenant_id.to_string(), "content": content })
     };
-    let hash = request_hash(operation, &principal, &body);
+    let hash = request_hash(operation, &principal, &body, None);
     let authz = CommandAuthz {
         delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
@@ -6314,7 +6343,12 @@ async fn create_thread(
     let workflow_steps = resolved.steps;
     body.workflow_profile = Some(resolved.profile_id);
     let tenant_id = body.tenant_id;
-    let hash = request_hash(threads::OP_CREATE, &principal, &envelope.body);
+    let hash = request_hash(
+        threads::OP_CREATE,
+        &principal,
+        &envelope.body,
+        envelope.authority_context.as_ref(),
+    );
     let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
         delegation_scope,
@@ -6371,7 +6405,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadInvite,
-                request_hash(threads::OP_INVITE, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_INVITE,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_CONTRIBUTE => {
@@ -6381,7 +6420,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadContribute,
-                request_hash(threads::OP_CONTRIBUTE, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_CONTRIBUTE,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_ADVANCE_ROUND => {
@@ -6391,7 +6435,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadAdvanceRound,
-                request_hash(threads::OP_ADVANCE_ROUND, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_ADVANCE_ROUND,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_CHALLENGE => {
@@ -6401,7 +6450,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadContribute,
-                request_hash(threads::OP_CHALLENGE, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_CHALLENGE,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_REVISE => {
@@ -6411,7 +6465,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadContribute,
-                request_hash(threads::OP_REVISE, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_REVISE,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_CLOSE => {
@@ -6421,7 +6480,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadClose,
-                request_hash(threads::OP_CLOSE, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_CLOSE,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_CANCEL => {
@@ -6431,7 +6495,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadCancel,
-                request_hash(threads::OP_CANCEL, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_CANCEL,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_ACCEPT_INVITATION => {
@@ -6441,7 +6510,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadInvitationRespond,
-                request_hash(threads::OP_ACCEPT_INVITATION, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_ACCEPT_INVITATION,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_DECLINE_INVITATION => {
@@ -6452,7 +6526,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadInvitationRespond,
-                request_hash(threads::OP_DECLINE_INVITATION, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_DECLINE_INVITATION,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_JOIN => {
@@ -6462,7 +6541,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::ThreadContribute,
-                request_hash(threads::OP_JOIN, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_JOIN,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         threads::OP_REMOVE_PARTICIPANT => {
@@ -6473,7 +6557,12 @@ async fn thread_command(
             (
                 tenant,
                 GrantAction::TenantAdmin,
-                request_hash(threads::OP_REMOVE_PARTICIPANT, &principal, &envelope.body),
+                request_hash(
+                    threads::OP_REMOVE_PARTICIPANT,
+                    &principal,
+                    &envelope.body,
+                    envelope.authority_context.as_ref(),
+                ),
             )
         }
         other => {

@@ -6,6 +6,22 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A revoked delegation was answered with a success, and invisibly; reproduced
+and closed under `.3.4.2` (REPAIR-0130).** `request_hash` covered the operation,
+the actor and `envelope.body`, while `authority_context` is a SIBLING of `body`.
+Because the idempotency claim is made BEFORE authorization, a second request with
+the same key and body but a **revoked** subject answered **`200 replayed=true`,
+`ok: true`** and wrote **zero authorization records**. ⛔ No new effect is applied
+by a replay, so this was not an escalation of what was written — it was an
+unauthorized request told it had succeeded, with no audit trace. The hash now
+binds the authority context and such a request is `409 idempotency_mismatch`.
+⚠️ A request with NO authority context hashes byte-identically to before, so every
+historical undelegated key keeps replaying; a historical delegated key now
+conflicts rather than replaying, which is the safe direction and is documented as
+the wire change it is. **36 passed / 0 failed**; the affected set passes **6
+suites / 62 tests**. FALSIFIED **35 passed / 1 failed** against the exact
+pre-`.3.4.2` sources.
+
 `SIGNOFF-REPAIR.3.4` is censused and split into five children (REPAIR-0128),
 with two defects measured from source and not yet repaired. ⛔ **CORRECTED at `.3.4.1` (REPAIR-0129):** the census recorded `evaluate()`
 never reading `grant.delegable` as a defect. The measurement is right and the

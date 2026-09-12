@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A revoked delegation was told it had succeeded (`SIGNOFF-REPAIR.3.4.2`)
+
+- 🔴 Measured on the unchanged path: a first request delegating to a LIVE role answered `200`; a second with the **same key and body** delegating to a **REVOKED** role answered `200 replayed=true` with `ok: true` — and wrote **zero** authorization records. A caller presented authority that had been revoked, was told it had succeeded, and left no trace of the attempt.
+- Root cause: `request_hash` covered the operation, the actor and `envelope.body`, and `authority_context` is a SIBLING of `body`, not part of it. The idempotency claim is step 1 of the command transaction and authorization is step 2, so a matching hash returns the stored result — success or stored refusal — without evaluating the second request's authority at all.
+- ⛔ **No new effect is applied by such a replay**, so this was never an escalation of what was written. What it was: an unauthorized request answered with a success, invisible to the audit. Both halves are stated rather than the scarier one alone.
+- The hash now takes the authority context and appends it when present. It is `409 idempotency_mismatch` — the same key describing a different request.
+- ⚠️ **The migration answer was chosen, not assumed.** The hash is a STORED value, so changing its inputs is a wire change. A request with no authority context hashes **byte-identically** to before, because the suffix is appended only when there is one, so every historical undelegated key keeps replaying — nearly all of them. A historical *delegated* key now conflicts instead of replaying: the safe direction, since it refuses rather than returning a result decided under a different authority.
+- The control asserts both halves in one test: the changed context conflicts, AND a genuine replay — same key, body and subject — still returns the original result marked `replayed`. A binding that worked by breaking replay would fail it.
+- Validation: `bash scripts/run_pg_tests.sh command_api` rc=0 — **36 passed / 0 failed**. The affected set `command_api command_ordering escalation mcp_write atomic_transaction invitations` rc=0 with **6 suites, 62 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
+- FALSIFIED against the exact pre-`.3.4.2` sources: **35 passed / 1 failed**, `left: 200, right: 200`, the body showing `"ok":true,"replayed":true` for the revoked delegation.
+
 ## 2026-09-13 — ⛔ Correction: the `delegable` flag governs chains that do not exist (`SIGNOFF-REPAIR.3.4.1`)
 
 - **The previous commit's census was wrong, and this corrects it.** `.3.4` recorded that `evaluate()` never reads `grant.delegable` and called it a defect — a non-delegable grant backing a delegated request. The measurement was right; the inference was not, and acting on it would have broken a shipped, tested feature.

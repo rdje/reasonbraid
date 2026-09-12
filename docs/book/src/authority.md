@@ -930,6 +930,31 @@ all four, on every delegated request:
 The audit record names the **subject** as the authority source, and the actor as
 the actor; forwarding preserves both.
 
+#### The idempotency key is bound to the authority context
+
+A command's idempotency hash covers the operation, the actor, the request body
+**and the authority context when the request carries one**
+(`SIGNOFF-REPAIR.3.4.2`). It has to, because the idempotency claim is made
+*before* authorization and a replay returns the stored result without evaluating
+anything:
+
+| | Superseded hash | Now |
+| --- | --- | --- |
+| same key and body, delegating to a **revoked** subject | `200 replayed=true`, `ok: true` | `409 idempotency_mismatch` |
+| authorization records written by that second request | **zero** | — |
+| genuine replay: same key, body and subject | the original result | unchanged |
+
+An unauthorized delegation was being told it had succeeded, with nothing in the
+audit showing it was ever attempted. `authority_context` is a sibling of `body`
+in the envelope, so hashing the body alone could not see it.
+
+⚠️ The hash is a **stored** value, so changing its inputs is a wire change. A
+request with no authority context hashes exactly as before — the delegated suffix
+is appended only when there is one — so every historical undelegated key keeps
+replaying. A historical *delegated* key now conflicts instead of replaying, which
+is the safe direction: it refuses rather than returning a result decided under a
+different authority.
+
 #### What `delegable` and `max_delegation_depth` do not do
 
 `AuthorityGrant.delegable` and `EnrollmentAuthorityBoundary.max_delegation_depth`

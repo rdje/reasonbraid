@@ -4007,3 +4007,132 @@ async fn a_non_participant_actor_cannot_borrow_participation_by_delegating() {
         "the refusal names the ACTOR: {refused}"
     );
 }
+
+/// 🔴 A replay may not cross a changed authority context
+/// (`SIGNOFF-REPAIR.3.4.2`).
+///
+/// The idempotency claim is made BEFORE authorization and a replay returns the
+/// stored result without evaluating anything, so a hash that ignores
+/// `authority_context` lets a second request present a DIFFERENT — even revoked
+/// — subject and be told it succeeded. Measured on the superseded shape: the
+/// second request answered `200 replayed=true` and wrote **zero** authorization
+/// records, so an unauthorized delegation attempt was invisible in the audit.
+#[tokio::test]
+async fn a_replay_cannot_cross_a_changed_authority_context() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "hash-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, r1) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "hash-role-1", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role one enrolls: {r1}");
+    let role1 = r1["principal_id"].as_str().unwrap().to_string();
+    let (status, r2) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "hash-role-2", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role two enrolls: {r2}");
+    let role2 = r2["principal_id"].as_str().unwrap().to_string();
+    // Role two's authority is REVOKED, so a delegation naming it must never be
+    // answered with a success.
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(r2["grant_id"].as_str().unwrap())
+        .execute(&pool)
+        .await
+        .expect("revoke role two's grant");
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "key-hash-c1",
+            json!({ "tenant_id": tenant, "subject": "hash", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread = created["thread_id"].as_str().unwrap().to_string();
+    let path = format!("/v1/threads/{thread}/commands");
+    let body = json!({ "tenant_id": tenant, "content": "the delegated contribution" });
+
+    let (status, first) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-hash-1",
+            body.clone(),
+            &role1,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the first delegation succeeds: {first}");
+
+    // THE control: the same key and the same body, a DIFFERENT subject.
+    let (status, second) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-hash-1",
+            body.clone(),
+            &role2,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_ne!(
+        status, 200,
+        "a changed authority context is not a replay of the first request: {second}"
+    );
+    assert_eq!(
+        second["code"],
+        json!("idempotency_mismatch"),
+        "it is the same key describing a different request: {second}"
+    );
+
+    // A GENUINE replay — same key, same body, same subject — still returns the
+    // original result. This is the committed-replay contract the binding must
+    // not break.
+    let (status, replayed) = command(
+        &client,
+        &base,
+        &path,
+        &alice_id,
+        &envelope_with_delegation(
+            "thread.contribute",
+            "key-hash-1",
+            body,
+            &role1,
+            Some(&thread),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the genuine replay still replays: {replayed}");
+    assert_eq!(replayed["replayed"], json!(true), "and says so: {replayed}");
+}

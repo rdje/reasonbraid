@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A hex decoder returns its typed error instead of aborting the node (`SIGNOFF-REPAIR.4.2.7`)
+
+- 🔴 **Reproduced with a driven decode**: `end byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)` — a panic from a function whose signature returns `Result`.
+- ⭐ **The condition is not "non-ASCII", and getting that exact is what made the control honest.** A multi-byte character starting at an even offset always decoded to a clean `Err`. The panic needs an EVEN byte length — which clears the odd-length guard — whose chunk boundary falls INSIDE a character. The control asserts both structural facts about its input before decoding, so it cannot quietly stop testing the case it names.
+- ⭐ **The call site already handled the error the decoder never produced**: `from_hex(&parsed.cert_der).map_err(ChannelError::Malformed)?`. The typed refusal was written one line from the abort. This was never missing error handling — it was a `Result` the body did not honour.
+- 🔴 **The census found the real story, and the grep found it rather than the reasoning.** Seven hand-rolled hex decoders exist; **six** use the panicking byte-index form and **one** is safe — and the safe one is the only one on the untrusted wire path, where someone was worried. Every copy nobody worried about kept the naive form.
+- ⛔ **The server's copy is DELETED, not repaired.** It was `pub` with no caller; making it private turned that into `error: function from_hex is never used` under `-D warnings` — an independent oracle agreeing with the grep. A repaired-but-dead decoder is a path no control can reach, and a dead, well-named public one beside a private correct one is what the next caller reaches for.
+- ⛔ **The four TEST-local copies are measured and deliberately unchanged**, with the reason recorded so a later census does not re-raise them: each decodes hex the server produced in the same test, so a panic there is a test failure rather than a product defect.
+- ⚠️ Trust boundary stated rather than inflated: these strings arrive in the server's rotate response, so reaching this needs a malicious or faulty control plane, not a network attacker. The cost is the whole node process, not one request.
+- Validation: falsified by reverting only the indexing while keeping the length guard — both new controls fail, the third stays green, `24 passed; 2 failed`. **Node 70 tests + rotation/enrollment 55 tests, 0 failed**; clippy `-D warnings` rc=0. Promoted to `docs/knowledge/a-signature-is-a-promise-the-body-must-keep.md` as the second instance of the shape.
+
 ## 2026-09-13 — A fenced session's acknowledgement cannot mark another session's delivery (`SIGNOFF-REPAIR.4.2.4`)
 
 - 🔴 **Reproduced against the live route.** With the lease row held, the unrepaired `ack` completed without ever asking about the lease it was writing under; the session was then fenced, and the ack still marked **3 rows acknowledged** — rows that now belong to whoever holds the lease.

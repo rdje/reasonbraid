@@ -784,12 +784,26 @@ fn to_hex(bytes: &[u8]) -> String {
 }
 
 fn from_hex(s: &str) -> Result<Vec<u8>, String> {
-    if !s.len().is_multiple_of(2) {
+    // ⛔ Decode over BYTES, never `&s[i..i + 2]` (`SIGNOFF-REPAIR.4.2.7`). `str`
+    // indexes by byte and panics on a slice that does not land on a UTF-8
+    // character boundary, so an input of EVEN byte length whose midpoint splits
+    // a multi-byte character — `"a\u{e9}b"` — aborted the process instead of
+    // returning the `Err` this signature promises. `as_bytes()` has no such
+    // failure mode: a non-ASCII byte is simply not a hex digit.
+    let bytes = s.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
         return Err("odd-length hex".to_string());
     }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+    bytes
+        .chunks(2)
+        .map(|pair| {
+            let hi = (pair[0] as char).to_digit(16);
+            let lo = (pair[1] as char).to_digit(16);
+            match (hi, lo) {
+                (Some(hi), Some(lo)) => Ok(((hi << 4) | lo) as u8),
+                _ => Err("non-hex digit".to_string()),
+            }
+        })
         .collect()
 }
 
@@ -926,5 +940,75 @@ mod rotation_clock {
         assert!(rotation_due(not_after, not_after - ROTATE_REMAINING_SECS));
         assert!(rotation_due(not_after, not_after));
         assert!(rotation_due(not_after, not_after + 1));
+    }
+}
+
+/// `SIGNOFF-REPAIR.4.2.7` — the hex decoder's contract is its SIGNATURE: it
+/// returns `Result`, so every input it is given must produce a value or an
+/// error, and never a panic.
+///
+/// The superseded body indexed `&s[i..i + 2]` on a `&str`. `str` indexes by
+/// BYTE, and Rust panics on a slice that does not land on a UTF-8 character
+/// boundary — so `"a\u{e9}b"`, four bytes and therefore an EVEN length that
+/// clears the odd-length guard, aborted the node instead of returning `Err`.
+///
+/// ⚠️ The trust boundary is what decides the severity, and it is stated rather
+/// than inflated: this string arrives in the SERVER's rotate response body
+/// (`channel.rs`'s `rotate`), so reaching it needs a malicious or faulty
+/// control plane, not a network attacker. It is the same question `.4.1.2.1`
+/// answered in the other direction — how much the server trusts a caller's
+/// `i64` — asked of how much the node trusts the control plane. A node that
+/// aborts on a malformed response cannot report, retry, or journal anything.
+#[cfg(test)]
+mod hex_decoding {
+    use super::from_hex;
+
+    /// The exact byte layout that panics, spelled out because "non-ASCII" is
+    /// not the condition — an EVEN byte length whose midpoint splits a
+    /// multi-byte character is.
+    #[test]
+    fn a_multi_byte_character_across_the_split_returns_an_error() {
+        let input = "a\u{e9}b"; // 'a' | 0xC3 0xA9 | 'b' — 4 bytes, so the odd-length guard passes
+        assert_eq!(
+            input.len(),
+            4,
+            "an even BYTE length reaches the decode loop"
+        );
+        assert!(
+            !input.is_char_boundary(2),
+            "and the first chunk's end splits the two-byte character"
+        );
+        assert!(
+            from_hex(input).is_err(),
+            "the decoder must return its typed error, not abort the process"
+        );
+    }
+
+    /// The boundary happens to fall correctly here, so this one already
+    /// returned `Err` — kept so the control covers the case the repair must
+    /// NOT change, not only the one it fixes.
+    #[test]
+    fn a_multi_byte_character_on_the_split_still_returns_an_error() {
+        assert!(from_hex("\u{e9}\u{e9}").is_err());
+    }
+
+    /// Every other refusal the signature promises, and the success case, so
+    /// the repair is not a decoder that simply refuses everything.
+    #[test]
+    fn the_ordinary_contract_is_unchanged() {
+        assert_eq!(from_hex("00ff10"), Ok(vec![0x00, 0xff, 0x10]));
+        assert_eq!(from_hex(""), Ok(vec![]));
+        assert!(from_hex("abc").is_err(), "odd length");
+        assert!(from_hex("zz").is_err(), "non-hex digit");
+        assert!(from_hex("0g").is_err(), "one non-hex digit");
+        // The whole 0x80..=0xFF range arrives as a continuation or lead byte
+        // and must refuse rather than index into the middle of a character.
+        for c in ['\u{80}', '\u{ff}', '\u{100}', '\u{10000}'] {
+            let s = format!("a{c}b");
+            assert!(
+                from_hex(&s).is_err() || s.len() % 2 == 1,
+                "refused or odd-length, never a panic: {s:?}"
+            );
+        }
     }
 }

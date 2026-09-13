@@ -166,19 +166,19 @@ pub fn cert_fingerprint(cert_der: &[u8]) -> String {
         .collect()
 }
 
-/// The server-side hex helpers (no hex crate — the codebase hand-rolls hex).
+/// The server-side hex ENCODER (no hex crate — the codebase hand-rolls hex).
+///
+/// There is deliberately no decoder here (`SIGNOFF-REPAIR.4.2.7`). This module
+/// carried a `pub fn from_hex` that indexed `&s[i..i + 2]` on a `&str` and so
+/// panicked on a slice splitting a multi-byte character — and it had NO caller:
+/// `git grep` found none, and making it private turned that into a compiler
+/// error, `function `from_hex` is never used`. The server's live decoder is
+/// `node_channel::decode_hex`, which works over `as_bytes().chunks(2)` and has
+/// no such failure mode; it is the one on the untrusted wire path. A dead,
+/// well-named public decoder beside a private correct one is what the next
+/// caller reaches for, so it is removed rather than repaired in place.
 pub fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-pub fn from_hex(s: &str) -> Result<Vec<u8>, String> {
-    if !s.len().is_multiple_of(2) {
-        return Err("odd-length hex".to_string());
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
-        .collect()
 }
 
 // ── The `.1.2.2` channel-proof verification (chain → status → signature) ──────

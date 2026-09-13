@@ -477,6 +477,13 @@ grant locally.
 - Two live processes for one node id fence each other by design (each
   handshake rotates the token) — that is the fencing contract making staleness
   visible, not a bug.
+- The node **trusts the control plane's response body** to be well-formed
+  enough to parse. It no longer aborts on a malformed one — a rotate response
+  whose hex fields are not hex is refused as `Malformed` and the node keeps
+  running (`.4.2.7`) — but nothing authenticates the response itself, because
+  the development transport is plain HTTP. A node talking to a hostile server
+  is not a threat this profile addresses; the mTLS streaming profile is where
+  that changes.
 - Live delivery is a poll of the tail; the streaming profile is the formal
   ADR-006 decision.
 - A quarantined row leaves a permanent hole in the node's cursor ledger (the

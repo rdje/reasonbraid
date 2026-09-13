@@ -106,7 +106,7 @@ correction to the backlog's own headline number:
 | `POST /v1/workflow-profiles` admits on enrolment alone | Any enrolled principal can register a new version of any profile id, and resolution takes the highest version — so a built-in deliberation profile can be shadowed for the whole site. | `.8.1` |
 | The publication reconciler never reads the effective channel ref | Its `effective` case compares only the immutable publication ref, so the §15.8 row "effective / ref missing or moved → freeze deployment" cannot fire for a moved effective channel. A unit test encodes the gap. | `.9.2` |
 | A decision-family close consults only the caller's own unresolved list | The durable open-challenge count the engine maintains is never read at close, so omitting a challenge closes the thread with a decision outcome. | `.8.1` |
-| `regions::route` reports any database error as an undeclared region | A storage failure is delivered to the caller as a verdict about the site's configuration. No production caller today; the store-and-forward lane is the one that would inherit it. | `.11.10` |
+| `regions::route` reports any database error as an undeclared region | **Reproduced and repaired.** With its reads failing, the routing answered ``the region `dev-local` is undeclared`` for a region the same run proved declared. The decision now returns a typed storage failure that names neither the region nor the word "undeclared", while every existing refusal keeps its exact wording. | `.11.10`, closed |
 
 The correction concerns the backlog's headline: **eight** of the uncited records
 *are* named in the task tree, in text that belongs to no leaf — six of them in one

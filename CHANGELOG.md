@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-14 — A failed read is not a verdict about the site (`SIGNOFF-REPAIR.11.10`)
+
+- `regions::route` converted any `sqlx::Error` into a routing refusal. Reproduced with the probe declaring its own premise first: `dev-local` is a seeded declaration, and with the pool closed the routing answered ``the region `dev-local` is undeclared — the routing refuses``. A statement about the site's configuration, produced by a failure that touched no configuration.
+- The same repair already existed one module away, with its reason in its own source: `SIGNOFF-REPAIR.3.2.1` put the `pair` verb on the site-authority service because "an unavailable database must never masquerade as an undeclared region". The review record named `pair` **and** `route`; only `pair` was reached, and the clause reconciliation found the other half.
+- A new `RouteError` keeps the two families apart — `Refused(RegionRefusal)` for a verdict reached by reading the configuration, `Storage(sqlx::Error)` for a decision that could not be made. `RegionRefusal` is byte-identical, variants and wording, because the phase acceptance and the operator contract rest on those names. The storage message names neither the region nor "undeclared".
+- Reachability stated honestly: `route` has no production caller today. It was repaired now rather than left to the store-and-forward lane that will inherit it, because an inheriting leaf censuses its own goal line.
+- Validation: `run_pg_tests.sh regions` 3 passed / 0 failed, rc=0; strict clippy on the crate's lib and this test rc=0 with no warnings; `cargo fmt --all -- --check` rc=0. Falsified against the exact superseded mechanism — the `map_err` restored under the new signature gives `2 passed; 1 failed`, the single failure this leaf's control naming `Refused(UndeclaredRegion { region: "dev-local" })`, with the other two tests still green.
+
 ## 2026-09-14 — The ledger's own next action was never taken (`SIGNOFF-REPAIR.11.9.1.1`, `.11.9.1.1.1`)
 
 - Tranche 2 of the clause reconciliation was **2.8x** tranche 1 by record text — 14 records, 7,192 characters, ~57 sentence-clauses against 7 / 2,554 / ~19 — so it was **sized before it was attempted** and split three ways on each record's own narrowest candidate, the same measurement that formed the tranche.

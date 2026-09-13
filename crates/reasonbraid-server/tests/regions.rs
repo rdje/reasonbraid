@@ -216,7 +216,9 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
     assert!(
         matches!(
             refusal,
-            reasonbraid_server::regions_internal::RegionRefusal::UndeclaredRegion { .. }
+            reasonbraid_server::regions_internal::RouteError::Refused(
+                reasonbraid_server::regions_internal::RegionRefusal::UndeclaredRegion { .. }
+            )
         ),
         "the refusal names the undeclared: {refusal:?}"
     );
@@ -238,7 +240,9 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
     assert!(
         matches!(
             refusal,
-            reasonbraid_server::regions_internal::RegionRefusal::CrossRegionRefused { .. }
+            reasonbraid_server::regions_internal::RouteError::Refused(
+                reasonbraid_server::regions_internal::RegionRefusal::CrossRegionRefused { .. }
+            )
         ),
         "the refusal names the cross-region: {refusal:?}"
     );
@@ -270,7 +274,9 @@ async fn the_regional_routing_refuses_the_undeclared_and_the_unpaired() {
         .expect_err("the unpaired refuses again");
     assert!(matches!(
         refusal,
-        reasonbraid_server::regions_internal::RegionRefusal::CrossRegionRefused { .. }
+        reasonbraid_server::regions_internal::RouteError::Refused(
+            reasonbraid_server::regions_internal::RegionRefusal::CrossRegionRefused { .. }
+        )
     ));
 
     // 5. The registry lists the declared region.
@@ -326,4 +332,62 @@ async fn the_region_registry_refuses_the_non_admin() {
     )
     .await;
     assert_eq!(status, 403, "the non-admin declare refuses");
+}
+
+/// `SIGNOFF-REPAIR.11.10`: a STORAGE failure is not a verdict about the site.
+///
+/// Reproduced against the unchanged source before this control existed: with
+/// the pool closed, `route` answered `UndeclaredRegion { region: "dev-local" }`
+/// — a policy verdict about a region the same run had just proved declared. The
+/// two arms are deliberately paired, because a repair that simply stopped
+/// refusing would pass the first arm and fail the second.
+#[tokio::test]
+async fn a_storage_failure_is_not_a_policy_verdict_and_a_real_refusal_still_is() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    // The POSITIVE arm first, on a live pool: a genuinely undeclared region is
+    // still refused, by name. Run before the pool is closed so the control
+    // cannot pass by refusing everything.
+    let refusal = reasonbraid_server::regions_internal::route(&pool, "dev-local", "nowhere")
+        .await
+        .expect_err("the undeclared region is still refused");
+    assert!(
+        matches!(
+            refusal,
+            reasonbraid_server::regions_internal::RouteError::Refused(
+                reasonbraid_server::regions_internal::RegionRefusal::UndeclaredRegion { .. }
+            )
+        ),
+        "a live read reaching a real verdict stays a refusal: {refusal:?}"
+    );
+
+    // The premise of the negative arm: `dev-local` IS declared (migration 0053).
+    let declared: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM site_regions WHERE region_id = 'dev-local')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the seeded declaration reads");
+    assert!(declared, "the premise: dev-local is declared");
+
+    // Now the STORAGE fails while the configuration is untouched.
+    pool.close().await;
+    let error = reasonbraid_server::regions_internal::route(&pool, "dev-local", "dev-local")
+        .await
+        .expect_err("the closed pool fails the read");
+    assert!(
+        matches!(
+            error,
+            reasonbraid_server::regions_internal::RouteError::Storage(_)
+        ),
+        "a failed read is a storage failure, never a verdict about the site: {error:?}"
+    );
+    // And the message may not name the region either: a caller that only logs
+    // the Display would otherwise still be told the declaration is missing.
+    let rendered = error.to_string();
+    assert!(
+        !rendered.contains("dev-local") && !rendered.contains("undeclared"),
+        "the storage message makes no claim about the configuration: {rendered}"
+    );
 }

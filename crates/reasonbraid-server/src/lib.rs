@@ -64,7 +64,7 @@ pub mod site_authority;
 /// The seam for the regional-routing decision (the `.5.2` suite + the
 /// `.5.3` store-and-forward consume this).
 pub mod regions_internal {
-    pub use crate::regions::{route, RegionRefusal};
+    pub use crate::regions::{route, RegionRefusal, RouteError};
 }
 pub mod mediated;
 pub mod mtls;

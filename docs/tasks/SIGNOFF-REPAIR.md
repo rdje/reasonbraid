@@ -2889,7 +2889,39 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - Owned surfaces: `crates/reasonbraid-server/src/regions.rs`, `crates/reasonbraid-server/tests/regions.rs`.
 - Goal and acceptance: separate the storage family from the policy family in `route`'s own signature, so a caller cannot mistake one for the other; reproduce the confusion against the unchanged source before the change and prove the corrected shape returns a distinguishable storage failure; keep every existing typed refusal and its message byte-identical for the genuine policy cases, because `PHASE-8.5.2`'s acceptance and the book's contract both rest on those names. ⚠️ Falsify the ACTUAL mechanism: a control that breaks on a missing table proves nothing unless the same control passes on a genuinely undeclared region.
 - ⚠️ Do NOT widen the scope to the rest of `RegionRefusal`'s callers or to `PHASE-8.5.3`'s delivery design. The clause is the error classification of three reads.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0172.
+
+**REPRODUCED before anything changed, as a measurement rather than a reading.** A temporary probe declared its own premise — `SELECT EXISTS … region_id = 'dev-local'` returned true, the seeded declaration — then closed the pool and called `route(&pool, "dev-local", "dev-local")`. The unchanged source answered:
+
+```text
+BASELINE ANSWER: UndeclaredRegion { region: "dev-local" } / the region `dev-local` is undeclared — the routing refuses
+```
+
+⭐ A verdict about the site's configuration, for a region the same run had just proved declared, produced by a failure that touched no configuration at all. The probe asserted that faulty answer positively and the run was green (`3 passed`, rc=0, cluster `run-tmuv0kl6` stopped and removed); the probe was then removed in favour of the permanent control.
+
+**FIX — the error classification of three reads, and nothing else.** A new `RouteError` carries the two families apart: `Refused(RegionRefusal)` is a verdict reached by reading the configuration successfully, `Storage(sqlx::Error)` means no verdict was reached. The three reads propagate with `?` through `From<sqlx::Error>` instead of `.map_err(|_| RegionRefusal::…)`.
+
+- ⛔ **`RegionRefusal` is untouched**: both variants, their fields and their `Display` wording are byte-identical, and `RouteError::Refused` delegates its own `Display` to them. `PHASE-8.5.2`'s acceptance and the operator-facing contract rest on those exact names, and this leaf had no business changing them.
+- ⛔ **The `Option<bool>` / `unwrap_or(false)` decode is also untouched**, though `SELECT EXISTS` never yields NULL. Tightening it is a different clause and the leaf said not to widen.
+- The storage message names neither the region nor the word "undeclared" — a caller that logs only the `Display` must not still be told the declaration is missing. `source()` carries the `sqlx::Error` for controlled diagnostics.
+
+**ADDRESSED (verified)** — `CARGO_NET_OFFLINE=true RB_DEMO=0 bash scripts/run_pg_tests.sh regions` -> `3 passed; 0 failed; 0 ignored`, rc=0, cluster `run-e_iykfct` stopped and removed. `cargo clippy --offline --locked -p reasonbraid-server --lib --test regions -- -D warnings` -> `Finished`, rc=0, no warnings. `cargo fmt --all -- --check` rc=0.
+
+**NO REGRESSION / FALSIFIED against the ACTUAL superseded mechanism.** ⚠️ A type-changing repair cannot be falsified by reverting the file, because the new control would not compile — so the neutralization keeps the new signature and restores ONLY the superseded classification (`.map_err(|_| RouteError::Refused(RegionRefusal::UndeclaredRegion { … }))` on the two declaration reads). Result: **`2 passed; 1 failed`**, the single failure being this leaf's control and naming the exact superseded answer in its own message:
+
+```text
+a failed read is a storage failure, never a verdict about the site: Refused(UndeclaredRegion { region: "dev-local" })
+```
+
+- ⭐ **The other two suite tests stayed GREEN under the neutralization**, which is the part worth recording: the injection is narrow enough to be the defect and not something else (`.4.2.8`'s hazard — a magnitude larger than the real defect is the tell). rc=101; the fix was restored from a byte copy and the suite re-verified.
+- ⭐ **The control's two arms are ORDERED deliberately**: the positive arm runs FIRST, on a live pool, so a repair that simply stopped refusing everything cannot pass. It asserts a genuinely undeclared region is still `Refused(UndeclaredRegion)`.
+- The four pre-existing refusal assertions in `tests/regions.rs` now name the family as well as the variant; every original assertion is preserved, none weakened.
+- Failure-evidence workspace `run-2h9fk3i_` is consumed — its transcript is quoted above — and left to `scripts/census_pg_test_clusters.py`'s own retirement floor rather than hand-deleted, because rebuilding that judgement by hand is what the instrument exists to prevent.
+
+**LOCKSTEP** — `crates/reasonbraid-server/src/regions.rs`, `crates/reasonbraid-server/src/lib.rs` (the `regions_internal` seam exports `RouteError`), `crates/reasonbraid-server/tests/regions.rs`, this tree, `docs/TASK_TREE.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⛔ No migration, no wire change, no HTTP route touched: `route` has no production caller, so no documented behaviour moved.
+
+- promotion: declined. The rule exercised — a domain refusal and a storage failure are different families and the type should say so — is already stated in `site_authority/registry.rs`'s own source and was the thing this leaf applied rather than discovered.
+- Commit: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
@@ -3857,7 +3889,6 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 | --- | --- | --- | --- |
 
 | 1 | `SIGNOFF-REPAIR.11.9.1.1.2` | `pending` | tranche 2b, four records on the certification/CA/profile/publisher surfaces — `.11.9.1.1` sized tranche 2 at 2.8x tranche 1 and split it on that measurement; `.1.1.1` executed the first six |
-| 1b | `SIGNOFF-REPAIR.11.10` | `pending` | `regions::route` turns any `sqlx::Error` into an undeclared-region verdict — the `unowned` clause tranche 2a found, latent until `PHASE-8.5.3` wires delivery through it |
 | 2b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -3865,7 +3896,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 | 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **47 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **46 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -3925,6 +3956,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.1.5`: `REASONBRAID-REPAIR-0167 (leaf SIGNOFF-REPAIR.4.1.5): a replacement ends the old machine's session, host and incarnation`.
 - `SIGNOFF-REPAIR.11.9.1`: `REASONBRAID-REPAIR-0168 (leaf SIGNOFF-REPAIR.11.9.1): census the 114, correct the ranking the leaf proposed, and build the ledger`.
 - `SIGNOFF-REPAIR.11.9.1.1` / `.11.9.1.1.1`: `REASONBRAID-REPAIR-0171 (leaf SIGNOFF-REPAIR.11.9.1.1): size tranche 2, split it on the measurement, and reconcile its first six records`.
+- `SIGNOFF-REPAIR.11.10`: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.

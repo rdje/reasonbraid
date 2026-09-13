@@ -42,7 +42,8 @@ CLOCK = re.compile(r"\.(subsec_nanos|as_nanos)\s*\(")
 # ⭐ SHELL and PYTHON joined the population at SIGNOFF-REPAIR.11.2.2, and the
 # reason is the sharpest argument for a gate this project has had: the three
 # scripts that ENFORCE doctrine were themselves writing scratch to an ambient
-# TMPDIR, and the two probe scripts cloned whole throwaway repositories there.
+# TMPDIR, the two probe scripts `git init` whole throwaway repositories there,
+# and `update_scaffold.sh` ran `git clone --depth 1` into the same ambient place.
 # Measured on this host: the checkout is device 16777244, the ambient directory
 # 16777232 — a different volume, so the data left the repository's accounting
 # entirely. This gate could not see any of it, because it enumerated `*.rs`.
@@ -174,7 +175,8 @@ for raw in tracked:
             # ⛔ This message deliberately does NOT spell the command it matches.
             # It did, once, and the gate flagged its own source on the first run —
             # the `SELF-TEST` doctrine's founding incident repeating verbatim, in a
-            # file whose header cites it. Re-wording is cheaper than an exclusion
+            # file that carries a `--self-test` of its own and still could not see
+            # this. Re-wording is cheaper than an exclusion
             # list (`TOOLBOX.md`: when correctness depends on enumerating what to
             # exclude, make the failure cheap), and it self-polices: spell the
             # literal again and the whole-tree scan goes red on this file at once.

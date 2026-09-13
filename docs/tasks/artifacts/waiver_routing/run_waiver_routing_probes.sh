@@ -31,7 +31,7 @@ GUARD="$ROOT/scripts/check_waiver_routing.sh"
 
 pass=0; fail=0
 # ⛔ §13: scratch is REPOSITORY-derived, never ambient (SIGNOFF-REPAIR.11.2.2).
-# This probe CLONES throwaway git repositories into $WORK, so a bare `mktemp -d`
+# This probe `git init`s throwaway git repositories into $WORK, so a bare `mktemp -d`
 # put whole repositories on another volume — measured at device 16777232 against
 # the checkout's 16777244. `mktemp` still names it by exclusive creation.
 mkdir -p "$ROOT/target/doctrine_scratch"

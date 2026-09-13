@@ -72,22 +72,49 @@ pub use records::load_authorization_record;
 pub(crate) use records::{load_tenant_authorization_record, load_thread_authorization_records};
 pub(crate) use revocation::{revoke_in_one_transaction, RevocationResult, RevocationTarget};
 
+/// One request's delegation: the subject the actor acts on behalf of, and the
+/// attenuation the delegator applied — held together because neither is
+/// meaningful alone (`SIGNOFF-REPAIR.3.4.1.1`).
+///
+/// ⛔ These were two independent `Option` fields on [`CommandAuthz`], which made
+/// a subject-without-scope WRITABLE. The §16.3.1 widening check read the scope
+/// under `if let Some(scope)`, so that state would have delegated with the
+/// subject's FULL grant selector — no attenuation at all. It was never
+/// reachable, because the one producer always set both; pairing them removes
+/// the state rather than relying on every future producer to remember.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delegation {
+    /// The original subject the actor acts on behalf of.
+    pub subject: GrantSubject,
+    /// The attenuation the delegator applied (the `.1.4.2` scope): the
+    /// request's target must be WITHIN it and it must be within the subject's
+    /// grant selector (§16.3.1 — a delegate cannot widen).
+    pub scope: TargetSelector,
+}
+
 /// The authorization context of one command: the authenticated actor, the grant
-/// holder (the actor, or the delegating subject's principal), the delegated subject
-/// when delegation applies, and the requested action/target.
+/// holder (the actor, or the delegating subject's principal), the delegation
+/// when one applies, and the requested action/target.
 pub struct CommandAuthz {
     /// Who the request authenticates as (the audit actor).
     pub actor: ActorPrincipalId,
     /// The grant holder — the principal whose grant is evaluated.
     pub principal: GrantSubject,
-    /// The original subject when the actor acts on its behalf (delegation).
-    pub delegate_subject: Option<GrantSubject>,
-    /// The attenuation the delegator applied (the `.1.4.2` scope): the
-    /// request's target must be WITHIN it and it must be within the subject's
-    /// grant selector (§16.3.1 — a delegate cannot widen).
-    pub delegation_scope: Option<TargetSelector>,
+    /// Present exactly when the actor acts on another subject's behalf.
+    pub delegation: Option<Delegation>,
     pub action: GrantAction,
     pub target: ResourceTarget,
+}
+
+impl CommandAuthz {
+    /// The subject whose grant is evaluated: the delegated one when the request
+    /// delegates, else the caller's own principal.
+    pub(crate) fn evaluated_subject(&self) -> &GrantSubject {
+        self.delegation
+            .as_ref()
+            .map(|d| &d.subject)
+            .unwrap_or(&self.principal)
+    }
 }
 
 /// The outcome of [`authorize_in_tx`]. An allowance carries what the delivery
@@ -519,8 +546,7 @@ fn evaluate_tenant_admin_read(
 ) -> Decision {
     if authz.action != GrantAction::TenantAdmin
         || !matches!(authz.target, ResourceTarget::Tenant { .. })
-        || authz.delegate_subject.is_some()
-        || authz.delegation_scope.is_some()
+        || authz.delegation.is_some()
     {
         return Decision::Denied {
             reason: "the frozen-read exception requires direct tenant administration inspection"
@@ -560,8 +586,7 @@ pub(crate) async fn authorize_tenant_admin_inspection(
     let authz = CommandAuthz {
         actor: reasonbraid_core::actor_handle_for_subject(principal),
         principal: principal.clone(),
-        delegate_subject: None,
-        delegation_scope: None,
+        delegation: None,
         action: GrantAction::TenantAdmin,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -611,7 +636,7 @@ fn evaluate(
             reason: "the grant is revoked or outside its validity window".to_string(),
         };
     }
-    let expected_subject = authz.delegate_subject.as_ref().unwrap_or(&authz.principal);
+    let expected_subject = authz.evaluated_subject();
     if &grant.subject != expected_subject {
         return Decision::Denied {
             reason: "the grant does not belong to the evaluated subject".to_string(),
@@ -743,13 +768,12 @@ where
     // Caller permission and delegated authority each choose a usable grant with
     // its own parent. The record continues to name the delegated authority source;
     // an absent source cannot borrow the caller's grant or a tenant-level boundary.
-    let selected = match &authz.delegate_subject {
+    let selected = match &authz.delegation {
         Some(_) => {
             let caller = CommandAuthz {
                 actor: authz.actor,
                 principal: authz.principal.clone(),
-                delegate_subject: None,
-                delegation_scope: None,
+                delegation: None,
                 action: authz.action,
                 target: authz.target.clone(),
             };
@@ -818,7 +842,7 @@ where
     let digest = policy_digest(
         boundary.as_ref(),
         grant.as_ref(),
-        authz.delegate_subject.as_ref().or(Some(&authz.principal)),
+        Some(authz.evaluated_subject()),
         authz.action,
         &authz.target,
         &decision,
@@ -831,9 +855,9 @@ where
             thread_id,
         } => ("thread", tenant_id.to_string(), Some(thread_id.to_string())),
     };
-    let (subject_kind, subject_id) = match &authz.delegate_subject {
-        Some(s) => {
-            let (k, i) = subject_parts(s);
+    let (subject_kind, subject_id) = match &authz.delegation {
+        Some(delegation) => {
+            let (k, i) = subject_parts(&delegation.subject);
             (Some(k), Some(i))
         }
         None => (None, None),

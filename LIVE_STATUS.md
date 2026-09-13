@@ -6,6 +6,8 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+⭐ **A latent authorization state is now unwritable, and removing it found two fixtures that had been producing it (`.3.4.1.1`, REPAIR-0132).** `CommandAuthz` held the delegated subject and the delegation scope as two independent `Option` fields; `selection.rs` read the scope under `if let Some(scope)`, so a subject-without-scope would have delegated with the subject's FULL grant selector — the §16.3 widening invariant skipped rather than failed. They are one `Delegation { subject, scope }` now. ⛔ **No defect is repaired and no reachable behaviour changes:** the only production producer always set both. ⚠️ But the "unreachable" claim held for production only — `tests/authority.rs` constructed the state twice, so the widening gate was being SKIPPED inside a test that reads as exercising delegation; both surfaced as compile errors. Giving those fixtures their scope makes the invariant RUN where it did not, which is a strengthening and is stated rather than absorbed. The unconstructibility is proved by the compiler (`error[E0063]: missing field `scope``), not by a test. **4 suites / 66 tests, zero failures**, every existing delegation control unchanged.
+
 🔴 **A node's cached-decision freshness window compared two different clocks;
 closed under `.3.4.3` (REPAIR-0131).** `decided_at` is the SERVER's database
 clock, while `is_fresh` is evaluated against the NODE's process clock, so a

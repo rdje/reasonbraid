@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — "Not currently reachable" was a claim about production, and I read it as a claim about the code
+
+- The leaf told me plainly that the delegate-without-scope state was not reachable: the only producer always sets both fields. I checked that and it is true. I went in expecting a purely mechanical refactor whose entire value was future-proofing.
+- ⭐ Then the compiler refused to build `tests/authority.rs`, twice. The helper took a bare subject and left the scope `None` for every caller, and two callers passed a subject — so the suite had been constructing the state all along, and the §16.3 widening gate was being **skipped** inside a test that reads as though it exercises delegation. The leaf's claim was right about production and wrong about the repository, and I had carried it forward without noticing it was scoped.
+- ⚠️ What I would have missed by hand: nothing about those call sites looks wrong. They pass `Some(subject)` to a helper named `authz`. The defect lives in what the helper *omits*, which is invisible at the call site and exactly the kind of thing reading does not catch. Making the state unrepresentable turned an invisible omission into a compile error at every site at once.
+- ⚠️ And then a decision I nearly got wrong: the two fixtures now need a scope, and the scope I choose changes what they test. `TenantWide` matches the subject's own grant selector, so the audited-delegation test asserts the same allow it always did — but it now reaches it *through* the widening gate rather than around it. That is a strengthening, and it belongs in the leaf rather than in silence, because someone comparing coverage before and after should not have to rediscover it.
+- ⭐ The control for an unconstructible state is the **compiler**, not a test, and I nearly shipped a vacuous one. My first negative control ran `cargo check --lib` against a `Some(Delegation { subject })` and reported success — `--lib` does not build `#[cfg(test)]` code, so the broken line was never compiled. A green negative control is a contradiction in terms and should have stopped me instantly; `--all-targets` gives the real answer, `error[E0063]: missing field `scope``.
+- The one thing I checked hardest was the boring one: `policy_digest`'s subject argument. `delegate_subject.as_ref().or(Some(&principal))` and `Some(evaluated_subject())` are the same value, and they had to be, because the digest is written into `authorization_records` — a refactor that "merely tidied" that expression would have silently invalidated every historical record.
+
 ## 2026-09-13 — I nearly answered the wrong question, because the leaf asked a good one
 
 - The leaf asked what a cached decision with a future `decided_at` should mean, and told me to establish where the clock comes from first. That instruction is the whole reason this landed correctly: I traced the producer before touching the comparison, and the trace reframed the question entirely.

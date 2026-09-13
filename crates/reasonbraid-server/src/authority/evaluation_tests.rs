@@ -43,8 +43,7 @@ fn fixture(action: GrantAction) -> (EnrollmentAuthorityBoundary, AuthorityGrant,
     let context = CommandAuthz {
         actor: actor_handle_for_subject(&principal),
         principal,
-        delegate_subject: None,
-        delegation_scope: None,
+        delegation: None,
         action,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -76,9 +75,15 @@ fn unrelated_boundary_tenant_or_subject_cannot_supply_authority() {
     denied(&b, &g, &a);
     // Subject evaluation uses the delegated authority source. Caller permission
     // is evaluated separately; this result alone is not a delegation allowance.
-    a.delegate_subject = Some(g.subject.clone());
+    a.delegation = Some(Delegation {
+        subject: g.subject.clone(),
+        scope: TargetSelector::TenantWide,
+    });
     assert_eq!(evaluate(Some(&b), Some(&g), &a, at()), Decision::Allowed);
-    a.delegate_subject = Some(a.principal.clone());
+    a.delegation = Some(Delegation {
+        subject: a.principal.clone(),
+        scope: TargetSelector::TenantWide,
+    });
     denied(&b, &g, &a);
 }
 
@@ -372,7 +377,12 @@ fn frozen_inspection_refuses_other_actions_targets_and_delegation() {
             "{action}"
         );
     }
-    for change in 0..3 {
+    // `SIGNOFF-REPAIR.3.4.1.1`: this loop ran over THREE changes — a thread
+    // target, a delegate subject, and a delegation scope — because the subject
+    // and the scope were independent fields and each had to be refused on its
+    // own. They are one value now, so the third case is not weakened, it is
+    // unwritable: there is no scope to set without a subject.
+    for change in 0..2 {
         let (b, g, mut a) = fixture(GrantAction::TenantAdmin);
         match change {
             0 => {
@@ -381,8 +391,12 @@ fn frozen_inspection_refuses_other_actions_targets_and_delegation() {
                     thread_id: ThreadId::new(),
                 }
             }
-            1 => a.delegate_subject = Some(g.subject.clone()),
-            2 => a.delegation_scope = Some(TargetSelector::TenantWide),
+            1 => {
+                a.delegation = Some(Delegation {
+                    subject: g.subject.clone(),
+                    scope: TargetSelector::TenantWide,
+                })
+            }
             _ => unreachable!(),
         }
         assert!(

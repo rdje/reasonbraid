@@ -924,7 +924,7 @@ all four, on every delegated request:
 | --- | --- |
 | the actor's own authority | an actor whose own grant does not cover this action **and this target**. The caller is evaluated against the same target as the subject, so a delegation reaches nothing the actor could not reach alone. |
 | the subject's authority | a subject whose grant does not cover the action or target |
-| the widening invariant | a claimed scope wider than the subject's grant, or narrower than the request's own target |
+| the widening invariant | a claimed scope wider than the subject's grant, or narrower than the request's own target. A delegated request always carries a scope — the subject and the scope are one value, so there is no request shape in which this gate is skipped and the subject's full grant selector applies instead (`SIGNOFF-REPAIR.3.4.1.1`). |
 | participation | an actor who is not a participant of the thread — **naming a well-placed subject does not launder an outsider in**, and the refusal names the actor, not the subject |
 
 The audit record names the **subject** as the authority source, and the actor as

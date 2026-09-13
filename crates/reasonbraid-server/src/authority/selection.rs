@@ -42,7 +42,7 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    let subject = authz.delegate_subject.as_ref().unwrap_or(&authz.principal);
+    let subject = authz.evaluated_subject();
     let (kind, id) = subject_parts(subject);
     let tenant = authz.target.tenant_id().to_string();
     let mut cursor: Option<(DateTime<Utc>, String)> = None;
@@ -78,8 +78,14 @@ where
                     evaluate_tenant_admin_read(Some(&boundary), Some(&grant), authz, at)
                 }
             };
-            if decision == Decision::Allowed && authz.delegate_subject.is_some() {
-                if let Some(scope) = &authz.delegation_scope {
+            // `SIGNOFF-REPAIR.3.4.1.1`: the scope is no longer optional, so this
+            // is ONE guard rather than two nested ones. The inner `if let` used
+            // to mean "check the widening invariant only if a scope was given",
+            // which silently allowed a delegation with the subject's FULL
+            // selector when it was not. That state is now unconstructible.
+            if decision == Decision::Allowed {
+                if let Some(delegation) = &authz.delegation {
+                    let scope = &delegation.scope;
                     if !delegation_scope_is_subset(&target_to_selector(&authz.target), scope)
                         || !delegation_scope_is_subset(scope, &grant.selector)
                     {

@@ -161,8 +161,7 @@ pub(crate) async fn revoke_in_one_transaction(
             let authz = CommandAuthz {
                 actor: actor_handle_for_subject(&principal),
                 principal: principal.clone(),
-                delegate_subject: None,
-                delegation_scope: None,
+                delegation: None,
                 action: GrantAction::TenantAdmin,
                 target: ResourceTarget::Tenant { tenant_id },
             };

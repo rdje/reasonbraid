@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A delegation without a scope is now unwritable (`SIGNOFF-REPAIR.3.4.1.1`)
+
+- `CommandAuthz` carried the delegated **subject** and the delegation **scope** as two independent `Option` fields, so a subject with no scope was writable. `selection.rs` read the scope under `if let Some(scope)`, which meant that value would have delegated with the subject's **full grant selector** — the §16.3 widening invariant skipped rather than failed.
+- They are one `Option<Delegation>` now, with `Delegation { subject, scope }` holding both non-optionally. 20 construction sites across 11 files; the only producer already set both, so no reachable behaviour changes.
+- ⭐ **The leaf was opened calling the state unreachable. That held for production and NOT for the test suite.** `tests/authority.rs` constructed a delegate with no scope in two places, so the widening gate was being skipped inside a test that reads as though it exercises delegation. The compiler surfaced both the moment the state became unwritable — neither was found by reading.
+- ⚠️ Giving those fixtures the scope they should always have had makes the invariant RUN where it previously did not. The audited-delegation test keeps `TenantWide`, matching the subject's own grant selector, so it still asserts the allow it always asserted — now through the gate instead of around it.
+- The acceptance's "the type admits no delegate without a scope" is proved by the **compiler**, not a test: a temporary `Some(Delegation { subject })` yields `error[E0063]: missing field `scope``. ⚠️ It must be checked with `--all-targets` — a plain `--lib` check does not build `#[cfg(test)]` code and passed the control vacuously the first time.
+- `policy_digest`'s subject input was hand-checked as byte-identical, because the digest is a **stored** value and an altered input would invalidate every historical authorization record.
+- Validation: `run_pg_tests.sh authority command_api escalation mcp_write` rc=0 — **4 suites, 66 tests, zero failures**; every existing delegation control passes unchanged. Strict lint, check, fmt, gate (17 checks), book and link check rc=0.
+- ⛔ Not claimed: no defect repaired and no runtime behaviour changed on a reachable path. This removes a latent state and strengthens two fixtures.
+
 ## 2026-09-13 — The cache's freshness window compared two different clocks (`SIGNOFF-REPAIR.3.4.3`)
 
 - The leaf asked what a cached decision dated in the future means. Tracing the clock answered it: `decided_at` is the **server's database clock** (`database_now_in_tx`, and `tx.database_now()` on the replay path — the only two writers, and no request field reaches either), while the freshness comparison runs against the **node's process clock**. A future `decided_at` is therefore backward node skew and nothing else.

@@ -98,8 +98,7 @@ pub(crate) async fn issue_enrollment_token_in_one_transaction(
             let authz = CommandAuthz {
                 actor: actor_handle_for_subject(&principal),
                 principal: principal.clone(),
-                delegate_subject: None,
-                delegation_scope: None,
+                delegation: None,
                 action: GrantAction::TenantAdmin,
                 target: ResourceTarget::Tenant { tenant_id },
             };
@@ -259,8 +258,7 @@ pub(crate) async fn revoke_node_in_one_transaction(
             let authz = CommandAuthz {
                 actor: actor_handle_for_subject(&principal),
                 principal: principal.clone(),
-                delegate_subject: None,
-                delegation_scope: None,
+                delegation: None,
                 action: GrantAction::TenantAdmin,
                 target: ResourceTarget::Tenant { tenant_id },
             };
@@ -506,8 +504,7 @@ macro_rules! admit_or_return {
         let authz = CommandAuthz {
             actor: actor_handle_for_subject($principal),
             principal: $principal.clone(),
-            delegate_subject: None,
-            delegation_scope: None,
+            delegation: None,
             action: GrantAction::TenantAdmin,
             target: ResourceTarget::Tenant {
                 tenant_id: $tenant_id,

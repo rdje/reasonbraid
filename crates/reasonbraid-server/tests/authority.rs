@@ -28,7 +28,8 @@ use reasonbraid_core::{
 };
 use reasonbraid_server::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,
-    AuthorizationOutcome, AuthorizedApplyError, Command, CommandAuthz, GrantCreateError,
+    AuthorizationOutcome, AuthorizedApplyError, Command, CommandAuthz, Delegation,
+    GrantCreateError,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -129,18 +130,22 @@ fn grant(
     }
 }
 
+/// `SIGNOFF-REPAIR.3.4.1.1`: the delegation arrives as one value. This helper
+/// used to take a bare subject and leave the scope `None` behind, so every
+/// delegated fixture it built passed through the subject-without-scope state
+/// before a later line patched the scope in — the helper itself was a producer
+/// of the state the leaf removes.
 fn authz(
     actor: &str,
     principal: GrantSubject,
-    delegate: Option<GrantSubject>,
+    delegation: Option<Delegation>,
     action: GrantAction,
     target: ResourceTarget,
 ) -> CommandAuthz {
     CommandAuthz {
         actor: actor.parse().unwrap(),
         principal,
-        delegate_subject: delegate,
-        delegation_scope: None,
+        delegation,
         action,
         target,
     }
@@ -367,9 +372,16 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
     );
     create_grant(&pool, &subject_grt).await.unwrap();
 
-    let delegate = Some(GrantSubject::Human(
-        "hpr_00000000-0000-7000-8000-000000000113".parse().unwrap(),
-    ));
+    // `SIGNOFF-REPAIR.3.4.1.1`: this fixture used to pass a delegate subject with
+    // NO scope, which made the §16.3 widening check skip itself — the very state
+    // the leaf removes, constructed here in the suite even though no production
+    // caller could reach it. The scope is TenantWide, matching the subject's own
+    // grant selector, so the assertion below is unchanged and the invariant now
+    // actually runs against it.
+    let delegate = Some(Delegation {
+        subject: GrantSubject::Human("hpr_00000000-0000-7000-8000-000000000113".parse().unwrap()),
+        scope: TargetSelector::TenantWide,
+    });
     let principal = GrantSubject::Role("rol_00000000-0000-7000-8000-000000000103".parse().unwrap());
     let target = thread_target(tenant, "thr_00000000-0000-7000-8000-000000000103");
     let ctx = authz(
@@ -407,7 +419,8 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
         "agt_00000000-0000-7000-8000-000000000103"
     );
     assert_eq!(
-        record.subject, delegate,
+        record.subject,
+        delegate.as_ref().map(|d| d.subject.clone()),
         "the delegated subject is recorded"
     );
     assert_eq!(
@@ -440,7 +453,7 @@ async fn every_accepted_command_records_actor_subject_grant_decision_and_digest(
     let expected = policy_digest(
         Some(&boundary),
         Some(&subject_grt),
-        delegate.as_ref(),
+        delegate.as_ref().map(|d| &d.subject),
         GrantAction::ThreadContribute,
         &target,
         &Decision::Allowed,
@@ -828,11 +841,13 @@ async fn delegated_selection_includes_the_whole_requested_scope() {
     let mut context = authz(
         "agt_00000000-0000-7000-8000-000000000132",
         caller.subject,
-        Some(source.subject.clone()),
+        Some(Delegation {
+            subject: source.subject.clone(),
+            scope: TargetSelector::TenantWide,
+        }),
         GrantAction::ThreadInspect,
         thread_target(tenant, thread),
     );
-    context.delegation_scope = Some(TargetSelector::TenantWide);
     let AuthorizationOutcome::Allowed { record_id, .. } =
         authorize(&pool, &context, Utc::now()).await.unwrap()
     else {
@@ -845,7 +860,10 @@ async fn delegated_selection_includes_the_whole_requested_scope() {
     assert_eq!(record.subject, Some(source.subject.clone()));
     assert_eq!(record.grant_id.as_deref(), Some(source.grant_id.as_str()));
     assert_eq!(record.boundary_id.as_deref(), Some(b.boundary_id.as_str()));
-    context.delegation_scope = Some(TargetSelector::Threads { threads: vec![] });
+    context.delegation = Some(Delegation {
+        subject: source.subject.clone(),
+        scope: TargetSelector::Threads { threads: vec![] },
+    });
     assert!(matches!(
         authorize(&pool, &context, Utc::now()).await.unwrap(),
         AuthorizationOutcome::Denied { .. }
@@ -881,7 +899,10 @@ async fn absent_authority_sources_do_not_borrow_caller_or_tenant_audit_reference
             } else {
                 absent.clone()
             },
-            delegated.then(|| absent.clone()),
+            delegated.then(|| Delegation {
+                subject: absent.clone(),
+                scope: TargetSelector::TenantWide,
+            }),
             GrantAction::ThreadInspect,
             tenant_target(tenant),
         );

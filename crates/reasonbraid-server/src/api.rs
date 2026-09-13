@@ -49,8 +49,8 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::authority::{
-    self, authorize_in_tx, AuthorizationOutcome, CommandAuthz, GrantCreateError, GuardMode,
-    TenantTransaction,
+    self, authorize_in_tx, AuthorizationOutcome, CommandAuthz, Delegation, GrantCreateError,
+    GuardMode, TenantTransaction,
 };
 use crate::budget;
 use crate::node_channel;
@@ -365,20 +365,29 @@ fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, ControlApiErro
 }
 
 /// Resolve the delegation from the envelope's `authority_context` (`.1.4.2`,
-/// ADR-009 — chain-in-envelope): the subject rides `delegate_subject` (the
-/// authority source), the requested scope rides `delegation_scope`. The actor
-/// keeps its own identity (the caller check in the dual evaluation).
+/// ADR-009 — chain-in-envelope): the subject (the authority source) and the
+/// requested scope ride together in one [`Delegation`]. The actor keeps its own
+/// identity (the caller check in the dual evaluation).
 fn delegation_from_envelope(
     envelope: &CommandEnvelope,
-) -> Result<(Option<GrantSubject>, Option<TargetSelector>), ControlApiError> {
+) -> Result<Option<Delegation>, ControlApiError> {
     let Some(ctx) = &envelope.authority_context else {
-        return Ok((None, None));
+        return Ok(None);
     };
+    // `SIGNOFF-REPAIR.3.4.1.1`: the subject and the scope leave here as ONE
+    // value. This was already the only producer and it always set both, so the
+    // pairing changes no behaviour — it removes the option of forgetting.
     if let Ok(human) = ctx.on_behalf_of.parse::<HumanPrincipalId>() {
-        return Ok((Some(GrantSubject::Human(human)), Some(ctx.scope.clone())));
+        return Ok(Some(Delegation {
+            subject: GrantSubject::Human(human),
+            scope: ctx.scope.clone(),
+        }));
     }
     if let Ok(role) = ctx.on_behalf_of.parse::<AgentRoleId>() {
-        return Ok((Some(GrantSubject::Role(role)), Some(ctx.scope.clone())));
+        return Ok(Some(Delegation {
+            subject: GrantSubject::Role(role),
+            scope: ctx.scope.clone(),
+        }));
     }
     Err(ControlApiError::invalid_command(format!(
         "malformed `on_behalf_of` value `{}` (expected hpr_… | rol_…)",
@@ -1195,10 +1204,9 @@ async fn authorize_tenant_admin(
     tenant_id: TenantId,
 ) -> Result<(), ControlApiError> {
     let authz = CommandAuthz {
-        delegation_scope: None,
         actor: actor_handle_for_subject(principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegation: None,
         action: GrantAction::TenantAdmin,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -3762,10 +3770,9 @@ async fn create_thread_auto(
 
     // 1. THE grant: the explicit `thread:create:auto` authority (audited).
     let authz = CommandAuthz {
-        delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegation: None,
         action: GrantAction::ThreadCreateAuto,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -3934,10 +3941,9 @@ async fn open_recruitment_call(
         .parse()
         .map_err(|_| ControlApiError::invalid_command("tenant_id is malformed"))?;
     let authz = CommandAuthz {
-        delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegation: None,
         action: GrantAction::ThreadInvite,
         target: ResourceTarget::Thread {
             tenant_id,
@@ -6149,10 +6155,9 @@ pub(crate) async fn apply_node_result_in_tx(
     };
     let hash = request_hash(operation, &principal, &body, None);
     let authz = CommandAuthz {
-        delegation_scope: None,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegation: None,
         action: GrantAction::ThreadContribute,
         target: ResourceTarget::Thread {
             tenant_id,
@@ -6349,12 +6354,11 @@ async fn create_thread(
         &envelope.body,
         envelope.authority_context.as_ref(),
     );
-    let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;
+    let delegation = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
-        delegation_scope,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject,
+        delegation,
         action: GrantAction::ThreadCreate,
         target: ResourceTarget::Tenant { tenant_id },
     };
@@ -6572,12 +6576,11 @@ async fn thread_command(
         }
     };
 
-    let (delegate_subject, delegation_scope) = delegation_from_envelope(&envelope)?;
+    let delegation = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
-        delegation_scope,
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
-        delegate_subject,
+        delegation,
         action: authz_action,
         // Participant removal requires tenant administration. The domain
         // executor still locks and selects the thread within this same tenant.
@@ -6621,10 +6624,9 @@ where
     Fut: std::future::Future<Output = Result<Value, ControlApiError>>,
 {
     let authz = CommandAuthz {
-        delegation_scope: None,
         actor: actor_handle_for_subject(principal),
         principal: principal.clone(),
-        delegate_subject: None,
+        delegation: None,
         action: GrantAction::ThreadInspect,
         target,
     };

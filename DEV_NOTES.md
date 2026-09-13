@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The bound was the work
+
+- The record said "rotate installs fresh identity only in memory, rb-node cert/key on disk not updated". Confirming that took two greps. Working out what it *costs* took the rest of the leaf, and it is the part I would have got wrong if I had written it up from the source reading.
+- ⭐ My first instinct was "every restart after a rotation strands the node", which is false: the stale certificate loads, `cert_expires_soon()` is still true — it is *why* the node rotated — so the next handshake rotates again and the node heals itself. My second instinct was then "so it is cosmetic", which is also false. The node that stays down until that certificate actually expires cannot rotate out, because rotation requires a usable certificate, and it needs an operator to issue a fresh enrollment token. A window of at most five minutes on a ten-minute leaf, and on the wrong side of it the node is bricked.
+- ⚠️ Both wrong instincts were confident and neither needed a test to produce. Writing the bound down carefully is what separated them, and it changed the leaf from "tidy this up" to "this is `.4.1.1`'s lockout through a different door".
+- ⛔ The design decision I am most sure of is that the channel does not grow a filesystem. It has no file I/O anywhere, and it does not know where node-local state lives; `Node::open` does, because it is handed the journal path. So the channel gets a hook and the owner supplies the behaviour. ⭐ And the control asserts the two *specific filenames* rather than "a sink fired" — a sink writing to the wrong directory would satisfy the weaker assertion perfectly while leaving the defect exactly where it was.
+- ⭐ Persist-first, then swap memory. I nearly wrote it the other way because installing first reads more naturally. A crash between the two steps decides it: new-on-disk/old-in-memory is corrected by the next start, old-on-disk/new-in-memory is precisely the bug I am fixing. The control observes memory from *inside* the sink, which is an odd-looking test and the only way to assert an ordering that has no other observable.
+- ⚠️ clippy refused the commit twice for "very complex type". The lazy answer is an `#[allow]`; the right one is the type alias it was asking for, and naming `IdentitySink` gave me a place to say that a sink receives the certificate *and its key* — a certificate without its key restores nothing, which is worth stating once rather than hoping the next caller notices.
+
 ## 2026-09-13 — I falsified the wrong thing first, and the number told me
 
 - The defect is small and the shape is worth keeping: two `Arc<Mutex<_>>` fields holding one fact. The WRITE took both locks together, so two handshakes could never interleave, and that is exactly why it reads as correct. Every READ took them separately. A reader does not need a torn write to see a torn pair — it only needs a complete write to land between its two acquisitions.

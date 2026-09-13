@@ -68,6 +68,15 @@ secret, but the CHANNEL identity is the certificate:
    Rotation is additive — the old leaf stays valid until expiry or revocation —
    and the node rotates automatically when less than half the leaf's lifetime
    remains, so a running session is never cut.
+
+   **A rotated identity is written to disk before it is used** (`.4.2.9`): the
+   node persists the fresh certificate and key beside its journal, in the same
+   two files it loads at start, so a rotation survives a restart. Until it did,
+   a node that rotated and restarted came back holding the superseded
+   certificate — usually harmless, because it simply rotated again on the next
+   handshake, but a node that stayed down until that certificate expired could
+   not rotate at all (rotation requires a usable certificate) and had to be
+   re-enrolled by an operator.
 4. **A successful handshake issues a lease**: a fresh random **fencing token**
    and an expiry 60 s out, plus a bumped **lease epoch** (`.2.2`). The token is
    the channel's credential from then on: `events`, `ack`, `poll`, and

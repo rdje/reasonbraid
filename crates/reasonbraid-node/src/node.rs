@@ -114,10 +114,39 @@ impl Node {
         cert_der: Vec<u8>,
         key: rcgen::KeyPair,
     ) -> Result<Self, NodeError> {
+        // `SIGNOFF-REPAIR.4.2.9`: a rotation must survive a restart. The
+        // channel rotates on its own when the leaf nears expiry, and until this
+        // sink existed the fresh identity lived only in memory — so a restart
+        // loaded the superseded certificate, and a node that stayed down past
+        // that certificate's expiry could not rotate its way out (rotation
+        // requires a usable certificate) and needed re-enrolling by an operator.
+        //
+        // The files are the ones `rb-node` already loads at start: `cert.der`
+        // and `key.der` beside the journal (ADR-007, §13 — node-local state on
+        // the journal's own volume).
+        let dir = journal_path.as_ref().parent().map(|d| d.to_path_buf());
+        let channel = NodeChannel::new(base_url, node_id.clone(), cert_der, key);
+        let channel = match dir {
+            Some(dir) => channel.persisting_identity_with(Arc::new(
+                move |cert: &[u8], key: &rcgen::KeyPair| {
+                    // A failure here is reported and NOT fatal: the node is already
+                    // holding a working identity, and refusing to continue would
+                    // turn a degraded-durability condition into an outage. The next
+                    // start reports the stale certificate loudly by rotating again.
+                    if let Err(e) = std::fs::write(dir.join("cert.der"), cert) {
+                        eprintln!("node: could not persist the rotated certificate: {e}");
+                    }
+                    if let Err(e) = std::fs::write(dir.join("key.der"), key.serialize_der()) {
+                        eprintln!("node: could not persist the rotated key: {e}");
+                    }
+                },
+            )),
+            None => channel,
+        };
         Ok(Self {
             node_id: node_id.clone(),
             journal: Journal::open(journal_path).await?,
-            channel: NodeChannel::new(base_url, node_id, cert_der, key),
+            channel,
             state: Arc::new(RwLock::new(NodeState::Offline)),
         })
     }
@@ -319,5 +348,80 @@ impl Node {
             .acknowledge_event(event_id, &cursor.to_string(), now)
             .await?;
         Ok(())
+    }
+}
+
+/// `SIGNOFF-REPAIR.4.2.9` — `Node::open` wires the channel's identity sink to
+/// the SAME two files `rb-node` loads at start, so a rotation survives a
+/// restart.
+///
+/// The pairing is the whole point: `rb-node`'s `load_workload_identity` reads
+/// `cert.der` and `key.der` beside the journal, and until this leaf nothing ever
+/// rewrote them after enrollment. A control that checked only "a sink fires"
+/// would not have caught a sink writing to the wrong place.
+#[cfg(test)]
+mod rotated_identity_survives_restart {
+    use super::*;
+
+    fn key() -> rcgen::KeyPair {
+        rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("a test key")
+    }
+
+    /// A fixture directory on the repository's own volume (§13), named by
+    /// exclusive creation rather than by a clock.
+    fn fixture_dir(name: &str) -> std::path::PathBuf {
+        let base = std::env::var_os("CARGO_TARGET_TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target")
+            });
+        let dir = base
+            .join("identity-persistence")
+            .join(format!("{name}-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(dir.parent().expect("the fixture parent")).expect("fixture parent");
+        std::fs::DirBuilder::new()
+            .create(&dir)
+            .expect("the fixture directory is new");
+        dir
+    }
+
+    #[tokio::test]
+    async fn a_rotation_rewrites_the_files_the_next_start_reads() {
+        let dir = fixture_dir("rotation");
+        let journal = dir.join("node.db");
+        let node = Node::open(
+            &journal,
+            "http://127.0.0.1:1",
+            "nod_00000000-0000-7000-8000-000000000429".to_string(),
+            vec![0x01, 0x02],
+            key(),
+        )
+        .await
+        .expect("open the node");
+
+        // Nothing is written at open: the identity came FROM those files.
+        assert!(
+            !dir.join("cert.der").exists(),
+            "opening a node writes no identity — it was handed one"
+        );
+
+        // The rotation the channel performs inside `handshake`, driven directly.
+        let rotated_key = key();
+        let rotated_key_der = rotated_key.serialize_der();
+        node.channel()
+            .install_identity(vec![0xAA, 0xBB, 0xCC], rotated_key);
+
+        // THE INVARIANT: the two files the next start reads now hold the
+        // ROTATED identity, byte for byte.
+        assert_eq!(
+            std::fs::read(dir.join("cert.der")).expect("cert.der was written"),
+            vec![0xAA, 0xBB, 0xCC],
+            "the rotated certificate is on disk, in the file `rb-node` loads"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("key.der")).expect("key.der was written"),
+            rotated_key_der,
+            "and so is its key — a certificate without its key restores nothing"
+        );
     }
 }

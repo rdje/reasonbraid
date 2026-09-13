@@ -344,7 +344,7 @@ impl From<reqwest::Error> for ChannelError {
 /// polls with it, the heartbeat task renews it, `reconcile` rotates it). The
 /// workload identity (certificate + key) is also shared: a rotation installs
 /// the fresh pair and the next handshake signs with it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NodeChannel {
     base_url: String,
     node_id: String,
@@ -367,7 +367,36 @@ pub struct NodeChannel {
     /// before the journal is reached. `0` until the first handshake answers,
     /// which is what this node did before the offset existed.
     clock_offset_ms: Arc<Mutex<i64>>,
+    /// Where a freshly installed workload identity is PERSISTED, if anywhere
+    /// (`SIGNOFF-REPAIR.4.2.9`).
+    ///
+    /// ⛔ `install_identity` wrote only the in-memory value, and `handshake`
+    /// rotates automatically when the leaf is within `ROTATE_REMAINING_SECS` of
+    /// expiry — so a node that rotated and then restarted loaded the SUPERSEDED
+    /// certificate from disk. Usually it recovered by rotating again on the next
+    /// handshake; if it stayed down until the old leaf actually expired, `rotate`
+    /// itself refuses (it requires a usable certificate) and the node is
+    /// permanently locked out, needing an operator-issued enrollment token.
+    ///
+    /// The channel does no file I/O of its own: the sink is supplied by whoever
+    /// knows where the node's state lives — `Node::open` writes beside the
+    /// journal, which is exactly where the loader reads from.
+    identity_sink: Option<IdentitySink>,
     client: reqwest::Client,
+}
+
+impl fmt::Debug for NodeChannel {
+    /// Hand-written because the identity sink is a closure. ⚠️ It reports
+    /// whether a sink is PRESENT rather than omitting the field: "this channel
+    /// persists rotations" is exactly the fact `SIGNOFF-REPAIR.4.2.9` is about,
+    /// and a derived `Debug` that silently dropped it would hide it.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeChannel")
+            .field("base_url", &self.base_url)
+            .field("node_id", &self.node_id)
+            .field("persists_identity", &self.identity_sink.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 /// The fencing credential a handshake issues: the token and the epoch it was
@@ -403,6 +432,13 @@ fn rotation_due(not_after: i64, server_now: i64) -> bool {
 /// a rotation installs the fresh pair and the next handshake signs with it.
 type WorkloadIdentity = Arc<Mutex<Option<(Vec<u8>, rcgen::KeyPair)>>>;
 
+/// Where a freshly rotated workload identity is persisted
+/// (`SIGNOFF-REPAIR.4.2.9`). Named rather than written inline at three sites:
+/// clippy asks for it, and a sink that receives the certificate AND its key is
+/// a contract worth stating once — a certificate without its key restores
+/// nothing.
+type IdentitySink = Arc<dyn Fn(&[u8], &rcgen::KeyPair) + Send + Sync>;
+
 impl NodeChannel {
     /// Build the client for `base_url` (e.g. `http://127.0.0.1:8080`) acting as
     /// `node_id`, proving possession of the workload certificate's key (the
@@ -418,6 +454,7 @@ impl NodeChannel {
             node_id,
             identity: Arc::new(Mutex::new(Some((cert_der, key)))),
             lease: Arc::new(Mutex::new(None)),
+            identity_sink: None,
             clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
@@ -432,6 +469,7 @@ impl NodeChannel {
             node_id,
             identity: Arc::new(Mutex::new(None)),
             lease: Arc::new(Mutex::new(None)),
+            identity_sink: None,
             clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
@@ -440,10 +478,27 @@ impl NodeChannel {
     /// Install a fresh workload identity (the enrollment response's or a
     /// rotation's certificate + key).
     pub fn install_identity(&self, cert_der: Vec<u8>, key: rcgen::KeyPair) {
+        // PERSIST FIRST, then install (`SIGNOFF-REPAIR.4.2.9`). A crash between
+        // the two leaves the node holding the new identity on disk and the old
+        // one in memory, which its next start corrects by loading the new one —
+        // the safe order. The reverse would leave a node that has rotated in
+        // memory, lost the record of it, and cannot reproduce the certificate
+        // the server now knows.
+        if let Some(sink) = self.identity_sink.as_ref() {
+            sink(&cert_der, &key);
+        }
         *self
             .identity
             .lock()
             .expect("the identity lock is not poisoned") = Some((cert_der, key));
+    }
+
+    /// Install the sink that PERSISTS every freshly rotated identity
+    /// (`SIGNOFF-REPAIR.4.2.9`). Set once, at construction, by the owner that
+    /// knows where node-local state belongs.
+    pub fn persisting_identity_with(mut self, sink: IdentitySink) -> Self {
+        self.identity_sink = Some(sink);
+        self
     }
 
     /// Does the current leaf have ≤ half its lifetime left? (The rotate
@@ -1138,6 +1193,130 @@ mod lease_generation {
         assert_eq!(
             channel.current_lease().expect("installed"),
             ("fnc_7".to_string(), 7)
+        );
+    }
+}
+
+/// `SIGNOFF-REPAIR.4.2.9` — a rotated identity is PERSISTED, not only held in
+/// memory.
+///
+/// `handshake` rotates on its own when the workload leaf is within
+/// `ROTATE_REMAINING_SECS` of expiry, and `install_identity` used to write only
+/// the in-memory value. Nothing wrote `cert.der`/`key.der` after enrollment —
+/// `rb-node`'s `save_workload_identity` takes an *enroll response* and is called
+/// exactly once, at enrollment.
+///
+/// ⚠️ **The bound, measured rather than asserted.** A restart usually RECOVERED:
+/// the stale certificate loads, `cert_expires_soon()` is true (it is why the
+/// node rotated in the first place), and the next handshake rotates again. The
+/// failure is the node that stays DOWN until that certificate actually expires —
+/// at most `ROTATE_REMAINING_SECS` later. `rotate` then refuses, because it
+/// requires a usable certificate, and the node is permanently locked out and
+/// needs an operator-issued enrollment token. That is `.4.1.1`'s lockout class
+/// reached through a different door.
+#[cfg(test)]
+mod identity_persistence {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn key() -> rcgen::KeyPair {
+        rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("a test key")
+    }
+
+    fn channel_with(sink: Option<IdentitySink>) -> NodeChannel {
+        let c = NodeChannel::new(
+            "http://127.0.0.1:1".to_string(),
+            "nod_00000000-0000-7000-8000-000000000429".to_string(),
+            vec![0x01, 0x02],
+            key(),
+        );
+        match sink {
+            Some(s) => c.persisting_identity_with(s),
+            None => c,
+        }
+    }
+
+    /// Installing an identity hands the EXACT bytes to the sink, every time.
+    #[test]
+    fn every_installed_identity_reaches_the_sink() {
+        let seen: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let channel = {
+            let seen = Arc::clone(&seen);
+            let calls = Arc::clone(&calls);
+            channel_with(Some(Arc::new(move |cert: &[u8], k: &rcgen::KeyPair| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                // The KEY is serializable here too — a sink that only got the
+                // certificate could not restore a usable identity.
+                assert!(
+                    !k.serialize_der().is_empty(),
+                    "the sink receives a usable key"
+                );
+                seen.lock().expect("seen").push(cert.to_vec());
+            })))
+        };
+
+        channel.install_identity(vec![0xAA, 0xBB], key());
+        channel.install_identity(vec![0xCC, 0xDD], key());
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "one call per rotation");
+        assert_eq!(
+            *seen.lock().expect("seen"),
+            vec![vec![0xAA, 0xBB], vec![0xCC, 0xDD]],
+            "the sink receives each certificate verbatim and in order"
+        );
+    }
+
+    /// ⛔ The sink is PERSIST-FIRST: when it runs, the in-memory identity is
+    /// still the OLD one. A crash between the two therefore leaves the new
+    /// identity on disk and the old in memory, which the next start corrects by
+    /// loading the new one. The reverse order would strand a node that had
+    /// rotated in memory and lost the record of it.
+    #[test]
+    fn the_sink_runs_before_the_in_memory_swap() {
+        let during: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        let channel = {
+            let during = Arc::clone(&during);
+            let observed: Arc<Mutex<Option<Vec<u8>>>> = Arc::clone(&during);
+            let cell: Arc<Mutex<Option<NodeChannel>>> = Arc::new(Mutex::new(None));
+            let cell_for_sink = Arc::clone(&cell);
+            let c = channel_with(Some(Arc::new(move |_c: &[u8], _k: &rcgen::KeyPair| {
+                if let Some(ch) = cell_for_sink.lock().expect("cell").as_ref() {
+                    *observed.lock().expect("observed") = ch
+                        .identity
+                        .lock()
+                        .expect("identity")
+                        .as_ref()
+                        .map(|(cert, _)| cert.clone());
+                }
+            })));
+            *cell.lock().expect("cell") = Some(c.clone());
+            c
+        };
+
+        channel.install_identity(vec![0xFF], key());
+        assert_eq!(
+            *during.lock().expect("during"),
+            Some(vec![0x01, 0x02]),
+            "while the sink ran, memory still held the OLD certificate — the \
+             persist-first order"
+        );
+    }
+
+    /// And a channel with no sink still works: the sink is optional, so every
+    /// existing caller (and every integration fixture) is unaffected.
+    #[test]
+    fn a_channel_without_a_sink_still_installs() {
+        let channel = channel_with(None);
+        channel.install_identity(vec![0x09], key());
+        assert_eq!(
+            channel
+                .identity
+                .lock()
+                .expect("identity")
+                .as_ref()
+                .map(|(c, _)| c.clone()),
+            Some(vec![0x09])
         );
     }
 }

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A rotated identity is written where the next start looks for it (`SIGNOFF-REPAIR.4.2.9`)
+
+- 🔴 **Confirmed and live, not latent.** The node rotates its workload certificate automatically when the leaf nears expiry, and the fresh identity lived only in memory. Nothing had ever rewritten `cert.der`/`key.der` after enrollment — the only writer takes an *enroll response* and runs once.
+- ⭐ **The bound would have been wrong in both directions if it had been guessed.** A restart usually RECOVERS: the stale certificate loads, the rotation window is still open, and the next handshake rotates again. But a node that stays DOWN until that certificate expires — at most 300 s later on a 600 s leaf — cannot rotate its way out, because rotation requires a usable certificate. That node is permanently locked out and needs an operator-issued enrollment token: the same lockout class as an enrollment token that expires unused, reached through a different door.
+- **Decision: the persistence belongs to the caller.** The channel does no file I/O anywhere and does not start now; it gains an optional sink, and `Node::open` — which already has the journal path — wires it to the exact two files the loader reads. ⭐ That pairing is the point: a control asserting only "a sink fires" would not catch a sink writing to the wrong place, so the control asserts the filenames.
+- ⭐ **Persist first, then swap memory**, and the order is reasoned: a crash between them leaves the NEW identity on disk and the OLD in memory, which the next start corrects. The reverse would strand a node that had rotated and lost the record of it — this leaf's own defect, reintroduced by its fix. A control asserts the order by observing memory from inside the sink.
+- A sink failure is reported and not fatal: the node already holds a working identity, and refusing to continue would turn a durability problem into an outage.
+- Validation: falsified by removing the sink call — the superseded shape exactly — `29 passed; 3 failed`, precisely the three new controls, the node-level one reporting `cert.der was written: NotFound`. 76 node tests plus the live channel, replacement and work suites, rc=0. ⚠️ clippy refused twice for a complex type; answered with the type alias it asked for rather than an `allow`.
+
 ## 2026-09-13 — The fencing token and its epoch become one fact (`SIGNOFF-REPAIR.4.2.8`)
 
 - 🔴 **Reproduced with a driven interleaving: `242 torn of 40,000` reads**, the first carrying a token from generation 444 with the epoch of 455. The control installs self-describing generations — generation `n` is token `fnc_n` with epoch `n` — so a torn pair checks against itself with no bookkeeping.
@@ -315,42 +324,26 @@
 - Validation: `run_pg_tests.sh node_enrollment node_channel node_inbox` rc=0 — **3 suites, 49 tests, zero failures**; server lib 102 + mtls 1 rc=0. Strict lint, fmt, gate (17 checks), book and link check rc=0.
 - FALSIFIED against the restored re-derivation: **11 passed / 1 failed**, `left: …12.973747Z` against `right: …12Z`. ⚠️ 973 ms of that is the whole-second truncation and the enrollment work is the remainder — under 26 ms on this run, since the two pull in opposite directions. Both are real; the split is stated rather than the single scarier number.
 
-## 2026-09-13 — There are three clocks, not two (`SIGNOFF-REPAIR.3.4.3.1`)
-
-- `.3.4.3` closed the cache's backward-skew hole and opened this leaf for the other direction: a node clock AHEAD of the server refuses every dispatch. The leaf owed a census before proposing any rule, and the census refuted the leaf's own framing — both answers it was opened with are shaped around `decided_at`, and the population is neither one field nor one clock.
-- **Three** server instants reach the node: `decided_at`, `cert_expires_at`, `lease_expires_at`. **Two** are compared against the node's own clock; the third is received and never read.
-- 🔴 **The two live ones fail in opposite directions.** A node AHEAD refuses every dispatch. A node BEHIND by more than 300 s makes `cert_expires_soon()` first fire at real time `not_after - 300 + S` — *after* the workload certificate has expired — so rotation is too late and the channel breaks. A per-field patch shaped on the dispatch case would have fixed one and left the other.
-- 🔴 **And the server does not have one clock either.** `decided_at` comes from PostgreSQL `clock_timestamp()` (22 `database_now` sites); `cert_expires_at` and `lease_expires_at` come from the server process (`Utc::now()`, 8 sites in `node_channel.rs`). Nothing reconciles them, so "the server's time" is not yet a single quantity — and an offset correction built today would silently assume they agree.
-- ⭐ The census also found the shape the answer should take, already shipped one file from the defect: the reservation's `wall_clock_seconds` is a server-supplied **duration** the node anchors to its own clock, with no skew exposure at all.
-- Split into three children along the measured population: `.1` the server's own clock split (the prerequisite), `.2` the node evaluating server instants in the server's terms (which closes the outage and makes the skew observable), `.3` the certificate's opposite-direction skew.
-- ⛔ **Nothing is repaired in this commit and it does not pretend otherwise.** The dispatch outage is open at `.2`; the certificate finding is arithmetic on a source reading, explicitly not reproduced, and open at `.3`.
-- Validation: documentation only — no Rust source, behaviour or qualification change. Gate (17 checks), book and link check rc=0.
-
-## 2026-09-13 — ADR-009 is called "chain-in-envelope" and there is no chain (`SIGNOFF-REPAIR.3.4.5`)
-
-- The leaf owed ADR-009 the comparative measurement its withdrawn claim never had. That claim took the envelope's own length `N` and asserted `N < N + 64`: true by construction, encoding no token and comparing no delegation depth.
-- The measurement now exists as a re-runnable instrument, `crates/reasonbraid-core/tests/delegation_representation.rs`, needing no new dependency. Both shapes carry the same request and the same scope against a common **308 B** undelegated baseline.
-
-  | Depth | Chain-in-envelope | Token (ES256) | Token (HS256) |
-  | --- | --- | --- | --- |
-  | 1 | 505 B | 1,066 B | 1,023 B |
-  | 2 | 684 B | 1,824 B | 1,738 B |
-  | 3 | 861 B | 2,582 B | 2,453 B |
-
-- Per additional hop: **177 B** for the envelope against a constant **758 B** (ES256) / **715 B** (HS256) — roughly **4.3×**. The per-hop figure is precisely what a fixed increment could never have produced.
-- ⭐ The gap is structural rather than an encoding detail: a credential must carry an issuer, audience, lifetime, replay id, key id and signature, and an in-request context needs none of the six because the server already knows them. It would not close with a tighter encoding.
-- 🔴 **And the finding that matters more than the ratio: the ADR is titled "chain-in-envelope" and no chain exists.** `AuthorityContext` holds one `on_behalf_of` string, so a depth-2 delegation has nowhere to go. A control pins it, so the title cannot keep implying a capability the type does not have. Third independent measurement of the same absence, after `.3.4.1` (the grant-chain flags have no producer) and `.3.4.1.1`.
-- ⚠️ Stated rather than left implicit: depth 1 encodes the shipped envelope, depths 2–3 are prototype-vs-prototype; the signature bytes are not a real signature and only their length is load-bearing, which is the algorithm's (32 B HS256, 64 B ES256/Ed25519) — the distinction that makes this different in kind from `N < N + 64`. And size is not the axis that decides the question: tokens buy offline verification and delegation while the delegator is unreachable, which no byte count settles.
-- ⛔ No size advantage is offered as the reason for the choice. The ADR now says it rests on the subtraction and the existing revocation lifecycle — which is what it rested on, since the table did not exist when the choice was made.
-- ⚠️ A fixture artifact was caught before the numbers were recorded: a short placeholder actor id on the final hop made the depth-3 token 37 B short and the per-hop cost look irregular. Corrected, and recorded — a first run with a spurious irregularity is where a plausible wrong explanation gets adopted.
-- Validation: `cargo test -p reasonbraid-core --locked` rc=0, **74 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twelve times;
+the rotation contract in `README_POLICY.md`. This file has rotated thirteen times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the THIRTEENTH rotation (2026-09-13)
+from the repository root:
+
+```bash
+git show 87a0abf90d0fa24e49ca85b5e121722fbacb7344:CHANGELOG.md
+```
+
+That snapshot is 95,400 bytes and contains 31 dated entries; its Git blob is
+`2b9be00dffbbe7f5837f20710769c81d19ef02ae`, and its SHA-256 is
+`ffabf15976215219ee32b88979a88853c237e7e9fead69f525fe51c99271609b`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-13 — There are three clocks, not two (`SIGNOFF-REPAIR.3.4.3.1`)`.
+It carries the TWELFTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWELFTH rotation (2026-09-13) from
 the repository root:

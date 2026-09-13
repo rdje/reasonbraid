@@ -2636,6 +2636,17 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Explicit limit: this rotates the working digest only. No record is deleted, no threshold raised, and no claim is made that any rotated entry was re-verified — they retain the status they had at their own commits.
 - Commit: `REASONBRAID-DOC-0006 (leaf SIGNOFF-REPAIR.11.4.1.1): rotate the changelog a second time`.
 
+##### SIGNOFF-REPAIR.11.4.1.2 — The fifteenth changelog rotation
+
+- Opened: `pending`. The same contract as `.11.4.1` and `.11.4.1.1`, applied again from the same authority — no threshold change, no new archive, no record deleted.
+- Trigger, mechanical rather than noticed: `scripts/check_readme_stability.sh` refused with `CHANGELOG.md is 96102 bytes (> rotation threshold 96000)` while `.11.9.1`'s record was being appended. That is the containment working exactly as `.11.4.1.1` describes it — the cap schedules the rotation, not an author's judgement about length.
+- ⚠️ Sequenced as its own commit rather than folded into `.11.9.1`, and the leaf that triggered it had its record pulled aside first, so the predecessor snapshot this rotation names holds only pre-existing entries. `COMMIT.md` says one commit per completed leaf; a rotation carrying somebody else's record would make the predecessor pointer describe a state that never existed on its own.
+- Acceptance, inherited verbatim: the retained and retired whole-record segments reconstruct the pre-rotation file byte-for-byte, the named commit and blob resolve, and the digest lands under the unchanged cap.
+- Verification: predecessor `2c1bbe80ee904026c171b3f82ace3b6fe8edab54`, blob `a515c482b0e6e750208d36e538d0ff8777e3cc4a`, **92,548 bytes / 520 lines / 30 dated records**, SHA-256 `b2b9b74cfa7ee1c87d2585aeb30f81108964978d441a759c29a1e2fcdaf1e301`. Split into **14 retained + 16 retired**; header + retained + retired + the original footer reconstruct that snapshot byte-for-byte with a matching SHA-256. FALSIFIED: altering ONE byte of the retained segment breaks both the equality and the digest. Both chain pointers re-measured rather than copied — `git cat-file -s a515c48` returns `92548` and `git show 2c1bbe8:CHANGELOG.md | shasum -a 256` returns the recorded digest, and the next link back, `2912136`, returns the `95013` bytes its own notice claims. New digest **44,559 bytes / 358 lines / 14 records**, well under the unchanged 96,000 cap. `check_readme_stability.sh` rc=0.
+- Explicit limit: this rotates the working digest only. No record is deleted, no threshold raised, and no claim is made that any rotated entry was re-verified — each keeps the status it had at its own commit.
+- Status: `done`; DOC-0013.
+- Commit: `REASONBRAID-DOC-0013 (leaf SIGNOFF-REPAIR.11.4.1.2): rotate the changelog a fifteenth time`.
+
 #### SIGNOFF-REPAIR.11.4.2 — Complete containment inventory and enforcement review
 
 - Status: `pending`.

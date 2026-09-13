@@ -1782,6 +1782,78 @@ async fn the_zero_concurrency_wake_gate_holds_the_delivery() {
     .expect("admit work");
     let delivered = state.replay(&role_id, 0).await.expect("the replay");
     assert_eq!(delivered.len(), 1, "the admitted role receives the row");
+
+    // ── `SIGNOFF-REPAIR.4.2.10`: the gate's REMAINING states, each driven ────
+    //
+    // The census the acceptance asked for, taken from the filter itself —
+    // `NOT EXISTS (… (profile->'availability'->>'concurrency')::bigint = 0)`.
+    // It has five reachable shapes, and the two above are the two this control
+    // used to cover. The other three all mean "deliver", and each reaches that
+    // answer by a DIFFERENT route through the SQL, so a single one of them
+    // would not stand for the others:
+    //
+    //   * no `concurrency` key   -> `->>` yields NULL, `NULL = 0` is NULL
+    //   * no `availability` key  -> `->` yields NULL, so does everything after
+    //   * a NEGATIVE concurrency -> a number that is simply not zero
+    //
+    // ⛔ The state that is NOT here is "no profile row at all", which is the
+    // common case for every plain `nod_…` node and is already exercised by every
+    // other delivery control in this file — `EXISTS` over an empty join.
+    let set_availability = async |value: serde_json::Value| {
+        sqlx::query(
+            "UPDATE profile_versions SET profile = jsonb_set(profile, '{availability}', $2) \
+             WHERE role_id = $1 AND version = 1",
+        )
+        .bind(&role_id)
+        .bind(value)
+        .execute(&pool)
+        .await
+        .expect("rewrite the availability block");
+    };
+
+    set_availability(json!({ "operating_hours": null, "wake_policy": null })).await;
+    assert_eq!(
+        state.replay(&role_id, 0).await.expect("the replay").len(),
+        1,
+        "a profile with NO concurrency key delivers — `->>` yields NULL and \
+         `NULL = 0` is NULL, not true"
+    );
+
+    sqlx::query("UPDATE profile_versions SET profile = profile - 'availability' WHERE role_id = $1 AND version = 1")
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("drop the availability block");
+    assert_eq!(
+        state.replay(&role_id, 0).await.expect("the replay").len(),
+        1,
+        "a profile with NO availability block delivers — the whole path is NULL"
+    );
+
+    set_availability(json!({ "concurrency": -1, "operating_hours": null, "wake_policy": null }))
+        .await;
+    assert_eq!(
+        state.replay(&role_id, 0).await.expect("the replay").len(),
+        1,
+        "a NEGATIVE concurrency delivers: the gate is a DRAIN SWITCH that tests \
+         for exactly zero, not a limiter that compares against an active count"
+    );
+
+    // ⭐ And the drain state is re-asserted LAST, so the four "delivers" above
+    // cannot all be passing because the fixture quietly stopped being deliverable
+    // for some unrelated reason. A control whose positive arms could all be
+    // vacuous is not coverage.
+    set_availability(json!({ "concurrency": 0, "operating_hours": null, "wake_policy": null }))
+        .await;
+    assert!(
+        state
+            .replay(&role_id, 0)
+            .await
+            .expect("the replay")
+            .is_empty(),
+        "and zero still HOLDS — the gate is the thing being measured, not the \
+         fixture's general deliverability"
+    );
 }
 
 /// THE `.3.5.1` acceptance: the §10.6 ladder is ONE derived truth — the

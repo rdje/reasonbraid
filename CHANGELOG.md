@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The wake gate is a drain switch, and every state it has now has a control (`SIGNOFF-REPAIR.4.2.10`)
+
+- **census taken from the filter rather than from the tests**: the delivery gate has FIVE reachable states and the existing control covered two — zero, then two.
+- ⭐ **The three uncovered states all mean "deliver", and each reaches that answer by a different route through the SQL** — a missing `concurrency` key makes `NULL = 0` yield NULL, a missing `availability` block makes the whole path NULL, and a negative number is simply not zero. One of them does not stand for the others, so all three now have controls.
+- ⭐ **The drain state is re-asserted LAST, after the four delivering ones.** Without it, every positive arm could be passing because the fixture had quietly stopped being deliverable for an unrelated reason. A control whose positive arms can all be vacuous is not coverage.
+- 🔴 **The substantive answer is a claim narrowed, not a defect repaired: the gate is a DRAIN SWITCH, not a concurrency limiter.** It tests for exactly zero and never compares a declared concurrency against an active count, so a node declaring `concurrency: 2` will receive a third row. That is the design — presence already names zero `draining` — and the book now says so, including what an operator must therefore enforce at the node.
+- ⛔ **A hypothesis of my own, measured and refuted, recorded because it would have been serious**: the `::bigint` cast on that JSON field appears at six query sites and a non-numeric value would raise at every one. It is unreachable — the field is typed `Option<i64>` and the writer stores the re-serialized typed struct, not the raw body.
+- Validation: falsified by removing the gate — the held role receives its row, `36 passed; 1 failed`, only this control. `37 passed; 0 failed` restored. No production code changed.
+
 ## 2026-09-13 — A rotated identity is written where the next start looks for it (`SIGNOFF-REPAIR.4.2.9`)
 
 - 🔴 **Confirmed and live, not latent.** The node rotates its workload certificate automatically when the leaf nears expiry, and the fresh identity lived only in memory. Nothing had ever rewritten `cert.der`/`key.der` after enrollment — the only writer takes an *enroll response* and runs once.

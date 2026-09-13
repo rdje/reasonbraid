@@ -1788,12 +1788,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.4.2.10 — The wake gate is only tested at concurrency zero and two
 
-- Status: `pending`.
 - Opened by `.4.2`'s clause-level reconciliation, from `census-3.md:152`.
 - The record's claim: the zero-concurrency wake gate's controls exercise concurrency 0 and then 2, with no control over the ACTIVE count at a positive concurrency — so the gate's behaviour when a node is at its limit rather than disabled is uncovered.
 - ⚠️ This is a control-coverage gap, the shape `.4.2.6` repaired for the proof ladder, and the same discipline applies: a fixture must be proved to reach the condition it names, because a gate that refuses for the wrong reason looks identical from outside.
 - Acceptance: the population of the gate's states is enumerated first, then each reachable one gains a control that is proved to reach it; existing wake-gate and delivery controls pass unchanged.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0166.
+- **census of the gate's states, taken from the filter itself rather than from the tests** — `NOT EXISTS (… (profile->'availability'->>'concurrency')::bigint = 0)` has **five** reachable shapes: no profile row at all; a profile with no `availability` block; a profile with `availability` but no `concurrency` key; `concurrency = 0`; and `concurrency` non-zero (positive or negative). The existing control covered **two** — zero, then two.
+- ⭐ **The three uncovered ones all mean "deliver", and each reaches that answer by a DIFFERENT route through the SQL**, which is why one of them does not stand for the others: a missing `concurrency` key makes `->>` yield NULL so `NULL = 0` is NULL; a missing `availability` block makes the whole path NULL; a negative number is simply not zero. Controls added for all three, plus the "no profile row" case named as already exercised by every other delivery control in the file (`EXISTS` over an empty join).
+- ⭐ **And the drain state is re-asserted LAST, after the four delivering states.** Without that, all four positive arms could be passing because the fixture had quietly stopped being deliverable for an unrelated reason — a control whose positive arms can all be vacuous is not coverage. This is `.4.2.6`'s lesson (prove the fixture reaches the rung it names) applied to a filter instead of a ladder.
+- 🔴 **THE SUBSTANTIVE ANSWER to the record's clause, and it is a claim narrowed rather than a defect repaired: the gate is a DRAIN SWITCH, not a concurrency limiter.** It tests for exactly zero. It never compares a declared concurrency against an ACTIVE count, so a node declaring `concurrency: 2` receives a third row. That is consistent with the product elsewhere — `presence::presence_state` names `concurrency == Some(0)` **`Draining`** — so the behaviour is the design, and the record's "no positive concurrency active count" is an accurate observation of something that was never claimed. Now asserted by the negative-concurrency control, which would fail the day someone turned the gate into a limiter without saying so.
+- ⛔ **A hypothesis of my own, MEASURED AND REFUTED, recorded because it would have been a serious finding.** `(…->>'concurrency')::bigint` appears in **6** query sites (1 in `node_channel.rs`, 5 in `api.rs`), and a non-numeric JSON value would raise at every one — an unvalidated field reaching a cast, which is `.4.1.2.1`'s shape exactly. It is not reachable: `profiles::Availability::concurrency` is typed `Option<i64>`, and the writer stores `serde_json::to_value(profile)` — the re-serialized TYPED struct, not the raw body — so the stored value is always a JSON number or absent. The type system is the validation, and it holds because the write path round-trips through it.
+- 🔴 FALSIFIED: the gate removed from the delivery filter -> the held role receives its row, the control fails printing the delivered `ReplayCommand`, **36 passed / 1 failed**, only this control. Restored: `37 passed; 0 failed`.
+- ⛔ No production code changed: this is control coverage plus a narrowed claim, and its worth is what the falsification shows the previous two-state coverage could not distinguish.
+- NO REGRESSION: `node_channel` 37/37; `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0; `cargo fmt --all -- --check` rc=0.
+- LOCKSTEP: `docs/book/src/node-channel.md` — the wake gate is described as a drain switch, with what it does and does not do.
+- promotion: declined. `.4.2.6` already carries the statement this instantiates — a fixture must be proved to reach the state it names, and a suite of positive arms needs a negative beside it — and this is a further instance.
+- Commit: `REASONBRAID-REPAIR-0166 (leaf SIGNOFF-REPAIR.4.2.10): the wake gate is a drain switch, and every state it has now has a control`.
 
 #### SIGNOFF-REPAIR.4.2.1 — A rotation can outrun a revocation and leave a live certificate behind
 
@@ -3539,12 +3549,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | 1 | `SIGNOFF-REPAIR.11.9.1` | `pending` | 114 of 131 review records are cited by none of their candidate leaves — a measured backlog to CLASSIFY, not a defect count; start from the small-fan-out records where the routing was a real assignment |
 | 2 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 2b | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
-| 3 | `SIGNOFF-REPAIR.4.1.5` | `pending` | what a replacement enrollment leaves behind — three clauses of one record, grouped because they are ONE question, and in tension with `.4.1.3.1`'s deliberately preserved tail |
+| 3 | `SIGNOFF-REPAIR.4.1.5` | `pending` | what a replacement enrollment leaves behind — three clauses of one record, grouped because they are ONE question, and in tension with `.4.1.3.1`'s deliberately preserved tail; the LAST of the six clauses `.4.2`'s split dropped |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — its `MEMORY.md` census is DONE (`.11.4.2.1`: 26 warnings, 0 orphans, the worry refuted); the donor-package review, document/route utility census and lifecycle controls remain |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **38 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **37 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3590,6 +3600,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.2`: `REASONBRAID-REPAIR-0163 (leaf SIGNOFF-REPAIR.4.2): reconcile the fifteen routed records, and find six clauses the split dropped`.
 - `SIGNOFF-REPAIR.4.2.8`: `REASONBRAID-REPAIR-0164 (leaf SIGNOFF-REPAIR.4.2.8): the fencing token and its epoch become one fact`.
 - `SIGNOFF-REPAIR.4.2.9`: `REASONBRAID-REPAIR-0165 (leaf SIGNOFF-REPAIR.4.2.9): a rotated identity is written where the next start looks for it`.
+- `SIGNOFF-REPAIR.4.2.10`: `REASONBRAID-REPAIR-0166 (leaf SIGNOFF-REPAIR.4.2.10): the wake gate is a drain switch, and every state it has now has a control`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 
@@ -4463,6 +4474,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` returns `test result: ok. 32 passed; 0 failed` including `the_r2_acquisition_persists_the_served_document_s_own_evidence`, with `pg-tests: stopped and removed target/pg-tests/run-hsk0hhd8`. FALSIFIED three ways, each injection reverted and the suite re-run green: serving one extra byte fails the receipt digest assertion with `sha256:8f1d9f61…` observed against `sha256:561688a4…` expected (and its chunk digests unchanged, so the raw-byte leg is the one that caught it); discarding the supplied fetcher in `with_acquisition` fails at the destination gate with `scheme_not_allowed` observed where `destination_refused` was expected; persisting a derivation whose content is not the worker's chunk fails at the derivations assertion and nowhere earlier.
 - [x] **NO REGRESSION** — `cargo test -p reasonbraid-server --lib` returns `97 passed; 0 failed`; `--test extraction_input --test extraction_completion` returns `7 passed` and `16 passed`; `cargo clippy --locked -p reasonbraid-server --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass; `make gate` prints `=== all doctrines green ===` (15 checks) and `make book` writes the HTML book. The other 31 profiles tests pass unchanged, including the two existing R2/R0 resolver controls.
 - [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `docs/TASK_TREE.md`'s index row, the evidence record and its `INDEX.md` entry, `docs/book/src/deployment.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. Two things are explicitly NOT claimed: the live mismatch refusal stays `.7.3.3.4.2` pending, and the advertised-format finding is opened as `.7.3.3.5` with its untyped-byte-sniff half recorded as unmeasured rather than asserted.
+
+## Commit acceptance — SIGNOFF-REPAIR.4.2.10
+
+- [x] **REPRODUCE / ISSUE** — census of the gate's states taken from the filter rather than from the tests: `NOT EXISTS (… (profile->'availability'->>'concurrency')::bigint = 0)` has FIVE reachable shapes; the existing control covered TWO (zero, then two).
+- [x] **ROOT CAUSE (WHY + WHERE)** — the three uncovered delivering states each reach that answer by a different SQL route (a missing `concurrency` key -> `NULL = 0` is NULL; a missing `availability` block -> the whole path NULL; a negative number -> simply not zero), so one does not stand for the others. And the substantive answer to the record's clause: the gate is a DRAIN SWITCH, not a limiter — it never compares a declared concurrency against an active count, which `presence::presence_state`'s `Draining` naming confirms is the design.
+- [x] **FIX** — controls for all three uncovered states, the "no profile row" case named as already exercised by every other delivery control, and the drain state re-asserted LAST so the four positive arms cannot all be vacuous. ⛔ No production code changed. ⛔ A hypothesis of my own was MEASURED AND REFUTED: the `::bigint` cast appears at 6 query sites and a non-numeric value would raise at each, but `Availability::concurrency` is typed `Option<i64>` and the writer stores `serde_json::to_value(profile)` — the re-serialized typed struct — so it is unreachable.
+- [x] **ADDRESSED (verified)** — `test result: ok. 37 passed; 0 failed`. FALSIFIED by removing the gate from the delivery filter: the held role receives its row and the control fails printing the delivered `ReplayCommand`, `36 passed; 1 failed`, only this control. Restored `37 passed; 0 failed`.
+- [x] **NO REGRESSION** — `node_channel` 37/37; `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0; `cargo fmt --all -- --check` rc=0; `mdbook build docs/book` rc=0.
+- [x] **LOCKSTEP** — `docs/book/src/node-channel.md` gains a section stating what the wake gate is and is not, including that declaring `concurrency: 2` does not cap a node at two; task tree (leaf closed, frontier, commit log, re-derived pending count 37), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
 
 ## Commit acceptance — SIGNOFF-REPAIR.4.2.9
 

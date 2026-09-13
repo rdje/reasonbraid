@@ -172,6 +172,26 @@ and a fenced session that receives a stale tail leaves no trace — the rows sta
 in the inbox and replay to whoever holds the lease. An in-transaction
 re-verification there would buy a lock on every delivery poll and no invariant.
 
+## The wake gate is a drain switch
+
+A role's profile may declare `availability.concurrency`. The delivery path reads
+it and holds work when it is **exactly zero** — the state presence reports as
+`draining`. That is the whole of it (`.4.2.10`):
+
+- `concurrency: 0` — the node receives no new work. Its in-flight session is not
+  cut: `poll` still admits, and `ack` and `events` are untouched, so it finishes
+  and reports what it already holds. This is the same filter-not-refusal shape
+  revocation uses.
+- **anything else delivers** — a positive number, a negative one, a profile with
+  no `concurrency` key, a profile with no `availability` block, or no profile at
+  all (the common case for a plain node).
+
+⚠️ **It is not a concurrency limiter.** Declaring `concurrency: 2` does not cap
+the node at two in-flight commands; nothing compares the declared number against
+an active count, and a node that declares two will receive a third row. The
+number is a switch with one meaningful value, and an operator who wants a limit
+must enforce it at the node.
+
 ## Schedulability gate
 
 A node is `Offline → Reconciling → Schedulable`, and it becomes `Schedulable`

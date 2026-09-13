@@ -58,3 +58,8 @@ uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+# rcgen's validity-window type, for the `SIGNOFF-REPAIR.3.4.3.1.3` control that
+# issues a leaf with a CHOSEN `not_after` and drives the rotation decision at
+# it. Test-only, and the SAME 0.3 the workspace already resolves (the server
+# depends on it), so no second version enters under `bans.multiple-versions`.
+time = "0.3"

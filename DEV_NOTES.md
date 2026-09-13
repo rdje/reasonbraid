@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The pure function passed, and the thing feeding it was still broken
+
+- `.3.4.3.1.3` arrived as arithmetic: a source reading plus a subtraction, with the leaf explicitly forbidding me from calling it a field failure until a control drove a clock at it. Extracting `rotation_due` as a pure function was the whole trick — the check was untestable only because it read `Utc::now()` inside itself.
+- ⭐ The reproduction is worse than the arithmetic implied, and only because I asserted at four instants instead of one. I expected "rotates late". What it actually does with the node 600 s behind: does not rotate when due, does not rotate with **one second** of validity left, does not rotate at expiry, and first rotates 300 s *after* the certificate died. Writing each instant as its own assertion turned "late" into "five minutes of dead channel", which is a different sentence to put in a changelog.
+- ⚠️ The direction trap is real and I nearly fell into it myself. I had spent the previous leaf thinking "skew ahead is the problem", and this one is the exact opposite. I put the warning in `rotation_due`'s doc comment rather than only in the leaf, because the next person to read that function will most likely have arrived from the dispatch gate.
+- ⭐ The control I almost did not write is the one that mattered: a WIRING test that builds a real certificate with a chosen `not_after` and checks that the stored offset reaches the live decision. The falsification proves the point — removing the offset from `cert_expires_soon` leaves all three pure-function controls **green** and fails only the wiring one. A pure function extracted for testability can be perfectly correct while nothing feeds it properly, and testing the extraction is not testing the code.
+- ⚠️ Adding a dependency for a test is a thing to be careful about here, given the workspace's single-version doctrine. `time 0.3` was already resolved through the server, so it is a dev-dependency that adds one lockfile line and no second version — and I ran `cargo deny check bans` rather than assuming that, because "it is already in the workspace" is exactly the sort of claim that turns out to be about a different major version.
+
 ## 2026-09-13 — My own repair from this morning had to be removed to finish the job
 
 - `.3.4.3` shipped a clamp: run the freshness window from `min(decided_at, received_at)` so backward skew cannot stretch it. I was pleased with it — it could not cause an outage, it was a no-op in the ordinary case, and I falsified it three ways. It was the right fix available without a wire change, and I said so in its record.

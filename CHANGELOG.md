@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The certificate rotated five minutes after it expired (`SIGNOFF-REPAIR.3.4.3.1.3`)
+
+- `.3.4.3.1`'s census found this while looking for something else and forbade writing it up until a control drove a skewed clock at it. This is that control, and the numbers are worse than the arithmetic suggested.
+- 🔴 A workload leaf issued at server-time `T` expires at `T + 600`; rotation is due from `T + 300`. With the node's clock 600 s **behind**, the check does not fire when due, does not fire with **one second** of validity left, and does not fire at expiry. It first fires at `T + 900` — **300 s after the certificate has already expired** — so the channel is dead for five minutes before the node even tries to renew.
+- ⚠️ This is the **opposite** direction to the dispatch outage, where the danger is a node running *ahead*. A reader carrying that intuition here gets it backwards, which is why the two were kept in separate leaves and why the warning now sits in the code at the point of use.
+- The rotation decision is extracted as a pure function — which is what makes it drivable — and evaluated in the server's terms through the offset. The channel keeps its own copy of that offset because the check runs inside `handshake`, before the journal is reachable; it is `0` until the first handshake answers, which is exactly the previous behaviour.
+- Four controls: the reproduction, the opposite direction (early rotation uncorrected, on time corrected — harmless, which is why it was never the defect, but it must not stay wrong), the no-skew boundary unchanged so the correction cannot be satisfied by moving the threshold, and a **wiring** control that issues a real certificate with a chosen expiry and proves the stored offset actually reaches the decision.
+- ⭐ That last one earned its place: the falsification drops the offset from the live check and leaves the three pure-function controls **green**, failing only the wiring control. The decision was already right; the defect was what it was fed.
+- ⚠️ One test-only dependency added (`time = "0.3"` as a dev-dependency, to issue a leaf with a chosen validity window). The same 0.3 the workspace already resolves, so no second version enters — `cargo deny check bans` confirms and the lockfile gains one line.
+- Validation: `cargo test -p reasonbraid-node` over the node's non-provider targets rc=0 — **69 tests, zero failures**. Strict lint, fmt, bans, gate (17 checks), book and link check rc=0.
+- ⛔ Not claimed: **no field failure is asserted.** This is reproduced in a driven control, not in a deployment. The certificate's `not_after` is the server's *process* clock while the offset is measured against its *database* clock; those were measured to agree within a declared second, so the correction is sound to that tolerance and no further.
+
 ## 2026-09-13 — The node tells the time in the server's terms (`SIGNOFF-REPAIR.3.4.3.1.2`)
 
 - 🔴 The outage this closes: a node whose clock ran more than 60 s AHEAD of the server read every admission decision as already expired and refused **every** dispatch — it did no work at all, fail-closed, with a reason line whose epochs matched so nothing looked wrong.

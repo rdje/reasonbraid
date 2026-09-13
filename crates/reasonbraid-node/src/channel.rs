@@ -305,12 +305,35 @@ pub struct NodeChannel {
     /// The lease epoch the current token was issued under (`.2.2`) — sent with
     /// every fenced write so a stale session can never ride a rotated lease.
     lease_epoch: Arc<Mutex<Option<i64>>>,
+    /// How far the SERVER's clock is ahead of this node's, in milliseconds,
+    /// from the latest handshake (`SIGNOFF-REPAIR.3.4.3.1.3`). The channel keeps
+    /// its own copy because the rotation decision runs INSIDE `handshake`,
+    /// before the journal is reached. `0` until the first handshake answers,
+    /// which is what this node did before the offset existed.
+    clock_offset_ms: Arc<Mutex<i64>>,
     client: reqwest::Client,
 }
 
 /// A workload leaf stays valid 10 minutes (ADR-007); rotate when less than
 /// half of that remains.
 const ROTATE_REMAINING_SECS: i64 = 300;
+
+/// Is the leaf inside its rotation window? A pure decision over two instants,
+/// extracted so a control can DRIVE the clock (`SIGNOFF-REPAIR.3.4.3.1.3`).
+///
+/// ⚠️ `server_now` must be in the SERVER's terms. `not_after` is signed into the
+/// certificate from the server's clock, so comparing it to this node's own
+/// makes the difference between two clocks read as remaining validity — in the
+/// direction that matters: a node BEHIND by more than `ROTATE_REMAINING_SECS`
+/// computes a remaining life that never falls to the threshold until after the
+/// certificate has actually expired, so it never rotates in time.
+///
+/// ⚠️ The OPPOSITE direction to the dispatch gate (`.3.4.3.1.2`), where the
+/// danger is a node AHEAD. A reader carrying that intuition here gets it
+/// backwards, which is why the two live in different leaves.
+fn rotation_due(not_after: i64, server_now: i64) -> bool {
+    not_after - server_now <= ROTATE_REMAINING_SECS
+}
 
 /// The installed workload identity: the certificate (DER) + its key. Shared so
 /// a rotation installs the fresh pair and the next handshake signs with it.
@@ -332,6 +355,7 @@ impl NodeChannel {
             identity: Arc::new(Mutex::new(Some((cert_der, key)))),
             fencing_token: Arc::new(Mutex::new(None)),
             lease_epoch: Arc::new(Mutex::new(None)),
+            clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
     }
@@ -346,6 +370,7 @@ impl NodeChannel {
             identity: Arc::new(Mutex::new(None)),
             fencing_token: Arc::new(Mutex::new(None)),
             lease_epoch: Arc::new(Mutex::new(None)),
+            clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
     }
@@ -373,9 +398,13 @@ impl NodeChannel {
         let Ok((_, x509)) = x509_parser::parse_x509_certificate(cert_der) else {
             return false;
         };
-        let not_after = x509.validity().not_after.timestamp();
-        let now = chrono::Utc::now().timestamp();
-        not_after - now <= ROTATE_REMAINING_SECS
+        let offset_ms = *self
+            .clock_offset_ms
+            .lock()
+            .expect("the clock-offset lock is not poisoned");
+        // In the SERVER's terms — `not_after` is the server's instant, not ours.
+        let server_now = chrono::Utc::now().timestamp() + offset_ms / 1_000;
+        rotation_due(x509.validity().not_after.timestamp(), server_now)
     }
 
     pub fn node_id(&self) -> &str {
@@ -471,6 +500,7 @@ impl NodeChannel {
         let mut with_proof = req.clone();
         with_proof.cert_der = cert_hex;
         with_proof.proof_signature = proof;
+        let sent = chrono::Utc::now();
         let response = self
             .client
             .post(format!("{}/v1/nodes/handshake", self.base_url))
@@ -489,6 +519,17 @@ impl NodeChannel {
                 .expect("the lease-epoch lock is not poisoned");
             *token = Some(parsed.fencing_token.clone());
             *epoch = Some(parsed.lease_epoch);
+        }
+        // The server stated its clock (`SIGNOFF-REPAIR.3.4.3.1.2`); the channel
+        // keeps its own copy so the NEXT handshake's rotation check — which runs
+        // before the journal is reached — is evaluated in the server's terms.
+        {
+            let mut offset = self
+                .clock_offset_ms
+                .lock()
+                .expect("the clock-offset lock is not poisoned");
+            let midpoint = sent + (chrono::Utc::now() - sent) / 2;
+            *offset = (parsed.server_time - midpoint).num_milliseconds();
         }
         Ok(parsed)
     }
@@ -696,4 +737,140 @@ fn from_hex(s: &str) -> Result<Vec<u8>, String> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
         .collect()
+}
+
+#[cfg(test)]
+mod rotation_clock {
+    use super::{rotation_due, ROTATE_REMAINING_SECS};
+
+    /// The workload leaf's life (ADR-007), so the arithmetic below reads
+    /// against a real certificate rather than invented numbers.
+    const LEAF_TTL_SECS: i64 = 600;
+
+    /// `SIGNOFF-REPAIR.3.4.3.1.3` — REPRODUCED, with the clock driven.
+    ///
+    /// `.3.4.3.1` opened this as arithmetic on a source reading and forbade
+    /// writing it up as a field failure until a control drove a skewed clock at
+    /// it. This is that control. A certificate is issued at server-time 0 and
+    /// expires at 600; rotation should fire from server-time 300 onward.
+    #[test]
+    fn a_node_clock_behind_the_server_rotates_only_after_the_certificate_expired() {
+        let issued = 1_000_000i64;
+        let not_after = issued + LEAF_TTL_SECS;
+        let skew = 600i64; // this node is 600 s BEHIND the server
+
+        // THE DEFECT, uncorrected: the node compares against its own clock,
+        // which reads `skew` seconds earlier than the server's.
+        let uncorrected = |real_server_time: i64| rotation_due(not_after, real_server_time - skew);
+        // At the moment rotation is due, the node does not rotate.
+        assert!(
+            !uncorrected(not_after - ROTATE_REMAINING_SECS),
+            "uncorrected: the node does not rotate when it should"
+        );
+        // It still does not rotate one second before the certificate expires.
+        assert!(
+            !uncorrected(not_after - 1),
+            "uncorrected: the node still does not rotate with 1 s of validity left"
+        );
+        // It only decides to rotate once the certificate has ALREADY expired —
+        // by `skew - ROTATE_REMAINING_SECS` seconds, here a full 300 s of dead
+        // channel before it even tries.
+        assert!(
+            !uncorrected(not_after + (skew - ROTATE_REMAINING_SECS) - 1),
+            "uncorrected: still not rotating, and the certificate expired \
+             {} s ago",
+            skew - ROTATE_REMAINING_SECS - 1
+        );
+        assert!(
+            uncorrected(not_after + (skew - ROTATE_REMAINING_SECS)),
+            "uncorrected: rotation finally fires — after expiry"
+        );
+
+        // THE REPAIR: the same node, evaluating in the server's terms.
+        let corrected = |real_server_time: i64| rotation_due(not_after, real_server_time);
+        assert!(
+            !corrected(not_after - ROTATE_REMAINING_SECS - 1),
+            "corrected: not yet due one second before the window opens"
+        );
+        assert!(
+            corrected(not_after - ROTATE_REMAINING_SECS),
+            "corrected: rotation fires exactly when the window opens, with \
+             {ROTATE_REMAINING_SECS} s of validity still in hand"
+        );
+    }
+
+    /// The other direction, asserted so the correction is a SHIFT rather than a
+    /// blanket "always rotate": a node whose clock runs AHEAD rotates early
+    /// without the correction, and on time with it. Early is harmless, which is
+    /// why this direction was never the defect — but it must not stay wrong.
+    #[test]
+    fn a_node_clock_ahead_of_the_server_stops_rotating_early() {
+        let not_after = 1_000_600i64;
+        let skew = 600i64; // AHEAD: the node's clock reads later than the server's
+        let long_before_due = not_after - ROTATE_REMAINING_SECS - 400;
+
+        assert!(
+            rotation_due(not_after, long_before_due + skew),
+            "uncorrected: an early rotation, 400 s before the window opens"
+        );
+        assert!(
+            !rotation_due(not_after, long_before_due),
+            "corrected: not due yet, because it genuinely is not"
+        );
+    }
+
+    /// The WIRING, not just the decision: `cert_expires_soon()` must actually
+    /// apply the stored offset. Without this the pure-function controls above
+    /// would still pass while the real check compared against the local clock.
+    #[test]
+    fn cert_expires_soon_applies_the_stored_offset() {
+        use rcgen::{CertificateParams, KeyPair};
+
+        // A real leaf whose validity ends 400 s from now — OUTSIDE the 300 s
+        // rotation window, so an uncorrected node says "not yet".
+        let key = KeyPair::generate().expect("key");
+        let mut params = CertificateParams::new(vec!["host-a".to_string()]).expect("params");
+        let now = time::OffsetDateTime::from_unix_timestamp(chrono::Utc::now().timestamp())
+            .expect("representable");
+        params.not_before = now - time::Duration::seconds(200);
+        params.not_after = now + time::Duration::seconds(400);
+        let cert = params.self_signed(&key).expect("self-sign");
+
+        let channel = super::NodeChannel::new(
+            "http://127.0.0.1:1",
+            "nod_00000000-0000-7000-8000-000000000001".to_string(),
+            cert.der().to_vec(),
+            key,
+        );
+        assert!(
+            !channel.cert_expires_soon(),
+            "400 s of validity left and no skew: not due"
+        );
+
+        // Now say the SERVER's clock reads 200 s later than ours — this node is
+        // behind. In the server's terms only 200 s of validity remain, which is
+        // inside the window, so rotation IS due.
+        *channel
+            .clock_offset_ms
+            .lock()
+            .expect("the clock-offset lock is not poisoned") = 200_000;
+        assert!(
+            channel.cert_expires_soon(),
+            "the stored offset must reach the rotation decision"
+        );
+    }
+
+    /// With no skew the decision is unchanged, so the correction cannot be
+    /// satisfied by moving the boundary.
+    #[test]
+    fn the_window_boundary_is_unchanged_without_skew() {
+        let not_after = 1_000_600i64;
+        assert!(!rotation_due(
+            not_after,
+            not_after - ROTATE_REMAINING_SECS - 1
+        ));
+        assert!(rotation_due(not_after, not_after - ROTATE_REMAINING_SECS));
+        assert!(rotation_due(not_after, not_after));
+        assert!(rotation_due(not_after, not_after + 1));
+    }
 }

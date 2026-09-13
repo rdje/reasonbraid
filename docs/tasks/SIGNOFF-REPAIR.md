@@ -1392,7 +1392,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - ⛔ Not reproduced yet. This is a source reading plus arithmetic, not a runtime observation, and it stays a candidate until a control drives a skewed clock against a real rotation. Do not write it up as a confirmed field failure before then.
 - Owns: reproducing it, then repairing it — most likely through `.2`'s offset once that exists, since the underlying comparison is the same cross-clock shape.
 - Acceptance: the late rotation is reproduced with a driven clock, the repair is shown to rotate in time under the same skew, and the existing rotation controls pass unchanged.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0139. **REPRODUCED, with the clock driven — the leaf forbade writing it up as a field failure before that, and this is the control that lifts the prohibition.**
+- **The reproduction, in real numbers.** A leaf issued at server-time `T` expires at `T + 600`; rotation is due from `T + 300`. With the node 600 s BEHIND, the uncorrected check does not fire at `T + 300`, does not fire with **one second** of validity left, and does not fire at expiry. It first fires at `T + 900` — **300 s after the certificate has already expired**, so the channel is dead for five minutes before the node even attempts to renew. Each of those four instants is a separate assertion, so the failure is located rather than merely observed.
+- Fix: the rotation decision is extracted as a pure `rotation_due(not_after, server_now)` — which is what makes it drivable — and `cert_expires_soon()` evaluates it in the SERVER's terms using the offset `.3.4.3.1.2` introduced. `NodeChannel` keeps its own copy of that offset, updated from each handshake response, because the rotation check runs INSIDE `handshake` before the journal is reachable; it is `0` until the first handshake answers, which is exactly what this node did before the offset existed.
+- ⚠️ The offset is measured against the same request midpoint as the journal's, for the same reason: either end alone biases it by a whole request leg.
+- ⚠️ **The direction is the opposite of `.3.4.3.1.2`'s and the code says so where it matters.** There the danger is a node AHEAD; here it is a node BEHIND. `rotation_due`'s doc comment carries the warning, because a reader arriving from the dispatch leaf will otherwise reason it backwards.
+- Controls, four, covering the decision AND its wiring: the reproduction above; the opposite direction (a node AHEAD rotates 400 s early uncorrected, and on time corrected — harmless, which is why it was never the defect, but it must not stay wrong); the no-skew boundary unchanged at `ROTATE_REMAINING_SECS ± 1`, so the correction cannot be satisfied by moving the threshold; and `cert_expires_soon_applies_the_stored_offset`, which issues a REAL leaf with a chosen `not_after` and proves the stored offset actually reaches the decision — without it the three pure-function controls would pass while the live check still compared against the local clock.
+- ⚠️ One dependency added, and it is test-only: `time = "0.3"` as a node **dev**-dependency, needed to issue a leaf with a chosen validity window. It is the SAME 0.3 the workspace already resolves through the server, so no second version enters; `cargo deny check bans` returns `bans ok` and `Cargo.lock` gains one line.
+- Verification: `python3 -B scripts/project_env.py cargo test -p reasonbraid-node --locked` over the node's non-provider targets returns rc=0 with **69 tests, zero failures**. `cargo clippy -p reasonbraid-node --all-targets --locked -- -D warnings` rc=0, `cargo fmt --all -- --check` rc=0, `cargo deny check bans` ok, `make gate` 17 checks, `mdbook build` and `bash scripts/check_book_links.sh` rc=0.
+- **FALSIFIED on the wiring**, which is the part a pure-function control cannot reach: dropping the offset from `cert_expires_soon` leaves the three decision controls GREEN and fails only `cert_expires_soon_applies_the_stored_offset`. That is the intended shape — the decision was already correct, the defect was what it was fed.
+- ⛔ NOT claimed: no field failure is asserted. This reproduces the defect in a driven control, not in a deployment, and the leaf says which. The certificate's `not_after` is the server's PROCESS clock while the offset is measured against its DATABASE clock; `.3.4.3.1.1` measured those agree within a declared second, so the correction is sound to that tolerance and no further — a deployment whose database and application clocks diverge is outside it, and that leaf's control is what would notice.
+- promotion: declined (the durable statement is `rotation_due`'s doc comment, which carries the direction warning at the point of use; the method is the same one `.3.4.3.1.2` recorded).
+- Commit: `REASONBRAID-REPAIR-0139 (leaf SIGNOFF-REPAIR.3.4.3.1.3): the certificate rotated five minutes after it expired`.
 
 #### SIGNOFF-REPAIR.3.4.4 — The remaining tagged authority codecs
 
@@ -2908,11 +2919,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.3.4.3.1.3` | `pending` | backward node skew makes the certificate rotate too late — the OPPOSITE direction, and not yet reproduced |
-| 2 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
-| 3 | `SIGNOFF-REPAIR.11.4.3.1.7.2` | `pending` | nothing runs a `--self-test` in this repository, which is why a control sat broken from its own first commit |
-| 4 | `SIGNOFF-REPAIR.11.8` | `pending` | the HTTP surface and the book have drifted — 87 of 111 registered routes are unnamed in the book, an upper bound needing a refined census |
-| 5 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at ten |
+| 1 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
+| 2 | `SIGNOFF-REPAIR.11.4.3.1.7.2` | `pending` | nothing runs a `--self-test` in this repository, which is why a control sat broken from its own first commit |
+| 3 | `SIGNOFF-REPAIR.11.8` | `pending` | the HTTP surface and the book have drifted — 87 of 111 registered routes are unnamed in the book, an upper bound needing a refined census |
+| 4 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at ten |
 
 
 
@@ -2938,6 +2948,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.3.4.3.1.3`: `REASONBRAID-REPAIR-0139 (leaf SIGNOFF-REPAIR.3.4.3.1.3): the certificate rotated five minutes after it expired`.
 
 - `SIGNOFF-REPAIR.3.4.3.1.2`: `REASONBRAID-REPAIR-0138 (leaf SIGNOFF-REPAIR.3.4.3.1.2): let the node tell the time in the server's terms`.
 
@@ -3338,6 +3350,17 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.3.4.3.1.3
+
+- [x] **REPRODUCE / ISSUE** — reproduced with the clock DRIVEN, which the leaf required before it could be written up as anything but a candidate. A leaf issued at server-time `T` expires at `T + 600` and is due for rotation from `T + 300`. With the node 600 s BEHIND, the uncorrected check does not fire at `T + 300`, not with one second of validity left, not at expiry — it first fires at `T + 900`, **300 s after the certificate has already expired**. Four separate assertions, so the failure is located rather than merely observed.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `cert_expires_soon()` in `crates/reasonbraid-node/src/channel.rs` evaluated `not_after - Utc::now() <= ROTATE_REMAINING_SECS`. `not_after` is signed into the certificate from the SERVER's clock, so the comparison made the difference between two clocks read as remaining validity. ⚠️ The OPPOSITE direction to `.3.4.3.1.2`, where the danger is a node AHEAD.
+- [x] **FIX** — the decision is extracted as a pure `rotation_due(not_after, server_now)`, which is what makes it drivable, and `cert_expires_soon()` evaluates it in the server's terms through `.3.4.3.1.2`'s offset. `NodeChannel` keeps its own copy of that offset, refreshed from each handshake response, because the rotation check runs inside `handshake` before the journal is reachable; `0` until the first handshake answers, which is the pre-existing behaviour.
+- [x] **ADDRESSED (verified)** — `cargo test -p reasonbraid-node --locked` over the node's non-provider targets rc=0 with **69 tests, zero failures**. Four controls: the reproduction, the opposite direction (early rotation uncorrected, on time corrected), the no-skew boundary unchanged at `ROTATE_REMAINING_SECS ± 1` so the correction cannot be satisfied by moving the threshold, and a WIRING control that issues a real leaf with a chosen `not_after` and proves the stored offset reaches the decision.
+- [x] **NO REGRESSION** — FALSIFIED on the wiring, the part a pure-function control cannot reach: dropping the offset from `cert_expires_soon` leaves the three decision controls green and fails only `cert_expires_soon_applies_the_stored_offset`. `cargo clippy -p reasonbraid-node --all-targets --locked -- -D warnings` rc=0, `cargo fmt --all -- --check` rc=0, `cargo deny check bans` prints `bans ok`, `make gate` (17 checks), `mdbook build` and `check_book_links.sh` rc=0.
+- [x] **LOCKSTEP** — task tree (this leaf, the frontier, this checklist, the commit log), `docs/TASK_TREE.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits. lockstep: `docs/book/` unchanged — certificate rotation is internal channel behaviour no book page documents, and its externally visible effect (the channel keeps working) is not a new claim.
+- ⚠️ One dependency added, test-only: `time = "0.3"` as a node **dev**-dependency, to issue a leaf with a chosen validity window. The same 0.3 the workspace already resolves through the server, so no second version enters — `cargo deny check bans` confirms, and `Cargo.lock` gains one line.
+- ⛔ NOT claimed: **no field failure is asserted.** This is reproduced in a driven control, not in a deployment. The certificate's `not_after` is the server's PROCESS clock while the offset is measured against its DATABASE clock; `.3.4.3.1.1` measured those agree within a declared second, so the correction is sound to that tolerance and no further.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.4.3.1.2
 

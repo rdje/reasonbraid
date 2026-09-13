@@ -13,7 +13,11 @@ URL="${1:-}"
 [ -n "$URL" ] || { echo "usage: scripts/update_scaffold.sh <reasonbraid-repo-url-or-local-path>" >&2; exit 2; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 
-tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+# ⛔ §13: scratch is REPOSITORY-derived, never ambient (SIGNOFF-REPAIR.11.2.2).
+# This one CLONES into its scratch, so an ambient TMPDIR put a whole repository
+# on another volume — the largest of the five sites by bytes written.
+scratch="$ROOT/target/doctrine_scratch"; mkdir -p "$scratch"
+tmp="$(mktemp -d "$scratch/scaffold.XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
 if [ -d "$URL/.git" ]; then
   cp -R "$URL" "$tmp/reasonbraid"
 else

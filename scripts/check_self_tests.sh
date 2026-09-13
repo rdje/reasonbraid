@@ -88,7 +88,10 @@ probe() {
 
 if [ "${1:-}" = "$FLAG" ]; then
   fails=0
-  scratch="$(mktemp -d "${TMPDIR:-/tmp}/selftest-gate.XXXXXX")"
+  # ⛔ §13: was `"${TMPDIR:-/tmp}"` — explicitly off-volume, in the gate that runs
+  # every other gate's self-test (SIGNOFF-REPAIR.11.2.2).
+  mkdir -p "$ROOT/target/doctrine_scratch"
+  scratch="$(mktemp -d "$ROOT/target/doctrine_scratch/selftest-gate.XXXXXX")"
   trap 'rm -rf "$scratch"' EXIT
 
   # A script whose self-test FAILS must be reported...

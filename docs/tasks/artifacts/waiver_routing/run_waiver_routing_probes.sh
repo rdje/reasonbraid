@@ -30,7 +30,12 @@ GUARD="$ROOT/scripts/check_waiver_routing.sh"
 [ -f "$GUARD" ] || { echo "probe: REFUSED — $GUARD not found" >&2; exit 2; }
 
 pass=0; fail=0
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+# ⛔ §13: scratch is REPOSITORY-derived, never ambient (SIGNOFF-REPAIR.11.2.2).
+# This probe CLONES throwaway git repositories into $WORK, so a bare `mktemp -d`
+# put whole repositories on another volume — measured at device 16777232 against
+# the checkout's 16777244. `mktemp` still names it by exclusive creation.
+mkdir -p "$ROOT/target/doctrine_scratch"
+WORK="$(mktemp -d "$ROOT/target/doctrine_scratch/waiver-routing-probe.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
 
 # $1 = name, $2 = guard to install -> prints the repo dir
 mkrepo() {

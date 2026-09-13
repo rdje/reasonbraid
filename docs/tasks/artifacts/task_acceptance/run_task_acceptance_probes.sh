@@ -19,7 +19,12 @@ GUARD="$ROOT/scripts/check_task_acceptance.sh"
 [ -f "$GUARD" ] || { echo "probe: REFUSED — $GUARD not found" >&2; exit 2; }
 
 pass=0; fail=0
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+# ⛔ §13: scratch is REPOSITORY-derived, never ambient (SIGNOFF-REPAIR.11.2.2).
+# This probe CLONES throwaway git repositories into $WORK, so a bare `mktemp -d`
+# put whole repositories on another volume — measured at device 16777232 against
+# the checkout's 16777244. `mktemp` still names it by exclusive creation.
+mkdir -p "$ROOT/target/doctrine_scratch"
+WORK="$(mktemp -d "$ROOT/target/doctrine_scratch/task-acceptance-probe.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
 
 mkrepo() { # $1 = name -> repo dir
   local d="$WORK/$1"

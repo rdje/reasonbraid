@@ -38,6 +38,11 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+# ⛔ §13: scratch is REPOSITORY-derived, never ambient (SIGNOFF-REPAIR.11.2.2).
+# Each `mktemp` below still names its file by exclusive creation, which matters
+# here because two of them are created inside loops.
+SCRATCH="$ROOT/target/doctrine_scratch"; mkdir -p "$SCRATCH"
+
 # Staged task-tree files only. No staged set (e.g. a manual run) => nothing to judge.
 staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
           | grep -E '^docs/tasks/.*\.md$' || true)"
@@ -70,7 +75,7 @@ for file in $staged; do
   # match, printf takes SIGPIPE (141), and `pipefail` promotes 141 to the pipeline status. This
   # site would then `continue` — i.e. SKIP the file and let an unrouted waiver through. It fails
   # OPEN, which is the worst direction. Measured on the originating project: PIPESTATUS=(141 0).
-  added_file="$(mktemp)"; printf '%s\n' "$added" > "$added_file"
+  added_file="$(mktemp "$SCRATCH/waiver-added.XXXXXX")"; printf '%s\n' "$added" > "$added_file"
   if ! grep -qE "$WAIVER_RE" "$added_file"; then rm -f "$added_file"; continue; fi
   rm -f "$added_file"
 
@@ -90,7 +95,7 @@ for file in $staged; do
     [ -n "$ln" ] || continue
     lo=$(( ln > WINDOW ? ln - WINDOW : 1 )); hi=$(( ln + WINDOW ))
     win="$(sed -n "${lo},${hi}p" "$file" 2>/dev/null)"
-    win_file="$(mktemp)"; printf '%s\n' "$win" > "$win_file"
+    win_file="$(mktemp "$SCRATCH/waiver-window.XXXXXX")"; printf '%s\n' "$win" > "$win_file"
     if ! grep -qE "$OWNER_RE" "$win_file"; then
       rm -f "$win_file"
       undischarged="${undischarged}${file}:${ln}: $(sed -n "${ln}p" "$file")"$'\n'

@@ -50,7 +50,13 @@ staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)"
 # grep a FILE, never `printf "$var" | grep -q`: under pipefail, grep -q exits at the first match
 # and the producer takes SIGPIPE, so the pipeline reports FAILURE ON SUCCESS once the input is
 # large. That failure mode is silent and, at a `|| continue`, fails OPEN.
-tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+# ⛔ §13: scratch is REPOSITORY-derived, never ambient. A bare `mktemp -d` follows
+# TMPDIR, measured on a different volume from this checkout, so a gate that enforces
+# doctrine would itself be writing project data off the repository's storage.
+# `mktemp` still names the directory by EXCLUSIVE CREATION — the half of
+# STORAGE-LOCALITY that a clock-proposed name gets wrong (SIGNOFF-REPAIR.11.2.2).
+scratch="$ROOT/target/doctrine_scratch"; mkdir -p "$scratch"
+tmp="$(mktemp -d "$scratch/task-acceptance.XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
 printf '%s\n' "$staged" > "$tmp/staged.txt"
 
 grep -E "$code_re" "$tmp/staged.txt" > "$tmp/code.txt" 2>/dev/null || true

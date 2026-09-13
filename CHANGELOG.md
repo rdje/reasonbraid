@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The gates' own scratch comes back onto the repository volume (`SIGNOFF-REPAIR.11.2.2`)
+
+- 🔴 **Three of the scripts that enforce doctrine were writing their own temporary files to an ambient directory**, and two probe scripts cloned whole throwaway git repositories there. Measured, not assumed: the checkout and the repaired scratch are on device `16777244`; the ambient directory is on `16777232` — a different volume, so that data left the repository's storage accounting entirely.
+- 🔴 **The gate written for exactly this could not see any of it**, because it enumerated Rust files. The shell family was outside the scan by construction rather than by exception, so the reviewed-exceptions list did not mention them either: invisible, not waived.
+- 🔴 **This leaf's own published number was wrong, and the correction is the more useful finding.** It opened with five sites. The real count is **seven** — its census had been scoped with a `grep -v '^docs/'` filter that excluded the very directory the source record was pointing at. The record says "task-acceptance and waiver-routing **probe scripts**", and both of those live under `docs/tasks/artifacts/`. A path filter that excludes a directory is the same defect as a glob that matches nothing: the census reports a smaller world and raises no error.
+- **The gate is extended** to tracked shell and Python. It fires on **zero** sites today and would have fired on all seven — the shape a gate should have, catching the next drift rather than presenting a backlog.
+- ⛔ **The rule is about the argument, not the call.** Both `mktemp` and `tempfile` name by exclusive creation, which is precisely the half of this doctrine a clock-derived name gets wrong. They are the right tools pointed at the wrong volume. A pattern flagging the call itself would have condemned fifteen conforming sites and taught people to route around the gate.
+- ⭐ One Python site is a deliberate control — a probe that exists to *measure* where a child process's temporary file lands, which pinning a directory would turn into an assertion. It is a reviewed exception with that reason recorded.
+- 🔴 The extended gate flagged **itself** on its first run: its own diagnostic message spelled the command it matches. That is the founding incident of the self-test doctrine repeating, in a file whose header cites it. Fixed by re-wording rather than by excluding the file's path, so spelling the literal again turns the scan red immediately instead of silently passing.
+- Validation: 265 files scan clean with 2 reviewed exceptions; the self-test grows from 8 classifications to 22 across all three languages; falsified against the exact pre-repair sources, which the gate names all seven of. Both repaired probe scripts pass (10/0 and 5/0) and each repaired guard runs green.
+- ⛔ Not claimed: a Makefile recipe, a CI workflow step or a Rust `tempfile` call reaches none of the three patterns, and no census of those was run.
+
 ## 2026-09-13 — The inbox inspection reads only the tenant it was admitted for (`SIGNOFF-REPAIR.3.5.3`)
 
 - 🔴 **Reproduced before anything was changed.** An administrator of one tenant, over the supported HTTP surface, naming its own tenant and another tenant's node id, received that tenant's inbox rows in full — command ids, thread ids, delivery state and the command payloads.

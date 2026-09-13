@@ -2080,7 +2080,27 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Owns: that census; then a decision between three honest outcomes — a mechanizable gate, a `TOOLBOX.md` method statement with no gate, or an explicit "measured and not worth mechanizing". The third is a legitimate result and must stay available, or the census is theatre.
 - Acceptance: the census is recorded with the command that produced it, and the decision names which of the three was taken and why. No gate ships without the census, which is the rule this leaf is about.
 - Explicit limit: five instances in one session by one author is a population with an obvious bias, and the census must be capable of refuting the pattern rather than confirming it.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0145. The census PARTLY refuted the pattern, and the decision follows the measurement rather than the enthusiasm.
+- **The population problem, faced rather than dodged.** "How many leaves proposed a rule a later leaf revised" is not mechanically countable: the tree's reversal vocabulary is prose and inconsistent — `grep -c superseded` over the tree returns **49**, and nearly all of those are about superseded DESIGNS rather than a leaf reversing its own rule. Counting by vocabulary would have produced a confident number measuring nothing, which is the failure this leaf is about.
+- **So the census runs over the one sub-population where "a rule was proposed" IS mechanically countable: the gates this project has shipped.** The producing command dates each registered check to the commit that introduced it: `for f in <every check named in check_doctrines.sh and check_doctrines.project.sh>; do git log --format='%s' --diff-filter=A -- "$f" | head -1; done`. Eighteen doctrines are registered; **11 checks were introduced by this repository** (the rest arrive with the spine's initial commit), across **9 leaves** — `.11.4.3.1.2.13` (two), `.11.4.3.1.2.16`, `.11.4.3.1.2.18`, `.11.4.3.1.2.21`, `.11.4.4` (two), `.11.4.5.2`, `.11.4.5.3`, `.11.4.3.1.7.2`, and `PHASE-8.4.2` in another tree.
+- **The result, and it is a coin flip rather than a law: 4 of the 8 leaves assessed had their RULE revised by the census that preceded it.**
+  - ✓ `.11.4.3.1.2.16` (FILE-TERMINATION): "the obvious gate — wrapping `git diff --check` — would be wrong here", rejected by a census of 642 tracked text files finding 9 legitimately non-conforming.
+  - ✓ `.11.4.3.1.2.21` (STORAGE-LOCALITY): the census itself was revised three times — "censusing for a token drawn from the last instance finds the last instance; census the CONCEPT" — and the rule's scope moved with it.
+  - ✓ `.11.4.5.2` (LOCKSTEP-CLAIM): the rule's KEY moved from "a closing leaf must stage `MEMORY.md`" to the author's own claim, because the project does not follow the obvious version (6 of 10) and it would still have missed the defect.
+  - ✓ `.11.4.5.3` (INDEX-FRONTIER): the census rejected BOTH provisional options, including the generator the leaf had preferred in writing.
+  - ✗ `.11.4.3.1.7.2` (SELF-TEST): measured and shipped **unchanged** — 1.01 s against a 3.15 s enforcer, so the rule proceeded as proposed. ⭐ This is the case the pattern's advocates must also count: a measurement that confirms is not a wasted one.
+  - ✗ `.11.4.4` (TASK-STATUS, HEADING-DEPTH): the CENSUS was corrected (a first pass reported one section holding 18 status lines; it held one and had swallowed five children) and that correction found a SECOND defect — but the proposed rule was not revised. A different phenomenon, and counted as such rather than folded in to help the total.
+  - ✗ `.11.4.3.1.2.13`, `.11.4.3.1.2.18`: no rule revision recorded.
+  - — `PHASE-8.4.2` (COMPATIBILITY-MATRIX): not assessed; it belongs to another tree and this leaf does not read another tree's records to pad its own denominator.
+- ⛔ **The running "instances" list at the top of this leaf counts something DIFFERENT and the two must not be conflated.** Those ten include severity and threshold reversals inside repair leaves, which ship no gate and are not in this census's denominator. Ten instances is not "ten of ten"; this census's honest statement is **4 of 8 gates**.
+- **The decision: a `TOOLBOX.md` method statement, no gate.** ⛔ A gate is not available, and that is a measured judgement rather than reluctance: you cannot mechanically detect "this leaf proposed a rule without measuring its population" — it is a judgement over prose. One narrow shape IS already gated (`GAP-CLAIM-CENSUS`, for a "nothing checks X" sentence), and the census at the top of this leaf confirmed with the gate's own predicate that four of five instances lie outside that shape.
+- The statement is "Measure the population before proposing the rule over it" in `TOOLBOX.md`, and it carries the refutation rather than only the pattern: 4 of 8, the two cases where the obvious rule was rejected outright, and the one that was measured and shipped unchanged.
+- Verification: the dating command re-runs and reproduces the 11/9 split; `make gate` prints `=== all doctrines green ===` across 18 checks; `mdbook build` and `bash scripts/check_book_links.sh` rc=0, `git diff --check` rc=0.
+- ⛔ NOT falsified against a superseded source, and the reason is that there is nothing executable to falsify: this leaf ships a method statement and a measurement. Its discriminating evidence is the census itself, which is capable of refuting the pattern and partly did — had every gate shipped unrevised, the statement would not have been written.
+- ⚠️ The bias the leaf warned about is real and is NOT dissolved by this census: one author, one repository, and a denominator of 8. The statement says "measured across the gates this project has shipped", not "generally true".
+- promotion: promoted → `TOOLBOX.md`, "Measure the population before proposing the rule over it". That is the durable home for a method with no gate, per the leaf's own three-way choice.
+- ⚠️ Two further methods are promoted alongside it, and the reason is a correction: closing this leaf I removed them from `MEMORY.md` to fit the cap, on the stated grounds that they were already durable — and they were not, they were only in their own leaves. `.11.8`'s "check an instrument's first number against one obtained a DIFFERENT way" (its self-test shared the bug's blind spot, so the disagreeing second number was the only thing that caught a 42 % undercount) and `.11.4.3.1.7.2`'s "when correctness depends on enumerating what to exclude, make the failure cheap, not the list perfect" now sit in `TOOLBOX.md`. Their leaves had DECLINED promotion; that judgement is superseded here rather than left to contradict a demotion that assumed it.
+- Commit: `REASONBRAID-REPAIR-0145 (leaf SIGNOFF-REPAIR.11.6): the census partly refuted its own pattern, and the statement says so`.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
@@ -3005,8 +3025,13 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at ten |
-| 2 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: all three shapes either break the route's contract or add an authority-selection path |
+| 1 | `SIGNOFF-REPAIR.4.1` | `pending` | node enrollment and certificate lifecycle — `.3.5.1` routed redemption lineage here, and `.3.4.3.1.1` left the leaf's expiry now read from the certificate |
+| 2 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
+| 3 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
+| 4 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
+| 5 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
+
+⚠️ The frontier is a curated shortlist, not the remaining work: **35 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3032,6 +3057,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.6`: `REASONBRAID-REPAIR-0145 (leaf SIGNOFF-REPAIR.11.6): the census partly refuted its own pattern, and the statement says so`.
 
 - `SIGNOFF-REPAIR.11.8`: `REASONBRAID-REPAIR-0144 (leaf SIGNOFF-REPAIR.11.8): census the routes against the book, and cross-check the instrument`.
 
@@ -3444,6 +3471,16 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.6
+
+- [x] **REPRODUCE / ISSUE** — the leaf recorded five instances (later ten) of a rule, threshold or severity changed by the first measurement of its population, and forbade proposing its own gate before measuring whether the pattern generalises beyond one session by one author.
+- [x] **ROOT CAUSE (WHY + WHERE)** — the general population is not mechanically countable: `grep -c superseded` over the tree returns **49**, nearly all about superseded DESIGNS rather than a leaf reversing its own rule. Counting by vocabulary would have produced a confident number measuring nothing — the exact failure this leaf is about.
+- [x] **FIX** — the census runs over the sub-population where "a rule was proposed" IS countable: gates shipped by this repository, dated with `git log --diff-filter=A` per registered check. **11 checks across 9 leaves** (18 doctrines registered; the rest arrive with the spine). Decision: a `TOOLBOX.md` method statement, **no gate** — a gate is not available because "proposed a rule without measuring its population" is a judgement over prose, and the one narrow shape that IS gateable already is (`GAP-CLAIM-CENSUS`).
+- [x] **ADDRESSED (verified)** — **4 of the 8 assessed leaves had their rule revised by the census that preceded it**: FILE-TERMINATION (the obvious `git diff --check` wrapper rejected by a 642-file census), STORAGE-LOCALITY (the census revised three times), LOCKSTEP-CLAIM (the rule's key moved), INDEX-FRONTIER (both provisional options rejected, including the preferred generator). ⭐ One was measured and shipped **unchanged** (SELF-TEST: 1.01 s against a 3.15 s enforcer) and is counted as such.
+- [x] **NO REGRESSION** — documentation only; no Rust source, script or behaviour changed. `make gate` prints `=== all doctrines green ===` across 18 checks, `mdbook build` and `check_book_links.sh` rc=0, `git diff --check` rc=0.
+- [x] **LOCKSTEP** — task tree (this leaf, the frontier, this checklist, the commit log), `docs/TASK_TREE.md`, `TOOLBOX.md` (the new method statement, carrying the refutation as well as the pattern), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits. promotion: PROMOTED to `TOOLBOX.md`, which is the durable home the leaf's own three-way choice names for a method with no gate.
+- ⛔ NOT claimed: **the pattern is 4 of 8, not a law**, and the statement says so rather than quoting the ten-instance list — which counts something different (severity reversals in repair leaves that ship no gate) and must not be conflated with this denominator. `.11.4.4` is counted as NOT revised even though its census was corrected, because the rule was not; folding it in to help the total is the thing this leaf exists to refuse. The author/repository bias the leaf warned about is not dissolved by a denominator of 8, and the statement is scoped to "the gates this project has shipped".
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.8
 

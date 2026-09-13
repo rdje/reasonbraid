@@ -73,6 +73,72 @@ The practical consequence is a number to plan with: **one more integration-test
 file costs about 22 seconds of every future checkpoint here**, whatever it
 tests. Publish that, and the next throughput argument is about evidence.
 
+## Measure the population before proposing the rule over it
+
+A rule, threshold or severity reasoned carefully from source is often changed by the
+first measurement of the population it quantifies over. Not refined — **changed**, and
+sometimes rejected outright.
+
+Measured across the gates this project has shipped (`SIGNOFF-REPAIR.11.6`), which is the
+only population where "a rule was proposed" is mechanically countable: **4 of 8 assessed
+had their rule revised by the census that preceded them.** Twice the OBVIOUS rule was
+rejected entirely — wrapping `git diff --check` for file termination would have flagged
+nine legitimate files, and regenerating the task index's frontier column would have
+destroyed accurate curated prose in 13 of 14 rows. Once the rule's KEY moved: "a closing
+leaf must stage `MEMORY.md`" became a rule about the author's own claim, because the
+project does not follow the obvious version (6 of 10) and it would still have missed the
+defect.
+
+⚠️ **It is 4 of 8, not 8 of 8, and the other half matters too.** One gate was measured and
+shipped UNCHANGED — the cost census for running every `--self-test` found 1.01 s against a
+3.15 s enforcer, so the rule proceeded as proposed. A measurement that confirms is not a
+wasted measurement; it is the outcome that lets you say the number rather than guess it.
+
+So the practice, and its honest strength:
+
+1. Before proposing a rule, **count the population it quantifies over** — and count the
+   one that would REFUTE you, not the one that confirms you.
+2. If the census changes the rule, record the superseded version rather than editing it
+   into agreement. The reversal is the evidence.
+3. "Measured and deliberately not mechanized" is a legitimate outcome. So is "measured and
+   unchanged".
+
+⛔ This is a method, not a gate, and that is a measured decision rather than a shrug: you
+cannot mechanically detect "this leaf proposed a rule without measuring its population" —
+it is a judgement about prose. One narrow shape IS gated, by `GAP-CLAIM-CENSUS`: a
+"nothing checks X" sentence must carry its census in the same section.
+
+### Check an instrument's first number against one obtained a different way
+
+Re-running the same instrument proves it is deterministic, not that it is right. Compare
+its first number against one reached by a DIFFERENT route — a throwaway script, a manual
+count, an existing report — before believing it.
+
+`SIGNOFF-REPAIR.11.8`'s route census scanned line by line and reported 63 product routes.
+A five-line per-file count written earlier, for another purpose, said 103. The instrument
+was missing every `.route(` whose path sat on the next line — 39 of one file's 92, a 42 %
+undercount that would have published a SMALLER documentation gap than the real one.
+
+⚠️ Its `--self-test` did not catch it either, and that is the part worth remembering: the
+fixtures were written by the same author in the same idiom as the bug, so they were all
+single-line. **A self-test written alongside the code shares its blind spots.** The
+disagreeing second number is what has no such loyalty.
+
+### When correctness depends on enumerating what to exclude, make the failure cheap
+
+An exclusion list has to be right. Prefer a mechanism where being wrong costs little.
+
+`SIGNOFF-REPAIR.11.4.3.1.7.2`'s gate runs every instrument's `--self-test`, discovered by
+grepping for the flag. It excluded its own path — carefully, with a comment about
+self-reference. Then REGISTERING it put the flag's literal into the enforcer's
+description, discovery found the enforcer, ran it with the flag, and the enforcer (which
+ignores unknown arguments) ran every check including this one. Unbounded recursion on the
+first `make gate`.
+
+The exclusion by path is still there. What makes it safe is the other defence: an exported
+guard variable that makes any nested invocation exit immediately, so a discovery mistake
+costs one process instead of a machine.
+
 ## This project's toolbox
 
 <!-- Fill this in as your project grows. List each diagnostic tool, what question it

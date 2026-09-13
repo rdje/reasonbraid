@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I measured my favourite rule and it came out a coin flip
+
+- `.11.6` was the leaf I was most confident about. I had been incrementing its instance count all session — five, then eight, then ten — and each increment felt like confirmation. The leaf itself forbade me from proposing a gate before measuring whether the pattern generalises, and warned that five instances by one author is a biased population.
+- ⚠️ The first honest obstacle: the population is not countable. The tree says "superseded" 49 times and almost none of those are a leaf reversing its own rule. I could have grepped a vocabulary, produced a number, and written a confident paragraph — which is precisely the failure the leaf exists to name. So I said so, and moved the census to the one sub-population where "a rule was proposed" is a mechanical fact: gates this repository has shipped, dated by the commit that added each check.
+- 🔴 **4 of 8.** Half the gates had their rule revised by the census that preceded them; half did not. My running count of "ten instances" was measuring something else entirely — severity reversals inside repair leaves that ship no gate — and treating the two as one number is how a pattern becomes a law without earning it.
+- ⭐ The case I nearly did not count is the one that made the statement honest: the `--self-test` gate was measured and shipped **unchanged**. 1.01 s against a 3.15 s enforcer, rule unrevised. If the only measurements I record are the ones that changed my mind, the practice looks stronger than it is and the next person over-trusts it.
+- ⚠️ I also had to resist folding in `.11.4.4`, where the *census* was corrected (it had swallowed five leaves under a level-7 heading) but the *rule* was not. It would have taken me to 5 of 8 and it is a different phenomenon. Counting it would have been the exact self-serving move the leaf is about, committed inside the leaf about it.
+- ⭐ No gate, and that is measured rather than lazy: you cannot mechanically detect "this leaf proposed a rule without measuring its population" — it is a judgement over prose. The narrow shape that *is* detectable was gated months ago. So the outcome is the third of the three the leaf allowed: a method statement, with its own refutation written into it.
+
 ## 2026-09-13 — My instrument undercounted by 42 %, and only a second method caught it
 
 - `.11.8` needed a refined census: separate product routes from test fixtures, and separate "documented" from "mentioned in passing". Both refinements were straightforward, and the instrument produced a clean number: 63 product routes.

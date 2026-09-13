@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The census partly refuted its own pattern, and the statement says so (`SIGNOFF-REPAIR.11.6`)
+
+- The leaf had collected ten instances of a rule, threshold or severity changed by the first measurement of its population — and forbade proposing its own gate before measuring whether that generalises beyond one session by one author.
+- ⚠️ The general population is **not** mechanically countable. `grep -c superseded` over the tree returns 49, nearly all about superseded *designs* rather than a leaf reversing its own rule. Counting by vocabulary would have produced a confident number measuring nothing — the exact failure the leaf is about.
+- So the census runs where "a rule was proposed" *is* countable: the gates this repository has shipped, dated per check with `git log --diff-filter=A`. **11 checks across 9 leaves** (18 doctrines registered; the rest arrive with the spine).
+- **Result: 4 of the 8 assessed leaves had their rule revised by the census that preceded it** — twice the obvious rule was rejected outright (wrapping `git diff --check` would have flagged nine legitimate files; regenerating the index's frontier column would have destroyed accurate prose in 13 of 14 rows), once the rule's key moved, once the census itself was revised three times.
+- ⭐ **One was measured and shipped unchanged**, and is counted as such: the cost census for running every `--self-test` found 1.01 s against a 3.15 s enforcer, so the rule proceeded as proposed. A measurement that confirms is not a wasted one.
+- ⛔ **It is 4 of 8, not a law**, and the ten-instance list counts something different — severity reversals inside repair leaves that ship no gate. The two are not conflated. One leaf whose *census* was corrected but whose *rule* was not is counted as not revised, rather than folded in to help the total.
+- Decision: a **`TOOLBOX.md` method statement, no gate**. A gate is not available — "proposed a rule without measuring its population" is a judgement over prose — and the one narrow shape that is gateable already is (`GAP-CLAIM-CENSUS`). The statement carries the refutation alongside the pattern.
+- Validation: the dating command re-runs and reproduces the 11/9 split; gate (18 checks), book and link check rc=0. Documentation only.
+
 ## 2026-09-13 — The routes censused against the book, and the instrument cross-checked (`SIGNOFF-REPAIR.11.8`)
 
 - The naive census said `111 routes / 24 named / 87 not`, and said in the same breath it was an upper bound wrong in both directions: it counted test fixtures, and accepted a passing mention as documentation.

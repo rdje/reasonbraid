@@ -54,6 +54,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+/// The decision columns [`Journal::cached_decision`] reads. The first three are
+/// absent together on a row delivered without an admission decision (a pre-0003
+/// row or plain channel traffic); `received_at` is `NOT NULL` and always present.
+type CachedDecisionRow = (Option<String>, Option<String>, Option<i64>, String);
+
 /// The journal's durability journal mode (`ROADMAP.md` §11.4).
 pub const DURABILITY_JOURNAL_MODE: &str = "wal";
 /// The journal's durability synchronous mode — `FULL`, the conservative §11.4 default.
@@ -240,6 +245,7 @@ pub struct RecoveryReport {
 /// The journal's inspectable health: the recorded durability profile, connection-level
 /// settings, the schema version, and a `quick_check` integrity result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+
 pub struct JournalHealth {
     pub journal_mode: String,
     pub synchronous: String,
@@ -463,16 +469,27 @@ impl Journal {
         // a command the journal already holds: refresh the decision facts so the
         // dispatch gate evaluates the replayed admission, not the dead one. A
         // plain redelivery (no decision) keeps the original row untouched.
+        //
+        // `.3.4.3`: `received_at` is refreshed WITH them, because it anchors the
+        // freshness window and must mean "when this node took in the decision
+        // this row now holds" — a replayed decision journaled against the first
+        // delivery's receipt would be stale on arrival. The `decided_at <> ?`
+        // guard keeps that meaning exact: every poll re-records every delivered
+        // command, so an unguarded refresh would re-anchor the window on each
+        // one and hand back the stretch this leaf removes.
         if already_known && cmd.decided_at.is_some() {
             sqlx::query(
                 "UPDATE commands SET authz_ref = ?, policy_digest = ?, decided_at = ?, \
-                 revocation_epoch = ? WHERE command_id = ?",
+                 revocation_epoch = ?, received_at = ? \
+                 WHERE command_id = ? AND (decided_at IS NULL OR decided_at <> ?)",
             )
             .bind(cmd.authz_ref)
             .bind(cmd.policy_digest)
             .bind(cmd.decided_at)
             .bind(cmd.revocation_epoch)
+            .bind(at.to_rfc3339())
             .bind(cmd.command_id)
+            .bind(cmd.decided_at)
             .execute(&self.pool)
             .await?;
         }
@@ -1019,14 +1036,16 @@ impl Journal {
         &self,
         command_id: &str,
     ) -> Result<Option<reasonbraid_core::CachedDecision>, JournalError> {
-        let row: Option<(Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
-            "SELECT policy_digest, decided_at, revocation_epoch FROM commands \
+        let row: Option<CachedDecisionRow> = sqlx::query_as(
+            "SELECT policy_digest, decided_at, revocation_epoch, received_at FROM commands \
              WHERE command_id = ?",
         )
         .bind(command_id)
         .fetch_optional(&self.pool)
         .await?;
-        let Some((Some(policy_digest), Some(decided_at), Some(revocation_epoch))) = row else {
+        let Some((Some(policy_digest), Some(decided_at), Some(revocation_epoch), received_at)) =
+            row
+        else {
             return Ok(None);
         };
         let decided_at = chrono::DateTime::parse_from_rfc3339(&decided_at)
@@ -1035,8 +1054,18 @@ impl Journal {
                 key: "commands.decided_at",
                 value: decided_at,
             })?;
+        // `.3.4.3`: the node's OWN clock when it took this decision in. The
+        // freshness window runs from whichever of the two instants is earlier,
+        // so a server clock ahead of this node's cannot stretch it.
+        let received_at = chrono::DateTime::parse_from_rfc3339(&received_at)
+            .map(|d| d.with_timezone(&chrono::Utc))
+            .map_err(|_| JournalError::CorruptState {
+                key: "commands.received_at",
+                value: received_at,
+            })?;
         Ok(Some(reasonbraid_core::CachedDecision::allow(
             decided_at,
+            received_at,
             revocation_epoch as u64,
             policy_digest,
         )))

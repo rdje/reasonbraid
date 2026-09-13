@@ -231,8 +231,29 @@ decision time**. The handshake and poll responses carry the tenant's **current**
 At the **dispatch boundary** (before any provider contact) the node evaluates
 the cached decision against the declared rules:
 
-- **Freshness** — `decided_at + 60 s` bounds the window a cached allow may
-  stand without re-validation.
+- **Freshness** — a cached allow stands for at most **60 s**, measured from
+  whichever is earlier: the server's `decided_at`, or the instant this node
+  received the decision. Two clocks meet here — `decided_at` is the server's
+  database clock, sampled inside the authorizing transaction, while the
+  comparison runs against the node's own clock — so a node running behind the
+  server would otherwise be handed a decision dated in its own future and hold
+  it for `skew + 60 s`. Taking the earlier instant bounds the window at one TTL
+  of the node's *observed* time whatever the skew, and it can never refuse work
+  the plain rule would have allowed: the window always ends at least 60 s after
+  the node received the decision. A node whose clock runs *ahead* of the server
+  still fails closed, refusing its deliveries as already expired — visible in
+  the journal, and the safe direction to fail.
+
+  This bound is load-bearing rather than belt-and-braces: a grant that simply
+  reaches its own `expires_at` bumps no revocation epoch, so the epoch check
+  below does not cover natural expiry. The freshness window is the only
+  node-side limit on dispatching under a grant that expired after admission.
+
+  A **replay** (`POST /v1/nodes/replay`) carries a new admission decision, and
+  the node re-anchors the window to *that* delivery — a decision replayed onto a
+  command first delivered days ago is fresh from its replay, not stale from the
+  original receipt. An ordinary re-delivery of the *same* decision does not
+  re-anchor anything.
 - **Revocation epoch** — every revocation write (node, grant, or boundary)
   bumps the tenant's epoch in the same transaction as the status change; a
   cached decision whose recorded epoch no longer matches the current one is

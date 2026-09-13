@@ -1073,11 +1073,24 @@ pub const CACHED_ALLOW_TTL_SECONDS: i64 = 60;
 /// tenant's epoch AT DECISION TIME — a later bump invalidates the entry,
 /// however fresh it still looks (the `.1.3`/`.1.4` freshness model: a cache
 /// must never outlive a revocation).
+///
+/// TWO CLOCKS meet here, and the distinction is the whole of `.3.4.3`.
+/// `decided_at` is the SERVER's database clock, sampled inside the authorizing
+/// transaction; `received_at` is the NODE's own clock when it journaled that
+/// decision; and `is_fresh` compares `expires_at` against the NODE's clock.
+/// So `decided_at` alone is a cross-clock bound: a node running behind the
+/// server reads a decision it has not reached yet, and the freshness window
+/// silently stretches by the skew. `expires_at` therefore runs from whichever
+/// of the two is EARLIER — see [`CachedDecision::allow`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CachedDecision {
     pub kind: CachedDecisionKind,
     pub decided_at: DateTime<Utc>,
+    /// The node's own clock when it journaled THIS decision (refreshed when a
+    /// replay delivers a new one, untouched by a plain redelivery of the same
+    /// one). The freshness anchor that cannot be moved by server skew.
+    pub received_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub revocation_epoch: u64,
     pub policy_digest: String,
@@ -1108,11 +1121,32 @@ pub enum CacheVerdict {
 impl CachedDecision {
     /// An allow built from the admission decision (the `.1.5.1` declared
     /// freshness rule: the TTL runs from the decision time).
-    pub fn allow(decided_at: DateTime<Utc>, revocation_epoch: u64, policy_digest: String) -> Self {
+    ///
+    /// `.3.4.3` — the TTL runs from `min(decided_at, received_at)`, so a cached
+    /// allow stands for at most `TTL` of the node's OWN observed time. The
+    /// clamp binds in exactly one case: the node received the decision before
+    /// (its clock says) the server decided it, which is backward node skew and
+    /// nothing else. Without it the window is `skew + TTL` rather than `TTL`,
+    /// and the TTL is the only node-side bound on a grant that reached its
+    /// natural `expires_at` — passive expiry bumps no revocation epoch, so the
+    /// epoch check does not cover it.
+    ///
+    /// It can never refuse work the unclamped rule would have allowed: the
+    /// window always ends at least `TTL` after the node received the decision.
+    /// Forward node skew keeps failing CLOSED exactly as before — a refused
+    /// dispatch is journaled and safe, whereas a stretched window is not.
+    pub fn allow(
+        decided_at: DateTime<Utc>,
+        received_at: DateTime<Utc>,
+        revocation_epoch: u64,
+        policy_digest: String,
+    ) -> Self {
         Self {
             kind: CachedDecisionKind::Allow,
             decided_at,
-            expires_at: decided_at + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+            received_at,
+            expires_at: decided_at.min(received_at)
+                + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
             revocation_epoch,
             policy_digest,
         }
@@ -1289,10 +1323,20 @@ mod cached_decision_tests {
         Utc.timestamp_opt(s, 0).unwrap()
     }
 
+    /// A no-skew receipt: the node journals the decision a second AFTER the
+    /// server made it, so `min(decided_at, received_at)` is `decided_at` and
+    /// the `.3.4.3` clamp is a no-op. Every test using it measures the
+    /// unclamped rule, which is the point — the clamp must not move the
+    /// ordinary case.
+    fn received_after(decided: DateTime<Utc>) -> DateTime<Utc> {
+        decided + chrono::Duration::seconds(1)
+    }
+
     #[test]
     fn a_fresh_epoch_current_cached_allow_dispatches() {
         let decided = t(1_000);
-        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        let allow =
+            CachedDecision::allow(decided, received_after(decided), 7, "digest-a".to_string());
         // Inside the TTL AND the epoch unchanged → the cached allow stands.
         assert_eq!(allow.evaluate(decided, 7), CacheVerdict::Allow);
         assert_eq!(
@@ -1307,7 +1351,8 @@ mod cached_decision_tests {
     #[test]
     fn an_expired_cached_allow_is_stale() {
         let decided = t(1_000);
-        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        let allow =
+            CachedDecision::allow(decided, received_after(decided), 7, "digest-a".to_string());
         // The TTL boundary is exclusive: AT expires_at the allow is stale.
         assert_eq!(
             allow.evaluate(
@@ -1328,7 +1373,8 @@ mod cached_decision_tests {
     #[test]
     fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
         let decided = t(1_000);
-        let allow = CachedDecision::allow(decided, 7, "digest-a".to_string());
+        let allow =
+            CachedDecision::allow(decided, received_after(decided), 7, "digest-a".to_string());
         // Still fresh — but a revocation bumped the epoch: the cache must
         // NOT outlive the revocation, so the entry is stale.
         assert_eq!(allow.evaluate(decided, 8), CacheVerdict::Stale);
@@ -1345,6 +1391,7 @@ mod cached_decision_tests {
                 reason: "boundary frozen".to_string(),
             },
             decided_at: decided,
+            received_at: decided,
             expires_at: decided,
             revocation_epoch: 7,
             policy_digest: "digest-a".to_string(),
@@ -1356,6 +1403,67 @@ mod cached_decision_tests {
                 reason: "boundary frozen".to_string()
             }
         );
+    }
+
+    /// `.3.4.3` — the future-clock rule. `decided_at` is the SERVER's database
+    /// clock and `now` is the NODE's, so a node running behind the server is
+    /// handed a decision dated in its own future. The freshness window must
+    /// still be one TTL of the node's observed time, not `skew + TTL`.
+    #[test]
+    fn a_decision_decided_in_the_nodes_future_does_not_stretch_the_window() {
+        // The node is 600 s behind the server: it receives at its own t(1_000)
+        // a decision the server stamped t(1_600).
+        let received = t(1_000);
+        let decided = t(1_600);
+        let allow = CachedDecision::allow(decided, received, 7, "digest-a".to_string());
+
+        // The window runs from the RECEIPT, not the decision.
+        assert_eq!(
+            allow.expires_at,
+            received + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+            "the clamp anchors the window to the node's own observation"
+        );
+
+        // It is still usable for a full TTL after receipt — the clamp can
+        // never turn skew into a refused dispatch.
+        assert_eq!(allow.evaluate(received, 7), CacheVerdict::Allow);
+        assert_eq!(
+            allow.evaluate(
+                received + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS - 1),
+                7
+            ),
+            CacheVerdict::Allow
+        );
+
+        // And it stops there. Unclamped, `decided_at + TTL` would have kept
+        // this allow standing until t(1_660) — 660 s of node time, eleven
+        // windows — which is the defect this rule closes.
+        assert_eq!(
+            allow.evaluate(
+                received + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+                7
+            ),
+            CacheVerdict::Stale
+        );
+        assert_eq!(allow.evaluate(t(1_600), 7), CacheVerdict::Stale);
+        assert_eq!(allow.evaluate(t(1_659), 7), CacheVerdict::Stale);
+    }
+
+    /// The other half of the same rule, asserted so the clamp cannot quietly
+    /// become unconditional: with an ordinary receipt (AFTER the decision, the
+    /// delivery latency) the window is exactly the declared `decided_at + TTL`.
+    #[test]
+    fn an_ordinary_receipt_leaves_the_declared_window_untouched() {
+        let decided = t(1_000);
+        for latency in [0, 1, 5, 3_600] {
+            let received = decided + chrono::Duration::seconds(latency);
+            let allow = CachedDecision::allow(decided, received, 7, "digest-a".to_string());
+            assert_eq!(
+                allow.expires_at,
+                decided + chrono::Duration::seconds(CACHED_ALLOW_TTL_SECONDS),
+                "a receipt {latency}s after the decision must not move the window"
+            );
+        }
     }
 
     #[test]

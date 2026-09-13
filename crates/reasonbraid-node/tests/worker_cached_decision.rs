@@ -66,11 +66,26 @@ fn completing_adapter() -> FakeAdapter {
 }
 
 /// Journal one command with the given decision metadata; return its WorkItem id.
+/// The receipt is NOW — the ordinary case, where the node takes the decision in
+/// after the server made it.
 async fn seed_command(
     journal: &Journal,
     tag: &str,
     decided_at: Option<chrono::DateTime<Utc>>,
     revocation_epoch: Option<i64>,
+) -> String {
+    seed_command_at(journal, tag, decided_at, revocation_epoch, Utc::now()).await
+}
+
+/// Journal one command with an explicit RECEIPT instant (`.3.4.3`). The receipt
+/// is the node's own clock, and it anchors the freshness window; the tests that
+/// drive the two clocks apart need to set it independently of `decided_at`.
+async fn seed_command_at(
+    journal: &Journal,
+    tag: &str,
+    decided_at: Option<chrono::DateTime<Utc>>,
+    revocation_epoch: Option<i64>,
+    received_at: chrono::DateTime<Utc>,
 ) -> String {
     let command_id = format!("cmd_{tag}");
     let payload = json!({
@@ -95,7 +110,7 @@ async fn seed_command(
                 revocation_epoch,
                 server_cursor: "1",
             },
-            Utc::now(),
+            received_at,
         )
         .await
         .expect("record command");
@@ -316,5 +331,159 @@ async fn the_budget_gate_still_runs_after_the_cached_decision_allows() {
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("failed_before_dispatch"),
         "the budget gate still refuses (the cached decision allowed, the reservation refused)"
+    );
+}
+
+// ── `.3.4.3`: the two clocks ────────────────────────────────────────────────
+//
+// `decided_at` is the SERVER's database clock, sampled inside the authorizing
+// transaction; the freshness comparison runs against the NODE's clock. The
+// window therefore runs from `min(decided_at, received_at)`, so a node running
+// behind the server gets one TTL of its OWN observed time rather than
+// `skew + TTL`. These three legs pin the three moving parts: the clamp, the
+// replay refresh that keeps it from breaking re-delivery, and the guard that
+// keeps a plain redelivery from re-anchoring it.
+
+/// A worker whose local budget never refuses — these legs measure the cached
+/// decision gate, not the budget one.
+fn worker_with_ample_budget(node: &Node) -> Worker<FakeAdapter> {
+    Worker::new(
+        node.clone(),
+        completing_adapter(),
+        LocalBudget::new(BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        Duration::from_secs(1),
+    )
+}
+
+/// The node's clock is 600 s BEHIND the server's, so the decision it was handed
+/// is dated in its own future. Unclamped, `decided_at + 60 s` would keep that
+/// allow standing for 660 s of node time — eleven windows — and the TTL is the
+/// only node-side bound on a grant that reached its natural expiry (passive
+/// expiry bumps no revocation epoch, so the epoch check does not cover it).
+#[tokio::test]
+async fn a_decision_dated_in_the_nodes_future_expires_one_ttl_after_receipt() {
+    let node = dummy_node("future-clock").await;
+    node.journal()
+        .set_revocation_epoch(7)
+        .await
+        .expect("set epoch");
+    // Received a full window ago; the server stamped it 600 s ahead of us.
+    let received_at = Utc::now() - ChronoDuration::seconds(CACHED_ALLOW_TTL_SECONDS + 10);
+    let decided_at = Utc::now() + ChronoDuration::seconds(600);
+    let command_id = seed_command_at(
+        node.journal(),
+        "future-clock",
+        Some(decided_at),
+        Some(7),
+        received_at,
+    )
+    .await;
+
+    let worker = worker_with_ample_budget(&node);
+    let items = node.journal().work_items().await.expect("work items");
+    worker
+        .process(&items[0])
+        .await
+        .expect("the gate refuses; a refusal is Ok, never a channel error");
+
+    assert_eq!(
+        latest_status(node.journal(), &command_id).await.as_deref(),
+        Some("failed_before_dispatch"),
+        "a decision dated in the node's future stands for one TTL from RECEIPT, \
+         not one TTL from a server instant this node has not reached"
+    );
+}
+
+/// The hazard the clamp introduces, and the reason `received_at` is refreshed
+/// with the decision: an operator replays a command dead-lettered long ago. The
+/// row's first receipt is ancient, the replayed decision is fresh, and the
+/// re-dispatch MUST run — anchoring the new decision to the old receipt would
+/// make every replay stale on arrival.
+#[tokio::test]
+async fn a_replayed_decision_is_anchored_to_its_own_delivery_not_the_first_one() {
+    let node = dummy_node("replay-anchor").await;
+    node.journal()
+        .set_revocation_epoch(7)
+        .await
+        .expect("set epoch");
+    // The original delivery: two days old, long expired on both clocks.
+    let long_ago = Utc::now() - ChronoDuration::days(2);
+    let command_id = seed_command_at(
+        node.journal(),
+        "replay-anchor",
+        Some(long_ago),
+        Some(7),
+        long_ago,
+    )
+    .await;
+
+    // THE replay (`.2.4`): the same command id, a FRESH admission decision.
+    let fresh = Utc::now();
+    seed_command_at(node.journal(), "replay-anchor", Some(fresh), Some(7), fresh).await;
+
+    let worker = worker_with_ample_budget(&node);
+    let items = node.journal().work_items().await.expect("work items");
+    // The dispatch proceeds; the emit then fails against the dummy URL, which
+    // is what proves the gate ALLOWED it (a refusal returns Ok).
+    match worker.process(&items[0]).await {
+        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
+        other => panic!("the replayed decision must dispatch — got {other:?}"),
+    }
+    assert_eq!(
+        latest_status(node.journal(), &command_id).await.as_deref(),
+        Some("completed"),
+        "a replayed admission is fresh from ITS delivery, however old the first was"
+    );
+}
+
+/// The guard on that refresh. Every poll re-records every delivered command, so
+/// an unguarded `received_at` refresh would re-anchor the window on each poll —
+/// handing back, one poll at a time, exactly the stretch this rule removes.
+/// A redelivery carrying the SAME decision must leave the anchor alone.
+#[tokio::test]
+async fn a_plain_redelivery_does_not_re_anchor_the_freshness_window() {
+    let node = dummy_node("redelivery-anchor").await;
+    node.journal()
+        .set_revocation_epoch(7)
+        .await
+        .expect("set epoch");
+    // The skew case again: received a window ago, dated far in our future.
+    let received_at = Utc::now() - ChronoDuration::seconds(CACHED_ALLOW_TTL_SECONDS + 10);
+    let decided_at = Utc::now() + ChronoDuration::seconds(600);
+    let command_id = seed_command_at(
+        node.journal(),
+        "redelivery-anchor",
+        Some(decided_at),
+        Some(7),
+        received_at,
+    )
+    .await;
+
+    // The next poll re-delivers the same row with the same decision, NOW.
+    seed_command_at(
+        node.journal(),
+        "redelivery-anchor",
+        Some(decided_at),
+        Some(7),
+        Utc::now(),
+    )
+    .await;
+
+    let worker = worker_with_ample_budget(&node);
+    let items = node.journal().work_items().await.expect("work items");
+    worker
+        .process(&items[0])
+        .await
+        .expect("the gate refuses; a refusal is Ok, never a channel error");
+
+    assert_eq!(
+        latest_status(node.journal(), &command_id).await.as_deref(),
+        Some("failed_before_dispatch"),
+        "re-delivering the SAME decision must not restart its freshness window"
     );
 }

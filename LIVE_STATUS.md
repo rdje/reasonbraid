@@ -6,6 +6,26 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
 
+🔴 **A node's cached-decision freshness window compared two different clocks;
+closed under `.3.4.3` (REPAIR-0131).** `decided_at` is the SERVER's database
+clock, while `is_fresh` is evaluated against the NODE's process clock, so a
+cached allow held by a node running behind the server stood for **`skew + 60 s`**
+of observed time rather than 60 s. ⚠️ That window is load-bearing: the revocation
+epoch is bumped only by explicit revocation, so a grant reaching its own
+`expires_at` is bounded at the node by the freshness TTL **alone**. The window now
+runs from `min(decided_at, received_at)` — the node's own receipt — which binds
+only when the node received a decision before its clock says the server made it,
+is byte-for-byte the shipped behaviour otherwise, and can never refuse work the
+plain rule allowed. ⛔ The opposite direction is UNCHANGED and NOT repaired: a
+node clock running *ahead* refuses every dispatch past 60 s of skew, fail-closed
+and journaled, owned by `.3.4.3.1` with the question of whether the wire should
+carry a duration instead of an instant. Skew is now bounded, **not detected** —
+nothing reports that a node's clock disagrees with the server's. **10 targets /
+116 tests, zero failures**; FALSIFIED three times, each reversion isolating one
+part (no clamp → both skew controls fail with the dispatch allowed; no receipt
+refresh → only the replay control fails; no guard → only the redelivery control
+fails).
+
 🔴 **A revoked delegation was answered with a success, and invisibly; reproduced
 and closed under `.3.4.2` (REPAIR-0130).** `request_hash` covered the operation,
 the actor and `envelope.body`, while `authority_context` is a SIBLING of `body`.

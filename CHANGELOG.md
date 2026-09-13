@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The secret store's claim is narrowed to the one read it routes (`SIGNOFF-REPAIR.4.2.5`)
+
+- ⛔ **The census refuted the leaf's own opening sentence, and the refutation is recorded rather than edited into agreement.** "Node keys are read directly from their tables" is false in production: there are exactly two `SELECT`s of key material in the workspace, one of which IS the store, and the other a test fixture. The server performs ONE read of key material and it is routed.
+- 🔴 **But the census found what the record did not: the seam is READ-ONLY.** The CA bootstrap reads through the store and then `INSERT`s a fresh CA into `server_ca` directly, before reading back through the store with an `expect`. That holds only while both ends are the same database — so with any external profile, first boot writes in one place, reads from another, and aborts the server.
+- ⭐ Which makes the most confident published sentence the false one: *"the external store arrives as a configuration change, not a code migration"* is exactly backwards.
+- Three published sentences, all dispositioned: the key-reads claim is TRUE over a smaller surface than it reads as; "every secret read" is FALSE (the enrollment token is read straight from its table); "a configuration change" is FALSE. The book carried no copy — measured, not assumed.
+- **Decision: narrow the claim, not widen the code**, and the reason is falsifiability rather than effort. A write path for stores that do not exist, behind a registry with one profile, is speculative generality no control could test.
+- ⭐ **The narrowing is a TRIPWIRE, not a warning comment** — a test pins the profile count with the reason in its assertion message, so a second profile cannot be added without confronting the unrouted write. A prose note asks to be remembered; a test makes it impossible to skip.
+- ⛔ No runtime behaviour changed: the `expect` is deliberately not converted to a typed error, because with one profile it is unreachable and the change would be untestable.
+- Validation: falsified by declaring a second profile — `3 passed; 1 failed`, only this control, printing the message the next implementer needs. `103 passed; 0 failed` for the crate's lib tests; clippy `-D warnings` rc=0.
+
 ## 2026-09-13 — A hex decoder returns its typed error instead of aborting the node (`SIGNOFF-REPAIR.4.2.7`)
 
 - 🔴 **Reproduced with a driven decode**: `end byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)` — a panic from a function whose signature returns `Result`.

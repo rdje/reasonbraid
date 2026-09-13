@@ -43,11 +43,38 @@ into the implementation contract the `.1.4.2`/`.1.4.3` slices execute.
   the confidential thread is never treated as a general one at any
   decision point; it does not mean the classification is uncreatable.
 
+## Correction, 2026-09-13 (`SIGNOFF-REPAIR.4.2.5`)
+
+The DECISION above stands: the secret store is a declared profile, resolved by
+name at boot, and an undeclared name is a typed refusal. Two of its SCOPE
+claims were wider than the code, measured rather than argued, and are corrected
+here rather than quietly left — the original wording is preserved below so the
+overstatement is visible.
+
+- ⛔ *"every secret read goes through the declared profile"* — **false.** The
+  server performs exactly ONE routed read, the CA material. The enrollment
+  token, which this record itself names as a dev-profile plaintext secret, is
+  read straight from `node_enrollment_tokens` by the enrollment path.
+- ⛔ *"the external store arrives as a configuration change, not a code
+  migration"* — **false.** `ca::ensure_server_ca_with_store` reads through the
+  store but `INSERT`s a fresh CA into `server_ca` directly, then `expect`s the
+  read-back. With a backend that is not this database, first boot writes in one
+  place, reads from another, and aborts. Adding an external store is a code
+  change.
+- ✅ *"the server's key reads route through the registry"* — **true, over a
+  smaller surface than it reads as.** There is one key read and it is routed;
+  `node_certificates.key_der` and `node_keys.key_secret` are written and handed
+  to the node, never selected back in production.
+
+The scope now lives in `secret_store.rs`'s module doc, and the third point is
+held by a test (`the_registry_is_read_only_and_single_profile`) rather than by
+prose: declaring a second profile fails it until the creation path is routed.
+
 ## answers:
 
-- **The registry is the only seam**: every secret read goes through the
-  declared profile; the dev rows stay the honest dev stance, named — the
-  external store arrives as a configuration change, not a code migration.
+- **The registry is the only seam** (⚠️ corrected above — it is the seam for
+  the CA material READ, not for every secret read and not for creation):
+  the dev rows stay the honest dev stance, named.
 - **A control without a decision point is a named deferral, not a silent
   pass**: the region and the export controls have no machinery in the dev
   profile — each is recorded with the exact trigger that creates its

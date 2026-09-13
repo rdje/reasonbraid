@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The routes censused against the book, and the instrument cross-checked (`SIGNOFF-REPAIR.11.8`)
+
+- The naive census said `111 routes / 24 named / 87 not`, and said in the same breath it was an upper bound wrong in both directions: it counted test fixtures, and accepted a passing mention as documentation.
+- Both refinements now have a stated criterion. A **product** route is one registered outside every `#[cfg(test)]` block — which removes the 8 routes `fetcher.rs` registers inside its test module ("a tiny local origin: the routes the refusals and the ceilings target"). **Described** means the book names the route beside an HTTP method, the shape a contract line takes; **mentioned** means the bare path appears. The three are reported separately, because collapsing them is how the first census went wrong twice at once.
+- **Refined: 103 product routes — 22 described, 1 mentioned, 80 absent.** The gap is slightly smaller and considerably better understood: of the 23 routes the book touches, 22 carry a contract line. The 80 include every `…/revoke`, the region pairing verbs, and the console's three asset routes.
+- 🔴 **The instrument was wrong before it was right, and that is recorded rather than quietly fixed.** Its first version scanned line by line, so a `.route(` whose path sits on the next line was invisible: 53 of `api.rs`'s 92, and 63 overall — a 42 % undercount that would have published a *smaller* gap than the real one. Caught by cross-checking against an independent per-file count taken before the instrument existed. The self-test now carries a multi-line route in both the product and the fixture arm.
+- ⭐ The transferable part: **an instrument's first number should be compared against a number obtained a different way before it is believed.** Two counts agreeing is weak evidence; two counts disagreeing is what found this.
+- The decision is a measured **backlog**, not a gate. "Every route must appear in the book" would flag the console's static assets and accept a bare mention — wrong in both directions before it is written. What "documented" must mean differs by route family, and the population has not been partitioned that way.
+- ⛔ Not claimed: 80 is not 80 defects, and "described" is a proxy — a contract line is not proof the description is correct. ⚠️ And this leaf **documents no route**; it measures, and names what measuring cannot decide.
+- Validation: `--self-test` rc=0; gate (18 checks) rc=0, with the new `SELF-TEST` doctrine now running this instrument's own controls; book and link check rc=0.
+
 ## 2026-09-13 — A node id owned by another tenant answered 500, one arm from answering with a certificate (`SIGNOFF-REPAIR.3.5.1`)
 
 - The leaf proposed making the one-unused-token index per-tenant. Measuring refused its own repair: **`nodes.node_id` is a GLOBAL primary key**, so a node identity belongs to at most one tenant ever and the global token index is *consistent* with that. Per-tenant uniqueness would allow two live tokens for one id and move the failure from a clean `409` at issuance to a primary-key violation at redemption — after the operator had distributed a token.

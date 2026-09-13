@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — My instrument undercounted by 42 %, and only a second method caught it
+
+- `.11.8` needed a refined census: separate product routes from test fixtures, and separate "documented" from "mentioned in passing". Both refinements were straightforward, and the instrument produced a clean number: 63 product routes.
+- ⚠️ I had a second number, from a quick per-file count taken earlier while deciding the criterion: 92 + 8 + 3 = 103. The two disagreed, and that disagreement is the only reason I did not publish 63.
+- 🔴 The cause: I scanned line by line. `.route(` and its path are frequently on separate lines in this codebase, and a per-line regex cannot span them — so 39 of `api.rs`'s 92 routes were invisible. The instrument would have reported a **smaller** documentation gap than the real one, which is the direction that gets believed.
+- ⭐ The lesson I want to keep: **an instrument's first number should be checked against a number obtained a different way.** Not re-run — obtained differently. Re-running the same method twice proves only that it is deterministic. Here the "different way" was a throwaway five-line script I had written for another purpose, and it was worth more than the careful one.
+- ⚠️ The self-test did not catch it either, and that is worth noticing rather than glossing: my fixtures used single-line `.route("/x", get(h))` calls, because that is how I write examples. A self-test written by the same person, in the same idiom, tests the idiom they had in mind. It now carries a multi-line route in both arms — the exact shape that broke it.
+- ⭐ On the decision: no gate. "Every route must appear in the book" would flag the console's three static asset routes, which no chapter should describe route by route, and would accept a bare mention as coverage. That is wrong in both directions before it is written — the same shape as the generator `.11.4.5.3` rejected. A measured backlog with an instrument that re-derives it beats a rule I would have had to weaken the first time it fired.
+- ⚠️ I made a point of writing "this leaf documents no route" into the acceptance. It measures. Ending a leaf about documentation drift without documenting anything feels unfinished, and pretending otherwise by writing a chapter in the same commit would have made the measurement unreviewable.
+
 ## 2026-09-13 — The fix I was one line from writing would have handed away a node
 
 - `.3.5.1` asked for per-tenant token uniqueness. I went to answer its redemption question first, found `nodes.node_id` is a global primary key, and that settled it: the global token index is consistent with the identity model, and making it per-tenant would move a clean `409` at issuance into a primary-key violation at redemption. The leaf's own proposed repair, refused by one `CREATE TABLE`.

@@ -46,11 +46,23 @@ impl Default for AuthorizationEvaluation {
     }
 }
 
-// The pinned Serde internal-tag decoder accepts sequence alternatives and unit
-// variants discard extra fields. First require a map, then use empty struct
-// markers for strict field decoding. Passing MapAccess directly preserves
-// duplicate keys; normalizing through serde_json::Value would lose that evidence.
-pub(super) fn object_only<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+/// Decode `T` from a JSON **object only**, refusing the sequence form.
+///
+/// Two independent leniencies in the pinned Serde internal-tag decoder make this
+/// necessary, and neither is switched off by `deny_unknown_fields`:
+/// a unit variant's `InternallyTaggedUnitVisitor` consumes the rest of the map
+/// with `IgnoredAny`, so `{"kind":"join","reason":"…"}` decodes as `join` with
+/// the extra member discarded; and the same variant also accepts the sequence
+/// form `["join"]`. An empty STRUCT marker (`Join {}`) fixes the first, and this
+/// helper fixes the second — a strict tagged enum needs BOTH.
+///
+/// Passing `MapAccess` straight through preserves duplicate-key detection;
+/// normalising via `serde_json::Value` would lose that evidence.
+///
+/// Used by `TargetSelector`, `TenantAdminInspection`, `AuthorizationEvaluation`
+/// (`SIGNOFF-REPAIR.3.3.3.2.2.1`), and `Decision`, `CachedDecisionKind` plus the
+/// server's `RecruitmentResponse` (`SIGNOFF-REPAIR.3.4.4`).
+pub fn object_only<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

@@ -44,7 +44,7 @@ mod state;
 
 pub use authority::{
     actor_handle_for_subject, boundary_active_at, delegation_scope_is_subset, grant_active_at,
-    grant_exceeds_boundary, policy_digest, ActionClass, AdministrativeEffectRecord,
+    grant_exceeds_boundary, object_only, policy_digest, ActionClass, AdministrativeEffectRecord,
     AdministrativeOperation, AdministrativeOutcome, AdministrativeReason, AdministrativeRefusal,
     AdministrativeTargetId, AdministrativeTextError, AuthorityGrant, AuthorizationDecisionRecord,
     AuthorizationEvaluation, BoundaryStatus, BoundaryViolation, CacheVerdict, CachedDecision,

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A `join` carrying a decline was accepted as a join (`SIGNOFF-REPAIR.3.4.4`)
+
+- 🔴 Measured against the shipped decoder on a route that reads an **untrusted HTTP body**: `{"kind":"join","reason":"I decline"}` was **accepted as a join**, and so was `["join"]`. Same for `observe`. A respondent whose payload plainly says *decline* was recorded as having joined the deliberation panel, with no refusal to notice and the `reason` thrown away.
+- Cause: the `.3.3.3.2.2.1` Serde branch. An internally tagged **unit** variant discards the rest of the map and also accepts the sequence form, and `deny_unknown_fields` — which this type declared — switches off neither. The members-carrying responses (`decline`, `defer`, …) were already strict, which is exactly what localises it to the unit shape.
+- ⭐ **The census found the live one, and it is not the type the leaf was opened around.** 28 tagged enums across the tracked sources, 8 with the vulnerable shape; a reachability pass found exactly one decoded from untrusted input — `RecruitmentResponse`, which the leaf never mentioned. `Decision::Allowed`, the type it did name, has no untrusted producer at all.
+- Repaired with the established pattern (private wire enum with empty-struct markers + object-only decoding) for `RecruitmentResponse`, `Decision` and `CachedDecisionKind`; both halves are needed, since the marker refuses the extra member and the object-only decoder refuses the sequence form. `object_only` is now a public, documented core export rather than a per-crate copy.
+- ⚠️ `Decision` is deliberately **tightened** with a `deny_unknown_fields` it never declared. The leniency read a denial and its evidence back as an allowance (`{"decision":"allowed","reason":"the grant is revoked"}`), which for an audit decision is the dangerous direction. It tightens `Denied` too — the honest cost, stated rather than omitted.
+- ⛔ The four adapter types with the same shape are **not** repaired, and the reason is measured rather than assumed: none is deserialized anywhere.
+- The book gains "Responding to an open call" — the eight-response vocabulary, an example, and the strict rule. ⚠️ The endpoint had **no book coverage at all**; the wider gap (87 of 111 registered routes unnamed in the book, an upper bound) is now `SIGNOFF-REPAIR.11.8` rather than absorbed here.
+- Validation: core lib 53, `authorization_evaluation` 6, server lib 101, and `run_pg_tests.sh profiles authority command_api` rc=0 with **3 suites / 96 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0. FALSIFIED twice, each reversion isolating one crate's repair, with the pre-existing codec controls staying green throughout.
+- ⛔ Not claimed: no evidence a real client ever exercised the acceptance. The finding is what the endpoint accepts, measured against the decoder.
+
 ## 2026-09-13 — A delegation without a scope is now unwritable (`SIGNOFF-REPAIR.3.4.1.1`)
 
 - `CommandAuthz` carried the delegated **subject** and the delegation **scope** as two independent `Option` fields, so a subject with no scope was writable. `selection.rs` read the scope under `if let Some(scope)`, which meant that value would have delegated with the subject's **full grant selector** — the §16.3 widening invariant skipped rather than failed.

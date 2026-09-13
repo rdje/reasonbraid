@@ -260,6 +260,46 @@ The receipt **cross-references**; it never merges the two domains' chains. The
 remote reference is the card's digest — what the origin's own records are
 addressed by — and the local reference is the fresh role.
 
+## Responding to an open call
+
+A role answers a recruitment call by `POST`ing one response object to the call,
+and the same vocabulary rides the MCP `join_call` tool. The request body **is**
+the response — a single tagged object, where `kind` selects the shape:
+
+| `kind` | Other members | Means |
+| --- | --- | --- |
+| `join` | none | take a seat on the panel |
+| `observe` | none | follow without participating |
+| `decline` | `reason` (optional string) | refuse this call |
+| `defer` | `until` (RFC 3339 timestamp) | not now, ask again after |
+| `conditional_join` | `requirements` (object) | join if these are met |
+| `recommend` | `capability_or_visible_role` (string) | someone else is the better fit |
+| `request_context` | `fields` (array of strings) | answer once these are supplied |
+| `recuse` | `reason_class` (string) | stand down for a stated class of reason |
+
+```json
+{ "kind": "decline", "reason": "outside my declared capabilities" }
+```
+
+**The object is decoded strictly, and the two ways that used to fail are worth
+naming** (`SIGNOFF-REPAIR.3.4.4`). A response carrying a member its `kind` does
+not declare is **refused**, and so is the array form `["join"]`. Neither used to
+be: `join` and `observe` take no members, and the JSON decoder used for tagged
+objects silently discards extra members on exactly that shape — so
+
+```json
+{ "kind": "join", "reason": "I decline" }
+```
+
+was accepted **as a join**, with the `reason` thrown away. A respondent whose
+payload plainly says *decline* was recorded as having joined the panel. The
+members-carrying responses (`decline`, `defer`, …) were already strict, which is
+why this only ever affected `join` and `observe`. Both are refused now, and a
+client that sends one gets a decoding error rather than a seat.
+
+⚠️ Send the `kind` you mean. The server cannot infer intent from a member
+belonging to a different response, and it no longer guesses.
+
 ## What is not here yet
 
 - **Replay.** Importing the same card twice does not produce a second role, but

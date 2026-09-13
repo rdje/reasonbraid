@@ -572,11 +572,44 @@ from_str_via!(GrantStatus);
 // ── Decision and record ────────────────────────────────────────────────────────
 
 /// A deterministic authorization decision.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `SIGNOFF-REPAIR.3.4.4`: decoded through a strict private wire enum rather than
+/// the derive, because `Allowed` is an internally tagged UNIT variant and the
+/// pinned Serde decoder accepts `["allowed"]` for one. The public variants and
+/// the emitted JSON are unchanged.
+///
+/// ⚠️ The wire enum also adds `deny_unknown_fields`, which this type never
+/// declared — a deliberate TIGHTENING, recorded rather than slipped in. The
+/// reason is the direction of the leniency: `{"decision":"allowed","reason":"the
+/// grant is revoked"}` decoded as a plain `Allowed` with the reason discarded, so
+/// a denial and its evidence read back as an allowance. For an authorization
+/// audit decision that is the dangerous direction, and no legitimate producer
+/// emits extra members — the serializer writes exactly `{"decision":"allowed"}`
+/// or `{"decision":"denied","reason":…}`. It tightens `Denied` too, which is the
+/// honest cost of the change.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum Decision {
     Allowed,
     Denied { reason: String },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+enum DecisionWire {
+    Allowed {},
+    Denied { reason: String },
+}
+
+impl<'de> Deserialize<'de> for Decision {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(
+            match evaluation::object_only::<D, DecisionWire>(deserializer)? {
+                DecisionWire::Allowed {} => Self::Allowed,
+                DecisionWire::Denied { reason } => Self::Denied { reason },
+            },
+        )
+    }
 }
 
 impl Decision {
@@ -603,7 +636,7 @@ pub use effect::{
     AdministrativeEffectRecord, AdministrativeOperation, AdministrativeOutcome,
     AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId, AdministrativeTextError,
 };
-pub use evaluation::{AuthorizationEvaluation, TenantAdminInspection};
+pub use evaluation::{object_only, AuthorizationEvaluation, TenantAdminInspection};
 
 /// The audit record every command leaves (§4.5/§5 WP5 acceptance): actor, subject if
 /// delegated, the grant and boundary the decision referenced, the decision itself,
@@ -1097,11 +1130,36 @@ pub struct CachedDecision {
 }
 
 /// What a cached decision says.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `SIGNOFF-REPAIR.3.4.4`: this type DECLARED `deny_unknown_fields` and did not
+/// honour it — `Allow` is an internally tagged unit variant, so the derive
+/// accepted `{"decision":"allow","reason":"…"}` (silently discarding the reason,
+/// turning a deny into an allow) and the sequence form `["allow"]`. A declared
+/// contract the code does not keep is repaired whether or not anything currently
+/// feeds it; the census found no deserializing producer today.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CachedDecisionKind {
     Allow,
     Deny { reason: String },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+enum CachedDecisionKindWire {
+    Allow {},
+    Deny { reason: String },
+}
+
+impl<'de> Deserialize<'de> for CachedDecisionKind {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(
+            match evaluation::object_only::<D, CachedDecisionKindWire>(deserializer)? {
+                CachedDecisionKindWire::Allow {} => Self::Allow,
+                CachedDecisionKindWire::Deny { reason } => Self::Deny { reason },
+            },
+        )
+    }
 }
 
 /// The verdict of evaluating a cached decision at the dispatch boundary.

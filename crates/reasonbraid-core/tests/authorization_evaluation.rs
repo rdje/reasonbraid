@@ -2,8 +2,8 @@
 use chrono::{TimeZone, Utc};
 use reasonbraid_core::{
     actor_handle_for_subject, AuthorizationDecisionRecord, AuthorizationEvaluation,
-    AuthorizationRecordId, BoundaryStatus, Decision, GrantAction, GrantSubject, ResourceTarget,
-    TargetSelector, TenantAdminInspection, TenantId,
+    AuthorizationRecordId, BoundaryStatus, CachedDecisionKind, Decision, GrantAction, GrantSubject,
+    ResourceTarget, TargetSelector, TenantAdminInspection, TenantId,
 };
 use serde_json::json;
 
@@ -152,6 +152,75 @@ fn selector_scope_cannot_discard_named_threads_or_accept_sequence_alternatives()
         });
         if serde_json::from_value::<AuthorizationEvaluation>(evidence).is_ok() {
             failures.push(format!("enclosing scope evidence accepted {invalid}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// `SIGNOFF-REPAIR.3.4.4` — the remaining tagged authority codecs. `Decision` and
+/// `CachedDecisionKind` each carry an internally tagged UNIT variant, the same
+/// shape `.3.3.3.2.2.1` repaired for the selector and evaluation types: the
+/// pinned Serde decoder discards a unit variant's extra members and accepts the
+/// sequence form, neither of which `deny_unknown_fields` switches off.
+///
+/// The direction that matters is stated in the fixtures: for both types the
+/// discarded member is the DENIAL's reason, so the lenient decoder turned a deny
+/// into an allow while throwing away the evidence of what was refused.
+#[test]
+fn the_decision_codecs_refuse_discarded_members_and_sequence_alternatives() {
+    for wire in [
+        json!({"decision":"allowed"}),
+        json!({"decision":"denied","reason":"the grant is revoked"}),
+    ] {
+        let decision: Decision = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decision).unwrap(), wire);
+    }
+
+    let mut failures = Vec::new();
+    for invalid in [
+        json!({"decision":"allowed","reason":"the grant is revoked"}),
+        json!({"decision":"allowed","extra":true}),
+        json!(["allowed"]),
+        json!(["denied", {"reason":"x"}]),
+    ] {
+        if let Ok(decoded) = serde_json::from_value::<Decision>(invalid.clone()) {
+            failures.push(format!("Decision accepted {invalid} as {decoded:?}"));
+        }
+        // The enclosing audit record must not launder it either.
+        let mut wire = serde_json::to_value(record()).unwrap();
+        wire.as_object_mut()
+            .unwrap()
+            .insert("decision".into(), invalid.clone());
+        if serde_json::from_value::<AuthorizationDecisionRecord>(wire).is_ok() {
+            failures.push(format!("the enclosing record accepted {invalid}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The node's cached admission decision, same shape and same direction: a
+/// discarded `reason` on `{"decision":"allow"}` is a deny read as an allow.
+#[test]
+fn the_cached_decision_kind_refuses_discarded_members_and_sequence_alternatives() {
+    for wire in [
+        json!({"decision":"allow"}),
+        json!({"decision":"deny","reason":"boundary frozen"}),
+    ] {
+        let kind: CachedDecisionKind = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(kind).unwrap(), wire);
+    }
+
+    let mut failures = Vec::new();
+    for invalid in [
+        json!({"decision":"allow","reason":"boundary frozen"}),
+        json!({"decision":"allow","extra":true}),
+        json!(["allow"]),
+        json!(["deny", {"reason":"x"}]),
+    ] {
+        if let Ok(decoded) = serde_json::from_value::<CachedDecisionKind>(invalid.clone()) {
+            failures.push(format!(
+                "CachedDecisionKind accepted {invalid} as {decoded:?}"
+            ));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

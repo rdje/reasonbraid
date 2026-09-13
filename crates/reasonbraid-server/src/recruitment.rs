@@ -10,7 +10,20 @@ use serde_json::Value;
 use sqlx::Row;
 
 /// The §10.5 response vocabulary (typed, tagged on the wire).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// 🔴 `SIGNOFF-REPAIR.3.4.4`: this type is deserialized straight from an
+/// UNTRUSTED HTTP body (`Json<RecruitmentResponse>` on `respond_to_call`, and
+/// `serde_json::from_value` on the MCP `join_call` seam), it DECLARED
+/// `deny_unknown_fields`, and it did not honour it. `Join` and `Observe` are
+/// internally tagged unit variants, and the pinned Serde decoder both discards
+/// a unit variant's extra members and accepts the sequence form. Measured on the
+/// superseded derive: `{"kind":"join","reason":"I decline"}` was **accepted as a
+/// join** — a respondent whose payload says decline is recorded as having joined
+/// the panel — and `["join"]` was accepted too. The data-carrying variants were
+/// already strict, which is what localises the defect to the unit shape.
+///
+/// The public variants and the emitted JSON are unchanged; only decoding is.
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecruitmentResponse {
     Join,
@@ -34,6 +47,60 @@ pub enum RecruitmentResponse {
     Recuse {
         reason_class: String,
     },
+}
+
+/// The strict wire shape: empty-struct markers for the two unit variants, decoded
+/// object-only. Both halves are required — the markers refuse a discarded extra
+/// member, `object_only` refuses the sequence form.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum RecruitmentResponseWire {
+    Join {},
+    Observe {},
+    Decline {
+        #[serde(default)]
+        reason: Option<String>,
+    },
+    Defer {
+        until: DateTime<Utc>,
+    },
+    ConditionalJoin {
+        requirements: Value,
+    },
+    Recommend {
+        capability_or_visible_role: String,
+    },
+    RequestContext {
+        fields: Vec<String>,
+    },
+    Recuse {
+        reason_class: String,
+    },
+}
+
+impl<'de> Deserialize<'de> for RecruitmentResponse {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(
+            match reasonbraid_core::object_only::<D, RecruitmentResponseWire>(deserializer)? {
+                RecruitmentResponseWire::Join {} => Self::Join,
+                RecruitmentResponseWire::Observe {} => Self::Observe,
+                RecruitmentResponseWire::Decline { reason } => Self::Decline { reason },
+                RecruitmentResponseWire::Defer { until } => Self::Defer { until },
+                RecruitmentResponseWire::ConditionalJoin { requirements } => {
+                    Self::ConditionalJoin { requirements }
+                }
+                RecruitmentResponseWire::Recommend {
+                    capability_or_visible_role,
+                } => Self::Recommend {
+                    capability_or_visible_role,
+                },
+                RecruitmentResponseWire::RequestContext { fields } => {
+                    Self::RequestContext { fields }
+                }
+                RecruitmentResponseWire::Recuse { reason_class } => Self::Recuse { reason_class },
+            },
+        )
+    }
 }
 
 impl RecruitmentResponse {
@@ -303,4 +370,58 @@ pub async fn snapshot_panel(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod response_codec {
+    use super::RecruitmentResponse;
+    use serde_json::json;
+
+    /// `SIGNOFF-REPAIR.3.4.4` — this type is decoded from an UNTRUSTED HTTP body,
+    /// so the two Serde leniencies are reachable by any client. Measured on the
+    /// superseded derive, all four of the invalid forms below were ACCEPTED;
+    /// `{"kind":"join","reason":"I decline"}` in particular was recorded as a
+    /// join, which is the wrong answer to a recruitment call rather than a
+    /// formatting nit.
+    #[test]
+    fn the_unit_responses_refuse_discarded_members_and_sequence_alternatives() {
+        let mut failures = Vec::new();
+        for invalid in [
+            json!({"kind":"join","reason":"I decline"}),
+            json!({"kind":"join","extra":true}),
+            json!(["join"]),
+            json!({"kind":"observe","until":"2026-01-01T00:00:00Z"}),
+            json!({"kind":"observe","extra":true}),
+            json!(["observe"]),
+        ] {
+            if let Ok(decoded) = serde_json::from_value::<RecruitmentResponse>(invalid.clone()) {
+                failures.push(format!("accepted {invalid} as {}", decoded.kind()));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// The repair must not narrow the vocabulary: every §10.5 response still
+    /// decodes from its canonical object, and still serializes back to it.
+    #[test]
+    fn every_canonical_response_still_round_trips() {
+        for wire in [
+            json!({"kind":"join"}),
+            json!({"kind":"observe"}),
+            json!({"kind":"decline","reason":"out of scope"}),
+            json!({"kind":"defer","until":"2026-01-01T00:00:00Z"}),
+            json!({"kind":"conditional_join","requirements":{"budget":"confirmed"}}),
+            json!({"kind":"recommend","capability_or_visible_role":"rol_reviewer"}),
+            json!({"kind":"request_context","fields":["objective"]}),
+            json!({"kind":"recuse","reason_class":"conflict_of_interest"}),
+        ] {
+            let decoded: RecruitmentResponse = serde_json::from_value(wire.clone())
+                .unwrap_or_else(|e| panic!("canonical {wire} must decode: {e}"));
+            assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
+        }
+        // `reason` is optional on decline, and its absence is still accepted.
+        let decoded: RecruitmentResponse =
+            serde_json::from_value(json!({"kind":"decline"})).expect("decline without a reason");
+        assert_eq!(decoded, RecruitmentResponse::Decline { reason: None });
+    }
 }

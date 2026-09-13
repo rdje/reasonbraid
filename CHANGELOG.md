@@ -1,5 +1,24 @@
 # CHANGELOG.md
 
+## 2026-09-13 — ADR-009 is called "chain-in-envelope" and there is no chain (`SIGNOFF-REPAIR.3.4.5`)
+
+- The leaf owed ADR-009 the comparative measurement its withdrawn claim never had. That claim took the envelope's own length `N` and asserted `N < N + 64`: true by construction, encoding no token and comparing no delegation depth.
+- The measurement now exists as a re-runnable instrument, `crates/reasonbraid-core/tests/delegation_representation.rs`, needing no new dependency. Both shapes carry the same request and the same scope against a common **308 B** undelegated baseline.
+
+  | Depth | Chain-in-envelope | Token (ES256) | Token (HS256) |
+  | --- | --- | --- | --- |
+  | 1 | 505 B | 1,066 B | 1,023 B |
+  | 2 | 684 B | 1,824 B | 1,738 B |
+  | 3 | 861 B | 2,582 B | 2,453 B |
+
+- Per additional hop: **177 B** for the envelope against a constant **758 B** (ES256) / **715 B** (HS256) — roughly **4.3×**. The per-hop figure is precisely what a fixed increment could never have produced.
+- ⭐ The gap is structural rather than an encoding detail: a credential must carry an issuer, audience, lifetime, replay id, key id and signature, and an in-request context needs none of the six because the server already knows them. It would not close with a tighter encoding.
+- 🔴 **And the finding that matters more than the ratio: the ADR is titled "chain-in-envelope" and no chain exists.** `AuthorityContext` holds one `on_behalf_of` string, so a depth-2 delegation has nowhere to go. A control pins it, so the title cannot keep implying a capability the type does not have. Third independent measurement of the same absence, after `.3.4.1` (the grant-chain flags have no producer) and `.3.4.1.1`.
+- ⚠️ Stated rather than left implicit: depth 1 encodes the shipped envelope, depths 2–3 are prototype-vs-prototype; the signature bytes are not a real signature and only their length is load-bearing, which is the algorithm's (32 B HS256, 64 B ES256/Ed25519) — the distinction that makes this different in kind from `N < N + 64`. And size is not the axis that decides the question: tokens buy offline verification and delegation while the delegator is unreachable, which no byte count settles.
+- ⛔ No size advantage is offered as the reason for the choice. The ADR now says it rests on the subtraction and the existing revocation lifecycle — which is what it rested on, since the table did not exist when the choice was made.
+- ⚠️ A fixture artifact was caught before the numbers were recorded: a short placeholder actor id on the final hop made the depth-3 token 37 B short and the per-hop cost look irregular. Corrected, and recorded — a first run with a spurious irregularity is where a plausible wrong explanation gets adopted.
+- Validation: `cargo test -p reasonbraid-core --locked` rc=0, **74 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
+
 ## 2026-09-13 — A `join` carrying a decline was accepted as a join (`SIGNOFF-REPAIR.3.4.4`)
 
 - 🔴 Measured against the shipped decoder on a route that reads an **untrusted HTTP body**: `{"kind":"join","reason":"I decline"}` was **accepted as a join**, and so was `["join"]`. Same for `observe`. A respondent whose payload plainly says *decline* was recorded as having joined the deliberation panel, with no refusal to notice and the `reason` thrown away.

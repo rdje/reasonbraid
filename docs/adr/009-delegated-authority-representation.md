@@ -1,8 +1,9 @@
 # ADR-009 — Delegated authority representation: chain-in-envelope for the dev profile
 
-- **Status:** `accepted` for the development envelope; comparative wire-size
-  evidence is withdrawn by `SIGNOFF-REPAIR.3.3.1`. The subset prototype remains
-  historical evidence; representation benchmarking is owned by `.3.4`.
+- **Status:** `accepted` for the development envelope. The original comparative
+  wire-size evidence was withdrawn by `SIGNOFF-REPAIR.3.3.1`; `SIGNOFF-REPAIR.3.4.5`
+  replaces it with an actual measurement at depths 1–3 (below), which supports the
+  choice on size without having been what decided it.
 - **Date:** `2026-09-07`
 - **Leaf:** `PHASE-2.1.4.1`
 - **Requirements:** `ROADMAP.md` §23 queue item 009; §16.3 (delegation
@@ -42,10 +43,39 @@ delegate presents).
   refused): `cargo test -p reasonbraid-core` → `test result: ok. 39 passed`.
 - **Wire-size correction:** the historical test hand-built JSON, computed its
   byte length N and asserted N < N + 64. It measured neither a capability-token
-  encoding nor delegation depths 1–3, so it establishes no comparative size
-  advantage. `SIGNOFF-REPAIR.3.3.1` replaces that assertion with an actual public
-  AuthorityContext serialization/round-trip control; `.3.4` owns the missing
-  comparative prototype and measurements before a size advantage is claimed.
+  encoding nor delegation depths 1–3, so it established no comparative size
+  advantage. `SIGNOFF-REPAIR.3.3.1` replaced that assertion with an actual public
+  AuthorityContext serialization/round-trip control.
+
+- **Wire-size measurement (`SIGNOFF-REPAIR.3.4.5`).** The instrument is
+  `crates/reasonbraid-core/tests/delegation_representation.rs`; it re-runs with
+  `cargo test -p reasonbraid-core --test delegation_representation -- --nocapture`
+  and asserts the table below, so this document cannot drift from it. Both shapes
+  carry the *same* request and the *same* delegation scope; the baseline is that
+  request with no delegation, at **308 B**.
+
+  | Depth | Chain-in-envelope | Δ vs baseline | Token (ES256) | Δ | Token (HS256) | Δ |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 1 | 505 B | +197 | 1,066 B | +758 | 1,023 B | +715 |
+  | 2 | 684 B | +376 | 1,824 B | +1,516 | 1,738 B | +1,430 |
+  | 3 | 861 B | +553 | 2,582 B | +2,274 | 2,453 B | +2,145 |
+
+  Per additional hop the envelope costs **177 B** and a token costs a constant
+  **758 B** (ES256) or **715 B** (HS256) — roughly **4.3×**. The gap is
+  structural rather than an encoding detail: a credential must carry an issuer,
+  an audience, a lifetime, a replay identifier, a key id and a signature, and an
+  in-request context needs none of them because the server already knows all six.
+
+  ⚠️ **What this measurement does and does not settle.** Depth 1 encodes the
+  SHIPPED `CommandEnvelope`; depths 2–3 are prototype-vs-prototype, because the
+  shipped `AuthorityContext` holds one `on_behalf_of` and cannot express a chain
+  at all (see Consequences). Every token byte is genuinely encoded except the
+  signature block, whose LENGTH is the algorithm's (32 B HMAC-SHA256, 64 B
+  Ed25519/P-256) rather than a number chosen here — the distinction that makes
+  this different in kind from the withdrawn `N < N + 64`. And size is not the
+  interesting axis: tokens buy offline verification and delegation while the
+  delegator is unreachable, which no byte count settles. The choice below rests
+  on the subtraction and the existing lifecycle, not on this table.
 - **Expiry and revocation ride the existing `.1.3` filters**: the subject's
   grant is the authority source; a revoked grant refuses the delegation at
   the next decision with zero new machinery. A token would duplicate that
@@ -62,9 +92,14 @@ same evaluation, and the audit row carries the chain.
 
 - No token issuance/store/signature layer (subtraction); no new credential
   lifecycle to reconcile with `.1.3`.
-- Honest limits: the shipped AuthorityContext identifies one delegated subject
-  and a requested scope; the source prototype did not measure a multi-hop chain
-  at depths 1–3. Multi-hop chains, cross-service delegation and high-frequency
+- Honest limits: the shipped `AuthorityContext` identifies **one** delegated
+  subject and a requested scope. 🔴 **This ADR is titled "chain-in-envelope", and
+  no chain exists** — the field is a single object, so a depth-2 delegation has
+  nowhere to go. `SIGNOFF-REPAIR.3.4.5` pins that with a control
+  (`the_shipped_envelope_carries_one_hop_not_a_chain`) so the title cannot go on
+  implying a capability the type does not have, and `.3.4.1` separately measured
+  that the grant-chain machinery (`delegable`, `max_delegation_depth`) has no
+  producer either. Multi-hop chains, cross-service delegation and high-frequency
   re-presentation require the revisit below. Current delegation constraints and
   authority selection are under `SIGNOFF-REPAIR.3.3`/`.3.4` repair.
 
@@ -72,5 +107,7 @@ same evaluation, and the audit row carries the chain.
 
 - Multi-hop delegation (depth > 2) or a measured re-presentation cost that
   matters — reopen the capability-token option with numbers, not
-  anticipation. Internet qualification (G6) re-evaluates the transport-side
-  proof as well.
+  anticipation. The numbers now exist for size (above); what would actually
+  trigger the revisit is a requirement size does not answer — offline
+  verification, or delegation issued while the delegator is unreachable.
+  Internet qualification (G6) re-evaluates the transport-side proof as well.

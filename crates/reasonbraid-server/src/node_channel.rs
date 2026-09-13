@@ -1617,17 +1617,50 @@ async fn enroll(
     // key + incarnation land below, the old certs stay revoked (fenced). The
     // state check runs BEFORE any insert (a unique-violation probe would abort
     // the transaction).
-    let (active_certs, total_certs, node_exists): (i64, i64, bool) = sqlx::query_as(
+    // `SIGNOFF-REPAIR.3.5.1`: read the node's OWNER, not "does it exist in MY
+    // tenant". `nodes.node_id` is a GLOBAL primary key, so a node identity
+    // belongs to at most one tenant ever — and the tenant-scoped `EXISTS` this
+    // replaces reported false for a node owned by someone else, sending the
+    // insert below into that primary key. The comment above is right that a
+    // unique violation aborts the transaction; the check simply asked the wrong
+    // question, and the answer was `500 dependency_unavailable`.
+    let (active_certs, total_certs, owner): (i64, i64, Option<String>) = sqlx::query_as(
         "SELECT (SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL), \
                 (SELECT count(*) FROM node_certificates WHERE node_id = $1), \
-                EXISTS(SELECT 1 FROM nodes WHERE node_id = $1 AND tenant_id = $2)",
+                (SELECT tenant_id FROM nodes WHERE node_id = $1)",
     )
     .bind(&req.node_id)
-    .bind(&tenant_id)
     .fetch_one(&mut *tx)
     .await?;
 
-    let replacement = if node_exists {
+    // ⛔ A node owned by ANOTHER tenant is refused before anything else, and in
+    // particular before the replacement branch. That branch swaps `node_keys`
+    // and issues a fresh workload certificate for the node id WITHOUT a tenant
+    // check, so widening the existence test without this arm would have handed
+    // a foreign tenant the node's key the moment its owner revoked its
+    // certificates — a takeover, strictly worse than the 500 being repaired.
+    //
+    // The refusal reuses the same-tenant duplicate's wording deliberately: the
+    // caller supplied the node id, and learns exactly what they would have
+    // learned about a node of their own. Nothing names the owner.
+    if let Some(other) = owner.as_deref() {
+        if other != tenant_id {
+            let record = insert_refusal_audit(
+                &mut tx,
+                token_tenant.as_deref(),
+                &req.node_id,
+                &req.token_id,
+                "the node is already enrolled",
+            )
+            .await?;
+            tx.commit().await?;
+            return Err(enrollment_refused(format!(
+                "the node is already enrolled (audit {record})"
+            )));
+        }
+    }
+
+    let replacement = if owner.is_some() {
         // The node row already exists: a replacement enroll requires the
         // operator's revocation first (every certificate revoked) — otherwise it
         // is a duplicate enrollment and refuses (the audit row commits with the

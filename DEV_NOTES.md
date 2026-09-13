@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The fix I was one line from writing would have handed away a node
+
+- `.3.5.1` asked for per-tenant token uniqueness. I went to answer its redemption question first, found `nodes.node_id` is a global primary key, and that settled it: the global token index is consistent with the identity model, and making it per-tenant would move a clean `409` at issuance into a primary-key violation at redemption. The leaf's own proposed repair, refused by one `CREATE TABLE`.
+- ⭐ Reading the redemption path to establish that is what found the real defect. The index forbids a second *unused* token, not a second token — so once the first tenant enrols and its token is marked used, a second tenant's issuance sails through and only redemption fails, with a `500`. I would not have found that by looking at the index, which is where the leaf pointed.
+- ⚠️ Then the part that matters. The obvious repair is "make the existence check global". I wrote it, and stopped before running it, because the branch it feeds swaps the node's key and issues a fresh certificate — and it fires when every certificate is revoked. A global check with no owner arm would hand tenant B the node the moment tenant A revoked its certs. I removed the arm deliberately to see it, and the response was `200` with a certificate for `CN=node:nod_…09f1` and `SAN=host-b`. That is A's identity, issued to B.
+- 🔴 The lesson is not "be careful with SQL". It is that **widening a guard changes which branch the code takes afterwards**, and the branch I was widening into had no tenant check of its own because nothing had ever reached it from another tenant. The 500 I was repairing was, accidentally, the only thing preventing a takeover.
+- ⚠️ My own hygiene was poor for a while and I want it on the record: the control failed three times before it measured anything, and only the third was the product's fault. I destructured `bootstrap_admin` backwards (it returns `(tenant_id, principal_id)`); `post_json` panics decoding an empty body, so the status was hidden behind a decode error until I made the calls under measurement raw; and the second issuance I wrote was correctly refused by the very index the leaf was about. Each time the instinct was "the product is broken in a new way" and each time it was me.
+- ⭐ Two falsifications, not one, because the two failure modes are different: without the change, a 500; with the query widened but no refusal arm, a certificate. A single reversion would have shown one of them and left the more dangerous one untested.
+
 ## 2026-09-13 — I wrote the warning, then walked into it
 
 - The gate exists because a control searched for a string it contained. I wrote a five-line comment in the new check about exactly that trap, excluded the check's own path from discovery, and asserted the exclusion in the self-test. I thought that was the careful version.

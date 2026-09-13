@@ -1120,3 +1120,154 @@ async fn an_evidence_failure_rolls_the_token_back_and_the_route_recovers() {
     let effect = effect_of(&pool, &tenant, receipt).await.expect("recorded");
     assert!(effect.outcome.changed_protected_state());
 }
+
+/// `SIGNOFF-REPAIR.3.5.1` — a node id enrolled by one tenant, claimed by another.
+///
+/// `nodes.node_id` is a GLOBAL primary key, so a node identity belongs to at
+/// most one tenant ever. The redemption path knows a unique violation is fatal —
+/// its own comment says "a unique-violation probe would abort the transaction" —
+/// and guards with `EXISTS(SELECT 1 FROM nodes WHERE node_id = $1 AND
+/// tenant_id = $2)`. That guard is TENANT-SCOPED against a GLOBAL key: when the
+/// node exists in a DIFFERENT tenant it reports false, the insert runs anyway,
+/// and the primary key aborts the transaction.
+///
+/// ⚠️ Reachable today. The one-unused-token index blocks a second UNUSED token,
+/// not a second token: once the first tenant has enrolled, its token is `used`,
+/// so the second tenant's issuance succeeds and only the redemption fails.
+#[tokio::test]
+async fn a_node_id_enrolled_by_one_tenant_refuses_the_next_tenant_cleanly() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+
+    let node_id = "nod_00000000-0000-7000-8000-0000000009f1";
+
+    // Tenant A issues, redeems, and owns the node.
+    let (tenant_a, alice) = bootstrap_admin(&client, &base).await;
+    let token_a = issue_token(&client, &base, &alice, &tenant_a, node_id, "host-a", None).await;
+    let (status, enrolled) = enroll_node(
+        &client,
+        &base,
+        token_a["token_id"].as_str().unwrap(),
+        node_id,
+        "host-a",
+        token_a["nonce"].as_str().unwrap(),
+        "secret-a",
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A enrols the node: {enrolled}");
+
+    // Tenant B. Its token for the SAME node id is issued without complaint,
+    // because the partial index only forbids a second UNUSED token and A's is
+    // now used — so the collision is not caught at issuance.
+    let (tenant_b, bob) = bootstrap_admin(&client, &base).await;
+    assert_ne!(tenant_a, tenant_b, "two distinct tenants");
+    // Raw: this issuance is itself part of what is being measured, and a helper
+    // that decodes JSON would panic on an empty body instead of reporting it.
+    let issue = client
+        .post(format!("{base}/v1/nodes/enroll-tokens"))
+        .header(PRINCIPAL_HEADER, &bob)
+        .json(&json!({ "tenant_id": tenant_b, "node_id": node_id, "host_claim": "host-b" }))
+        .send()
+        .await
+        .expect("the second tenant's issuance answers at all");
+    let issue_status = issue.status().as_u16();
+    let issue_body = issue.text().await.unwrap_or_default();
+    assert_eq!(
+        issue_status, 200,
+        "the second tenant's token issuance: {issue_status} {issue_body:?}"
+    );
+    let token_b: Value = serde_json::from_str(&issue_body).expect("issuance json");
+
+    // Raw, not `enroll_node`: the point of this control is what comes back, and
+    // an aborted transaction may answer with no body at all — which a JSON
+    // decode would turn into a panic in the helper instead of a measurement.
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll"))
+        .json(&json!({
+            "token_id": token_b["token_id"].as_str().unwrap(),
+            "node_id": node_id,
+            "host_claim": "host-b",
+            "nonce": token_b["nonce"].as_str().unwrap(),
+            "key_secret": "secret-b",
+        }))
+        .send()
+        .await
+        .expect("the second tenant's enrollment answers at all");
+    let status = response.status().as_u16();
+    let body = response.text().await.unwrap_or_default();
+
+    // The identity must not move tenants, whatever else happens.
+    let (owner,): (String,) = sqlx::query_as("SELECT tenant_id FROM nodes WHERE node_id = $1")
+        .bind(node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the node row");
+    assert_eq!(
+        owner, tenant_a,
+        "the node stays with the tenant that enrolled it"
+    );
+
+    assert_ne!(
+        status, 500,
+        "claiming a node id owned by another tenant must be a REFUSAL, not an \
+         unhandled primary-key violation — got {status}: {body}"
+    );
+    assert!(
+        body.contains("already enrolled"),
+        "the refusal reuses the same-tenant duplicate's wording and names no \
+         owner — got {status}: {body}"
+    );
+
+    // ⛔ THE DANGEROUS PATH, and the reason the repair reads the OWNER rather
+    // than merely widening the existence test. The replacement branch swaps the
+    // node's key and issues it a fresh workload certificate WITHOUT a tenant
+    // check, and it fires once every certificate is revoked. A check that only
+    // asked "does this node exist anywhere" would hand tenant B the node the
+    // moment tenant A revoked — a takeover, worse than the 500 being repaired.
+    let revoked = sqlx::query("UPDATE node_certificates SET revoked_at = now() WHERE node_id = $1")
+        .bind(node_id)
+        .execute(&pool)
+        .await
+        .expect("revoke every certificate");
+    assert!(
+        revoked.rows_affected() > 0,
+        "there was a certificate to revoke"
+    );
+
+    // B's token is still UNUSED — its redemption was refused — so the
+    // one-unused-token index correctly declines to issue a second, and the
+    // takeover attempt reuses the one it holds.
+    let token_b2 = &token_b;
+    let takeover = client
+        .post(format!("{base}/v1/nodes/enroll"))
+        .json(&json!({
+            "token_id": token_b2["token_id"].as_str().unwrap(),
+            "node_id": node_id,
+            "host_claim": "host-b",
+            "nonce": token_b2["nonce"].as_str().unwrap(),
+            "key_secret": "secret-b-takeover",
+        }))
+        .send()
+        .await
+        .expect("the takeover attempt answers");
+    let takeover_status = takeover.status().as_u16();
+    let takeover_body = takeover.text().await.unwrap_or_default();
+    assert!(
+        (400..500).contains(&takeover_status),
+        "a foreign tenant must be REFUSED the replacement path, not served and \
+         not 500 — got {takeover_status}: {takeover_body}"
+    );
+    let (still_owned_by,): (String,) =
+        sqlx::query_as("SELECT tenant_id FROM nodes WHERE node_id = $1")
+            .bind(node_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read the node row");
+    assert_eq!(
+        still_owned_by, tenant_a,
+        "the node must not change tenants when its certificates are revoked"
+    );
+}

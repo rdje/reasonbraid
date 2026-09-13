@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-14 — A host claim is checked where a human typed it (`SIGNOFF-REPAIR.4.1.6`)
+
+- Reproduced through the supported routes: a non-ASCII host claim was accepted at token issuance and panicked when the node redeemed it. The node received a dropped connection rather than an answer; the server kept serving; no node row was written; and the token was left unconsumed.
+- That last fact is the one the opening inference had not reached. An outstanding unused token refuses a second issuance for the same node id, so the node id could not be enrolled until the token lapsed — bounded to the token's lifetime (an hour by default, a day at most), and bounded only because `SIGNOFF-REPAIR.4.1.1` already supersedes a lapsed token.
+- Two changes. `issue_node_leaf` returns a result instead of unwinding — a function whose only way to report a bad caller string is to panic leaves its caller's typed error path unreachable — and the issuance route checks the claim beside the node-id shape and the lifetime range, because that is where an operator typed it. The first makes the failure answerable; the second makes it unreachable.
+- The accepted set is deliberately unchanged: the check asks the certificate library rather than restating a grammar, so it narrows nothing and cannot drift from what issuance would have done. Whether a stricter host-name grammar should bind is deferred with its compatibility question named, in `docs/decisions/2026-09-14_host-claim-checked-at-issuance.md`.
+- Validation: 82 live tests across five suites and 103 library tests, rc=0; strict all-target lint on the server rc=0. Falsified in two halves, each hitting a disjoint control: removing the issuance check gave 18 passed / 1 failed with `left: 200, right: 400`; restoring the panic under the unchanged signature gave 19 passed / 2 failed, reproducing the transport error a second time.
+- One documented wire narrowing on `POST /v1/nodes/enroll-tokens`; no migration and no schema change.
+
 ## 2026-09-14 — The first declined clause, and asking the library instead of the call site (`SIGNOFF-REPAIR.11.9.1.1.2`)
 
 - Tranche 2b classified 19 clauses over four records: 1 handled, 8 owned, 8 attach, 1 unowned, and the ledger's **first `declined`** row. That state was put in the vocabulary before any instance existed, because a deliberate rejection is invisible to every search; the first one is a clause whose mechanism is real and whose asserted contradiction is not.

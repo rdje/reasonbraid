@@ -163,7 +163,8 @@ async fn seed_node_in_tenant(pool: &PgPool, tenant: &str, node_id: &str) -> (Vec
     // The workload certificate (the `.1.2.2` identity): issued by the server's
     // own CA and stored like the enrollment transaction stores it.
     let ca = ensure_server_ca(pool).await.expect("server CA");
-    let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name)
+        .expect("the fixture host claim is a valid SAN");
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let fingerprint = reasonbraid_server::ca::cert_fingerprint(&cert_der);
     sqlx::query(
@@ -1703,7 +1704,8 @@ async fn the_zero_concurrency_wake_gate_holds_the_delivery() {
             &ensure_server_ca(&pool).await.expect("server CA"),
             &role_id,
             "gate-host",
-        );
+        )
+        .expect("the fixture host claim is a valid SAN");
         sqlx::query(
             "INSERT INTO node_certificates \
              (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
@@ -2443,7 +2445,8 @@ async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
         &ensure_server_ca(&pool).await.expect("server CA"),
         &node_id,
         &format!("seed-{node_id}"),
-    );
+    )
+    .expect("the fixture host claim is a valid SAN");
     sqlx::query(
         "INSERT INTO node_certificates \
          (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
@@ -3461,7 +3464,8 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
     }
 
     // ── Rung 1: the certificate does not parse. The rung the old fixture tested.
-    let junk = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let junk = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host")
+        .expect("the fixture host claim is a valid SAN");
     let unparseable = attempt(vec![0x00], key_from_der(&junk.key_der), node_id.clone()).await;
     assert!(refused(&unparseable), "unparseable: {unparseable:?}");
 
@@ -3498,7 +3502,8 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
 
     // ── Rung 3: issued by the REAL CA, never registered. Chain passes; the row
     // lookup finds nothing.
-    let stranger = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let stranger = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host")
+        .expect("the fixture host claim is a valid SAN");
     let unregistered = attempt(
         stranger.cert_der.clone(),
         key_from_der(&stranger.key_der),
@@ -3508,7 +3513,8 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
     assert!(refused(&unregistered), "unregistered: {unregistered:?}");
 
     // ── Rung 4a: registered, live, real CA — but to a DIFFERENT node.
-    let others = reasonbraid_server::ca::issue_node_leaf(&ca, &other_id, "ladder-host");
+    let others = reasonbraid_server::ca::issue_node_leaf(&ca, &other_id, "ladder-host")
+        .expect("the fixture host claim is a valid SAN");
     register_certificate(&pool, &other_id, &others.cert_der, &others.key_der, false).await;
     let borrowed = attempt(
         others.cert_der.clone(),
@@ -3522,7 +3528,8 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
     );
 
     // ── Rung 4b: this node's own, real CA, registered — and REVOKED.
-    let dead = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let dead = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host")
+        .expect("the fixture host claim is a valid SAN");
     register_certificate(&pool, &node_id, &dead.cert_der, &dead.key_der, true).await;
     let revoked = attempt(
         dead.cert_der.clone(),
@@ -3534,7 +3541,8 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
 
     // ── Rung 5: THE ONE THAT HAD NO NEGATIVE. Everything above is satisfied —
     // real CA, registered, this node, live — and only the signature is wrong.
-    let live = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let live = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host")
+        .expect("the fixture host claim is a valid SAN");
     register_certificate(&pool, &node_id, &live.cert_der, &live.key_der, false).await;
     let impostor = rcgen::KeyPair::generate().expect("an impostor key");
     let forged = attempt(

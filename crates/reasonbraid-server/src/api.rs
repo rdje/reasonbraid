@@ -1209,6 +1209,27 @@ async fn issue_node_enroll_token(
         )));
     }
 
+    // `SIGNOFF-REPAIR.4.1.6`: the host claim is checked HERE, beside the node-id
+    // shape and the lifetime range, because this is where a human typed it.
+    //
+    // Measured before the placement was chosen: a claim the certificate library
+    // refuses is accepted at issuance, and the PANIC lands on the node redeeming
+    // the token — which returns a transport error rather than an answer, leaves
+    // the token unconsumed, and so leaves that node id unenrollable until the
+    // token lapses (`.4.1.1`'s supersede is what bounds it to the TTL rather
+    // than for ever). Refusing at issuance costs the administrator one corrected
+    // field and makes that state unreachable.
+    //
+    // ⛔ The rule is the library's OWN verdict (`ca::check_host_claim`), not a
+    // grammar restated here: this moves the refusal earlier without narrowing
+    // which claims are acceptable, so no deployment loses a claim it can use
+    // today. Whether a STRICTER grammar should bind is a separate decision with
+    // its own compatibility question, and `.4.1.6` records it rather than taking
+    // it in a repair.
+    if let Err(refusal) = crate::ca::check_host_claim(&req.host_claim) {
+        return Err(ControlApiError::invalid_command(refusal.to_string()));
+    }
+
     let issue = authority::issue_enrollment_token_in_one_transaction(
         &state.pool,
         &principal,

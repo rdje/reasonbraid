@@ -493,7 +493,8 @@ async fn the_ca_survives_a_server_rebuild() {
         &first,
         "nod_00000000-0000-7000-8000-000000000999",
         "host-persist",
-    );
+    )
+    .expect("the fixture host claim is a valid SAN");
     assert!(!leaf.cert_der.is_empty() && !leaf.key_der.is_empty());
 }
 
@@ -1921,4 +1922,217 @@ async fn an_agent_role_holding_tenant_admin_may_issue_an_enrollment_token() {
             .await
             .expect("count the refused node's tokens");
     assert_eq!(tokens, 0, "and the refusal wrote no token");
+}
+
+/// `SIGNOFF-REPAIR.4.1.6`: a host claim the certificate library refuses is
+/// refused where a human typed it, and never reaches the node that would have
+/// carried the panic.
+///
+/// Reproduced against the unchanged source before this control existed: issuance
+/// returned `200`, redemption panicked at `ca.rs:142` — the caller received a
+/// TRANSPORT error rather than an answer, the server kept serving, `nodes` held
+/// zero rows, and the token was left `used_at = NULL`, so that node id could not
+/// be enrolled again until the token lapsed.
+///
+/// The arms are ordered so a repair that simply refused everything cannot pass:
+/// the ordinary claim must still enroll.
+#[tokio::test]
+async fn a_host_claim_the_library_refuses_is_refused_at_issuance() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, admin) = bootstrap_admin(&client, &base).await;
+
+    // 1. The POSITIVE arm first: an ordinary host claim still issues AND enrolls.
+    let good_node = "nod_00000000-0000-7000-8000-0000004160b1";
+    let token = issue_token(
+        &client,
+        &base,
+        &admin,
+        &tenant,
+        good_node,
+        "host-4160",
+        None,
+    )
+    .await;
+    let (status, enrolled) = enroll_node(
+        &client,
+        &base,
+        token["token_id"].as_str().unwrap(),
+        good_node,
+        "host-4160",
+        token["nonce"].as_str().unwrap(),
+        "secret-4160",
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "an ordinary host claim still enrolls: {enrolled}"
+    );
+
+    // 2. The refused claim is refused AT ISSUANCE, with a typed answer.
+    let bad_node = "nod_00000000-0000-7000-8000-0000004160b2";
+    let bad = "h\u{e9}llo";
+    let (status, body) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll-tokens"),
+        Some(&admin),
+        json!({ "tenant_id": tenant, "node_id": bad_node, "host_claim": bad }),
+    )
+    .await;
+    assert_eq!(status, 400, "the refused host claim is refused: {body}");
+    assert_eq!(body["code"], json!("invalid_command"), "typed: {body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("subject alternative name"),
+        "the message names what is wrong: {body}"
+    );
+
+    // 3. And it left NOTHING behind — no token, so the node id stays enrollable.
+    //    This is the assertion that distinguishes the repair from a late refusal.
+    let tokens: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM node_enrollment_tokens WHERE node_id = $1")
+            .bind(bad_node)
+            .fetch_one(&pool)
+            .await
+            .expect("count tokens");
+    assert_eq!(tokens, 0, "a refused issuance writes no token");
+
+    // 4. The proof that it stays enrollable: the SAME node id takes a good claim.
+    let token = issue_token(
+        &client,
+        &base,
+        &admin,
+        &tenant,
+        bad_node,
+        "host-4160-ok",
+        None,
+    )
+    .await;
+    let (status, enrolled) = enroll_node(
+        &client,
+        &base,
+        token["token_id"].as_str().unwrap(),
+        bad_node,
+        "host-4160-ok",
+        token["nonce"].as_str().unwrap(),
+        "secret-4160-b",
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the node id the bad claim named is still enrollable: {enrolled}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.1.6`, the other half: when a refused host claim DOES reach
+/// redemption, the node receives a typed answer instead of a dropped connection.
+///
+/// ⛔ Issuance now refuses such a claim, so no supported sequence can reach this
+/// path — which is exactly why it needs a control. The token row is written
+/// directly, modelling the one case that can still produce it: a row that
+/// predates the issuance check. Measured on the unrepaired source, this same
+/// request panicked at `ca.rs:142` and the client got a transport error.
+#[tokio::test]
+async fn a_refused_host_claim_reaching_redemption_is_answered_not_dropped() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, admin) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000004160c1";
+    let bad = "h\u{e9}llo";
+
+    // A token row as it could only exist from before the issuance check: the
+    // issuance ROUTE refuses this claim, so it is written directly.
+    let (status, refused) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll-tokens"),
+        Some(&admin),
+        json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": bad }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "the premise: the route itself will not mint this token: {refused}"
+    );
+    sqlx::query(
+        "INSERT INTO node_enrollment_tokens \
+         (token_id, tenant_id, node_id, host_claim, nonce, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')",
+    )
+    .bind("ntk_4160c1")
+    .bind(&tenant)
+    .bind(node_id)
+    .bind(bad)
+    .bind("nonce-4160c1")
+    .execute(&pool)
+    .await
+    .expect("seed the pre-check token row");
+
+    // Redemption ANSWERS. On the unrepaired source this call did not return a
+    // response at all, so asserting a status is itself the discriminator.
+    let (status, body) = enroll_node(
+        &client,
+        &base,
+        "ntk_4160c1",
+        node_id,
+        bad,
+        "nonce-4160c1",
+        "secret-4160c1",
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a typed refusal, not a dropped connection: {body}"
+    );
+    assert_eq!(body["code"], json!("invalid_command"), "typed: {body}");
+
+    // And the refusal is effect-free: no node, and the token is still unconsumed
+    // rather than burned by a request that could never have succeeded.
+    let nodes: i64 = sqlx::query_scalar("SELECT count(*) FROM nodes WHERE node_id = $1")
+        .bind(node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count nodes");
+    assert_eq!(nodes, 0, "the refusal wrote no node row");
+    let used: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+        "SELECT used_at FROM node_enrollment_tokens WHERE token_id = 'ntk_4160c1'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read the token");
+    assert!(used.is_none(), "the refusal consumed no token: {used:?}");
+}
+
+/// `SIGNOFF-REPAIR.4.1.6`: the unit contract the two handlers rest on — the
+/// issuer reports a refused claim instead of unwinding, and the checker's
+/// verdict is the issuer's own.
+#[tokio::test]
+async fn the_leaf_issuer_reports_a_refused_host_claim() {
+    let Some(pool) = pool().await else { return };
+    let ca = ensure_server_ca(&pool).await.expect("server CA");
+    let node = "nod_00000000-0000-7000-8000-0000004160d1";
+
+    // ⛔ `.err().expect(...)` rather than `expect_err`: `IssuedLeaf` carries
+    // `key_der` and deliberately derives no `Debug`, which `expect_err` would
+    // require (ROADMAP §16.5 — key material belongs in no crash report).
+    let refusal = reasonbraid_server::ca::issue_node_leaf(&ca, node, "h\u{e9}llo")
+        .err()
+        .expect("the library refuses this claim");
+    assert_eq!(refusal.host_claim, "h\u{e9}llo");
+    assert!(
+        reasonbraid_server::ca::check_host_claim("h\u{e9}llo").is_err(),
+        "the checker agrees with the issuer — one rule, asked once"
+    );
+
+    let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, node, "host-4160d")
+        .expect("an ordinary claim still issues");
+    assert!(!leaf.cert_der.is_empty() && !leaf.key_der.is_empty());
+    assert!(reasonbraid_server::ca::check_host_claim("host-4160d").is_ok());
 }

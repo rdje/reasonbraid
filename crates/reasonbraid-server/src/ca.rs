@@ -133,13 +133,69 @@ pub struct IssuedLeaf {
     pub not_after: chrono::DateTime<chrono::Utc>,
 }
 
+/// A host claim the certificate library will not put in a SAN
+/// (`SIGNOFF-REPAIR.4.1.6`).
+///
+/// ⛔ This is the ONLY caller-supplied input `issue_node_leaf` takes, and it was
+/// the only one of that function's five `expect`s that a caller could reach. The
+/// others (key generation, the validity window, signing) take server-controlled
+/// values and stay as they are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostClaimRefused {
+    pub host_claim: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for HostClaimRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the host claim cannot be a certificate subject alternative name: {}",
+            self.reason
+        )
+    }
+}
+
+impl std::error::Error for HostClaimRefused {}
+
+/// Would `issue_node_leaf` accept this host claim?
+///
+/// The rule is the certificate library's OWN verdict, asked here rather than
+/// restated — so this narrows nothing and cannot drift from what the issuance
+/// will actually do. `SIGNOFF-REPAIR.4.1.6` measured that rcgen 0.14.10's accept
+/// set is very wide (an empty string, 300 characters, `*` and `..` all pass, and
+/// of eight probed claims only a non-ASCII one was refused); whether a STRICTER
+/// grammar should bind is a separate decision with a compatibility question,
+/// recorded in that leaf and deliberately not taken here.
+pub fn check_host_claim(host_claim: &str) -> Result<(), HostClaimRefused> {
+    CertificateParams::new(vec![host_claim.to_string()])
+        .map(|_| ())
+        .map_err(|e| HostClaimRefused {
+            host_claim: host_claim.to_owned(),
+            reason: e.to_string(),
+        })
+}
+
 /// Issue one short-lived workload leaf: CN `node:<node_id>` (the durable
 /// identity), SAN = the enrollment token's host claim. The key is
 /// server-generated (dev escrow, see the module note), and the returned
 /// `not_after` is the one signed into the certificate.
-pub fn issue_node_leaf(ca: &ServerCa, node_id: &str, host_claim: &str) -> IssuedLeaf {
+///
+/// Returns [`HostClaimRefused`] rather than panicking when the library will not
+/// accept the claim (`SIGNOFF-REPAIR.4.1.6`): the claim is a caller string, and
+/// a function that can only report a bad one by unwinding leaves its caller's
+/// typed error path unreachable.
+pub fn issue_node_leaf(
+    ca: &ServerCa,
+    node_id: &str,
+    host_claim: &str,
+) -> Result<IssuedLeaf, HostClaimRefused> {
     let key = KeyPair::generate().expect("leaf key generation");
-    let mut params = CertificateParams::new(vec![host_claim.to_string()]).expect("leaf params");
+    let mut params =
+        CertificateParams::new(vec![host_claim.to_string()]).map_err(|e| HostClaimRefused {
+            host_claim: host_claim.to_owned(),
+            reason: e.to_string(),
+        })?;
     params
         .distinguished_name
         .push(DnType::CommonName, format!("node:{node_id}"));
@@ -150,11 +206,11 @@ pub fn issue_node_leaf(ca: &ServerCa, node_id: &str, host_claim: &str) -> Issued
     let not_after = chrono::DateTime::from_timestamp(params.not_after.unix_timestamp(), 0)
         .expect("the leaf validity window is representable");
     let cert = params.signed_by(&key, &ca.issuer).expect("leaf sign");
-    IssuedLeaf {
+    Ok(IssuedLeaf {
         cert_der: cert.der().to_vec(),
         key_der: key.serialize_der(),
         not_after,
-    }
+    })
 }
 
 /// The cert fingerprint: sha256 over the leaf DER (the node-id → fingerprint
@@ -271,7 +327,8 @@ mod issued_leaf_binding {
     #[test]
     fn the_returned_expiry_is_the_one_signed_into_the_certificate() {
         let ca = generate_ca();
-        let leaf = issue_node_leaf(&ca, "nod_00000000-0000-7000-8000-000000000001", "host-a");
+        let leaf = issue_node_leaf(&ca, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+            .expect("the unit fixture host claim is a valid SAN");
         let (_, x509) =
             x509_parser::parse_x509_certificate(&leaf.cert_der).expect("the issued leaf parses");
         assert_eq!(

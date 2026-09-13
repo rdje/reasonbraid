@@ -40,7 +40,8 @@ fn the_ca_issued_client_connects_and_the_certless_client_refuses() {
         let (serving_cert, serving_key) =
             reasonbraid_server::ca::issue_serving_cert(&ca, "localhost");
         let server_config = mtls::build_server_config(&ca, serving_cert, serving_key);
-        let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, "node-a", "host-a");
+        let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, "node-a", "host-a")
+            .expect("the fixture host claim is a valid SAN");
         let (node_cert, node_key) = (leaf.cert_der, leaf.key_der);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

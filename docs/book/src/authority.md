@@ -653,6 +653,34 @@ The lower bound exists because a token issued already-expired can never be
 redeemed, and it is exactly the row that used to lock its node out for good (see
 below). An operator error is refused rather than stored.
 
+**The host claim is checked here too** (`SIGNOFF-REPAIR.4.1.6`). The claim
+becomes the subject alternative name of the node's workload certificate, so a
+claim the certificate library will not accept can never produce one. Such a
+request is refused `400 invalid_command`, naming what is wrong, and no token is
+written.
+
+The check runs at issuance rather than at enrollment for a measured reason. It
+used to run nowhere: the claim was stored as given, and the certificate library
+was first asked about it when the *node* redeemed the token — where it raised,
+so the node received a dropped connection rather than an answer, no node row was
+written, and the token was left unconsumed. Because an outstanding unused token
+refuses a second issuance for the same node id, that node id could then not be
+enrolled until the token lapsed. Refusing at issuance costs the operator one
+corrected field and makes that state unreachable.
+
+The rule is the certificate library's own verdict, not a host-name grammar
+written alongside it. Nothing that works today stops working: the check accepts
+exactly what issuance would have accepted, and refuses only what could never
+have produced a certificate. Whether a stricter grammar *should* bind — the
+library accepts a good deal that is not a host name — is an open question with a
+compatibility cost, recorded in
+`docs/decisions/2026-09-14_host-claim-checked-at-issuance.md` and deliberately
+not settled by that repair.
+
+A stored host name that predates this check can still reach enrollment or
+certificate rotation. Both now answer with a typed `400 invalid_command` instead
+of dropping the connection.
+
 ⚠️ **This narrows the contract.** The field previously accepted any integer, and
 three behaviours were measured before the bound was added: a century was issued
 without complaint, expiring in 2126; a value past the date range aborted the

@@ -1768,7 +1768,47 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - ROUTING EVIDENCE: the clause sits in a record whose narrowest candidate is `.10.2` (certification), but the mechanism is node enrolment and certificate issuance, which is `.4.1`'s surface — hence a child here rather than a leaf under `.10.2`. What was measured is the call chain from the wire to the `expect` and rcgen's answer to eight inputs; no HTTP request was driven, so the end-to-end reachability is source-confirmed and not runtime-confirmed.
 - Goal and acceptance: reproduce the panic through the supported enrolment path; give `issue_node_leaf` a signature that can report a bad host claim, and the handler a typed refusal for it; decide and record whether the accept set is narrowed, with the compatibility question answered explicitly rather than by default. ⚠️ Falsify against the ACTUAL mechanism — a control that panics for some other reason proves nothing.
 - ⛔ Do NOT widen to the other `expect` sites in `ca.rs` (key generation, self-signing, stored-key parsing). Those take server-controlled inputs; this clause is about the one that takes a caller's.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0174.
+
+🔴 **REPRODUCED end to end through the supported routes, and the blast radius MEASURED rather than inferred.** A probe issued a token with a non-ASCII host claim and redeemed it:
+
+```text
+PROBE issuance status  : 200
+PROBE enrol TRANSPORT ERROR: error sending request for url (http://127.0.0.1:49393/v1/nodes/enroll)
+PROBE server afterwards: still serving, status 200
+PROBE nodes rows       : 0
+PROBE token used_at    : Some(None)
+```
+
+with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run — the `expect("leaf params")` line exactly.
+
+- ⭐ **The inference recorded when this leaf was opened was RIGHT, and it is now replaced by the measurement rather than left standing beside it.** The process survives; the request's connection drops with no response; the transaction rolls back (`nodes` = 0).
+- 🔴 **And the measurement found the consequence the inference had NOT reached: the token is left `used_at = NULL`.** An outstanding unused token refuses a second issuance for the same node id, so that node id cannot be enrolled at all until the token lapses. ⚠️ Bounded — **to the token's lifetime, default one hour and at most one day** — and bounded ONLY because `SIGNOFF-REPAIR.4.1.1` already makes a lapsed token superseded. Before that leaf it would have been permanent. ⛔ Stated as the bound it is; this is an availability defect, not a lockout.
+
+**FIX — two changes, and the split is the substance.**
+
+1. `issue_node_leaf` returns `Result<IssuedLeaf, HostClaimRefused>`. A function whose only way to report a bad caller string is to unwind leaves its caller's typed error path unreachable — `SIGNOFF-REPAIR.4.2.7`'s promoted rule on a second surface. Both call sites map it to a typed `400 invalid_command`.
+2. The issuance route calls `ca::check_host_claim` beside the existing node-id shape and lifetime-range checks, **because that is where a human typed the value**. This is what makes the unenrollable-node state unreachable rather than merely survivable.
+
+- ⛔ **The accept set is NOT narrowed**, and that is a decision rather than an omission: `check_host_claim` is `CertificateParams::new` and nothing else, so it restates no grammar, cannot drift from what issuance will actually do, and refuses only claims that could never have produced a certificate. A stricter DNS grammar is **deferred with its compatibility question named** — narrowing would refuse claims existing deployments may already have enrolled, and `1.2.3.4` and `*.example.com` are plausible operator inputs. Recorded as `docs/decisions/2026-09-14_host-claim-checked-at-issuance.md`.
+- ⛔ The other four `expect`s in `issue_node_leaf` are untouched: they take server-controlled values, and the leaf said not to widen.
+
+**ADDRESSED (verified)** — `bash scripts/run_pg_tests.sh node_enrollment node_channel node_inbox node_replacement authority_issuance` -> **82 tests** (21+37+8+2+14), 0 failed, rc=0. `cargo test -p reasonbraid-server --test mtls --lib` -> 103 lib + 1 mtls, rc=0. `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0. `cargo fmt --all -- --check` rc=0.
+
+**NO REGRESSION / FALSIFIED — each half SEPARATELY, and the two neutralizations hit DISJOINT controls, which is the evidence that each half does its own job.**
+
+- **Half A, the issuance check removed** (typed signature and both call-site maps kept): `18 passed; 1 failed`, the failure `left: 200, right: 400` — the neutralized route mints a token for the refused claim.
+- **Half B, the typed error restored to `expect("leaf params")`** under the unchanged `Result` signature: `19 passed; 2 failed` — both new controls, each panicking at `ca.rs:194`, and the redemption control additionally failing at `node_enrollment.rs:131:41`, which is the test client's own `expect("request")`: **the transport error reproduced a second time**, under the neutralization rather than in the probe.
+- ⭐ Half B left the issuance control GREEN and half A left the redemption controls green. Two disjoint failure sets from two disjoint injections is stronger than one larger number, and it is what `.4.2.8`'s "a magnitude far larger than the real defect is the tell" asks for.
+
+⭐ **The controls' shape, with the ordering and the absences deliberate.** The issuance control runs its POSITIVE arm first — an ordinary claim still issues AND enrolls — so a repair that refused everything cannot pass; then asserts the typed refusal; then asserts **zero token rows**; then enrolls the SAME node id with a good claim, which is the assertion that distinguishes this repair from a merely later refusal. The redemption control writes its token row DIRECTLY, after first asserting that the route itself will not mint it — the premise stated as an assertion rather than as a comment — because issuance now makes that path unreachable through any supported sequence, and unreachable machinery with no control is what `.4.2.6` warns about.
+
+- ⚠️ **One control had to be written around a deliberate absence, and it is worth recording:** `expect_err` needs `IssuedLeaf: Debug`, and `IssuedLeaf` carries `key_der` and derives none — ROADMAP §16.5, key material belongs in no crash report. The control uses `.err().expect(...)`, which needs no `Debug` on the success type. ⛔ Deriving `Debug` to make a test compile would have been a secret-containment regression bought with convenience.
+
+**LOCKSTEP** — `crates/reasonbraid-server/src/ca.rs`, `crates/reasonbraid-server/src/api.rs`, `crates/reasonbraid-server/src/node_channel.rs`, `crates/reasonbraid-server/tests/node_enrollment.rs`, `crates/reasonbraid-server/tests/node_channel.rs`, `crates/reasonbraid-server/tests/node_inbox.rs`, `crates/reasonbraid-server/tests/mtls.rs`, this tree, `docs/TASK_TREE.md`, `docs/decisions/2026-09-14_host-claim-checked-at-issuance.md` (+ INDEX), `KNOWLEDGE_MAP.md`, `docs/book/src/authority.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⛔ No migration and no schema change; one documented wire narrowing on `POST /v1/nodes/enroll-tokens`.
+
+- promotion: declined. The rule exercised — a signature is a promise the body must keep — is already `docs/knowledge/a-signature-is-a-promise-the-body-must-keep.md`, promoted by `.4.2.7`; this is its second instance, and `SIGNOFF-REPAIR.11.6` says an instance is not a new statement. The accept-set choice IS durable and specific, and lives in its own decision record.
+- Commit: `REASONBRAID-REPAIR-0174 (leaf SIGNOFF-REPAIR.4.1.6): a host claim is checked where a human typed it`.
 
 #### SIGNOFF-REPAIR.4.1.5 — What a replacement enrollment leaves behind
 
@@ -3947,7 +3987,6 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | --- | --- | --- | --- |
 
 | 1 | `SIGNOFF-REPAIR.11.9.1.1.3` | `pending` | tranche 2c, the last four records of tranche 2 — the scripts/verification surfaces, and the largest child at 3,006 characters on one record (`R-90-1` alone is 1,383) |
-| 1b | `SIGNOFF-REPAIR.4.1.6` | `pending` | an unvalidated caller host claim reaches `CertificateParams::new(...).expect(...)`; rcgen refused 1 of 8 probed inputs, so the panic is reachable AND the accept set is far wider than a DNS name |
 | 2b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -3955,7 +3994,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **46 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **45 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -4017,6 +4056,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.11.9.1.1` / `.11.9.1.1.1`: `REASONBRAID-REPAIR-0171 (leaf SIGNOFF-REPAIR.11.9.1.1): size tranche 2, split it on the measurement, and reconcile its first six records`.
 - `SIGNOFF-REPAIR.11.10`: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
 - `SIGNOFF-REPAIR.11.9.1.1.2`: `REASONBRAID-REPAIR-0173 (leaf SIGNOFF-REPAIR.11.9.1.1.2): reconcile tranche 2b, and measure what the certificate library actually refuses`.
+- `SIGNOFF-REPAIR.4.1.6`: `REASONBRAID-REPAIR-0174 (leaf SIGNOFF-REPAIR.4.1.6): a host claim is checked where a human typed it`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.

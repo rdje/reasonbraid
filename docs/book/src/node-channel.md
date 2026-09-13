@@ -232,6 +232,45 @@ certificate is still in date. A node whose only certificate has simply lapsed
 reads `suspended: false` and is still handed nothing, because its renewal has
 already stopped too.
 
+### A captured proof cannot be replayed
+
+Both authenticated operations — the handshake and the rotation — prove
+possession of the workload key by signing a canonical set of fields. Neither set
+used to contain anything that changed between requests, and the rotation's was
+entirely static for a given node and certificate. So a captured request stayed
+valid for as long as the certificate did, and could simply be sent again.
+
+Driven against the unrepaired product, that meant:
+
+| Replayed | Answer |
+| --- | --- |
+| A captured handshake | `200` — the replay takes a **new lease**, and the legitimate node's next heartbeat is refused `401`. It is fenced out of its own session. |
+| A captured rotation | `200` — and a **second private key** for the same identity. Repeat for a third. |
+
+Both requests now carry a `nonce`, chosen fresh by the node for each request and
+covered by the signature. The server consumes it once: the first presentation
+inserts it, and any later presentation of the same bytes is refused `401`.
+
+**A nonce rather than a server challenge**, and the reasons are practical: a
+challenge costs an extra round trip on every handshake and every rotation, a
+timestamp-and-skew-window design would put a clock dependency on the
+authentication path, and this is already the shape enrollment tokens use.
+
+⚠️ **This refuses replays, not reconnects.** A node whose response was lost
+retries with a *fresh* nonce and is served normally — including a second
+rotation, which rotation's additive contract already allows. Consuming the
+*certificate* instead would have been simpler and would have broken exactly that
+recovery, because a retry and a replay present the same certificate.
+
+The nonce is consumed only *after* the signature verifies, so an unauthenticated
+caller cannot burn a value a legitimate node was about to use. Consumed nonces
+are pruned per node on the next proof; a replay is useless once the certificate
+it presents has expired, so retention outlives that by a wide margin.
+
+⚠️ `nonce` is **required** on both requests — a request that omits it is `422`,
+the same treatment `cert_der` and `proof_signature` already get. Server and node
+ship together.
+
 ### A rotation in flight cannot outlive the revocation
 
 Certificate rotation is additive — the old fingerprint stays valid until it

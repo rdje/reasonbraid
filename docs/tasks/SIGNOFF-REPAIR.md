@@ -1717,12 +1717,24 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 #### SIGNOFF-REPAIR.4.2.2 — The handshake and rotate proofs are replayable, and the rotate proof returns a private key
 
 - Opened: `pending` by `.4.2`'s census, from `census-2.md:28`.
-- Status: `pending`.
 - Measured at the source: `RotateCoverage` covers `{channel_version, node_id, cert_der}` and nothing else, so a captured rotate request is byte-identical to a valid one for as long as the certificate lives, and every replay answers with a new `key_der`. `ProofCoverage` adds the node's resume facts but still carries no nonce, timestamp or server challenge, so a captured handshake replays and takes the lease.
 - ⚠️ Bounded honestly: both die with the certificate (revoked or expired), the dev profile escrows keys server-side anyway (`.1.2.1`), and the wire is plain HTTP so capture needs no TLS break. The exposure is a replayer who has seen one request, not a general forgery.
 - ⛔ Do not design the challenge before `.4.2.6` gives this leaf a control that can tell a *wrong signature* from a *malformed certificate* — today's negative fixture cannot, so a replay defence would be unfalsifiable.
 - Acceptance: a control captures a valid proof and replays it, showing what the unrepaired product does; the decision names whether the dev profile takes a server challenge, a nonce, or neither, with its reason; the existing handshake, rotate and replacement controls pass unchanged.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0154.
+- 🔴 **REPRODUCED, byte for byte, and it is worse than the source reading said.** The proofs were computed with the node crate's OWN public helpers — `compute_cert_proof` and a new `compute_rotate_proof` — so the bytes are the real node's canonicalization rather than a hand-written copy, which is exactly what `.4.2.6` deferred to this leaf. The unrepaired product answered:
+  - `handshake, legitimate 200` · `handshake, REPLAYED 200` — the replay took a **new lease**, and **the legitimate node's next heartbeat answered `401`**. A replay of a node's own bytes fenced it out of its own session.
+  - `rotate, legitimate 200` · `rotate, REPLAYED 200` — **two distinct private keys from one captured request**, and the node finished holding 3 live certificates.
+- **THE DECISION: a per-request nonce, consumed once — not a server challenge, and not nothing.** Reasons, in order: it costs **no extra round trip** where a challenge costs one on every handshake and every rotation; it needs **no clock**, and a timestamp-and-skew design would put a clock dependency on the authentication path of a repository that has just repaired three separate cross-clock defects (`.3.4.3`, `.3.4.3.1.2`, `.3.4.3.1.3`) — evidence, not taste; and the pattern is already this codebase's, since `node_enrollment_tokens.nonce` is issued once and echoed at use.
+- ⛔ **Consuming the CERTIFICATE instead — one rotation per certificate, no new table — was considered and REJECTED.** A node whose rotate response was lost retries with the same certificate, and that retry is indistinguishable from a replay, so the rule would break the §17.4 recovery path. A retry carries a FRESH nonce, so this design admits it and issues another certificate, which rotation's additive contract already allows — and a control asserts exactly that, because "refuses replays, not reconnects" is the property that makes the choice defensible.
+- ⚠️ **The nonce is consumed only AFTER the signature verifies**, so an unauthenticated caller can never burn a value a legitimate node was about to use. The order is the defence's own precondition.
+- 🔴 **A DEADLOCK I introduced, found by the suite hanging rather than failing** — and the fix is a design correction, not a workaround. The first draft gave `node_proof_nonces.node_id` a foreign key to `nodes`. The rotation holds `nodes … FOR UPDATE` (`.4.2.1`), and the foreign-key check on the nonce insert needs a KEY SHARE lock on that same row, so the rotation waited on itself: `postgres: … INSERT waiting` beside `idle in transaction`, and the run never finished. ⭐ **Worse than the deadlock was what the key implied when it did NOT deadlock** — every handshake would have queued behind any in-flight revocation of that node, a coupling on the authentication path that nothing asked for. The key is dropped (these rows are transient bookkeeping; nothing joins them; `node_id` exists only to scope the prune) and the consume moved inside the rotation's own transaction, so a rotation that fails burns no nonce.
+- ⚠️ **A suite that HANGS is a third failure mode beside red and green**, and neither `cargo test`'s output nor a timeout says which. It was diagnosed by asking PostgreSQL — `ps` showed the waiting `INSERT` and the `idle in transaction` beside it — rather than by re-reading the code, which is `TOOLBOX.md`'s rule doing its job.
+- ⚠️ **Wire contract, narrowed deliberately:** `nonce` is required on both requests, so one omitting it is `422` at the strict boundary rather than `401` at the ladder — the same treatment `cert_der` and `proof_signature` already get, since it is a credential-bearing field. Server and node ship together, as `.3.4.3.1.2` established for the last coordinated change. Three existing controls sent no nonce and were updated to send one; each still asserts the same semantics it did.
+- FALSIFY: the consumption neutralized so the nonce is recorded but never enforced -> `the SAME bytes a second time are refused` fails, the replay is handed a fresh `fencing_token` and `lease_epoch: 2`, **34 passed / 1 failed** — only this control.
+- NO REGRESSION: the broad PostgreSQL run, because a migration plus a wire change plus 27 shared fixture lists is not a selective-check change.
+- LOCKSTEP: `docs/book/src/node-channel.md`.
+- Commit: `REASONBRAID-REPAIR-0154 (leaf SIGNOFF-REPAIR.4.2.2): a captured proof cannot be replayed`.
 
 #### SIGNOFF-REPAIR.4.2.3 — A heartbeat can revive a lease that expired between the check and the write
 
@@ -3270,16 +3282,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY — its prerequisite ladder now exists (`.4.2.6`) |
-| 2 | `SIGNOFF-REPAIR.4.2.3` | `pending` | a heartbeat can revive a lease that expired between the check and the write |
-| 2b | `SIGNOFF-REPAIR.4.2.4` | `pending` | `ack` writes on a pre-check the way `events` used to before `.2.2` |
+| 1 | `SIGNOFF-REPAIR.4.2.3` | `pending` | a heartbeat can revive a lease that expired between the check and the write |
+| 2 | `SIGNOFF-REPAIR.4.2.4` | `pending` | `ack` writes on a pre-check the way `events` used to before `.2.2` |
+| 2b | `SIGNOFF-REPAIR.4.2.7` | `pending` | the node's hex decoder panics on a non-ASCII response — the same trust-boundary question `.4.1.2.1` answered for the server |
 | 2 | `SIGNOFF-REPAIR.11.9` | `pending` | a source-census record routed to a leaf is not reconciled against that leaf's split — one record's three clauses became one child, and a second clause ("no human restriction" on token issuance) is still unopened |
 | 3 | `SIGNOFF-REPAIR.11.7` | `pending` | the published reason-code registry and the codes the product emits have drifted — 10 emitted codes are unregistered, 11 registry codes are never emitted |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **38 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **37 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3313,6 +3325,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.2` (census + split): `REASONBRAID-REPAIR-0151 (leaf SIGNOFF-REPAIR.4.2): census the handshake and fencing surface, and split it`.
 - `SIGNOFF-REPAIR.4.2.1`: `REASONBRAID-REPAIR-0152 (leaf SIGNOFF-REPAIR.4.2.1): a rotation in flight can no longer outlive a revocation`.
 - `SIGNOFF-REPAIR.4.2.6`: `REASONBRAID-REPAIR-0153 (leaf SIGNOFF-REPAIR.4.2.6): every rung of the proof ladder gets its own negative`.
+- `SIGNOFF-REPAIR.4.2.2`: `REASONBRAID-REPAIR-0154 (leaf SIGNOFF-REPAIR.4.2.2): a captured proof cannot be replayed`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

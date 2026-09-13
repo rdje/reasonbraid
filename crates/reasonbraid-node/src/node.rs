@@ -194,6 +194,9 @@ impl Node {
                 ambiguous_attempts,
                 cert_der: String::new(),
                 proof_signature: String::new(),
+                // Like the two above: the channel fills it, because it owns the
+                // workload identity and the proof it signs (`SIGNOFF-REPAIR.4.2.2`).
+                nonce: String::new(),
             })
             .await?;
         let received = Utc::now();

@@ -73,6 +73,7 @@ async fn pool() -> Option<PgPool> {
             "node_certificates",
             "node_keys",
             "node_leases",
+            "node_proof_nonces",
             "nodes",
             "hosts",
             "recruitment_panels",

@@ -98,6 +98,10 @@ struct ProofCoverage<'a> {
     last_acked_cursor: i64,
     pending_operations: &'a [String],
     ambiguous_attempts: &'a [AmbiguousAttempt],
+    /// `SIGNOFF-REPAIR.4.2.2`: the one field that makes a captured request
+    /// unrepeatable. It is INSIDE the signed coverage, so a replayer cannot
+    /// change it without invalidating the signature.
+    nonce: &'a str,
 }
 
 /// The reconnect exchange (`§17.4` steps 2–3): the node reports its durable resume
@@ -123,6 +127,10 @@ pub struct HandshakeRequest {
     /// key. A handshake without a valid proof is refused `401 unauthorized`
     /// before any ledger fact is read.
     pub proof_signature: String,
+    /// A fresh value the node chooses for THIS request
+    /// (`SIGNOFF-REPAIR.4.2.2`). It rides the signed coverage and is consumed
+    /// once, so a captured request is refused the second time it is presented.
+    pub nonce: String,
 }
 
 /// The rotate exchange (`.1.2.2`): the node presents its CURRENT certificate
@@ -134,6 +142,8 @@ pub struct RotateRequest {
     pub node_id: String,
     pub cert_der: String,
     pub proof_signature: String,
+    /// `SIGNOFF-REPAIR.4.2.2` — see [`HandshakeRequest::nonce`].
+    pub nonce: String,
 }
 
 /// The exact fields the rotate proof covers, in canonical (serde field) order.
@@ -142,6 +152,9 @@ pub struct RotateCoverage<'a> {
     pub channel_version: u32,
     pub node_id: &'a str,
     pub cert_der: &'a str,
+    /// `SIGNOFF-REPAIR.4.2.2`. Without it this coverage is entirely STATIC for a
+    /// given node and certificate, and each replay answers with a new private key.
+    pub nonce: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -737,6 +750,63 @@ impl NodeChannelState {
         .await
     }
 
+    /// Consume a proof nonce, in ONE statement (`SIGNOFF-REPAIR.4.2.2`).
+    ///
+    /// `ON CONFLICT DO NOTHING RETURNING` is the whole decision: the first
+    /// presentation inserts and returns a row, every later presentation of the
+    /// same bytes returns none. Nothing is read and then written, so there is no
+    /// window between deciding and recording — the shape `.4.1.1`'s issuance
+    /// uses for the same reason, and the reason a raised unique violation is not
+    /// used instead (`docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md`:
+    /// a constraint error aborts the transaction, and this runs inside one).
+    ///
+    /// Retention is pruned here rather than swept: a replay is useless once the
+    /// certificate it presents has expired, and the certificate's own TTL is ten
+    /// minutes, so an hour is a wide margin. The delete is scoped to this node,
+    /// so it touches a handful of rows on a path that runs once per reconnect or
+    /// rotation — never per poll.
+    ///
+    /// Takes the caller's executor rather than the pool, so the rotation can
+    /// consume inside the transaction that already holds its node row — a
+    /// rotation that then fails burns no nonce, and the consume cannot contend
+    /// with the lock its own transaction is holding.
+    async fn consume_proof_nonce<'e, E>(
+        &self,
+        mut executor: E,
+        node_id: &str,
+        nonce: &str,
+    ) -> Result<(), ApiError>
+    where
+        E: std::ops::DerefMut,
+        for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+    {
+        if nonce.is_empty() || nonce.len() > 200 {
+            return Err(ApiError::proof_refused());
+        }
+        sqlx::query(
+            "DELETE FROM node_proof_nonces \
+             WHERE node_id = $1 AND seen_at < now() - interval '1 hour'",
+        )
+        .bind(node_id)
+        .execute(&mut *executor)
+        .await?;
+        let consumed: Option<String> = sqlx::query_scalar(
+            "INSERT INTO node_proof_nonces (nonce, node_id) VALUES ($1, $2) \
+             ON CONFLICT DO NOTHING RETURNING nonce",
+        )
+        .bind(nonce)
+        .bind(node_id)
+        .fetch_optional(&mut *executor)
+        .await?;
+        match consumed {
+            Some(_) => Ok(()),
+            None => {
+                crate::telemetry::metrics().incr("handshake_refusals");
+                Err(ApiError::proof_refused())
+            }
+        }
+    }
+
     /// Verify the handshake's certificate proof: the presented leaf must chain
     /// to this deployment's CA within its validity window (webpki), its
     /// fingerprint must be registered for THIS node and neither revoked nor
@@ -773,6 +843,7 @@ impl NodeChannelState {
             last_acked_cursor: req.last_acked_cursor,
             pending_operations: &req.pending_operations,
             ambiguous_attempts: &req.ambiguous_attempts,
+            nonce: &req.nonce,
         };
         // The canonical form is the mirrored struct's JSON: field order and
         // encoding are fixed by the struct shape on both sides.
@@ -828,6 +899,7 @@ impl NodeChannelState {
             channel_version: req.channel_version,
             node_id: &req.node_id,
             cert_der: &req.cert_der,
+            nonce: &req.nonce,
         };
         let canonical = serde_json::to_vec(&coverage)
             .map_err(|e| ApiError::bad_request(format!("unencodable rotate fields: {e}")))?;
@@ -1255,6 +1327,15 @@ async fn handshake(
     // Authentication FIRST: a handshake without a valid certificate proof is
     // refused before any ledger fact (cursor, replay, receipts) is read.
     state.verify_cert_proof(&req).await?;
+    // Then the nonce, and the ORDER matters (`SIGNOFF-REPAIR.4.2.2`): consuming
+    // it only after the signature verifies means an unauthenticated caller
+    // cannot burn nonces, so forged traffic can never deny a legitimate node a
+    // value it was about to use.
+    let mut conn = state.pool.acquire().await?;
+    state
+        .consume_proof_nonce(&mut *conn, &req.node_id, &req.nonce)
+        .await?;
+    drop(conn);
 
     let current = state.current_cursor(&req.node_id).await?;
     if req.last_acked_cursor > current {
@@ -1356,6 +1437,12 @@ async fn rotate(
     // AFTER the lock: a rotation that queued behind a revocation reads the
     // certificate as that revocation left it.
     state.verify_rotate_proof_in_tx(&mut tx, &req).await?;
+    // And after the signature, so forged traffic cannot burn nonces
+    // (`SIGNOFF-REPAIR.4.2.2`). Inside THIS transaction, which already holds the
+    // node row: a rotation that fails burns no nonce.
+    state
+        .consume_proof_nonce(&mut *tx, &req.node_id, &req.nonce)
+        .await?;
 
     let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim);
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);

@@ -40,6 +40,19 @@ pub struct ProofCoverage<'a> {
     pub last_acked_cursor: i64,
     pub pending_operations: &'a [String],
     pub ambiguous_attempts: &'a [AmbiguousAttempt],
+    /// `SIGNOFF-REPAIR.4.2.2`: fresh per request, and inside the signature, so a
+    /// captured handshake cannot be replayed to take this node's lease.
+    pub nonce: &'a str,
+}
+
+/// A fresh nonce for one proof (`SIGNOFF-REPAIR.4.2.2`). Generated per REQUEST,
+/// not per session: a node whose handshake response was lost retries with a new
+/// value, so the retry is admitted and only a byte-identical replay is refused.
+pub fn fresh_proof_nonce() -> String {
+    // v7 like the rest of this project's ids. Uniqueness is what the defence
+    // needs, not unpredictability: a nonce is consumed only AFTER the signature
+    // verifies, so no unauthenticated caller can burn one a node was about to use.
+    uuid::Uuid::now_v7().to_string()
 }
 
 /// Compute the handshake proof: a hex-encoded ECDSA P-256 signature over the
@@ -54,6 +67,7 @@ pub fn compute_cert_proof(
     last_acked_cursor: i64,
     pending_operations: &[String],
     ambiguous_attempts: &[AmbiguousAttempt],
+    nonce: &str,
 ) -> String {
     use rcgen::SigningKey;
     let coverage = ProofCoverage {
@@ -62,6 +76,7 @@ pub fn compute_cert_proof(
         last_acked_cursor,
         pending_operations,
         ambiguous_attempts,
+        nonce,
     };
     let canonical = serde_json::to_vec(&coverage).expect("the coverage shape is encodable");
     to_hex(&key.sign(&canonical).expect("the workload key signs"))
@@ -74,6 +89,35 @@ pub struct RotateCoverage<'a> {
     pub channel_version: u32,
     pub node_id: &'a str,
     pub cert_der: &'a str,
+    /// `SIGNOFF-REPAIR.4.2.2`: fresh per request, so a captured rotate cannot be
+    /// replayed for another private key.
+    pub nonce: &'a str,
+}
+
+/// Compute the ROTATE proof: a hex-encoded ECDSA P-256 signature over the
+/// canonical rotate coverage, made with the current certificate's private key.
+///
+/// PUBLIC for the same reason `compute_cert_proof` is — so server-side
+/// integration tests compute proofs with the same canonicalization the real node
+/// uses, and a cross-side mismatch surfaces as a test failure rather than silent
+/// drift. `SIGNOFF-REPAIR.4.2.2` needs it to replay a captured rotate BYTE FOR
+/// BYTE, which is the only way to measure what replaying one actually does.
+pub fn compute_rotate_proof(
+    key: &rcgen::KeyPair,
+    channel_version: u32,
+    node_id: &str,
+    cert_hex: &str,
+    nonce: &str,
+) -> String {
+    use rcgen::SigningKey;
+    let coverage = RotateCoverage {
+        channel_version,
+        node_id,
+        cert_der: cert_hex,
+        nonce,
+    };
+    let canonical = serde_json::to_vec(&coverage).expect("the rotate coverage is encodable");
+    to_hex(&key.sign(&canonical).expect("the workload key signs"))
 }
 
 /// The reconnect exchange (`ROADMAP.md` §17.4 step 2): the node reports its durable
@@ -95,6 +139,10 @@ pub struct HandshakeRequest {
     /// ECDSA P-256 signature over the canonical coverage (see
     /// [`ProofCoverage`]), hex-encoded, made with the certificate's private key.
     pub proof_signature: String,
+    /// `SIGNOFF-REPAIR.4.2.2`: filled in by the channel, like `cert_der` and
+    /// `proof_signature` — a caller building this request leaves it empty.
+    #[serde(default)]
+    pub nonce: String,
 }
 
 /// The rotate exchange (`.1.2.2`): the node presents its CURRENT certificate
@@ -477,6 +525,7 @@ impl NodeChannel {
             let (cert_der, key) = self.rotate().await?;
             self.install_identity(cert_der, key);
         }
+        let nonce = fresh_proof_nonce();
         let (cert_hex, proof) = {
             let identity = self
                 .identity
@@ -494,12 +543,14 @@ impl NodeChannel {
                     req.last_acked_cursor,
                     &req.pending_operations,
                     &req.ambiguous_attempts,
+                    &nonce,
                 ),
             )
         };
         let mut with_proof = req.clone();
         with_proof.cert_der = cert_hex;
         with_proof.proof_signature = proof;
+        with_proof.nonce = nonce;
         let sent = chrono::Utc::now();
         let response = self
             .client
@@ -540,6 +591,7 @@ impl NodeChannel {
     /// session's fencing token stays valid — rotation is additive).
     pub async fn rotate(&self) -> Result<(Vec<u8>, rcgen::KeyPair), ChannelError> {
         use rcgen::SigningKey;
+        let nonce = fresh_proof_nonce();
         let (cert_hex, proof) = {
             let identity = self
                 .identity
@@ -553,6 +605,7 @@ impl NodeChannel {
                 channel_version: CHANNEL_VERSION,
                 node_id: &self.node_id,
                 cert_der: &cert_hex,
+                nonce: &nonce,
             };
             let canonical =
                 serde_json::to_vec(&coverage).expect("the rotate coverage is encodable");
@@ -569,6 +622,7 @@ impl NodeChannel {
                 "node_id": self.node_id,
                 "cert_der": cert_hex,
                 "proof_signature": proof,
+                "nonce": nonce,
             }))
             .send()
             .await?;

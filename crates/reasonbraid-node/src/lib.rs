@@ -43,9 +43,10 @@ mod supervisor;
 mod worker;
 
 pub use channel::{
-    compute_cert_proof, AckResponse, AmbiguousAttempt, ChannelError, Directive, EventReceipt,
-    HandshakeRequest, HandshakeResponse, HeartbeatResponse, KnownEvent, NodeChannel, PollResponse,
-    ProofCoverage, ReplayCommand, RotateRequest, RotateResponse, CHANNEL_VERSION,
+    compute_cert_proof, compute_rotate_proof, fresh_proof_nonce, AckResponse, AmbiguousAttempt,
+    ChannelError, Directive, EventReceipt, HandshakeRequest, HandshakeResponse, HeartbeatResponse,
+    KnownEvent, NodeChannel, PollResponse, ProofCoverage, ReplayCommand, RotateRequest,
+    RotateResponse, CHANNEL_VERSION,
 };
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,

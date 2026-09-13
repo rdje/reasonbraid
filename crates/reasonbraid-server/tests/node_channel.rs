@@ -81,6 +81,7 @@ async fn pool() -> Option<PgPool> {
             "server_ca",
             "runs",
             "incarnations",
+            "node_proof_nonces",
             "nodes",
             "hosts",
             "profile_versions",
@@ -867,6 +868,7 @@ async fn poll_returns_the_tail_after_a_cursor() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("handshake");
@@ -897,7 +899,8 @@ async fn handshake_rejects_version_mismatch_and_unknown_fields() {
             "pending_operations": [],
             "ambiguous_attempts": [],
             "cert_der": "00",
-            "proof_signature": "00"
+            "proof_signature": "00",
+            "nonce": reasonbraid_node::fresh_proof_nonce()
         }))
         .send()
         .await
@@ -1130,6 +1133,11 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
             if let Some(proof) = proof_signature {
                 body["cert_der"] = json!("00");
                 body["proof_signature"] = json!(proof);
+                // `SIGNOFF-REPAIR.4.2.2`: the nonce is a credential-bearing field
+                // like the two above, so a request that OMITS it is malformed at
+                // the strict boundary (422) rather than refused at the ladder.
+                // This fixture is about the LADDER, so it sends one.
+                body["nonce"] = json!(reasonbraid_node::fresh_proof_nonce());
             }
             client
                 .post(format!("{base}/v1/nodes/handshake"))
@@ -1174,6 +1182,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
             "ambiguous_attempts": [],
             "cert_der": "00",
             "proof_signature": "00",
+            "nonce": reasonbraid_node::fresh_proof_nonce(),
         }))
         .send()
         .await
@@ -1259,6 +1268,7 @@ async fn heartbeat_renews_the_lease_and_presence_shows_online() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("handshake");
@@ -1335,6 +1345,7 @@ async fn a_second_handshake_fences_the_previous_lease() {
                 ambiguous_attempts: vec![],
                 cert_der: String::new(),
                 proof_signature: String::new(),
+                nonce: String::new(),
             })
             .await
             .expect("handshake");
@@ -1443,6 +1454,7 @@ async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
         ambiguous_attempts: vec![],
         cert_der: String::new(),
         proof_signature: String::new(),
+        nonce: String::new(),
     };
     let first = channel.handshake(&handshake_req).await.expect("handshake");
     assert_eq!(
@@ -1547,6 +1559,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("the fresh identity handshakes");
@@ -1567,6 +1580,7 @@ async fn rotation_issues_a_fresh_certificate_and_both_identities_handshake() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("the pre-rotation leaf stays valid");
@@ -1592,6 +1606,7 @@ async fn rotation_without_a_valid_certificate_proof_is_refused() {
             "node_id": node_id,
             "cert_der": "00",
             "proof_signature": "00",
+            "nonce": reasonbraid_node::fresh_proof_nonce(),
         }))
         .send()
         .await
@@ -2000,6 +2015,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("pre-revocation handshake");
@@ -2029,6 +2045,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await;
     assert!(
@@ -2103,6 +2120,7 @@ async fn a_revoked_nodes_live_lease_stops_being_extended() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("the pre-revocation handshake opens a live lease");
@@ -2172,6 +2190,7 @@ async fn a_revoked_nodes_live_lease_stops_being_extended() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await;
     say("handshake", show(&rehandshake));
@@ -2290,6 +2309,7 @@ async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
             ambiguous_attempts: vec![],
             cert_der: String::new(),
             proof_signature: String::new(),
+            nonce: String::new(),
         })
         .await
         .expect("the pre-revocation handshake opens a live lease");
@@ -3354,6 +3374,7 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
                     ambiguous_attempts: vec![],
                     cert_der: String::new(),
                     proof_signature: String::new(),
+                    nonce: String::new(),
                 })
                 .await
         }
@@ -3470,6 +3491,200 @@ async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
         genuine.is_ok(),
         "the SAME certificate with its own key must succeed — otherwise the \
          signature negative above proved nothing: {genuine:?}"
+    );
+
+    server.crash();
+}
+
+/// `SIGNOFF-REPAIR.4.2.2` — REPRODUCTION: what does replaying a captured proof do?
+///
+/// Measured rather than reasoned about (`.3.4.3.1.3`). Both proofs are computed
+/// with the node crate's OWN public helpers, so the bytes are the real node's
+/// canonicalization and not a third hand-written copy of the wire contract —
+/// which is precisely why `.4.2.6` left this fixture to this leaf.
+///
+/// The coverage each proof signs is:
+///
+/// * handshake — `{channel_version, node_id, last_acked_cursor, pending_operations, ambiguous_attempts}`
+/// * rotate — `{channel_version, node_id, cert_der}`, which is **entirely static**
+///   for a given node and certificate
+///
+/// each now carrying a `nonce` the node chooses per request. Before that field
+/// existed the rotate coverage was ENTIRELY STATIC for a given node and
+/// certificate, and the measurement was:
+///
+/// ```text
+/// handshake, legitimate  200
+/// handshake, REPLAYED    200   the replay took a NEW lease
+///                              the original node's next heartbeat: 401
+/// rotate,    legitimate  200
+/// rotate,    REPLAYED    200   two DISTINCT private keys from one captured request
+/// ```
+///
+/// The legitimate node was fenced out of its own session by a replay of its own
+/// bytes, and one captured rotate yielded a second private key.
+#[tokio::test]
+async fn a_captured_proof_cannot_be_replayed() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+    let (tenant, _alice) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000601".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let key = key_from_der(&key_der);
+    let cert_hex = reasonbraid_server::ca::to_hex(&cert_der);
+
+    // ── The captured HANDSHAKE: one body, computed once, sent twice.
+    let nonce = reasonbraid_node::fresh_proof_nonce();
+    let proof = reasonbraid_node::compute_cert_proof(
+        &key,
+        reasonbraid_node::CHANNEL_VERSION,
+        &node_id,
+        0,
+        &[],
+        &[],
+        &nonce,
+    );
+    let captured = json!({
+        "channel_version": reasonbraid_node::CHANNEL_VERSION,
+        "node_id": node_id,
+        "last_acked_cursor": 0,
+        "pending_operations": [],
+        "ambiguous_attempts": [],
+        "cert_der": cert_hex,
+        "proof_signature": proof,
+        "nonce": nonce,
+    });
+    let send = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let r = client
+                .post(format!("{base}/v1/nodes/handshake"))
+                .json(&body)
+                .send()
+                .await
+                .expect("the handshake answers");
+            (
+                r.status().as_u16(),
+                r.json::<Value>().await.unwrap_or_default(),
+            )
+        }
+    };
+    let (first_status, first) = send(captured.clone()).await;
+    assert_eq!(
+        first_status, 200,
+        "the legitimate handshake succeeds: {first}"
+    );
+    let (replay_status, replayed) = send(captured.clone()).await;
+    assert_eq!(
+        replay_status, 401,
+        "the SAME bytes a second time are refused: {replayed}"
+    );
+
+    // ⛔ And the refusal must not have cost the legitimate node anything: its
+    // lease is untouched and its heartbeat still works. A replay defence that
+    // fenced the real session would be worse than the defect.
+    let token = first["fencing_token"].as_str().expect("a fencing token");
+    let beat = client
+        .post(format!("{base}/v1/nodes/heartbeat"))
+        .json(&json!({
+            "channel_version": reasonbraid_node::CHANNEL_VERSION,
+            "node_id": node_id,
+            "fencing_token": token,
+            "lease_epoch": first["lease_epoch"],
+        }))
+        .send()
+        .await
+        .expect("the heartbeat answers");
+    assert_eq!(
+        beat.status().as_u16(),
+        200,
+        "the legitimate node keeps its session — before the repair the replay \
+         took the lease and this answered 401"
+    );
+
+    // A FRESH nonce over the same facts is admitted: this refuses replays, not
+    // reconnects. A node whose response was lost retries and is served.
+    let retry_nonce = reasonbraid_node::fresh_proof_nonce();
+    let retry_proof = reasonbraid_node::compute_cert_proof(
+        &key,
+        reasonbraid_node::CHANNEL_VERSION,
+        &node_id,
+        0,
+        &[],
+        &[],
+        &retry_nonce,
+    );
+    let mut retry = captured.clone();
+    retry["proof_signature"] = json!(retry_proof);
+    retry["nonce"] = json!(retry_nonce);
+    let (retry_status, retry_body) = send(retry).await;
+    assert_eq!(
+        retry_status, 200,
+        "a reconnect with a fresh nonce is still served: {retry_body}"
+    );
+
+    // ── The captured ROTATE: the severe one, because each answer carries a key.
+    let rotate_nonce = reasonbraid_node::fresh_proof_nonce();
+    let rotate_proof = reasonbraid_node::compute_rotate_proof(
+        &key,
+        reasonbraid_node::CHANNEL_VERSION,
+        &node_id,
+        &cert_hex,
+        &rotate_nonce,
+    );
+    let captured_rotate = json!({
+        "channel_version": reasonbraid_node::CHANNEL_VERSION,
+        "node_id": node_id,
+        "cert_der": cert_hex,
+        "proof_signature": rotate_proof,
+        "nonce": rotate_nonce,
+    });
+    let rotate = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let r = client
+                .post(format!("{base}/v1/nodes/rotate"))
+                .json(&body)
+                .send()
+                .await
+                .expect("the rotate answers");
+            (
+                r.status().as_u16(),
+                r.json::<Value>().await.unwrap_or_default(),
+            )
+        }
+    };
+    let (r1_status, r1) = rotate(captured_rotate.clone()).await;
+    assert_eq!(r1_status, 200, "the legitimate rotation succeeds: {r1}");
+    let (r2_status, r2) = rotate(captured_rotate.clone()).await;
+    assert_eq!(
+        r2_status, 401,
+        "THE SEVERE ARM: the same captured rotate a second time must not answer \
+         with a second private key: {r2}"
+    );
+    assert!(
+        r2["key_der"].is_null(),
+        "and no key material comes back at all: {r2}"
+    );
+
+    // The certificates the node holds are the count the repair implies: the one
+    // it was seeded with, plus exactly ONE from the single admitted rotation.
+    let (issued,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the live certificates");
+    assert_eq!(
+        issued, 2,
+        "one seeded certificate plus one rotation — before the repair the replay \
+         made this 3"
     );
 
     server.crash();

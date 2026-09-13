@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A captured proof cannot be replayed (`SIGNOFF-REPAIR.4.2.2`)
+
+- 🔴 **Reproduced byte for byte, with the node crate's own public helpers so the bytes are the real canonicalization.** The unrepaired product answered `200` to a replayed handshake — the replay took a **new lease**, and **the legitimate node's next heartbeat answered `401`**, fenced out of its own session by a replay of its own bytes. A replayed rotation answered `200` and returned a **second private key** for the same identity; the node finished holding three live certificates.
+- **THE DECISION: a per-request nonce, consumed once — not a server challenge.** It costs no extra round trip where a challenge costs one on every handshake and rotation; it needs no clock, and a timestamp-and-skew design would put a clock dependency on the authentication path of a repository that has just repaired three separate cross-clock defects; and it is already this codebase's shape, since enrollment tokens carry a nonce echoed at use.
+- ⛔ **Consuming the CERTIFICATE instead was considered and rejected.** A node whose rotate response was lost retries with the same certificate, and that retry is indistinguishable from a replay — the rule would have broken the §17.4 recovery path. A retry carries a fresh nonce, so this design serves it, and a control asserts exactly that: it refuses replays, not reconnects.
+- ⚠️ The nonce is consumed only **after** the signature verifies, so an unauthenticated caller can never burn a value a legitimate node was about to use.
+- 🔴 **A deadlock introduced in the first draft, found by the suite HANGING rather than failing.** Giving the nonce table a foreign key to `nodes` made the rotation wait on itself: it holds `nodes … FOR UPDATE`, and the key check on the nonce insert needs a KEY SHARE lock on that same row. ⭐ Worse than the deadlock was what the key implied when it did *not* deadlock — every handshake would have queued behind any in-flight revocation of that node, a coupling nothing asked for. The key is dropped and the consume moved inside the rotation's own transaction, so a failed rotation burns no nonce.
+- ⚠️ **A hanging suite is a third failure mode beside red and green**, and neither the test output nor a timeout says which. It was diagnosed by asking PostgreSQL — the waiting `INSERT` and the `idle in transaction` beside it were visible in the process table — rather than by re-reading the code.
+- ⚠️ **Wire contract narrowed deliberately:** `nonce` is required on both requests, so one omitting it is `422` rather than `401` — the same treatment `cert_der` and `proof_signature` already get. Server and node ship together.
+- Validation: falsified by recording the nonce without enforcing it — the replay is handed a fresh fencing token and `lease_epoch: 2`, and only that control fails. **Broad PostgreSQL run: 44 suites, 374 tests, 0 failed**; `mdbook build` ok.
+
 ## 2026-09-13 — Every rung of the proof ladder gets its own negative (`SIGNOFF-REPAIR.4.2.6`)
 
 - **The measured gap.** The control named "a handshake without a valid certificate proof is refused" presents `cert_der: "00"`. That decodes, fails the chain check, and stops — so it covers "an unparseable certificate is refused", not "a bad proof is refused". The signature rung, the one a forger actually has to beat, had **no negative at all**.

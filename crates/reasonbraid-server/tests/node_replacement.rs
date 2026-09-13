@@ -76,6 +76,7 @@ async fn pool() -> Option<PgPool> {
             "server_ca",
             "runs",
             "incarnations",
+            "node_proof_nonces",
             "nodes",
             "hosts",
             "profile_versions",
@@ -270,7 +271,9 @@ async fn handshake(
     let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
     let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
         .expect("key parses");
-    let proof = reasonbraid_node::compute_cert_proof(&key, CHANNEL_VERSION, node_id, 0, &[], &[]);
+    let nonce = reasonbraid_node::fresh_proof_nonce();
+    let proof =
+        reasonbraid_node::compute_cert_proof(&key, CHANNEL_VERSION, node_id, 0, &[], &[], &nonce);
     let response = client
         .post(format!("{base}/v1/nodes/handshake"))
         .json(&json!({
@@ -281,6 +284,7 @@ async fn handshake(
             "ambiguous_attempts": [],
             "cert_der": cert_hex,
             "proof_signature": proof,
+            "nonce": nonce,
         }))
         .send()
         .await

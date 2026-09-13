@@ -61,6 +61,7 @@ async fn pool() -> Option<PgPool> {
             "server_ca",
             "runs",
             "incarnations",
+            "node_proof_nonces",
             "nodes",
             "hosts",
             "profile_versions",

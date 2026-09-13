@@ -661,6 +661,7 @@ mod tests {
                 "node_leases",
                 "runs",
                 "incarnations",
+                "node_proof_nonces",
                 "nodes",
                 "hosts",
                 "recruitment_panels",

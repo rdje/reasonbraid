@@ -1529,6 +1529,19 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: the decision names what the route does with a tenant and what happens to existing callers; if a record is written, a control reads it back and names the boundary status it recorded; if it is not, the book says plainly that this administrative read is unaudited and why that is acceptable.
 - Verification / commit: pending.
 
+#### SIGNOFF-REPAIR.3.5.3 — The fourth inbox verb reads across the tenant boundary
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.9.1`'s clause reconciliation of `census-1.md:68` (`R-31-32-1`), which no leaf had cited.
+- The finding, and why it survived a repair that named its three siblings: `R-31-32-1` named **four** verbs — `replay_command`, `quarantine_command`, `prune_node_inbox` and `inspect_node_inbox`. `.3.3.4.10`'s census scoped itself to the node administrative **mutations** and measured "four of the five mutations carry no tenant predicate"; `.3.3.4.10.3` then repaired the three inbox mutations. `inspect_node_inbox` is a READ, so it fell outside a census that was correct about its own scope and silent about the record's.
+- Live at `crates/reasonbraid-server/src/api.rs:1467`, read 2026-09-13 and unchanged since the review baseline. The handler calls `authorize_tenant_admin(&state.pool, &principal, params.tenant_id)` — which proves only that the caller administers the tenant it named — and then runs `SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason, delivery_state FROM node_inbox_state WHERE node_id = $1 ORDER BY cursor` with **no tenant predicate**.
+- The column the fix needs is already there: `migrations/0003_node_inbox.sql` declares `tenant_id TEXT NOT NULL`, `node_inbox_state` is `SELECT i.*` over that table, and the primary key is `(node_id, cursor)` — so one node's ledger can hold rows belonging to more than one tenant, and this read returns all of them.
+- ⚠️ **Severity, bounded rather than implied.** This is a cross-tenant DISCLOSURE, not a mutation: command ids, thread ids, delivery state and the full command `payload` of another tenant's rows. It is strictly weaker than the three mutations `.3.3.4.10.3` closed (one of which destroyed a foreign inbox) and strictly stronger than nothing, because §16.8 makes the tenant part of every authorization decision and §9.8's `scope_hidden` exists so that cross-tenant existence is not leaked. Node ids are unguessable UUIDs, so a caller needs a known identity — the same bound `.3.5.1` recorded for the token index.
+- ⛔ NOT claimed here: that this reproduces at runtime. It is a source finding with the predicate absence read directly, in the state `R-31-32-1` itself carried ("Runtime pending"). Reproduce it before repairing it, as `.3.3.4.10.3` did with its probe.
+- Owns: the runtime reproduction, the tenant predicate in the reading statement, and a control that proves a foreign `node_id` returns nothing rather than another tenant's rows. The admission shape is already settled by the three siblings — this is a read, so it needs no guard mode decision and writes no effect record.
+- ⚠️ Ask the same question of the other administrative READS before assuming this is the only one. `.3.5`'s own census measured `admin_metrics` reaching no named gate, and `.3.3.4.10` measured the mutations; nothing has censused the reads for a tenant predicate in the SELECT, which is a different question from which gate admits them.
+- Acceptance: the cross-tenant read is reproduced against a node holding two tenants' rows; the repaired read returns only the admitted tenant's rows; the existing inbox inspection controls pass unchanged; the book's inbox-administration table gains the read alongside the three mutations.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.4.1 — Node enrollment and certificate lifecycle
 
 - Opened: `pending`.
@@ -2379,6 +2392,23 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Routing: extractor unit/stdio fixtures are .11.4.3.1.2.12; server extraction production/spawner fixture .7.3.3; Git production/test scratch .7.2.1. These owners make the remaining defects actionable rather than treating a clean test rerun as closure.
 - Verification / commit: pending.
 
+#### SIGNOFF-REPAIR.11.2.2 — The doctrine gates write their own scratch off the repository volume
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.9.1`'s clause reconciliation of `census-5.md:12` (`R-84-1`), which no leaf had cited. The record named it on 2026-09-09 and predicted the part that matters: "guards themselves may mktemp similarly".
+- The finding: §13 requires every project-owned store — including temporary workspaces — to live on the repository's own volume, derived from the repository root at runtime. Five call sites in four tracked shell files take an ambient one instead, and three of the four are **doctrine enforcers**:
+  - `scripts/check_task_acceptance.sh:53` — `tmp="$(mktemp -d)"`, ambient `TMPDIR`.
+  - `scripts/check_waiver_routing.sh:73` and `:93` — `mktemp`, ambient.
+  - `scripts/check_self_tests.sh:91` — `mktemp -d "${TMPDIR:-/tmp}/selftest-gate.XXXXXX"`, explicitly off-volume.
+  - `scripts/update_scaffold.sh:16` — `tmp="$(mktemp -d)"`, ambient; this one clones a repository into it.
+- 🔴 **And the gate that exists for exactly this cannot see them.** `scripts/check_storage_locality.sh` enumerates its population with `git ls-files -z -- "*.rs"`. Its two patterns are `env::temp_dir()` and `subsec_nanos()`/`as_nanos()` — both Rust — so the shell family is outside the scan by construction, not by exception. `.doctrine/storage_locality_exceptions.txt` therefore does not list them either: they are invisible, not waived.
+- ⭐ The project already knows the right shape, which is why this is a gap rather than a disagreement: `scripts/dev.sh:45` writes `mktemp -d "$ROOT/target/dev-ephemeral.XXXXXX"` and `scripts/check_book_frontier.sh:44` uses `target/doctrine_scratch`. The repair is to make the other four match, not to invent a convention.
+- census, run before proposing anything (`TOOLBOX.md`): `git grep -nE 'mktemp|\{TMPDIR|tempfile\.(mkdtemp|TemporaryDirectory|NamedTemporary)|gettempdir' -- ':!*.rs' ':!*.md'` returns **19** sites across **19** files. **Classified, not published as a count** (`docs/CLAIM_VERIFICATION.md`): the twelve Python sites all pass `dir=<a repository-derived parent>` to `tempfile`, which writes under that parent rather than under `TMPDIR`, so they CONFORM and were written deliberately. Two shell sites conform as above. The breaching set is the five named above. A raw count of 19 would have been a false positive of nearly four to one.
+- Owns: moving the five onto repository-derived scratch with the same cleanup guarantees they have now, and deciding whether `STORAGE-LOCALITY`'s population should include tracked shell and Python.
+- ⚠️ The second half is a rule proposal, so it carries the same obligation the first gate did: measure what an extended population would FIRE ON before registering it. The census above is that measurement's starting point and says the answer today would be five — a gate that fires on five and is fixed in the same commit, which is the shape `REASON-CODE-DOC` had and `SIGNOFF-REPAIR.11.9`'s rejected gate did not.
+- ⛔ Do NOT widen the checker's file glob without also deciding what `dir=`-passing Python looks like to it. A pattern that flags `tempfile.mkdtemp(` unconditionally would flag twelve conforming sites and teach bypass, which is the failure mode `FILE-TERMINATION` avoided by refusing to wrap `git diff --check`.
+- Acceptance: each of the five writes under a repository-derived path proved on this volume; the enforcer still passes and its own scratch is on-volume; the extension decision is recorded with its population measurement whichever way it goes.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.11.3 — Operational scripts and evidence
 
 - Status: `pending`.
@@ -2599,12 +2629,110 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 #### SIGNOFF-REPAIR.11.9.1 — Reconcile the 114 uncited review records, clause by clause
 
-- Status: `pending`.
-- Opened by `.11.9`, which measured the backlog rather than absorbing it.
-- The measured size, reproducible with `python3 -B scripts/census_record_reconciliation.py --uncited`: **114 of 131** records are cited by none of their candidate leaves. At roughly two to four findings per record that is several hundred clauses, which is an activity rather than a leaf.
+- Opened: `pending` by `.11.9`, which measured the backlog rather than absorbing it.
+- The measured size: **114 of 131** records are cited by none of their candidate leaves. At roughly two to four findings per record that is several hundred clauses, which is an activity rather than a leaf.
 - ⛔ **"Uncited" is a POPULATION, not a defect count** (`.11.4.5.2`), and the instrument says so in its own output. Most of these records were handled by leaves that simply never named them; "accounted for" also includes DELIBERATELY DECLINED, which no search can see. The first job is classification, and the classification is what sizes the real work.
-- ⚠️ Rank by REACHABILITY, not by record order: `.11.9`'s fan-out finding says a record naming five leaves was a suggestion list, so start from records with a SMALL fan-out (5 records name one leaf, 7 name two) — there the routing was a genuine assignment and an uncited record is most likely to be a real miss.
-- Acceptance: every one of the 114 records is classified as handled / declined / unowned with the evidence, and each unowned clause gains a leaf; the classification is recorded in a form the instrument can re-read, so the next session resumes from it rather than re-deriving it.
+- Status: `done`; REPAIR-0168. This leaf did the census, corrected its own ranking, built the ledger and split; the classification activity lives in its children.
+- ⛔ **This leaf's own acceptance is REVISED by its census, and the superseded version is kept rather than edited into agreement** (`TOOLBOX.md`). It read: "every one of the 114 records is classified … and each unowned clause gains a leaf". The census below measures **491 clauses across 40,127 characters** in those 114 records. That is an activity, exactly as the leaf's own opening line said, so the original acceptance descends to `.11.9.1.1`–`.11.9.1.6` collectively and this leaf's acceptance becomes: census it, choose the tranche ranking on a measurement, build a form the instrument can re-read, and prove both on the first tranche.
+
+**The census.**
+
+- Reproduced by `python3 -B scripts/census_record_reconciliation.py`: **131** records, **614** record→candidate-leaf routings, **301** to a leaf since SPLIT, and at record granularity **17 of 131** cited by any candidate leaf, **114 by none**. Every figure `.11.9` published reproduces exactly.
+- Clause sizing, which `.11.9` could only estimate at "two to four per record": the 114 uncited records hold **40,127 characters** of body text, mean 351 and max 1,383, splitting at sentence terminators into roughly **491 clauses**.
+- ⭐ **The reviewer drew from a vocabulary of 33 leaves, and one of them is a default.** Across all 614 routings there are only **33 distinct candidate leaves**, and `SIGNOFF-REPAIR.11.4` is named by **99 of the 131 records** — 76 %. `.3.3` is named by 41, `.4.1` by 37, `.4.4` by 36, `.5.1` by 34, `.4.5` by 32. A leaf named by three quarters of the corpus is not an assignment; it is the bucket a reviewer reaches for when a record also has a documentation dimension.
+
+**The ranking this leaf proposed, and the measurement that rejected it.**
+
+- 🔴 **`.11.9.1`'s own instruction was: "start from records with a SMALL fan-out (5 records name one leaf, 7 name two) — there the routing was a genuine assignment". The measurement says the opposite, and decisively.** Ranking instead by the record's NARROWEST candidate — the candidate leaf that the fewest other records also name — the two orders are anti-correlated:
+
+  | Record's own fan-out | Narrowest candidate named by ≤ 10 records | by > 10 |
+  | --- | --- | --- |
+  | 1 | 0 | 5 |
+  | 2 | 1 | 6 |
+  | 3 | 6 | 18 |
+  | 7 or more | 16 | 2 |
+
+- **Why, and the instance that settles it.** All five fan-out-1 records name a CONTAINER: `R-36-39-4`→`.3.3` (41 records), `R-40-42-1`→`.4.5` (32), `R-55-2`→`.7.4` (22), `R-66-3`→`.4.1` (37), and `R-6-27-1`→`.11.4` (99). ⭐ `R-6-27-1` is the proof: its entire body is the artifact's boilerplate — "Source-review candidates only; runtime reproduction and task-tree ownership MUST follow full-read prerequisite. No edits or tests run." It carries **no finding at all**, and it still received a candidate leaf. A fan-out of one is the reviewer reaching for the default bucket, not precision. Meanwhile `R-84-1` has a fan-out of eight and names `.6.3`, a leaf **exactly one** record in the whole corpus names — and when `.6.3` is eventually censused, that record is the only one it has.
+- ⚠️ **Auditor's asymmetry, honoured rather than skipped** (`docs/CLAIM_VERIFICATION.md` §4): the re-derivation is the newer instrument and carries the heavier burden, so the difference is NAMED rather than the earlier line called wrong. `.11.9`'s statement is about the RECORD's side — how confident the reviewer was about where a finding goes — and it is defensible on that. It says nothing about the TARGET's side, which is what "an uncited routing is most likely a real miss" actually depends on: a leaf named by one record lost information when it did not cite it; a leaf named by 99 was never going to cite each. Both measures are real; they rank for different questions, and this activity needs the second.
+- **Adopted:** rank by the narrowest candidate's frequency, reproducible with `python3 -B scripts/census_record_reconciliation.py --rank`. ⛔ Derived, not carried: the tranches below are the natural gaps in that distribution, and the command re-derives the membership if the corpus moves.
+
+**The mechanism.**
+
+- **The ledger: `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`** — one row per CLAUSE, because `.11.9`'s finding was that the reconcilable unit is a clause with an owner and not a record cited by a leaf.
+- **The closed set of six states, and it is wider than the acceptance's three — measured, not invented.** `handled` (a leaf did the work, named or not), `owned` (a leaf owns it AND its own text makes the clause visible, so its future census will read it), `attach` (a leaf owns the surface but its text does NOT make the clause visible), `unowned`, `declined`, `none`. Five of the six occurred in the first seven records.
+- ⭐ **`attach` is the state the whole activity exists to find, and it did not exist in the acceptance's vocabulary.** `.11.9`'s defect is that a split censuses the leaf's own GOAL LINE rather than the routed record. For a leaf already split that is expensive retrospective work; for a leaf not yet split it costs one sentence — and `attach` is exactly the set of clauses where that sentence is still cheap. Three rows carry it today.
+- ⚠️ `declined` has **zero** rows. That is deliberate and stated in the ledger: the state is invisible to every search, so the vocabulary must carry it before an instance does, or the first one will be recorded as something else.
+- **The instrument re-reads it**: `--classified` reports the population, the ledger's coverage and a per-state count, and refuses a row naming a record that does not exist, a state outside the closed set, an owner that is not a leaf of any tracked tree, a `none` row with an owner, a non-`none` row without one, or the same clause twice. It found two breaches the moment it was first run, which were the two owner leaves this leaf had written into the ledger but not yet created.
+
+**Tranche 1 — the seven records whose narrowest candidate is named by three or fewer records.**
+
+`R-31-32-1`, `R-47-2`, `R-53-4`, `R-63-1`, `R-65-2`, `R-83-1`, `R-84-1`: **26 clauses**, classified in the ledger with the source read for each. Seven `handled`, fourteen `owned`, three `attach`, two `unowned`.
+
+- 🔴 **`R-31-32-1` clause 4 — `inspect_node_inbox` reads across the tenant boundary, and it is live today.** The record named FOUR verbs. `.3.3.4.10`'s census scoped itself to node administrative MUTATIONS, measured "four of the five mutations carry no tenant predicate", and `.3.3.4.10.3` repaired the three inbox mutations — correctly, and silently about the fourth, which is a READ. `crates/reasonbraid-server/src/api.rs` line 1467 admits on `params.tenant_id` and then selects from `node_inbox_state` by `node_id` alone, while `migrations/0003_node_inbox.sql` has carried `tenant_id NOT NULL` since the table existed. New owner `.3.5.3`. ⭐ This is `.11.9`'s mechanism caught in the act, one clause of one record, with a live consequence.
+- 🔴 **`R-84-1` clause 1 — the doctrine gates write their own scratch off the repository volume, and `STORAGE-LOCALITY` cannot see them.** Five call sites in four tracked shell files use ambient `mktemp`; three of the four are enforcers. The gate written for §13 enumerates its population with `git ls-files -z -- "*.rs"`, so the shell family is outside the scan by construction rather than by exception. New owner `.11.2.2`, opened with the classified census (19 raw hits, 12 conforming Python that pass a repository-derived `dir=`, 2 conforming shell, 5 breaching) rather than the raw count.
+- The three `attach` rows, each a clause its owner will drop at its split unless attached first: `R-53-4` clauses 2 and 3 (the resource `scheme` column is caller-declared rather than derived from the locator; `.7.1`'s goal line names first-writer poisoning and digest enforcement but not this), and `R-63-1` clause 4 (`crates/reasonbraid-server/tests/escalation.rs` still opens by saying the census found NO test asserting cross-tenant isolation, which `.3.1` made false).
+- The fourteen `owned` rows were each confirmed against the source rather than matched to a goal line: `mcp_listen`'s window still does `push` then `truncate(64)` so it keeps the FIRST 64 and never records id 65 onward, still writes `last_cursor` unconditionally with the stored value bound to `_last` and discarded, still takes `FOR UPDATE` on a row that may not exist, and still calls `unwrap_or_default()` on a malformed window; `resources` still dedupes on `original_locator` alone over a table with no tenant column; `expected_digest` is still validated for FORMAT only and read by no acquisition path; `web/app.js` still passes a non-string child to `appendChild` and still feeds it the numeric `aggregate_version`.
+- ⚠️ **And one of those is worth naming, because a passing suite could be read as covering it and does not.** `git grep -l "app.js" -- '*test*' '*tests*'` returns **0**: nothing exercises the web console. The sixteen browser controls belong to `reasonbraid-browse`, the R3 acquisition resolver, which is a different surface. `.11.1` owns the console and is `pending`; the point here is only that no green run anywhere speaks to it.
+- ⭐ Two records reached ONE finding — `R-83-1` clause 5 and `R-84-1` clause 2 are both the external ledger's empty `tested_versions` for MCP and A2A. A record-level ledger would have counted that twice.
+
+**The split.**
+
+Six children by the adopted ranking, at the natural gaps in the distribution. Membership re-derives with `--rank`; the counts sum to 107, the balance of the 114 after tranche 1.
+
+| Child | Narrowest candidate named by | Records |
+| --- | --- | --- |
+| `.11.9.1.1` | 6–7 | 14 |
+| `.11.9.1.2` | 8–9 | 15 |
+| `.11.9.1.3` | 10–11 | 30 |
+| `.11.9.1.4` | 16–18 | 22 |
+| `.11.9.1.5` | 20–22 | 14 |
+| `.11.9.1.6` | 26 or more | 12 |
+
+- ⚠️ The last tranche is the one to read with most suspicion, not least: it holds every record whose only candidates are containers, including `R-6-27-1`, which has no finding. Expect `none` and `handled` to dominate it and expect that to be the right answer — but a container tranche is also where a genuine clause is easiest to lose in a shrug.
+- promotion: declined. The two method rules exercised — measure the population before proposing the rule over it, and check an instrument's first number by a different route — are already in `TOOLBOX.md`, and this is their sixth and seventh instance rather than a new statement (`.11.6`). What IS durable and specific is the ledger's own vocabulary, which lives in `RECONCILIATION.md` where its users are.
+- Commit: `REASONBRAID-REPAIR-0168 (leaf SIGNOFF-REPAIR.11.9.1): census the 114, correct the ranking the leaf proposed, and build the ledger`.
+
+##### SIGNOFF-REPAIR.11.9.1.1 — Tranche 2: narrowest candidate named by six or seven records
+
+- Opened: `pending` by `.11.9.1`'s split.
+- The 14 records, re-derivable with `python3 -B scripts/census_record_reconciliation.py --rank`: `R-31-32-2`, `R-40-42-2`, `R-51-2`, `R-52-2`, `R-53-2`, `R-53-3`, `R-58-2`, `R-6-27-2`, `R-76-77-2`, `R-78-2`, `R-80-82-1`, `R-87-1`, `R-88-1`, `R-90-1`.
+- Acceptance: every clause of every one carries a ledger row in a state from the closed set, with the SOURCE read for each rather than a goal-line match; every `unowned` clause gains a leaf; `--classified` stays clean.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.9.1.2 — Tranche 3: narrowest candidate named by eight or nine records
+
+- Opened: `pending` by `.11.9.1`'s split.
+- The 15 records: `R-31-32-3`, `R-36-39-8`, `R-48-49-1`, `R-48-49-3`, `R-48-49-4`, `R-50-3`, `R-6-27-3`, `R-6-27-7`, `R-6-27-9`, `R-66-1`, `R-70-2`, `R-70-3`, `R-71-72-2`, `R-75-1`, `R-85-1`.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.9.1.3 — Tranche 4: narrowest candidate named by ten or eleven records
+
+- Opened: `pending` by `.11.9.1`'s split. The largest tranche; expand it into children before implementation if 30 records will not fit one bounded leaf.
+- The 30 records: `R-31-32-4`, `R-33-35-1`, `R-33-35-2`, `R-36-39-2`, `R-36-39-3`, `R-36-39-6`, `R-36-39-9`, `R-40-42-3`, `R-40-42-4`, `R-40-42-5`, `R-40-42-7`, `R-43-1`, `R-43-4`, `R-44-45-4`, `R-51-3`, `R-53-1`, `R-53-5`, `R-54-2`, `R-56-57-3`, `R-58-3`, `R-59-1`, `R-59-2`, `R-61-62-2`, `R-63-2`, `R-73-74-3`, `R-75-2`, `R-76-77-3`, `R-78-1`, `R-86-1`, `R-89-1`.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.9.1.4 — Tranche 5: narrowest candidate named by sixteen to eighteen records
+
+- Opened: `pending` by `.11.9.1`'s split.
+- The 22 records: `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-44-45-2`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-54-3`, `R-55-1`, `R-58-1`, `R-6-27-5`, `R-6-27-6`, `R-61-62-3`, `R-66-2`, `R-67-68-1`, `R-70-1`, `R-73-74-2`.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.9.1.5 — Tranche 6: narrowest candidate named by twenty to twenty-two records
+
+- Opened: `pending` by `.11.9.1`'s split.
+- The 14 records: `R-33-35-3`, `R-46-1`, `R-48-49-7`, `R-51-4`, `R-52-4`, `R-55-2`, `R-56-57-1`, `R-56-57-2`, `R-56-57-4`, `R-6-27-4`, `R-65-1`, `R-69-2`, `R-71-72-1`, `R-76-77-4`.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.9.1.6 — Tranche 7: narrowest candidate named by twenty-six or more records
+
+- Opened: `pending` by `.11.9.1`'s split.
+- The 12 records: `R-33-35-4`, `R-36-39-4`, `R-40-42-1`, `R-40-42-6`, `R-46-3`, `R-47-1`, `R-51-1`, `R-54-1`, `R-6-27-1`, `R-61-62-1`, `R-66-3`, `R-76-77-1`.
+- ⚠️ Every record here routes only to container leaves, and `R-6-27-1` carries no finding at all. `none` and `handled` should dominate — and that expectation is the hazard, because a tranche where the right answer is usually "nothing to do" is where a real clause is easiest to wave past. Read each body before assigning its state.
+- Acceptance: as `.11.9.1.1`.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
@@ -3571,15 +3699,26 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.9.1` | `pending` | 114 of 131 review records are cited by none of their candidate leaves — a measured backlog to CLASSIFY, not a defect count; start from the small-fan-out records where the routing was a real assignment |
-| 2 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
-| 2b | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
-| 3 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — the published 60 s TTL is nominal until it is settled |
-| 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — its `MEMORY.md` census is DONE (`.11.4.2.1`: 26 warnings, 0 orphans, the worry refuted); the donor-package review, document/route utility census and lifecycle controls remain |
-| 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
-| 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
+| 1 | `SIGNOFF-REPAIR.3.5.3` | `pending` | `inspect_node_inbox` selects by `node_id` with no tenant predicate — the FOURTH verb `R-31-32-1` named, left behind by a census that scoped itself to mutations; a live cross-tenant READ |
+| 2 | `SIGNOFF-REPAIR.11.2.2` | `pending` | three doctrine enforcers write their scratch to ambient `TMPDIR`, and `STORAGE-LOCALITY` scans `*.rs` so it cannot see them |
+| 3 | `SIGNOFF-REPAIR.11.9.1.1` | `pending` | tranche 2 of the clause reconciliation, 14 records — the mechanism and its ledger are proved, so these are execution rather than design |
+| 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
+| 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
+| 6 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — its `MEMORY.md` census is DONE (`.11.4.2.1`: 26 warnings, 0 orphans, the worry refuted); the donor-package review, document/route utility census and lifecycle controls remain |
+| 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
+| 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **36 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **46 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+
+🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
+
+```bash
+awk '/^#{3,6} SIGNOFF-REPAIR/{if(h!="")print s; h=$0; s="none"} \
+     /^- Status:/{s=$0} /^- Opened:/{if(s=="none")s=$0} \
+     END{if(h!="")print s}' docs/tasks/SIGNOFF-REPAIR.md | grep -c '`pending`'
+```
+
+⛔ Row 5 is the ONLY entry left from the previous frontier's duplicated pair: `.4.2.3.1` appeared twice, as rows 2b and 3, with two different "why next" sentences for the same leaf. A curated list with a duplicate in it invites a reader to work the same leaf twice or to assume the second row is a different leaf.
 
 
 
@@ -3627,6 +3766,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.2.9`: `REASONBRAID-REPAIR-0165 (leaf SIGNOFF-REPAIR.4.2.9): a rotated identity is written where the next start looks for it`.
 - `SIGNOFF-REPAIR.4.2.10`: `REASONBRAID-REPAIR-0166 (leaf SIGNOFF-REPAIR.4.2.10): the wake gate is a drain switch, and every state it has now has a control`.
 - `SIGNOFF-REPAIR.4.1.5`: `REASONBRAID-REPAIR-0167 (leaf SIGNOFF-REPAIR.4.1.5): a replacement ends the old machine's session, host and incarnation`.
+- `SIGNOFF-REPAIR.11.9.1`: `REASONBRAID-REPAIR-0168 (leaf SIGNOFF-REPAIR.11.9.1): census the 114, correct the ranking the leaf proposed, and build the ledger`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 
@@ -4563,6 +4703,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `test result: ok. 18 passed; 0 failed`. FALSIFIED by adding the human-kind check the old sentence implied: this control reports `403` and fails naming `only a human may issue an enrollment token`, `15 passed; 3 failed`. ⭐ **Two of those three are PRE-EXISTING controls I did not write** — `a_denied_issuance_records_no_effect_and_no_token` and `a_token_does_not_outlive_the_authority_that_issued_it` already drive an agent role at this route and require grant-based adjudication; the first breaks because a kind check refuses `401` BEFORE the authorization that writes the denial record, destroying the audit evidence. An oracle I did not build (`docs/CLAIM_VERIFICATION.md` leg 2).
 - [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh node_enrollment node_work node_result_ordering node_channel authority` -> `18 + 8 + 6 + 37 + 22` = **91 tests, 0 failed**, rc=0, every issuance/redemption/denial and `.4.1.2`/`.4.1.2.1` control unchanged. `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0; `cargo fmt --all -- --check` rc=0; `mdbook build docs/book` rc=0; `check_doctrines.sh` -> `=== all doctrines green ===` (it first refused with `TASK-STATUS` two-status-lines, then `INDEX-FRONTIER` and `KNOWLEDGE-MAP`; all three corrected).
 - [x] **LOCKSTEP** — `api.rs` (issuance and revoke), `node_channel.rs`, three test doc sites, `docs/book/src/authority.md`, `docs/decisions/2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md` + its `INDEX.md` row, the Knowledge Map regenerated, task tree (leaf closed, frontier, commit log, re-derived pending count 35), `docs/TASK_TREE.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⚠️ `CHANGELOG.md` crossed its 96,000-byte threshold again and was ROTATED, not waived — the eleventh rotation, 2 entries dropped, 30 remain, 92,772 bytes, with the chain naming commit `f425ae0`, its 95,641 bytes, 31 entries, blob `18388aa…` and SHA-256 `2a3b7fb…`, every value derived and the dropped entry verified retrievable at the named commit. ⛔ No product behaviour changed.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.9.1
+
+- [x] **REPRODUCE / ISSUE** — `python3 -B scripts/census_record_reconciliation.py` -> `review records: 131 / routings: 614 / … whose leaf has been SPLIT: 301 / cited: 17 / UNCITED: 284`, and at record granularity **114 of 131** cited by no candidate leaf. The leaf's own instruction was to start from the small-fan-out records; the cross-tab of fan-out against the narrowest candidate's frequency says those are the WORST first, and `R-6-27-1` — fan-out 1, body consisting solely of the artifact's boilerplate, **no finding at all** — still carries a candidate leaf.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `python3 -B scripts/census_record_reconciliation.py --rank` names each uncited record's narrowest candidate. All five fan-out-1 records point at a container (`.3.3` 41 records, `.4.5` 32, `.7.4` 22, `.4.1` 37, `.11.4` **99 of 131**), while every record with fan-out 9 or more reaches a leaf named by 10 or fewer. Fan-out measures how sure the REVIEWER was; it says nothing about whether the TARGET depended on the record, which is what an uncited routing being a real miss actually rests on. 33 distinct candidate leaves carry all 614 routings.
+- [x] **FIX** — `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, one row per CLAUSE, with a closed six-state vocabulary (`handled`, `owned`, `attach`, `unowned`, `declined`, `none`) measured from the first tranche rather than invented; `scripts/census_record_reconciliation.py` gains `--rank` and `--classified`, the latter refusing an unknown record, an out-of-set state, an owner that is no leaf, a `none` row with an owner, a non-`none` row without one, and a duplicated clause. Tranche 1's 26 clauses are classified against the SOURCE. The remaining 107 records split into `.11.9.1.1`–`.11.9.1.6` at the natural gaps in the adopted ranking.
+- [x] **ADDRESSED (verified)** — `python3 -B scripts/census_record_reconciliation.py --self-test` -> `census_record_reconciliation --self-test: 42 controls pass`, rc=0 (21 before this leaf). `--classified` -> `ledger clause rows: 26 / handled 7 / owned 14 / attach 3 / unowned 2 / declined 0 / none 0`, and `ledger: every row names a real record, a state in the closed set and a real owner`. Two live findings came out of the seven records and each has a new owner: `.3.5.3` (`inspect_node_inbox` selects from `node_inbox_state` by `node_id` alone at `crates/reasonbraid-server/src/api.rs` line 1467) and `.11.2.2` (five ambient `mktemp` sites in four tracked shell files, three of them doctrine enforcers, invisible to a `STORAGE-LOCALITY` gate that enumerates with `git ls-files -z -- "*.rs"`).
+- [x] **NO REGRESSION** — no product code touched. `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks, rc=0, with the extended instrument inside the SELF-TEST gate's population. 🔴 **The instrument was wrong a FIFTH time and this leaf's own prose is what exposed it**: the elided-citation rule matched any `:N`, so writing `crates/…/api.rs:1467` and five `scripts/check_*.sh:NN` after a census citation made all eight inherit the census filename, four landing inside real records and silently moving the population from 114 to 111. The elided form is now anchored to the opening backtick it is always written with, and `source-path-is-not-an-elided-citation` plus its bare-path twin hold it. 🔴 The frontier caption's own pending-count command was also wrong — it matched `- Status: \`pending\`` and missed the **11** leaves that carry only `- Opened: \`pending\`` under the `TASK-STATUS` convention, publishing 36 where the tree holds 46; the caption now carries a command that re-derives both spellings.
+- [x] **LOCKSTEP** — task tree (`.11.9.1` closed and its acceptance revision recorded, `.11.9.1.1`–`.11.9.1.6` opened, `.3.5.3` and `.11.2.2` opened, frontier rewritten and its duplicated `.4.2.3.1` pair removed, commit log), `docs/tasks/TASK_TREE.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md` (new), `scripts/census_record_reconciliation.py`, `TOOLBOX.md`, `docs/book/src/qualification-review.md` (the two new limitations, because that chapter is where the manual states what is not yet qualified), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. `make gate` 18 checks, `mdbook build`, `check_book_links.sh`, `check_book_frontier.sh` and the 67 Python controls all rc=0. ⛔ No gate registered: `--classified` is a backlog instrument, and `.11.9` rejected a gate over this exact population for firing on 114 of 131.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.9
 

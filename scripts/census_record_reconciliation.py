@@ -19,6 +19,8 @@ it). "Accounted for" includes DELIBERATELY DECLINED, which no search can see.
 
     python3 -B scripts/census_record_reconciliation.py             # the census
     python3 -B scripts/census_record_reconciliation.py --uncited    # just the review set
+    python3 -B scripts/census_record_reconciliation.py --rank       # the tranche ranking
+    python3 -B scripts/census_record_reconciliation.py --classified # against the ledger
     python3 -B scripts/census_record_reconciliation.py --json
     python3 -B scripts/census_record_reconciliation.py --self-test
 """
@@ -110,7 +112,18 @@ def descendants(leaf: str, known: set[str]) -> list[str]:
 # filename to its left. A regex requiring the prefix on every reference finds 3
 # of this tree's citations instead of 19 — `SIGNOFF-REPAIR.4.2` names fifteen
 # records and every one of the elided ones would read as UNCITED.
-_CITE_ANY = re.compile(r"(?:(census-[0-9]+\.md))?:([0-9]+)")
+#
+# 🔴 And the elided form MUST be anchored to the opening backtick it is always
+# written with. The first version matched any `:N`, so a leaf that cited a
+# census file and then cited SOURCE line numbers — `api.rs:1467`, or five
+# `scripts/check_*.sh:NN` — had every one of them inherit the census filename.
+# Measured when two leaves written on 2026-09-13 did exactly that: eight bogus
+# references, four of them landing inside real records, which silently moved the
+# headline population from 114 to 111. The run convention puts each elided
+# reference in its own code span, so the backtich is the discriminator that
+# costs nothing and the `source-path-is-not-an-elided-citation` control is what
+# holds it.
+_CITE_ANY = re.compile(r"(census-[0-9]+\.md):([0-9]+)|`:([0-9]+)")
 
 
 def citations(text: str) -> set[tuple[str, int]]:
@@ -120,8 +133,9 @@ def citations(text: str) -> set[tuple[str, int]]:
     for m in _CITE_ANY.finditer(text):
         if m.group(1):
             current = m.group(1)
-        if current:
             found.add((current, int(m.group(2))))
+        elif current:
+            found.add((current, int(m.group(3))))
     return found
 
 
@@ -141,6 +155,86 @@ def cites(text: str, rec: dict) -> bool:
         if fname == rec["file"] and rec["line"] <= num <= rec["end"]:
             return True
     return False
+
+
+LEDGER = ROOT / "docs" / "tasks" / "artifacts" / "signoff_review" / "RECONCILIATION.md"
+
+# ⛔ The closed set of clause states. A ledger row outside it is a breach, not a
+# new category: the whole value of the ledger is that a reader can take the six
+# words at face value. `none` is the only state with no owning leaf, and it must
+# spell that absence as an em dash rather than leaving the cell blank.
+STATES = {"handled", "owned", "attach", "unowned", "declined", "none"}
+
+# A ledger row: | `R-…` | <ordinal> | <state> | `LEAF` or — | evidence |
+_LEDGER_ROW = re.compile(
+    r"^\|\s*`(R-[0-9]+(?:-[0-9]+)+)`\s*\|\s*([0-9]+)\s*\|\s*([a-z]+)\s*\|\s*"
+    r"(?:`([A-Z0-9-]+(?:\.[0-9]+)+)`|(\u2014))\s*\|"
+)
+
+
+def ledger() -> list[dict]:
+    """Every clause row of the reconciliation ledger, as written."""
+    if not LEDGER.exists():
+        return []
+    out = []
+    for n, line in enumerate(LEDGER.read_text().splitlines(), 1):
+        m = _LEDGER_ROW.match(line)
+        if m:
+            out.append(
+                {
+                    "line": n,
+                    "record": m.group(1),
+                    "clause": int(m.group(2)),
+                    "state": m.group(3),
+                    "owner": m.group(4),
+                }
+            )
+    return out
+
+
+def ledger_breaches(rows: list[dict], known_records: set[str], known_leaves: set[str]) -> list[str]:
+    """Every way a ledger row can be wrong, named rather than counted."""
+    out = []
+    seen: set[tuple[str, int]] = set()
+    for r in rows:
+        where = f"{LEDGER.name}:{r['line']}"
+        if r["record"] not in known_records:
+            out.append(f"{where}: names {r['record']}, which no census record carries")
+        if r["state"] not in STATES:
+            out.append(f"{where}: state {r['state']!r} is outside the closed set")
+        if r["state"] == "none":
+            if r["owner"] is not None:
+                out.append(f"{where}: state 'none' names an owner")
+        elif r["owner"] is None:
+            out.append(f"{where}: state {r['state']!r} names no owner")
+        elif r["owner"] not in known_leaves:
+            out.append(f"{where}: owner {r['owner']} is not a leaf of any tracked tree")
+        key = (r["record"], r["clause"])
+        if key in seen:
+            out.append(f"{where}: {r['record']} clause {r['clause']} appears twice")
+        seen.add(key)
+    return out
+
+
+def narrowest(rows: list[dict]) -> dict[str, tuple[str, int]]:
+    """Per record: its narrowest candidate leaf and how many records name that leaf.
+
+    ⭐ The RANKING, and it is the opposite of the obvious one. A record's own
+    fan-out measures how sure the REVIEWER was; this measures how much the
+    TARGET depends on the record. Measured over this corpus the two are
+    anti-correlated — every fan-out-1 record names a container leaf that 22 to
+    99 records also name — so ranking by fan-out puts the least reconcilable
+    records first (`SIGNOFF-REPAIR.11.9.1`).
+    """
+    freq: dict[str, int] = {}
+    for r in rows:
+        freq[r["leaf"]] = freq.get(r["leaf"], 0) + 1
+    out = {}
+    for r in rows:
+        best = out.get(r["record"])
+        if best is None or freq[r["leaf"]] < best[1]:
+            out[r["record"]] = (r["leaf"], freq[r["leaf"]])
+    return out
 
 
 def reconcile() -> dict:
@@ -165,12 +259,73 @@ def reconcile() -> dict:
     return {"records": recs, "rows": rows}
 
 
+def uncited_records(rows: list[dict]) -> list[str]:
+    """Records cited by NONE of their candidate leaves — the 114 to classify.
+
+    ⛔ Record granularity, not routing granularity. The claim this set supports
+    is about a RECORD ("did anyone re-read it?"), so it is measured at the
+    record's own level (`docs/CLAIM_VERIFICATION.md` leg 1).
+    """
+    cited: set[str] = {r["record"] for r in rows if r["cited"]}
+    return sorted({r["record"] for r in rows} - cited)
+
+
 def run(mode: str) -> int:
     data = reconcile()
     recs, rows = data["records"], data["rows"]
     split_rows = [r for r in rows if r["split"] > 0]
     uncited_split = [r for r in split_rows if not r["cited"]]
     missing_leaf = [r for r in rows if not r["leaf_exists"]]
+
+    if mode == "rank":
+        rank = narrowest(rows)
+        pending = uncited_records(rows)
+        print(f"UNCITED records ranked by their NARROWEST candidate leaf ({len(pending)}):")
+        print()
+        for rid in sorted(pending, key=lambda r: (rank[r][1], r)):
+            leaf, n = rank[rid]
+            fan = sum(1 for r in rows if r["record"] == rid)
+            print(f"  {rid:<12} narrowest={leaf:<30} named by {n:>3} records   (own fan-out {fan})")
+        print()
+        print("⭐ Rank by THIS, not by the record's own fan-out. The two are")
+        print("   anti-correlated over this corpus: a record naming one leaf named a")
+        print("   CONTAINER, so it is one of dozens that leaf could never cite each.")
+        return 0
+
+    if mode == "classified":
+        pending = uncited_records(rows)
+        known_records = {r["id"] for r in recs}
+        known_leaves = set(leaf_sections())
+        led = ledger()
+        breaches = ledger_breaches(led, known_records, known_leaves)
+        done = {r["record"] for r in led}
+        remaining = [r for r in pending if r not in done]
+        counts: dict[str, int] = {}
+        for r in led:
+            counts[r["state"]] = counts.get(r["state"], 0) + 1
+        print(f"uncited records STILL to classify     : {len(pending)}")
+        print(f"  … carrying at least one ledger row  : {len(pending) - len(remaining)}")
+        print(f"  … NOT yet classified                : {len(remaining)}")
+        print(f"records with a ledger row             : {len(done)}")
+        print(f"  … of them, no longer uncited        : {len(done - set(pending))}")
+        print(f"ledger clause rows                    : {len(led)}")
+        for state in sorted(STATES):
+            print(f"  {state:<10}                          : {counts.get(state, 0)}")
+        print()
+        print("⭐ The two measures CONVERGE, and that is the mechanism working rather")
+        print("   than a discrepancy: classifying a record's clauses gives each an owner,")
+        print("   the owning leaf then NAMES the record, and the record leaves the")
+        print("   uncited population. A row here that is still uncited is one whose")
+        print("   clauses were all already handled or owned elsewhere.")
+        print()
+        if breaches:
+            print(f"LEDGER BREACHES ({len(breaches)}):")
+            for b in breaches:
+                print(f"  {b}")
+            print()
+            return 1
+        print("ledger: every row names a real record, a state in the closed set and a real owner")
+        return 0
 
     if mode == "json":
         print(json.dumps({"totals": {
@@ -179,6 +334,9 @@ def run(mode: str) -> int:
             "to_split_leaves": len(split_rows),
             "uncited_by_split_leaf": len(uncited_split),
             "naming_a_leaf_that_does_not_exist": len(missing_leaf),
+            "uncited_records": len(uncited_records(rows)),
+            "ledger_clause_rows": len(ledger()),
+            "records_with_a_ledger_row": len({r["record"] for r in ledger()}),
         }, "rows": rows}, indent=2))
         return 0
 
@@ -263,6 +421,19 @@ def self_test() -> int:
         cites("`census-9.md:99`, `census-8.md:99`, `:14`", earlier),
         True,
     )
+    # 🔴 The control the first version did not have, and the defect it missed:
+    # a SOURCE path's line number after a census citation is not an elided
+    # reference. Both spellings a leaf actually writes are covered.
+    check(
+        "source-path-is-not-an-elided-citation",
+        cites("see `census-9.md:3` and `crates/x/src/api.rs:14`", rec),
+        False,
+    )
+    check(
+        "bare-source-path-is-not-an-elided-citation",
+        cites("see `census-9.md:3`, then scripts/check_x.sh:14", rec),
+        False,
+    )
     # The real tree: `SIGNOFF-REPAIR.4.2` names fifteen records explicitly, so
     # its own routings must read as cited. This control is what proved the
     # heading-only matcher wrong.
@@ -270,11 +441,84 @@ def self_test() -> int:
     sec42 = sections.get("SIGNOFF-REPAIR.4.2", "")
     check("real-tree-citation", cites(sec42, live["R-48-49-6"]), True)
 
+    # ── the ledger (`SIGNOFF-REPAIR.11.9.1`) ────────────────────────────────
+    # Parsing is asserted against SYNTHETIC rows, and every refusal is fired at
+    # least once: a control never observed RED is not known to work
+    # (`docs/CLAIM_VERIFICATION.md` leg 2).
+    def parse_one(line: str):
+        m = _LEDGER_ROW.match(line)
+        if not m:
+            return None
+        return {"line": 1, "record": m.group(1), "clause": int(m.group(2)),
+                "state": m.group(3), "owner": m.group(4)}
+
+    row = parse_one("| `R-1-2` | 3 | owned | `A.1.2` | because |")
+    check("ledger-row-record", row and row["record"], "R-1-2")
+    check("ledger-row-clause", row and row["clause"], 3)
+    check("ledger-row-state", row and row["state"], "owned")
+    check("ledger-row-owner", row and row["owner"], "A.1.2")
+    check("ledger-row-emdash-owner",
+          parse_one("| `R-1-2` | 1 | none | \u2014 | no finding |"), 
+          {"line": 1, "record": "R-1-2", "clause": 1, "state": "none", "owner": None})
+    # The ledger's own header, separator and vocabulary table must not parse as
+    # clause rows — they are prose about the format, not entries in it.
+    check("ledger-skips-header", parse_one("| Record | Clause | State | Owner | Evidence |"), None)
+    check("ledger-skips-separator", parse_one("| --- | --- | --- | --- | --- |"), None)
+    check("ledger-skips-vocabulary", parse_one("| `handled` | a leaf did the work | none |"), None)
+
+    known_r, known_l = {"R-1-2"}, {"A.1.2"}
+    def one_breach(line):
+        r = parse_one(line)
+        return ledger_breaches([r], known_r, known_l) if r else ["unparsed"]
+
+    check("ledger-clean-row", one_breach("| `R-1-2` | 1 | owned | `A.1.2` | why |"), [])
+    check("ledger-rejects-unknown-record",
+          len(one_breach("| `R-9-9` | 1 | owned | `A.1.2` | why |")), 1)
+    check("ledger-rejects-unknown-owner",
+          len(one_breach("| `R-1-2` | 1 | owned | `A.9.9` | why |")), 1)
+    # An out-of-set state never reaches the state cell's `[a-z]+`… it does, so
+    # the closed-set check is what refuses it.
+    check("ledger-rejects-unknown-state",
+          len(one_breach("| `R-1-2` | 1 | resolved | `A.1.2` | why |")), 1)
+    check("ledger-rejects-none-with-owner",
+          len(one_breach("| `R-1-2` | 1 | none | `A.1.2` | why |")), 1)
+    check("ledger-rejects-emdash-for-a-real-state",
+          len(one_breach("| `R-1-2` | 1 | owned | \u2014 | why |")), 1)
+    dup = [parse_one("| `R-1-2` | 1 | owned | `A.1.2` | a |"),
+           parse_one("| `R-1-2` | 1 | handled | `A.1.2` | b |")]
+    check("ledger-rejects-duplicate-clause", len(ledger_breaches(dup, known_r, known_l)), 1)
+
+    # The ranking, on a fixture whose answer is the OPPOSITE of the fan-out
+    # ranking — which is the whole point of the measurement that chose it.
+    rank_rows = [
+        {"record": "R-a", "leaf": "T.1"},                        # fan-out 1, container
+        {"record": "R-b", "leaf": "T.1"},
+        {"record": "R-c", "leaf": "T.1"},
+        {"record": "R-c", "leaf": "T.2"},                        # fan-out 2, narrow leaf
+    ]
+    ranked = narrowest(rank_rows)
+    check("narrowest-picks-the-rarest-leaf", ranked["R-c"], ("T.2", 1))
+    check("narrowest-container-for-fanout-one", ranked["R-a"], ("T.1", 3))
+
+    # Record granularity: one cited candidate makes the RECORD cited, even when
+    # another candidate did not cite it. The claim is about the record.
+    mixed = [{"record": "R-x", "cited": True}, {"record": "R-x", "cited": False},
+             {"record": "R-y", "cited": False}]
+    check("uncited-is-per-record", uncited_records(mixed), ["R-y"])
+
+    # The REAL ledger, against the REAL trees — the one control here with no
+    # loyalty to the parser's fixtures (`TOOLBOX.md`: a self-test written
+    # alongside the code shares its blind spots).
+    live_led = ledger()
+    check("live-ledger-has-rows", len(live_led) > 0, True)
+    check("live-ledger-is-clean",
+          ledger_breaches(live_led, {r["id"] for r in recs}, set(sections)), [])
+
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL {f}", file=sys.stderr)
         return 1
-    print("census_record_reconciliation --self-test: 21 controls pass")
+    print("census_record_reconciliation --self-test: 42 controls pass")
     return 0
 
 
@@ -284,6 +528,10 @@ def main() -> int:
         return self_test()
     if "--json" in args:
         return run("json")
+    if "--rank" in args:
+        return run("rank")
+    if "--classified" in args:
+        return run("classified")
     return run("uncited" if "--uncited" in args else "full")
 
 

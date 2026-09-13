@@ -63,6 +63,36 @@ requalification leaf closes. The next roadmap features remain store-and-forward,
 verified export/import and the independent G8 implementation exercise.
 
 
+### The census records, reconciled clause by clause
+
+The startup source review produced 131 records under
+`docs/tasks/artifacts/signoff_review/`. Each names one or more candidate repair
+leaves. `SIGNOFF-REPAIR.11.9` measured that **114 of them are cited by none of
+those leaves** and rejected a gate over that population — 114 of 131 is a backlog,
+not a gate. `SIGNOFF-REPAIR.11.9.1` then censused the backlog: roughly **491
+clauses**, drawn from a vocabulary of only **33 distinct candidate leaves**, one of
+which (`.11.4`) is named by **99 of the 131 records**.
+
+That last figure changed the plan. `.11.9.1` had been told to work the records
+that name a single leaf first, on the reasoning that a narrow routing was a real
+assignment. Measured, the opposite holds: every single-candidate record points at
+one of those broad containers, and the clearest case — `R-6-27-1` — carries **no
+finding at all** and still received one. The backlog is now ordered by each
+record's *narrowest* candidate instead, and the classification lives in
+`docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, one row per clause, with
+a closed vocabulary an instrument re-reads.
+
+Reconciling the first seven records found two limitations that were not otherwise
+tracked, both now owned:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| `GET /v1/nodes/inbox` admits on the caller's tenant and then selects the inbox by node id alone | A tenant administrator can read another tenant's inbox rows — command ids, thread ids, delivery state and payloads — for a node id they can name. The three inbox *mutations* were bound to their tenant under `.3.3.4.10.3`; this read was outside that census's scope. Source finding; runtime reproduction is owned by the repair. | `.3.5.3` |
+| Three doctrine enforcers write their scratch to an ambient temporary directory | Project-owned temporary data lands off the repository volume, against §13. The storage-locality gate enumerates Rust sources only, so it cannot see them. | `.11.2.2` |
+
+Neither changes a documented product behaviour today; both are recorded here
+because this chapter is where the manual states what is *not* yet qualified.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

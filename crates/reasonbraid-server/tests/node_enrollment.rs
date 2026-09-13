@@ -46,6 +46,7 @@ async fn pool() -> Option<PgPool> {
             "budget_ceilings",
             "spend_breakers",
             "administrative_effects",
+            "node_enrollment_tokens",
             "authorization_records",
             "authority_grants",
             "enrollments",
@@ -55,7 +56,6 @@ async fn pool() -> Option<PgPool> {
             "node_certificates",
             "server_ca",
             "node_leases",
-            "node_enrollment_tokens",
             "runs",
             "incarnations",
             "nodes",
@@ -1624,5 +1624,150 @@ async fn the_token_lifetime_is_validated_before_anything_computes_with_it() {
     assert!(
         (3_000..=3_600).contains(&ahead),
         "the default is still an hour, not a re-tuned value: {ahead}s"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.1.2` — a token does not outlive the authority that issued it.
+///
+/// The decision, and its three load-bearing properties:
+///
+///  1. revoking the grant that issued a token **voids** it, and redemption says
+///     so in its own words — waiting does not help and neither does re-issuing
+///     under the same authority;
+///  2. the node's enrollment path is **not** closed by that, because a voided
+///     token releases the one-live-token index slot. ⛔ Without that the operator
+///     revokes a compromised administrator and can never issue a replacement
+///     token for the node — `SIGNOFF-REPAIR.4.1.1`'s lockout, through a
+///     different door;
+///  3. the selection is **exact**. Both administrators here are in the SAME
+///     tenant deliberately: a tenant-wide implementation would pass a
+///     cross-tenant check and fail this one.
+#[tokio::test]
+async fn a_token_does_not_outlive_the_authority_that_issued_it() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+
+    // A SECOND administrator in Alice's own tenant — the colleague who is still
+    // there after Alice is withdrawn, and the reason property (2) matters.
+    let (status, surviving) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({
+            "kind": "role",
+            "name": "surviving-admin",
+            "tenant_id": tenant,
+            "actions": ["tenant_admin"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second administrator enrolls: {surviving}");
+    let surviving = surviving["principal_id"].as_str().unwrap().to_owned();
+
+    let node_id = "nod_00000000-0000-7000-8000-0000000005a1";
+    let other_node = "nod_00000000-0000-7000-8000-0000000005a2";
+    let token = issue_token(&client, &base, &alice, &tenant, node_id, "host-void", None).await;
+    let token_id = token["token_id"].as_str().unwrap().to_owned();
+    let nonce = token["nonce"].as_str().unwrap().to_owned();
+    let untouched = issue_token(
+        &client,
+        &base,
+        &surviving,
+        &tenant,
+        other_node,
+        "host-other",
+        None,
+    )
+    .await;
+
+    // The link the whole design rests on, resolved exactly as the product does:
+    // the token names its admission, and the admission names the grant it chose.
+    let (grant_id,): (String,) = sqlx::query_as(
+        "SELECT r.grant_id FROM node_enrollment_tokens t \
+         JOIN authorization_records r ON r.record_id = t.issued_under \
+         WHERE t.token_id = $1",
+    )
+    .bind(&token_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the token names the admission that issued it, and it names a grant");
+
+    let revoked = client
+        .post(format!("{base}/v1/admin/grants/{grant_id}/revoke"))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({ "tenant_id": tenant, "reason": "the administrator is withdrawn" }))
+        .send()
+        .await
+        .expect("the revocation answers");
+    assert_eq!(
+        revoked.status().as_u16(),
+        200,
+        "the revocation succeeds: {}",
+        revoked.text().await.unwrap_or_default()
+    );
+
+    // (1) The token is dead, and the refusal is its OWN, not "expired".
+    let (status, refused) = enroll_node(
+        &client,
+        &base,
+        &token_id,
+        node_id,
+        "host-void",
+        &nonce,
+        "dev-secret",
+    )
+    .await;
+    assert_eq!(status, 401, "a voided token enrolls nothing: {refused}");
+    let message = refused["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("authority that issued this token has been revoked"),
+        "the operator is told the AUTHORITY was withdrawn — re-issuing under it \
+         will not help, and waiting will not either: {refused}"
+    );
+    let (nodes,): (i64,) = sqlx::query_as("SELECT count(*) FROM nodes WHERE node_id = $1")
+        .bind(node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count the node rows");
+    assert_eq!(nodes, 0, "and nothing was enrolled");
+    let (audited,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_enroll_audit WHERE token_id = $1 AND decision = 'refused'",
+    )
+    .bind(&token_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the audit rows");
+    assert_eq!(audited, 1, "the refusal leaves an audit row");
+
+    // (2) 🔴 THE LOCKOUT THAT MUST NOT RETURN. The surviving administrator issues
+    // again for the same node id: the voided token must have released the slot.
+    let (status, _receipt, reissued) = issue(
+        &client,
+        &base,
+        &surviving,
+        json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-void" }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a voided token must NOT hold the node's one-live-token slot — that is \
+         `.4.1.1`'s lockout re-entered through a different door: {reissued}"
+    );
+
+    // (3) The other administrator's token, in the SAME tenant, is untouched.
+    let (still_live,): (Option<chrono::DateTime<chrono::Utc>>,) =
+        sqlx::query_as("SELECT voided_at FROM node_enrollment_tokens WHERE token_id = $1")
+            .bind(untouched["token_id"].as_str().unwrap())
+            .fetch_one(&pool)
+            .await
+            .expect("read the other authority's token");
+    assert!(
+        still_live.is_none(),
+        "revoking one authority voids only the tokens IT issued, even inside the \
+         same tenant: {still_live:?}"
     );
 }

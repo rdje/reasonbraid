@@ -644,6 +644,37 @@ request *while holding the tenant's authority guard*; and `i64::MAX` aborted it
 parsed at that point, not checked. The range check sits beside the `node_id`
 shape check so that no caller-chosen value reaches the arithmetic.
 
+#### A token does not outlive the authority that issued it
+
+Revoking a grant or a boundary **voids** the enrollment tokens that authority
+issued and has not yet had redeemed. Redeeming one afterwards is refused with its
+own reason — *the authority that issued this token has been revoked* — which is
+deliberately not "expired": waiting does not help, and neither does re-issuing
+under the same withdrawn authority.
+
+The reasoning is the one applied twice elsewhere in this chapter and in the node
+channel: withdrawn authority stops producing effects. A redeemed token produces
+an enrolled node, and an enrolled node is an effect.
+
+**The check is at revocation, not at redemption, and that is the load-bearing
+choice.** Redemption takes no tenant authority guard; re-reading a grant's status
+there would read authority state outside the guard a revocation holds
+exclusively. A revocation already holds that guard, and the token row is already
+redemption's declared serialization point — so the row lock alone orders them. A
+redemption that reaches the row first commits, and the node it creates is
+separately revocable; one that arrives second reads a voided row and is refused.
+
+The selection is exact. Each token records the authorization that issued it, and
+that record already names the grant and the boundary it selected — so revoking
+one administrator's grant leaves a colleague's outstanding tokens alone, even in
+the same tenant. Revoking a *boundary* also voids tokens issued under the grants
+beneath it, because the record names both.
+
+⚠️ **A voided token releases its node's one-live-token slot**, so revoking a
+compromised administrator never closes the node's enrollment path — the surviving
+operator issues a fresh token immediately. Without that, this feature would
+recreate the lockout described next.
+
 **A token that lapses no longer locks its node out.** The partial unique index
 allows one unused token per node, and an expired token is still unused — so a
 token that was issued and never consumed used to occupy that index for ever. Every

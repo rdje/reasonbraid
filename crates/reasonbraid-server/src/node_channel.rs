@@ -1603,7 +1603,7 @@ async fn insert_refusal_audit(
     .await
 }
 
-/// One stored enrollment token row (the 0008 table).
+/// One stored enrollment token row (the 0008 table, as amended by 0059/0060).
 #[derive(sqlx::FromRow)]
 struct EnrollmentTokenRow {
     tenant_id: String,
@@ -1612,6 +1612,10 @@ struct EnrollmentTokenRow {
     nonce: String,
     expires_at: DateTime<Utc>,
     used_at: Option<DateTime<Utc>>,
+    /// Set when the grant or boundary that issued this token was revoked
+    /// (`SIGNOFF-REPAIR.4.1.2`). The decision was made there, under the tenant's
+    /// exclusive guard; redemption only reads the column it wrote.
+    voided_at: Option<DateTime<Utc>>,
 }
 
 /// Consume a one-time enrollment token: validate it, get-or-create the host, land
@@ -1638,7 +1642,7 @@ async fn enroll(
 
     // The token row is the serialization point: one token, one use, ever.
     let token: Option<EnrollmentTokenRow> = sqlx::query_as(
-        "SELECT tenant_id, node_id, host_claim, nonce, expires_at, used_at \
+        "SELECT tenant_id, node_id, host_claim, nonce, expires_at, used_at, voided_at \
          FROM node_enrollment_tokens WHERE token_id = $1 FOR UPDATE",
     )
     .bind(&req.token_id)
@@ -1654,6 +1658,13 @@ async fn enroll(
         Some(t) => {
             if t.used_at.is_some() {
                 Some("the token was already used")
+            } else if t.voided_at.is_some() {
+                // A DISTINCT reason, and the distinction is the operator's:
+                // waiting does not help and neither does re-issuing under the
+                // same authority. `FOR UPDATE` above is what orders this read
+                // against the revocation that wrote the column
+                // (`SIGNOFF-REPAIR.4.1.2`).
+                Some("the authority that issued this token has been revoked")
             } else if t.expires_at <= now {
                 Some("the token has expired")
             } else if t.node_id != req.node_id {

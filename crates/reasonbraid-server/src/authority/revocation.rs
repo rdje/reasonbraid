@@ -243,6 +243,46 @@ pub(crate) async fn revoke_in_one_transaction(
                     .execute(&mut *conn)
                     .await?;
                     bump_revocation_epoch(&mut *conn, &tenant_id.to_string()).await?;
+                    // `SIGNOFF-REPAIR.4.1.2`: an enrollment token does not outlive
+                    // the authority that issued it. Redemption validated only the
+                    // token's own fields, so a token issued before this revocation
+                    // still enrolled its node afterwards.
+                    //
+                    // ⛔ The check is HERE and not in redemption. `enroll` takes no
+                    // tenant authority guard, so re-reading a grant's status there
+                    // would read authority state outside the guard this
+                    // transaction holds exclusively — the class `.3.3.4.5`
+                    // repaired. Here the ordering is free: this transaction holds
+                    // the exclusive guard, and the token row is already the
+                    // redemption's declared serialization point, so the row lock
+                    // alone decides. A redemption that got there first commits and
+                    // its node is separately revocable (`.4.1.3.1` made that
+                    // effective); one that arrives second reads a voided row.
+                    //
+                    // The selection is EXACT rather than tenant-wide: the token
+                    // names the admission that issued it, and that record already
+                    // carries the grant and boundary it selected. A token issued
+                    // under a grant beneath a revoked BOUNDARY is caught by the
+                    // same predicate, because the record stores both.
+                    //
+                    // No separate effect record, for 0059's reason: the
+                    // revocation's own effect already names this target, and the
+                    // column is the durable evidence.
+                    sqlx::query(&format!(
+                        "UPDATE node_enrollment_tokens t SET voided_at = $3 \
+                         WHERE t.tenant_id = $2 \
+                           AND t.used_at IS NULL AND t.superseded_at IS NULL \
+                           AND t.voided_at IS NULL \
+                           AND EXISTS (SELECT 1 FROM authorization_records r \
+                                       WHERE r.record_id = t.issued_under \
+                                         AND r.{} = $1)",
+                        target.key()
+                    ))
+                    .bind(&target_id)
+                    .bind(tenant_id.to_string())
+                    .bind(at)
+                    .execute(&mut *conn)
+                    .await?;
                     (RevocationResult::Applied, AdministrativeOutcome::Applied {})
                 }
             };

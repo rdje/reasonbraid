@@ -154,11 +154,17 @@ pub(crate) async fn issue_enrollment_token_in_one_transaction(
             // down with it — so the established `409` could not be recorded as
             // an outcome at all. Returning zero rows is the same refusal without
             // the abort.
+            //
+            // `issued_under` is the admission that allowed THIS issuance
+            // (`SIGNOFF-REPAIR.4.1.2`). The record was written by `authorize_in_tx`
+            // in this same transaction and already carries the `grant_id` and
+            // `boundary_id` it selected, so revoking either can later void exactly
+            // the tokens that authority issued — never a whole tenant's.
             let issued: Option<(String, String, DateTime<Utc>)> = sqlx::query_as(
                 "INSERT INTO node_enrollment_tokens \
-                 (token_id, tenant_id, node_id, host_claim, nonce, expires_at) \
+                 (token_id, tenant_id, node_id, host_claim, nonce, expires_at, issued_under) \
                  VALUES ('ntk_' || gen_random_uuid()::text, $1, $2, $3, \
-                         gen_random_uuid()::text, $4) \
+                         gen_random_uuid()::text, $4, $5) \
                  ON CONFLICT DO NOTHING \
                  RETURNING token_id, nonce, expires_at",
             )
@@ -166,6 +172,7 @@ pub(crate) async fn issue_enrollment_token_in_one_transaction(
             .bind(&node_id)
             .bind(&host_claim)
             .bind(at + ttl)
+            .bind(&record_id)
             .fetch_optional(&mut *conn)
             .await?;
 

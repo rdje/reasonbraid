@@ -63,6 +63,7 @@ async fn pool() -> Option<PgPool> {
         &pool,
         &[
             "administrative_effects",
+            "node_enrollment_tokens",
             "authorization_records",
             "authority_grants",
             "enrollment_boundaries",

@@ -1753,11 +1753,21 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 #### SIGNOFF-REPAIR.4.2.6 — The bad-proof control refuses before it reaches the signature
 
 - Opened: `pending` by `.4.2`'s census, from `census-3.md:161`.
-- Status: `pending`.
 - Measured: the negative fixture presents a malformed certificate, which fails the chain check and never reaches `verify_signature`. So the control that appears to cover "a bad proof is refused" covers only "an unparseable certificate is refused", and the cryptographic negative — a well-formed certificate presented with someone else's signature — has no control at all.
 - ⚠️ This is a control-coverage gap, not a defect, and it is a PREREQUISITE for `.4.2.2`: a replay defence cannot be falsified by a fixture that refuses before the signature is examined.
 - Acceptance: negative fixtures that isolate each rung of the proof ladder — unparseable, well-formed-but-unchained, chained-but-wrong-signature, and a captured valid proof — each failing for its own reason and each proved to reach the rung it names.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0153.
+- ⚠️ **Scope correction, recorded rather than made silently: the captured-valid-proof fixture is NOT built here, and is `.4.2.2`'s.** The acceptance above named it. Building it needs the exact canonical bytes of a signed request, and the node client does not expose them — so a test would have to re-derive the coverage's JSON form by hand.
+- census of what would then be duplicated, run because the gate refused the claim without it: `git grep -ln "ProofCoverage\|RotateCoverage" -- crates/` returns **three** files — `reasonbraid-node/src/channel.rs`, `reasonbraid-node/src/lib.rs` and `reasonbraid-server/src/node_channel.rs` — and `git grep -n … -- crates/*/tests` returns **zero**. So the canonical form is a contract held by two mirrored struct definitions and asserted by **no control**: a hand-written third copy in a fixture would agree with them only until either side's field order changed, and nothing would say so. That is the reason to leave the replay fixture with the leaf that has to design it. `.4.2.2` owns the replay and must assert its own decision anyway; the ladder is what that leaf needs FROM here, and the ladder is what this leaf delivers.
+- **The measured gap.** `handshake_without_a_valid_certificate_proof_is_refused` presents `cert_der: "00"`. That decodes, fails `verify_leaf_chain`, and stops. So the control reads as coverage of "a bad proof is refused" and is coverage of "an unparseable certificate is refused" — and the signature rung, the one a forger actually has to beat, had **no negative at all**.
+- ⚠️ **Every rung answers the same `401` by design** (a node with no certificate and a node with a bad proof must fail identically — no existence leak), so the wire cannot say which rung refused. The fixtures prove it by CONSTRUCTION instead: each satisfies every rung except the one it targets. Six negatives — unparseable; well-formed but chaining to nobody *while registered and live*, so only the chain can refuse it; real-CA but unregistered; another node's live certificate; this node's own but revoked; and real-CA, registered, live, this node, signed with someone else's key.
+- ⭐ **A POSITIVE control differs from the signature negative in exactly ONE factor — the signing key — and its success is what proves the negative reached the signature rung** rather than failing earlier for a reason the identical `401` would have hidden. Without it the whole ladder would be six fixtures that might all be failing at rung 1.
+- 🔴 **FALSIFY, and the result is this leaf's entire justification.** Neutralizing the server's **signature** check makes the forged fixture answer `Ok(HandshakeResponse { fencing_token: "fnc_…", lease_expires_at: … })` — a lease issued to a caller holding someone else's certificate and none of its key — and **`33 passed; 1 failed`: the ONLY failure is this new control.** The pre-existing bad-proof control stays green. The project could have shipped a completely disabled signature check and its own negative would not have noticed.
+- The same for the **chain** rung: neutralized, the self-signed foreign certificate is handed a lease, `33 passed; 1 failed`, again only this control. Each negative demonstrably reaches the rung it names.
+- ⛔ **No production code changes in this leaf.** It is control coverage, and its value is measured by what the falsifications above show the previous coverage could not see.
+- NO REGRESSION: `node_channel` 34/34, `node_replacement`, `node_enrollment`; clippy `-D warnings` rc=0.
+- promotion: declined here — the durable statement belongs with `.4.2.2`, which will act on this ladder; the method point (a negative that stops at an early rung is not coverage of a later one) is recorded in this leaf and in `CHANGELOG.md` rather than promoted before a second instance exists (`.11.6`'s measured caution about generalising from one).
+- Commit: `REASONBRAID-REPAIR-0153 (leaf SIGNOFF-REPAIR.4.2.6): every rung of the proof ladder gets its own negative`.
 
 #### SIGNOFF-REPAIR.4.2.7 — The node's hex decoder panics on a non-ASCII response
 
@@ -3260,16 +3270,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.2.6` | `pending` | the bad-proof control refuses before it reaches the signature — a PREREQUISITE for `.4.2.2`, which cannot be falsified without it |
-| 2 | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY |
-| 2b | `SIGNOFF-REPAIR.4.2.3` | `pending` | a heartbeat can revive a lease that expired between the check and the write |
+| 1 | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY — its prerequisite ladder now exists (`.4.2.6`) |
+| 2 | `SIGNOFF-REPAIR.4.2.3` | `pending` | a heartbeat can revive a lease that expired between the check and the write |
+| 2b | `SIGNOFF-REPAIR.4.2.4` | `pending` | `ack` writes on a pre-check the way `events` used to before `.2.2` |
 | 2 | `SIGNOFF-REPAIR.11.9` | `pending` | a source-census record routed to a leaf is not reconciled against that leaf's split — one record's three clauses became one child, and a second clause ("no human restriction" on token issuance) is still unopened |
 | 3 | `SIGNOFF-REPAIR.11.7` | `pending` | the published reason-code registry and the codes the product emits have drifted — 10 emitted codes are unregistered, 11 registry codes are never emitted |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **39 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **38 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3302,6 +3312,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.1.2`: `REASONBRAID-REPAIR-0150 (leaf SIGNOFF-REPAIR.4.1.2): a token does not outlive the authority that issued it`.
 - `SIGNOFF-REPAIR.4.2` (census + split): `REASONBRAID-REPAIR-0151 (leaf SIGNOFF-REPAIR.4.2): census the handshake and fencing surface, and split it`.
 - `SIGNOFF-REPAIR.4.2.1`: `REASONBRAID-REPAIR-0152 (leaf SIGNOFF-REPAIR.4.2.1): a rotation in flight can no longer outlive a revocation`.
+- `SIGNOFF-REPAIR.4.2.6`: `REASONBRAID-REPAIR-0153 (leaf SIGNOFF-REPAIR.4.2.6): every rung of the proof ladder gets its own negative`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

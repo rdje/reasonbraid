@@ -3276,3 +3276,201 @@ async fn a_rotation_in_flight_cannot_outlive_a_revocation() {
 
     server.crash();
 }
+
+/// Register a certificate for a node exactly as the enrollment path stores one,
+/// optionally already revoked. Returns its fingerprint.
+async fn register_certificate(
+    pool: &PgPool,
+    node_id: &str,
+    cert_der: &[u8],
+    key_der: &[u8],
+    revoked: bool,
+) -> String {
+    let fingerprint = reasonbraid_server::ca::cert_fingerprint(cert_der);
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at, revoked_at) \
+         VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes', \
+                 CASE WHEN $5 THEN now() ELSE NULL END)",
+    )
+    .bind(&fingerprint)
+    .bind(node_id)
+    .bind(cert_der)
+    .bind(key_der)
+    .bind(revoked)
+    .execute(pool)
+    .await
+    .expect("register the certificate");
+    fingerprint
+}
+
+/// `SIGNOFF-REPAIR.4.2.6` — each rung of the certificate-proof ladder has its
+/// own negative, and each one is proved to REACH the rung it names.
+///
+/// The control this replaces presents `cert_der: "00"`. That decodes, fails the
+/// chain check, and stops — so what looked like coverage of "a bad proof is
+/// refused" was coverage of "an unparseable certificate is refused". The
+/// signature check, which is the one a forger has to beat, had no negative at
+/// all.
+///
+/// ⚠️ **Every rung answers the same `401` on the wire, deliberately** (a node
+/// with no certificate and a node with a bad proof must fail identically — no
+/// existence leak). So the wire cannot say which rung refused, and these
+/// fixtures prove it by CONSTRUCTION instead: each one satisfies every rung
+/// except the one it targets, and the POSITIVE control below differs from the
+/// signature negative in exactly one factor — the signing key — so its success
+/// proves every earlier rung was satisfied by that fixture too.
+#[tokio::test]
+async fn every_rung_of_the_proof_ladder_has_its_own_negative() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let (tenant, _alice) = bootstrap_admin(&reqwest::Client::new(), &server.base_url()).await;
+    let ca = ensure_server_ca(&pool).await.expect("server CA");
+
+    let node_id = "nod_00000000-0000-7000-8000-000000000501".to_string();
+    let other_id = "nod_00000000-0000-7000-8000-000000000502".to_string();
+    // `seed_node_in_tenant` already registers ONE live certificate; these
+    // fixtures add their own, so the node's own is revoked first and the ladder
+    // is exercised against exactly the certificate each rung presents.
+    let _ = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let _ = seed_node_in_tenant(&pool, &tenant, &other_id).await;
+    sqlx::query("UPDATE node_certificates SET revoked_at = now() WHERE node_id = ANY($1)")
+        .bind(vec![node_id.clone(), other_id.clone()])
+        .execute(&pool)
+        .await
+        .expect("clear the seeded certificates");
+
+    let attempt = |cert_der: Vec<u8>, key: rcgen::KeyPair, as_node: String| {
+        let base = server.base_url();
+        async move {
+            let channel = reasonbraid_node::NodeChannel::new(base, as_node.clone(), cert_der, key);
+            channel
+                .handshake(&reasonbraid_node::HandshakeRequest {
+                    channel_version: reasonbraid_node::CHANNEL_VERSION,
+                    node_id: as_node,
+                    last_acked_cursor: 0,
+                    pending_operations: vec![],
+                    ambiguous_attempts: vec![],
+                    cert_der: String::new(),
+                    proof_signature: String::new(),
+                })
+                .await
+        }
+    };
+    fn refused(
+        r: &Result<reasonbraid_node::HandshakeResponse, reasonbraid_node::ChannelError>,
+    ) -> bool {
+        matches!(
+            r,
+            Err(reasonbraid_node::ChannelError::Server { status: 401, .. })
+        )
+    }
+
+    // ── Rung 1: the certificate does not parse. The rung the old fixture tested.
+    let junk = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let unparseable = attempt(vec![0x00], key_from_der(&junk.key_der), node_id.clone()).await;
+    assert!(refused(&unparseable), "unparseable: {unparseable:?}");
+
+    // ── Rung 2: well-formed, but chains to nobody. Its fingerprint IS registered
+    // and live, so every LATER rung would pass — only the chain can refuse it.
+    let foreign_key = rcgen::KeyPair::generate().expect("a foreign key");
+    let mut params =
+        rcgen::CertificateParams::new(vec!["ladder-host".to_string()]).expect("foreign params");
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, format!("node:{node_id}"));
+    let foreign = params
+        .self_signed(&foreign_key)
+        .expect("a self-signed foreign leaf");
+    register_certificate(
+        &pool,
+        &node_id,
+        foreign.der(),
+        &foreign_key.serialize_der(),
+        false,
+    )
+    .await;
+    let unchained = attempt(
+        foreign.der().to_vec(),
+        key_from_der(&foreign_key.serialize_der()),
+        node_id.clone(),
+    )
+    .await;
+    assert!(
+        refused(&unchained),
+        "a well-formed certificate that chains to nobody is refused even though \
+         its fingerprint is registered and live: {unchained:?}"
+    );
+
+    // ── Rung 3: issued by the REAL CA, never registered. Chain passes; the row
+    // lookup finds nothing.
+    let stranger = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    let unregistered = attempt(
+        stranger.cert_der.clone(),
+        key_from_der(&stranger.key_der),
+        node_id.clone(),
+    )
+    .await;
+    assert!(refused(&unregistered), "unregistered: {unregistered:?}");
+
+    // ── Rung 4a: registered, live, real CA — but to a DIFFERENT node.
+    let others = reasonbraid_server::ca::issue_node_leaf(&ca, &other_id, "ladder-host");
+    register_certificate(&pool, &other_id, &others.cert_der, &others.key_der, false).await;
+    let borrowed = attempt(
+        others.cert_der.clone(),
+        key_from_der(&others.key_der),
+        node_id.clone(),
+    )
+    .await;
+    assert!(
+        refused(&borrowed),
+        "another node's live certificate is refused: {borrowed:?}"
+    );
+
+    // ── Rung 4b: this node's own, real CA, registered — and REVOKED.
+    let dead = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    register_certificate(&pool, &node_id, &dead.cert_der, &dead.key_der, true).await;
+    let revoked = attempt(
+        dead.cert_der.clone(),
+        key_from_der(&dead.key_der),
+        node_id.clone(),
+    )
+    .await;
+    assert!(refused(&revoked), "a revoked certificate: {revoked:?}");
+
+    // ── Rung 5: THE ONE THAT HAD NO NEGATIVE. Everything above is satisfied —
+    // real CA, registered, this node, live — and only the signature is wrong.
+    let live = reasonbraid_server::ca::issue_node_leaf(&ca, &node_id, "ladder-host");
+    register_certificate(&pool, &node_id, &live.cert_der, &live.key_der, false).await;
+    let impostor = rcgen::KeyPair::generate().expect("an impostor key");
+    let forged = attempt(
+        live.cert_der.clone(),
+        key_from_der(&impostor.serialize_der()),
+        node_id.clone(),
+    )
+    .await;
+    assert!(
+        refused(&forged),
+        "a live, registered, correctly-chained certificate presented with \
+         someone else's signature is refused: {forged:?}"
+    );
+
+    // ── The POSITIVE control: the same certificate, the same node, the same
+    // everything — and its OWN key. Its success is what proves the fixture above
+    // reached the signature rung rather than failing earlier for a reason the
+    // identical `401` would have hidden.
+    let genuine = attempt(
+        live.cert_der.clone(),
+        key_from_der(&live.key_der),
+        node_id.clone(),
+    )
+    .await;
+    assert!(
+        genuine.is_ok(),
+        "the SAME certificate with its own key must succeed — otherwise the \
+         signature negative above proved nothing: {genuine:?}"
+    );
+
+    server.crash();
+}

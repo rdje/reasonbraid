@@ -3689,3 +3689,182 @@ async fn a_captured_proof_cannot_be_replayed() {
 
     server.crash();
 }
+
+/// `SIGNOFF-REPAIR.4.2.3` — a heartbeat whose pre-check passed cannot revive a
+/// lease that lapsed before its write landed.
+///
+/// The window is between two STATEMENTS on the pool: `verify_fencing` reads
+/// `lease_expires_at` and refuses an expired lease, then `renew_lease` writes a
+/// fresh expiry with a `WHERE` that names the node, the epoch and the
+/// certificate — and never the expiry. The `.2.2` rule (fold the condition into
+/// the write) was applied to the epoch, and `.4.1.3` applied it to the
+/// credential; the expiry was the one the pre-check still owned alone.
+///
+/// ⚠️ **The pause is artificial; the ordering is not.** The lease row is held by
+/// a control transaction, so the renewal's `UPDATE` blocks on the row lock while
+/// its pre-check has already passed — and `blocked_on` proves it is waiting
+/// there rather than assuming it (`authority_transaction`'s rule). The lapse is
+/// then a real committed expiry, not a mocked clock. In production the same gap
+/// is scheduler latency, a saturated pool or a slow statement, and the lease only
+/// has to reach its own expiry inside it.
+///
+/// 🔴 Why a revived lease matters: presence, delivery and every fenced write are
+/// functions of the lease clock. `lease_expiry_flips_presence_offline_and_refuses_channel_traffic`
+/// asserts a heartbeat cannot resurrect an expired lease — but only in the
+/// SEQUENTIAL order, where `verify_fencing` refuses first. That control passes
+/// against the unrepaired code, which is precisely why the race shipped.
+#[tokio::test]
+async fn a_heartbeat_cannot_revive_a_lease_that_lapsed_mid_request() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000404".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+            nonce: String::new(),
+        })
+        .await
+        .expect("handshake");
+
+    let presence = async || -> Value {
+        client
+            .get(format!(
+                "{}/v1/nodes/presence?node_id={node_id}",
+                server.base_url()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    };
+    assert_eq!(
+        presence().await["online"],
+        json!(true),
+        "the handshake made the node online"
+    );
+
+    // Hold the lease row. `verify_fencing` is a plain `SELECT` and walks
+    // straight through it; `renew_lease`'s `UPDATE` cannot.
+    let mut hold = pool
+        .acquire()
+        .await
+        .expect("a connection for the lease row");
+    sqlx::query("BEGIN")
+        .execute(&mut *hold)
+        .await
+        .expect("begin");
+    sqlx::query("SELECT 1 FROM node_leases WHERE node_id = $1 FOR UPDATE")
+        .bind(&node_id)
+        .execute(&mut *hold)
+        .await
+        .expect("hold the lease row");
+
+    let beating = {
+        let channel = channel.clone();
+        tokio::spawn(async move { channel.heartbeat().await })
+    };
+    let stalled = blocked_on(&pool, "UPDATE node_leases").await;
+    println!(
+        "  .4.2.3 renewal stalled at its UPDATE, pid {stalled} — its pre-check has already passed"
+    );
+
+    // The lease reaches its expiry INSIDE that gap, and commits. The holder
+    // already owns the row, so this write is free and the renewal stays queued.
+    sqlx::query(
+        "UPDATE node_leases SET lease_expires_at = now() - interval '1 second' WHERE node_id = $1",
+    )
+    .bind(&node_id)
+    .execute(&mut *hold)
+    .await
+    .expect("the lease lapses while the renewal waits");
+    sqlx::query("COMMIT")
+        .execute(&mut *hold)
+        .await
+        .expect("release the lease row");
+    drop(hold);
+
+    let renewed = beating.await.expect("the heartbeat task");
+    println!(
+        "  .4.2.3 renewal resumed after the lease lapsed: {}",
+        match &renewed {
+            Ok(r) => format!("ALLOWED, new expiry {}", r.lease_expires_at),
+            Err(e) => format!("refused ({e})"),
+        }
+    );
+
+    // THE INVARIANT: the lease was dead at the instant of the write, so the
+    // write must not have happened. Asserted on the STORE as well as the wire —
+    // a refusal that still moved the row would be the same defect with a
+    // politer answer.
+    let (live,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_leases WHERE node_id = $1 AND lease_expires_at > now()",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the live leases");
+    assert_eq!(
+        live, 0,
+        "a lease that lapsed before the write landed must stay lapsed — a \
+         revived one restores presence, delivery and every fenced write"
+    );
+    let refusal = renewed
+        .expect_err("and the node is told so, rather than handed an expiry it does not hold");
+    // ⚠️ The WORDING is its own claim, and its own repair part. The UPDATE now
+    // has three ways to match no row — fenced epoch, withdrawn credential,
+    // lapsed lease — and `classify_renewal_refusal` has to name the third or a
+    // node whose lease simply ran out is told its token was refused. The same
+    // request in the SEQUENTIAL order (below) is answered by `verify_fencing`
+    // with "expired"; the raced order must not answer differently, or the wire
+    // contract is a function of the timing.
+    assert!(
+        refusal.to_string().contains("expired"),
+        "the refusal must name the LAPSE, not blame a token that is perfectly \
+         good — the sequential order answers `expired` and the raced order must \
+         agree; got: {refusal}"
+    );
+    assert_eq!(
+        presence().await["online"],
+        json!(false),
+        "presence stays offline: the write and the published fact read the same \
+         column on the same clock"
+    );
+
+    // The node's remedy is unchanged and still works: only a fresh key-proof
+    // restores the channel.
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+            nonce: String::new(),
+        })
+        .await
+        .expect("re-handshake");
+    assert_eq!(presence().await["online"], json!(true));
+    channel.heartbeat().await.expect("the fresh lease renews");
+
+    server.crash();
+}

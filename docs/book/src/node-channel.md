@@ -82,6 +82,18 @@ secret, but the CHANNEL identity is the certificate:
    channel. A heartbeat racing a newer handshake loses: its renewal carries the
    epoch it verified, and the write matches no row once the rotation lands
    (`.2.2` — the last writer is never a stale one).
+
+   **Every one of those conditions is part of the WRITE, not a check before
+   it** (`.4.2.3`). The renewal is a single `UPDATE` whose `WHERE` names the
+   node, the epoch it verified, the lease's own expiry and the certificate's
+   liveness, so nothing can change between the decision and the effect. A
+   heartbeat whose admission check passed and whose write was then delayed —
+   behind a lock, a saturated pool, or simply the scheduler — cannot revive a
+   lease that reached its expiry in the meantime: the node is told the lease
+   expired, and the answer is the same one it gets when the expiry is already
+   past on arrival. The lease clock the renewal reads is the **database's**, the
+   same clock `online` is derived from below, so a renewal can never succeed for
+   a node the presence surface simultaneously reports `offline`.
 6. **A renewal also requires a usable certificate.** Extending a lease is the
    one channel operation that asks whether the node is still trusted: if the
    node holds no workload certificate that is both unrevoked and unexpired, the
@@ -439,6 +451,14 @@ grant locally.
   placement, re-evaluated before any non-LAN exposure).
 - The lease TTL is the dev constant 60 s; heartbeats are process-local (no
   persisted heartbeat state on the node side).
+- `lease_expires_at` is **written** from the server process clock (`now + TTL`)
+  and **read** from the database clock — by `online` above, and since `.4.2.3`
+  by the renewal itself. On one host those agree; nothing requires them to, so
+  the lease's real duration carries whatever process↔database skew exists. The
+  60 s is therefore a nominal TTL, not a guaranteed one. This predates `.4.2.3`
+  and is unchanged by it — that repair made the renewal agree with the presence
+  surface rather than introducing a new comparison — and it is tracked
+  separately.
 - Two live processes for one node id fence each other by design (each
   handshake rotates the token) — that is the fencing contract making staleness
   visible, not a bug.

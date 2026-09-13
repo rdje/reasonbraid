@@ -1033,6 +1033,31 @@ impl NodeChannelState {
     /// The certificate's liveness is read on the DATABASE clock — the column is
     /// written by the database, and `verify_cert_proof` asks the same question
     /// the same way (`.3.4.3`'s lesson about comparing instants across clocks).
+    ///
+    /// # A renewal also requires a lease that is still LIVE (`SIGNOFF-REPAIR.4.2.3`)
+    ///
+    /// The same rule, applied to the last condition the pre-check still owned
+    /// alone. `verify_fencing` refuses an expired lease, but it is a separate
+    /// statement: a renewal whose check passed and whose write then waited —
+    /// behind a row lock, a saturated pool or the scheduler — used to write a
+    /// fresh expiry onto a lease that had already lapsed, reviving a node whose
+    /// session was over. Reproduced by driving the real route with the write
+    /// stalled at the lease row, which is `.4.2.1`'s shape applied to the gap
+    /// between these two statements.
+    ///
+    /// The expiry is compared on the DATABASE clock, like the certificate
+    /// predicate beside it and unlike `verify_fencing`'s `Utc::now()`. That is
+    /// deliberate on two counts: one statement must not mix two clocks, and
+    /// `node_presence` — the product's published answer to "is this node
+    /// online?" — is `lease_expires_at > now()` on the same clock. The write and
+    /// the fact the operator reads now agree by construction, so a renewal can
+    /// never succeed for a node the API simultaneously reports `offline`.
+    ///
+    /// ⚠️ The column is still WRITTEN from the process clock (`now + LEASE_TTL`,
+    /// here and in `issue_lease`), so the lease's real duration carries the
+    /// process↔database skew. That is pre-existing and unchanged by this repair
+    /// — `.3.4.3.1.2`'s census already recorded `lease_expires_at` as a
+    /// process-clock instant — and it is owned by `.4.2.3.1`, not fixed here.
     pub async fn renew_lease(
         &self,
         node_id: &str,
@@ -1043,6 +1068,7 @@ impl NodeChannelState {
         let renewed: Option<DateTime<Utc>> = sqlx::query_scalar(
             "UPDATE node_leases SET lease_expires_at = $3, last_seen_at = $2 \
              WHERE node_id = $1 AND lease_epoch = $4 \
+               AND node_leases.lease_expires_at > now() \
                AND EXISTS (SELECT 1 FROM node_certificates c \
                            WHERE c.node_id = node_leases.node_id \
                              AND c.revoked_at IS NULL AND c.expires_at > now()) \
@@ -1066,18 +1092,39 @@ impl NodeChannelState {
     /// (re-handshaking will not help). A read that itself fails falls back to
     /// the fencing wording: the refusal is right either way, only the
     /// explanation would be a guess.
-    async fn classify_renewal_refusal(&self, node_id: &str) -> ApiError {
-        let usable: Result<bool, sqlx::Error> = sqlx::query_scalar(
+    ///
+    /// `.4.2.3` added a THIRD way to match no row — a lease that lapsed before
+    /// the write landed — and it is named here so the wire answer does not
+    /// depend on the timing: a heartbeat arriving just after the expiry is
+    /// refused by `verify_fencing` as `lease_expired`, and one whose write is
+    /// overtaken by the expiry must say the same thing rather than blame a
+    /// token that is perfectly good. Both facts are read in ONE statement, so
+    /// the two halves of the answer come from one snapshot.
+    ///
+    /// Precedence follows the node's remedy, most severe first: a withdrawn
+    /// credential cannot be fixed by re-handshaking, while a lapsed lease and a
+    /// fenced epoch both can.
+    async fn classify_renewal_refusal(&self, node_id: &str, lease_epoch: i64) -> ApiError {
+        let facts: Result<(bool, bool), sqlx::Error> = sqlx::query_as(
             "SELECT EXISTS (SELECT 1 FROM node_certificates \
-             WHERE node_id = $1 AND revoked_at IS NULL AND expires_at > now())",
+                            WHERE node_id = $1 AND revoked_at IS NULL \
+                              AND expires_at > now()) AS usable, \
+                    EXISTS (SELECT 1 FROM node_leases \
+                            WHERE node_id = $1 AND lease_epoch = $2 \
+                              AND lease_expires_at <= now()) AS lapsed",
         )
         .bind(node_id)
+        .bind(lease_epoch)
         .fetch_one(&self.pool)
         .await;
-        match usable {
-            Ok(false) => {
+        match facts {
+            Ok((false, _)) => {
                 crate::telemetry::metrics().incr("lease_refusals");
                 ApiError::credential_refused()
+            }
+            Ok((true, true)) => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                ApiError::lease_expired()
             }
             _ => ApiError::fencing_refused(),
         }
@@ -1607,6 +1654,13 @@ async fn poll(
 /// renewal whose epoch was superseded between the check and the write matches
 /// no row — the stale heartbeat loses the race (`.2.2`), it never extends the
 /// session that fenced it.
+///
+/// Every one of those three conditions rides the WRITE, not this pre-check
+/// (`.2.2` for the epoch, `.4.1.3` for the credential, `.4.2.3` for the
+/// expiry). `verify_fencing` still runs first, because it is what tells a node
+/// a fenced token from a lapsed lease before any write is attempted — but it is
+/// an admission check, and nothing downstream depends on it having been true a
+/// statement later.
 async fn heartbeat(
     State(state): State<Arc<NodeChannelState>>,
     Json(req): Json<HeartbeatRequest>,
@@ -1620,7 +1674,11 @@ async fn heartbeat(
         .await
     {
         Ok(expiry) => expiry,
-        Err(_) => return Err(state.classify_renewal_refusal(&req.node_id).await),
+        Err(_) => {
+            return Err(state
+                .classify_renewal_refusal(&req.node_id, req.lease_epoch)
+                .await)
+        }
     };
     Ok(Json(HeartbeatResponse {
         channel_version: CHANNEL_VERSION,

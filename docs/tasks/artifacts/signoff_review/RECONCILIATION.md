@@ -141,12 +141,51 @@ Tranche 1 is 7 records and 26 clauses: `R-31-32-1`, `R-47-2`, `R-53-4`, `R-63-1`
 Tranche 2a is 6 records and 27 clauses: `R-31-32-2`, `R-53-2`, `R-53-3`,
 `R-58-2`, `R-78-2` and `R-80-82-1`.
 
+Tranche 2b is 4 records and 19 clauses: `R-6-27-2`, `R-40-42-2`, `R-51-2` and
+`R-52-2`.
+
 ⛔ Every row carries a state from the closed set above, so a reader may take the
 absence of a record as "not yet classified" and nothing else. `R-55-2` sits at
 `census-2.md:222` between two of them in record order and is deliberately NOT
 here: its narrowest candidate is named by 22 records, which puts it in
 `SIGNOFF-REPAIR.11.9.1.5`.
 
-⚠️ Tranche 2's other eight records are NOT here either: they are
-`SIGNOFF-REPAIR.11.9.1.1.2` and `.11.9.1.1.3`, split off on the sizing
-measurement in `SIGNOFF-REPAIR.11.9.1.1`.
+⚠️ Tranche 2's last four records are NOT here yet: they are
+`SIGNOFF-REPAIR.11.9.1.1.3`, split off on the sizing measurement in
+`SIGNOFF-REPAIR.11.9.1.1`.
+
+⚠️ The `declined` row is no longer hypothetical, and the caption above it says
+which one it is. A reader scanning for defects should skip it; a reader auditing
+the classification should read its Evidence cell first, because a wrong
+`declined` is the only state that removes a clause from view.
+
+## Tranche 2b — the four records whose narrowest candidate leaf is `SIGNOFF-REPAIR.10.2`
+
+Owner: `SIGNOFF-REPAIR.11.9.1.1.2`. Ranking: `SIGNOFF-REPAIR.11.9.1`. Split and
+its sizing: `SIGNOFF-REPAIR.11.9.1.1`.
+
+⭐ This tranche carries the ledger's **first `declined` row**. The state was put
+in the vocabulary before any instance existed, precisely because a deliberate
+rejection is invisible to every search; `R-51-2` clause 4 is the first one.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-6-27-2` | 1 | owned | `SIGNOFF-REPAIR.10.2` | goal line "require actual coverage of every invariant". Live: `certify` takes ONE scenario with ONE `Trigger`; two checks always run and the `match trigger` adds exactly one more — **3 of the 6** — while the conformance box it then writes reads "the six §19.4 invariants passed" |
+| `R-6-27-2` | 2 | attach | `SIGNOFF-REPAIR.10.2` | the `Trigger::Complete` arm's terminal search matches `Completed { .. } \| FailedKnown { .. }` under a comment reading "a terminal `Completed` event exists", so a run that FAILED satisfies the completion invariant. That is a WRONG invariant, not missing coverage, and the goal line reaches only the latter |
+| `R-6-27-2` | 3 | attach | `SIGNOFF-REPAIR.10.2` | `drain` is `while let Some(event) = handle.next().await` with no ceiling on count, bytes or time, and every trigger arm but one calls it. Nothing in the goal line bounds the harness's own resource use |
+| `R-6-27-2` | 4 | owned | `SIGNOFF-REPAIR.10.2` | goal line "Bind adapter identity/capabilities/artifact to signed complete scenario evidence", which is the audit the clause asks for |
+| `R-40-42-2` | 1 | handled | `SIGNOFF-REPAIR.4.2.7` | ⭐ handled AND the source carries its own disposition: `ca.rs` now holds an encoder-only module whose doc records that `from_hex` indexed `&s[i..i + 2]`, had no caller, and was REMOVED rather than repaired because a dead well-named decoder beside a private correct one is what the next caller reaches for |
+| `R-40-42-2` | 2 | unowned | `SIGNOFF-REPAIR.4.1.6` | `issue_node_leaf` calls `CertificateParams::new(vec![host_claim]).expect("leaf params")`, and `host_claim` is an unvalidated caller string carried from token issuance into enrolment. MEASURED against rcgen 0.14: of eight inputs only the non-ASCII one returns `Err` — so the panic is reachable and the accept set is far wider than "valid DNS name" |
+| `R-40-42-2` | 3 | attach | `SIGNOFF-REPAIR.4.1` | the CA's `not_after` is `now + 365 days`, `ensure_server_ca` loads the stored row without checking that window, and no renewal path exists. The goal line's "bound renewal after revocation" is about the LEAF; nothing in it reaches the CA's own lifetime |
+| `R-40-42-2` | 4 | attach | `SIGNOFF-REPAIR.4.1` | a leaf is `now + LEAF_TTL_SECS` (600 s) with no comparison against the issuer's `not_after`, so a leaf issued in the CA's last ten minutes is signed to outlive its issuer. Same absence in the goal line as clause 3, recorded separately because a CA-renewal repair does not by itself add the comparison |
+| `R-51-2` | 1 | attach | `SIGNOFF-REPAIR.5.1` | `VisibilityPolicy`'s doc says "every named field defaults to `self_only`"; its `Default` sets five fields `Network`, six `Tenant` and three `SelfOnly`, and `#[serde(default)]` means an omitted policy takes that. A submission that names no policy is published far wider than the doc promises. "Prevent private-feature leaks" points a census at `field_visible`, not at `Default` |
+| `R-51-2` | 2 | attach | `SIGNOFF-REPAIR.5.1` | `field_visible`'s doc example is reversed: it says "a `tenant` field is visible to the tenant, the network, and the public", while `visibility_rank(field) <= reader_rank` makes a `Tenant` field visible to a Tenant reader and NOT to Network. The implementation is correct and the sentence beside it is not, which is the case a code census passes over |
+| `R-51-2` | 3 | attach | `SIGNOFF-REPAIR.5.1` | `filter_profile` emits exactly the fourteen fields the policy names and then returns, so `incarnation_id` and `visibility` are absent for every reader — including `ReaderClass::Full`, whose own doc says "the role itself (or its accountable owner): the full profile" |
+| `R-51-2` | 4 | declined | `SIGNOFF-REPAIR.5.1` | ⭐ **the ledger's first `declined` row.** The MECHANISM is real — a visible `Option::None` serialises to `null` rather than being omitted, since `AgentProfile` carries no `skip_serializing_if`. The CONTRADICTION the clause asserts is not: the only wire-absence claim in this module is `filter_profile`'s "a hidden field is ABSENT, never nulled", which speaks of HIDDEN fields and stays true — absent means hidden, `null` means visible-and-unset, and the two remain distinguishable. Declined as stated; the owner is named so a reader can reopen it against a different claim |
+| `R-52-2` | 1 | attach | `SIGNOFF-REPAIR.9.2` | the commit is built with `signature(gix::date::Time::now_local_or_utc())` as author AND committer, so its object id depends on the wall-clock second. The staging step's own doc calls it "the idempotent re-write: the same content commits identically", which is false one second later. No part of the goal line reaches commit determinism |
+| `R-52-2` | 2 | owned | `SIGNOFF-REPAIR.9.2` | goal line "make CAS retries recoverable". ⭐ The SAME finding as `R-80-82-1` clause 5, reached by a second record — the third such pair in this activity |
+| `R-52-2` | 3 | owned | `SIGNOFF-REPAIR.9.2` | goal line "reconcile DB/Git failure points". Live: the handler builds the manifest inline and nothing durable records the commit id before the Git write, so the reconciler's `expected_immutable` has no stored source for a STAGED publication — which is exactly the §15.8 row it needs it for |
+| `R-52-2` | 4 | owned | `SIGNOFF-REPAIR.9.2` | goal line "reconcile DB/Git failure points". Live: `publish` writes all three refs and only then does `mark_effective` touch the database, so a crash between them leaves Git effective and the row staged |
+| `R-52-2` | 5 | owned | `SIGNOFF-REPAIR.9.2` | goal line "bind projection and manifest to approved policy". Live: the fetch-back re-reads `manifest_blob` alone — the bundle blob, the tree and the commit are never read back |
+| `R-52-2` | 6 | owned | `SIGNOFF-REPAIR.9.2` | goal line "bind projection and manifest to approved policy". Live: `expected` is `digest_sha256_hex(manifest.as_bytes())` — the same string the call was just handed — so the check proves the object store round-tripped and compares no DECLARED digest at all |
+| `R-52-2` | 7 | owned | `SIGNOFF-REPAIR.9.2` | goal line "constrain filesystem targets". Live: the module doc says "into the LOCAL bare repository" and `gix::open(repo_path)` accepts a non-bare one |

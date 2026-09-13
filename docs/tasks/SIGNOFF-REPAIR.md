@@ -1581,6 +1581,9 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Opened: `pending`.
 - Sources / owned surfaces: `node_enrollment, node_channel, ca, rb-node, migrations`.
 - Goal and acceptance: Bind token use to current issuing authority; recover expired unused token issuance; enforce host/node/incarnation tenant lineage; make replacement lineage and lease effects consistent; serialize rotation/revocation and bound renewal after revocation.
+- ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-40-42-2` clauses 3–4, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ The goal line's "bound renewal after revocation" is about the LEAF certificate; neither clause below is about the leaf, and this leaf is already SPLIT, which is the expensive case the `attach` state exists to prevent.
+  1. **The CA has a one-year lifetime, no renewal path, and no check at load.** `ca.rs` signs the CA with `not_after = now + 365 days`; `ensure_server_ca` loads the stored row and returns it without comparing that window to now; nothing renews or rotates it. A deployment that has run a year issues leaves from an expired issuer, and the first symptom is every node failing verification at once.
+  2. **A leaf may be signed to outlive its issuer.** `issue_node_leaf` sets `not_after = now + LEAF_TTL_SECS` (600 s) and never compares it with `ca.not_after`, so a leaf issued in the CA's last ten minutes outlives the certificate that signed it. ⛔ Clause 1's repair does not by itself add this comparison, which is why the two are separate rows.
 - Status: `active`; censused and split below, because the goal line names five mechanisms and a single leaf would have to qualify all of them at once — the shape `.3.4`, `.3.5` and `.3.3.4.10`/`.11` each took.
 - **census of the five, run BEFORE the children were drawn, asking each question of the code that answers it.** One is a confirmed defect, one is REFUTED, and three stay open and are named as unmeasured rather than assumed.
   - 🔴 **(2) "Recover expired unused token issuance" — CONFIRMED, and it is a hard lockout.** `migrations/0018`'s partial index is `ON node_enrollment_tokens (node_id) WHERE used_at IS NULL`. An EXPIRED token still has `used_at IS NULL`, so it remains in the index; issuance uses `ON CONFLICT DO NOTHING RETURNING` and reports `AlreadyOutstanding`. The census for a sweep found none: `git grep -n "node_enrollment_tokens" -- crates migrations`, with the test table-cleanup lists classified out, leaves exactly THREE production touches — the issuance INSERT (`node_admin.rs`), the redemption `SELECT … FOR UPDATE` and the `SET used_at` (`node_channel.rs`). Nothing ever clears an expired row. So a token that expires unused **permanently prevents issuing another token for that node id**, and the operator's normal path to enroll that node is closed for good. Owned by `.4.1.1`.
@@ -1740,6 +1743,32 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - **A durable correction fell out of this leaf and is recorded at `.4.1.3` above**: that leaf's stated reason for rejecting `node_presence.suspended` describes migration 0012, which migration **0017 supersedes**. The rejection stands on a different and narrower fact — 0017 never asks whether the surviving certificate is in date. `MEMORY.md` and `CHANGELOG.md` carried the stale reading and are corrected.
 - LOCKSTEP: `docs/book/src/node-channel.md` — the "two honest limits" paragraph named this exact open decision, and one of the two is now closed.
 - Commit: `REASONBRAID-REPAIR-0148 (leaf SIGNOFF-REPAIR.4.1.3.1): a revoked node is handed no new work, and the work is withheld`.
+
+#### SIGNOFF-REPAIR.4.1.6 — A host claim the certificate library refuses panics the enrolment handler
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.9.1.1.2`'s clause reconciliation of `census-1.md:215` (`R-40-42-2`), which no leaf had cited.
+- The finding, at the source: `crates/reasonbraid-server/src/ca.rs`'s `issue_node_leaf` builds its SAN with `CertificateParams::new(vec![host_claim.to_string()]).expect("leaf params")`. `host_claim` is a caller string that reaches it unvalidated: `POST /v1/nodes/enroll-token` binds `req.host_claim` straight into `node_enrollment_tokens` (`authority/node_admin.rs` — its own comment says "the caller's own values, bound as parameters"), the redemption requires only that the two spellings MATCH, and `node_channel.rs` then hands `req.host_claim` to `issue_node_leaf`. Nothing between the wire and the `expect` checks its shape.
+- ⭐ **`issue_node_leaf` returns `IssuedLeaf`, not a `Result`** — so the panic is the only way it can report a bad host claim, and the enrolment handler's typed `ApiError` path can never be used for it. That is `SIGNOFF-REPAIR.4.2.7`'s rule ("a signature is a promise the body must keep", promoted to `docs/knowledge/`) on a second surface.
+- **MEASURED, and it inverts the obvious reading of the record.** A probe called `CertificateParams::new` directly under rcgen 0.14.10 with eight host claims. Exactly ONE returned `Err`:
+
+  | Host claim | rcgen 0.14.10 |
+  | --- | --- |
+  | `host-a` | accepted |
+  | `not a dns name!!` | accepted |
+  | `""` (empty) | accepted |
+  | 300 × `a` | accepted |
+  | `héllo` | **Err** |
+  | `*.example.com` | accepted |
+  | `1.2.3.4` | accepted |
+  | `..` | accepted |
+
+- ⚠️ **Eight inputs are a SAMPLE, not the boundary.** What is measured is that the panic is reachable and that non-ASCII reaches it; "only non-ASCII panics" is NOT established and must not be written down as though it were. This leaf owns finding the actual accept set.
+- ⭐ **And the measurement found a second thing, larger than the panic and not what the record was pointing at**: rcgen accepts an empty string, a 300-character label, a wildcard and `..` as a DNS SAN, so the certificate's host binding is effectively unvalidated. A node's SAN is the host identity a verifier reads. ⛔ Do not fold this into the panic repair without deciding it separately — tightening the accept set is a compatibility change for any deployment that already enrolled such a claim.
+- ⚠️ **Blast radius NOT yet measured, and it must be before anything is published about it.** Source facts only: the workspace declares no `[profile]` section, so the default `panic = "unwind"` applies, and no `CatchPanicLayer` appears in the server. From those two the expectation is that the request's task unwinds, the connection drops without a typed response, and the open enrolment transaction rolls back — the PROCESS surviving. ⛔ That is an inference, not a reproduction. Reproduce it before claiming either "the server dies" or "only the request dies"; `SIGNOFF-REPAIR.4.2.7`'s cost was the whole node process, and assuming this one is smaller because it looks smaller is the error that leaf warns about.
+- ROUTING EVIDENCE: the clause sits in a record whose narrowest candidate is `.10.2` (certification), but the mechanism is node enrolment and certificate issuance, which is `.4.1`'s surface — hence a child here rather than a leaf under `.10.2`. What was measured is the call chain from the wire to the `expect` and rcgen's answer to eight inputs; no HTTP request was driven, so the end-to-end reachability is source-confirmed and not runtime-confirmed.
+- Goal and acceptance: reproduce the panic through the supported enrolment path; give `issue_node_leaf` a signature that can report a bad host claim, and the handler a typed refusal for it; decide and record whether the accept set is narrowed, with the compatibility question answered explicitly rather than by default. ⚠️ Falsify against the ACTUAL mechanism — a control that panics for some other reason proves nothing.
+- ⛔ Do NOT widen to the other `expect` sites in `ca.rs` (key generation, self-signing, stored-key parsing). Those take server-controlled inputs; this clause is about the one that takes a caller's.
+- Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.4.1.5 — What a replacement enrollment leaves behind
 
@@ -2060,6 +2089,10 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Status: `pending`.
 - Sources / owned surfaces: `profiles, matching, presence, directory endpoints`.
 - Goal and acceptance: Apply visibility per candidate tenant, use equally qualified foreign fixtures, prevent private-feature leaks, serialize updates/attestations, validate ranking bounds and missing dependence facts, and enforce capability expiry/concurrency.
+- ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-51-2`, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ All three live in `profiles.rs` OUTSIDE `field_visible`/`filter_profile`'s enforcement logic, which is where "prevent private-feature leaks" sends a reader.
+  1. **The visibility DEFAULT contradicts its own doc, in the wide direction** (clause 1). `VisibilityPolicy`'s doc comment says "every named field defaults to `self_only`"; its `Default` impl sets five fields `Network`, six `Tenant` and only three `SelfOnly`. With `#[serde(default)]` on the struct, a profile submitted without a visibility policy takes that. ⛔ The enforcement is correct and the DEFAULT is the exposure.
+  2. **`field_visible`'s doc example is reversed** (clause 2). It says "a `tenant` field is visible to the tenant, the network, and the public"; `visibility_rank(field) <= reader_rank` makes a `Tenant` field visible to a Tenant reader and NOT to Network. ⚠️ The implementation is right — this is a false sentence sitting beside correct code, which is exactly what a source census reads past.
+  3. **`ReaderClass::Full` does not get the full profile** (clause 3). `filter_profile` emits the fourteen policy-named fields and returns, so `incarnation_id` and `visibility` reach nobody, while `Full`'s own doc promises "the role itself (or its accountable owner): the full profile". The incarnation link is the §10.1 lineage a role's owner most needs.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -2370,6 +2403,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Status: `pending`.
 - Sources / owned surfaces: `proposals/decisions/approvals, projections, publisher, reconciler`.
 - Goal and acceptance: Serialize stage transitions, bind projection and manifest to approved policy, constrain filesystem targets, reject fabricated effective Git IDs, make CAS retries recoverable, verify both immutable and effective refs, and reconcile DB/Git failure points.
+- ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-52-2` clause 1, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The publication commit is not deterministic, and the source says the opposite.** `publisher::publish` builds its commit with `signature(gix::date::Time::now_local_or_utc())` as both author and committer, so the object id is a function of the wall-clock second. The staging step's own documentation calls it "the idempotent re-write: the same content commits identically", and re-publishing byte-identical content one second later writes a different commit. ⚠️ Every other clause of this leaf is about ORDERING and BINDING; this one is about the identity of the object those clauses are trying to bind to, so a repair that settles the ordering on a non-deterministic id settles nothing. ⛔ ROADMAP §5's "same inputs/toolchain yield byte-identical outputs" is a stated quality attribute, so the decision — fix the timestamp, or withdraw the idempotence claim — belongs to this leaf rather than to a comment.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -2394,6 +2428,9 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Status: `pending`.
 - Sources / owned surfaces: `adapter certification, verification ladder, release-manifest tool`.
 - Goal and acceptance: Bind adapter identity/capabilities/artifact to signed complete scenario evidence; require actual coverage of every invariant; secure key creation and manifest paths/hex parsing; implement load-side checks and document unsupported SDK execution.
+- ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-6-27-2`, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). Read them with the goal line at this leaf's census, or its split drops them.
+  1. **The completion invariant accepts a FAILURE as completion** (clause 2). `certification.rs`'s `Trigger::Complete` arm searches for `Completed { .. } | FailedKnown { .. }` under a comment that reads "a terminal `Completed` event exists", so an adapter whose attempt failed satisfies it. ⚠️ That is a WRONG invariant, not a missing one — "require actual coverage of every invariant" is about the count, and counting this one as covered is precisely the error.
+  2. **The harness's own `drain` is unbounded** (clause 3): `while let Some(event) = handle.next().await`, with no ceiling on event count, bytes or wall time, called by every trigger arm but one. A certification run is the place a hostile or broken adapter is first pointed at this code, and nothing in the leaf's goal line bounds what it may consume.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -2832,7 +2869,28 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - The four records: `R-6-27-2`, `R-40-42-2`, `R-51-2`, `R-52-2` (1,405 characters of body — the smallest of the three, because the boundary is the ranking's and not a size target).
 - ⚠️ The surfaces are `adapter/certification.rs`, `ca.rs`, the profile visibility ladder and `publisher::publish`. `R-52-2` overlaps `R-80-82-1` clause 5, already `owned` by `.9.2` in this tranche's own first child — read that row before classifying it, or the same finding gets two owners.
 - Acceptance: as `.11.9.1.1`.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0173. **19 clauses**: 1 `handled`, 8 `owned`, 8 `attach`, 1 `unowned`, 1 `declined`.
+
+⭐ **The ledger's FIRST `declined` row, and it is the state that was written into the vocabulary before any instance existed.** `R-51-2` clause 4 says an optional `None` becomes `null` "contrary to wire-absent claims". The mechanism is real — `AgentProfile` carries no `skip_serializing_if`, so a VISIBLE unset option serialises as `null`. The contradiction is not: the only wire-absence claim in that module is `filter_profile`'s "a hidden field is ABSENT, never nulled", which speaks of HIDDEN fields and stays true, because absent means hidden and `null` means visible-and-unset — two states a reader can still tell apart. ⛔ Declined **as stated**, with the owner still named so a reader can reopen it against a different claim, and with the mechanism recorded rather than dropped. ⚠️ `declined` is the only state that removes a clause from view, so its Evidence cell is the one an auditor should read first.
+
+🔴 **The `unowned` clause is a panic reachable from an unvalidated caller string, and the measurement inverted the record's own framing.** `issue_node_leaf` builds its SAN with `CertificateParams::new(vec![host_claim]).expect("leaf params")`, and `host_claim` travels from `POST /v1/nodes/enroll-token` into the token row unvalidated, is required only to MATCH at redemption, and is then handed to that `expect`. The record called it "expect panic if malformed host" — so a probe asked rcgen 0.14.10 what it actually considers malformed, and of eight inputs **exactly one returned `Err`**: the non-ASCII one. `""`, 300 characters, `not a dns name!!`, `*.example.com` and `..` were all ACCEPTED.
+
+- ⭐ **So the measurement found two things and they point opposite ways.** The panic is real and reachable, and narrower than "malformed" suggests. And the accept set is far WIDER than a DNS name — the certificate's host binding is effectively unvalidated, which is the larger finding and is not what the record was pointing at.
+- ⚠️ Eight inputs are a SAMPLE, not the boundary, and the new leaf says so in those words: "only non-ASCII panics" is NOT established. New owner `SIGNOFF-REPAIR.4.1.6`, opened with the blast radius explicitly NOT claimed — the workspace declares no `[profile]` and the server carries no `CatchPanicLayer`, both measured, but what that yields at runtime is an inference and `.4.2.7`'s cost was a whole process.
+
+⭐ **The third two-records-one-finding pair, and this time the leaf was warned about it in advance.** `R-52-2` clause 2 and `R-80-82-1` clause 5 are both the publisher's stranded CAS retry. `.11.9.1.1`'s split note told this child to read the tranche-2a row before classifying, and it did — one owner, two rows, no duplicate leaf.
+
+🔴 **Eight `attach` rows, written into their leaves in this same commit** (`RECONCILIATION.md`'s rule, added one commit ago after tranche 1 recorded three and attached none). ⭐ Every one is the same shape: a clause that lives in the surface the leaf owns but OUTSIDE the part its goal line points at.
+
+- `.10.2` ← the completion invariant accepts a `FailedKnown` terminal as completion (a WRONG invariant, where the goal line reaches only missing ones), and `drain` is unbounded in the harness a hostile adapter meets first.
+- `.4.1` ← the CA is signed for 365 days with no renewal and no check at load, and a leaf is never compared against its issuer's `not_after`, so one issued in the CA's last ten minutes outlives it. The goal line's "bound renewal" is about the LEAF.
+- `.5.1` ← `VisibilityPolicy`'s doc says every field defaults to `self_only` while its `Default` publishes eleven of fourteen to the tenant or network; `field_visible`'s doc example is reversed beside correct code; and `ReaderClass::Full`, documented as "the full profile", never receives `incarnation_id` or `visibility`. ⛔ All three sit outside `field_visible`/`filter_profile`'s enforcement logic, which is where "prevent private-feature leaks" sends a reader.
+- `.9.2` ← the publication commit embeds the wall clock, so its object id changes every second, while the staging step's own doc calls it "the idempotent re-write: the same content commits identically". ⚠️ Every other clause of `.9.2` is about ordering and binding; this one is about the identity of the object they bind to.
+
+⭐ **And one `handled` row is worth naming because the SOURCE carries its own disposition.** `R-40-42-2` clause 1 is the `ca.rs` `from_hex` panic, closed by `.4.2.7` — which did not repair it but DELETED it, and left a doc comment in the module explaining that it had no caller, that making it private turned that into a compiler error, and that a dead well-named decoder beside a private correct one is what the next caller reaches for. A reconciliation that only searched the tree would have called this uncited; the file answers it.
+
+- **NO REGRESSION** — no product code, test or script changed. The rcgen probe was a temporary untracked test file, run once and removed; its measurement is the table in `.4.1.6`.
+- Commit: `REASONBRAID-REPAIR-0173 (leaf SIGNOFF-REPAIR.11.9.1.1.2): reconcile tranche 2b, and measure what the certificate library actually refuses`.
 
 ###### SIGNOFF-REPAIR.11.9.1.1.3 — Tranche 2c: the four records whose narrowest candidate is `SIGNOFF-REPAIR.11.2`
 
@@ -3888,7 +3946,8 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.9.1.1.2` | `pending` | tranche 2b, four records on the certification/CA/profile/publisher surfaces — `.11.9.1.1` sized tranche 2 at 2.8x tranche 1 and split it on that measurement; `.1.1.1` executed the first six |
+| 1 | `SIGNOFF-REPAIR.11.9.1.1.3` | `pending` | tranche 2c, the last four records of tranche 2 — the scripts/verification surfaces, and the largest child at 3,006 characters on one record (`R-90-1` alone is 1,383) |
+| 1b | `SIGNOFF-REPAIR.4.1.6` | `pending` | an unvalidated caller host claim reaches `CertificateParams::new(...).expect(...)`; rcgen refused 1 of 8 probed inputs, so the panic is reachable AND the accept set is far wider than a DNS name |
 | 2b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -3957,6 +4016,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.11.9.1`: `REASONBRAID-REPAIR-0168 (leaf SIGNOFF-REPAIR.11.9.1): census the 114, correct the ranking the leaf proposed, and build the ledger`.
 - `SIGNOFF-REPAIR.11.9.1.1` / `.11.9.1.1.1`: `REASONBRAID-REPAIR-0171 (leaf SIGNOFF-REPAIR.11.9.1.1): size tranche 2, split it on the measurement, and reconcile its first six records`.
 - `SIGNOFF-REPAIR.11.10`: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
+- `SIGNOFF-REPAIR.11.9.1.1.2`: `REASONBRAID-REPAIR-0173 (leaf SIGNOFF-REPAIR.11.9.1.1.2): reconcile tranche 2b, and measure what the certificate library actually refuses`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.
@@ -4914,6 +4974,16 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh node_inbox node_channel node_work node_replacement` rc=0 with **4 suites, 55 tests, zero failures** (8 + 37 + 8 + 2), `pg-tests: stopped and removed target/pg-tests/run-q0vsfh8k`. ⭐ FALSIFIED in the strongest form available: the control was written BEFORE the repair, so the pre-repair run IS the neutralized build — nothing reverted, nothing reconstructed, and therefore none of the "broke a different thing" hazard `.4.2.8` was burned by. The control asserts the absence twice (empty row list AND no victim command id anywhere in the response text) and carries a positive arm — the OWNING administrator still reads both rows — so a fix that merely emptied the result fails it.
 - [x] **NO REGRESSION** — `cargo clippy -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0 in 3m23s; `cargo fmt --all -- --check` rc=0; `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks; `mdbook build` and both book checks rc=0. The three sibling suites are the regression evidence: they drive the inbox state this predicate now filters and are unchanged.
 - [x] **LOCKSTEP** — `crates/reasonbraid-server/src/api.rs`, `crates/reasonbraid-server/tests/node_inbox.rs`, task tree (`.3.5.3` closed, commit log, frontier), `docs/tasks/TASK_TREE.md`, `docs/book/src/node-channel.md`, `docs/book/src/cli.md`, `docs/book/src/authority.md`, `docs/book/src/qualification-review.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⛔ No gate registered and no migration: the column existed; only the query changed.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.9.1.1.2
+
+- [x] **REPRODUCE / ISSUE** — the four records of tranche 2b (`R-6-27-2`, `R-40-42-2`, `R-51-2`, `R-52-2`), 1,405 characters, re-derivable with `--rank`. Each clause read against the source rather than matched to a goal line. One clause could not be settled by reading — `R-40-42-2`'s "expect panic if malformed host" — because what rcgen calls malformed is not knowable from the call site.
+- [x] **ROOT CAUSE (WHY + WHERE)** — a probe called `CertificateParams::new` under rcgen 0.14.10 with eight host claims: `""`, `not a dns name!!`, 300 x `a`, `*.example.com`, `1.2.3.4`, `..` and `host-a` were ACCEPTED; only `héllo` returned `Err`. 🔴 So the panic is reachable — `host_claim` is bound unvalidated from `POST /v1/nodes/enroll-token` into the token row, matched at redemption and handed to `.expect("leaf params")` — and the accept set is far WIDER than a DNS name, which is the larger finding and not the one the record named. ⚠️ Eight inputs are a SAMPLE; "only non-ASCII panics" is NOT established and the new leaf says so.
+- [x] **FIX** — 19 ledger rows: 1 `handled`, 8 `owned`, 8 `attach`, 1 `unowned`, **1 `declined`** — the ledger's first, `R-51-2` clause 4, whose mechanism is real (a visible `Option::None` serialises to `null`) while the contradiction it asserts is not (the module's only wire-absence claim speaks of HIDDEN fields and stays true). New owner `SIGNOFF-REPAIR.4.1.6` for the `unowned` clause. All 8 `attach` clauses written into `.4.1`, `.5.1`, `.9.2` and `.10.2` in THIS commit, per the rule `RECONCILIATION.md` gained one commit ago.
+- [x] **ADDRESSED (verified)** — `python3 -B scripts/census_record_reconciliation.py --classified` -> `ledger clause rows: 72 / handled 17 / owned 35 / attach 15 / unowned 4 / declined 1 / none 0`, and `ledger: every row names a real record, a state in the closed set and a real owner`, rc=0. `--self-test` -> `42 controls pass`, rc=0. The uncited count fell 106 -> 102 as the four records' new owners named them. ⭐ The third two-records-one-finding pair was caught in advance: `R-52-2` clause 2 and `R-80-82-1` clause 5 are the same stranded CAS retry, and the split note told this child to read the tranche-2a row before classifying.
+- [x] **NO REGRESSION** — no product code, test or script changed; the rcgen probe was a temporary untracked test file, run once and removed (`git status` shows no residue). `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks, rc=0. `mdbook build docs/book` rc=0. `git diff --check` rc=0.
+- [x] **LOCKSTEP** — `docs/tasks/SIGNOFF-REPAIR.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `docs/TASK_TREE.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
+- promotion: declined. The rule exercised — when reading the source cannot settle a clause, measure the library rather than infer from the call site — is `TOOLBOX.md`'s tools-first doctrine applied, not a new statement.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.9.1.1 and .11.9.1.1.1
 

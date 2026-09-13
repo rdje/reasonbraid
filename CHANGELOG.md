@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-14 — The first declined clause, and asking the library instead of the call site (`SIGNOFF-REPAIR.11.9.1.1.2`)
+
+- Tranche 2b classified 19 clauses over four records: 1 handled, 8 owned, 8 attach, 1 unowned, and the ledger's **first `declined`** row. That state was put in the vocabulary before any instance existed, because a deliberate rejection is invisible to every search; the first one is a clause whose mechanism is real and whose asserted contradiction is not.
+- One clause could not be settled by reading — `expect panic if malformed host` — because what the certificate library calls malformed is not knowable from the call site. A probe asked it: of eight host claims, rcgen 0.14.10 refused exactly one, the non-ASCII one. An empty string, 300 characters, `not a dns name!!`, `*.example.com` and `..` were all accepted.
+- That produced two findings pointing opposite ways. The panic is real and reachable — the host claim travels unvalidated from token issuance to enrolment and is handed to an `expect` — and it is much narrower than "malformed" suggests. And the accept set is far wider than a DNS name, so the certificate's host binding is effectively unvalidated, which is the larger finding and not the one the record named. New owner `.4.1.6`, opened with the sample explicitly labelled a sample and the blast radius explicitly not claimed.
+- All eight `attach` clauses were written into the leaves that own them in this same commit, under the rule added one commit ago: a completion invariant that accepts a failure as completion and an unbounded drain (`.10.2`); a certificate authority signed for a year with no renewal and a leaf never compared against its issuer (`.4.1`); a visibility default that publishes eleven of fourteen fields while its documentation promises self-only, a reversed doc example beside correct code, and a "full profile" reader that never receives two fields (`.5.1`); and a publication commit whose object id changes every second while its own documentation calls it idempotent (`.9.2`).
+- Validation: `--classified` 72 clause rows, ledger clean; `--self-test` 42 controls; uncited 106 → 102; 18 doctrines green; `mdbook build` rc=0. No product code, test or script changed — the probe was an untracked file, run once and removed.
+
 ## 2026-09-14 — A failed read is not a verdict about the site (`SIGNOFF-REPAIR.11.10`)
 
 - `regions::route` converted any `sqlx::Error` into a routing refusal. Reproduced with the probe declaring its own premise first: `dev-local` is a seeded declaration, and with the pool closed the routing answered ``the region `dev-local` is undeclared — the routing refuses``. A statement about the site's configuration, produced by a failure that touched no configuration.

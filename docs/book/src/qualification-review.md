@@ -118,8 +118,25 @@ concluded from it.
 The same reconciliation found a defect in its own instrument. Three clauses
 classified as `attach` — the state meaning *a leaf owns this surface but its text
 does not mention the clause, so its next census will drop it* — had been recorded
-and never attached. All seven are now written into the leaves that own them, and
-the ledger requires the attachment in the commit that classifies it.
+and never attached. All are now written into the leaves that own them, and the
+ledger requires the attachment in the commit that classifies it.
+
+The tranche's second part read four more records and added another five
+limitations, plus the first clause the ledger has *declined*:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| An unvalidated host claim reaches the certificate library's `expect` | A host claim travels from token issuance to enrolment without a shape check and is then handed to a call that panics on what the library refuses. Measured against rcgen 0.14.10, only one of eight probed claims was refused — so the panic is reachable, and the accepted set is far wider than a DNS name, leaving the certificate's host binding effectively unvalidated. | `.4.1.6` |
+| One certification run asserts three of the six named invariants | The conformance box it writes reads "the six §19.4 invariants passed". Its completion invariant also accepts a failed terminal as completion. | `.10.2` |
+| The certificate authority is signed for a year, with no renewal and no check at load | A deployment that has run a year issues leaves from an expired issuer, and a leaf is never compared against its issuer's expiry. | `.4.1` |
+| The visibility policy's documented default and its actual default disagree | The documentation says every profile field defaults to self-only; the default publishes eleven of fourteen to the tenant or the network, and a profile that names no policy takes it. | `.5.1` |
+| A publication commit embeds the wall clock | Re-publishing byte-identical content a second later writes a different commit, while the step's own documentation calls it an idempotent re-write. | `.9.2` |
+
+The declined clause is recorded rather than dropped: an unset optional profile
+field is serialised as `null` rather than omitted, which is true, but the
+documented promise it was said to contradict concerns *hidden* fields and still
+holds — hidden means absent, unset means `null`, and a reader can still tell them
+apart.
 
 ### Proposed semantic introspection
 

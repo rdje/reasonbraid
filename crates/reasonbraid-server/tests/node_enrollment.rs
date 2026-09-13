@@ -171,6 +171,58 @@ async fn issue_token(
     token
 }
 
+/// Issue a token and wait for the PRODUCT's own expiry to pass it
+/// (`SIGNOFF-REPAIR.4.1.2.1`).
+///
+/// This suite used to mint a lapsed token by asking for `ttl_seconds: -1`, for a
+/// good reason `.4.1.1` wrote down: the lapse must happen through the product's
+/// own expiry rather than through a test-side write to the very row under
+/// measurement. That reason is preserved here and the mechanism is not, because
+/// the route now refuses a lifetime outside `1..=86_400` — a token born expired
+/// is an operator error that can never be redeemed, and silently accepting one
+/// is how `.4.1.1`'s lockout was reachable in the first place.
+///
+/// So the token is issued with the shortest LEGAL lifetime and the test waits
+/// for the database's own clock to pass it. No write touches the row, and the
+/// resulting state is byte-for-byte the state production reaches: `expires_at`
+/// in the past, `used_at IS NULL`, `superseded_at IS NULL`.
+async fn issue_and_let_it_lapse(
+    client: &reqwest::Client,
+    base: &str,
+    pool: &PgPool,
+    principal: &str,
+    tenant: &str,
+    node_id: &str,
+    host_claim: &str,
+) -> Value {
+    let token = issue_token(
+        client,
+        base,
+        principal,
+        tenant,
+        node_id,
+        host_claim,
+        Some(1),
+    )
+    .await;
+    let token_id = token["token_id"].as_str().expect("a token id").to_owned();
+    for _ in 0..60 {
+        let lapsed: bool = sqlx::query_scalar(
+            "SELECT now() > expires_at + interval '500 milliseconds' \
+             FROM node_enrollment_tokens WHERE token_id = $1",
+        )
+        .bind(&token_id)
+        .fetch_one(pool)
+        .await
+        .expect("read the token's own expiry");
+        if lapsed {
+            return token;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("the token never lapsed — its expiry is not moving as the route reports it");
+}
+
 async fn enroll_node(
     client: &reqwest::Client,
     base: &str,
@@ -520,17 +572,18 @@ async fn refusals_are_audited_and_effect_free() {
         .unwrap()
         .contains("already exists"));
 
-    // Expired token (a negative ttl expires immediately) — a distinct node id:
-    // one UNUSED token per node is the 0008 invariant.
+    // Expired token — a distinct node id: one UNUSED token per node is the 0008
+    // invariant. The lapse is the product's own expiry, waited for rather than
+    // written (`SIGNOFF-REPAIR.4.1.2.1`).
     let expired_node = "nod_00000000-0000-7000-8000-000000000103";
-    let expired = issue_token(
+    let expired = issue_and_let_it_lapse(
         &client,
         &base,
+        &pool,
         &alice,
         &tenant,
         expired_node,
         "host-b",
-        Some(-1),
     )
     .await;
     let (status, expired_use) = enroll_node(
@@ -952,10 +1005,11 @@ async fn a_lapsed_token_is_superseded_rather_than_locking_the_node_out() {
     let node_id = "nod_00000000-0000-7000-8000-0000000001a6";
     let reissue = json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-a" });
 
-    // A negative ttl expires the token immediately — the idiom this suite
-    // already uses, so the lapse happens through the product's own expiry rather
-    // than through a test-side write to the very row under measurement.
-    let first = issue_token(&client, &base, &alice, &tenant, node_id, "host-a", Some(-1)).await;
+    // The lapse happens through the product's own expiry rather than through a
+    // test-side write to the very row under measurement — `.4.1.1`'s reason,
+    // kept, with `.4.1.2.1`'s legal minimum lifetime as the mechanism.
+    let first =
+        issue_and_let_it_lapse(&client, &base, &pool, &alice, &tenant, node_id, "host-a").await;
     let lapsed_id = first["token_id"].as_str().unwrap().to_owned();
     let lapsed_nonce = first["nonce"].as_str().unwrap().to_owned();
 
@@ -1046,16 +1100,7 @@ async fn a_foreign_tenants_issuance_never_supersedes_a_row_it_does_not_own() {
     let node_id = "nod_00000000-0000-7000-8000-0000000001a7";
 
     // Alice's tenant lapses a token for the node.
-    issue_token(
-        &client,
-        &base,
-        &alice,
-        &tenant_a,
-        node_id,
-        "host-a",
-        Some(-1),
-    )
-    .await;
+    issue_and_let_it_lapse(&client, &base, &pool, &alice, &tenant_a, node_id, "host-a").await;
 
     // Bob, fully admitted in his OWN tenant, issues for the same node identity.
     // Whatever he is answered, he must not have touched Alice's row.
@@ -1441,5 +1486,143 @@ async fn a_node_id_enrolled_by_one_tenant_refuses_the_next_tenant_cleanly() {
     assert_eq!(
         still_owned_by, tenant_a,
         "the node must not change tenants when its certificates are revoked"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.1.2.1` — the token's lifetime is validated before anything
+/// computes with it.
+///
+/// REPRODUCED FIRST, against the live route, and the measurement was three
+/// different failures rather than the one that was suspected:
+///
+/// | sent | before the repair |
+/// | --- | --- |
+/// | `i64::MAX`, UNAUTHORIZED caller | **panic**, connection dropped — `TimeDelta::seconds` is documented to panic above `i64::MAX / 1_000`, and it ran before any authorization |
+/// | `1_000_000_000_000_000`, admin | **panic** inside the tenant's authority guard — `at + ttl` leaves chrono's date range |
+/// | a century, admin | `200`, `expires_at: 2126-09-14` — a bearer credential outliving everyone who could reason about it |
+///
+/// ⚠️ The unauthorized arm is the sharpest of the three: `resolve_principal`
+/// only parses the header, so the arithmetic sat in front of the gate. The two
+/// middling values answered `403` correctly, which is exactly why reading the
+/// source was not enough — only the extreme value crossed the panic threshold,
+/// and only from outside the guard.
+#[tokio::test]
+async fn the_token_lifetime_is_validated_before_anything_computes_with_it() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, admin) = bootstrap_admin(&client, &base).await;
+    // A syntactically valid principal that holds NO grant in this tenant.
+    let stranger = "hpr_00000000-0000-7000-8000-0000000004f1";
+
+    // `node_id` differs per case so a refusal is never explained by the
+    // one-live-token index instead of by the lifetime.
+    let ask = |principal: String, node: String, ttl: Option<i64>| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            let mut body = json!({
+                "tenant_id": tenant,
+                "node_id": node,
+                "host_claim": "ttl-host",
+            });
+            if let Some(t) = ttl {
+                body["ttl_seconds"] = json!(t);
+            }
+            let r = client
+                .post(format!("{base}/v1/nodes/enroll-tokens"))
+                .header(PRINCIPAL_HEADER, principal)
+                .json(&body)
+                .send()
+                .await
+                .expect(
+                    "the route must ANSWER — a dropped connection is the panic \
+                     this leaf repaired",
+                );
+            let status = r.status().as_u16();
+            let body: Value = r.json().await.expect("a JSON body");
+            (status, body)
+        }
+    };
+
+    // THE REPAIR. Each of these dropped the connection or issued a century.
+    for (label, ttl) in [
+        ("i64::MAX", i64::MAX),
+        ("i64::MIN", i64::MIN),
+        ("past chrono's date range", 1_000_000_000_000_000_i64),
+        ("a century", 3_155_760_000_i64),
+        ("one second past the cap", 86_401_i64),
+        ("zero", 0_i64),
+        ("negative", -1_i64),
+    ] {
+        let (status, body) = ask(
+            admin.clone(),
+            "nod_00000000-0000-7000-8000-0000000004a1".to_string(),
+            Some(ttl),
+        )
+        .await;
+        assert_eq!(
+            status, 400,
+            "{label}: a lifetime outside the range is a typed refusal — got \
+             {status}: {body}"
+        );
+        assert_eq!(body["code"], json!("invalid_command"), "{label}: {body}");
+    }
+
+    // The unauthorized arm: the panic sat in FRONT of the guard, so this is the
+    // case that made it reachable without any authority at all.
+    let (status, body) = ask(
+        stranger.to_string(),
+        "nod_00000000-0000-7000-8000-0000000004a2".to_string(),
+        Some(i64::MAX),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an unauthorized caller gets a typed refusal, not a dropped \
+         connection: {body}"
+    );
+
+    // ⛔ And the refusal must not have swallowed the authorization one: with a
+    // LEGAL lifetime the stranger is still refused by the guard, unchanged.
+    let (status, body) = ask(
+        stranger.to_string(),
+        "nod_00000000-0000-7000-8000-0000000004a3".to_string(),
+        Some(60),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a legal lifetime still reaches the authority guard: {body}"
+    );
+
+    // The boundary is inclusive, and the default still issues — the repair
+    // bounds the range, it does not narrow ordinary use.
+    let (status, body) = ask(
+        admin.clone(),
+        "nod_00000000-0000-7000-8000-0000000004a4".to_string(),
+        Some(86_400),
+    )
+    .await;
+    assert_eq!(status, 200, "the cap itself is issuable: {body}");
+    let (status, body) = ask(
+        admin.clone(),
+        "nod_00000000-0000-7000-8000-0000000004a5".to_string(),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "the default lifetime is unchanged: {body}");
+    let expires: chrono::DateTime<chrono::Utc> = body["expires_at"]
+        .as_str()
+        .expect("an expiry")
+        .parse()
+        .expect("an RFC3339 expiry");
+    let ahead = (expires - chrono::Utc::now()).num_seconds();
+    assert!(
+        (3_000..=3_600).contains(&ahead),
+        "the default is still an hour, not a re-tuned value: {ahead}s"
     );
 }

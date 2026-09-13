@@ -1577,6 +1577,29 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Acceptance: the decision names which semantics the dev profile takes and why; if it changes, a control shows a token issued under since-revoked authority refused, and the ordinary enrollment controls pass unchanged; if it does not, the book states plainly that a token outlives its issuer's authority.
 - Verification / commit: pending.
 
+###### SIGNOFF-REPAIR.4.1.2.1 — The token's lifetime is caller-chosen, and the premise of `.4.1.2` rests on it
+
+- Opened: `pending` by `.4.1.2`, while measuring the bound that leaf's decision argues from.
+- Why it is here rather than assumed: `.4.1.2` bounds its own argument with "a token names one node id and one host claim, is single-use, and **expires**". The expiry is the whole bound. Read at the source, `issue_node_enroll_token` passes `chrono::Duration::seconds(req.ttl_seconds.unwrap_or(3600))` — the caller's own `i64`, with **no validation, no clamp and no upper bound** — so the bound `.4.1.2` reasons from is one the product does not enforce. A decision whose premise is false is not a decision.
+- ⛔ Two suspected consequences, NEITHER written up as a defect until a control drives the live route (the `.3.4.3.1.3` prohibition). First, an unbounded lifetime: a bearer credential can be issued to last for years, which is exactly the exposure `.4.1.2` says is bounded. Second, a suspected PANIC: `TimeDelta::seconds` is documented to panic above `i64::MAX / 1_000`, and `DateTime + TimeDelta` is documented to panic when the result leaves chrono's date range — and the arithmetic runs in the handler, BEFORE the authority guard, since `resolve_principal` only parses the header syntactically.
+- ⚠️ Reachability is the question that decides severity (`MEMORY.md`: rank by REACHABILITY, not resemblance). Measure whether an unauthorized caller reaches the arithmetic, and what the wire actually does — a 500, a typed refusal, or a dropped connection are three different findings.
+- Acceptance: the behaviour is reproduced against the live route rather than read; whatever is found is stated with its bound; if a repair follows, the refusal is typed and audited like the route's other pre-admission refusal, and the ordinary issuance controls pass unchanged.
+- Status: `done`; REPAIR-0149.
+- **REPRODUCED against the live route before one line changed, and the measurement is THREE different failures where one was suspected.** `what_the_issuance_route_does_with_the_lifetime_it_is_handed` drove `POST /v1/nodes/enroll-tokens` and printed what each value answered:
+  - 🔴 `ttl_seconds: i64::MAX`, from an **UNAUTHORIZED** principal -> **panic** at `chrono-0.4.45/src/lib.rs:717` (the `expect` inside `TimeDelta::seconds`), the connection dropped, **NO RESPONSE**. `resolve_principal` only parses the header, and the arithmetic is evaluated at the handler's call site, so this is reachable by anyone who can spell an `hpr_…` uuid — **in front of the authority guard**, not behind it.
+  - 🔴 `ttl_seconds: 1_000_000_000_000_000`, from an **authorized admin** -> **panic** at `node_admin.rs:168`, which is `at + ttl` leaving chrono's date range — **inside the tenant's authority guard**, holding it.
+  - 🔴 `ttl_seconds: 3_155_760_000` (a century), authorized -> **`200`**, `expires_at: 2126-09-14`. A single-use bearer credential issued to outlive everyone who could reason about it.
+- ⭐ **The source reading predicted the wrong one.** Two of the three values (a century, 1e15) answered a correct `403` from the unauthorized caller, because the addition happens inside the guard after the admission and the denial returns first. Only the extreme magnitude crossed `TimeDelta::seconds`'s own threshold, and only from outside. Reading the code said "could panic"; only driving it said WHICH value, from WHICH caller, at WHICH of two sites.
+- Fix, one placement answering all three: the lifetime is range-checked in `issue_node_enroll_token` beside the existing node-id shape check — **before anything computes with it** — and refused as a typed `400 invalid_command`. `DEFAULT_TOKEN_TTL_SECONDS` (3,600) and `MAX_TOKEN_TTL_SECONDS` (86,400) are named constants rather than literals, because `.4.1.2` reasons about the token's exposure from this bound and a bound worth reasoning about is worth naming.
+- The cap is a judgement and is recorded as one: **one day**, so an operator can prepare a node ahead of a working day and no further; past that the answer is to issue a fresh token, not to hold a long-lived one. ⚠️ It NARROWS a wire contract — any `i64` was accepted before — and that is deliberate, stated in the book, and reversible by changing one constant.
+- ⛔ **`ttl_seconds <= 0` is refused too, and that is not incidental.** A token born expired can never be redeemed, and before `.4.1.1` it was exactly the row that locked its node out for good. Accepting an operator error silently is how that lockout was reachable.
+- ⚠️ **Three existing controls used `ttl_seconds: -1` to mint a lapsed token and now fail — the fixture is COMPLETED, not deleted, and `.4.1.1`'s stated reason is preserved.** That leaf wrote down why it used the route rather than a test-side `UPDATE`: the lapse must happen through the product's own expiry, not through a write to the very row under measurement. `issue_and_let_it_lapse` keeps that property exactly — it issues at the shortest LEGAL lifetime and waits on the DATABASE's own clock to pass it, writing nothing. The resulting row state is identical to production's (`expires_at` past, `used_at IS NULL`, `superseded_at IS NULL`), so what those controls prove is unchanged.
+- FALSIFY, and the two arms DISCRIMINATE: the whole range check disabled -> the control fails on a **dropped connection** (`hyper::Error(IncompleteMessage)`), exactly the panic, 15 passed / 1 failed; the panic range still guarded but the CAP widened to 10^10 s -> the control fails instead on `got 200: {"expires_at":"2126-09-14…"}`, no connection drop, 15 passed / 1 failed. So the cap is load-bearing independently of the panic guard, and each failure names which defect it is.
+- NO REGRESSION: `node_enrollment` 16/16, `node_replacement` 1/1, `node_result_ordering` 6/6, `node_work` 8/8, `profiles`, `cli_end_to_end`; clippy `-D warnings` over `reasonbraid-server` and `reasonbraid-cli` rc=0.
+- 🔎 **PROVENANCE, and it is a finding in its own right: the original source census already had this, and the split dropped it.** `docs/tasks/artifacts/signoff_review/census-1.md` record `R-31-32-5` routes to `.4.1` and reads, verbatim: *"api.rs issue_node_enroll_token says authorized human but no human restriction; **ttl_seconds arbitrary i64 Duration::seconds plus now could panic/overflow**; old expired unconsumed unique token blocks reissue"*. Of its three clauses, `.4.1`'s census carried exactly **one** into the split (`.4.1.1`). The other two were never opened — because `.4.1` censused its own GOAL LINE's five mechanisms, rigorously, and never re-read the record that pointed at it. The remaining clause ("no human restriction") is NOT repaired here and is owned by `.11.9` below, with this instance as its evidence.
+- LOCKSTEP: `docs/book/src/authority.md` — the issuance section's refusal table and a new subsection stating the range, both bounds' reasons, and that the contract is deliberately narrowed.
+- Commit: `REASONBRAID-REPAIR-0149 (leaf SIGNOFF-REPAIR.4.1.2.1): the token's lifetime is validated before anything computes with it`.
+
 #### SIGNOFF-REPAIR.4.1.3 — What revocation does to a live lease
 
 - Opened: `pending` by `.4.1`'s census, which found this unmeasured rather than broken.
@@ -2189,6 +2212,18 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - promotion: promoted → `TOOLBOX.md`, "Measure the population before proposing the rule over it". That is the durable home for a method with no gate, per the leaf's own three-way choice.
 - ⚠️ Two further methods are promoted alongside it, and the reason is a correction: closing this leaf I removed them from `MEMORY.md` to fit the cap, on the stated grounds that they were already durable — and they were not, they were only in their own leaves. `.11.8`'s "check an instrument's first number against one obtained a DIFFERENT way" (its self-test shared the bug's blind spot, so the disagreeing second number was the only thing that caught a 42 % undercount) and `.11.4.3.1.7.2`'s "when correctness depends on enumerating what to exclude, make the failure cheap, not the list perfect" now sit in `TOOLBOX.md`. Their leaves had DECLINED promotion; that judgement is superseded here rather than left to contradict a demotion that assumed it.
 - Commit: `REASONBRAID-REPAIR-0145 (leaf SIGNOFF-REPAIR.11.6): the census partly refuted its own pattern, and the statement says so`.
+
+### SIGNOFF-REPAIR.11.9 — A source-census record routed to a leaf is not reconciled against that leaf's split
+
+- Opened: `pending`; found by `.4.1.2.1`, which independently rediscovered a defect the original source census had already written down.
+- The finding, with its instance and the exact numbers: `docs/tasks/artifacts/signoff_review/census-1.md`'s record `R-31-32-5` routes to `SIGNOFF-REPAIR.4.1` and names **three** things about `issue_node_enroll_token`. `.4.1` then censused and split into three children — and carried **one** of the three clauses across. The second (`ttl_seconds` "could panic/overflow") was rediscovered nine leaves later by measuring a neighbouring leaf's premise; the third ("says authorized human but no human restriction") is still unopened today.
+- ⭐ **The mechanism, and it is not carelessness.** `.4.1`'s census is a good one: it asks five questions, answers each from the code, confirms one, refutes one and names three as unmeasured. But the five come from the leaf's own **goal line** — the author's framing — and the routed record is the **reviewer's** framing. Nothing made the split re-read the record that pointed at the leaf, so a rigorous census of the wrong list looks exactly like a rigorous census.
+- ROUTING EVIDENCE: the finding is about the census artifacts and the trees' use of them, not about node enrollment, which is why it is here and not under `.4.1`. What was measured is one record's clause-by-clause fate through one split; whether it generalizes is this leaf's first question, and it must be measured before any rule is proposed (`.11.4.5.2`'s lesson, and `.11.6`'s measured finding that the obvious rule is revised by its census about half the time).
+- census owed, before anything is proposed: the five `census-*.md` parts hold **932 lines** across **53** review records; how many records name a repair candidate leaf, how many of those leaves have since been censused and split, and for how many of those is every clause of the record accounted for in a child. "Accounted for" must include *deliberately declined* — a clause a leaf considered and rejected is covered, and a rule that cannot tell the difference would flag every sound decision.
+- ⛔ Do NOT open the two known-unrouted clauses as work under this leaf; this leaf owns the RECONCILIATION, and what it finds gets its own owners. The `ttl_seconds` clause is closed by `.4.1.2.1`; the "no human restriction" clause is unopened and is this leaf's first routing output.
+- ⚠️ A gate is a candidate, not a foregone conclusion: `check_census_reconciliation.sh` could assert that a record naming a split leaf is cited by that leaf or a child. Whether that is sound depends entirely on the census above — the population may be small enough that a measured backlog is the better instrument, which is how `.11.8` ended.
+- Acceptance: the census is run and recorded with the command that reproduces it; every unaccounted clause gains an owner or a recorded decline; and the decision names whether a gate holds the two in step.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
@@ -3113,14 +3148,15 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.1.2` | `pending` | redemption does not re-check the issuer's authority — a DECISION about bearer semantics, not a presumed defect |
+| 1 | `SIGNOFF-REPAIR.4.1.2` | `pending` | redemption does not re-check the issuer's authority — a DECISION about bearer semantics, not a presumed defect; its premise is now enforced (`.4.1.2.1` bounded the lifetime the argument rests on) |
 | 2 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
 | 3 | `SIGNOFF-REPAIR.11.7` | `pending` | the published reason-code registry and the codes the product emits have drifted — 10 emitted codes are unregistered, 11 registry codes are never emitted |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
-| 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
+| 6 | `SIGNOFF-REPAIR.11.9` | `pending` | a source-census record routed to a leaf is not reconciled against that leaf's split — one record's three clauses became one child, and a second clause is still unopened |
+| 7 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **35 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **36 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3149,6 +3185,7 @@ The director resolved the visibility question: public repository visibility is i
 
 - `SIGNOFF-REPAIR.4.1.3`: `REASONBRAID-REPAIR-0147 (leaf SIGNOFF-REPAIR.4.1.3): a revoked node renewed its own lease for ever`.
 - `SIGNOFF-REPAIR.4.1.3.1`: `REASONBRAID-REPAIR-0148 (leaf SIGNOFF-REPAIR.4.1.3.1): a revoked node is handed no new work, and the work is withheld`.
+- `SIGNOFF-REPAIR.4.1.2.1`: `REASONBRAID-REPAIR-0149 (leaf SIGNOFF-REPAIR.4.1.2.1): the token's lifetime is validated before anything computes with it`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

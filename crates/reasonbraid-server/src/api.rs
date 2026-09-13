@@ -1102,10 +1102,27 @@ pub struct IssueNodeTokenRequest {
     pub tenant_id: TenantId,
     pub node_id: String,
     pub host_claim: String,
-    /// Default 3600 s (the dev profile; a consumed token has no second use anyway).
+    /// Default [`DEFAULT_TOKEN_TTL_SECONDS`]; validated against
+    /// [`MAX_TOKEN_TTL_SECONDS`] before anything computes with it
+    /// (`SIGNOFF-REPAIR.4.1.2.1`).
     #[serde(default)]
     pub ttl_seconds: Option<i64>,
 }
+
+/// The dev profile's default token lifetime: one hour. A consumed token has no
+/// second use, so the lifetime bounds only the window in which an unredeemed
+/// token is a live bearer credential.
+pub const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3_600;
+
+/// The longest lifetime the route will issue (`SIGNOFF-REPAIR.4.1.2.1`).
+///
+/// One day, chosen so an operator can prepare a node ahead of a working day and
+/// no further: beyond that the answer is to issue a fresh token, not to hold a
+/// long-lived one. The value matters because the token is a BEARER credential —
+/// `.4.1.2` reasons about its exposure from the premise that it expires, and an
+/// unvalidated `i64` made that premise vacuous. Measured before the cap existed,
+/// an admin asking for a century received `expires_at: 2126-09-14` and a `200`.
+pub const MAX_TOKEN_TTL_SECONDS: i64 = 86_400;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IssueNodeTokenResponse {
@@ -1147,13 +1164,38 @@ async fn issue_node_enroll_token(
         )));
     }
 
+    // `SIGNOFF-REPAIR.4.1.2.1`: the lifetime arrives as a caller-chosen `i64` and
+    // is validated HERE, beside the node-id shape check and before anything
+    // computes with it. Three measured behaviours made that placement the fix
+    // rather than a tidy-up, and they are different failures:
+    //
+    //  * `i64::MAX` PANICKED the handler — `TimeDelta::seconds` is documented to
+    //    panic above `i64::MAX / 1_000` — and it did so BEFORE any authorization,
+    //    because `resolve_principal` only parses the header. The caller reached
+    //    past the gate and dropped the connection.
+    //  * `1_000_000_000_000_000` panicked later and worse: `at + ttl` leaves
+    //    chrono's date range, and that addition runs INSIDE the tenant's
+    //    authority guard.
+    //  * A century was simply ISSUED, `200`, expiring in 2126 — a bearer
+    //    credential outliving everyone who could reason about it.
+    //
+    // A range check answers all three the same way: a typed refusal, before the
+    // arithmetic, so no value the caller chooses is ever handed to it.
+    let ttl_seconds = req.ttl_seconds.unwrap_or(DEFAULT_TOKEN_TTL_SECONDS);
+    if !(1..=MAX_TOKEN_TTL_SECONDS).contains(&ttl_seconds) {
+        return Err(ControlApiError::invalid_command(format!(
+            "ttl_seconds must be between 1 and {MAX_TOKEN_TTL_SECONDS} \
+             (one day); got {ttl_seconds}"
+        )));
+    }
+
     let issue = authority::issue_enrollment_token_in_one_transaction(
         &state.pool,
         &principal,
         req.tenant_id,
         &req.node_id,
         &req.host_claim,
-        chrono::Duration::seconds(req.ttl_seconds.unwrap_or(3600)),
+        chrono::Duration::seconds(ttl_seconds),
     )
     .await?;
     let receipt = issue.record_id;

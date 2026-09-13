@@ -612,13 +612,37 @@ blocked every concurrent thread command in the tenant.
 | An earlier token for that node **expired** unused | 200: the lapsed token is stamped superseded and a new one is issued. |
 | The caller does not administer the named tenant | 403; no token, and no effect — the admission record already says denied. |
 | `node_id` is not a valid node identity | 400, **before any admission exists** — and therefore with no receipt, because there is no record to name. |
+| `ttl_seconds` is outside `1 … 86 400` | 400 `invalid_command`, **before any admission exists** and before any arithmetic — same shape, same reason. |
 
 `expires_at` is now the transaction's own database time plus the requested TTL
 (3 600 seconds by default), so a token's lifetime runs from the instant the
 decision was made rather than from a process clock read before the guard wait.
 Every answer that reached an admission carries the
-`x-reasonbraid-authorization` receipt; the validation refusal above deliberately
-does not.
+`x-reasonbraid-authorization` receipt; the validation refusals above deliberately
+do not.
+
+#### The lifetime has a range, and the range is enforced first
+
+`ttl_seconds` must be between **1 and 86 400** (one day). A request outside that
+range is refused `400 invalid_command` before anything computes with the value.
+
+The upper bound exists because the token is a **bearer credential**: whoever
+holds it can enroll that one node id from that one host claim, once. Everything
+that makes that exposure acceptable rests on the token expiring soon. One day is
+enough to prepare a node ahead of a working day; past that the answer is to issue
+a fresh token, not to hold a long-lived one.
+
+The lower bound exists because a token issued already-expired can never be
+redeemed, and it is exactly the row that used to lock its node out for good (see
+below). An operator error is refused rather than stored.
+
+⚠️ **This narrows the contract.** The field previously accepted any integer, and
+three behaviours were measured before the bound was added: a century was issued
+without complaint, expiring in 2126; a value past the date range aborted the
+request *while holding the tenant's authority guard*; and `i64::MAX` aborted it
+**before any authorization ran at all**, because the principal header is only
+parsed at that point, not checked. The range check sits beside the `node_id`
+shape check so that no caller-chosen value reaches the arithmetic.
 
 **A token that lapses no longer locks its node out.** The partial unique index
 allows one unused token per node, and an expired token is still unused — so a

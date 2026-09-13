@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-14 — The ledger's own next action was never taken (`SIGNOFF-REPAIR.11.9.1.1`, `.11.9.1.1.1`)
+
+- Tranche 2 of the clause reconciliation was **2.8x** tranche 1 by record text — 14 records, 7,192 characters, ~57 sentence-clauses against 7 / 2,554 / ~19 — so it was **sized before it was attempted** and split three ways on each record's own narrowest candidate, the same measurement that formed the tranche.
+- 🔴 **The finding that matters is about the instrument, not the records.** Tranche 1 classified three clauses `attach` — the state that means *this leaf owns the surface but its text does not mention the clause, so its next census will drop it* — and attached none of them. `SIGNOFF-REPAIR.11.9`'s defect was running inside the ledger built to stop it. All seven `attach` clauses are now written into `.7.1`, `.8.1` and `.11.4`, and the vocabulary requires the attachment **in the commit that classifies it**.
+- ⛔ **A published number is corrected rather than withdrawn.** Eight of the 112 uncited records — the population when this leaf opened; the command now reads 106, because this commit's seven attachments made three leaves name six of them — are named in the task tree, in text that belongs to no leaf — six of them in one historical-dispositions table written by the leaf that did the work. The instrument's rule (a leaf's *own* section) stands; what does not is the conclusion that "114 uncited" meant "114 nobody re-read".
+- Tranche 2a classified **27 clauses of 6 records** against the source: 9 `handled`, 13 `owned`, 4 `attach`, 1 `unowned`. Four are live defects already named by their owning leaf's goal line — the resolver registry's tenant-admin write, the workflow registry's enrolment-only write, the reconciler that never reads the effective channel ref, and the decision close that consults only the caller's unresolved list.
+- New owner `SIGNOFF-REPAIR.11.10`: `regions::route` reports any database error as an undeclared-region verdict. The same record named `pair` and `route`; `pair` was repaired and carries the rule as a comment, `route` was never touched. No production caller today — the store-and-forward lane is the one that would inherit it.
+- Validation: `--classified` -> 53 clause rows, ledger clean; `--self-test` -> 42 controls pass; `check_doctrines.sh` -> all 18 green; `mdbook build` rc=0. Documentation only; no product code, schema, test or script changed.
+
 ## 2026-09-14 — Three claims graded on a challenge, and three corrected (`SIGNOFF-REPAIR.11.2.2.1`)
 
 - The director asked whether I still stood by the day's findings. The claim-verification standard treats that question as the moment a published claim is graded, and its acceptance test is that the author answers **yes in one word, with no keyboard**. I could not, for three of them.

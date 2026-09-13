@@ -93,6 +93,34 @@ tracked, both now owned:
 Neither changes a documented product behaviour today; both are recorded here
 because this chapter is where the manual states what is *not* yet qualified.
 
+Tranche 2 was **2.8 times** tranche 1 by record text, so `SIGNOFF-REPAIR.11.9.1.1`
+split it into three before classifying anything — on the same narrowest-candidate
+measurement that formed the tranche, so each part covers one surface. Its first
+part reconciled six records (27 clauses) whose narrowest candidate is the
+site-registry authority leaf, and it found four further limitations plus one
+correction to the backlog's own headline number:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| `POST /v1/resolvers` admits on tenant administration and writes a site-global registry | Any tenant's administrator can register — or, through the upsert's single-column key, replace — a resolver row, including a built-in pack's declared schemes, egress class, sandbox level and security evidence. The site-operator repair pinned a closed set of six actions that does not include it. | `.7.1` |
+| `POST /v1/workflow-profiles` admits on enrolment alone | Any enrolled principal can register a new version of any profile id, and resolution takes the highest version — so a built-in deliberation profile can be shadowed for the whole site. | `.8.1` |
+| The publication reconciler never reads the effective channel ref | Its `effective` case compares only the immutable publication ref, so the §15.8 row "effective / ref missing or moved → freeze deployment" cannot fire for a moved effective channel. A unit test encodes the gap. | `.9.2` |
+| A decision-family close consults only the caller's own unresolved list | The durable open-challenge count the engine maintains is never read at close, so omitting a challenge closes the thread with a decision outcome. | `.8.1` |
+| `regions::route` reports any database error as an undeclared region | A storage failure is delivered to the caller as a verdict about the site's configuration. No production caller today; the store-and-forward lane is the one that would inherit it. | `.11.10` |
+
+The correction concerns the backlog's headline: **eight** of the uncited records
+*are* named in the task tree, in text that belongs to no leaf — six of them in one
+historical dispositions table written by the leaf that did the work. "114 uncited"
+therefore means "cited by none of their candidate leaves' own sections", not "114
+that nobody re-read". No published figure changes; what changes is what may be
+concluded from it.
+
+The same reconciliation found a defect in its own instrument. Three clauses
+classified as `attach` — the state meaning *a leaf owns this surface but its text
+does not mention the clause, so its next census will drop it* — had been recorded
+and never attached. All seven are now written into the leaves that own them, and
+the ledger requires the attachment in the commit that classifies it.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

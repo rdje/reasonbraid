@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I wrote the warning, then walked into it
+
+- The gate exists because a control searched for a string it contained. I wrote a five-line comment in the new check about exactly that trap, excluded the check's own path from discovery, and asserted the exclusion in the self-test. I thought that was the careful version.
+- 🔴 Then I registered the check — which put the flag's literal text into the enforcer's description line — and discovery found `check_doctrines.sh`, ran it with `--self-test`, and the enforcer ignores unknown arguments and ran every check including mine. Unbounded recursion on the first `make gate`. I killed it at 400 seconds.
+- ⭐ What I take from it is not "be more careful". I *was* careful, in the direction I was looking. The exclusion list was a defence that had to be RIGHT; what it needed was a defence that made being wrong survivable. The fix is an exported guard variable: a nested invocation exits immediately, so any future discovery mistake costs one process instead of a machine. Excluding the enforcer by path is still there, but it is now the belt and not the braces.
+- ⚠️ The general shape, which I would like to remember past this leaf: **when a mechanism's correctness depends on enumerating what to exclude, the enumeration will eventually be wrong — so make the failure mode cheap rather than the enumeration perfect.** I got there only by falling in.
+- ⭐ Measuring the cost before proposing the rule was the other thing that went right, and it was quick: 17 self-tests, 1.01 s, against a 3.15 s gate. Had it been 30 s I would have needed a tiering story or a different answer, and I would have found that out after building the thing rather than before.
+- ⚠️ I made a point of writing "this gate catches nothing today" into the check's own header and the doctrine row. All 17 pass. A gate whose first run is green invites the reading that it proved something, and it did not — it prevents a class, and the only evidence it works is the falsification against the real defect it was built for.
+
 ## 2026-09-13 — I split the fix from the wire question, and I think that was the call
 
 - The metrics surface had three things wrong with it: it admitted under a revoked boundary, it wrote no audit record, and its gate was any `tenant_admin` grant in any tenant. The tempting move was to route it through `authorize_tenant_admin_inspection` and fix all three at once.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The enforcer now runs the self-tests, and caught itself recursing (`SIGNOFF-REPAIR.11.4.3.1.7.2`)
+
+- Every check and census instrument here carries a two-sided `--self-test`, and **nothing ran them**. They were author-run: fired once while the change was written, never again. That is how one of them sat broken from the very commit that added it, unnoticed for dozens more.
+- Measured before proposing the rule, because a gate people route around is a gate that lies: **17 scripts carry a self-test, they cost 1.01 s in total**, and the enforcer costs 3.15 s. Registered, the gate measures **4.27 s over 18 checks** — a real increase of 1.12 s.
+- The check **discovers** the population rather than carrying a list, so a new instrument is covered the day it lands.
+- ⛔ **It catches nothing today**, and its own header says so: all 17 pass. Its value is preventing a control from silently stopping, not finding a present defect. ⚠️ 11 of the 28 check/census scripts have no self-test at all, and this does not reach them.
+- 🔴 **The gate fell into its own trap while being built.** The check warns at length about self-reference — and *registering* it put the flag's literal text into the enforcer's description, so discovery found the **enforcer**, ran it with the flag, and the enforcer (which ignores unknown arguments) ran every check again. Unbounded recursion on the first `make gate`; the command was killed at 400 s. The gate exists because a control searched for a string it contained, and building it I made a discovery match a string it had just written.
+- Defended twice now, the first making the failure impossible rather than unlikely: an exported guard variable makes any nested invocation exit immediately, and the enforcer is excluded by path because it is the runner, not a check. Both are asserted by the self-test, alongside the failing-arm and passing-arm directions.
+- ⭐ Falsified **end to end against the real defect**, not a synthetic one: restoring the original literal probe makes `make gate` print `❌ SELF-TEST`, quote the guard's own failure, and refuse the commit. The gate would have caught the defect that motivated it, on the commit that introduced it.
+- ⛔ Not claimed: it does not assert the 17 self-tests are *good*, only that they still pass. A weak one that passes is invisible to it — judging a control's strength is the separate accepted rule that a control must have failed on the defect it was written for.
+
 ## 2026-09-13 — A revoked boundary left the metrics surface open (`SIGNOFF-REPAIR.3.5.2`)
 
 - 🔴 `GET /v1/admin/metrics` gated on the *grant's* status and never joined the boundary. Revoking a boundary updates only `enrollment_boundaries` — it does not cascade to the grants issued under it — so an administrator whose authority had been withdrawn kept this surface.

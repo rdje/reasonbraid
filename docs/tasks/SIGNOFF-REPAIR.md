@@ -1694,12 +1694,22 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - LOCKSTEP: `docs/book/src/node-channel.md` — the "two honest limits" paragraph named this exact open decision, and one of the two is now closed.
 - Commit: `REASONBRAID-REPAIR-0148 (leaf SIGNOFF-REPAIR.4.1.3.1): a revoked node is handed no new work, and the work is withheld`.
 
+#### SIGNOFF-REPAIR.4.1.5 — What a replacement enrollment leaves behind
+
+- Status: `pending`.
+- Opened by `.4.2`'s clause-level reconciliation, from `census-2.md:68` (R-50-1) — three clauses of that record which `.4.1`'s split did not carry. The record's fourth clause is closed by `.4.1.2`.
+- The reviewer's claims, recorded as claims and NOT as measured defects (the `.3.4.3.1.3` prohibition): (1) a replacement enrollment keeps the old `nodes.host_id` despite a fresh host claim and a response that echoes the new one, so a later rotation reverts the certificate's SAN to the OLD host; (2) the previous incarnation's `valid_to` is never closed, leaving multiple rows that each read as current; (3) a replacement neither revokes nor fences the old lease, so the replaced node's lease persists until its next handshake.
+- 🔴 Why they belong together: all three are the same question — what a replacement is supposed to END — and answering them separately risks three inconsistent answers about one ritual. `node_replacement`'s existing control proves the ritual's happy path; none of these three is what it asserts.
+- ⚠️ Clause (3) interacts with a decision already taken: `.4.1.3.1` deliberately preserves a revoked node's tail so its withheld work reaches its REPLACEMENT. A replacement that fenced the old lease immediately might be repairing this record and breaking that — so read `.4.1.3.1` before choosing, and state which of the two properties wins.
+- Acceptance: each of the three is measured against the live replacement route and stated as confirmed or refuted with its evidence; whatever is repaired keeps `node_replacement`'s ritual and `.4.1.3.1`'s withheld-tail delivery passing unchanged.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.4.2 — Handshake and lease fencing
 
 - Opened: `pending`.
 - Sources / owned surfaces: `node_channel, channel client, certificate/key storage`.
 - Goal and acceptance: Reproduce proof replay and fence races; prevent replay-based private-key recovery; validate current lease atomically for every fenced write; secure and atomically persist keys and rotations; distinguish shipped HTTP proof from TLS capability.
-- Status: `active`; censused and split below, the shape `.3.4`, `.3.5`, `.4.1` and `.3.3.4.10`/`.11` each took.
+- Censused and split below, the shape `.3.4`, `.3.5`, `.4.1` and `.3.3.4.10`/`.11` each took.
 - ⭐ **This census read the ROUTED SOURCE-CENSUS RECORDS as well as the goal line, which is `.11.9`'s lesson applied the day it was written.** `.4.1` censused its goal line rigorously and carried one of three clauses from the record that pointed at it; that is how `.4.1.2.1` came to be rediscovered nine leaves later. The records routing here are `census-1.md:56`, `census-1.md:329`, `census-2.md:28`, `:49`, `:56`, `:70`, `:77`, `:119`, `:210`, `census-3.md:147`, `:154`, `:161`, `census-4.md:7`, `:56`, `:63` — **15 records**. Several route here only incidentally (the outbox, publications and policy clauses belong to `.4.4`/`.4.5`, `.9.1` and `.5.1`, and are NOT claimed here); the clauses that name this leaf's own surfaces are censused below, each measured against the code rather than repeated.
 - 🔴 **(1) A rotation can outrun a revocation and leave a LIVE certificate behind — CONFIRMED at the source, and it would defeat the two repairs landed immediately before this leaf.** `rotate` runs `verify_rotate_proof` (a `SELECT` on the pool), then a host lookup, then `INSERT INTO node_certificates` — **no transaction, no tenant guard, three separate statements**. `revoke_node_in_one_transaction` holds the tenant's EXCLUSIVE guard and runs `UPDATE node_certificates SET revoked_at = … WHERE revoked_at IS NULL`. An `INSERT` that lands after that `UPDATE` is not seen by it, so the node ends up holding an **active, unrevoked certificate after being revoked**.
   - ⛔ **This is NOT the claim `.4.1`'s census refuted, and the refutation stands.** That one asked "can a revoked node rotate?" and answered no, because `verify_rotate_proof` refuses a revoked fingerprint. This asks whether a rotation already IN FLIGHT can commit across a revocation — a different question, and the guard `.4.1` pointed at is exactly what does not cover it.
@@ -1715,7 +1725,51 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - ⛔ **Already NAMED elsewhere, and not re-raised here:** the shipped listener serves plain HTTP while `mtls.rs` is exercised only by its own test (`census-3.md:154`) — recorded by `PHASE-7`, by the book's Honest Boundaries and again by `.4.1.3`. It is the reason `(2)`'s capture step is cheap, and it is stated as a bound above rather than opened as a child.
 - ⛔ **Routed here but NOT this leaf's:** the outbox delivery/fencing clauses (`census-2.md:77`, `census-4.md:56`) belong to `.4.4`/`.4.5`; the publications-stage clause (`:119`) to `.9.1`; the policy/approval spoof clauses (`census-1.md:329`, `census-4.md:63`) to `.5.1`/`.3.3`; the cross-tenant quarantine-fixture clause (`census-4.md:7`) to `.11.2`. Naming them here is the reconciliation `.11.9` asks for — they are accounted for, and accounted for as *someone else's*.
 - The split, seven children. `.4.2.1` goes first: it is the only one that undoes a repair already shipped. ⚠️ An EIGHTH, `.4.2.3.1`, was routed out of `.4.2.3` at its closure rather than found by this census — the lease clock's write/read split — and is a child of `.4.2.3`, not of this leaf.
-- Verification / commit: per child.
+- Status: `done`; REPAIR-0163. All seven children closed (`.4.2.1`, `.4.2.2`, `.4.2.3`, `.4.2.4`, `.4.2.5`, `.4.2.6`, `.4.2.7`), and the parent's own obligation — reconciling the 15 routed records CLAUSE BY CLAUSE — is discharged below.
+- ⭐ **The citation claim this leaf made at its split is now MEASURED, not asserted: all 15 records routing here are cited by this leaf or a child.** `python3 -B scripts/census_record_reconciliation.py --json`, filtered to `SIGNOFF-REPAIR.4.2`, returns 15 routings and **15 cited, 0 uncited**. The contrast that makes the number mean something: `.4.1`, whose dropped clause started `.11.9`, has **36 uncited**. Reading the routed records was the difference, and it is now visible in an instrument rather than in a claim about diligence.
+- 🔴 **But citation is not accounting, and the clause-level pass found SIX clauses this leaf's split did not carry — `.11.9`'s exact defect, recurring in the leaf that was congratulating itself for avoiding it.** That is the finding, and it is why `.11.9` reframed the unit as *a clause with an owner* rather than *a record with a citation*. A leaf can read every record it is sent and still drop a sentence inside one.
+- **The reconciliation, all 15 records, every clause dispositioned:**
+  - `census-2.md:26` (R-48-49-2) proof replay -> `.4.2.2` ✅ · `census-2.md:54` (R-48-49-6) rotate/revoke race -> `.4.2.1` ✅, its enrollment-token clause -> `.4.1.2` ✅ · `census-2.md:47` (R-48-49-5) all five clauses reconciled at `.4.2.3`'s closure ✅ · `census-2.md:208` (R-54-4) secret store -> `.4.2.5` ✅ · `census-3.md:159` (R-67-68-4) proof ladder -> `.4.2.6` ✅ · `census-3.md:145` (R-67-68-2) revocation bound -> `.4.1.3`/`.4.1.3.1` ✅.
+  - Routed AWAY and named at the split, re-verified here: `census-2.md:75` (R-50-2) and `census-4.md:54` (R-71-72-3) outbox fencing -> `.4.4`/`.4.5` ✅ · `census-2.md:117` (R-52-1) publications -> `.9.1` ✅ · `census-1.md:327` (R-46-2) and `census-4.md:61` (R-73-74-1) approval/policy spoof -> `.5.1`/`.3.3` ✅ · `census-4.md:5` (R-69-1) quarantine fixture -> `.11.2` ✅.
+  - The plain-HTTP transport clauses in `census-1.md:54` and `census-3.md:152` are the bound already recorded by `PHASE-7` and the book's Honest Boundaries ✅.
+- 🔴 **UNACCOUNTED, and now owned — six clauses across three records:**
+  - `census-1.md:54` (R-6-27-8) *"fencing token/epoch read with separate locks permits mixed generation"* -> **`.4.2.8`**, and it is CONFIRMED at the source, not merely routed: `current_fencing_token` and `current_lease_epoch` take two DIFFERENT mutexes.
+  - `census-1.md:54` *"rotate installs fresh identity only in memory, rb-node cert/key on disk not updated"* -> **`.4.2.9`**. `install_identity` writes only the in-memory `Arc<Mutex<…>>`; whether anything persists it is the leaf's measurement.
+  - `census-3.md:152` (R-67-68-3) *"wake gate tests only concurrency zero then 2; no positive-concurrency active count"* -> **`.4.2.10`**, a control-coverage gap of the shape `.4.2.6` repaired.
+  - `census-2.md:68` (R-50-1)'s three remaining clauses — replacement keeps the old `nodes.host_id` so a later rotation reverts the SAN; previous incarnations' `valid_to` is never closed, leaving multiple current rows; a replacement neither revokes nor fences the old lease -> **`.4.1.5`**, because they are enrollment/replacement, not fencing.
+- ⚠️ Each new leaf carries the `.3.4.3.1.3` prohibition: the two I checked at the source say so explicitly, and the four I did not are recorded as the REVIEWER's claim to be measured, not as defects.
+- NO REGRESSION: documentation only; no code touched by this leaf.
+- LOCKSTEP: task tree (parent closed, four leaves opened, frontier, commit log), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
+- promotion: declined — `.11.9` already promoted the statement this leaf instantiates (the unit is a clause with an owner, not a record with a citation), and a second instance is evidence for it rather than a new rule.
+- Commit: `REASONBRAID-REPAIR-0163 (leaf SIGNOFF-REPAIR.4.2): reconcile the fifteen routed records, and find six clauses the split dropped`.
+
+#### SIGNOFF-REPAIR.4.2.8 — The node reads its fencing token and lease epoch under two separate locks
+
+- Status: `pending`.
+- Opened by `.4.2`'s clause-level reconciliation, from `census-1.md:54`.
+- CONFIRMED at the source: `NodeChannel` holds `fencing_token: Arc<Mutex<Option<String>>>` and `lease_epoch: Arc<Mutex<Option<i64>>>` as two independent mutexes, and every fenced request reads them in sequence (`current_fencing_token()` then `current_lease_epoch()`). A handshake landing between the two reads installs a new generation, so a request can carry a token from generation N with an epoch from N+1.
+- ⚠️ Bound, stated before the work rather than after: the server refuses the mismatched pair, so this is an AVAILABILITY defect — a spurious refusal and a reconnect — not a fencing bypass. ⛔ Do not write it up as a security finding without evidence that it is one.
+- ⚠️ Measure the population before proposing the fix: how many call sites read both, and whether the right shape is one mutex over a `(token, epoch)` pair, an atomic generation counter, or accepting the window because the refusal is safe and self-correcting. The last is a legitimate outcome.
+- Acceptance: reproduced with a driven interleaving rather than reasoned about; whatever is found is stated with its bound; the handshake, heartbeat, ack, poll and events controls pass unchanged.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.9 — A rotated identity may live only in memory
+
+- Status: `pending`.
+- Opened by `.4.2`'s clause-level reconciliation, from `census-1.md:54`.
+- The record's claim, and the source reading that makes it worth measuring: `NodeChannel::install_identity` writes only the in-memory `Arc<Mutex<…>>`. If nothing persists the rotated certificate and key, a node that rotates and then restarts comes back holding its OLD identity — which still works until it expires, so the failure is silent and only appears at the expiry boundary.
+- ⛔ NOT confirmed: whether `rb-node` or `Node` persists the pair after `rotate()` was not measured here. That is this leaf's first question, and the answer may be that it already does.
+- Acceptance: establish by measurement whether a rotation survives a node restart; if it does not, decide whether persistence belongs to the channel or to the caller, and drive a restart control across a rotation either way.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.10 — The wake gate is only tested at concurrency zero and two
+
+- Status: `pending`.
+- Opened by `.4.2`'s clause-level reconciliation, from `census-3.md:152`.
+- The record's claim: the zero-concurrency wake gate's controls exercise concurrency 0 and then 2, with no control over the ACTIVE count at a positive concurrency — so the gate's behaviour when a node is at its limit rather than disabled is uncovered.
+- ⚠️ This is a control-coverage gap, the shape `.4.2.6` repaired for the proof ladder, and the same discipline applies: a fixture must be proved to reach the condition it names, because a gate that refuses for the wrong reason looks identical from outside.
+- Acceptance: the population of the gate's states is enumerated first, then each reachable one gains a control that is proved to reach it; existing wake-gate and delivery controls pass unchanged.
+- Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.4.2.1 — A rotation can outrun a revocation and leave a live certificate behind
 
@@ -3461,12 +3515,12 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | 1 | `SIGNOFF-REPAIR.11.9.1` | `pending` | 114 of 131 review records are cited by none of their candidate leaves — a measured backlog to CLASSIFY, not a defect count; start from the small-fan-out records where the routing was a real assignment |
 | 2 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 2b | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
-| 3 | `SIGNOFF-REPAIR.4.2` | `active` | the PARENT: all seven children are now closed, so the family's own status and its 15 routed census records are due for reconciliation |
+| 3 | `SIGNOFF-REPAIR.4.2.8` | `pending` | the node reads its fencing token and lease epoch under TWO separate locks — confirmed at the source by `.4.2`'s clause reconciliation, and the first of six clauses that family's split had dropped |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — its `MEMORY.md` census is DONE (`.11.4.2.1`: 26 warnings, 0 orphans, the worry refuted); the donor-package review, document/route utility census and lifecycle controls remain |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **36 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **40 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3509,6 +3563,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.11.9`: `REASONBRAID-REPAIR-0160 (leaf SIGNOFF-REPAIR.11.9): census the routed records, and reject the gate the leaf proposed`.
 - `SIGNOFF-REPAIR.4.1.4`: `REASONBRAID-REPAIR-0161 (leaf SIGNOFF-REPAIR.4.1.4): an agent role may issue and revoke, and the documentation now says so`.
 - `SIGNOFF-REPAIR.11.7`: `REASONBRAID-REPAIR-0162 (leaf SIGNOFF-REPAIR.11.7): publish the codes the product emits, and gate them`.
+- `SIGNOFF-REPAIR.4.2`: `REASONBRAID-REPAIR-0163 (leaf SIGNOFF-REPAIR.4.2): reconcile the fifteen routed records, and find six clauses the split dropped`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 
@@ -4382,6 +4437,15 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` returns `test result: ok. 32 passed; 0 failed` including `the_r2_acquisition_persists_the_served_document_s_own_evidence`, with `pg-tests: stopped and removed target/pg-tests/run-hsk0hhd8`. FALSIFIED three ways, each injection reverted and the suite re-run green: serving one extra byte fails the receipt digest assertion with `sha256:8f1d9f61…` observed against `sha256:561688a4…` expected (and its chunk digests unchanged, so the raw-byte leg is the one that caught it); discarding the supplied fetcher in `with_acquisition` fails at the destination gate with `scheme_not_allowed` observed where `destination_refused` was expected; persisting a derivation whose content is not the worker's chunk fails at the derivations assertion and nowhere earlier.
 - [x] **NO REGRESSION** — `cargo test -p reasonbraid-server --lib` returns `97 passed; 0 failed`; `--test extraction_input --test extraction_completion` returns `7 passed` and `16 passed`; `cargo clippy --locked -p reasonbraid-server --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass; `make gate` prints `=== all doctrines green ===` (15 checks) and `make book` writes the HTML book. The other 31 profiles tests pass unchanged, including the two existing R2/R0 resolver controls.
 - [x] **LOCKSTEP** — task tree (leaf, frontier, commit log), `docs/TASK_TREE.md`'s index row, the evidence record and its `INDEX.md` entry, `docs/book/src/deployment.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope. Two things are explicitly NOT claimed: the live mismatch refusal stays `.7.3.3.4.2` pending, and the advertised-format finding is opened as `.7.3.3.5` with its untyped-byte-sniff half recorded as unmeasured rather than asserted.
+
+## Commit acceptance — SIGNOFF-REPAIR.4.2
+
+- [x] **REPRODUCE / ISSUE** — the parent's citation claim, measured for the first time: `python3 -B scripts/census_record_reconciliation.py --json` filtered to this leaf returns **15 routings, 15 cited, 0 uncited**, against `.4.1`'s **36 uncited**. Reading the routed records is now visible in an instrument rather than asserted as diligence.
+- [x] **ROOT CAUSE (WHY + WHERE)** — but citation is not accounting. A clause-by-clause pass over all 15 record bodies found **SIX clauses the split did not carry**, in three records: `census-1.md:54`'s two-lock read and in-memory-only rotation, `census-3.md:152`'s wake-gate coverage gap, and `census-2.md:68`'s three replacement clauses. `.11.9`'s exact defect, recurring in the leaf that had avoided its citation form — which is why `.11.9` reframed the unit as a clause with an owner.
+- [x] **FIX** — all six owned: `.4.2.8` (two separate locks — CONFIRMED at the source: `current_fencing_token` and `current_lease_epoch` take different mutexes), `.4.2.9` (rotated identity persistence — recorded as the reviewer's claim, `install_identity` writes only the in-memory `Arc<Mutex<…>>`), `.4.2.10` (wake-gate coverage), `.4.1.5` (the three replacement clauses, grouped because they are one question about what a replacement ENDS, and flagged against `.4.1.3.1`'s withheld-tail decision). Every one of the 15 records' remaining clauses is dispositioned in the leaf — to a closed child, to a named other leaf, or to the plain-HTTP bound `PHASE-7` already records.
+- [x] **ADDRESSED (verified)** — the two clauses I could check cheaply were checked at the source and say so; the four I did not are recorded as the REVIEWER's claim under the `.3.4.3.1.3` prohibition, not as defects. `check_doctrines.sh` -> `=== all doctrines green ===` (18 checks; it first refused with `TASK-STATUS` on the parent's own two status lines, correctly).
+- [x] **NO REGRESSION** — documentation only; no code touched by this leaf, so no suite could regress.
+- [x] **LOCKSTEP** — task tree (parent closed, `.4.2.8`/`.4.2.9`/`.4.2.10`/`.4.1.5` opened, frontier, commit log, re-derived pending count 40), `docs/TASK_TREE.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` (TWELFTH rotation: 2 entries dropped, 30 remain, 93,050 bytes, chain values derived and the dropped entry verified retrievable at commit `a972d89`), `DEV_NOTES.md`. ⛔ The pending count ROSE by four, deliberately: a reconciliation that finds work makes the tree larger, and hiding that would be the defect.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.7
 

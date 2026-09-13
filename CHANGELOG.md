@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-13 — Reconcile the fifteen routed records, and find six clauses the split dropped (`SIGNOFF-REPAIR.4.2`)
+
+- ⭐ **The parent's citation claim is measured for the first time**: all **15** records routing to this family are cited by it or a child — **15 cited, 0 uncited** — against `.4.1`'s **36 uncited**, the leaf whose dropped clause started the whole reconciliation question. Reading the routed records is now visible in an instrument rather than asserted as diligence.
+- 🔴 **But citation is not accounting, and a clause-by-clause pass found SIX clauses this family's split did not carry** — in the very leaf that had avoided the citation form of the same defect. That is why the unit was reframed as *a clause with an owner* rather than *a record with a citation*: a leaf can read every record it is sent and still drop a sentence inside one.
+- All six are now owned. Two were confirmed at the source while reconciling: the node reads its fencing token and lease epoch under **two separate mutexes**, so a handshake landing between the reads yields a request carrying a token from one generation and an epoch from another; and `install_identity` writes only an in-memory value, so whether a rotation survives a restart is an open question rather than a known-good.
+- The other four are recorded as the REVIEWER's claims under the reproduce-before-writing-up rule, not as defects: the wake gate's coverage at positive concurrency, and three clauses about what a replacement enrollment leaves behind — the old `host_id`, unclosed incarnations, and an unfenced old lease. The replacement three are grouped because they are one question, and flagged against the earlier decision that deliberately preserves a revoked node's tail so its work reaches its replacement.
+- Every remaining clause of all 15 records is dispositioned: to a closed child, to a named other leaf, or to the plain-HTTP transport bound the roadmap already records.
+- ⛔ The tree's pending count ROSE by four, deliberately. A reconciliation that finds work makes the tree larger, and hiding that would be the defect. Documentation only; no code touched.
+
 ## 2026-09-13 — Publish the codes the product emits, and gate them (`SIGNOFF-REPAIR.11.7`)
 
 - ⛔ **The leaf's own numbers were wrong, and it is the project's own lesson turned on the leaf: the emitted set is 18, not 19, and the unregistered set is 9, not 10.** `unknown` is a CLIENT-side sentinel built when a response body will not parse; it never travels from the server. A search's hits were published as a defect count without classifying them — in a leaf whose subject is a published set nobody re-derived.
@@ -326,35 +335,26 @@
 - ⚠️ A fixture artifact was caught before the numbers were recorded: a short placeholder actor id on the final hop made the depth-3 token 37 B short and the per-hop cost look irregular. Corrected, and recorded — a first run with a spurious irregularity is where a plausible wrong explanation gets adopted.
 - Validation: `cargo test -p reasonbraid-core --locked` rc=0, **74 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
 
-## 2026-09-13 — A `join` carrying a decline was accepted as a join (`SIGNOFF-REPAIR.3.4.4`)
-
-- 🔴 Measured against the shipped decoder on a route that reads an **untrusted HTTP body**: `{"kind":"join","reason":"I decline"}` was **accepted as a join**, and so was `["join"]`. Same for `observe`. A respondent whose payload plainly says *decline* was recorded as having joined the deliberation panel, with no refusal to notice and the `reason` thrown away.
-- Cause: the `.3.3.3.2.2.1` Serde branch. An internally tagged **unit** variant discards the rest of the map and also accepts the sequence form, and `deny_unknown_fields` — which this type declared — switches off neither. The members-carrying responses (`decline`, `defer`, …) were already strict, which is exactly what localises it to the unit shape.
-- ⭐ **The census found the live one, and it is not the type the leaf was opened around.** 28 tagged enums across the tracked sources, 8 with the vulnerable shape; a reachability pass found exactly one decoded from untrusted input — `RecruitmentResponse`, which the leaf never mentioned. `Decision::Allowed`, the type it did name, has no untrusted producer at all.
-- Repaired with the established pattern (private wire enum with empty-struct markers + object-only decoding) for `RecruitmentResponse`, `Decision` and `CachedDecisionKind`; both halves are needed, since the marker refuses the extra member and the object-only decoder refuses the sequence form. `object_only` is now a public, documented core export rather than a per-crate copy.
-- ⚠️ `Decision` is deliberately **tightened** with a `deny_unknown_fields` it never declared. The leniency read a denial and its evidence back as an allowance (`{"decision":"allowed","reason":"the grant is revoked"}`), which for an audit decision is the dangerous direction. It tightens `Denied` too — the honest cost, stated rather than omitted.
-- ⛔ The four adapter types with the same shape are **not** repaired, and the reason is measured rather than assumed: none is deserialized anywhere.
-- The book gains "Responding to an open call" — the eight-response vocabulary, an example, and the strict rule. ⚠️ The endpoint had **no book coverage at all**; the wider gap (87 of 111 registered routes unnamed in the book, an upper bound) is now `SIGNOFF-REPAIR.11.8` rather than absorbed here.
-- Validation: core lib 53, `authorization_evaluation` 6, server lib 101, and `run_pg_tests.sh profiles authority command_api` rc=0 with **3 suites / 96 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0. FALSIFIED twice, each reversion isolating one crate's repair, with the pre-existing codec controls staying green throughout.
-- ⛔ Not claimed: no evidence a real client ever exercised the acceptance. The finding is what the endpoint accepts, measured against the decoder.
-
-## 2026-09-13 — A delegation without a scope is now unwritable (`SIGNOFF-REPAIR.3.4.1.1`)
-
-- `CommandAuthz` carried the delegated **subject** and the delegation **scope** as two independent `Option` fields, so a subject with no scope was writable. `selection.rs` read the scope under `if let Some(scope)`, which meant that value would have delegated with the subject's **full grant selector** — the §16.3 widening invariant skipped rather than failed.
-- They are one `Option<Delegation>` now, with `Delegation { subject, scope }` holding both non-optionally. 20 construction sites across 11 files; the only producer already set both, so no reachable behaviour changes.
-- ⭐ **The leaf was opened calling the state unreachable. That held for production and NOT for the test suite.** `tests/authority.rs` constructed a delegate with no scope in two places, so the widening gate was being skipped inside a test that reads as though it exercises delegation. The compiler surfaced both the moment the state became unwritable — neither was found by reading.
-- ⚠️ Giving those fixtures the scope they should always have had makes the invariant RUN where it previously did not. The audited-delegation test keeps `TenantWide`, matching the subject's own grant selector, so it still asserts the allow it always asserted — now through the gate instead of around it.
-- The acceptance's "the type admits no delegate without a scope" is proved by the **compiler**, not a test: a temporary `Some(Delegation { subject })` yields `error[E0063]: missing field `scope``. ⚠️ It must be checked with `--all-targets` — a plain `--lib` check does not build `#[cfg(test)]` code and passed the control vacuously the first time.
-- `policy_digest`'s subject input was hand-checked as byte-identical, because the digest is a **stored** value and an altered input would invalidate every historical authorization record.
-- Validation: `run_pg_tests.sh authority command_api escalation mcp_write` rc=0 — **4 suites, 66 tests, zero failures**; every existing delegation control passes unchanged. Strict lint, check, fmt, gate (17 checks), book and link check rc=0.
-- ⛔ Not claimed: no defect repaired and no runtime behaviour changed on a reachable path. This removes a latent state and strengthens two fixtures.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated eleven times;
+the rotation contract in `README_POLICY.md`. This file has rotated twelve times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWELFTH rotation (2026-09-13) from
+the repository root:
+
+```bash
+git show a972d89550df2aab9c554c474a3301f76d04c201:CHANGELOG.md
+```
+
+That snapshot is 95,460 bytes and contains 31 dated entries; its Git blob is
+`6cb62466f857386535e63605f3c268442c66bad1`, and its SHA-256 is
+`7beecd2a5acd1ecaca3df1e4353511c8239b983b95f3610630458855eaff29a2`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-13 — A `join` carrying a decline was accepted as a join (`SIGNOFF-REPAIR.3.4.4`)`.
+It carries the ELEVENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the ELEVENTH rotation (2026-09-13) from
 the repository root:

@@ -3868,3 +3868,196 @@ async fn a_heartbeat_cannot_revive_a_lease_that_lapsed_mid_request() {
 
     server.crash();
 }
+
+/// `SIGNOFF-REPAIR.4.2.4` — a fenced session's `ack` cannot mark another
+/// session's delivery acknowledged.
+///
+/// `ack` ran as THREE separate pool statements: `verify_fencing`, the cursor
+/// read, and the `UPDATE` that marks inbox rows terminal. `events` closed the
+/// same window in `.2.2` by re-verifying INSIDE its transaction with the lease
+/// row locked; `ack` never got that treatment, so a handshake landing between
+/// the admission check and the write rotated the lease under a write that then
+/// committed anyway.
+///
+/// 🔴 Why an ack is the one to care about: `acknowledged_at` is the retention
+/// prune's DELETE predicate (`authority/node_admin.rs`, `AND acknowledged_at IS
+/// NOT NULL AND acknowledged_at <= cutoff`). A stale ack does not merely record
+/// a wrong fact — it makes work the new session is still holding eligible for
+/// deletion, and the node's ledger and the server's then disagree permanently.
+///
+/// ⚠️ **The pause is artificial; the ordering is not.** The lease row is held by
+/// a control transaction. Unrepaired, `verify_fencing` is a plain `SELECT` that
+/// walks straight through it and the ack completes while the lease is being
+/// rotated out from under it. Repaired, `verify_fencing_in_tx` takes that row
+/// `FOR UPDATE` and waits, so the rotation is observed rather than lost.
+#[tokio::test]
+async fn a_fenced_acknowledgement_cannot_mark_another_sessions_delivery() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000405".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+
+    for i in 1..=3 {
+        enqueue(&state, &node_id, &format!("cmd_fenced_ack_{i}")).await;
+    }
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    let handshake_req = reasonbraid_node::HandshakeRequest {
+        channel_version: reasonbraid_node::CHANNEL_VERSION,
+        node_id: node_id.clone(),
+        last_acked_cursor: 0,
+        pending_operations: vec![],
+        ambiguous_attempts: vec![],
+        cert_der: String::new(),
+        proof_signature: String::new(),
+        nonce: String::new(),
+    };
+    channel
+        .handshake(&handshake_req)
+        .await
+        .expect("session A handshakes");
+    assert_eq!(
+        acked_rows(&pool, &node_id).await,
+        0,
+        "nothing is acknowledged yet"
+    );
+
+    // Hold the lease row — the row a handshake rotates and, after the repair,
+    // the row the ack must take before it writes.
+    let mut hold = pool
+        .acquire()
+        .await
+        .expect("a connection for the lease row");
+    sqlx::query("BEGIN")
+        .execute(&mut *hold)
+        .await
+        .expect("begin");
+    sqlx::query("SELECT 1 FROM node_leases WHERE node_id = $1 FOR UPDATE")
+        .bind(&node_id)
+        .execute(&mut *hold)
+        .await
+        .expect("hold the lease row");
+
+    let mut acking = {
+        let channel = channel.clone();
+        tokio::spawn(async move { channel.acknowledge(3).await })
+    };
+
+    // Unrepaired the ack does not touch this row at all and finishes here;
+    // repaired it is waiting on it. Which of the two happened is the finding.
+    // ⚠️ The handle is polled to completion by this timeout when it finishes,
+    // so the result is KEPT here rather than awaited a second time below.
+    let early = tokio::time::timeout(std::time::Duration::from_secs(3), &mut acking)
+        .await
+        .ok();
+    println!(
+        "  .4.2.4 ack with the lease row held: {}",
+        if early.is_some() {
+            "COMPLETED — it never asked about the lease it was writing under"
+        } else {
+            "waiting on the lease row"
+        }
+    );
+
+    // The session is fenced WHILE that ack is in flight: a fresh token and a
+    // bumped epoch, the same row `issue_lease` rewrites at every handshake.
+    // Driven from the holder's own transaction because the real route would
+    // queue behind the very row this control is holding.
+    sqlx::query(
+        "UPDATE node_leases \
+         SET fencing_token = 'fnc_' || gen_random_uuid()::text, \
+             lease_epoch = lease_epoch + 1, \
+             lease_expires_at = now() + interval '60 seconds' \
+         WHERE node_id = $1",
+    )
+    .bind(&node_id)
+    .execute(&mut *hold)
+    .await
+    .expect("a newer handshake fences session A");
+    sqlx::query("COMMIT")
+        .execute(&mut *hold)
+        .await
+        .expect("release the lease row");
+    drop(hold);
+
+    let acked = match early {
+        Some(joined) => joined.expect("the ack task"),
+        None => acking.await.expect("the ack task"),
+    };
+    println!(
+        "  .4.2.4 ack resumed after the fence: {}",
+        match &acked {
+            Ok(r) => format!("ALLOWED, {} rows marked", r.acknowledged),
+            Err(e) => format!("refused ({e})"),
+        }
+    );
+
+    // THE INVARIANT, asserted on the STORE: the rows belong to whoever holds
+    // the lease now, and a session that lost it may not mark them terminal —
+    // `acknowledged_at` is what the retention prune deletes on.
+    assert_eq!(
+        acked_rows(&pool, &node_id).await,
+        0,
+        "a fenced session's ack must mark NOTHING — an acknowledged row is a \
+         row the prune may delete out from under the session still holding it"
+    );
+    assert!(
+        acked.is_err(),
+        "and the fenced session is told, rather than reporting work it did not \
+         acknowledge"
+    );
+
+    // ⚠️ ARM 2 — THE LOCK ITSELF, because arm 1 above is a race whose timing a
+    // future change could alter. Hold the lease row and require the ack to be
+    // OBSERVED waiting on it. Unrepaired nothing ever blocks, so this arm fails
+    // by timeout naming the statement that is missing
+    // (`docs/knowledge/proving-a-race-is-closed.md`: assert the mechanism, not
+    // only the outcome).
+    let fresh = channel
+        .handshake(&handshake_req)
+        .await
+        .expect("session B handshakes");
+    assert!(!fresh.fencing_token.is_empty());
+    let mut hold = pool
+        .acquire()
+        .await
+        .expect("a connection for the lease row");
+    sqlx::query("BEGIN")
+        .execute(&mut *hold)
+        .await
+        .expect("begin");
+    sqlx::query("SELECT 1 FROM node_leases WHERE node_id = $1 FOR UPDATE")
+        .bind(&node_id)
+        .execute(&mut *hold)
+        .await
+        .expect("hold the lease row");
+    let acking = {
+        let channel = channel.clone();
+        tokio::spawn(async move { channel.acknowledge(3).await })
+    };
+    let waiting = blocked_on(&pool, "FOR UPDATE").await;
+    println!("  .4.2.4 ack waits on the lease row a handshake rotates, pid {waiting}");
+    sqlx::query("COMMIT")
+        .execute(&mut *hold)
+        .await
+        .expect("release the lease row");
+    drop(hold);
+    let marked = acking
+        .await
+        .expect("the ack task")
+        .expect("once the lease row is free the ack completes normally");
+    assert_eq!(
+        marked.acknowledged, 3,
+        "and the LIVE session's ack still marks its rows — the repair orders \
+         the ack, it does not refuse it"
+    );
+
+    server.crash();
+}

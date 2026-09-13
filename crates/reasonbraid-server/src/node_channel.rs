@@ -700,6 +700,42 @@ impl NodeChannelState {
             .collect())
     }
 
+    /// `current_cursor`, inside the caller's transaction (`SIGNOFF-REPAIR.4.2.4`),
+    /// so the bound an acknowledgement is checked against and the rows it marks
+    /// come from ONE snapshot.
+    pub async fn current_cursor_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        node_id: &str,
+    ) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar("SELECT COALESCE(MAX(cursor), 0) FROM node_inbox WHERE node_id = $1")
+            .bind(node_id)
+            .fetch_one(&mut **tx)
+            .await
+    }
+
+    /// `acknowledge`, inside the caller's transaction (`SIGNOFF-REPAIR.4.2.4`):
+    /// the same statement, committing with the fencing re-verification that
+    /// admitted it rather than on its own connection.
+    pub async fn acknowledge_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        node_id: &str,
+        ack_cursor: i64,
+        now: DateTime<Utc>,
+    ) -> Result<i64, sqlx::Error> {
+        Ok(sqlx::query(
+            "UPDATE node_inbox SET acknowledged_at = $3 \
+             WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL",
+        )
+        .bind(node_id)
+        .bind(ack_cursor)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?
+        .rows_affected() as i64)
+    }
+
     /// Mark every inbox row up to `ack_cursor` acknowledged (idempotent). Returns the
     /// number of rows this call marked.
     pub async fn acknowledge(
@@ -1601,6 +1637,32 @@ async fn events(
     }))
 }
 
+/// Mark the node's inbox terminal up to a cursor.
+///
+/// # One transaction, re-verified inside it (`SIGNOFF-REPAIR.4.2.4`)
+///
+/// This ran as three separate pool statements: the admission check, the cursor
+/// read, and the `UPDATE`. A handshake landing between the first and the third
+/// rotated the lease under a write that committed anyway, so a session that had
+/// just been fenced could mark the NEW session's delivery acknowledged.
+///
+/// 🔴 `acknowledged_at` is not merely a record: it is the retention prune's
+/// DELETE predicate (`authority/node_admin.rs`). A stale ack makes work the
+/// live session is still holding eligible for deletion, and the node's ledger
+/// and the server's then disagree permanently — which is exactly what the
+/// channel's duplicate-safety contract exists to prevent.
+///
+/// The fix is `events`' shape, not a second one: re-verify with
+/// `verify_fencing_in_tx`, which locks the lease row, and commit the
+/// acknowledgement with it. The cursor bound is read in the same transaction so
+/// the value checked and the rows marked come from one snapshot.
+///
+/// ⛔ NO tenant guard, deliberately, and not by omission. `events` takes one
+/// because it applies domain effects; an acknowledgement touches only this
+/// node's inbox. `.4.1.3.1` decided that `ack` and `events` keep their pure
+/// fencing check so a revoked node's session finishes the work it already
+/// holds — adding a guard here would order acknowledgements against revocation
+/// and cut that tail, reversing a decision this leaf does not own.
 async fn ack(
     State(state): State<Arc<NodeChannelState>>,
     Json(req): Json<AckRequest>,
@@ -1609,13 +1671,21 @@ async fn ack(
     state
         .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
-    let current = state.current_cursor(&req.node_id).await?;
+    let mut tx = state.pool.begin().await?;
+    // The check-vs-commit window (`.2.2`): the admission check above ran OUTSIDE
+    // the transaction. Re-verify INSIDE it, with the lease row locked, so a
+    // handshake that rotates the lease is observed rather than written under.
+    state
+        .verify_fencing_in_tx(&mut tx, &req.node_id, &req.fencing_token, req.lease_epoch)
+        .await?;
+    let current = state.current_cursor_in_tx(&mut tx, &req.node_id).await?;
     if req.ack_cursor > current {
         return Err(ApiError::cursor_ahead(req.ack_cursor, current));
     }
     let acknowledged = state
-        .acknowledge(&req.node_id, req.ack_cursor, Utc::now())
+        .acknowledge_in_tx(&mut tx, &req.node_id, req.ack_cursor, Utc::now())
         .await?;
+    tx.commit().await?;
     Ok(Json(AckResponse {
         channel_version: CHANNEL_VERSION,
         acknowledged,

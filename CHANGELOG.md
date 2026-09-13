@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A fenced session's acknowledgement cannot mark another session's delivery (`SIGNOFF-REPAIR.4.2.4`)
+
+- 🔴 **Reproduced against the live route.** With the lease row held, the unrepaired `ack` completed without ever asking about the lease it was writing under; the session was then fenced, and the ack still marked **3 rows acknowledged** — rows that now belong to whoever holds the lease.
+- 🔴 **The severity is the PRUNE, and it was measured rather than asserted.** Nine sites touch `acknowledged_at`; classifying all nine finds exactly one MUTATING consumer — the retention prune's `DELETE … AND acknowledged_at IS NOT NULL AND acknowledged_at <= cutoff`. So a stale ack does not merely record a wrong fact: it makes work the live session is still holding eligible for deletion, leaving the node's ledger and the server's permanently disagreed, which is precisely what the channel's duplicate-safety contract exists to prevent.
+- Fix: `ack` becomes ONE transaction that re-verifies fencing with the lease row locked — `events`' existing shape, not a second one — and commits the acknowledgement with it.
+- ⛔ **`poll` is decided, not assumed, and the decision is NO.** All three of its statements are reads, so a fenced session that receives a stale tail leaves no trace — the rows stay in the inbox and replay to whoever holds the lease. Re-verifying in a transaction there would take a row lock on the channel's most frequent call and buy no invariant.
+- ⛔ **No tenant guard on `ack`, deliberately.** `events` takes one because it applies domain effects; an acknowledgement touches only this node's inbox, and adding a guard would order acknowledgements against revocation and cut the tail `.4.1.3.1` chose to preserve.
+- ⭐ **The in-transaction cursor read ships with its limit named rather than a control that could only be green.** No concurrency fixture discriminates it — the bound only grows, so a stale read is permissive. Its real justification is mechanical: calling the pool method inside an open transaction would take a second connection per acknowledgement.
+- Validation: falsified with the transaction KEPT and only the re-verification removed, so the neutralization isolates the right part — arm 1 fails `left: 3, right: 0`. Arm 2 was then run under the same neutralization with arm 1 softened and fails independently with `nothing ever blocked on FOR UPDATE`. **8 suites / 117 tests, 0 failed**; clippy `-D warnings` rc=0; `mdbook build` ok.
+
 ## 2026-09-13 — A lapsed lease cannot be renewed by a heartbeat already in flight (`SIGNOFF-REPAIR.4.2.3`)
 
 - 🔴 **Reproduced against the live route, and the unrepaired product revived a dead lease.** With the renewal stalled at its `UPDATE` — its admission check having already passed — the lease reached its expiry and committed; the renewal then resumed, was **ALLOWED**, answered `200` with a fresh expiry, and the store held one live lease for a node whose session was over. Since presence, delivery and every fenced write are functions of that clock, the node came back from the dead.

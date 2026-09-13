@@ -148,6 +148,21 @@ The server replays, the node's journal deduplicates:
   event-receipt primary key turns redelivery into a duplicate, never a second
   event.
 
+**Every channel WRITE re-checks the lease inside its own transaction** with the
+lease row locked, so a session fenced by a newer handshake cannot ride an
+admission check into a write: `events` since `.2.2`, the lease renewal since
+`.4.2.3`, and `ack` since `.4.2.4`. This matters most for `ack`, because
+acknowledgement is what makes an inbox row terminal — and a terminal row is
+what the retention prune below is allowed to delete. A stale acknowledgement
+would therefore make work the *new* session is still holding eligible for
+deletion, leaving the node's ledger and the server's permanently disagreed.
+
+`poll` deliberately keeps the plain check and is **not** wrapped, because it
+writes nothing: it reads the cursor, the replay tail and the revocation epoch,
+and a fenced session that receives a stale tail leaves no trace — the rows stay
+in the inbox and replay to whoever holds the lease. An in-transaction
+re-verification there would buy a lock on every delivery poll and no invariant.
+
 ## Schedulability gate
 
 A node is `Offline → Reconciling → Schedulable`, and it becomes `Schedulable`

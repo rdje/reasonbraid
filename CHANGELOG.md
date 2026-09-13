@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A replacement ends the old machine's session, host and incarnation (`SIGNOFF-REPAIR.4.1.5`)
+
+- 🔴 **All three clauses confirmed, each reproduced in its own run** before it was repaired — not asserted together against one green suite at the end.
+- 🔴 **The severe one: a replacement RESTORED the replaced machine's session.** Measured — its heartbeat answered `200` after the replacement. The mechanism is what makes it worth carrying: an earlier repair stopped a revoked node renewing by requiring *a usable certificate for this node id*, and a replacement issues a fresh one **for that same id**, so the predicate becomes true again and the old process gets its lease back. ⚠️ Bounded to a replacement landing within the lease TTL of the revocation — which is the ordinary operational case.
+- 🔴 **The host reverted.** `nodes.host_id` kept the old machine while the response echoed the new one, and certificate rotation reads the SAN's host from that row — so the first automatic rotation, within half a leaf lifetime, silently renamed the certificate back to the machine the node no longer runs on. The control drives a real rotation and reads the SAN.
+- 🔴 **The incarnation never ended**, and the comment claiming it could not duplicate — *"the `nodes` primary key refuses a second enroll for the id"* — is the sentence that hid it. A replacement is precisely a second enroll for an existing id. ⚠️ Its consequence was measured too and is narrower than it sounds: both selectors already order by `valid_from DESC LIMIT 1`, so the defect is the **ledger**, not the selection — an incarnation that never ends cannot be attributed against.
+- ⛔ **No property was traded.** The withheld-work decision is about inbox rows, not the lease; the control asserts in the same run that the replacement handshakes and takes its own lease, and the replacement ritual passes unchanged.
+- ⭐ The lease epoch is **bumped**, not deleted: deleting lets the next handshake reset the epoch to 1, breaking the per-node monotonicity a previous leaf's argument rests on. Bumping is also this codebase's own way of saying "that session is over".
+- Validation: falsified each part separately with the full repair restored between runs — `1 passed; 1 failed` three times, each naming its own clause. **72 tests** across five live suites, rc=0; clippy `-D warnings` rc=0.
+- 🔎 Worth carrying: a guard written as *"does a usable credential exist for this node id?"* is satisfied by **any** such credential, including one issued after the event the guard was defending against. Every predicate of that shape deserves re-reading against this.
+
 ## 2026-09-13 — The wake gate is a drain switch, and every state it has now has a control (`SIGNOFF-REPAIR.4.2.10`)
 
 - **census taken from the filter rather than from the tests**: the delivery gate has FIVE reachable states and the existing control covered two — zero, then two.
@@ -309,36 +320,26 @@
 - ⛔ Four controls asserting the superseded clamp are removed, each with a comment naming its replacement. The property they protected is now asserted in **both** skew directions, which the clamp could only do for one; two of them also drove a state production cannot reach.
 - Validation: core+node **10 targets / 115 tests** rc=0; `run_pg_tests.sh node_channel node_inbox node_work node_enrollment` rc=0 with **4 suites / 57 tests**. Strict lint, fmt, gate (17 checks), book and link check rc=0. FALSIFIED in both halves — reverting the gate fails the skew controls in both directions, reverting the retry filter fails its control at `left: 0, right: 1`.
 
-## 2026-09-13 — The self-test searched for a string it contained (`SIGNOFF-REPAIR.11.4.3.1.7.1`)
-
-- Before acting on the cluster instrument's census, I ran its `--self-test`. It failed: `citation guard: an absent name reported references`.
-- 🔴 The guard's absent-name arm searched the tracked tree for the literal `run-selftest-no-such-cluster-name` and asserted zero hits — and **that literal is written in the instrument's own tracked source**. `git grep -c` returns `scripts/census_pg_test_clusters.py:1`. The control searched for a string it contains.
-- **Dated rather than estimated:** the file's add-commit and the string's introducing commit are the SAME one, `cb2f197`. So the arm passed exactly once, while the file was still untracked and `git grep` could not see it, and has failed from the instant it was committed.
-- It survived because **nothing runs it** — the only mentions of the instrument anywhere in `scripts`, `.githooks`, `.github`, `Makefile` or `knowledge-map` are inside its own usage docstring. Widened to the enforcer that would be its natural runner: `grep -n "self-test" scripts/check_doctrines.sh` returns **0**, so none of the 17 registered doctrine checks has its self-test arm run either.
-- ⚠️ What this did and did not compromise: the guard's other direction never broke, so cited clusters stayed protected. What was missing is the proof that the guard is not simply returning non-zero for everything — a half-verified safety check, which must not authorise a deletion.
-- The probe is now generated per run (`uuid4`), absent by construction rather than by luck, and the failure message prints the probe it used. ⛔ The grep was deliberately **not** narrowed to exclude the script: that would blind the guard to the file most likely to name a cluster in a comment.
-- ⭐ **The repair immediately paid for itself: the §8 artifact review it gates had been blocked behind it.** Census 34 clusters / 1,797,794,711 bytes → retired 30, freeing **1,591,802,083 bytes**; residue verified at 4 clusters / 205,992,628 bytes with `retirable: 0`. The four survivors are named with why — three are cited by tracked files and are therefore evidence, one is this session's own falsification cluster under the one-hour floor. All four confirmed present afterwards.
-- Independent safety checks beyond the instrument's own: no live `postmaster.pid` under `target/pg-tests`, probed per cluster twice; and `target/pg-tests` shares the repository's filesystem id, satisfying the same-volume policy.
-- Validation: `--self-test` rc=0 with all six refusal arms and both citation directions firing. FALSIFIED by restoring the literal — rc=1 naming the exact probe, rc=0 again on restore. Gate (17 checks) rc=0; no Rust source changed.
-- ⛔ The second half of the finding is **not** closed: nothing runs any `--self-test` here. That is `SIGNOFF-REPAIR.11.4.3.1.7.2`, not something this commit fixed.
-
-## 2026-09-13 — The stored certificate expiry was never read from the certificate (`SIGNOFF-REPAIR.3.4.3.1.1`)
-
-- The leaf asked whether the server's outbound instants could be unified on one clock. Measuring says **no**: `rcgen` signs `not_after` INTO the certificate from the server process clock, and a verifier enforces that and nothing else, so it cannot move to the database clock without changing what the CA signs.
-- 🔴 Measuring that turned up a defect the census had not seen. Both call sites computed `Utc::now() + LEAF_TTL_SECS` **independently of the instant baked into the certificate** — two derivations of one quantity. They did not agree: the certificate's instant is truncated to whole seconds and the stored one is not, so the stored expiry was wrong on every issuance, and on the enrollment path the caller's `now` is sampled before the transaction's database work, moving it further.
-- ⚠️ Severity as it is, not inflated: nothing enforces the stored value, so **no certificate was ever accepted or refused wrongly**. What it was is a stored claim about an artifact that the artifact did not make, in the row an operator would trust to answer when a node's certificate expires.
-- `issue_node_leaf` now returns the instant it signed, both call sites bind it, and a new public `ca::leaf_not_after(cert_der)` extracts the same value from a DER — public deliberately, because it is exactly the extraction the node performs when deciding whether to rotate.
-- The clock question is answered as the leaf's second option, since the first is unavailable: the server's two clocks are **declared** coherent within a second and that assumption is now **measured** by a control, which samples the database clock between two process instants and takes only the divergence the round trip cannot explain. Its failure message says to fix the deployment's clocks or re-open `.3.4.3.1.2`, never to raise the bound.
-- Recorded for that leaf, and it narrows its job: of the three instants the server sends a node, **only `decided_at` is ever read**. `cert_expires_at` and `lease_expires_at` are declaration-only on the node side, and the node's other cross-clock comparison uses the certificate's own embedded `not_after`, which is not a wire field at all.
-- Validation: `run_pg_tests.sh node_enrollment node_channel node_inbox` rc=0 — **3 suites, 49 tests, zero failures**; server lib 102 + mtls 1 rc=0. Strict lint, fmt, gate (17 checks), book and link check rc=0.
-- FALSIFIED against the restored re-derivation: **11 passed / 1 failed**, `left: …12.973747Z` against `right: …12Z`. ⚠️ 973 ms of that is the whole-second truncation and the enrollment work is the remainder — under 26 ms on this run, since the two pull in opposite directions. Both are real; the split is stated rather than the single scarier number.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated thirteen times;
+the rotation contract in `README_POLICY.md`. This file has rotated fourteen times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the FOURTEENTH rotation (2026-09-13)
+from the repository root:
+
+```bash
+git show 2912136f49316ba310753cf9672188c1d6815901:CHANGELOG.md
+```
+
+That snapshot is 95,013 bytes and contains 31 dated entries; its Git blob is
+`0d6b714ce9a211a48b98aaaef1bf03c441a2c59f`, and its SHA-256 is
+`055464b527c1169cb47944106eec5b61d196fcbad8ddd3be5aa9c281e235d64c`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-13 — The self-test searched for a string it contained (`SIGNOFF-REPAIR.11.4.3.1.7.1`)`.
+It carries the THIRTEENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the THIRTEENTH rotation (2026-09-13)
 from the repository root:

@@ -280,6 +280,31 @@ Two properties make that safe, and both are pinned by controls:
   it finishes and reports the work it already has, and receives nothing more.
   This is the same shape the zero-concurrency wake gate uses.
 
+### What a replacement ENDS
+
+Re-enrolling a node id onto a new machine is a **replacement**, and it closes the
+old machine out on three fronts (`.4.1.5`). Each was left open until measured:
+
+- **The old session.** The replacement bumps the node's lease epoch and expires
+  the lease, so the replaced machine's fencing token matches nothing and its
+  heartbeat is refused. ⚠️ This one matters more than it looks: the predicate
+  above — *does this node hold a usable certificate?* — is satisfied by **any**
+  usable certificate for that node id, **including the one the replacement just
+  issued**. Without ending the lease, a replacement handed the machine it was
+  replacing its session back.
+- **The host.** `nodes.host_id` moves to the new host claim. A certificate
+  rotation reads the SAN's host from that row, so a stale value silently
+  reverted the certificate to the machine the node no longer runs on — within
+  half a leaf lifetime, because rotation is automatic.
+- **The incarnation.** The previous §8.1 incarnation's `valid_to` is closed.
+  History is kept, never overwritten: a replaced role has two incarnation rows
+  and exactly one open. An incarnation that never ends cannot be attributed
+  against, which is the whole point of recording them.
+
+⛔ None of this cuts the withheld work. The two properties are held together:
+the replaced machine loses its session, and the tail still replays to the
+replacement's own handshake.
+
 The predicate is *a usable certificate today*, not *ever revoked*. The presence
 view's `suspended` flag is close but is not the same question: it reads
 "a revoked certificate exists and no unrevoked one does", so it correctly leaves

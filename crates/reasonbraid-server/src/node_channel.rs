@@ -2049,6 +2049,54 @@ async fn enroll(
         false
     };
 
+    // `SIGNOFF-REPAIR.4.1.5`: a replacement MOVES the node to its new host.
+    //
+    // 🔴 The row kept the old `host_id` while the response echoed the new one,
+    // and `rotate` reads the certificate's host from THIS row
+    // (`SELECT h.name FROM nodes n JOIN hosts h ON n.host_id = h.host_id`). So
+    // the enrollment certificate named the machine the node actually runs on and
+    // the FIRST automatic rotation — which happens within half a leaf lifetime —
+    // silently reverted the SAN to the machine it was replaced from. Measured:
+    // `nodes.host_id after the replacement names: host-a`.
+    //
+    // The `hosts` row for the new claim already exists at this point: the
+    // get-or-create above ran for `req.host_claim` and `host_id` holds its id.
+    if replacement {
+        sqlx::query("UPDATE nodes SET host_id = $2 WHERE node_id = $1")
+            .bind(&req.node_id)
+            .bind(&host_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // `SIGNOFF-REPAIR.4.1.5`: a replacement ENDS the replaced machine's session.
+    //
+    // 🔴 Leaving the lease alone was not merely untidy, it partially undid
+    // `.4.1.3`. That leaf stopped a revoked node renewing by requiring a usable
+    // certificate in `renew_lease`'s WHERE — and a replacement issues a fresh
+    // certificate for the SAME node id, so the predicate becomes true again and
+    // the REPLACED process, still holding its old token and epoch, resumes
+    // renewing a lease it should never have had back. Measured: its heartbeat
+    // answered `200` after the replacement.
+    //
+    // The epoch is BUMPED rather than the row deleted. `.2.2`'s fencing
+    // vocabulary is the epoch, so moving it is how this codebase says "that
+    // session is over"; and deleting would let `issue_lease`'s INSERT path reset
+    // the epoch to 1, breaking the per-node monotonicity `.4.2.3` relies on when
+    // it argues that `(node_id, lease_epoch)` determines the fencing token. The
+    // expiry is set too, so presence reads `offline` immediately rather than
+    // waiting out the remaining TTL.
+    if replacement {
+        sqlx::query(
+            "UPDATE node_leases SET lease_epoch = lease_epoch + 1, lease_expires_at = $2 \
+             WHERE node_id = $1",
+        )
+        .bind(&req.node_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     // The dev key: a fresh enrollment inserts the row; a replacement SWAPS the
     // secret (the old one died with the machine — one dev secret per node).
     if replacement {
@@ -2117,15 +2165,37 @@ async fn enroll(
     // id is the agent ROLE wire id it serves (the dev wiring — the work path),
     // record the §8.1 facts the node declared. A plain `nod_…` node serves no
     // role, so it records no incarnation (the hierarchy's role_id is NOT NULL).
-    // Re-enrollment cannot duplicate: the `nodes` primary key refuses a second
-    // enroll for the id, and rotation never touches this table — one incarnation
-    // per (role, enroll), with `valid_from` = now and no `valid_to` yet.
+    // ⛔ CORRECTION (`SIGNOFF-REPAIR.4.1.5`): "re-enrollment cannot duplicate —
+    // the `nodes` primary key refuses a second enroll for the id" is FALSE, and
+    // it is the sentence that hid this. A REPLACEMENT is precisely a second
+    // enroll for an existing id; the primary key never sees it, because the
+    // replacement branch updates rather than inserts. Measured: a replaced role
+    // held `2 open of 2` incarnations, each reading as current.
+    //
+    // So a replacement CLOSES the previous incarnation first. §8.1 history is
+    // kept, never overwritten — two rows remain, and exactly one is open.
+    //
+    // ⚠️ The consequence was narrower than "the wrong incarnation is selected",
+    // and that was measured too: both selectors (`api.rs:4300`, `api.rs:6266`)
+    // order by `valid_from DESC LIMIT 1`, so each already picked the newest. The
+    // defect is in the LEDGER — an incarnation that never ends cannot be
+    // attributed against, which is what §8.1 exists for, and the operator
+    // listing at `api.rs:5479` showed a node with two live identities.
     let incarnation_id: Option<String> = if req
         .node_id
         .parse::<reasonbraid_core::AgentRoleId>()
         .is_ok()
     {
         let id = reasonbraid_core::AgentIncarnationId::new().to_string();
+        if replacement {
+            sqlx::query(
+                "UPDATE incarnations SET valid_to = $2 WHERE role_id = $1 AND valid_to IS NULL",
+            )
+            .bind(&req.node_id)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        }
         sqlx::query(
                 "INSERT INTO incarnations \
                  (incarnation_id, role_id, tenant_id, provider, model, harness, config, valid_from) \

@@ -686,3 +686,262 @@ async fn admin_revoke(
     let status = response.status().as_u16();
     (status, response.json().await.expect("revoke json"))
 }
+
+/// Enrol a node onto a NAMED host (the shared helper hardcodes `seed-host`).
+/// Returns the enrollment response, because `.4.1.5` asserts against the
+/// `host_id` it echoes as well as against the row it wrote.
+async fn enroll_node_on_host(
+    client: &reqwest::Client,
+    base: &str,
+    human: &str,
+    tenant: &str,
+    node_id: &str,
+    host_claim: &str,
+    secret: &str,
+) -> Value {
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll-tokens"))
+        .header(PRINCIPAL_HEADER, human)
+        .json(&json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": host_claim }))
+        .send()
+        .await
+        .expect("issue-token request");
+    assert_eq!(response.status().as_u16(), 200, "the token issues");
+    let issued: Value = response.json().await.expect("issue-token json");
+
+    let response = client
+        .post(format!("{base}/v1/nodes/enroll"))
+        .json(&json!({
+            "token_id": issued["token_id"],
+            "node_id": node_id,
+            "host_claim": host_claim,
+            "nonce": issued["nonce"],
+            "key_secret": secret,
+        }))
+        .send()
+        .await
+        .expect("enroll request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the node enrols onto {host_claim}"
+    );
+    response.json().await.expect("enroll json")
+}
+
+/// `SIGNOFF-REPAIR.4.1.5` — what a replacement enrollment ENDS.
+///
+/// Three clauses of one source-census record (`census-2.md:68`), driven together
+/// because they are one question. `the_replacement_ritual_recovers_a_lost_node`
+/// proves the ritual's happy path — the work reaches the new machine — and
+/// asserts none of these:
+///
+///  1. the replacement kept the OLD `nodes.host_id`, and `rotate` reads the
+///     certificate's host from THAT row, so the first automatic rotation
+///     reverted the SAN to the machine the node no longer runs on;
+///  2. the previous incarnation's `valid_to` was never closed, so a replaced
+///     role had two rows each reading as current;
+///  3. the old lease was left untouched — and because the replacement issues a
+///     FRESH certificate for the same node id, the credential predicate
+///     `.4.1.3` put into `renew_lease` became true again, handing the REPLACED
+///     process its session back.
+///
+/// ⚠️ Clause 3 is bounded and the bound is what makes it reachable: the old
+/// lease must still be live, i.e. the replacement happens within `LEASE_TTL` of
+/// the revocation. That is the ordinary operational case — an operator revokes
+/// a dead machine and enrols its replacement in the same minute.
+///
+/// ⛔ It does NOT conflict with `.4.1.3.1`, which preserves the revoked node's
+/// WITHHELD WORK so it replays to the replacement. That decision is about inbox
+/// rows; this is about the lease. The work still reaches the new machine —
+/// asserted below, so the two properties are held together rather than traded.
+#[tokio::test]
+async fn a_replacement_ends_the_old_machines_session_host_and_incarnation() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "operator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "human enrolls: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "agent-replaced", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let node_id = role["principal_id"].as_str().unwrap().to_string();
+
+    // ── The ORIGINAL machine, on host-a, with a live session ─────────────────
+    let first = enroll_node_on_host(
+        &client, &base, &human_id, &tenant, &node_id, "host-a", DEV_SECRET,
+    )
+    .await;
+    let (cert_a, key_a) = (
+        first["cert_der"].as_str().unwrap().to_string(),
+        first["key_der"].as_str().unwrap().to_string(),
+    );
+    let (_, session) = handshake(&client, &base, &node_id, &cert_a, &key_a, true).await;
+    let token_a = session["fencing_token"].as_str().unwrap().to_string();
+    let epoch_a = session["lease_epoch"].as_i64().unwrap();
+
+    let heartbeat = async |token: &str, epoch: i64| -> u16 {
+        client
+            .post(format!("{base}/v1/nodes/heartbeat"))
+            .json(&json!({
+                "channel_version": CHANNEL_VERSION,
+                "node_id": node_id,
+                "fencing_token": token,
+                "lease_epoch": epoch,
+            }))
+            .send()
+            .await
+            .expect("heartbeat")
+            .status()
+            .as_u16()
+    };
+    assert_eq!(
+        heartbeat(&token_a, epoch_a).await,
+        200,
+        "sanity: the original machine's session is live before anything happens"
+    );
+
+    // ── The machine is lost: the operator revokes, then enrols the replacement
+    //    onto a DIFFERENT host, inside the lease window. ────────────────────
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        "/v1/nodes/revoke",
+        &human_id,
+        &tenant,
+        &node_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the node is revoked: {revoked}");
+
+    let second = enroll_node_on_host(
+        &client,
+        &base,
+        &human_id,
+        &tenant,
+        &node_id,
+        "host-b",
+        "dev-secret-two",
+    )
+    .await;
+
+    // ── CLAUSE 3: the replaced machine's session is OVER ─────────────────────
+    let after = heartbeat(&token_a, epoch_a).await;
+    println!("  .4.1.5 the replaced machine's heartbeat after the replacement: {after}");
+    assert_ne!(
+        after, 200,
+        "the REPLACED machine must not renew its lease. Its certificate was \
+         revoked — but the replacement issues a fresh one for the same node id, \
+         so `renew_lease`'s credential predicate becomes true again and hands \
+         the old process its session back unless the replacement ends the lease"
+    );
+
+    // ── CLAUSE 1: the host the node now runs on ──────────────────────────────
+    assert_eq!(
+        second["host_id"].as_str().map(|s| !s.is_empty()),
+        Some(true),
+        "the response echoes a host id"
+    );
+    let (row_host,): (String,) = sqlx::query_as(
+        "SELECT h.name FROM nodes n JOIN hosts h ON h.host_id = n.host_id WHERE n.node_id = $1",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read the node's host");
+    println!("  .4.1.5 nodes.host_id after the replacement names: {row_host}");
+    assert_eq!(
+        row_host, "host-b",
+        "the replacement moved the node to host-b, and the row must say so — \
+         `rotate` reads the certificate's host from THIS row, so a stale value \
+         reverts the SAN to the machine the node no longer runs on"
+    );
+
+    // And the consequence itself, driven rather than inferred: a rotation
+    // issues a certificate naming the CURRENT host.
+    let cert_b = second["cert_der"].as_str().unwrap().to_string();
+    let key_b = second["key_der"].as_str().unwrap().to_string();
+    let key_der = from_hex(&key_b).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let nonce = reasonbraid_node::fresh_proof_nonce();
+    let proof =
+        reasonbraid_node::compute_rotate_proof(&key, CHANNEL_VERSION, &node_id, &cert_b, &nonce);
+    let rotated: Value = client
+        .post(format!("{base}/v1/nodes/rotate"))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": node_id,
+            "cert_der": cert_b,
+            "proof_signature": proof,
+            "nonce": nonce,
+        }))
+        .send()
+        .await
+        .expect("rotate request")
+        .json()
+        .await
+        .expect("rotate json");
+    let rotated_der = from_hex(rotated["cert_der"].as_str().expect("a rotated certificate"))
+        .expect("rotated cert hex");
+    let (_, parsed) = x509_parser::parse_x509_certificate(&rotated_der).expect("the leaf parses");
+    let sans = parsed
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .map(|san| format!("{:?}", san.value.general_names))
+        .unwrap_or_default();
+    println!("  .4.1.5 the rotated certificate's SAN: {sans}");
+    assert!(
+        sans.contains("host-b"),
+        "the rotated certificate must name the host the node RUNS on: {sans}"
+    );
+    assert!(
+        !sans.contains("host-a"),
+        "and must not revert to the machine it was replaced from: {sans}"
+    );
+
+    // ── CLAUSE 2: exactly one incarnation reads as current ───────────────────
+    let (open, total): (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM incarnations WHERE role_id = $1 AND valid_to IS NULL), \
+                (SELECT count(*) FROM incarnations WHERE role_id = $1)",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the incarnations");
+    println!("  .4.1.5 incarnations: {open} open of {total}");
+    assert_eq!(
+        total, 2,
+        "the replacement records its own incarnation — §8.1 history is kept, \
+         never overwritten"
+    );
+    assert_eq!(
+        open, 1,
+        "but exactly ONE reads as current: an incarnation that never ends \
+         cannot be attributed against, which is what §8.1 exists for"
+    );
+
+    // ── `.4.1.3.1` HELD: the replacement's own session still works ───────────
+    let (_, fresh) = handshake(&client, &base, &node_id, &cert_b, &key_b, true).await;
+    assert!(
+        fresh["fencing_token"].as_str().is_some(),
+        "the REPLACEMENT handshakes and takes its own lease — the two properties \
+         are held together, not traded: {fresh}"
+    );
+}

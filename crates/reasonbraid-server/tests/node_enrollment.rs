@@ -1,6 +1,7 @@
 //! Integration tests for dev-profile node enrollment (`PHASE-1.2.1`; backlog 11).
 //!
-//! The flow: an authorized human issues a ONE-TIME token (bound to tenant, node id,
+//! The flow: a principal holding `TenantAdmin` — a human OR an agent role
+//! (`SIGNOFF-REPAIR.4.1.4`) — issues a ONE-TIME token (bound to tenant, node id,
 //! host claim, nonce, expiry — §16.2), then the node consumes it at
 //! `/v1/nodes/enroll` with its dev signing secret. The token is the credential; the
 //! server lands the host + node + key rows in the 0007/0008 identity tables and
@@ -1771,4 +1772,153 @@ async fn a_token_does_not_outlive_the_authority_that_issued_it() {
         "revoking one authority voids only the tokens IT issued, even inside the \
          same tenant: {still_live:?}"
     );
+}
+
+/// `SIGNOFF-REPAIR.4.1.4` — who may issue a node enrollment token, DRIVEN rather
+/// than read off a doc comment.
+///
+/// Two documentation sites said "an **authorized human** issues a ONE-TIME
+/// enrollment token". The handler resolves a principal that may be
+/// `GrantSubject::Human(hpr_…)` **or** `GrantSubject::Role(rol_…)` and asks only
+/// whether it holds `GrantAction::TenantAdmin`. So the sentence and the code
+/// disagreed, and which of the two is wrong is a governance question, not a
+/// typo.
+///
+/// ⭐ The census that decides it: across the server's 117 `resolve_principal`
+/// call sites, authorization NEVER depends on the principal's KIND. Every
+/// branch on `GrantSubject::Human` — `reader_tenant`, the unreachable invite
+/// arm, the bootstrap insert, and MCP's own helper — selects which identity
+/// TABLE to read. "Human-only" is not a concept this authority model has, and
+/// `ROADMAP.md` §16.4 says why: authorization is over typed actions and
+/// resources, deny-by-default. §16.3 goes further and states outright that "a
+/// human, service, or agent may delegate a strict subset of its own authority".
+///
+/// So the CODE is consistent with the roadmap and with every other route, and
+/// the sentence is the outlier. This control exists because narrowing a claim
+/// to match the code is only honest if the code's behaviour is actually
+/// asserted: it drives an agent role holding `tenant_admin` at the route and
+/// shows the token it gets.
+///
+/// ⚠️ This is a real governance property and it is now stated rather than
+/// implied by a sentence that said the opposite: **an agent role granted
+/// `tenant_admin` can extend the node population.**
+#[tokio::test]
+async fn an_agent_role_holding_tenant_admin_may_issue_an_enrollment_token() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // A tenant must exist before a role can join it.
+    let (tenant, _alice) = bootstrap_admin(&client, &base).await;
+
+    // An AGENT role, enrolled with the tenant-admin action explicitly named.
+    let (status, agent) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({
+            "kind": "role",
+            "name": "an-administrative-agent",
+            "tenant_id": tenant,
+            "actions": ["tenant_admin"],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "enrol an agent role with tenant_admin: {agent}"
+    );
+    let role = agent["principal_id"]
+        .as_str()
+        .expect("the role's wire id")
+        .to_string();
+    assert!(
+        role.starts_with("rol_"),
+        "the principal really is an agent role, not a human: {role}"
+    );
+
+    // THE MEASUREMENT: the route, driven with that role as the principal.
+    let node_id = "nod_00000000-0000-7000-8000-000000000414";
+    let (status, issued) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll-tokens"),
+        Some(&role),
+        json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-agent" }),
+    )
+    .await;
+    println!("  .4.1.4 an agent role issuing an enrollment token: {status}");
+    assert_eq!(
+        status, 200,
+        "an agent role holding tenant_admin issues a token — the code gates on \
+         the GRANT, not on the principal's kind, which is what ROADMAP §16.4 \
+         specifies and what the narrowed documentation now says: {issued}"
+    );
+
+    // Asserted on the STORE as well as the wire, and resolved exactly as the
+    // product does: the token names its admission, the admission names the
+    // GRANT it chose, and that grant's subject is the agent role.
+    //
+    // ⛔ Deliberately NOT asserted through `authorization_records.actor`: that
+    // column holds a v5 UUID derived from the subject's describe() handle, so checking
+    // it would mean re-deriving a contract in a fixture — the third copy
+    // `.4.2.6` refused to write. `subject_kind`/`subject_id` on the GRANT are
+    // stored verbatim, so they say the same thing without a second derivation.
+    let (kind, subject): (String, String) = sqlx::query_as(
+        "SELECT g.subject_kind, g.subject_id FROM node_enrollment_tokens t \
+         JOIN authorization_records r ON r.record_id = t.issued_under \
+         JOIN authority_grants g ON g.grant_id = r.grant_id \
+         WHERE t.token_id = $1",
+    )
+    .bind(issued["token_id"].as_str().expect("the token id"))
+    .fetch_one(&pool)
+    .await
+    .expect("the token names the admission, and the admission names its grant");
+    assert_eq!(
+        (kind.as_str(), subject.as_str()),
+        ("role", role.as_str()),
+        "the ledger records an AGENT ROLE as the grant subject that issued this \
+         node's enrollment token — the governance property is visible in the \
+         audit trail, not only in the response"
+    );
+
+    // ⛔ The other half, so this control is not merely "everything is allowed":
+    // a role WITHOUT the grant is still refused. The gate is the grant.
+    let (status, plain) = post_json(
+        &client,
+        format!("{base}/v1/enrollments"),
+        None,
+        json!({ "kind": "role", "name": "an-ordinary-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enrol an ordinary role: {plain}");
+    let ordinary = plain["principal_id"]
+        .as_str()
+        .expect("the role id")
+        .to_string();
+    let (status, refused) = post_json(
+        &client,
+        format!("{base}/v1/nodes/enroll-tokens"),
+        Some(&ordinary),
+        json!({
+            "tenant_id": tenant,
+            "node_id": "nod_00000000-0000-7000-8000-000000000415",
+            "host_claim": "host-ordinary",
+        }),
+    )
+    .await;
+    println!("  .4.1.4 an agent role WITHOUT tenant_admin: {status}");
+    assert_eq!(
+        status, 403,
+        "an agent role without the grant is refused — the kind was never the \
+         gate, and the grant still is: {refused}"
+    );
+    let (tokens,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM node_enrollment_tokens WHERE node_id = $1")
+            .bind("nod_00000000-0000-7000-8000-000000000415")
+            .fetch_one(&pool)
+            .await
+            .expect("count the refused node's tokens");
+    assert_eq!(tokens, 0, "and the refusal wrote no token");
 }

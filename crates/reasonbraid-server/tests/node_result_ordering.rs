@@ -209,8 +209,11 @@ fn from_hex(s: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Enroll a node through the PUBLIC surface (`.1.2.1`): an authorized human
-/// issues a one-time token and the node consumes it with its dev secret. The dev
+/// Enroll a node through the PUBLIC surface (`.1.2.1`): this fixture's human
+/// administrator issues a one-time token and the node consumes it with its dev
+/// secret. ⚠️ A human is what THIS fixture uses, not what the route requires —
+/// issuance gates on the `TenantAdmin` grant, which an agent role may also hold
+/// (`SIGNOFF-REPAIR.4.1.4`). The dev
 /// wiring collapses node==role: the node id IS the role wire id.
 async fn enroll_node(
     client: &reqwest::Client,

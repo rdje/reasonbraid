@@ -1776,7 +1776,9 @@ async fn presence(
 // ── Node enrollment (PHASE-1.2.1; backlog 11) ───────────────────────────────────
 
 /// The `POST /v1/nodes/enroll` body: the one-time token (issued by an authorized
-/// human at `/v1/nodes/enroll-tokens`), the node's id, the host claim the token was
+/// principal holding `TenantAdmin` at `/v1/nodes/enroll-tokens` — a human or an
+/// agent role; see that route's note, `SIGNOFF-REPAIR.4.1.4`), the node's id,
+/// the host claim the token was
 /// bound to, the token nonce, and the node's dev signing secret (the server IS the
 /// dev trust store — the `.6.1` stance; the secret is the key the `.1.2.2`
 /// handshake's HMAC proof rides). The §8.1 incarnation facts (`.1.6.1`) ride the

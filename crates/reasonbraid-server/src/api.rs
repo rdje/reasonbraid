@@ -1093,9 +1093,29 @@ async fn enroll_in_guard(
 
 // ── Node enrollment (admin side, PHASE-1.2.1) ───────────────────────────────────
 
-/// The `POST /v1/nodes/enroll-tokens` body: an authorized human issues a ONE-TIME
-/// enrollment token bound to tenant + expected node id + host claim + expiry + nonce
-/// (`ROADMAP.md` §16.2). The node consumes it at `POST /v1/nodes/enroll`.
+/// The `POST /v1/nodes/enroll-tokens` body: a principal holding `TenantAdmin`
+/// issues a ONE-TIME enrollment token bound to tenant + expected node id + host
+/// claim + expiry + nonce (`ROADMAP.md` §16.2). The node consumes it at
+/// `POST /v1/nodes/enroll`.
+///
+/// # The issuer is a GRANT, not a kind of principal (`SIGNOFF-REPAIR.4.1.4`)
+///
+/// This said "an authorized **human**" and the code never checked. Measured
+/// across the server's 117 `resolve_principal` call sites, authorization never
+/// depends on the principal's kind: every branch on `GrantSubject::Human`
+/// selects which identity TABLE to read. §16.4 specifies authorization over
+/// typed actions and resources, deny-by-default, and §16.3 states outright
+/// that "a human, service, or agent may delegate a strict subset of its own
+/// authority" — so the code was consistent with the roadmap and this sentence
+/// was the outlier.
+///
+/// ⚠️ The consequence is stated rather than left implied: **an agent role
+/// granted `tenant_admin` can extend the node population.** That is the
+/// grant's meaning, and it is asserted by
+/// `an_agent_role_holding_tenant_admin_may_issue_an_enrollment_token`, which
+/// also asserts a role WITHOUT the grant is refused `403` and writes no token.
+/// Narrowing who may issue is a change to the GRANT model, not a kind check
+/// bolted onto this route.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IssueNodeTokenRequest {
@@ -1572,8 +1592,11 @@ async fn prune_node_inbox(
 
 // ── Node revocation (`.1.3.1`) ──────────────────────────────────────────────
 
-/// The `POST /v1/nodes/revoke` body: an authorized human revokes the node's
-/// ACTIVE workload certificates. The `.1.2.2` handshake ladder refuses a
+/// The `POST /v1/nodes/revoke` body: a principal holding `TenantAdmin` revokes
+/// the node's ACTIVE workload certificates. ⚠️ Like issuance, that is a GRANT
+/// and not a kind of principal — an agent role holding it may revoke a node
+/// (`SIGNOFF-REPAIR.4.1.4`, which found this second site by censusing the
+/// sentence rather than trusting the two it was opened on). The `.1.2.2` handshake ladder refuses a
 /// revoked leaf at the next crossing (the row check is already live), and the
 /// presence view (0012) reads `suspended`.
 #[derive(Debug, Clone, Deserialize)]

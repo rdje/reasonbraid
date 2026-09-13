@@ -586,7 +586,24 @@ requirement to either would be a wire change to be documented and tested as one.
 
 An operator issues a one-time token bound to a tenant, an expected node id, a
 host claim, a nonce and an expiry; the node consumes it once at
-`POST /v1/nodes/enroll`. The issuing route used to admit the caller in its own
+`POST /v1/nodes/enroll`.
+
+**Who "an operator" is, exactly** (`SIGNOFF-REPAIR.4.1.4`): whoever holds the
+`tenant_admin` grant in that tenant. That is a grant, not a kind of principal —
+so **an agent role granted `tenant_admin` can issue an enrollment token, and can
+revoke a node**, exactly as a human administrator can. This is deliberate and it
+follows the authority model on this page: authorization is over typed actions
+and resources, deny-by-default, and nothing in this system decides anything by
+asking whether a principal is a person. The route's documentation used to say
+"an authorized human", which was never what the code did; the sentence was the
+mistake, not the behaviour.
+
+⚠️ The practical consequence is worth stating plainly, because it is a
+governance choice rather than an implementation detail: **granting
+`tenant_admin` to an agent lets that agent extend the node population.** If a
+deployment does not want that, the answer is to withhold the grant — not to
+expect the route to refuse agents, which it will not. Narrowing it would be a
+change to the grant model, not a check added to one endpoint. The issuing route used to admit the caller in its own
 transaction and then insert **on the connection pool**, with nothing recording
 what the request finally did.
 

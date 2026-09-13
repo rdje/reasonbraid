@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-13 — An agent role may issue and revoke, and the documentation now says so (`SIGNOFF-REPAIR.4.1.4`)
+
+- 🔴 **Driven at the live route rather than read: an agent role granted `tenant_admin` issues a node enrollment token, `200`**, and the ledger records the role as the grant subject. Two documentation sites said "an authorized **human**"; the code never checked.
+- **Decision: narrow the claim, not the code**, on four independent lines of evidence. §16.2 says nothing about who may issue; §16.4 specifies authorization over typed actions and resources; §16.3 states outright that "a human, service, or agent may delegate a strict subset of its own authority". And across the server's 117 `resolve_principal` call sites, authorization never depends on the principal's KIND — every production branch on it selects which identity TABLE to read.
+- ⭐ **The strongest evidence was an oracle nobody built for this question.** Adding the human-kind check the old sentence implied fails THREE controls, two of which predate the leaf: they already drive an agent role at this route and require it to be adjudicated by the grant. One fails for the reason that matters most — a kind check refuses `401` *before* the authorization that writes the denial record, destroying the audit evidence the denial path exists to produce.
+- ⚠️ **Scope widened by the leaf's own census**: `git grep "authorized human"` found six sites, not the two it was opened on — including `POST /v1/nodes/revoke`, the same sentence with the same gate. All six dispositioned; two fixture helpers now say a human is what THAT fixture uses rather than what the route requires.
+- ⭐ **The governance consequence is now stated where a reader meets it**: the book says plainly that granting `tenant_admin` to an agent lets it extend the node population and revoke nodes, and that a deployment which does not want that must WITHHOLD the grant — narrowing the route would be a change to the grant model, not a check on one endpoint.
+- Validation: falsified by adding the kind check (`15 passed; 3 failed`, naming the governance change); restored `18 passed; 0 failed`. **5 suites / 91 tests, 0 failed**; clippy `-D warnings` rc=0; `mdbook build` ok. No product behaviour changed. Recorded as `docs/decisions/2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md`.
+
 ## 2026-09-13 — The routed records censused, and the gate the leaf proposed rejected (`SIGNOFF-REPAIR.11.9`)
 
 - ⛔ **The leaf's own census-owed line had a wrong number in it: 131 review records, not 53.** 53 is the artifact DIRECTORY's file count. `MEMORY.md` has carried 131 correctly since the first leaf, so two live documents disagreed and nothing compared them — which is the failure this leaf exists to catch, committed by the leaf.
@@ -329,36 +338,26 @@
 - Validation: `run_pg_tests.sh authority command_api escalation mcp_write` rc=0 — **4 suites, 66 tests, zero failures**; every existing delegation control passes unchanged. Strict lint, check, fmt, gate (17 checks), book and link check rc=0.
 - ⛔ Not claimed: no defect repaired and no runtime behaviour changed on a reachable path. This removes a latent state and strengthens two fixtures.
 
-## 2026-09-13 — The cache's freshness window compared two different clocks (`SIGNOFF-REPAIR.3.4.3`)
-
-- The leaf asked what a cached decision dated in the future means. Tracing the clock answered it: `decided_at` is the **server's database clock** (`database_now_in_tx`, and `tx.database_now()` on the replay path — the only two writers, and no request field reaches either), while the freshness comparison runs against the **node's process clock**. A future `decided_at` is therefore backward node skew and nothing else.
-- 🔴 The consequence, stated as the bound it is: with the node behind by `S`, a cached allow stood for `S + 60 s` of observed time instead of 60 s.
-- **That window is load-bearing, which is what makes the stretch matter.** The revocation epoch is bumped in exactly two places, both explicit revocations; a grant that simply reaches its own `expires_at` bumps nothing. So natural grant expiry is bounded at the node by the freshness TTL **alone**, and a stretched window is a stretched authorization window.
-- ⛔ Both options the leaf was opened with were rejected by that measurement. Refusing a future instant refuses the server's own clock and turns skew into an outage; documenting it and moving on publishes a 60 s bound the product does not honour.
-- The window now runs from `min(decided_at, received_at)` — the node's own receipt, already in its journal. It binds **iff** the node received a decision before its clock says the server made it, is byte-for-byte the shipped behaviour for any ordinary receipt, and can never refuse work the plain rule allowed: the window always ends at least one TTL after receipt.
-- ⚠️ **The opposite skew direction is deliberately unchanged.** A node clock running *ahead* refuses every dispatch past 60 s of skew — fail-closed, journaled, safe. Backward skew failed *open*. Fixing only the fail-open direction is the correct scope; the availability defect is now owned by `.3.4.3.1`, along with whether the wire should carry a duration instead of an instant.
-- 🔴 The clamp introduced a hazard the shipped suite does **not** catch: a replay rewrites `decided_at` on a row the journal already holds, so anchoring it to the ORIGINAL receipt would make a command replayed days later stale on arrival. The existing replay control passes either way because it seeds and replays within milliseconds. The receipt is refreshed with the decision, guarded on the decision having actually changed — every poll re-records every delivered command, so an unguarded refresh would re-anchor the window one poll at a time.
-- Validation: `cargo test -p reasonbraid-core -p reasonbraid-node` over the affected set rc=0 — **10 targets, 116 tests, zero failures**. Five new controls; the five pre-existing cached-decision controls and the always-standing-deny unit test pass unchanged. Strict lint on both crates, fmt, gate (17 checks), book and link check rc=0.
-- FALSIFIED three times, each reversion isolating one part: no clamp → both skew controls fail with the dispatch allowed; no receipt refresh → only the replay control fails, `expires 2026-09-11` against `decided 2026-09-13`; no guard → only the redelivery control fails.
-- ⛔ Not claimed: the node journal is not a boundary and this does not make it one. Skew is now bounded, not **detected** — nothing reports that a node's clock disagrees with the server's.
-
-## 2026-09-13 — A revoked delegation was told it had succeeded (`SIGNOFF-REPAIR.3.4.2`)
-
-- 🔴 Measured on the unchanged path: a first request delegating to a LIVE role answered `200`; a second with the **same key and body** delegating to a **REVOKED** role answered `200 replayed=true` with `ok: true` — and wrote **zero** authorization records. A caller presented authority that had been revoked, was told it had succeeded, and left no trace of the attempt.
-- Root cause: `request_hash` covered the operation, the actor and `envelope.body`, and `authority_context` is a SIBLING of `body`, not part of it. The idempotency claim is step 1 of the command transaction and authorization is step 2, so a matching hash returns the stored result — success or stored refusal — without evaluating the second request's authority at all.
-- ⛔ **No new effect is applied by such a replay**, so this was never an escalation of what was written. What it was: an unauthorized request answered with a success, invisible to the audit. Both halves are stated rather than the scarier one alone.
-- The hash now takes the authority context and appends it when present. It is `409 idempotency_mismatch` — the same key describing a different request.
-- ⚠️ **The migration answer was chosen, not assumed.** The hash is a STORED value, so changing its inputs is a wire change. A request with no authority context hashes **byte-identically** to before, because the suffix is appended only when there is one, so every historical undelegated key keeps replaying — nearly all of them. A historical *delegated* key now conflicts instead of replaying: the safe direction, since it refuses rather than returning a result decided under a different authority.
-- The control asserts both halves in one test: the changed context conflicts, AND a genuine replay — same key, body and subject — still returns the original result marked `replayed`. A binding that worked by breaking replay would fail it.
-- Validation: `bash scripts/run_pg_tests.sh command_api` rc=0 — **36 passed / 0 failed**. The affected set `command_api command_ordering escalation mcp_write atomic_transaction invitations` rc=0 with **6 suites, 62 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
-- FALSIFIED against the exact pre-`.3.4.2` sources: **35 passed / 1 failed**, `left: 200, right: 200`, the body showing `"ok":true,"replayed":true` for the revoked delegation.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated ten times;
+the rotation contract in `README_POLICY.md`. This file has rotated eleven times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the ELEVENTH rotation (2026-09-13) from
+the repository root:
+
+```bash
+git show f425ae0a5bff201bedde5d228c9e4659c7408740:CHANGELOG.md
+```
+
+That snapshot is 95,641 bytes and contains 31 dated entries; its Git blob is
+`18388aa961ae05ef8dd1c104f35f1268cd239b71`, and its SHA-256 is
+`2a3b7fb9241e341193b514947b9a5f9356659eebb6c919a4854ae6ae4f50bf55`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-13 — The cache's freshness window compared two different clocks (`SIGNOFF-REPAIR.3.4.3`)`.
+It carries the TENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TENTH rotation (2026-09-13) from the
 repository root:

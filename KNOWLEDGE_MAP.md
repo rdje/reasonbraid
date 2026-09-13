@@ -160,6 +160,7 @@
 - [`2026-09-12_checkpoint-gate-authority.md`](docs/decisions/2026-09-12_checkpoint-gate-authority.md)
 - [`2026-09-12_r2-acquisition-accept-set.md`](docs/decisions/2026-09-12_r2-acquisition-accept-set.md)
 - [`2026-09-12_verification-strategy-assessment.md`](docs/decisions/2026-09-12_verification-strategy-assessment.md)
+- [`2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md`](docs/decisions/2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md)
 
 ## Promoted lessons
 

@@ -54,10 +54,16 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-/// The decision columns [`Journal::cached_decision`] reads. The first three are
-/// absent together on a row delivered without an admission decision (a pre-0003
-/// row or plain channel traffic); `received_at` is `NOT NULL` and always present.
-type CachedDecisionRow = (Option<String>, Option<String>, Option<i64>, String);
+/// How far this node's clock may differ from the server's before the
+/// disagreement is reported (`SIGNOFF-REPAIR.3.4.3.1.2`). Well under
+/// `CACHED_ALLOW_TTL_SECONDS`, so a skew large enough to have mattered before
+/// the correction is always announced.
+const CLOCK_DISAGREEMENT_REPORT_MS: i64 = 5_000;
+
+/// The decision columns [`Journal::cached_decision`] reads. They are absent
+/// together on a row delivered without an admission decision (a pre-0003 row or
+/// plain channel traffic).
+type CachedDecisionRow = (Option<String>, Option<String>, Option<i64>);
 
 /// The journal's durability journal mode (`ROADMAP.md` §11.4).
 pub const DURABILITY_JOURNAL_MODE: &str = "wal";
@@ -470,26 +476,22 @@ impl Journal {
         // dispatch gate evaluates the replayed admission, not the dead one. A
         // plain redelivery (no decision) keeps the original row untouched.
         //
-        // `.3.4.3`: `received_at` is refreshed WITH them, because it anchors the
-        // freshness window and must mean "when this node took in the decision
-        // this row now holds" — a replayed decision journaled against the first
-        // delivery's receipt would be stale on arrival. The `decided_at <> ?`
-        // guard keeps that meaning exact: every poll re-records every delivered
-        // command, so an unguarded refresh would re-anchor the window on each
-        // one and hand back the stretch this leaf removes.
+        // ⛔ `.3.4.3` also refreshed `received_at` here, guarded on the decision
+        // having changed, because the receipt anchored the freshness window.
+        // `.3.4.3.1.2` removed that anchor — freshness is evaluated in the
+        // SERVER's terms now — so re-anchoring the receipt would change
+        // `work_items` ordering for no stated reason, and unjustified behaviour
+        // is not kept by inertia. The receipt means first delivery again.
         if already_known && cmd.decided_at.is_some() {
             sqlx::query(
                 "UPDATE commands SET authz_ref = ?, policy_digest = ?, decided_at = ?, \
-                 revocation_epoch = ?, received_at = ? \
-                 WHERE command_id = ? AND (decided_at IS NULL OR decided_at <> ?)",
+                 revocation_epoch = ? WHERE command_id = ?",
             )
             .bind(cmd.authz_ref)
             .bind(cmd.policy_digest)
             .bind(cmd.decided_at)
             .bind(cmd.revocation_epoch)
-            .bind(at.to_rfc3339())
             .bind(cmd.command_id)
-            .bind(cmd.decided_at)
             .execute(&self.pool)
             .await?;
         }
@@ -1026,6 +1028,67 @@ impl Journal {
         Ok(())
     }
 
+    /// How far the SERVER's clock is ahead of this node's, in milliseconds
+    /// (`SIGNOFF-REPAIR.3.4.3.1.2`). Measured on each handshake/poll and stored
+    /// beside the revocation epoch, because both are facts the node learns from
+    /// the server and evaluates local decisions against.
+    ///
+    /// `None` before any handshake. The dispatch gate treats that the way it
+    /// treats a missing epoch: it has not heard from the server yet.
+    pub async fn clock_offset_ms(&self) -> Result<Option<i64>, JournalError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM channel_state WHERE key = 'clock_offset_ms'")
+                .fetch_optional(&self.pool)
+                .await?;
+        match value {
+            None => Ok(None),
+            Some(v) => v
+                .parse::<i64>()
+                .map(Some)
+                .map_err(|_| JournalError::CorruptState {
+                    key: "clock_offset_ms",
+                    value: v,
+                }),
+        }
+    }
+
+    /// Record the offset measured against `server_time`, and REPORT a large one.
+    ///
+    /// ⚠️ The offset is what the node has instead of a trusted clock, and a
+    /// large value is the only signal that this node's clock disagrees with the
+    /// server's — `.3.4.3.1`'s census found nothing anywhere reported that. It
+    /// is logged rather than refused: a node whose clock is wrong must still be
+    /// able to work, and the correction is what makes that safe.
+    /// `sent_at`/`received_at` bracket the request, and the offset is measured
+    /// against their MIDPOINT — the standard estimate. Measuring against either
+    /// end alone biases the result by a whole request leg: the send instant
+    /// overstates how far ahead the server is by the full round trip, the
+    /// receipt instant understates it by the response leg.
+    pub async fn record_server_time(
+        &self,
+        server_time: chrono::DateTime<chrono::Utc>,
+        sent_at: chrono::DateTime<chrono::Utc>,
+        received_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), JournalError> {
+        let midpoint = sent_at + (received_at - sent_at) / 2;
+        let offset_ms = (server_time - midpoint).num_milliseconds();
+        if offset_ms.abs() >= CLOCK_DISAGREEMENT_REPORT_MS {
+            eprintln!(
+                "node: this clock disagrees with the server's by {offset_ms} ms \
+                 (server {server_time}, local {midpoint}); server instants are \
+                 evaluated through that offset"
+            );
+        }
+        sqlx::query(
+            "INSERT INTO channel_state (key, value) VALUES ('clock_offset_ms', ?) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(offset_ms.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// The cached ADMISSION decision for one command (`.1.5.2`, ADR-008) — the
     /// server's decision metadata journaled with the delivery. `None` when the
     /// command carries no decision (pre-0003 row or plain traffic): the dispatch
@@ -1037,15 +1100,13 @@ impl Journal {
         command_id: &str,
     ) -> Result<Option<reasonbraid_core::CachedDecision>, JournalError> {
         let row: Option<CachedDecisionRow> = sqlx::query_as(
-            "SELECT policy_digest, decided_at, revocation_epoch, received_at FROM commands \
+            "SELECT policy_digest, decided_at, revocation_epoch FROM commands \
              WHERE command_id = ?",
         )
         .bind(command_id)
         .fetch_optional(&self.pool)
         .await?;
-        let Some((Some(policy_digest), Some(decided_at), Some(revocation_epoch), received_at)) =
-            row
-        else {
+        let Some((Some(policy_digest), Some(decided_at), Some(revocation_epoch))) = row else {
             return Ok(None);
         };
         let decided_at = chrono::DateTime::parse_from_rfc3339(&decided_at)
@@ -1054,18 +1115,8 @@ impl Journal {
                 key: "commands.decided_at",
                 value: decided_at,
             })?;
-        // `.3.4.3`: the node's OWN clock when it took this decision in. The
-        // freshness window runs from whichever of the two instants is earlier,
-        // so a server clock ahead of this node's cannot stretch it.
-        let received_at = chrono::DateTime::parse_from_rfc3339(&received_at)
-            .map(|d| d.with_timezone(&chrono::Utc))
-            .map_err(|_| JournalError::CorruptState {
-                key: "commands.received_at",
-                value: received_at,
-            })?;
         Ok(Some(reasonbraid_core::CachedDecision::allow(
             decided_at,
-            received_at,
             revocation_epoch as u64,
             policy_digest,
         )))

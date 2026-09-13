@@ -138,7 +138,12 @@ impl<A: Adapter> Worker<A> {
         let now = Utc::now();
         let cursor = self.node.journal().last_acked_cursor().await?;
 
+        // `sent`/`received` bracket the request so the clock offset below is
+        // measured against their midpoint rather than an instant a whole
+        // request leg away (`SIGNOFF-REPAIR.3.4.3.1.2`).
+        let sent = Utc::now();
         let poll = self.node.channel().poll(cursor).await?;
+        let received = Utc::now();
         // The tenant's current epoch (`.1.5.2`, ADR-008) — the freshness
         // reference every cached admission decision is evaluated against at the
         // dispatch boundary. Stored BEFORE the commands journal, so a command
@@ -147,6 +152,11 @@ impl<A: Adapter> Worker<A> {
         self.node
             .journal()
             .set_revocation_epoch(poll.revocation_epoch)
+            .await?;
+        // The server's clock rides the same response (`SIGNOFF-REPAIR.3.4.3.1.2`).
+        self.node
+            .journal()
+            .record_server_time(poll.server_time, sent, received)
             .await?;
         for cmd in &poll.commands {
             let decided_at = cmd.decided_at.as_ref().map(|d| d.to_rfc3339());
@@ -208,7 +218,21 @@ impl<A: Adapter> Worker<A> {
             .journal()
             .cached_decision(&item.command_id)
             .await?;
-        let decision_time = cached.as_ref().map(|d| d.decided_at);
+        // How far the SERVER's clock is ahead of this one, measured on the poll
+        // that just ran (`SIGNOFF-REPAIR.3.4.3.1.2`). `0` before any handshake,
+        // which is the same answer this node gave before the offset existed.
+        let offset =
+            ChronoDuration::milliseconds(self.node.journal().clock_offset_ms().await?.unwrap_or(0));
+        // ⚠️ The filter below compares `decided_at` — the SERVER's database clock
+        // — against `updated_at`, which this node wrote from its OWN clock. That
+        // is a third cross-clock comparison, and `.3.4.3.1`'s census did not
+        // find it because it looked for server instants compared against
+        // `Utc::now()`, not against stored local ones. Its failure direction is
+        // the dangerous one: with this node's clock BEHIND the server's, genuine
+        // post-decision attempts read as older than the decision, are filtered
+        // out, and the retry bound never trips. So the decision time is brought
+        // into LOCAL terms before it meets a local timestamp.
+        let decision_time = cached.as_ref().map(|d| d.decided_at - offset);
         let attempt_count = match &item.operation_id {
             Some(op) => self
                 .node
@@ -260,7 +284,17 @@ impl<A: Adapter> Worker<A> {
         // cached decision is never dispatched (no admission = no dispatch).
         // The refusal is journaled as `failed_before_dispatch` — visible,
         // bounded, never a silent skip.
+        // TWO instants, deliberately, and mixing them would corrupt the journal.
+        // `now` is this node's own clock and is what gets WRITTEN — every journal
+        // timestamp is local, and a server-corrected value stored among them
+        // would be compared against local ones later. `server_now` is the same
+        // instant expressed in the SERVER's terms, and is used only to EVALUATE
+        // a server instant (`SIGNOFF-REPAIR.3.4.3.1.2`). Comparing `decided_at`
+        // against the local clock made the difference between two clocks read as
+        // age, which past `CACHED_ALLOW_TTL_SECONDS` of skew refused EVERY
+        // dispatch — the outage this leaf closes.
         let now = Utc::now();
+        let server_now = now + offset;
         match cached {
             None => {
                 self.refuse_dispatch(
@@ -284,7 +318,7 @@ impl<A: Adapter> Worker<A> {
                     .await?;
                     return Ok(());
                 };
-                match decision.evaluate(now, current_epoch as u64) {
+                match decision.evaluate(server_now, current_epoch as u64) {
                     reasonbraid_core::CacheVerdict::Allow => {}
                     reasonbraid_core::CacheVerdict::Deny { reason } => {
                         self.refuse_dispatch(item, &reason, now).await?;
@@ -293,9 +327,12 @@ impl<A: Adapter> Worker<A> {
                     reasonbraid_core::CacheVerdict::Stale => {
                         let reason = format!(
                             "cached admission decision is stale (decided {}, expires {}, \
-                             recorded epoch {}, current epoch {})",
+                             server now {}, clock offset {} ms, recorded epoch {}, \
+                             current epoch {})",
                             decision.decided_at,
                             decision.expires_at,
+                            server_now,
+                            offset.num_milliseconds(),
                             decision.revocation_epoch,
                             current_epoch
                         );

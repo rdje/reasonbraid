@@ -181,6 +181,9 @@ impl Node {
         // 3. The handshake exchange. The certificate + proof are the CHANNEL.s
         //    job (it owns the workload identity): it fills both from the
         //    installed leaf, so the proof always covers what is sent.
+        // `sent`/`received` bracket the exchange so the clock offset at 3.6 is
+        // measured against their midpoint (`SIGNOFF-REPAIR.3.4.3.1.2`).
+        let sent = Utc::now();
         let response = self
             .channel
             .handshake(&HandshakeRequest {
@@ -193,12 +196,20 @@ impl Node {
                 proof_signature: String::new(),
             })
             .await?;
+        let received = Utc::now();
 
         // 3.5 The tenant's current revocation epoch (`.1.5.2`, ADR-008) — stored
         //     before the replay journals, so every command journaled here is
         //     evaluated against an epoch at least as fresh as its delivery.
         self.journal
             .set_revocation_epoch(response.revocation_epoch)
+            .await?;
+        // 3.6 The server's clock (`SIGNOFF-REPAIR.3.4.3.1.2`), measured against
+        //     the instant this response was taken in. Stored beside the epoch so
+        //     the dispatch gate can evaluate `decided_at` in the server's terms
+        //     rather than treating the difference between two clocks as age.
+        self.journal
+            .record_server_time(response.server_time, sent, received)
             .await?;
 
         // 4. Journal the replay, deduplicated by command id (a duplicated command never

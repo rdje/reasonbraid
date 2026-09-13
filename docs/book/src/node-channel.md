@@ -226,34 +226,47 @@ only explicitly cacheable decisions; §11.1: the minimum authorized state). A
 delivered command carries `authz_ref` (the admitting authorization record),
 `policy_digest`, `decided_at`, and `revocation_epoch` — the tenant's epoch **at
 decision time**. The handshake and poll responses carry the tenant's **current**
-`revocation_epoch`.
+`revocation_epoch` and the server's own clock as `server_time`.
 
 At the **dispatch boundary** (before any provider contact) the node evaluates
 the cached decision against the declared rules:
 
-- **Freshness** — a cached allow stands for at most **60 s**, measured from
-  whichever is earlier: the server's `decided_at`, or the instant this node
-  received the decision. Two clocks meet here — `decided_at` is the server's
-  database clock, sampled inside the authorizing transaction, while the
-  comparison runs against the node's own clock — so a node running behind the
-  server would otherwise be handed a decision dated in its own future and hold
-  it for `skew + 60 s`. Taking the earlier instant bounds the window at one TTL
-  of the node's *observed* time whatever the skew, and it can never refuse work
-  the plain rule would have allowed: the window always ends at least 60 s after
-  the node received the decision. A node whose clock runs *ahead* of the server
-  still fails closed, refusing its deliveries as already expired — visible in
-  the journal, and the safe direction to fail.
+- **Freshness** — a cached allow stands for at most **60 s** from `decided_at`.
 
-  This bound is load-bearing rather than belt-and-braces: a grant that simply
-  reaches its own `expires_at` bumps no revocation epoch, so the epoch check
-  below does not cover natural expiry. The freshness window is the only
-  node-side limit on dispatching under a grant that expired after admission.
+  ⚠️ **Two clocks meet here, and the node corrects for the difference rather
+  than guessing.** `decided_at` is the server's database clock; the node's own
+  clock is what it would otherwise compare against. Every handshake and poll
+  response therefore carries `server_time`, the server's clock at the moment it
+  answered. The node measures `offset = server_time − (the midpoint of its send
+  and receive instants)`, stores it beside the revocation epoch, and evaluates
+  `decided_at` through it. The freshness comparison is then same-clock, and a
+  node whose clock is wrong keeps working correctly.
 
-  A **replay** (`POST /v1/nodes/replay`) carries a new admission decision, and
-  the node re-anchors the window to *that* delivery — a decision replayed onto a
-  command first delivered days ago is fresh from its replay, not stale from the
-  original receipt. An ordinary re-delivery of the *same* decision does not
-  re-anchor anything.
+  Without that correction the difference between two clocks read as *age*, in
+  both directions and both wrong:
+
+  | This node's clock | Uncorrected | Now |
+  | --- | --- | --- |
+  | ahead of the server by > 60 s | **every** dispatch refused — the node did no work at all | dispatches normally |
+  | behind the server | decisions looked newer than they were, so a stale one could still dispatch | refused once it is genuinely older than 60 s |
+
+  A disagreement of 5 s or more is **reported** by the node, naming both clocks
+  and the offset. Before this, nothing anywhere reported that a node's clock
+  disagreed with the server's.
+
+  ⚠️ The offset is taken from the server's own statement, so it is **not a
+  secure time source**. It adds no new trust: the node already accepts
+  `revocation_epoch` from the same response, which is a stronger claim than the
+  time. Treat it as a correction, not as clock security.
+
+  ⛔ An earlier repair bounded this hazard without a wire change, by running the
+  window from whichever came first, `decided_at` or the node's own receipt. That
+  is **superseded**. The receipt is a local instant, and mixing it into a value
+  compared against server-clock time made a correctly-corrected node refuse
+  everything: a node 600 s behind computed its expiry from its own receipt and
+  found every decision stale. Bounding a cross-clock comparison and removing it
+  do not compose.
+
 - **Revocation epoch** — every revocation write (node, grant, or boundary)
   bumps the tenant's epoch in the same transaction as the status change; a
   cached decision whose recorded epoch no longer matches the current one is

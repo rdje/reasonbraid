@@ -232,6 +232,10 @@ pub struct HandshakeResponse {
     /// stores it and evaluates every cached admission decision against it at
     /// the dispatch boundary.
     pub revocation_epoch: i64,
+    /// The server's own clock at the moment it answered
+    /// (`SIGNOFF-REPAIR.3.4.3.1.2`). The node measures its offset against this
+    /// and evaluates the server instants it was sent in the server's terms.
+    pub server_time: DateTime<Utc>,
 }
 
 /// A node-emitted event (a result, with its ORIGINAL id — `§17.4` step 5).
@@ -303,6 +307,12 @@ pub struct PollResponse {
     /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008) — the node's
     /// freshness reference for every cached admission decision.
     pub revocation_epoch: i64,
+    /// The server's own clock at the moment it answered
+    /// (`SIGNOFF-REPAIR.3.4.3.1.2`). The node measures its offset against this
+    /// and evaluates the server instants it was sent in the server's terms,
+    /// instead of comparing them to its own clock and calling the difference
+    /// staleness.
+    pub server_time: DateTime<Utc>,
 }
 
 /// The lease renewal (`backlog 13`): a heartbeat extends a LIVE lease — the
@@ -545,9 +555,22 @@ impl NodeChannelState {
     /// the freshness reference the node evaluates every cached admission
     /// decision against. Rides the node's enrollment tenant (the `nodes` row —
     /// a fenced node is always enrolled, so the row exists).
-    pub async fn revocation_epoch(&self, node_id: &str) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar(
-            "SELECT t.revocation_epoch FROM tenants t JOIN nodes n ON n.tenant_id = t.tenant_id \
+    /// The tenant's current revocation epoch AND the server's own clock, read in
+    /// the SAME query (`SIGNOFF-REPAIR.3.4.3.1.2`).
+    ///
+    /// The clock rides this query rather than its own so a poll — which happens
+    /// every few seconds — gains no extra round trip. It is the DATABASE clock
+    /// deliberately: `decided_at`, the one server instant the node actually
+    /// reads, is `clock_timestamp()` sampled inside the authorizing
+    /// transaction, so a node correcting against this value corrects against
+    /// the clock that produced the instant it is comparing.
+    pub async fn epoch_and_server_time(
+        &self,
+        node_id: &str,
+    ) -> Result<(i64, DateTime<Utc>), sqlx::Error> {
+        sqlx::query_as(
+            "SELECT t.revocation_epoch, clock_timestamp() \
+             FROM tenants t JOIN nodes n ON n.tenant_id = t.tenant_id \
              WHERE n.node_id = $1",
         )
         .bind(node_id)
@@ -1167,7 +1190,7 @@ async fn handshake(
     // here on — its token, its epoch-bound renewals, and its writes all fail.
     let (fencing_token, lease_epoch, lease_expires_at) =
         state.issue_lease(&req.node_id, Utc::now()).await?;
-    let revocation_epoch = state.revocation_epoch(&req.node_id).await?;
+    let (revocation_epoch, server_time) = state.epoch_and_server_time(&req.node_id).await?;
 
     Ok(Json(HandshakeResponse {
         channel_version: CHANNEL_VERSION,
@@ -1179,6 +1202,7 @@ async fn handshake(
         lease_expires_at,
         revocation_epoch,
         lease_epoch,
+        server_time,
     }))
 }
 
@@ -1353,12 +1377,13 @@ async fn poll(
         return Err(ApiError::cursor_ahead(req.after_cursor, current));
     }
     let commands = state.replay(&req.node_id, req.after_cursor).await?;
-    let revocation_epoch = state.revocation_epoch(&req.node_id).await?;
+    let (revocation_epoch, server_time) = state.epoch_and_server_time(&req.node_id).await?;
     Ok(Json(PollResponse {
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
         commands,
         revocation_epoch,
+        server_time,
     }))
 }
 

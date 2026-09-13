@@ -257,3 +257,66 @@ async fn a_replayed_delivery_refreshes_the_decision_and_redispatches() {
         "the fresh decision re-armed the dispatch (one new attempt)"
     );
 }
+
+/// `SIGNOFF-REPAIR.3.4.3.1.2` — the retry gate is a THIRD cross-clock
+/// comparison, and `.3.4.3.1`'s census did not find it.
+///
+/// The gate counts attempts made under the current decision by filtering
+/// `updated_at >= decided_at`. `updated_at` is a LOCAL journal timestamp this
+/// node wrote; `decided_at` is the SERVER's database clock. With this node's
+/// clock BEHIND the server's, every genuine post-decision attempt reads as
+/// older than the decision, is filtered out, and the count stays at zero — so
+/// the retry bound never trips and the item re-dispatches without limit. That
+/// is the fail-OPEN direction, which is why it is worth a control of its own.
+#[tokio::test]
+async fn the_retry_bound_still_trips_when_this_clock_runs_behind_the_server() {
+    let node = dummy_node("retry-clock-behind").await;
+
+    // This node is 600 s behind: the server's clock reads 600 s AFTER ours.
+    let node_now = Utc::now();
+    let server_time = node_now + chrono::Duration::seconds(600);
+    node.journal()
+        .record_server_time(server_time, node_now, node_now)
+        .await
+        .expect("record the server's clock");
+
+    // Decided now, in the SERVER's terms — so every local attempt timestamp
+    // below is numerically smaller than `decided_at`.
+    let (_command_id, operation_id) = seed_command(node.journal(), "skew", server_time, 7).await;
+
+    let worker = Worker::new(
+        node.clone(),
+        refusing_adapter(),
+        local(),
+        Duration::from_secs(1),
+    );
+    let item = || async {
+        node.journal()
+            .work_items()
+            .await
+            .expect("work items")
+            .into_iter()
+            .find(|w| w.command_id == "cmd_skew")
+            .expect("seeded item")
+    };
+    // Three attempts, then the bound must be reached and the dead letter fire.
+    for _ in 0..5 {
+        worker.process(&item().await).await.expect("a tick");
+    }
+
+    let dead_letters = node
+        .journal()
+        .emitted_events()
+        .await
+        .expect("outgoing events")
+        .into_iter()
+        .filter(|e| e.operation_id == operation_id)
+        .filter(|e| e.payload.contains("work_dead_lettered"))
+        .count();
+    assert_eq!(
+        dead_letters, 1,
+        "the retry bound must trip on a node whose clock runs behind the \
+         server's — an uncorrected comparison filters every attempt out and \
+         re-dispatches without limit"
+    );
+}

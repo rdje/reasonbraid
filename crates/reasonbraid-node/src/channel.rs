@@ -186,6 +186,8 @@ pub struct HandshakeResponse {
     pub lease_epoch: i64,
     /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008).
     pub revocation_epoch: i64,
+    /// The server's own clock when it answered (`SIGNOFF-REPAIR.3.4.3.1.2`).
+    pub server_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -215,6 +217,8 @@ pub struct PollResponse {
     /// stores it and evaluates every cached admission decision against it at
     /// the dispatch boundary.
     pub revocation_epoch: i64,
+    /// The server's own clock when it answered (`SIGNOFF-REPAIR.3.4.3.1.2`).
+    pub server_time: chrono::DateTime<chrono::Utc>,
 }
 
 /// The lease renewal (`POST /v1/nodes/heartbeat`): a heartbeat extends a LIVE

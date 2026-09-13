@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I falsified the wrong thing first, and the number told me
+
+- The defect is small and the shape is worth keeping: two `Arc<Mutex<_>>` fields holding one fact. The WRITE took both locks together, so two handshakes could never interleave, and that is exactly why it reads as correct. Every READ took them separately. A reader does not need a torn write to see a torn pair — it only needs a complete write to land between its two acquisitions.
+- ⭐ The control I am happy with is the self-describing generation: generation `n` is token `fnc_n` with epoch `n`, so any pair a reader sees can be checked against itself. No bookkeeping about which generation "should" be live, no sampling, no timing assumption — the invariant is local to the observation.
+- 🔴 **And then I falsified the wrong mechanism.** My first neutralization split the WRITE into two acquisitions. The control went red immediately — `4193 torn of 40000` — and I nearly wrote that number down as the reproduction. It is not: the superseded code's write was atomic. What I had built was a different bug that happens to fail the same assertion. ⚠️ The tell was the magnitude. When I redid it faithfully, by splitting the READ, the rate dropped to `242 of 40000`. A falsification that makes the defect ten times louder than it was is not evidence about the repair, it is evidence that I broke something else.
+- ⭐ That 0.6 % is also the answer to "why did nobody notice". A real node reads this pair a few times a second and handshakes on reconnect; the window is a few instructions wide. It would present as an occasional unexplained `401` followed by a successful reconnect — indistinguishable from a network blip, and therefore retried away forever.
+- ⚠️ I wrote the bound into the leaf before doing the work: this is availability, not a fencing bypass, because the server refuses the mismatched pair. Stating that first kept me honest about the fix's justification — a request that cannot possibly succeed should not be constructible is a good reason; "a security race" would have been a false one.
+- ⛔ And the LOCKSTEP line says "none needed" explicitly rather than being left blank. The change is internal to the node client and alters no wire field, no route and no documented behaviour, so the book stays as it is — but a blank lockstep is indistinguishable from a forgotten one.
+
 ## 2026-09-13 — The leaf that avoided the defect committed it anyway
 
 - `.4.2` made a point, at its split, of reading the fifteen source-census records routed to it rather than only its own goal line — explicitly citing `.11.9`'s lesson "applied the day it was written". I ran the instrument over it expecting to confirm that, and it did: fifteen records, fifteen cited, zero uncited, against `.4.1`'s thirty-six uncited. The claim was true.

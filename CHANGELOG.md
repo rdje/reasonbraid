@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The fencing token and its epoch become one fact (`SIGNOFF-REPAIR.4.2.8`)
+
+- 🔴 **Reproduced with a driven interleaving: `242 torn of 40,000` reads**, the first carrying a token from generation 444 with the epoch of 455. The control installs self-describing generations — generation `n` is token `fnc_n` with epoch `n` — so a torn pair checks against itself with no bookkeeping.
+- ⭐ **Why it looked safe: the WRITE was atomic.** `handshake` took both locks in one scope, so two writers could never interleave. But all four fenced request paths READ the pair through two separate acquisitions, and a reader straddles a complete write. The asymmetry is the whole defect, and it is invisible if you only ask whether the writes are correct.
+- ⚠️ **The bound, stated before the work and unchanged by it: an availability defect, not a fencing bypass.** The server refuses a mismatched pair because no lease row matches both, so the cost was a spurious `401` and a reconnect. It is repaired because a request that cannot possibly succeed should not be constructible.
+- ⭐ And the measurement explains why it never surfaced: **0.6 % of reads under maximal contention**, against a real node that reads the pair a few times a second and handshakes on reconnect. Rare enough to look like a network blip and be retried away — the class of defect that survives.
+- Fix: one field, `lease: Arc<Mutex<Option<Lease>>>`, read in one acquisition. The mixed state is now **unrepresentable** rather than merely unlikely. A "take both locks" helper was rejected (nothing stops the next caller taking one) and so was accepting the window (the fix costs one struct and removes the question).
+- 🔴 **The first falsification was the wrong one, and that is recorded rather than hidden.** It split the WRITE — which the superseded code never did — and failed more loudly, `4193 torn`. Redone against the actual superseded mechanism, the split READ, it gives `242 torn`. A neutralization that exaggerates the defect is not evidence for the repair, and the louder number is the tell.
+- Validation: node crate 72 tests across 8 targets, plus the live channel suites (37 + 8 + 7 + 1), rc=0 — every handshake, heartbeat, ack, poll and events control unchanged. clippy `-D warnings` rc=0. No wire field, route or documented behaviour changed.
+
 ## 2026-09-13 — Reconcile the fifteen routed records, and find six clauses the split dropped (`SIGNOFF-REPAIR.4.2`)
 
 - ⭐ **The parent's citation claim is measured for the first time**: all **15** records routing to this family are cited by it or a child — **15 cited, 0 uncited** — against `.4.1`'s **36 uncited**, the leaf whose dropped clause started the whole reconciliation question. Reading the routed records is now visible in an instrument rather than asserted as diligence.

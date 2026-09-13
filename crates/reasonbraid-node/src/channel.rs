@@ -349,10 +349,18 @@ pub struct NodeChannel {
     base_url: String,
     node_id: String,
     identity: WorkloadIdentity,
-    fencing_token: Arc<Mutex<Option<String>>>,
-    /// The lease epoch the current token was issued under (`.2.2`) — sent with
-    /// every fenced write so a stale session can never ride a rotated lease.
-    lease_epoch: Arc<Mutex<Option<i64>>>,
+    /// The lease the latest handshake issued: its fencing token AND the epoch it
+    /// was issued under (`.2.2`), as ONE value under ONE lock.
+    ///
+    /// ⛔ These were two `Arc<Mutex<_>>` fields (`SIGNOFF-REPAIR.4.2.8`). The
+    /// WRITE held both together, so two writers could not interleave — but
+    /// every fenced request READ them through separate acquisitions, so a
+    /// handshake completing between the two reads produced a request carrying a
+    /// token from one generation and an epoch from the next. The server refuses
+    /// that pair, so the cost was a spurious `401` and a reconnect rather than a
+    /// fencing bypass; the point of one field is that the mixed state is now
+    /// UNREPRESENTABLE rather than merely unlikely.
+    lease: Arc<Mutex<Option<Lease>>>,
     /// How far the SERVER's clock is ahead of this node's, in milliseconds,
     /// from the latest handshake (`SIGNOFF-REPAIR.3.4.3.1.3`). The channel keeps
     /// its own copy because the rotation decision runs INSIDE `handshake`,
@@ -360,6 +368,14 @@ pub struct NodeChannel {
     /// which is what this node did before the offset existed.
     clock_offset_ms: Arc<Mutex<i64>>,
     client: reqwest::Client,
+}
+
+/// The fencing credential a handshake issues: the token and the epoch it was
+/// issued under. They are one fact and travel together (`SIGNOFF-REPAIR.4.2.8`).
+#[derive(Debug, Clone)]
+struct Lease {
+    token: String,
+    epoch: i64,
 }
 
 /// A workload leaf stays valid 10 minutes (ADR-007); rotate when less than
@@ -401,8 +417,7 @@ impl NodeChannel {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             node_id,
             identity: Arc::new(Mutex::new(Some((cert_der, key)))),
-            fencing_token: Arc::new(Mutex::new(None)),
-            lease_epoch: Arc::new(Mutex::new(None)),
+            lease: Arc::new(Mutex::new(None)),
             clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
@@ -416,8 +431,7 @@ impl NodeChannel {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             node_id,
             identity: Arc::new(Mutex::new(None)),
-            fencing_token: Arc::new(Mutex::new(None)),
-            lease_epoch: Arc::new(Mutex::new(None)),
+            lease: Arc::new(Mutex::new(None)),
             clock_offset_ms: Arc::new(Mutex::new(0)),
             client: reqwest::Client::new(),
         }
@@ -461,21 +475,25 @@ impl NodeChannel {
 
     /// The fencing token from the latest successful handshake, or a typed error
     /// when the channel has not been authenticated (or was reset).
-    fn current_fencing_token(&self) -> Result<String, ChannelError> {
-        self.fencing_token
-            .lock()
-            .expect("the fencing-token lock is not poisoned")
-            .clone()
-            .ok_or(ChannelError::NotAuthenticated)
+    /// Install a lease directly. ⛔ TEST ONLY, and deliberately not a public
+    /// API: the defect `SIGNOFF-REPAIR.4.2.8` repairs lives in this state, not
+    /// in the HTTP path, so its control drives the state rather than a server.
+    #[cfg(test)]
+    fn install_lease_for_test(&self, token: String, epoch: i64) {
+        *self.lease.lock().expect("the lease lock is not poisoned") = Some(Lease { token, epoch });
     }
 
-    /// The lease epoch from the latest successful handshake (the same guard as
-    /// the token — an unauthenticated channel has neither).
-    fn current_lease_epoch(&self) -> Result<i64, ChannelError> {
-        self.lease_epoch
+    /// The token and epoch of the latest successful handshake, read in ONE
+    /// acquisition (`SIGNOFF-REPAIR.4.2.8`). Two acquisitions could straddle a
+    /// handshake and return a pair that never existed.
+    fn current_lease(&self) -> Result<(String, i64), ChannelError> {
+        let lease = self
+            .lease
             .lock()
-            .expect("the lease-epoch lock is not poisoned")
-            .ok_or(ChannelError::NotAuthenticated)
+            .expect("the lease lock is not poisoned")
+            .clone()
+            .ok_or(ChannelError::NotAuthenticated)?;
+        Ok((lease.token, lease.epoch))
     }
 
     fn parse_error(status: u16, body: &[u8]) -> ChannelError {
@@ -560,16 +578,11 @@ impl NodeChannel {
             .await?;
         let parsed: HandshakeResponse = self.parse(response).await?;
         {
-            let mut token = self
-                .fencing_token
-                .lock()
-                .expect("the fencing-token lock is not poisoned");
-            let mut epoch = self
-                .lease_epoch
-                .lock()
-                .expect("the lease-epoch lock is not poisoned");
-            *token = Some(parsed.fencing_token.clone());
-            *epoch = Some(parsed.lease_epoch);
+            let mut lease = self.lease.lock().expect("the lease lock is not poisoned");
+            *lease = Some(Lease {
+                token: parsed.fencing_token.clone(),
+                epoch: parsed.lease_epoch,
+            });
         }
         // The server stated its clock (`SIGNOFF-REPAIR.3.4.3.1.2`); the channel
         // keeps its own copy so the NEXT handshake's rotation check — which runs
@@ -644,6 +657,7 @@ impl NodeChannel {
         operation_id: &str,
         payload: &Value,
     ) -> Result<EventReceipt, ChannelError> {
+        let (lease_token, lease_epoch) = self.current_lease()?;
         let response = self
             .client
             .post(format!("{}/v1/nodes/events", self.base_url))
@@ -653,8 +667,8 @@ impl NodeChannel {
                 "event_id": event_id,
                 "operation_id": operation_id,
                 "payload": payload,
-                "fencing_token": self.current_fencing_token()?,
-                "lease_epoch": self.current_lease_epoch()?,
+                "fencing_token": lease_token,
+                "lease_epoch": lease_epoch,
             }))
             .send()
             .await?;
@@ -664,6 +678,7 @@ impl NodeChannel {
     /// Acknowledge that the node durably holds commands up to `ack_cursor`,
     /// carrying the current fencing token.
     pub async fn acknowledge(&self, ack_cursor: i64) -> Result<AckResponse, ChannelError> {
+        let (lease_token, lease_epoch) = self.current_lease()?;
         let response = self
             .client
             .post(format!("{}/v1/nodes/ack", self.base_url))
@@ -671,8 +686,8 @@ impl NodeChannel {
                 "channel_version": CHANNEL_VERSION,
                 "node_id": self.node_id,
                 "ack_cursor": ack_cursor,
-                "fencing_token": self.current_fencing_token()?,
-                "lease_epoch": self.current_lease_epoch()?,
+                "fencing_token": lease_token,
+                "lease_epoch": lease_epoch,
             }))
             .send()
             .await?;
@@ -682,6 +697,7 @@ impl NodeChannel {
     /// The live delivery tail after `after_cursor` (the schedulable node's poll
     /// path), carrying the current fencing token.
     pub async fn poll(&self, after_cursor: i64) -> Result<PollResponse, ChannelError> {
+        let (lease_token, lease_epoch) = self.current_lease()?;
         let response = self
             .client
             .post(format!("{}/v1/nodes/poll", self.base_url))
@@ -689,8 +705,8 @@ impl NodeChannel {
                 "channel_version": CHANNEL_VERSION,
                 "node_id": self.node_id,
                 "after_cursor": after_cursor,
-                "fencing_token": self.current_fencing_token()?,
-                "lease_epoch": self.current_lease_epoch()?,
+                "fencing_token": lease_token,
+                "lease_epoch": lease_epoch,
             }))
             .send()
             .await?;
@@ -701,14 +717,15 @@ impl NodeChannel {
     /// live lease's. A refusal (fenced by a newer handshake, or expired) means
     /// the caller should re-handshake — the node lifecycle does exactly that.
     pub async fn heartbeat(&self) -> Result<HeartbeatResponse, ChannelError> {
+        let (lease_token, lease_epoch) = self.current_lease()?;
         let response = self
             .client
             .post(format!("{}/v1/nodes/heartbeat", self.base_url))
             .json(&serde_json::json!({
                 "channel_version": CHANNEL_VERSION,
                 "node_id": self.node_id,
-                "fencing_token": self.current_fencing_token()?,
-                "lease_epoch": self.current_lease_epoch()?,
+                "fencing_token": lease_token,
+                "lease_epoch": lease_epoch,
             }))
             .send()
             .await?;
@@ -1010,5 +1027,117 @@ mod hex_decoding {
                 "refused or odd-length, never a panic: {s:?}"
             );
         }
+    }
+}
+
+/// `SIGNOFF-REPAIR.4.2.8` — the fencing token and the lease epoch are ONE fact,
+/// and a reader can never observe half of one generation beside half of another.
+///
+/// These were two `Arc<Mutex<_>>` fields. The WRITE held both locks together, so
+/// two handshakes could not interleave with each other — which is exactly why
+/// this looked safe. But every fenced request READ them through two separate
+/// acquisitions (`current_fencing_token()?` then `current_lease_epoch()?`), and
+/// a handshake completing in the gap yielded a request carrying generation N's
+/// token with generation N+1's epoch.
+///
+/// ⚠️ The bound, stated rather than inflated: the server refuses that pair,
+/// because no lease row matches both. So the cost was a spurious `401` and a
+/// reconnect — an availability defect, not a fencing bypass. It is repaired
+/// because a request that cannot succeed should not be constructible, not
+/// because it was dangerous.
+///
+/// ⭐ The repair makes the mixed state **unrepresentable**, so after it no
+/// fixture can construct one — `docs/knowledge/proving-a-race-is-closed.md`'s
+/// case where atomicity, not ordering, is what changed. The control below is
+/// therefore an INVARIANT control, and its discriminating power is recorded by
+/// running it against the superseded two-lock design, where it fails.
+#[cfg(test)]
+mod lease_generation {
+    use super::*;
+
+    /// Each generation is self-describing: generation `n` has token `fnc_n` and
+    /// epoch `n`, so any pair a reader observes can be checked against itself
+    /// with no bookkeeping and no sampling of which generation "should" be live.
+    fn channel() -> NodeChannel {
+        NodeChannel::new(
+            "http://127.0.0.1:1".to_string(),
+            "nod_00000000-0000-7000-8000-000000000428".to_string(),
+            Vec::new(),
+            rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("a test key"),
+        )
+    }
+
+    #[test]
+    fn a_reader_never_observes_two_generations_at_once() {
+        let channel = channel();
+        channel.install_lease_for_test("fnc_0".to_string(), 0);
+
+        const GENERATIONS: i64 = 20_000;
+        let writer = {
+            let channel = channel.clone();
+            std::thread::spawn(move || {
+                for n in 1..=GENERATIONS {
+                    channel.install_lease_for_test(format!("fnc_{n}"), n);
+                }
+            })
+        };
+
+        // Two readers, so the check does not depend on one thread's scheduling.
+        let readers: Vec<_> = (0..2)
+            .map(|_| {
+                let channel = channel.clone();
+                std::thread::spawn(move || {
+                    let mut seen = 0usize;
+                    let mut torn = Vec::new();
+                    for _ in 0..GENERATIONS {
+                        let (token, epoch) = channel.current_lease().expect("a lease is installed");
+                        seen += 1;
+                        if token != format!("fnc_{epoch}") {
+                            torn.push((token, epoch));
+                        }
+                    }
+                    (seen, torn)
+                })
+            })
+            .collect();
+
+        writer.join().expect("the writer thread");
+        let mut observed = 0usize;
+        let mut torn: Vec<(String, i64)> = Vec::new();
+        for reader in readers {
+            let (seen, mut t) = reader.join().expect("a reader thread");
+            observed += seen;
+            torn.append(&mut t);
+        }
+
+        assert!(
+            observed >= GENERATIONS as usize,
+            "the readers really ran: {observed} observations"
+        );
+        assert!(
+            torn.is_empty(),
+            "a reader observed a token and an epoch from DIFFERENT generations — \
+             the pair is one fact and must be read in one acquisition; {} torn \
+             of {observed}, first: {:?}",
+            torn.len(),
+            torn.first()
+        );
+    }
+
+    /// The other half of the contract, so the repair is not "reads always fail":
+    /// with no handshake yet, reading the pair is the typed refusal, and after
+    /// one it is exactly what was installed.
+    #[test]
+    fn the_pair_is_absent_before_a_handshake_and_exact_after_one() {
+        let channel = channel();
+        assert!(
+            matches!(channel.current_lease(), Err(ChannelError::NotAuthenticated)),
+            "no lease yet is the typed refusal, not a default"
+        );
+        channel.install_lease_for_test("fnc_7".to_string(), 7);
+        assert_eq!(
+            channel.current_lease().expect("installed"),
+            ("fnc_7".to_string(), 7)
+        );
     }
 }

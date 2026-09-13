@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The MEMORY warnings censused, and the worry refuted (`SIGNOFF-REPAIR.11.4.2.1`)
+
+- ⛔ **The measurement refutes the worry the leaf was opened on.** `MEMORY.md` holds **26** standing warnings and **zero** exist only there — every one is also recorded in a durable layer. The rule that worry implies, "every MEMORY warning must first exist in a durable layer", would flag nothing, ever.
+- 🔴 **The instrument was wrong twice before it was right, and the sequence is the evidence.** 31 (split at every marker — `🔴 ONE HOP DEEP: ⛔ do not fix it` counted as two); then 21 (split only at a sentence terminator — but this project writes `**… clamp.**`, so the terminator sits inside the markup and three pairs of distinct warnings merged); then 26. ⚠️ Its own `--self-test` passed throughout, because the fixtures were written in the same idiom as the bug. What caught the under-count was reading the output against the file it measured.
+- ⛔ **Then the tool's own verdict was a false claim.** It printed `ORPHAN (only in MEMORY.md): 13`; hand-classifying all 13 found **13 of 13 recorded**. A search's population published as a defect count — the project's own lesson turned on its author. The verdict is renamed `UNCITED` and the output now states it is a population to classify.
+- 🔴 **What the census did find is narrower and real: the pointer is missing, not the record.** 13 of 26 warnings name no leaf, so evicting one costs the next reader the path back rather than the fact.
+- ⛔ **Not mechanized, and the census is why.** "A standing warning must name its leaf" would flag three legitimate ones today — the derived frontier note, the `docs/knowledge/` navigational pointer, and the `project_env.py` environment rule. The obvious rule destroys accurate content, for the second time in this tree's history.
+- ⭐ What ships instead is `scripts/census_memory_warnings.py`, tracked with a 16-control `--self-test` and registered in `TOOLBOX.md`, to be run at the moment of the decision: prefer evicting a warning whose line names its leaf. That turns "whatever the author judges least costly" into something derived.
+- Pressure, measured: seven recorded cap crossings, four of them in this session — one per commit. ⛔ The cap was not raised; containment stays with `.11.4.2`.
+- Validation: `--self-test` -> 16 controls pass, rc=0; `check_doctrines.sh` green with the instrument inside the SELF-TEST gate's population (21, up from 20). No product code touched.
+
 ## 2026-09-13 — The secret store's claim is narrowed to the one read it routes (`SIGNOFF-REPAIR.4.2.5`)
 
 - ⛔ **The census refuted the leaf's own opening sentence, and the refutation is recorded rather than edited into agreement.** "Node keys are read directly from their tables" is false in production: there are exactly two `SELECT`s of key material in the workspace, one of which IS the store, and the other a test fixture. The server performs ONE read of key material and it is routed.
@@ -331,33 +342,26 @@
 - Validation: `bash scripts/run_pg_tests.sh command_api` rc=0 — **36 passed / 0 failed**. The affected set `command_api command_ordering escalation mcp_write atomic_transaction invitations` rc=0 with **6 suites, 62 tests, zero failures**. Strict lint, fmt, gate (17 checks), book and link check rc=0.
 - FALSIFIED against the exact pre-`.3.4.2` sources: **35 passed / 1 failed**, `left: 200, right: 200`, the body showing `"ok":true,"replayed":true` for the revoked delegation.
 
-## 2026-09-13 — ⛔ Correction: the `delegable` flag governs chains that do not exist (`SIGNOFF-REPAIR.3.4.1`)
-
-- **The previous commit's census was wrong, and this corrects it.** `.3.4` recorded that `evaluate()` never reads `grant.delegable` and called it a defect — a non-delegable grant backing a delegated request. The measurement was right; the inference was not, and acting on it would have broken a shipped, tested feature.
-- Three measurements refute it. (1) Every dev-profile grant is issued `delegable: false`, under a boundary that is `delegable: false` with `max_delegation_depth: 0` — asserted from the database in the new control, not assumed — and the shipped `.1.4.2` delegation still succeeds, so the flag cannot have been gating that path or the feature could never have worked. (2) No grant's parent is ever another grant: issuance loads an `enrollment_boundaries` row, and `parent_or_root_authority` is a string on the boundary. The chain machinery has no producer, exactly as its own comment says. (3) §16.3 conditions delegation on invariants — no widening, both permissions evaluated — not on a flag, and those are enforced.
-- ⭐ **And the gate the census had not looked for is the one that matters.** A probe had an unrelated human in the same tenant, holding the same full action set, act on behalf of a role: `403 … is not a participant of this thread`. Participation is enforced, and the refusal names the ACTOR rather than the subject — naming a well-placed subject does not launder an outsider in, which is the confused-deputy shape §16.3 exists to refuse.
-- This leaf therefore ships no behaviour change. It ships two controls pinning the measured behaviour — the first ASSERTS the non-delegable premise before exercising the delegation, so it fails loudly if the dev profile ever starts issuing delegable grants — the two core fields annotated where they are discarded, and a book section with the four gates a delegated request must pass and an explicit "what `delegable` and `max_delegation_depth` do not do".
-- ⛔ What genuinely is not required, with its bound: the subject's **consent** to a particular actor. The consequence is attribution only — the actor must already hold a grant covering this action *and this target*, and must already be a participant, so it gains no reach, only the audit naming the subject alongside it. Changing that is a wire and policy question no ADR currently answers, and it is recorded rather than invented.
-- ⚠️ The leaf closes by refusing its own opening acceptance, which asked for the delegated request to be DENIED. The superseded wording is kept in the leaf rather than edited into agreement, because what the census measured was right and what it inferred was wrong, and a reader needs to see which was which.
-- Validation: `bash scripts/run_pg_tests.sh command_api escalation authority` rc=0 — **3 suites, 61 tests, zero failures**. Strict lint on both crates, fmt, gate (17 checks), book and link check rc=0.
-- `.3.4.2` is unaffected and still owns a live measured defect: the replay hash does not bind the authority context.
-
-## 2026-09-13 — The delegation and cache surface, censused and split (`SIGNOFF-REPAIR.3.4`)
-
-- The leaf's own goal line named four mechanisms — delegability, bounded depth, replay-hash binding, cache freshness — plus two inherited representation follow-ups. Split into five children before implementing, as `.10` and `.11` were, with the census command recorded so it re-runs at any commit.
-- 🔴 **`evaluate()` — the function that decides every command — never reads `grant.delegable`.** The flag is read in exactly one place, and only in the direction "a grant claiming to be delegable must sit under a delegable boundary". Nothing asks, when a request arrives on behalf of someone, whether that subject's grant permits being delegated at all. A grant issued with `delegable = false` backs a delegated request exactly as a delegable one does. `.3.4.1` owns it.
-- 🔴 **The replay hash does not bind the authority context.** `request_hash` hashes the operation, the ACTOR's identity and `envelope.body` — and `authority_context` is a sibling of `body`, not part of it. Two requests identical except for `on_behalf_of` therefore produce the same idempotency key, and the second replays the first's stored result without its own authority ever being evaluated. `.3.4.2` owns it, starting by measuring whether the store holds denials, which decides whether this is only an audit defect or also a refusal that can be replayed away.
-- **Bounded depth is deliberately not enforced, which is not the same as missing**: `let _ = boundary.max_delegation_depth; // dev profile: only direct grants exist; chains are Phase 2`. A depth bound with no chains to bound is machinery without a population, so `.3.4.1` owns saying so in the book rather than repairing it.
-- **A structural hazard that is NOT reachable today, recorded so it is not rediscovered as a defect**: the §16.3 widening check sits inside `if let Some(scope)`, so a `CommandAuthz` with a delegate and no scope would delegate with the subject's full selector. The only caller that sets a delegate always sets the scope too. `.3.4.1` owns making the pair unconstructible rather than merely unused.
-- ⭐ **The cache's two halves fail in opposite directions.** `is_invalidated` uses `!=`, so a decision claiming a FUTURE epoch reads as stale and fails safe. `is_fresh` is `now < expires_at` and never reads `decided_at`, so a decision claiming to have been decided in the future is fresh for its whole stated window. `.3.4.3` owns deciding it — and the leaf notes that where the clock comes from settles it: if `decided_at` is server-produced, refusing a future value turns clock skew into an outage; if a node can influence it, refusing is the only safe answer.
-- Task-tree and index only: no production source changed, and no repair is claimed. The frontier advances to `.3.4.1`.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated nine times;
+the rotation contract in `README_POLICY.md`. This file has rotated ten times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TENTH rotation (2026-09-13) from the
+repository root:
+
+```bash
+git show 09b4f39d2d489877ec0738b980459a60865c08f9:CHANGELOG.md
+```
+
+That snapshot is 95,623 bytes and contains 31 dated entries; its Git blob is
+`3b7216e39d03f40944868b6862dcfeefded11831`, and its SHA-256 is
+`fba84ccdec894c49a7193bf473af067297deb36ab115bb6a729d6b3b601b904f`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-13 — ⛔ Correction: the `delegable` flag governs chains that do not exist (`SIGNOFF-REPAIR.3.4.1`)`.
+It carries the NINTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the NINTH rotation (2026-09-13) from the
 repository root:

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The routed records censused, and the gate the leaf proposed rejected (`SIGNOFF-REPAIR.11.9`)
+
+- ⛔ **The leaf's own census-owed line had a wrong number in it: 131 review records, not 53.** 53 is the artifact DIRECTORY's file count. `MEMORY.md` has carried 131 correctly since the first leaf, so two live documents disagreed and nothing compared them — which is the failure this leaf exists to catch, committed by the leaf.
+- **The census:** 131 records, 614 record→candidate-leaf routings, 301 of them to a leaf that has since been SPLIT, 16 cited, 285 uncited. At record granularity — the level the claim is about — **17 of 131 cited, 114 by none**.
+- 🔴 **The gate is REJECTED on the measurement: it would fire on 114 of 131 records the day it was registered.** That is a backlog wearing a gate's clothes, and a gate people route around is a gate that lies.
+- ⭐ **The census changed the QUESTION, not just the answer.** The fan-out is a median of 4–5 candidate leaves per record, so a reviewer naming five leaves wrote a suggestion list rather than five assignments. "A leaf must account for every record routed to it" is therefore unsound at the population level, and the biggest uncited counts are the broad family containers that were never going to cite a record each.
+- 🔴 **Which reframes the original defect.** The failure was not that a leaf omitted a citation; it is that one record named THREE findings and only ONE found an owner anywhere. The reconcilable unit is a clause with an owner, not a record cited by a leaf — and "accounted for" includes deliberately declined, which no search can see.
+- 🔴 **The instrument was wrong four times, each caught by a different control**: 70 of 131 (one record-id shape of two); a parent section swallowing its children, so no split leaf could ever read as uncited; 3 citations of 19 (heading-line matching instead of a line RANGE); and fifteen real citations still reading UNCITED, because the tree elides the filename in a run — `` `census-2.md:28`, `:49`, `:56` ``. The last was caught only by a control run against the real tree. One control was itself wrong before the code was.
+- The one concrete obligation is discharged: the "no human restriction" clause now owns `.4.1.4`, measured at the source — `resolve_principal` returns `Human` **or** `Role`, nothing on the issuance path asks which, and two doc sites say "an authorized human". The 114-record backlog is routed to `.11.9.1` with its measured size rather than absorbed or dropped.
+- Validation: `--self-test` -> 21 controls pass, rc=0; gate green. ⚠️ It first refused the commit because a stray `python3` without `-B` wrote `scripts/__pycache__/`, which `git add -A` staged and the SELF-TEST gate then tried to run as a shell script; ignored now, with the reason. No product code touched.
+
 ## 2026-09-13 — The MEMORY warnings censused, and the worry refuted (`SIGNOFF-REPAIR.11.4.2.1`)
 
 - ⛔ **The measurement refutes the worry the leaf was opened on.** `MEMORY.md` holds **26** standing warnings and **zero** exist only there — every one is also recorded in a durable layer. The rule that worry implies, "every MEMORY warning must first exist in a durable layer", would flag nothing, ever.

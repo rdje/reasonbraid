@@ -21,3 +21,11 @@ release-key.pk8
 
 # Note: Cargo.lock is intentionally NOT ignored — binary/application projects should
 # commit it for reproducible builds. If this becomes a library-only workspace, add it.
+
+# Python bytecode caches. Every project script is invoked with `python3 -B`, so
+# these should not appear at all — but one stray invocation without the flag
+# wrote `scripts/__pycache__/` into a commit, where the SELF-TEST gate discovered
+# the `.pyc` as an instrument and tried to run it as a shell script
+# (`SIGNOFF-REPAIR.11.9`).
+__pycache__/
+*.pyc

@@ -1671,11 +1671,91 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.4.2 — Handshake and lease fencing
 
-- Status: `pending`.
+- Opened: `pending`.
 - Sources / owned surfaces: `node_channel, channel client, certificate/key storage`.
 - Goal and acceptance: Reproduce proof replay and fence races; prevent replay-based private-key recovery; validate current lease atomically for every fenced write; secure and atomically persist keys and rotations; distinguish shipped HTTP proof from TLS capability.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Status: `active`; censused and split below, the shape `.3.4`, `.3.5`, `.4.1` and `.3.3.4.10`/`.11` each took.
+- ⭐ **This census read the ROUTED SOURCE-CENSUS RECORDS as well as the goal line, which is `.11.9`'s lesson applied the day it was written.** `.4.1` censused its goal line rigorously and carried one of three clauses from the record that pointed at it; that is how `.4.1.2.1` came to be rediscovered nine leaves later. The records routing here are `census-1.md:56`, `census-1.md:329`, `census-2.md:28`, `:49`, `:56`, `:70`, `:77`, `:119`, `:210`, `census-3.md:147`, `:154`, `:161`, `census-4.md:7`, `:56`, `:63` — **15 records**. Several route here only incidentally (the outbox, publications and policy clauses belong to `.4.4`/`.4.5`, `.9.1` and `.5.1`, and are NOT claimed here); the clauses that name this leaf's own surfaces are censused below, each measured against the code rather than repeated.
+- 🔴 **(1) A rotation can outrun a revocation and leave a LIVE certificate behind — CONFIRMED at the source, and it would defeat the two repairs landed immediately before this leaf.** `rotate` runs `verify_rotate_proof` (a `SELECT` on the pool), then a host lookup, then `INSERT INTO node_certificates` — **no transaction, no tenant guard, three separate statements**. `revoke_node_in_one_transaction` holds the tenant's EXCLUSIVE guard and runs `UPDATE node_certificates SET revoked_at = … WHERE revoked_at IS NULL`. An `INSERT` that lands after that `UPDATE` is not seen by it, so the node ends up holding an **active, unrevoked certificate after being revoked**.
+  - ⛔ **This is NOT the claim `.4.1`'s census refuted, and the refutation stands.** That one asked "can a revoked node rotate?" and answered no, because `verify_rotate_proof` refuses a revoked fingerprint. This asks whether a rotation already IN FLIGHT can commit across a revocation — a different question, and the guard `.4.1` pointed at is exactly what does not cover it.
+  - 🔴 Why it is now worse than when the record was written: `.4.1.3` put `EXISTS (… revoked_at IS NULL AND expires_at > now())` into `renew_lease`, and `.4.1.3.1` put the same predicate into the delivery read. A post-revocation certificate makes **both** true again, so the revoked node resumes renewing its lease and resumes receiving work — and can keep rotating. The two repairs that made revocation effective are undone by this window.
+  - ⚠️ Not yet reproduced. The `.3.4.3.1.3` prohibition applies: a control must drive a real rotate against a real revocation before this is written up as a defect. Owned by `.4.2.1`.
+- 🔴 **(2) The handshake and rotate proofs are REPLAYABLE, and the rotate proof returns a fresh PRIVATE KEY — CONFIRMED at the source.** `ProofCoverage` is `{channel_version, node_id, last_acked_cursor, pending_operations, ambiguous_attempts}` and `RotateCoverage` is `{channel_version, node_id, cert_der}` — **no nonce, no timestamp, no server challenge**, and the rotate coverage is *entirely static* for a given node and certificate. So a captured rotate request replays verbatim and each replay answers with a new `key_der`. That is replay-based private-key recovery, which is this leaf's goal line stated almost word for word. A captured handshake likewise replays, returns a fresh lease and FENCES the legitimate node.
+  - ⚠️ Bounded, and the bound is stated rather than assumed: both are refused once the presented certificate is revoked or expired, so revocation still closes them — but `(1)` above is precisely a way to keep a certificate alive. ⚠️ The wire is plain HTTP (`PHASE-7`, the book's Honest Boundaries), so capture requires no TLS break. Owned by `.4.2.2`.
+- **(3) `renew_lease` can revive a lease that expired between the check and the write — CONFIRMED at the source.** `verify_fencing` rejects an expired lease, but the `UPDATE`'s own `WHERE` is `node_id = $1 AND lease_epoch = $4 AND EXISTS (cert…)` with **no `lease_expires_at > now()`**. A heartbeat whose pre-check passed and which then waited long enough writes a fresh expiry onto a lease that had already lapsed. The `.2.2` lesson — fold the condition into the write — was applied to the epoch and to the credential, and not to the expiry. Owned by `.4.2.3`.
+- **(4) `ack` and `poll` admit on a pre-check with no in-transaction re-verification — CONFIRMED, and `events` shows what the fix looks like.** `events` re-runs `verify_fencing_in_tx` with the lease row locked (`.2.2`); `ack` and `poll` call `verify_fencing` on the pool and then act. `poll` is a read and its staleness is bounded; **`ack` is a WRITE** that marks inbox rows terminal, so a fenced session's ack can land after a newer handshake. Owned by `.4.2.4`.
+- **(5) Key-storage scope honesty — CONFIRMED as a documentation claim, not a runtime defect.** `secret_store` presents itself as the route for key reads; only the CA loader uses it, and node keys are read straight from `node_certificates`/`node_keys`. Nothing misbehaves; a published claim is wider than the code. Owned by `.4.2.5`.
+- **(6) The bad-proof control refuses BEFORE the signature check — CONFIRMED.** `handshake_without_a_valid_certificate_proof_is_refused` presents a malformed certificate, which fails `verify_leaf_chain` and never reaches the signature verification, so the cryptographic negative it appears to cover is untested: a well-formed certificate with a wrong signature has no control, and neither does a captured valid proof. ⚠️ This is a control-coverage gap rather than a defect, and `(2)` cannot be closed without it. Owned by `.4.2.6`.
+- **(7) The node's hex decoder panics on a non-ASCII response — CONFIRMED at the source, and bounded.** `reasonbraid-node`'s `from_hex` slices `&s[i..i + 2]` on a `&str`, which panics when the index is not a UTF-8 character boundary. ⚠️ Reachable only from the SERVER's response body, so it needs a malicious or faulty server rather than a network attacker — a trust-boundary question, not a remote crash. Owned by `.4.2.7`.
+- ⛔ **Already NAMED elsewhere, and not re-raised here:** the shipped listener serves plain HTTP while `mtls.rs` is exercised only by its own test (`census-3.md:154`) — recorded by `PHASE-7`, by the book's Honest Boundaries and again by `.4.1.3`. It is the reason `(2)`'s capture step is cheap, and it is stated as a bound above rather than opened as a child.
+- ⛔ **Routed here but NOT this leaf's:** the outbox delivery/fencing clauses (`census-2.md:77`, `census-4.md:56`) belong to `.4.4`/`.4.5`; the publications-stage clause (`:119`) to `.9.1`; the policy/approval spoof clauses (`census-1.md:329`, `census-4.md:63`) to `.5.1`/`.3.3`; the cross-tenant quarantine-fixture clause (`census-4.md:7`) to `.11.2`. Naming them here is the reconciliation `.11.9` asks for — they are accounted for, and accounted for as *someone else's*.
+- The split, seven children. `.4.2.1` goes first: it is the only one that undoes a repair already shipped.
+- Verification / commit: per child.
+
+#### SIGNOFF-REPAIR.4.2.1 — A rotation can outrun a revocation and leave a live certificate behind
+
+- Opened: `pending` by `.4.2`'s census, from `census-2.md:56`.
+- Status: `pending`.
+- The finding as far as it is measured, which is SOURCE ONLY: `rotate` verifies the proof, looks up the host and inserts the new certificate as three separate statements on the pool, with no transaction and no tenant guard; the revocation updates every unrevoked certificate under the tenant's exclusive guard. Nothing orders the insert against the update.
+- ⛔ Do NOT write this up as a defect before a control drives a real rotate across a real revocation — the `.3.4.3.1.3` prohibition. A source reading of a race is a hypothesis about scheduling.
+- 🔴 Why it is first: `.4.1.3` and `.4.1.3.1` both gate on "this node holds a certificate that is neither revoked nor expired". A certificate inserted after the revocation satisfies that, so the revoked node resumes renewing its lease AND receiving work, and can keep rotating to stay that way.
+- ⚠️ Measure the population before proposing the fix: whether the rotation should take the tenant's shared guard (making a revocation fence it, the shape `.3.3.4.10.1` used for issuance), or whether the insert should carry its own predicate over the presented certificate's liveness (the `.4.1.3` shape, folding the condition into the write). The two differ in what they cost a legitimate concurrent rotation, and the `.3.4.1` hazard applies — check what the path already holds before adding a guard to it.
+- Acceptance: the behaviour is reproduced with a control that drives both operations against each other rather than reasoned about; whatever is found is stated with its bound; if a repair follows, `rotation_issues_a_fresh_certificate_and_both_identities_handshake`, the revocation controls and `node_replacement`'s ritual pass unchanged.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.2 — The handshake and rotate proofs are replayable, and the rotate proof returns a private key
+
+- Opened: `pending` by `.4.2`'s census, from `census-2.md:28`.
+- Status: `pending`.
+- Measured at the source: `RotateCoverage` covers `{channel_version, node_id, cert_der}` and nothing else, so a captured rotate request is byte-identical to a valid one for as long as the certificate lives, and every replay answers with a new `key_der`. `ProofCoverage` adds the node's resume facts but still carries no nonce, timestamp or server challenge, so a captured handshake replays and takes the lease.
+- ⚠️ Bounded honestly: both die with the certificate (revoked or expired), the dev profile escrows keys server-side anyway (`.1.2.1`), and the wire is plain HTTP so capture needs no TLS break. The exposure is a replayer who has seen one request, not a general forgery.
+- ⛔ Do not design the challenge before `.4.2.6` gives this leaf a control that can tell a *wrong signature* from a *malformed certificate* — today's negative fixture cannot, so a replay defence would be unfalsifiable.
+- Acceptance: a control captures a valid proof and replays it, showing what the unrepaired product does; the decision names whether the dev profile takes a server challenge, a nonce, or neither, with its reason; the existing handshake, rotate and replacement controls pass unchanged.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.3 — A heartbeat can revive a lease that expired between the check and the write
+
+- Opened: `pending` by `.4.2`'s census, from `census-2.md:49`.
+- Status: `pending`.
+- Measured at the source: `verify_fencing` refuses an expired lease, but `renew_lease`'s `UPDATE` names only the node, the epoch and the certificate predicate — never `lease_expires_at`. The `.2.2` rule (fold the condition into the write, leave no window between the decision and it) was applied to the epoch and, by `.4.1.3`, to the credential; the expiry is the one the pre-check still owns alone.
+- ⚠️ The window is the gap between the two statements, so a control must WIDEN it deliberately rather than hope for it — the `docs/knowledge/proving-a-race-is-closed.md` shape.
+- Acceptance: reproduced with a driven control; if repaired, `heartbeat_renews_the_lease_and_presence_shows_online`, `a_stale_epoch_renewal_loses_the_race` and `lease_expiry_flips_presence_offline_and_refuses_channel_traffic` pass unchanged.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.4 — `ack` writes on a pre-check the way `events` used to
+
+- Opened: `pending` by `.4.2`'s census, from `census-2.md:49`.
+- Status: `pending`.
+- Measured at the source: `events` re-verifies fencing INSIDE its transaction with the lease row locked; `ack` verifies on the pool and then writes. `ack` marks inbox rows terminal, so a session fenced by a newer handshake can still mark another session's delivery acknowledged.
+- ⚠️ `poll` shares the pre-check but only reads, and `.4.1.3.1` has since made its delivery set credential-gated; whether it needs the same treatment is part of this leaf's question, not assumed.
+- Acceptance: reproduced with a driven control; the repair, if any, reuses `verify_fencing_in_tx` rather than inventing a second shape; the cursor, replay and delivery controls pass unchanged.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.5 — The key-storage claim is wider than the code
+
+- Opened: `pending` by `.4.2`'s census, from `census-2.md:210`.
+- Status: `pending`.
+- Measured: `secret_store` reads as the route for key material; the CA loader is its only user, and node keys are read directly from their tables. Nothing misbehaves — a published claim over-states, which is `.11.7`/`.11.8`'s defect class applied to a module's own doc.
+- Acceptance: the claim is narrowed to what the code does, or the code is widened to meet it, with the decision recorded; no runtime behaviour changes without its own control.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.6 — The bad-proof control refuses before it reaches the signature
+
+- Opened: `pending` by `.4.2`'s census, from `census-3.md:161`.
+- Status: `pending`.
+- Measured: the negative fixture presents a malformed certificate, which fails the chain check and never reaches `verify_signature`. So the control that appears to cover "a bad proof is refused" covers only "an unparseable certificate is refused", and the cryptographic negative — a well-formed certificate presented with someone else's signature — has no control at all.
+- ⚠️ This is a control-coverage gap, not a defect, and it is a PREREQUISITE for `.4.2.2`: a replay defence cannot be falsified by a fixture that refuses before the signature is examined.
+- Acceptance: negative fixtures that isolate each rung of the proof ladder — unparseable, well-formed-but-unchained, chained-but-wrong-signature, and a captured valid proof — each failing for its own reason and each proved to reach the rung it names.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.2.7 — The node's hex decoder panics on a non-ASCII response
+
+- Opened: `pending` by `.4.2`'s census, from `census-1.md:56`.
+- Status: `pending`.
+- Measured at the source: `reasonbraid-node`'s `from_hex` indexes `&s[i..i + 2]` on a `&str`. Rust panics on a slice that is not on a UTF-8 character boundary, so a response whose hex field carries any multi-byte character aborts the node rather than returning the `Err` the signature promises.
+- ⚠️ Bounded, and the bound decides the severity: the string comes from the SERVER's response body, so this needs a malicious or faulty server, not a network attacker. It is a trust-boundary question — how much the node trusts the control plane — and the same question `.4.1.2.1` answered for the server trusting a caller's `i64`.
+- Acceptance: reproduced with a driven decode rather than reasoned about; the decoder returns its typed error for every input; the rotation and enrollment paths that use it pass unchanged.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.4.3 — Durable inbox identity and cursors
 
@@ -3169,14 +3249,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
+| 1 | `SIGNOFF-REPAIR.4.2.1` | `pending` | 🔴 a rotation can outrun a revocation and leave a LIVE certificate behind — it would undo `.4.1.3` and `.4.1.3.1`, which both gate on exactly that certificate |
+| 1b | `SIGNOFF-REPAIR.4.2.6` | `pending` | the bad-proof control refuses before it reaches the signature — a PREREQUISITE for `.4.2.2`, which cannot be falsified without it |
+| 1c | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY |
 | 2 | `SIGNOFF-REPAIR.11.9` | `pending` | a source-census record routed to a leaf is not reconciled against that leaf's split — one record's three clauses became one child, and a second clause ("no human restriction" on token issuance) is still unopened |
 | 3 | `SIGNOFF-REPAIR.11.7` | `pending` | the published reason-code registry and the codes the product emits have drifted — 10 emitted codes are unregistered, 11 registry codes are never emitted |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **35 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **40 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3207,6 +3289,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.1.3.1`: `REASONBRAID-REPAIR-0148 (leaf SIGNOFF-REPAIR.4.1.3.1): a revoked node is handed no new work, and the work is withheld`.
 - `SIGNOFF-REPAIR.4.1.2.1`: `REASONBRAID-REPAIR-0149 (leaf SIGNOFF-REPAIR.4.1.2.1): the token's lifetime is validated before anything computes with it`.
 - `SIGNOFF-REPAIR.4.1.2`: `REASONBRAID-REPAIR-0150 (leaf SIGNOFF-REPAIR.4.1.2): a token does not outlive the authority that issued it`.
+- `SIGNOFF-REPAIR.4.2` (census + split): `REASONBRAID-REPAIR-0151 (leaf SIGNOFF-REPAIR.4.2): census the handshake and fencing surface, and split it`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

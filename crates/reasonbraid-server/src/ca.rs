@@ -116,10 +116,28 @@ pub async fn ensure_server_ca_with_store(
     Ok(load_ca(ca_der, key_der))
 }
 
+/// An issued workload leaf, with the expiry the CERTIFICATE actually carries.
+///
+/// `SIGNOFF-REPAIR.3.4.3.1.1`: `not_after` is returned rather than left for the
+/// caller to re-derive. Both call sites used to compute `Utc::now() + LEAF_TTL_SECS`
+/// separately from the value baked into the certificate here — two independent
+/// derivations of one quantity, agreeing only because they read the same clock
+/// and used the same constant. On the enrollment path the caller's `now` is
+/// sampled BEFORE its database work, so the stored expiry under-reported the
+/// certificate's real validity by however long that work took.
+pub struct IssuedLeaf {
+    pub cert_der: Vec<u8>,
+    pub key_der: Vec<u8>,
+    /// The instant in the certificate's own validity window — the only expiry a
+    /// verifier will ever enforce.
+    pub not_after: chrono::DateTime<chrono::Utc>,
+}
+
 /// Issue one short-lived workload leaf: CN `node:<node_id>` (the durable
-/// identity), SAN = the enrollment token's host claim. Returns (cert DER, key
-/// DER) — the key is server-generated (dev escrow, see the module note).
-pub fn issue_node_leaf(ca: &ServerCa, node_id: &str, host_claim: &str) -> (Vec<u8>, Vec<u8>) {
+/// identity), SAN = the enrollment token's host claim. The key is
+/// server-generated (dev escrow, see the module note), and the returned
+/// `not_after` is the one signed into the certificate.
+pub fn issue_node_leaf(ca: &ServerCa, node_id: &str, host_claim: &str) -> IssuedLeaf {
     let key = KeyPair::generate().expect("leaf key generation");
     let mut params = CertificateParams::new(vec![host_claim.to_string()]).expect("leaf params");
     params
@@ -129,8 +147,14 @@ pub fn issue_node_leaf(ca: &ServerCa, node_id: &str, host_claim: &str) -> (Vec<u
     let now = now_offset();
     params.not_before = now - time::Duration::seconds(5);
     params.not_after = now + time::Duration::seconds(LEAF_TTL_SECS);
+    let not_after = chrono::DateTime::from_timestamp(params.not_after.unix_timestamp(), 0)
+        .expect("the leaf validity window is representable");
     let cert = params.signed_by(&key, &ca.issuer).expect("leaf sign");
-    (cert.der().to_vec(), key.serialize_der())
+    IssuedLeaf {
+        cert_der: cert.der().to_vec(),
+        key_der: key.serialize_der(),
+        not_after,
+    }
 }
 
 /// The cert fingerprint: sha256 over the leaf DER (the node-id → fingerprint
@@ -194,6 +218,18 @@ pub fn extract_point(cert_der: &[u8]) -> Result<Vec<u8>, String> {
     Ok(x509.public_key().subject_public_key.data.to_vec())
 }
 
+/// The expiry a verifier will actually enforce: the leaf's own `not_after`.
+///
+/// `SIGNOFF-REPAIR.3.4.3.1.1` — this is the same extraction the NODE performs
+/// when it decides whether to rotate, so a stored `expires_at` that disagrees
+/// with it is a claim about a certificate that the certificate does not make.
+pub fn leaf_not_after(cert_der: &[u8]) -> Result<chrono::DateTime<chrono::Utc>, String> {
+    let (_, x509) = x509_parser::parse_x509_certificate(cert_der)
+        .map_err(|e| format!("leaf unparsable: {e}"))?;
+    chrono::DateTime::from_timestamp(x509.validity().not_after.timestamp(), 0)
+        .ok_or_else(|| "the leaf validity window is not representable".to_string())
+}
+
 /// Verify an ECDSA P-256 (ASN.1) signature over `message` against the leaf.s
 /// EC point (see extract_point).
 pub fn verify_signature(point: &[u8], message: &[u8], signature: &[u8]) -> Result<(), String> {
@@ -219,4 +255,36 @@ pub fn issue_serving_cert(ca: &ServerCa, dns_name: &str) -> (Vec<u8>, Vec<u8>) {
     params.not_after = now + time::Duration::days(365);
     let cert = params.signed_by(&key, &ca.issuer).expect("serving sign");
     (cert.der().to_vec(), key.serialize_der())
+}
+
+#[cfg(test)]
+mod issued_leaf_binding {
+    use super::*;
+
+    /// `SIGNOFF-REPAIR.3.4.3.1.1` — the expiry a caller stores must be the one
+    /// the certificate carries, because `not_after` is the only expiry a
+    /// verifier will ever enforce. It used to be re-derived at the call site
+    /// from a second clock read, which agreed with this one by coincidence of
+    /// reading the same clock with the same constant, and on the enrollment
+    /// path did not agree at all: that `now` is sampled BEFORE the enrollment
+    /// transaction's database work.
+    #[test]
+    fn the_returned_expiry_is_the_one_signed_into_the_certificate() {
+        let ca = generate_ca();
+        let leaf = issue_node_leaf(&ca, "nod_00000000-0000-7000-8000-000000000001", "host-a");
+        let (_, x509) =
+            x509_parser::parse_x509_certificate(&leaf.cert_der).expect("the issued leaf parses");
+        assert_eq!(
+            leaf.not_after.timestamp(),
+            x509.validity().not_after.timestamp(),
+            "the returned not_after must be the certificate's own"
+        );
+        // And it is the declared window, so the constant has not drifted from
+        // what the certificate says.
+        assert_eq!(
+            x509.validity().not_after.timestamp() - x509.validity().not_before.timestamp(),
+            LEAF_TTL_SECS + 5,
+            "the leaf window is LEAF_TTL_SECS plus the 5 s not_before skew allowance"
+        );
+    }
 }

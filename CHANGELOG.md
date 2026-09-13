@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The stored certificate expiry was never read from the certificate (`SIGNOFF-REPAIR.3.4.3.1.1`)
+
+- The leaf asked whether the server's outbound instants could be unified on one clock. Measuring says **no**: `rcgen` signs `not_after` INTO the certificate from the server process clock, and a verifier enforces that and nothing else, so it cannot move to the database clock without changing what the CA signs.
+- 🔴 Measuring that turned up a defect the census had not seen. Both call sites computed `Utc::now() + LEAF_TTL_SECS` **independently of the instant baked into the certificate** — two derivations of one quantity. They did not agree: the certificate's instant is truncated to whole seconds and the stored one is not, so the stored expiry was wrong on every issuance, and on the enrollment path the caller's `now` is sampled before the transaction's database work, moving it further.
+- ⚠️ Severity as it is, not inflated: nothing enforces the stored value, so **no certificate was ever accepted or refused wrongly**. What it was is a stored claim about an artifact that the artifact did not make, in the row an operator would trust to answer when a node's certificate expires.
+- `issue_node_leaf` now returns the instant it signed, both call sites bind it, and a new public `ca::leaf_not_after(cert_der)` extracts the same value from a DER — public deliberately, because it is exactly the extraction the node performs when deciding whether to rotate.
+- The clock question is answered as the leaf's second option, since the first is unavailable: the server's two clocks are **declared** coherent within a second and that assumption is now **measured** by a control, which samples the database clock between two process instants and takes only the divergence the round trip cannot explain. Its failure message says to fix the deployment's clocks or re-open `.3.4.3.1.2`, never to raise the bound.
+- Recorded for that leaf, and it narrows its job: of the three instants the server sends a node, **only `decided_at` is ever read**. `cert_expires_at` and `lease_expires_at` are declaration-only on the node side, and the node's other cross-clock comparison uses the certificate's own embedded `not_after`, which is not a wire field at all.
+- Validation: `run_pg_tests.sh node_enrollment node_channel node_inbox` rc=0 — **3 suites, 49 tests, zero failures**; server lib 102 + mtls 1 rc=0. Strict lint, fmt, gate (17 checks), book and link check rc=0.
+- FALSIFIED against the restored re-derivation: **11 passed / 1 failed**, `left: …12.973747Z` against `right: …12Z`. ⚠️ 973 ms of that is the whole-second truncation and the enrollment work is the remainder — under 26 ms on this run, since the two pull in opposite directions. Both are real; the split is stated rather than the single scarier number.
+
 ## 2026-09-13 — There are three clocks, not two (`SIGNOFF-REPAIR.3.4.3.1`)
 
 - `.3.4.3` closed the cache's backward-skew hole and opened this leaf for the other direction: a node clock AHEAD of the server refuses every dispatch. The leaf owed a census before proposing any rule, and the census refuted the leaf's own framing — both answers it was opened with are shaped around `decided_at`, and the population is neither one field nor one clock.

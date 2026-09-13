@@ -276,13 +276,35 @@ async fn a_token_enrolls_exactly_once_and_lands_identity_rows() {
         "sha256 hex"
     );
     assert!(enrolled["cert_expires_at"].is_string());
-    let (stored_fp,): (String,) =
-        sqlx::query_as("SELECT cert_fingerprint FROM node_certificates WHERE node_id = $1")
-            .bind(node_id)
-            .fetch_one(&pool)
-            .await
-            .expect("read cert row");
+    let (stored_fp, stored_der, stored_expires): (String, Vec<u8>, chrono::DateTime<chrono::Utc>) =
+        sqlx::query_as(
+            "SELECT cert_fingerprint, cert_der, expires_at FROM node_certificates \
+             WHERE node_id = $1",
+        )
+        .bind(node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read cert row");
     assert_eq!(stored_fp, enrolled["cert_fingerprint"].as_str().unwrap());
+    // `SIGNOFF-REPAIR.3.4.3.1.1`: the stored and returned expiry must be the one
+    // the CERTIFICATE carries — the only expiry a verifier enforces. This path
+    // previously re-derived it from a `now` sampled BEFORE the enrollment
+    // transaction's database work, so the stored value under-reported the
+    // certificate's real validity by however long that work took.
+    let signed = reasonbraid_server::ca::leaf_not_after(&stored_der).expect("the leaf parses");
+    assert_eq!(
+        stored_expires, signed,
+        "the stored expiry must be the certificate's own not_after"
+    );
+    let returned: chrono::DateTime<chrono::Utc> = enrolled["cert_expires_at"]
+        .as_str()
+        .expect("cert_expires_at")
+        .parse()
+        .expect("an RFC 3339 instant");
+    assert_eq!(
+        returned, signed,
+        "the expiry handed to the node must be the certificate's own not_after"
+    );
     let (n_ca,): (i64,) = sqlx::query_as("SELECT count(*) FROM server_ca WHERE ca_id = 1")
         .fetch_one(&pool)
         .await
@@ -346,6 +368,59 @@ async fn a_token_enrolls_exactly_once_and_lands_identity_rows() {
 /// The CA survives a server rebuild: two `ensure_server_ca` passes over the same
 /// store return the SAME CA (the demo kills and restarts the server — previously
 /// issued leaves must keep chaining to the same anchor).
+/// `SIGNOFF-REPAIR.3.4.3.1.1` — the server has TWO clocks, and their agreement
+/// is load-bearing rather than incidental.
+///
+/// The instants it hands a node come from both: `decided_at` from PostgreSQL
+/// `clock_timestamp()`, the certificate's `not_after` from the server process.
+/// `.3.4.3.1.2` will let a node correct for its own offset against "the
+/// server's time" — a phrase that only means something if these two agree. On
+/// one host they do; nothing in the code said so, and no control would have
+/// noticed if they stopped.
+///
+/// ⚠️ What this measures is the divergence NOT explained by the round trip: the
+/// database instant is sampled between two process instants, so a value inside
+/// that interval is indistinguishable from zero skew, and only a value outside
+/// it is skew at all. That makes the measurement sound without needing the
+/// round trip to be fast.
+#[tokio::test]
+async fn the_servers_database_and_process_clocks_agree() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+
+    /// The declared tolerance. `.3.4.3.1.2` may assume the server's two clocks
+    /// agree to within this; anything larger makes "the server's time"
+    /// ambiguous and that leaf's correction unsound.
+    const TOLERANCE: chrono::Duration = chrono::Duration::seconds(1);
+
+    let mut worst = chrono::Duration::zero();
+    for _ in 0..5 {
+        let before = chrono::Utc::now();
+        let db: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
+            .fetch_one(&pool)
+            .await
+            .expect("the database states its clock");
+        let after = chrono::Utc::now();
+        let divergence = if db < before {
+            before - db
+        } else if db > after {
+            db - after
+        } else {
+            chrono::Duration::zero()
+        };
+        if divergence > worst {
+            worst = divergence;
+        }
+    }
+    assert!(
+        worst <= TOLERANCE,
+        "the server's database and process clocks diverge by {worst} beyond the \
+         request round trip, past the declared tolerance of {TOLERANCE}. \
+         `SIGNOFF-REPAIR.3.4.3.1.2` assumes they agree; fix the deployment's \
+         clocks or re-open that assumption rather than raising this bound."
+    );
+}
+
 #[tokio::test]
 async fn the_ca_survives_a_server_rebuild() {
     let _guard = enroll_guard().await;
@@ -360,12 +435,12 @@ async fn the_ca_survives_a_server_rebuild() {
 
     // A leaf issued by the FIRST handle (pre-rebuild material) is a well-formed
     // DER artifact; the chain verification itself lands with `.1.2.2`.
-    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(
+    let leaf = reasonbraid_server::ca::issue_node_leaf(
         &first,
         "nod_00000000-0000-7000-8000-000000000999",
         "host-persist",
     );
-    assert!(!cert_der.is_empty() && !key_der.is_empty());
+    assert!(!leaf.cert_der.is_empty() && !leaf.key_der.is_empty());
 }
 
 /// Every refusal class is audited and effect-free: unknown token, expired token,

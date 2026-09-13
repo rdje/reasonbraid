@@ -1207,10 +1207,15 @@ async fn rotate(
         return Err(ApiError::unknown_node(&req.node_id));
     };
 
-    let (cert_der, key_der) = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim);
+    let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim);
+    let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
     let now = Utc::now();
-    let cert_expires_at = now + ChronoDuration::seconds(crate::ca::LEAF_TTL_SECS);
+    // `SIGNOFF-REPAIR.3.4.3.1.1`: the certificate's OWN expiry, not a second
+    // derivation from a second clock read. A verifier enforces `not_after`, so
+    // a stored value computed alongside it is a claim about the certificate
+    // that nothing bound to the certificate.
+    let cert_expires_at = leaf.not_after;
     sqlx::query(
         "INSERT INTO node_certificates \
          (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
@@ -1652,9 +1657,14 @@ async fn enroll(
 
     // The workload certificate (`.1.2.1`, ADR-007): issue the short-lived leaf,
     // persist it, and return it (with the dev-escrowed key) to the node.
-    let (cert_der, key_der) = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &req.host_claim);
+    let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &req.host_claim);
+    let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
-    let cert_expires_at = now + ChronoDuration::seconds(crate::ca::LEAF_TTL_SECS);
+    // `SIGNOFF-REPAIR.3.4.3.1.1`: the certificate's own expiry. This site's `now`
+    // is sampled before the enrollment transaction's database work, so the old
+    // `now + LEAF_TTL_SECS` under-reported the certificate's real validity by
+    // however long that work took.
+    let cert_expires_at = leaf.not_after;
     sqlx::query(
         "INSERT INTO node_certificates \
          (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \

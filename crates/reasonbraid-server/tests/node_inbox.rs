@@ -196,7 +196,8 @@ async fn seed_node_in(pool: &PgPool, node_id: &str, tenant: &str) -> (String, St
         .await
         .expect("seed key");
     let ca = ensure_server_ca(pool).await.expect("server CA");
-    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let fingerprint = reasonbraid_server::ca::cert_fingerprint(&cert_der);
     sqlx::query(
         "INSERT INTO node_certificates \

@@ -162,7 +162,8 @@ async fn seed_node_in_tenant(pool: &PgPool, tenant: &str, node_id: &str) -> (Vec
     // The workload certificate (the `.1.2.2` identity): issued by the server's
     // own CA and stored like the enrollment transaction stores it.
     let ca = ensure_server_ca(pool).await.expect("server CA");
-    let (cert_der, key_der) = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let leaf = reasonbraid_server::ca::issue_node_leaf(&ca, node_id, &host_name);
+    let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let fingerprint = reasonbraid_server::ca::cert_fingerprint(&cert_der);
     sqlx::query(
         "INSERT INTO node_certificates \

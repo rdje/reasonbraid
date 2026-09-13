@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — The census found the work already done, which is also a result
+
+- `.3.5` listed three surfaces. I expected to split it three ways. The third — "use real target ownership inside the mutation transaction" — turned out to be closed for the node family by `.3.3.4.10`, which said so in its own record: the tenant-predicate finding is closed for all five routes, with the ownership annotation left here for *surfaces beyond this family*. I had read that sentence before and filed it as context rather than as an answer to this leaf's question.
+- ⭐ Two children, not three. A census that removes work is as useful as one that finds it, and cheaper to act on — but only if you go and check rather than inheriting the leaf's own framing, which is the third time this week that framing has been the thing that was wrong.
+- 🔴 The metrics finding is the one worth having: the handler gates on the *grant's* status and never joins the boundary, and revoking a boundary updates only `enrollment_boundaries`. So revocation does not reach this surface. What makes it a real finding rather than a code-reading is that I checked what revocation actually does instead of assuming a cascade.
+- ⚠️ I had to work to keep the size honest. "Cross-tenant" and "outlives revocation" both invite a bigger sentence than the facts support: the payload is seven aggregate counters with no identities and no tenant dimension. That is an aggregate-volume side channel. Writing "a tenant admin can read another tenant's data" would have been false, and writing nothing would have been complacent.
+- ⚠️ A precision point about the instrument that I nearly got wrong in the write-up: `census_admission_paths.py` puts this route in the "identity only" class, and that means *it reaches none of the recognised gates* — not that it is unauthenticated. The route does gate. Reporting the classification as "unauthorized" would have been a false claim sourced from a correct measurement, which is the most persuasive kind of wrong.
+- ⭐ I ran every census instrument's `--self-test` before trusting its output, which is this morning's lesson applied within a few hours. It paid: `census_authority_paths.py` has no self-test at all and dies with a traceback when handed the flag, treating it as a git revision. That widens `.11.4.3.1.7.2` from "self-tests nothing runs" to "instruments with no self-test to run", which is a different and larger population.
+
 ## 2026-09-13 — The pure function passed, and the thing feeding it was still broken
 
 - `.3.4.3.1.3` arrived as arithmetic: a source reading plus a subtraction, with the leaf explicitly forbidding me from calling it a field failure until a control drove a clock at it. Extracting `rotation_due` as a pure function was the whole trick — the check was untestable only because it read `Utc::now()` inside itself.

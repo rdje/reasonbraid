@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — Publish the codes the product emits, and gate them (`SIGNOFF-REPAIR.11.7`)
+
+- ⛔ **The leaf's own numbers were wrong, and it is the project's own lesson turned on the leaf: the emitted set is 18, not 19, and the unregistered set is 9, not 10.** `unknown` is a CLIENT-side sentinel built when a response body will not parse; it never travels from the server. A search's hits were published as a defect count without classifying them — in a leaf whose subject is a published set nobody re-derived.
+- ⛔ **Half the finding is refuted by the code's own documentation.** The registry says, above the enum, that it is "the *complete* §9.8 list, not a Phase-0 subset … codes the demo never emits are still part of the registry". So the 11 unemitted codes are deliberate and already explained: **all 11 kept.**
+- ⛔ **Most of the other half too.** The next sentence: codes beyond the list "are handled by `ReasonCode::Unknown`", which preserves the string verbatim. The 9 unregistered codes reach a client intact — the forward-compatibility path working as designed, not drift.
+- 🔴 **The real gap was a different one: the book had no error page at all**, so nothing published which codes the product actually emits. A client author reads §9.8, sees 20, and learns about `quota_unconfigured` only by receiving one.
+- **Delivered:** `docs/book/src/errors.md` — all 18 with HTTP status, registry status and meaning, derived from the sources; the 11 unemitted with the reason they are kept; and four rules for a client, including that `commit_outcome_unconfirmed` means *unknown*, not *failed*.
+- ⭐ **A gate IS registered here — `REASON-CODE-DOC` — and the contrast with the previous commit is the point.** It fires on zero breaches today and would have fired on all nine: it catches the next drift rather than presenting a backlog. `SIGNOFF-REPAIR.11.9`'s citation gate would have fired on 114 of 131 and was rejected on exactly this test. Same question, measured, answered oppositely.
+- ⛔ **The registry is not extended and no emitter is changed**: extending it would break its stated contract of mirroring §9.8, which lives in a roadmap frozen at v0.4.1; changing emitters is a wire change that would collapse distinctions the product really makes. Whether §9.8 gains the nine at v0.5.0 is routed to `.11.7.1` with the measurement, because the freeze says a version bump must cite exactly this kind of evidence.
+- Validation: `--check` rc=0 (`all 18 emitted codes are documented`); `--self-test` 14 controls pass; falsified by introducing an undocumented code at a real emission site, which the gate names along with its file. No product code changed.
+
 ## 2026-09-13 — An agent role may issue and revoke, and the documentation now says so (`SIGNOFF-REPAIR.4.1.4`)
 
 - 🔴 **Driven at the live route rather than read: an agent role granted `tenant_admin` issues a node enrollment token, `200`**, and the ledger records the role as the grant subject. Two documentation sites said "an authorized **human**"; the code never checked.

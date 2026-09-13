@@ -64,4 +64,16 @@ if ! scripts/check_compatibility_matrix.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every reason code the SERVER emits is named in the book's table
+# (`SIGNOFF-REPAIR.11.7`). §9.8 publishes a stable registry of 20 and the
+# product emits 18, NINE of which postdate that list; `ReasonCode::Unknown`
+# preserves them, so nothing broke — but nothing told a client author they
+# existed either. ⭐ This gate fires on ZERO breaches today and would have fired
+# on all nine, which is the shape a gate should have: it catches the NEXT
+# drift rather than presenting a backlog.
+if ! python3 -B scripts/census_reason_codes.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_reason_codes.py --check >&2
+    exit 1
+fi
+
 exit 0

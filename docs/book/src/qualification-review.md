@@ -87,7 +87,7 @@ tracked, both now owned:
 
 | Limitation | Effect | Owner |
 | --- | --- | --- |
-| `GET /v1/nodes/inbox` admits on the caller's tenant and then selects the inbox by node id alone | A tenant administrator can read another tenant's inbox rows — command ids, thread ids, delivery state and payloads — for a node id they can name. The three inbox *mutations* were bound to their tenant under `.3.3.4.10.3`; this read was outside that census's scope. Source finding; runtime reproduction is owned by the repair. | `.3.5.3` |
+| `GET /v1/nodes/inbox` admitted on the caller's tenant and then selected the inbox by node id alone | **Reproduced and repaired.** A tenant administrator read another tenant's inbox rows — command ids, thread ids, delivery state and payloads — for a node id they could name. The three inbox *mutations* were bound to their tenant under `.3.3.4.10.3`; this read was outside that census's scope. The select now carries the admitted tenant. | `.3.5.3`, closed |
 | Three doctrine enforcers write their scratch to an ambient temporary directory | Project-owned temporary data lands off the repository volume, against §13. The storage-locality gate enumerates Rust sources only, so it cannot see them. | `.11.2.2` |
 
 Neither changes a documented product behaviour today; both are recorded here

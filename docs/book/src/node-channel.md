@@ -218,7 +218,15 @@ Two operator actions harden the per-node inbox (both on the control API,
   DELIVERED rows older than the window — an explicit, measured operator action
   (the response reports `before`/`deleted`/`after`), never a background sweep.
 - **Inspection** (`rb node inbox --node …`): every row's delivery +
-  quarantine facts, in cursor order.
+  quarantine facts, in cursor order — **for the tenant you name, and only that
+  tenant**. The inspection is admitted on the tenant in the request, which
+  proves you administer *that tenant*; until `SIGNOFF-REPAIR.3.5.3` it then
+  selected rows by node id alone, so an administrator of any tenant read
+  whatever rows the node held. Measured before the repair: a foreign
+  administrator received another tenant's command ids, thread ids, delivery
+  state and payloads. The select now carries the admitted tenant, so naming a
+  node outside your tenant returns an **empty** row list rather than a refusal
+  — existence is not leaked across the boundary (§9.8 `scope_hidden`).
 - **Revocation** (`rb node revoke --node … --reason …`, `.1.3.1`): marks the
   node's ACTIVE workload certificates revoked — the certificate-proof
   handshake refuses them at the next crossing (401) and presence reads

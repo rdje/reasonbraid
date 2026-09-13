@@ -239,12 +239,20 @@ A quarantined command is never re-delivered (the reason rides the row);
 pruning deletes only DELIVERED rows older than the window and reports a
 measured before/after — an explicit operator action, never a background sweep.
 
-Since `SIGNOFF-REPAIR.3.3.4.10.3` all three verbs are **bound to your tenant**.
-Before that they were not, and an administrator of one tenant could quarantine,
-replay or prune another tenant's node inbox — a prune destroyed the other
-tenant's rows and reported them as its own. Each verb now runs one guarded
-transaction with a durable record of what it did, and the responses carry
-`x-reasonbraid-authorization`. The `--reason` on a quarantine must be at most
+All four verbs above are **bound to your tenant**, and they got there in two
+steps. `SIGNOFF-REPAIR.3.3.4.10.3` bound the three that WRITE — quarantine,
+replay and prune. Before that an administrator of one tenant could quarantine,
+replay or prune another tenant's node inbox, and a prune destroyed the other
+tenant's rows and reported them as its own. Each of those three now runs one
+guarded transaction with a durable record of what it did, and the responses
+carry `x-reasonbraid-authorization`.
+
+⚠️ `rb node inbox` — the READ — was not among them, and stayed unbound until
+`SIGNOFF-REPAIR.3.5.3`. Its census had scoped itself to the mutations. Measured
+before that repair: an administrator of one tenant received another tenant's
+command ids, thread ids, delivery state and payloads. Naming a node outside your
+tenant now returns an **empty** inbox rather than a refusal, so existence is not
+leaked across the boundary. The `--reason` on a quarantine must be at most
 1 024 bytes with no control characters. See
 [administering a node's inbox](authority.md#administering-a-nodes-inbox).
 

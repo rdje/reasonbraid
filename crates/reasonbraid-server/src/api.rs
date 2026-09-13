@@ -1464,6 +1464,26 @@ pub struct InboxInspectionParams {
 
 /// The `GET /v1/nodes/inbox` inspection surface: every row's delivery +
 /// quarantine facts, in cursor order. `tenant_admin` authority.
+///
+/// ⛔ The caller supplies TWO independent identifiers — the tenant and the node
+/// — and until `SIGNOFF-REPAIR.3.5.3` this handler checked one of them. The
+/// admission proves the caller administers the tenant it NAMED; the select then
+/// asked only for the node id, so an administrator of any tenant read whatever
+/// rows that node held. Measured before the repair: a foreign administrator
+/// received both of another tenant's rows with their command ids, thread ids,
+/// delivery state and payloads.
+///
+/// ⭐ Contrast `inspect_call`, which is the shape this is now equivalent to: it
+/// loads the call FIRST and authorizes against the call's OWN tenant, so the two
+/// identifiers cannot disagree. Here the tenant stays a caller-supplied
+/// parameter — changing that is a wire change, and the three sibling mutations
+/// (`.3.3.4.10.3`) already bind the admitted tenant into their statements — so
+/// the predicate joins the select instead.
+///
+/// ⛔ No transaction and no guard, decided rather than defaulted: this is a read
+/// with no check-then-act, so a slightly older snapshot costs nothing and cannot
+/// produce an unauthorized effect. Locking the tenant for it would be the cost
+/// `.3.3.4.10.3` declined for `poll`, for the same reason.
 async fn inspect_node_inbox(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -1484,9 +1504,10 @@ async fn inspect_node_inbox(
     }
     let rows: Vec<InboxRowRow> = sqlx::query_as(
         "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason, delivery_state \
-         FROM node_inbox_state WHERE node_id = $1 ORDER BY cursor",
+         FROM node_inbox_state WHERE node_id = $1 AND tenant_id = $2 ORDER BY cursor",
     )
     .bind(&params.node_id)
+    .bind(params.tenant_id.to_string())
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(InboxInspection {

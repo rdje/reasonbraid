@@ -20,6 +20,14 @@ finding was that the reconcilable unit is a clause with an owner, because
 order. It is a stable handle for a sentence, not a claim that the record's prose
 divides cleanly at every full stop.
 
+⛔ **A row's `State` is what the CLASSIFICATION found, and it does not change when
+the owning leaf later does the work.** `unowned` means no leaf covered the clause
+at classification time and this ledger opened the one the Owner column names —
+`R-31-32-1` clause 4 stays `unowned` now that `.3.5.3` has closed it. Restating a
+leaf's status here would make this a second copy of a fact the tree already owns,
+which is the drift `INDEX-FRONTIER` exists to stop. Follow the Owner column for
+the current status.
+
 ## The closed set of states
 
 | State | Meaning | Next action |

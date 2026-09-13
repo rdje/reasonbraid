@@ -705,8 +705,14 @@ async fn quarantined_at(pool: &PgPool, command_id: &str) -> Option<chrono::DateT
 }
 
 /// ⛔ THE control this child exists for. An administrator of one tenant must not
-/// be able to read, move or destroy another tenant's inbox — and before this
-/// repair it could do all three, with a 200 each time.
+/// be able to move or destroy another tenant's inbox — and before this repair it
+/// could do both, with a 200 each time.
+///
+/// ⚠️ This comment used to say "read, move or destroy … all three", and it
+/// asserted two of the three. The READ was never covered here, and it stayed
+/// broken for that reason; it is now
+/// `a_foreign_administrator_cannot_read_another_tenants_inbox`
+/// (`SIGNOFF-REPAIR.3.5.3`). A control's prose is not its coverage.
 #[tokio::test]
 async fn a_foreign_administrator_cannot_quarantine_replay_or_prune_another_tenants_inbox() {
     let _g = guard().await;
@@ -1133,4 +1139,100 @@ async fn an_evidence_failure_rolls_a_prune_back_and_the_route_recovers() {
         .await
         .expect("recorded");
     assert!(effect.outcome.changed_protected_state());
+}
+
+/// ⛔ THE FOURTH VERB, and the one the sibling control above does not reach.
+///
+/// `SIGNOFF-REPAIR.3.5.3`. The record that opened this family named FOUR verbs —
+/// replay, quarantine, prune and INSPECT. `.3.3.4.10`'s census scoped itself to
+/// the node administrative MUTATIONS and repaired the three, correctly and
+/// silently about the read. ⚠️ The control above even says in its own comment
+/// that an outsider "could read, move or destroy" the inbox; it asserts the move
+/// and the destroy. This is the read.
+///
+/// The inspection admits on the tenant the CALLER names — which proves only that
+/// they administer it — and then selected by `node_id` alone, so it answered with
+/// whatever rows that node happens to hold.
+#[tokio::test]
+async fn a_foreign_administrator_cannot_read_another_tenants_inbox() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // The victim: its own administrator, its own node, its own two inbox rows.
+    let (victim_tenant, victim_admin) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000311";
+    let _ = seed_node_in(&pool, node_id, &victim_tenant).await;
+    for i in 1..=2 {
+        enqueue_in(
+            &state,
+            node_id,
+            &format!("cmd_read_victim_{i}"),
+            &victim_tenant,
+        )
+        .await;
+    }
+    assert_eq!(inbox_rows(&pool, node_id).await, 2);
+
+    // The outsider: a legitimate administrator of a DIFFERENT tenant, naming its
+    // OWN tenant (so admission succeeds) and the victim's node.
+    let (outsider_tenant, outsider) = bootstrap_admin(&client, &base).await;
+    assert_ne!(outsider_tenant, victim_tenant);
+
+    let (status, seen) = inspect_inbox(&client, &base, &outsider, &outsider_tenant, node_id).await;
+    assert_eq!(status, 200, "the inspection is admitted: {seen}");
+    // ⛔ The whole property, asserted as an ABSENCE: not "some rows are hidden"
+    // but "none of the other tenant's rows are visible", and not one of their
+    // command ids either — the ids are as disclosing as the payloads.
+    let rows = seen["rows"].as_array().expect("a rows array");
+    assert!(
+        rows.is_empty(),
+        "a foreign administrator sees NO rows of another tenant's inbox: {seen}"
+    );
+    let text = seen.to_string();
+    for i in 1..=2 {
+        assert!(
+            !text.contains(&format!("cmd_read_victim_{i}")),
+            "no command id of the other tenant leaks: {seen}"
+        );
+    }
+
+    // …and the rightful administrator still sees both, so the repair narrowed the
+    // answer rather than emptying it.
+    let (status, mine) =
+        inspect_inbox(&client, &base, &victim_admin, &victim_tenant, node_id).await;
+    assert_eq!(status, 200, "the owner's inspection is admitted: {mine}");
+    assert_eq!(
+        mine["rows"].as_array().expect("a rows array").len(),
+        2,
+        "the owning tenant still reads its own inbox in full: {mine}"
+    );
+
+    // The rows themselves are untouched: a read is a read.
+    assert_eq!(inbox_rows(&pool, node_id).await, 2);
+}
+
+/// `GET /v1/nodes/inbox` as an administrator of `tenant`.
+async fn inspect_inbox(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+    node_id: &str,
+) -> (u16, Value) {
+    let response = client
+        .get(format!(
+            "{base}/v1/nodes/inbox?tenant_id={tenant}&node_id={node_id}"
+        ))
+        .header(PRINCIPAL_HEADER, principal)
+        .send()
+        .await
+        .expect("inbox inspection");
+    let status = response.status().as_u16();
+    let text = response.text().await.unwrap_or_default();
+    (status, serde_json::from_str(&text).unwrap_or(Value::Null))
 }

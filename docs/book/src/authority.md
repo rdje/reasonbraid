@@ -791,6 +791,25 @@ revocation epoch, so none needs to fence other operations. What they need is to 
 fenced BY a revocation, which the shared mode provides. Exactness against another
 administrator comes from a row lock, at the granularity that actually conflicts.
 
+⚠️ **The fourth verb, and why it was late.** `GET /v1/nodes/inbox` — the
+inspection — is not a mutation, and the census behind the repair above scoped
+itself to the node administrative *mutations*. It was correct about its own scope
+and silent about the read, which therefore kept selecting by node id alone until
+`SIGNOFF-REPAIR.3.5.3`. Measured against that superseded route, an administrator
+of tenant A naming its OWN tenant and tenant B's node received both of B's rows
+in full — command ids, thread ids, delivery state and payloads.
+
+⭐ The general shape is worth carrying: **the caller supplies two independent
+identifiers, and the handler checked one of them.** The admission proves you
+administer the tenant you *named*; nothing tied that tenant to the node. Compare
+`GET /v1/calls/{call_id}`, which loads the call first and authorizes against the
+call's OWN tenant — there the tenant is derived from the target, so the two
+cannot disagree. The inspection keeps its caller-supplied tenant (removing a
+required parameter is a wire change on a public route) and now carries it into
+the select, so a node outside your tenant returns an empty row list rather than a
+refusal. It takes no transaction and no guard, deliberately: a read has no
+check-then-act, so an older snapshot cannot produce an unauthorized effect.
+
 | Request | Result |
 | --- | --- |
 | Quarantine a live command | 200; the effect records `applied` with the submitted reason. |

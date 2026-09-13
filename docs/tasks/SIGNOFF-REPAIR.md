@@ -1695,13 +1695,24 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 #### SIGNOFF-REPAIR.4.2.1 — A rotation can outrun a revocation and leave a live certificate behind
 
 - Opened: `pending` by `.4.2`'s census, from `census-2.md:56`.
-- Status: `pending`.
 - The finding as far as it is measured, which is SOURCE ONLY: `rotate` verifies the proof, looks up the host and inserts the new certificate as three separate statements on the pool, with no transaction and no tenant guard; the revocation updates every unrevoked certificate under the tenant's exclusive guard. Nothing orders the insert against the update.
 - ⛔ Do NOT write this up as a defect before a control drives a real rotate across a real revocation — the `.3.4.3.1.3` prohibition. A source reading of a race is a hypothesis about scheduling.
 - 🔴 Why it is first: `.4.1.3` and `.4.1.3.1` both gate on "this node holds a certificate that is neither revoked nor expired". A certificate inserted after the revocation satisfies that, so the revoked node resumes renewing its lease AND receiving work, and can keep rotating to stay that way.
 - ⚠️ Measure the population before proposing the fix: whether the rotation should take the tenant's shared guard (making a revocation fence it, the shape `.3.3.4.10.1` used for issuance), or whether the insert should carry its own predicate over the presented certificate's liveness (the `.4.1.3` shape, folding the condition into the write). The two differ in what they cost a legitimate concurrent rotation, and the `.3.4.1` hazard applies — check what the path already holds before adding a guard to it.
 - Acceptance: the behaviour is reproduced with a control that drives both operations against each other rather than reasoned about; whatever is found is stated with its bound; if a repair follows, `rotation_issues_a_fresh_certificate_and_both_identities_handshake`, the revocation controls and `node_replacement`'s ritual pass unchanged.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0152.
+- 🔴 **REPRODUCED against both live routes, and it is real:** with the rotation stalled at its host lookup — after its proof check had already decided the old certificate was good — a complete `POST /v1/nodes/revoke` ran and answered `200`; the rotation then resumed, was **ALLOWED**, and the node finished with **`live certificates after the revocation: 1`**. A node the operator had just withdrawn held a usable certificate.
+- ⭐ **The first reproduction attempt produced an ARTEFACT, and chasing it is what found the real mechanism.** Holding the old certificate's row made the revocation answer `500` — `canceling statement due to lock timeout`, its own 5 s `lock_timeout` — because the rotation's `INSERT` was itself blocked behind the revocation's `SELECT … FROM nodes … FOR UPDATE` through `node_certificates`' foreign key. That was the wrong reproduction, and the reason it failed is the interesting part: **the `nodes` foreign key does not prevent the race, it makes it DETERMINISTIC in the wrong direction** — the insert is forced to land after the revocation commits, so a rotation that overlaps one does not merely sometimes survive it, it reliably does.
+- ⚠️ **The pause is artificial; the ordering is not.** The rotation is stalled by an exclusive lock on `hosts`, a table the revocation path never touches — verified rather than assumed: no statement in `node_admin.rs`, `authority.rs`, `transaction.rs` or `effects.rs` names it. In production the gap is the host lookup plus key generation plus certificate signing, and the revocation only has to fit inside it.
+- Fix: `rotate` becomes ONE transaction that takes the node row FIRST — `SELECT … FROM nodes n JOIN hosts h … FOR UPDATE OF n` — and only then verifies the proof, through a new `verify_rotate_proof_in_tx`, before inserting. ⭐ **No new lock and no new guard were invented:** this is the same row, in the same mode, the revocation already takes "before the change". The two paths now serialize on it, so a rotation that wins the row commits a certificate the revocation's later `UPDATE` sees and revokes, and one that loses it re-reads the certificate after the revocation committed and is refused. It is `verify_fencing_in_tx`'s shape applied to the same check-vs-commit window (`.2.2`).
+- ⛔ **Folding the liveness into the `INSERT` — the `.4.1.3` shape — was considered and REJECTED because it does not work here.** READ COMMITTED takes the statement's snapshot at statement start, and the foreign-key wait happens after the row is formed, so an `INSERT … WHERE EXISTS (… revoked_at IS NULL)` would evaluate its condition against a snapshot that predates the revocation's commit and insert anyway. The window is between two STATEMENTS, so only a lock held across both closes it.
+- 🔴 **FALSIFY, and the first control did NOT discriminate the repair — which the falsification is what revealed.** Removing `FOR UPDATE OF n` left the suite green: the reproduction arm stalls the rotation at the host lookup, which the repair made the FIRST statement, so moving the proof check behind it is sufficient *for that fixture*. It is not sufficient in general — the proof check and the insert are separate statements with separate snapshots — and **no fixture can stall the rotation in that gap, because nothing between those two statements touches the database**. `docs/knowledge/proving-a-race-is-closed.md` names exactly this: a control that passes against the superseded design is not testing the repair.
+- So a THIRD arm asserts the lock DIRECTLY: hold the node row a revocation would take, and the rotation must be observed waiting on `FOR UPDATE OF n` in `pg_stat_activity` before it completes. With both parts in place: `33 passed`. Falsified separately — the row lock removed -> `nothing ever blocked on FOR UPDATE OF n`, 32 passed / 1 failed; the proof check moved back in front of the lock -> `live certificates after the revocation: 1`, 32 passed / 1 failed. Each part is load-bearing and each failure names which one is missing.
+- A SECOND arm asserts the other order rather than assuming it, because the repair claims both are correct: a rotation that completes *before* a revocation is not a way to survive it either — the node holds 2 live certificates, and the revocation's `WHERE revoked_at IS NULL` takes both to 0.
+- NO REGRESSION: `node_channel` 33/33 (including `rotation_issues_a_fresh_certificate_and_both_identities_handshake`, `rotation_without_a_valid_certificate_proof_is_refused` and `.4.1.3`/`.4.1.3.1`'s own controls), `node_replacement` (the ritual rotates and re-enrols), `node_enrollment`, `node_work`, `identity_store`, `administrative_effects`, `authority`, `node_inbox`; clippy `-D warnings` rc=0.
+- ⚠️ Lock-order note, checked rather than assumed: the revocation takes `nodes` then `node_certificates`; the rotation now takes the same two in the same order, so no new deadlock edge is introduced.
+- LOCKSTEP: `docs/book/src/node-channel.md`.
+- Commit: `REASONBRAID-REPAIR-0152 (leaf SIGNOFF-REPAIR.4.2.1): a rotation in flight can no longer outlive a revocation`.
 
 #### SIGNOFF-REPAIR.4.2.2 — The handshake and rotate proofs are replayable, and the rotate proof returns a private key
 
@@ -3249,16 +3260,16 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.2.1` | `pending` | 🔴 a rotation can outrun a revocation and leave a LIVE certificate behind — it would undo `.4.1.3` and `.4.1.3.1`, which both gate on exactly that certificate |
-| 1b | `SIGNOFF-REPAIR.4.2.6` | `pending` | the bad-proof control refuses before it reaches the signature — a PREREQUISITE for `.4.2.2`, which cannot be falsified without it |
-| 1c | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY |
+| 1 | `SIGNOFF-REPAIR.4.2.6` | `pending` | the bad-proof control refuses before it reaches the signature — a PREREQUISITE for `.4.2.2`, which cannot be falsified without it |
+| 2 | `SIGNOFF-REPAIR.4.2.2` | `pending` | the handshake and rotate proofs are replayable, and each rotate replay returns a fresh PRIVATE KEY |
+| 2b | `SIGNOFF-REPAIR.4.2.3` | `pending` | a heartbeat can revive a lease that expired between the check and the write |
 | 2 | `SIGNOFF-REPAIR.11.9` | `pending` | a source-census record routed to a leaf is not reconciled against that leaf's split — one record's three clauses became one child, and a second clause ("no human restriction" on token issuance) is still unopened |
 | 3 | `SIGNOFF-REPAIR.11.7` | `pending` | the published reason-code registry and the codes the product emits have drifted — 10 emitted codes are unregistered, 11 registry codes are never emitted |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
 | 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **40 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **39 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3290,6 +3301,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.1.2.1`: `REASONBRAID-REPAIR-0149 (leaf SIGNOFF-REPAIR.4.1.2.1): the token's lifetime is validated before anything computes with it`.
 - `SIGNOFF-REPAIR.4.1.2`: `REASONBRAID-REPAIR-0150 (leaf SIGNOFF-REPAIR.4.1.2): a token does not outlive the authority that issued it`.
 - `SIGNOFF-REPAIR.4.2` (census + split): `REASONBRAID-REPAIR-0151 (leaf SIGNOFF-REPAIR.4.2): census the handshake and fencing surface, and split it`.
+- `SIGNOFF-REPAIR.4.2.1`: `REASONBRAID-REPAIR-0152 (leaf SIGNOFF-REPAIR.4.2.1): a rotation in flight can no longer outlive a revocation`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

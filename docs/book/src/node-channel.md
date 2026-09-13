@@ -232,6 +232,34 @@ certificate is still in date. A node whose only certificate has simply lapsed
 reads `suspended: false` and is still handed nothing, because its renewal has
 already stopped too.
 
+### A rotation in flight cannot outlive the revocation
+
+Certificate rotation is additive — the old fingerprint stays valid until it
+expires or is revoked, so a running session is never cut — and that raised a
+question the design had not answered: what happens to a rotation that is already
+under way when the operator revokes the node?
+
+It used to finish. The rotation verified the proof, looked up the host and
+inserted the new certificate as three separate statements, so its *decision*
+("this certificate is live") and its *effect* ("here is a new live certificate")
+were not atomic. A revocation that committed between them did not see the new
+row, and the withdrawn node was left holding a usable certificate — which, since
+both the lease renewal and the work delivery ask whether such a certificate
+exists, handed it back its lease and its work.
+
+Rotation now runs as one transaction that takes the node's row **first**, and
+only then re-reads the certificate it was shown. That is the same row, in the
+same mode, the revocation already takes before it changes anything, so the two
+simply serialize:
+
+| Order | Result |
+| --- | --- |
+| The rotation reaches the node row first | It commits a new certificate; the revocation then runs and revokes **both** identities. |
+| The revocation reaches it first | The rotation waits, re-reads the certificate on the far side of the revocation, finds it revoked, and is refused `401`. |
+
+Either way a revoked node holds no usable certificate, which is the property the
+two checks above depend on.
+
 ⚠️ **The remaining honest limit.** Nothing at the transport re-checks a
 certificate: the dev profile's wire is plain HTTP (see the deployment chapter's
 Honest Boundaries), so a certificate's own expiry does not bound any surface

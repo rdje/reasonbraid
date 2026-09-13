@@ -783,8 +783,30 @@ impl NodeChannelState {
             .map_err(|_| ApiError::proof_refused())
     }
 
-    /// The rotate proof check (the same ladder over the rotate coverage).
-    pub async fn verify_rotate_proof(&self, req: &RotateRequest) -> Result<(), ApiError> {
+    /// The rotate proof check (the same ladder over the rotate coverage), run
+    /// INSIDE the caller's transaction.
+    ///
+    /// # Why this is not a pool read (`SIGNOFF-REPAIR.4.2.1`)
+    ///
+    /// The rotation's DECISION (this certificate is live) and its EFFECT (a new
+    /// active certificate) used to be separate statements on the pool, so a
+    /// revocation landing between them left the node holding a usable
+    /// certificate it had just been denied. Measured: with the rotation stalled
+    /// after its proof check, a complete revocation ran, and the node finished
+    /// with one live certificate.
+    ///
+    /// The caller now locks the node row first — the same row, in the same mode,
+    /// that the revocation locks before it changes anything — so the two
+    /// serialize. A rotation that wins the row commits a certificate the
+    /// revocation's later `UPDATE` then sees and revokes; one that loses it
+    /// re-reads the certificate HERE, after the revocation committed, and is
+    /// refused. This is `verify_fencing_in_tx`'s shape applied to the same
+    /// check-vs-commit window (`.2.2`).
+    pub async fn verify_rotate_proof_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        req: &RotateRequest,
+    ) -> Result<(), ApiError> {
         let cert_der = decode_hex(&req.cert_der).ok_or_else(ApiError::proof_refused)?;
         let signature = decode_hex(&req.proof_signature).ok_or_else(ApiError::proof_refused)?;
         crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| ApiError::proof_refused())?;
@@ -794,7 +816,7 @@ impl NodeChannelState {
              FROM node_certificates WHERE cert_fingerprint = $1",
         )
         .bind(&fingerprint)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut **tx)
         .await?;
         let Some((node_id, unusable)) = row else {
             return Err(ApiError::proof_refused());
@@ -1303,20 +1325,37 @@ async fn rotate(
     Json(req): Json<RotateRequest>,
 ) -> Result<Json<RotateResponse>, ApiError> {
     check_version(req.channel_version)?;
-    state.verify_rotate_proof(&req).await?;
 
-    // The durable host claim (the SAN the leaf carries) comes from the node's
-    // host row — rotation keeps the same identity binding.
+    // ONE transaction, and the node row is locked FIRST
+    // (`SIGNOFF-REPAIR.4.2.1`). The proof check, the host lookup and the insert
+    // used to be three statements on the pool, so the rotation's decision and
+    // its effect were not atomic with respect to a revocation: a revocation that
+    // committed between them left the node holding a certificate it had just
+    // been denied — and since `.4.1.3` and `.4.1.3.1` both gate on exactly that
+    // certificate, the node's lease renewal and its work delivery came back.
+    //
+    // The lock is the one the revocation already takes before it changes
+    // anything ("tenant-bound selection inside the guard, locked before the
+    // change"), so no new lock, no new guard and no new ordering are invented —
+    // the two paths simply take the same row in the same mode. A rotation that
+    // wins it commits a certificate the revocation's later UPDATE sees and
+    // revokes; one that loses it re-reads the certificate after the revocation
+    // committed and is refused. Both orders are correct, which is the property
+    // the unrepaired shape did not have.
+    let mut tx = state.pool.begin().await?;
     let host_claim: Option<String> = sqlx::query_scalar(
         "SELECT h.name FROM nodes n JOIN hosts h ON n.host_id = h.host_id \
-         WHERE n.node_id = $1",
+         WHERE n.node_id = $1 FOR UPDATE OF n",
     )
     .bind(&req.node_id)
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some(host_claim) = host_claim else {
         return Err(ApiError::unknown_node(&req.node_id));
     };
+    // AFTER the lock: a rotation that queued behind a revocation reads the
+    // certificate as that revocation left it.
+    state.verify_rotate_proof_in_tx(&mut tx, &req).await?;
 
     let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim);
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
@@ -1338,8 +1377,9 @@ async fn rotate(
     .bind(&key_der)
     .bind(now)
     .bind(cert_expires_at)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(Json(RotateResponse {
         node_id: req.node_id,

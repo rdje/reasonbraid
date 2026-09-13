@@ -3041,3 +3041,238 @@ async fn authority_that_ends_while_a_node_revocation_waits_refuses_it() {
     );
     server.crash();
 }
+
+/// Wait until some session in this database is blocked on a lock while running a
+/// statement naming `table`. An uncompleted task or a sleep is never evidence
+/// that the lock was actually reached (`authority_transaction`'s rule, applied
+/// to a table lock rather than to the tenant guard).
+async fn blocked_on(pool: &PgPool, table: &str) -> i32 {
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let pid: Option<i32> = sqlx::query_scalar(
+                "SELECT pid FROM pg_stat_activity \
+                 WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                   AND pid <> pg_backend_pid() AND query LIKE $1 LIMIT 1",
+            )
+            .bind(format!("%{table}%"))
+            .fetch_optional(pool)
+            .await
+            .expect("read pg_stat_activity");
+            if let Some(pid) = pid {
+                return pid;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    waited.unwrap_or_else(|_| panic!("nothing ever blocked on {table}"))
+}
+
+/// `SIGNOFF-REPAIR.4.2.1` — a rotation that was already in flight must not leave
+/// a live certificate behind a revocation.
+///
+/// Measured rather than reasoned about (`.3.4.3.1.3`). `rotate` verifies the
+/// proof, looks up the host and inserts the new certificate as three separate
+/// statements with no transaction and no tenant guard, so its DECISION (this
+/// certificate is unrevoked) and its EFFECT (a new active certificate) are not
+/// atomic with respect to a revocation that lands between them.
+///
+/// ⚠️ **The pause is artificial; the ordering is not.** The rotation is held at
+/// its host lookup by an exclusive lock on `hosts`, a table the revocation path
+/// never touches (verified: no statement in `node_admin.rs`, `authority.rs`,
+/// `transaction.rs` or `effects.rs` names it). Unrepaired, that lookup sits
+/// AFTER the proof check, so the rotation is stalled having already decided the
+/// certificate is good; in production the same gap is the lookup plus key
+/// generation plus certificate signing — small, but the revocation only has to
+/// fit inside it, and the `nodes` foreign key then forces the insert to land
+/// after the revocation commits rather than before it.
+///
+/// Repaired, the same lock stalls the rotation at the statement that TAKES the
+/// node row, so it has decided nothing yet and re-reads the certificate on the
+/// far side of the revocation. Both arms below are asserted, because the repair
+/// claims both orders are correct and a claim that is not tested is a guess.
+///
+/// 🔴 Why this matters more than it reads: `.4.1.3` and `.4.1.3.1` both gate on
+/// "this node holds a certificate that is neither revoked nor expired". A
+/// certificate that survives the revocation restores the node's lease renewal
+/// AND its work delivery.
+#[tokio::test]
+async fn a_rotation_in_flight_cannot_outlive_a_revocation() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000401".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+
+    // Hold `hosts` so the rotation stalls at its host lookup — after its proof
+    // check has already decided the old certificate is good.
+    let mut hold = pool
+        .acquire()
+        .await
+        .expect("a connection for the table lock");
+    sqlx::query("BEGIN")
+        .execute(&mut *hold)
+        .await
+        .expect("begin");
+    sqlx::query("LOCK TABLE hosts IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *hold)
+        .await
+        .expect("hold the hosts table");
+
+    let rotating = tokio::spawn(async move { channel.rotate().await.is_ok() });
+    let stalled = blocked_on(&pool, "hosts").await;
+    println!("  .4.2.1 rotation stalled at its host lookup, pid {stalled}");
+
+    // The whole revocation now runs and commits inside that gap.
+    let revoked = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "the operator withdraws this node",
+        }))
+        .send()
+        .await
+        .expect("the revocation answers");
+    assert_eq!(
+        revoked.status().as_u16(),
+        200,
+        "the revocation completes while the rotation is stalled: {}",
+        revoked.text().await.unwrap_or_default()
+    );
+
+    sqlx::query("COMMIT")
+        .execute(&mut *hold)
+        .await
+        .expect("release hosts");
+    drop(hold);
+    let rotated = rotating.await.expect("the rotation task");
+    println!(
+        "  .4.2.1 rotation resumed after the revocation: {}",
+        if rotated { "ALLOWED" } else { "refused" }
+    );
+
+    let (live,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_certificates \
+         WHERE node_id = $1 AND revoked_at IS NULL AND expires_at > now()",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the live certificates");
+    println!("  .4.2.1 live certificates after the revocation: {live}");
+
+    // THE INVARIANT, and it is the one `.4.1.3`/`.4.1.3.1` rest on: a revoked
+    // node holds no usable certificate, whatever raced the revocation.
+    assert_eq!(
+        live, 0,
+        "a revoked node must hold NO usable certificate — one that survives \
+         restores its lease renewal and its work delivery"
+    );
+
+    // THE OTHER ORDER, asserted rather than assumed: a rotation that COMPLETES
+    // before a revocation is not a way to survive it either — the revocation's
+    // `WHERE revoked_at IS NULL` covers whatever the rotation just added.
+    let other = "nod_00000000-0000-7000-8000-000000000402".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &other).await;
+    let ahead = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        other.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    ahead.rotate().await.expect("an unraced rotation succeeds");
+    let (before,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&other)
+    .fetch_one(&pool)
+    .await
+    .expect("count before the revocation");
+    assert_eq!(
+        before, 2,
+        "the rotation is additive: the old identity stays live"
+    );
+    let revoked = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": other,
+            "reason": "withdrawn after a completed rotation",
+        }))
+        .send()
+        .await
+        .expect("the revocation answers");
+    assert_eq!(revoked.status().as_u16(), 200, "the revocation succeeds");
+    let (after,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM node_certificates WHERE node_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&other)
+    .fetch_one(&pool)
+    .await
+    .expect("count after the revocation");
+    assert_eq!(
+        after, 0,
+        "the revocation covers BOTH identities — a completed rotation is not a \
+         way to outlive it"
+    );
+
+    // ⚠️ ARM 3 — THE LOCK ITSELF, and it is here because the first arm does NOT
+    // discriminate it. Removing `FOR UPDATE OF n` leaves arm 1 green: that arm
+    // stalls the rotation at the host lookup, which the repair made its FIRST
+    // statement, so moving the proof check behind it is enough on its own THERE.
+    // It is not enough in general — the proof check and the insert are separate
+    // statements, and READ COMMITTED gives each its own snapshot, so a
+    // revocation can still commit between them. No fixture can stall the
+    // rotation in that gap, because nothing between those two statements touches
+    // the database at all.
+    //
+    // So the lock is asserted DIRECTLY: hold the node row, and the rotation must
+    // wait for it. Without `FOR UPDATE OF n` the rotation sails past and nothing
+    // is ever observed waiting, so this arm times out and fails — which is the
+    // discrimination arm 1 lacks (`docs/knowledge/proving-a-race-is-closed.md`:
+    // a control that passes against the superseded design is not testing the
+    // repair).
+    let third = "nod_00000000-0000-7000-8000-000000000403".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &third).await;
+    let serialized = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        third.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    let mut node_row = pool.acquire().await.expect("a connection for the node row");
+    sqlx::query("BEGIN")
+        .execute(&mut *node_row)
+        .await
+        .expect("begin");
+    sqlx::query("SELECT 1 FROM nodes WHERE node_id = $1 FOR UPDATE")
+        .bind(&third)
+        .execute(&mut *node_row)
+        .await
+        .expect("hold the node row a revocation would lock");
+    let rotating = tokio::spawn(async move { serialized.rotate().await.is_ok() });
+    let waiting = blocked_on(&pool, "FOR UPDATE OF n").await;
+    println!("  .4.2.1 rotation waits on the node row a revocation locks, pid {waiting}");
+    sqlx::query("COMMIT")
+        .execute(&mut *node_row)
+        .await
+        .expect("release the node row");
+    drop(node_row);
+    assert!(
+        rotating.await.expect("the rotation task"),
+        "once the node row is free the rotation completes normally"
+    );
+
+    server.crash();
+}

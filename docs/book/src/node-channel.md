@@ -87,7 +87,10 @@ secret, but the CHANNEL identity is the certificate:
    node holds no workload certificate that is both unrevoked and unexpired, the
    heartbeat is refused with a message that says so, distinct from a fenced
    token — because re-handshaking fixes a fenced token and cannot fix a
-   withdrawn credential. Poll, ack and events deliberately do **not** ask; see
+   withdrawn credential. Poll, ack and events deliberately do **not** ask for
+   ADMISSION — they still answer on the fencing token alone — but `poll`'s
+   delivery asks the same question before it hands over any row, so a node that
+   may no longer extend its lease is handed no further work either; see
    [Revocation and a running session](#revocation-and-a-running-session).
 
 ## Presence and leases
@@ -189,12 +192,51 @@ it short — the refused renewal moves no expiry — and the check sits on the
 renewal rather than on the fencing verification precisely so that poll, ack and
 events keep the tail the design intends.
 
-⚠️ **Two honest limits.** The remaining tail is up to a full lease, and during
-it the server still hands the node newly enqueued work; whether it should is a
-separate decision under repair, not a settled one. And nothing at the transport
-re-checks a certificate: the dev profile's wire is plain HTTP (see the
-deployment chapter's Honest Boundaries), so a certificate's own expiry does not
-bound any surface that never presents one.
+### What the tail still receives — nothing new
+
+That left one question open, and it is now decided: during the tail, the server
+hands the node **no work at all**. Revoking a node is the operator withdrawing
+trust in an identity; handing that identity newly enqueued work for a further
+minute is not a courtesy to a running session, it is fresh authority granted
+after the withdrawal.
+
+So the delivery read asks the same question the renewal asks — does this node
+hold a certificate that is neither revoked nor expired? — and while the answer
+is no, the tail is empty. Concretely:
+
+| Surface | A revoked node, inside its remaining lease |
+| --- | --- |
+| `poll` | **admitted**, `current_cursor` answers truthfully, **zero commands** |
+| `ack` | admitted — the node still settles what it holds |
+| `events` | admitted — results for work already in hand still land |
+| `heartbeat` | refused `401 credential_refused`; the lease is not extended |
+| `rotate` / `handshake` | refused `401` (the certificate proof) |
+
+Two properties make that safe, and both are pinned by controls:
+
+- **The work is withheld, not dropped.** The rows stay in the inbox with their
+  cursors. This is why the filter sits on the delivery read rather than on the
+  dispatch: the replacement ritual re-enrols the *same* node id with a fresh
+  certificate, and the withheld tail then replays to it in cursor order. A
+  refusal at dispatch time would have destroyed that work instead.
+- **It is a filter, not a refusal.** `poll` still admits on its fencing check
+  and `ack`/`events` are untouched, so the session in flight is still not cut —
+  it finishes and reports the work it already has, and receives nothing more.
+  This is the same shape the zero-concurrency wake gate uses.
+
+The predicate is *a usable certificate today*, not *ever revoked*. The presence
+view's `suspended` flag is close but is not the same question: it reads
+"a revoked certificate exists and no unrevoked one does", so it correctly leaves
+a replaced node unsuspended — but it never asks whether the surviving
+certificate is still in date. A node whose only certificate has simply lapsed
+reads `suspended: false` and is still handed nothing, because its renewal has
+already stopped too.
+
+⚠️ **The remaining honest limit.** Nothing at the transport re-checks a
+certificate: the dev profile's wire is plain HTTP (see the deployment chapter's
+Honest Boundaries), so a certificate's own expiry does not bound any surface
+that never presents one. The database-side checks on renewal and delivery are
+what carry it instead.
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 

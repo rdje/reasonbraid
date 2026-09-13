@@ -597,6 +597,30 @@ impl NodeChannelState {
     /// filtered (`.1.2.3`): a quarantined command is never re-delivered, whatever
     /// cursor the node reports (a node that never saw it simply has a hole in its
     /// ledger — cursor acknowledgement still marks it terminal).
+    ///
+    /// # Delivery requires a usable credential (`SIGNOFF-REPAIR.4.1.3.1`)
+    ///
+    /// `.4.1.3` bounded a revoked node's session to the remaining lease but left
+    /// it receiving NEW work for that tail: the delivery read the inbox and
+    /// nothing about whether the node was still trusted. A revocation the
+    /// operator has just applied must not be followed by the server handing that
+    /// node more work.
+    ///
+    /// So delivery asks the question `renew_lease` asks, asked the same way:
+    /// does this node hold a certificate that is neither revoked nor expired?
+    /// While it does not, the tail is EMPTY — and the rows are withheld, never
+    /// dropped. That distinction is the whole reason the check sits on this rung
+    /// rather than on the enqueue: the replacement ritual re-enrolls the SAME
+    /// node id with a fresh certificate, and the withheld tail then replays to
+    /// it (`node_replacement`'s durability leg). A filter at the dispatch would
+    /// have destroyed that work instead.
+    ///
+    /// This is a filter, not a refusal, and that is `.1.3.1`'s decision held
+    /// intact: `poll` still admits on its pure fencing check, `ack` and `events`
+    /// are untouched, so the session in flight still finishes and reports the
+    /// work it already holds. It simply gets no more. The same predicate rides
+    /// the handshake's replay, where it is vacuous — `verify_cert_proof` has
+    /// already required a usable row for this node id before the tail is read.
     pub async fn replay(
         &self,
         node_id: &str,
@@ -620,6 +644,9 @@ impl NodeChannelState {
                     policy_digest, decided_at, revocation_epoch \
              FROM node_inbox \
              WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
+               AND EXISTS (SELECT 1 FROM node_certificates c \
+                           WHERE c.node_id = $1 \
+                             AND c.revoked_at IS NULL AND c.expires_at > now()) \
                AND NOT EXISTS ( \
                    SELECT 1 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                    WHERE v.role_id = $1 AND v.version = p.current_version \

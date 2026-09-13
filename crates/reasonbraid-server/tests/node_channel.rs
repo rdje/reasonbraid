@@ -1662,6 +1662,46 @@ async fn the_zero_concurrency_wake_gate_holds_the_delivery() {
         .execute(&pool)
         .await
         .expect("seed tenant");
+    // `SIGNOFF-REPAIR.4.1.3.1`: delivery now also requires a usable credential,
+    // so this fixture seeds one. It had none — which made it a role that could
+    // never have reached `poll` at all, since a fencing token comes only from a
+    // certificate-proof handshake. Completing it keeps the test about the gate
+    // it names: the two-sided held-then-delivered shape still fails if the
+    // concurrency filter is removed.
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) \
+         VALUES ('hst_gate_c1', 'ten_00000000-0000-7000-8000-0000000000c1', 'gate-host')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the gate host");
+    sqlx::query(
+        "INSERT INTO nodes (node_id, host_id, tenant_id) \
+         VALUES ($1, 'hst_gate_c1', 'ten_00000000-0000-7000-8000-0000000000c1')",
+    )
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed the gate node");
+    {
+        let leaf = reasonbraid_server::ca::issue_node_leaf(
+            &ensure_server_ca(&pool).await.expect("server CA"),
+            &role_id,
+            "gate-host",
+        );
+        sqlx::query(
+            "INSERT INTO node_certificates \
+             (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+             VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+        )
+        .bind(reasonbraid_server::ca::cert_fingerprint(&leaf.cert_der))
+        .bind(&role_id)
+        .bind(&leaf.cert_der)
+        .bind(&leaf.key_der)
+        .execute(&pool)
+        .await
+        .expect("seed the gate certificate");
+    }
     sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'gate-role')")
         .bind(&role_id)
         .bind("ten_00000000-0000-7000-8000-0000000000c1")
@@ -2176,27 +2216,212 @@ async fn a_revoked_nodes_live_lease_stops_being_extended() {
     );
     say("lease unmoved", format!("{still}"));
 
-    // ⚠️ `SIGNOFF-REPAIR.4.1.3.1` — measured here and NOT repaired here: the
-    // server still hands NEW work to a node it has revoked, for the length of
-    // that tail. Recorded as an observation rather than asserted as correct.
+    // `SIGNOFF-REPAIR.4.1.3.1` — measured here, decided and repaired there. This
+    // block was an unasserted observation while the decision was open; it now
+    // pins the answer, and the leaf's own control below proves the property that
+    // answer depends on (the work is withheld, not dropped).
     enqueue(&state, &node_id, "cmd_after_revocation").await;
     let after = channel.poll(0).await;
     say("poll after enqueue", show(&after));
-    if let Ok(tail) = &after {
-        say(
-            "commands delivered",
-            format!(
-                "{} — {:?}",
-                tail.commands.len(),
-                tail.commands
-                    .iter()
-                    .map(|c| c.command_id.clone())
-                    .collect::<Vec<_>>()
-            ),
-        );
-    }
-    // Deliberately not asserted either way: `.4.1.3.1` owns the decision, and a
-    // control asserting today's answer would enshrine whichever way it lands.
+    let after = after.expect("the session in flight still polls");
+    say(
+        "commands delivered",
+        format!(
+            "{} — {:?}",
+            after.commands.len(),
+            after
+                .commands
+                .iter()
+                .map(|c| c.command_id.clone())
+                .collect::<Vec<_>>()
+        ),
+    );
+    assert!(
+        after.commands.is_empty(),
+        "a revoked node is handed no new work: {:?}",
+        after
+            .commands
+            .iter()
+            .map(|c| c.command_id.clone())
+            .collect::<Vec<_>>()
+    );
+
+    server.crash();
+}
+
+/// `SIGNOFF-REPAIR.4.1.3.1` — the work a revoked node is not handed is WITHHELD,
+/// not dropped, and its replacement receives it.
+///
+/// The decision is that a node whose credential the operator has withdrawn stops
+/// being handed work; the property that makes it safe is that the rows survive.
+/// The filter therefore sits on the delivery read, which `poll` and the
+/// handshake share, and not on the dispatch — refusing at the dispatch would
+/// have destroyed the work for a node that is about to be replaced.
+///
+/// ⛔ `node_presence.suspended` is asserted true at the end ON PURPOSE. It means
+/// *ever revoked* (migration 0012), so it stays true for the rest of a replaced
+/// node's life; a delivery filter keyed on it would silently starve every
+/// replaced node for ever. This control fails against that predicate and passes
+/// against the one that asks whether a usable certificate exists TODAY.
+#[tokio::test]
+async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000302".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await
+        .expect("the pre-revocation handshake opens a live lease");
+
+    // The fixture must be able to deliver at all, or every assertion below is
+    // vacuous (`TOOLBOX.md`: suspect the fixture before believing a number).
+    enqueue(&state, &node_id, "cmd_before_revocation").await;
+    let healthy = channel.poll(0).await.expect("the healthy node polls");
+    assert_eq!(
+        healthy.commands.len(),
+        1,
+        "the healthy node is handed its work: {:?}",
+        healthy.commands
+    );
+
+    let response = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "the operator withdraws the credential",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200, "the revocation succeeds");
+
+    enqueue(&state, &node_id, "cmd_after_revocation").await;
+    let revoked = channel
+        .poll(0)
+        .await
+        .expect("the session in flight still polls — the tail is not cut");
+    assert!(
+        revoked.commands.is_empty(),
+        "the revoked node is handed nothing, including the row it had already          been offered: {:?}",
+        revoked
+            .commands
+            .iter()
+            .map(|c| c.command_id.clone())
+            .collect::<Vec<_>>()
+    );
+    // The ledger is not lied about — the node is told how long the inbox is, it
+    // is simply not given the rows (the shape the zero-concurrency gate uses).
+    assert_eq!(
+        revoked.current_cursor, 2,
+        "both rows are still in the ledger: {revoked:?}"
+    );
+    let held: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count the withheld rows");
+    assert_eq!(held, 2, "withheld, not dropped");
+
+    // The replacement: the SAME node id enrols a fresh certificate while every
+    // old one stays revoked — exactly what `node_replacement`'s ritual writes.
+    let leaf = reasonbraid_server::ca::issue_node_leaf(
+        &ensure_server_ca(&pool).await.expect("server CA"),
+        &node_id,
+        &format!("seed-{node_id}"),
+    );
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+    )
+    .bind(reasonbraid_server::ca::cert_fingerprint(&leaf.cert_der))
+    .bind(&node_id)
+    .bind(&leaf.cert_der)
+    .bind(&leaf.key_der)
+    .execute(&pool)
+    .await
+    .expect("the replacement certificate");
+
+    let replaced = channel.poll(0).await.expect("the replacement polls");
+    let delivered: Vec<String> = replaced
+        .commands
+        .iter()
+        .map(|c| c.command_id.clone())
+        .collect();
+    assert_eq!(
+        delivered,
+        vec![
+            "cmd_before_revocation".to_string(),
+            "cmd_after_revocation".to_string()
+        ],
+        "the withheld tail replays to the replacement, in cursor order"
+    );
+
+    // Why `node_presence.suspended` is still not the predicate, shown on the arm
+    // where it actually diverges. Migration 0017 already made it
+    // revoked-and-no-unrevoked, so it tracks the replacement correctly above —
+    // but it never asks whether the surviving certificate is still IN DATE. Let
+    // every certificate LAPSE, and the view reads a healthy node while
+    // `renew_lease` has already stopped renewing. Delivery follows the renewal.
+    sqlx::query(
+        "UPDATE node_certificates SET expires_at = now() - interval '1 minute' WHERE node_id = $1",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("lapse every certificate");
+    let presence: Value = client
+        .get(format!(
+            "{}/v1/nodes/presence?node_id={node_id}",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        presence["suspended"],
+        json!(false),
+        "the view reads NOT suspended on a wholly lapsed credential: {presence}"
+    );
+    let lapsed = channel
+        .poll(0)
+        .await
+        .expect("the lease outlives the certificate, so the poll still admits");
+    assert!(
+        lapsed.commands.is_empty(),
+        "a node whose credential has lapsed is handed nothing either: {:?}",
+        lapsed
+            .commands
+            .iter()
+            .map(|c| c.command_id.clone())
+            .collect::<Vec<_>>()
+    );
 
     server.crash();
 }

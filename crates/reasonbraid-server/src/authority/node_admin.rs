@@ -114,6 +114,40 @@ pub(crate) async fn issue_enrollment_token_in_one_transaction(
                 }
             };
 
+            // A token that LAPSED unused is stamped superseded first, in THIS
+            // transaction (`SIGNOFF-REPAIR.4.1.1`). 0018's partial index keyed
+            // `used_at IS NULL`, and an expired token still satisfies that, so a
+            // lapsed token occupied the index for ever and closed the node's only
+            // enrollment path — while the `409` told the operator to "expire it",
+            // the one recovery that could not work.
+            //
+            // ⛔ The liveness is evaluated HERE rather than in the index predicate
+            // because a partial index predicate must be IMMUTABLE and `now()` is
+            // not (migration 0059 says the same). `at` is the same database time
+            // the admission was evaluated at, so a token that lapsed while this
+            // request queued for the guard is treated as lapsed.
+            //
+            // ⚠️ Scoped to the ADMITTED tenant. A lapsed token owned by another
+            // tenant still blocks, deliberately: superseding it would be a write
+            // into another tenant's rows while holding only this tenant's guard,
+            // which is a worse thing than the narrow block it would relieve.
+            //
+            // The stamp is `superseded_at` and never `used_at`: this token was
+            // never redeemed, and recording it as used would make the token store
+            // lie to anyone reading it. No separate effect record is written — the
+            // issuance's own effect already names this node, and the column is the
+            // durable evidence that the replacement happened.
+            sqlx::query(
+                "UPDATE node_enrollment_tokens SET superseded_at = $3 \
+                 WHERE node_id = $1 AND tenant_id = $2 \
+                   AND used_at IS NULL AND superseded_at IS NULL AND expires_at <= $3",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .bind(at)
+            .execute(&mut *conn)
+            .await?;
+
             // ⛔ `ON CONFLICT DO NOTHING RETURNING` rather than letting the
             // partial unique index raise. A constraint violation ABORTS the
             // transaction, which would take the admission and the effect record

@@ -926,6 +926,178 @@ async fn an_outstanding_token_is_refused_and_the_refusal_is_recorded() {
     assert!(!effect.outcome.changed_protected_state());
 }
 
+/// `SIGNOFF-REPAIR.4.1.1` — a token that LAPSES unused must not lock its node
+/// out of ever being issued another one.
+///
+/// Migration 0018's partial index keys `(node_id) WHERE used_at IS NULL`, and an
+/// EXPIRED token still has `used_at IS NULL` — so it stayed in that index for
+/// ever and every later issuance for the node answered `409`. The 409's own
+/// message told the operator to "consume or expire it before issuing another":
+/// expiring it was the advertised recovery, and it was the thing that did not
+/// work. The lapsed token is itself unusable, so the node's normal enrollment
+/// path was closed permanently.
+///
+/// Three arms, and the middle one is the defect:
+///   1. a lapsed token really is dead — it enrolls nothing;
+///   2. issuance for that node succeeds again;
+///   3. two LIVE unused tokens still cannot coexist — 0018's invariant is intact.
+#[tokio::test]
+async fn a_lapsed_token_is_superseded_rather_than_locking_the_node_out() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000001a6";
+    let reissue = json!({ "tenant_id": tenant, "node_id": node_id, "host_claim": "host-a" });
+
+    // A negative ttl expires the token immediately — the idiom this suite
+    // already uses, so the lapse happens through the product's own expiry rather
+    // than through a test-side write to the very row under measurement.
+    let first = issue_token(&client, &base, &alice, &tenant, node_id, "host-a", Some(-1)).await;
+    let lapsed_id = first["token_id"].as_str().unwrap().to_owned();
+    let lapsed_nonce = first["nonce"].as_str().unwrap().to_owned();
+
+    // Arm 1 — the lapsed token is dead. Nothing about the lockout is softened by
+    // the old token still working, because it does not.
+    let (status, dead) = enroll_node(
+        &client,
+        &base,
+        &lapsed_id,
+        node_id,
+        "host-a",
+        &lapsed_nonce,
+        "dev-secret",
+    )
+    .await;
+    assert_eq!(status, 401, "a lapsed token must enroll nothing: {dead}");
+    assert!(
+        dead["message"].as_str().unwrap().contains("expired"),
+        "{dead}"
+    );
+
+    // Arm 2 — THE DEFECT. Before the repair this answered `409 invalid_command`,
+    // for ever, for this node id.
+    let (status, _, issued) = issue(&client, &base, &alice, reissue.clone()).await;
+    assert_eq!(
+        status, 200,
+        "a lapsed token must not block reissuance: {issued}"
+    );
+    let live_id = issued["token_id"].as_str().unwrap().to_owned();
+    assert_ne!(
+        live_id, lapsed_id,
+        "reissuance mints a NEW token; it never rewrites the lapsed row, whose id \
+         the enrollment audit already names"
+    );
+
+    // The lapsed row is RETAINED and marked — not deleted, and not dishonestly
+    // marked `used_at`, which it never was.
+    let (superseded, used): (
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    ) = sqlx::query_as(
+        "SELECT superseded_at, used_at FROM node_enrollment_tokens WHERE token_id = $1",
+    )
+    .bind(&lapsed_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the lapsed row is retained, not deleted");
+    assert!(
+        superseded.is_some(),
+        "the lapsed token is stamped superseded"
+    );
+    assert_eq!(
+        used, None,
+        "a token that was never redeemed is never recorded as used"
+    );
+
+    // Arm 3 — 0018's invariant, unchanged: the token just issued is LIVE, so a
+    // third issuance is still the typed refusal. A repair that let two live
+    // tokens coexist would re-open what 0018 closed.
+    let (status, _, refused) = issue(&client, &base, &alice, reissue).await;
+    assert_eq!(
+        status, 409,
+        "a LIVE unused token still blocks another: {refused}"
+    );
+    assert_eq!(refused["code"], json!("invalid_command"));
+}
+
+/// `SIGNOFF-REPAIR.4.1.1`'s stated BOUND, pinned so it cannot rot unnoticed: the
+/// supersede is scoped to the ADMITTED tenant and never stamps a row it does not
+/// own — a foreign stamp would be a write into another tenant's rows while holding
+/// only this tenant's guard.
+///
+/// ⛔ This control deliberately does NOT assert the status the foreign tenant
+/// receives. `SIGNOFF-REPAIR.3.3.4.10.1` reproduced the cross-tenant `409` (0018's
+/// index is keyed on `node_id` alone, with no tenant column) and removed its probe
+/// rather than commit a control that would enshrine the defect; `.3.5` owns it and
+/// may well make that answer a `200`. What must hold under BOTH the current global
+/// index and that future repair is everything below.
+#[tokio::test]
+async fn a_foreign_tenants_issuance_never_supersedes_a_row_it_does_not_own() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant_a, alice) = bootstrap_admin(&client, &base).await;
+    let (tenant_b, bob) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000001a7";
+
+    // Alice's tenant lapses a token for the node.
+    issue_token(
+        &client,
+        &base,
+        &alice,
+        &tenant_a,
+        node_id,
+        "host-a",
+        Some(-1),
+    )
+    .await;
+
+    // Bob, fully admitted in his OWN tenant, issues for the same node identity.
+    // Whatever he is answered, he must not have touched Alice's row.
+    let (bob_status, _, bob_body) = issue(
+        &client,
+        &base,
+        &bob,
+        json!({ "tenant_id": tenant_b, "node_id": node_id, "host_claim": "host-b" }),
+    )
+    .await;
+
+    let alice_rows: Vec<(Option<chrono::DateTime<chrono::Utc>>,)> = sqlx::query_as(
+        "SELECT superseded_at FROM node_enrollment_tokens WHERE node_id = $1 AND tenant_id = $2",
+    )
+    .bind(node_id)
+    .bind(&tenant_a)
+    .fetch_all(&pool)
+    .await
+    .expect("alice's rows for the node");
+    assert_eq!(
+        alice_rows.len(),
+        1,
+        "the foreign issuance neither added nor removed a row in alice's tenant \
+         (bob was answered {bob_status}: {bob_body})"
+    );
+    assert_eq!(
+        alice_rows[0].0, None,
+        "a foreign tenant's issuance never stamps a row it does not own \
+         (bob was answered {bob_status}: {bob_body})"
+    );
+
+    // And the tenant that DOES own the lapsed token recovers, which is the repair.
+    let (status, _, issued) = issue(
+        &client,
+        &base,
+        &alice,
+        json!({ "tenant_id": tenant_a, "node_id": node_id, "host_claim": "host-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owning tenant reissues: {issued}");
+}
+
 #[tokio::test]
 async fn a_denied_issuance_records_no_effect_and_no_token() {
     let _guard = enroll_guard().await;

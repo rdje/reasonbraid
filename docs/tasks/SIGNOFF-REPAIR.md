@@ -1531,11 +1531,61 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 
 ### SIGNOFF-REPAIR.4.1 — Node enrollment and certificate lifecycle
 
-- Status: `pending`.
+- Opened: `pending`.
 - Sources / owned surfaces: `node_enrollment, node_channel, ca, rb-node, migrations`.
 - Goal and acceptance: Bind token use to current issuing authority; recover expired unused token issuance; enforce host/node/incarnation tenant lineage; make replacement lineage and lease effects consistent; serialize rotation/revocation and bound renewal after revocation.
-- Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
-- Commit: pending.
+- Status: `active`; censused and split below, because the goal line names five mechanisms and a single leaf would have to qualify all of them at once — the shape `.3.4`, `.3.5` and `.3.3.4.10`/`.11` each took.
+- **census of the five, run BEFORE the children were drawn, asking each question of the code that answers it.** One is a confirmed defect, one is REFUTED, and three stay open and are named as unmeasured rather than assumed.
+  - 🔴 **(2) "Recover expired unused token issuance" — CONFIRMED, and it is a hard lockout.** `migrations/0018`'s partial index is `ON node_enrollment_tokens (node_id) WHERE used_at IS NULL`. An EXPIRED token still has `used_at IS NULL`, so it remains in the index; issuance uses `ON CONFLICT DO NOTHING RETURNING` and reports `AlreadyOutstanding`. The census for a sweep found none: `git grep -n "node_enrollment_tokens" -- crates migrations`, with the test table-cleanup lists classified out, leaves exactly THREE production touches — the issuance INSERT (`node_admin.rs`), the redemption `SELECT … FOR UPDATE` and the `SET used_at` (`node_channel.rs`). Nothing ever clears an expired row. So a token that expires unused **permanently prevents issuing another token for that node id**, and the operator's normal path to enroll that node is closed for good. Owned by `.4.1.1`.
+  - ⛔ **(5) "Serialize rotation/revocation" — the obvious worry is REFUTED by measurement, and it is recorded so nobody re-raises it.** `rotate`'s only query reads the host name, it opens no transaction and takes no tenant guard, which reads alarmingly — but `verify_rotate_proof` runs first and selects `(revoked_at IS NOT NULL OR expires_at <= now()) FROM node_certificates WHERE cert_fingerprint = $1`, refusing with `proof_refused`; and `revoke_node` does `UPDATE node_certificates SET revoked_at = …`. **A revoked node cannot rotate.** The guard is the proof, not a lock.
+  - **(1) "Bind token use to current issuing authority" — measured, and it is a DECISION rather than a defect.** Redemption validates only the token's own fields (`used_at`, `expires_at`, `node_id`, `host_claim`, `nonce`); the issuing administrator's authority is never re-checked, so a token issued before that administrator's grant or boundary was revoked still redeems. Whether a bearer credential SHOULD be voided by its issuer's later revocation is a policy question with defensible answers either way, and inventing one is not a repair. Owned by `.4.1.2`.
+  - ⚠️ **(4)/(5) the LEASE half — open and explicitly unmeasured.** `revoke_node` carries no `UPDATE` against a lease or presence row (`grep -iE "UPDATE|SET"` over its lease references returns nothing), so whether a revoked node's fencing token stays usable until it expires is not established. Named rather than guessed; owned by `.4.1.3`.
+  - ⚠️ **(3) host and incarnation lineage — partly closed elsewhere, the rest unmeasured.** NODE lineage is closed by `.3.5.1`: `nodes.node_id` is a global primary key, and a node owned by another tenant is now refused at redemption instead of colliding with it. Host and incarnation lineage were NOT measured here and this leaf must not imply they were.
+- The split, three children along what the census leaves standing. `.4.1.1` is the only confirmed defect and comes first.
+- Verification / commit: per child.
+
+#### SIGNOFF-REPAIR.4.1.1 — A token that expires unused locks its node out for good
+
+- Opened: `pending` by `.4.1`'s census; the one confirmed defect of the five.
+- The finding: the partial unique index counts an EXPIRED unused token, so after a token lapses the operator receives `409 invalid_command — an unused enrollment token for that node is already outstanding` for every subsequent attempt, and nothing in the product ever clears the row. The node cannot be enrolled through the normal path again.
+- ⚠️ Severity is availability, not authorization: the stale token is itself unusable (redemption refuses `the token has expired`), so this opens nothing — it closes something, permanently.
+- Owns: reproducing it against the live routes, then deciding HOW issuance recovers. ⛔ The obvious repair is not obvious: narrowing the index to `WHERE used_at IS NULL AND expires_at > now()` is **not available**, because a partial index predicate must be IMMUTABLE and `now()` is not. So the choice is between the issuance path superseding a lapsed row inside its own transaction, a sweep, or an expiry column the index can use — and per `.11.6` the population decides, not the preference.
+- ⚠️ Whatever is chosen must preserve what 0018 bought: at most one LIVE unused token per node. A repair that lets two live tokens exist re-opens the defect 0018 closed.
+- Acceptance: the lockout is reproduced against the live issuance route before any change; the repair is falsified against the unrepaired path; a control proves a lapsed token is superseded AND that two live tokens still cannot coexist; the existing one-unused-token controls pass unchanged.
+- Status: `done`; REPAIR-0146.
+- **REPRODUCE, against the live routes and before one line changed.** `a_lapsed_token_is_superseded_rather_than_locking_the_node_out` issues a token with `ttl_seconds: -1` — the idiom this suite already uses, so the lapse happens through the product's own expiry rather than through a test-side write to the very row under measurement — and then issues again for the same node id. The unrepaired product answered, verbatim: `409 {"code":"invalid_command","message":"an unused enrollment token for node \`nod_…01a6\` already exists — consume or expire it before issuing another"}`. 🔴 **The message names the recovery and the recovery is the defect.** "Expire it" is exactly what had just happened, and expiring it is what closed the door. The first arm of the same test proves the lapsed token enrolls nothing (`401 … the token has expired`), so nothing compensates: the node's ordinary enrollment path was shut permanently by the token that was supposed to open it.
+- Root cause: 0018 narrowed 0008's unconditional `UNIQUE (node_id)` to a partial index `WHERE used_at IS NULL`, which is the right predicate for a LIVE token and the wrong one for a dead one. `used_at IS NULL` means "never redeemed", not "still usable", and nothing anywhere distinguishes the two — the `git grep` census in `.4.1` found the table's only production touches to be the issuance INSERT, the redemption `SELECT … FOR UPDATE` and the `SET used_at`, with no sweep of any kind.
+- Fix, and ⛔ the obvious form of it is unavailable: the predicate cannot become `AND expires_at > now()`, because a partial index predicate must be IMMUTABLE and `now()` is not. So the liveness the index cannot evaluate is written down instead. `migrations/0059_node_token_supersede.sql` adds `superseded_at TIMESTAMPTZ` and re-keys the index as `(node_id) WHERE used_at IS NULL AND superseded_at IS NULL`; the issuance transaction stamps a lapsed row `superseded_at` before its INSERT, at the same `at` the admission was evaluated with, so a token that lapsed while the request queued for the guard is treated as lapsed.
+- ⛔ Three things the repair deliberately does NOT do, each for a reason that was checked rather than assumed:
+  - it does not DELETE the lapsed row. `node_enroll_audit.token_id` has no foreign key (`git grep "REFERENCES node_enrollment_tokens" -- migrations` → none), so deleting would not dangle — but an audit row naming a token id that resolves to nothing is a worse artefact than one that resolves to a row marked superseded;
+  - it does not REUSE the row by rewriting its `token_id`, nonce and expiry in place. That needs no migration at all, and it is the worst option available: an audit row naming the old token id would silently resolve to a DIFFERENT token's facts;
+  - it does not stamp `used_at`. The token was never redeemed. Recording it as used would make the token store lie to every future reader, including the redemption path's own `the token was already used` refusal.
+- ⚠️ **Stated bound, and it is a deliberate residue rather than an oversight.** The supersede carries `AND tenant_id = $2`: a lapsed token owned by ANOTHER tenant still blocks. Superseding it would be a write into another tenant's rows while holding only this tenant's shared guard, which is a worse thing than the narrow block it would relieve. This is the same territory as the global-index hazard `.3.3.4.10.1` reproduced and `.3.5` owns; this leaf neither widens nor repairs it.
+- ⚠️ **A control was written, then rewritten, because the first version broke a recorded decision.** `a_foreign_tenants_issuance_never_supersedes_a_row_it_does_not_own` first asserted the foreign tenant receives `409` — which is precisely the control `.3.3.4.10.1` refused to commit, having removed its probe "rather than commit a control that would enshrine the defect". The control now asserts nothing about the foreign tenant's status and everything about the row: one row in the owning tenant, `superseded_at IS NULL`, and the owner still recovers. Those hold under the current global index AND under whatever `.3.5` does to it.
+- FALSIFY: the repair was neutralized in place (`AND false` appended to the supersede predicate) with migration 0059, the column and the new index all left standing, isolating the repair from the schema. The suite then went `13 passed; 1 failed` with the identical `409` body, and the failure is the one test: restoring the predicate returns `15 passed; 0 failed`. 0018's own invariant is falsified in the same test rather than argued — arm 3 issues a THIRD time while the replacement is live and requires the `409` back, so a supersede that over-reached onto a live token would fail there.
+- NO REGRESSION: `node_enrollment` 15/15 (the pre-existing `an_outstanding_token_is_refused_and_the_refusal_is_recorded`, `refusals_are_audited_and_effect_free` and the negative-ttl expiry control all unchanged), `node_replacement` 1/1 — the suite that owns 0018's replacement ritual — and `node_channel` 30/30.
+- LOCKSTEP: `docs/book/src/authority.md` gains the lapsed-token paragraph and a table row, and its "one unused token per node" now reads "one *live* unused token per node".
+- Commit: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
+
+#### SIGNOFF-REPAIR.4.1.2 — Redemption does not re-check the issuer's authority
+
+- Opened: `pending` by `.4.1`'s census.
+- Status: `pending`.
+- The finding, measured: redemption validates the token's own fields only. A token issued by an administrator whose grant or boundary is revoked BEFORE the token is redeemed still enrolls the node.
+- ⛔ Not asserted to be a defect. A bearer credential that survives its issuer's revocation is a defensible design — it is how most enrollment tokens work — and the opposite is also defensible here, because the token's whole authority derives from an administrator the tenant has since withdrawn. This leaf owns the DECISION and the reason, not a presumed repair.
+- ⚠️ Bounded before it is argued: a token names one node id and one host claim, is single-use, and expires. So the exposure is one enrollment of one already-named identity within the TTL, not a general capability.
+- Acceptance: the decision names which semantics the dev profile takes and why; if it changes, a control shows a token issued under since-revoked authority refused, and the ordinary enrollment controls pass unchanged; if it does not, the book states plainly that a token outlives its issuer's authority.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.4.1.3 — What revocation does to a live lease
+
+- Opened: `pending` by `.4.1`'s census, which found this unmeasured rather than broken.
+- Status: `pending`.
+- The finding as far as it is measured: `revoke_node` revokes the node's certificates but carries no write against a lease or presence row, so whether a revoked node's existing fencing token keeps authorising `poll`/`ack`/`events` until the lease expires is NOT established.
+- ⛔ This is a source reading, not a reproduction. Do not write it up as a defect before a control drives a revoked node's live token at a fenced route — the `.3.4.3.1.3` prohibition, applied here.
+- ⚠️ The `.1.5.2` revocation epoch may already cover the interesting half: a revocation bumps the tenant's epoch, and a node's cached admission decisions go stale at the next poll. Measure what the epoch already fences BEFORE proposing anything, or the repair may be machinery over a population of zero — the `.3.4.1` lesson.
+- Acceptance: the behaviour is measured with a control rather than read; whatever is found is stated with its bound; and if a repair follows, the existing lease and fencing controls pass unchanged.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.4.2 — Handshake and lease fencing
 
@@ -3025,13 +3075,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.1` | `pending` | node enrollment and certificate lifecycle — `.3.5.1` routed redemption lineage here, and `.3.4.3.1.1` left the leaf's expiry now read from the certificate |
-| 2 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
-| 3 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
-| 4 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
-| 5 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
+| 1 | `SIGNOFF-REPAIR.4.1.3` | `pending` | what revocation does to a live lease — `.4.1`'s census found it unmeasured; measure what `.1.5.2`'s revocation epoch already fences BEFORE proposing anything |
+| 2 | `SIGNOFF-REPAIR.4.1.2` | `pending` | redemption does not re-check the issuer's authority — a DECISION about bearer semantics, not a presumed defect |
+| 3 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
+| 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
+| 5 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
+| 6 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **35 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **36 leaves are `pending`** across this tree (`awk '/^#{3,6} SIGNOFF-REPAIR/{h=$0} /^- Status: .pending./{print h}'`). It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 
 
@@ -3057,6 +3108,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 
 - `SIGNOFF-REPAIR.11.6`: `REASONBRAID-REPAIR-0145 (leaf SIGNOFF-REPAIR.11.6): the census partly refuted its own pattern, and the statement says so`.
 

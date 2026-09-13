@@ -599,7 +599,7 @@ purpose.** Deciding whether a token was issued or refused is not a
 read-then-write over a row that may not exist — a single insert that does nothing
 on conflict returns either the new token or no row at all, which is the whole
 decision. Contention over the same node id is already settled by the partial
-unique index that allows one unused token per node. And issuance touches nothing
+unique index that allows one *live* unused token per node. And issuance touches nothing
 the reservation path reads. What the guard still has to do is fence the request
 against an authority change, and a revocation's exclusive mode does that against
 a shared holder. Taking the exclusive guard would have bought no invariant and
@@ -608,7 +608,8 @@ blocked every concurrent thread command in the tenant.
 | Request | Result |
 | --- | --- |
 | An eligible administrator issues a token for a node with none outstanding | 200 with the token id, nonce and expiry; the effect records `applied`. |
-| An unused token for that node is already outstanding | 409 `invalid_command` with the established message; the effect records `refused`/`invalid_command`, and no token is created. |
+| A **live** unused token for that node is already outstanding | 409 `invalid_command` with the established message; the effect records `refused`/`invalid_command`, and no token is created. |
+| An earlier token for that node **expired** unused | 200: the lapsed token is stamped superseded and a new one is issued. |
 | The caller does not administer the named tenant | 403; no token, and no effect — the admission record already says denied. |
 | `node_id` is not a valid node identity | 400, **before any admission exists** — and therefore with no receipt, because there is no record to name. |
 
@@ -618,6 +619,25 @@ decision was made rather than from a process clock read before the guard wait.
 Every answer that reached an admission carries the
 `x-reasonbraid-authorization` receipt; the validation refusal above deliberately
 does not.
+
+**A token that lapses no longer locks its node out.** The partial unique index
+allows one unused token per node, and an expired token is still unused — so a
+token that was issued and never consumed used to occupy that index for ever. Every
+later issuance for that node id answered 409, and the 409's own message told the
+operator to *consume or expire it before issuing another*: expiring it was the
+advertised recovery and the one thing that could not work, because the lapsed
+token could not be consumed either. The node's ordinary enrollment path was closed
+permanently.
+
+The liveness cannot go in the index — a partial index predicate must be immutable
+and `now()` is not — so it is written down instead. An issuance that finds a
+lapsed token for its node stamps that token `superseded_at` inside the same
+transaction and then inserts, and the index keys on the stamp as well as on use.
+Two live unused tokens still collide, which is the property the index was narrowed
+to buy in the first place. The lapsed row is kept rather than deleted, and it is
+never stamped *used*: it was never redeemed, and recording it as used would make
+the token store misdescribe what happened. The stamp is scoped to the admitted
+tenant, so an issuance never supersedes a row belonging to someone else.
 
 **What this route does not check, and who does.** `node_enrollment_tokens` has no
 foreign key to `nodes`, because a token is issued *before* the node it names

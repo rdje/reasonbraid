@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A token that expired unused locked its node out for good (`SIGNOFF-REPAIR.4.1.1`)
+
+- `.4.1`'s goal line named five mechanisms, so the leaf was censused before it was split. **One confirmed defect, one worry REFUTED outright, three left open and named as unmeasured.**
+- 🔴 **The defect.** Migration 0018 narrowed the token table's unique index to `(node_id) WHERE used_at IS NULL` — "one unused token per node". An EXPIRED token still has `used_at IS NULL`, so a token issued and never consumed occupied that index permanently: every later issuance for that node id answered `409`, and the lapsed token itself enrolled nothing. The node's ordinary enrollment path was closed for good.
+- ⭐ **The 409's own message named the recovery, and the recovery was the defect**: *"consume or expire it before issuing another"*. Expiring it is exactly what had happened, and it is what shut the door. Reproduced against the live routes before anything changed, with the response body captured verbatim.
+- ⛔ **The obvious repair is unavailable**: the index predicate cannot become `AND expires_at > now()`, because a partial index predicate must be IMMUTABLE and `now()` is not. So the liveness the index cannot evaluate is written down — migration 0059 adds `superseded_at`, the index keys on it, and the issuance transaction stamps a lapsed row before its insert, at the same database time the admission was evaluated with.
+- ⛔ Three alternatives were checked and rejected, each for a stated reason: not DELETE (an audit row would name a token id resolving to nothing), not REUSE the row in place (an audit row would resolve to a *different* token's facts — and it is the option needing no migration, which is what makes it tempting), and never stamp `used_at` (the token was never redeemed; recording it as used would make the store lie).
+- ⚠️ **Stated bound:** the supersede carries `AND tenant_id = $2`, so another tenant's lapsed token still blocks. Superseding it would be a write into another tenant's rows under this tenant's guard. That is the global-index territory `.3.5` owns; this leaf neither widens nor repairs it.
+- ⚠️ **A control was written, then rewritten, because the first version broke a recorded decision.** It had asserted the foreign tenant's `409` — precisely the control `.3.3.4.10.1` refused to commit, "rather than commit a control that would enshrine the defect". It now asserts nothing about that status and everything about the row, so it holds under the current index and under whatever `.3.5` does to it.
+- Validation: reproduced `409` → repaired `200`; falsified by neutralizing only the supersede predicate with the migration and index left standing (`13 passed; 1 failed`, identical body) and restored (`15 passed; 0 failed`). 0018's invariant is falsified in the same test rather than argued — a third issuance while the replacement is live must still be `409`. `node_replacement` 1/1, `node_channel` 30/30, clippy `-D warnings` rc=0, gate 18 checks, book rc=0.
+
 ## 2026-09-13 — The census partly refuted its own pattern, and the statement says so (`SIGNOFF-REPAIR.11.6`)
 
 - The leaf had collected ten instances of a rule, threshold or severity changed by the first measurement of its population — and forbade proposing its own gate before measuring whether that generalises beyond one session by one author.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-13 — A revoked boundary left the metrics surface open (`SIGNOFF-REPAIR.3.5.2`)
+
+- 🔴 `GET /v1/admin/metrics` gated on the *grant's* status and never joined the boundary. Revoking a boundary updates only `enrollment_boundaries` — it does not cascade to the grants issued under it — so an administrator whose authority had been withdrawn kept this surface.
+- Reproduced against the **live route** before anything changed: enrol an administrator (`200`), revoke the boundary her `tenant_admin` grant hangs from, confirm the boundary reads `revoked` *and* her grant still reads `active`, then call the route — `200`.
+- ⭐ Those middle assertions are what make the control durable. Without them a later reader cannot tell whether the gate was repaired or whether revocation merely started cascading to grants; the test now states which mechanism it exercises.
+- The gate joins the boundary and requires it live too — `status = 'active'` inside its own validity window, which is what every ordinary evaluation requires. One query; no route, response or counter change.
+- ⛔ Deliberately **not** the frozen-boundary exception the nine `/v1/admin/*` inspection reads take. That exception exists so an administrator can inspect *authority* state while a revocation is in flight; process counters are not authority state, and this handler never called it.
+- ⛔ **Two things are confirmed unrepaired rather than quietly fixed.** The process-global width stays as it was — deliberate, 7 aggregate counters, no identities — and the read is still **unaudited**, writing no authorization record unlike the nine inspection reads. Both need the route to name a tenant, which is a signature change and a breaking one; making a security repair hostage to a wire decision would have been the wrong trade. `SIGNOFF-REPAIR.3.5.2.1` owns them.
+- Validation: `run_pg_tests.sh command_api` rc=0 — **37 passed / 0 failed**. Strict lint, fmt, gate (17 checks), book and link check rc=0. FALSIFIED against the restored unjoined query: `left: 200, right: 403`, and only that control — the pre-existing metrics acceptance passes throughout.
+
 ## 2026-09-13 — The tenant-administration surface, censused and split (`SIGNOFF-REPAIR.3.5`)
 
 - The leaf named three surfaces without having measured any. The census moved all three.

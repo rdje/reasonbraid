@@ -6841,13 +6841,33 @@ async fn admin_metrics(
     let principal = resolve_principal(&headers)?;
     // The process-global registry has no single tenant: the gate is "the
     // caller HOLDS the tenant_admin action in ANY of their active grants"
-    // (the dev root trust — a tenant admin sees the process's counters).
+    // (the dev root trust — a tenant admin sees the process's counters). That
+    // WIDTH is deliberate and unchanged; `SIGNOFF-REPAIR.3.5.2` repairs what was
+    // not deliberate.
+    //
+    // 🔴 The grant alone is not the authority. Revoking a BOUNDARY updates only
+    // `enrollment_boundaries` — `revocation.rs` does not cascade to
+    // `authority_grants` — so a grant under a revoked boundary keeps
+    // `status = 'active'`, and this surface kept admitting its holder after the
+    // authority that issued it had been withdrawn. Reproduced against the live
+    // route before this changed. The boundary is now joined and must itself be
+    // live, which is what `boundary_active_at` requires of every ordinary
+    // evaluation.
+    //
+    // ⛔ Deliberately NOT the `evaluate_tenant_admin_read` carve-out. That
+    // exception admits under a revoked boundary so an administrator can inspect
+    // AUTHORITY state while a revocation is in flight; process counters are not
+    // authority state and have no such need. This surface never called it, so it
+    // is not this surface's carve-out to inherit.
     let holds_admin: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS( \
-             SELECT 1 FROM authority_grants \
-             WHERE subject_id = $1 AND status = 'active' \
-               AND actions ? 'tenant_admin' \
-               AND valid_from <= now() AND (expires_at IS NULL OR expires_at > now()))",
+             SELECT 1 FROM authority_grants g \
+             JOIN enrollment_boundaries b ON b.boundary_id = g.boundary_id \
+             WHERE g.subject_id = $1 AND g.status = 'active' \
+               AND g.actions ? 'tenant_admin' \
+               AND g.valid_from <= now() AND (g.expires_at IS NULL OR g.expires_at > now()) \
+               AND b.status = 'active' \
+               AND b.valid_from <= now() AND b.expires_at > now())",
     )
     .bind(principal.id_string())
     .fetch_one(&state.pool)

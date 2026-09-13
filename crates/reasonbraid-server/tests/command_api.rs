@@ -4136,3 +4136,93 @@ async fn a_replay_cannot_cross_a_changed_authority_context() {
     assert_eq!(status, 200, "the genuine replay still replays: {replayed}");
     assert_eq!(replayed["replayed"], json!(true), "and says so: {replayed}");
 }
+
+/// `SIGNOFF-REPAIR.3.5.2` — revoking a boundary closes the metrics surface.
+///
+/// `GET /v1/admin/metrics` gated on a hand-rolled `SELECT EXISTS(…
+/// authority_grants WHERE status = 'active' AND actions ? 'tenant_admin' …)`
+/// that never joined the boundary. Revoking a boundary updates only
+/// `enrollment_boundaries` — `revocation.rs` does not cascade to
+/// `authority_grants` — so the grant stayed `active` and its holder kept the
+/// surface after the authority that issued it had been withdrawn.
+///
+/// The middle of this test is the mechanism, asserted rather than assumed: the
+/// boundary reads `revoked` AND the grant still reads `active`. Without both,
+/// a later reader cannot tell whether the repair works or whether revocation
+/// merely started cascading.
+#[tokio::test]
+async fn revoking_a_boundary_closes_the_metrics_surface() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "metrics-revoked-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = alice["boundary_id"].as_str().unwrap().to_string();
+
+    let metrics = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            client
+                .get(format!("{base}/v1/admin/metrics"))
+                .header(PRINCIPAL_HEADER, principal)
+                .send()
+                .await
+                .expect("metrics request")
+                .status()
+                .as_u16()
+        }
+    };
+
+    assert_eq!(metrics(alice_id.clone()).await, 200, "admitted while live");
+
+    // Revoke the boundary her tenant_admin grant hangs from.
+    let (status, revoked) = admin_revoke(
+        &client,
+        &base,
+        &format!("/v1/admin/boundaries/{boundary_id}/revoke"),
+        &alice_id,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "revoke the boundary: {revoked}");
+
+    // The boundary is revoked and the grant's own status is untouched, which is
+    // the mechanism: nothing cascades.
+    let (boundary_status,): (String,) =
+        sqlx::query_as("SELECT status FROM enrollment_boundaries WHERE boundary_id = $1")
+            .bind(&boundary_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read the boundary");
+    assert_eq!(boundary_status, "revoked");
+    let (live_grants,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM authority_grants \
+         WHERE subject_id = $1 AND status = 'active' AND actions ? 'tenant_admin'",
+    )
+    .bind(&alice_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count grants");
+    assert_eq!(
+        live_grants, 1,
+        "the grant stays active — boundary revocation does not cascade"
+    );
+
+    assert_eq!(
+        metrics(alice_id).await,
+        403,
+        "the surface must refuse a holder whose boundary was revoked, even \
+         though her grant row is untouched"
+    );
+}

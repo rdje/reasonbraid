@@ -680,11 +680,33 @@ pre-mutation state came back.
 - **Metrics:** `GET /v1/admin/metrics` exposes the seven process-wide
   counters (`authorization_denials`, `idempotency_replays`,
   `handshake_refusals`, `lease_refusals`, `dead_letters`, `results_folded`,
-  `results_rejected`). The gate: the caller HOLDS `tenant_admin` in any active
-  grant. Every counter is incremented at the same boundary that writes its
-  record, and the live test asserts the denial delta against the denied row —
-  the surface cannot drift from the ledger. Structured `log_event!` JSON lines
-  carry the correlation fields under ADR-023's redaction rules.
+  `results_rejected`). The gate: the caller holds `tenant_admin` in an active
+  grant **whose boundary is also live**. Every counter is incremented at the
+  same boundary that writes its record, and the live test asserts the denial
+  delta against the denied row — the surface cannot drift from the ledger.
+  Structured `log_event!` JSON lines carry the correlation fields under
+  ADR-023's redaction rules.
+
+  ⚠️ **The boundary half of that gate was missing** (`SIGNOFF-REPAIR.3.5.2`).
+  Revoking a boundary updates only the boundary row; it does not cascade to the
+  grants issued under it, so those grants keep `status = 'active'`. The check
+  read the grant alone, and an administrator whose authority had been withdrawn
+  kept this surface. Reproduced against the live route, then repaired and
+  falsified against the unjoined query.
+
+  ⛔ This surface deliberately does **not** take the frozen-boundary exception
+  the nine `/v1/admin/*` inspection reads take. That exception exists so an
+  administrator can inspect *authority* state while a revocation is in flight;
+  process counters are not authority state.
+
+  ⚠️ Two things about it are still true and are **not** repaired. Its width is
+  deliberate and unchanged — any `tenant_admin` grant in **any** tenant admits,
+  and the payload is process-wide, so what a caller learns includes other
+  tenants' volume. That is aggregate counts with no identities and no per-tenant
+  breakdown. And unlike the inspection reads, this one writes **no authorization
+  record**, so it leaves no audit trace of who took it; `SIGNOFF-REPAIR.3.5.2.1`
+  owns both, because binding a record to a tenant means deciding how this route
+  names one.
 - **SLOs:** the dev profile's hypotheses are the guard's own measurements
   (`docs/decisions/2026-09-07_phase2-slo-hypotheses.md`): acceptance, the
   demo's 34 checks, the restore exercise, and the reconcile-after-kill beats

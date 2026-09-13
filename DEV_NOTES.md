@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I split the fix from the wire question, and I think that was the call
+
+- The metrics surface had three things wrong with it: it admitted under a revoked boundary, it wrote no audit record, and its gate was any `tenant_admin` grant in any tenant. The tempting move was to route it through `authorize_tenant_admin_inspection` and fix all three at once.
+- ⚠️ That would have been wrong twice. The inspection helper takes the frozen-boundary **carve-out**, which admits under a revoked boundary deliberately — so "fixing" it that way would have left the actual defect in place while looking thorough. And writing a record requires binding it to a tenant, which this route does not have, so it would have dragged a breaking route-signature change into a security repair.
+- ⭐ The carve-out point is worth keeping: an exception approved for one family is not a general licence. It exists so an administrator can inspect *authority* state while a revocation is in flight. Process counters are not authority state, and this handler never called the helper — so it was never this surface's exception to inherit. The parent leaf had written that prohibition down before I started, which is the second time this week a leaf's own ⛔ stopped me taking the convenient path.
+- ⭐ The control's middle is the part I am most pleased with. It asserts the boundary reads `revoked` *and* the grant still reads `active` before it calls the route. Without both, the test would pass just as happily if someone later made revocation cascade to grants — and a reader could not tell which mechanism was holding. A control that does not say what it is exercising decays into a control that passes for the wrong reason.
+- ⚠️ Confirming the width rather than narrowing it took some discipline. "Any tenant admin sees the process's counters" reads badly. But the comment says it is deliberate, the payload is seven aggregate counters with no identities, and narrowing it is the same decision as the record — so I confirmed it explicitly, in the book, with what it exposes spelled out, rather than either changing it quietly or leaving it unexamined.
+
 ## 2026-09-13 — The census found the work already done, which is also a result
 
 - `.3.5` listed three surfaces. I expected to split it three ways. The third — "use real target ownership inside the mutation transaction" — turned out to be closed for the node family by `.3.3.4.10`, which said so in its own record: the tenant-predicate finding is closed for all five routes, with the ownership annotation left here for *surfaces beyond this family*. I had read that sentence before and filed it as context rather than as an answer to this leaf's question.

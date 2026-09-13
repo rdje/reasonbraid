@@ -82,6 +82,13 @@ secret, but the CHANNEL identity is the certificate:
    channel. A heartbeat racing a newer handshake loses: its renewal carries the
    epoch it verified, and the write matches no row once the rotation lands
    (`.2.2` — the last writer is never a stale one).
+6. **A renewal also requires a usable certificate.** Extending a lease is the
+   one channel operation that asks whether the node is still trusted: if the
+   node holds no workload certificate that is both unrevoked and unexpired, the
+   heartbeat is refused with a message that says so, distinct from a fenced
+   token — because re-handshaking fixes a fenced token and cannot fix a
+   withdrawn credential. Poll, ack and events deliberately do **not** ask; see
+   [Revocation and a running session](#revocation-and-a-running-session).
 
 ## Presence and leases
 
@@ -157,7 +164,37 @@ Two operator actions harden the per-node inbox (both on the control API,
   node's ACTIVE workload certificates revoked — the certificate-proof
   handshake refuses them at the next crossing (401) and presence reads
   `suspended` whatever the lease says. The live lease is not cut: suspension
-  gates re-entry, it does not rewrite the running session.
+  gates re-entry, it does not rewrite the running session. What that costs, and
+  what bounds it, is below.
+
+### Revocation and a running session
+
+Revoking a node does not cut the session it is running. That is a deliberate
+choice — a node mid-command is not made to have never existed — and it means a
+revoked node keeps polling, acking and emitting results until its lease runs
+out. The bound on that tail is the lease clock: 60 s.
+
+The bound is what had to be repaired. A heartbeat used to verify only the
+fencing token, which reads no ledger fact, so a revoked node renewed its own
+lease every minute, never reached the handshake that would have refused it, and
+stayed fully operational indefinitely. The handshake and the certificate
+rotation are the only two channel operations that re-present a certificate, and
+a node that never stops never performs either. Revocation of a running node did
+nothing, and kept doing nothing.
+
+So the renewal now asks the question the handshake asks: does this node still
+hold a certificate that is neither revoked nor expired? If not, the lease stops
+being extended, and the session ends on the clock it already had. Nothing cuts
+it short — the refused renewal moves no expiry — and the check sits on the
+renewal rather than on the fencing verification precisely so that poll, ack and
+events keep the tail the design intends.
+
+⚠️ **Two honest limits.** The remaining tail is up to a full lease, and during
+it the server still hands the node newly enqueued work; whether it should is a
+separate decision under repair, not a settled one. And nothing at the transport
+re-checks a certificate: the dev profile's wire is plain HTTP (see the
+deployment chapter's Honest Boundaries), so a certificate's own expiry does not
+bound any surface that never presents one.
 
 Filtered delivery by eligibility stays with Phase 3's directory.
 

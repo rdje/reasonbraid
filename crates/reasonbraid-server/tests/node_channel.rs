@@ -2022,6 +2022,185 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
     server.crash();
 }
 
+/// `SIGNOFF-REPAIR.4.1.3` — a revoked node's live lease stops being EXTENDED.
+///
+/// `.1.3.1` decided the shape deliberately and the control above pins it:
+/// revocation gates RE-ENTRY and does not cut a running session. Measuring the
+/// half that decision left open found that re-entry was never required of a node
+/// that simply never stopped — `heartbeat` read no ledger fact, so a revoked node
+/// renewed its lease every `LEASE_TTL` for ever and never reached the handshake
+/// that would have refused it. Revocation of a running node did nothing, and kept
+/// doing nothing.
+///
+/// The renewal now requires a usable certificate. The surfaces below are the
+/// whole measurement, and the split between them IS `.1.3.1`'s decision: the
+/// session in flight keeps running to the end of its lease, and stops being
+/// extended.
+#[tokio::test]
+async fn a_revoked_nodes_live_lease_stops_being_extended() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, alice) = bootstrap_admin(&client, &server.base_url()).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000301".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der,
+        key_from_der(&key_der),
+    );
+    let opened = channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await
+        .expect("the pre-revocation handshake opens a live lease");
+    let lease_at_open = opened.lease_expires_at;
+
+    let response = client
+        .post(format!("{}/v1/nodes/revoke", server.base_url()))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "reason": "measuring what the live lease still authorises",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200, "the revocation succeeds");
+
+    // Every surface, driven with the SAME still-live fencing token.
+    let say = |what: &str, outcome: String| println!("  .4.1.3 {what:<24} {outcome}");
+    fn show<T>(r: &Result<T, reasonbraid_node::ChannelError>) -> String {
+        match r {
+            Ok(_) => "ALLOWED".to_owned(),
+            Err(reasonbraid_node::ChannelError::Server { status, .. }) => {
+                format!("refused {status}")
+            }
+            Err(other) => format!("error {other:?}"),
+        }
+    }
+
+    let beat = channel.heartbeat().await;
+    say("heartbeat", show(&beat));
+    // THE REPAIR. Before it, this was `ALLOWED`, repeatably, for ever.
+    match &beat {
+        Err(reasonbraid_node::ChannelError::Server {
+            status: 401,
+            message,
+            ..
+        }) => assert!(
+            message.contains("workload certificate"),
+            "the node is told its CREDENTIAL was withdrawn, not that its token \
+             was fenced — re-handshaking would not help: {message}"
+        ),
+        other => panic!("a revoked node must not extend its lease: {other:?}"),
+    }
+
+    let polled = channel.poll(0).await;
+    say("poll", show(&polled));
+    let acked = channel.acknowledge(0).await;
+    say("ack", show(&acked));
+    let evented = channel
+        .send_event(
+            "evt_4_1_3_measurement",
+            "op_4_1_3_measurement",
+            &json!({ "measured": true }),
+        )
+        .await;
+    say("events", show(&evented));
+    let rotated = channel.rotate().await;
+    say("rotate", show(&rotated));
+    let rehandshake = channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+        })
+        .await;
+    say("handshake", show(&rehandshake));
+
+    // ⛔ These three stay ALLOWED on purpose. `.1.3.1` chose not to cut a running
+    // session, and the repair does not change that — it bounds it. The tail is
+    // now at most the remaining lease.
+    assert!(
+        polled.is_ok(),
+        "the session in flight still polls: {polled:?}"
+    );
+    assert!(acked.is_ok(), "the session in flight still acks: {acked:?}");
+    assert!(
+        evented.is_ok(),
+        "the session in flight still emits: {evented:?}"
+    );
+    assert!(rotated.is_err(), "a revoked node cannot rotate");
+    assert!(rehandshake.is_err(), "a revoked node cannot re-handshake");
+
+    // And the tail is BOUNDED, which is the property the repair buys: the lease
+    // still expires when it was always going to, because nothing moved it.
+    let presence: Value = client
+        .get(format!(
+            "{}/v1/nodes/presence?node_id={node_id}",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let still: chrono::DateTime<chrono::Utc> = presence["lease_expires_at"]
+        .as_str()
+        .expect("a lease expiry")
+        .parse()
+        .expect("an RFC3339 expiry");
+    assert_eq!(
+        still, lease_at_open,
+        "the refused renewal moved nothing — the session runs out on the clock \
+         it already had"
+    );
+    say("lease unmoved", format!("{still}"));
+
+    // ⚠️ `SIGNOFF-REPAIR.4.1.3.1` — measured here and NOT repaired here: the
+    // server still hands NEW work to a node it has revoked, for the length of
+    // that tail. Recorded as an observation rather than asserted as correct.
+    enqueue(&state, &node_id, "cmd_after_revocation").await;
+    let after = channel.poll(0).await;
+    say("poll after enqueue", show(&after));
+    if let Ok(tail) = &after {
+        say(
+            "commands delivered",
+            format!(
+                "{} — {:?}",
+                tail.commands.len(),
+                tail.commands
+                    .iter()
+                    .map(|c| c.command_id.clone())
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    // Deliberately not asserted either way: `.4.1.3.1` owns the decision, and a
+    // control asserting today's answer would enshrine whichever way it lands.
+
+    server.crash();
+}
+
 /// The revocation refusals are typed and audited: an unknown node is a 404, a
 /// non-admin caller is the 403 + audit row, and revoking twice is the 409
 /// (no active certificate remains).

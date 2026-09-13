@@ -1580,11 +1580,33 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 #### SIGNOFF-REPAIR.4.1.3 — What revocation does to a live lease
 
 - Opened: `pending` by `.4.1`'s census, which found this unmeasured rather than broken.
-- Status: `pending`.
 - The finding as far as it is measured: `revoke_node` revokes the node's certificates but carries no write against a lease or presence row, so whether a revoked node's existing fencing token keeps authorising `poll`/`ack`/`events` until the lease expires is NOT established.
 - ⛔ This is a source reading, not a reproduction. Do not write it up as a defect before a control drives a revoked node's live token at a fenced route — the `.3.4.3.1.3` prohibition, applied here.
 - ⚠️ The `.1.5.2` revocation epoch may already cover the interesting half: a revocation bumps the tenant's epoch, and a node's cached admission decisions go stale at the next poll. Measure what the epoch already fences BEFORE proposing anything, or the repair may be machinery over a population of zero — the `.3.4.1` lesson.
 - Acceptance: the behaviour is measured with a control rather than read; whatever is found is stated with its bound; and if a repair follows, the existing lease and fencing controls pass unchanged.
+- Status: `done`; REPAIR-0147.
+- **MEASURED, not read.** `a_revoked_nodes_live_lease_stops_being_extended` drives every channel surface with the same still-live fencing token after a real `POST /v1/nodes/revoke`. The unrepaired product answered: `heartbeat ALLOWED` · `poll ALLOWED` · `ack ALLOWED` · `events ALLOWED` · `rotate refused 401` · `handshake refused 401`, and a second heartbeat was ALLOWED again.
+- 🔴 **The finding, and it is worse than a grace period: revocation of a RUNNING node did nothing, permanently.** `heartbeat` verified the fencing token and renewed, and `verify_fencing`'s own doc says it "reads no ledger fact". `LEASE_TTL` is 60 s, so a node that heartbeats inside a minute never needs the handshake — and the handshake and the rotate are the ONLY two surfaces that re-present the certificate. A revoked node therefore kept receiving work, kept writing results, and kept extending its own lease for ever, never reaching the check that would have refused it.
+- ⭐ **The prior decision was not wrong; it was unfinished.** `.1.3.1` chose this deliberately — "suspension gates re-entry, it does not pretend the running session never existed" — and its control asserts presence stays `online` after revocation. That reading is bounded: the session in flight runs out its lease, then re-entry is required and refused. What shipped was the unbounded version, because nothing ever required re-entry. The difference between the two is one verb: `heartbeat`.
+- ⚠️ **The certificate's own 600 s TTL does NOT bound it**, and that was checked rather than assumed: `mtls::build_server_config` is referenced only by `crates/reasonbraid-server/tests/mtls.rs`, and `rb-server` serves plain HTTP over a bare `TcpListener`. This is NAMED, not a new finding — `PHASE-7` records that "the production serve wiring stays the deployment-profile concern" and the book's Honest Boundaries say the wire is plain HTTP — but it is why no transport layer re-checks the certificate on the four surfaces that never present one.
+- Fix, and the SEAM is the decision: the credential check goes into `renew_lease`, deliberately NOT into `verify_fencing`. Poll, ack and events keep their pure fencing check, which is exactly the bounded tail `.1.3.1` chose; only the EXTENSION now requires that the node still holds a certificate that is neither revoked nor lapsed. The condition is folded into the UPDATE rather than checked before it, so no window exists between the decision and the write, and the certificate's liveness is read on the DATABASE clock because the column is database-written (`.3.4.3`'s lesson) — the same question `verify_cert_proof` asks, asked the same way.
+- ⛔ **`node_presence.suspended` is the WRONG predicate and was rejected on measurement, not taste.** Migration 0012 defines it as `EXISTS(… revoked_at IS NOT NULL)` — *ever revoked*. After the replacement ritual a node holds both a revoked old certificate and a fresh active one, so `suspended` stays true for the rest of its life; gating renewal on it would have made every replaced node unable to hold a lease, silently. `node_replacement`'s ritual test passing 1/1 is the control that would have caught it.
+- The node is told WHICH refusal it got: a new `credential_refused` says the workload certificate is no longer usable, distinct from `fencing_refused`, because re-handshaking fixes the second and cannot fix the first. The classification runs only to choose the wording — the decision was already made by the UPDATE — and a failed classification falls back to the fencing wording rather than guessing.
+- FALSIFY: the `EXISTS` predicate was neutralized in place; the suite went `30 passed; 1 failed` with `a revoked node must not extend its lease: Ok(HeartbeatResponse …)` and the failure is exactly the one control. Restored, `31 passed`.
+- NO REGRESSION: `node_channel` 31/31 — including `heartbeat_renews_the_lease_and_presence_shows_online`, `a_stale_epoch_renewal_loses_the_race` and `.1.3.1`'s own `revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended`, whose `online == true` assertion still holds because the repair refuses the EXTENSION and never touches the lease — plus `node_replacement` 1/1, `node_work` 8/8, `node_inbox` 7/7, `node_result_ordering` 6/6.
+- LOCKSTEP: `docs/book/src/node-channel.md`.
+- ⚠️ **One thing was measured here and deliberately NOT repaired here**, split to `.4.1.3.1` below rather than folded in.
+- Commit: `REASONBRAID-REPAIR-0147 (leaf SIGNOFF-REPAIR.4.1.3): a revoked node renewed its own lease for ever`.
+
+###### SIGNOFF-REPAIR.4.1.3.1 — The server hands NEW work to a node it has revoked
+
+- Opened: `pending` by `.4.1.3`'s measurement, which reproduced it and stopped there.
+- Status: `pending`.
+- The finding, measured rather than read: with a command enqueued AFTER the revocation, the revoked node's `poll` returned it — `commands delivered 1 — ["cmd_after_revocation"]`. The server selects the delivery tail from the node's inbox and reads nothing about whether the node is still trusted.
+- ⚠️ **Bounded by `.4.1.3`, and the bound is why this is a separate leaf rather than the same emergency.** Before that repair the window was unbounded, because the node renewed its own lease for ever; it is now at most the remaining lease, `LEASE_TTL` = 60 s. That changes what the right answer is: a 60-second tail may be the correct reading of `.1.3.1`'s "do not cut the running session", or handing NEW work to a credential the operator has just withdrawn may be exactly what revocation is for. The two are genuinely different questions and the second one is this leaf's.
+- ⛔ The control that measured it asserts NOTHING about this arm in either direction, deliberately — asserting today's answer would enshrine whichever way the decision lands, the `.3.3.4.10.1` lesson.
+- ⚠️ Measure the population first (`TOOLBOX.md`): how work reaches a node is `enqueue` plus the delivery ladder, and a filter placed at the wrong rung either drops work that a healthy node should still get or leaves a second path open. The `.3.4.1` hazard also applies — check whether the dispatch path already has a trust rung before adding one.
+- Acceptance: a decision, with its reason, about whether a suspended node may receive newly enqueued work; if it changes, a control drives the live route and the existing delivery, replay and cursor controls pass unchanged.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.4.2 — Handshake and lease fencing
@@ -3075,7 +3097,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.4.1.3` | `pending` | what revocation does to a live lease — `.4.1`'s census found it unmeasured; measure what `.1.5.2`'s revocation epoch already fences BEFORE proposing anything |
+| 1 | `SIGNOFF-REPAIR.4.1.3.1` | `pending` | the server hands NEW work to a node it has revoked — measured at `.4.1.3` and deliberately not repaired there; now bounded to the 60 s lease tail, which is what makes it a decision rather than an emergency |
 | 2 | `SIGNOFF-REPAIR.4.1.2` | `pending` | redemption does not re-check the issuer's authority — a DECISION about bearer semantics, not a presumed defect |
 | 3 | `SIGNOFF-REPAIR.4.2` | `pending` | handshake and lease fencing — `lease_expires_at` is still received by the node and never read (`.3.4.3.1`'s census) |
 | 4 | `SIGNOFF-REPAIR.11.4.2` | `pending` | containment inventory — carries `.3.4.3`'s annotation that `MEMORY.md` sits permanently at its cap, with the census it owes |
@@ -3108,6 +3130,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.4.1.3`: `REASONBRAID-REPAIR-0147 (leaf SIGNOFF-REPAIR.4.1.3): a revoked node renewed its own lease for ever`.
 
 - `SIGNOFF-REPAIR.4.1.1`: `REASONBRAID-REPAIR-0146 (leaf SIGNOFF-REPAIR.4.1.1): a token that expired unused locked its node out for good`.
 

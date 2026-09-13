@@ -437,6 +437,20 @@ impl ApiError {
         }
     }
 
+    /// The node holds no usable workload certificate — revoked (`.1.3`) or
+    /// lapsed — so its session may not be EXTENDED (`SIGNOFF-REPAIR.4.1.3`).
+    /// Distinct from `fencing_refused`: nothing is wrong with the node's token,
+    /// and re-handshaking will not help until it holds a usable credential.
+    fn credential_refused() -> Self {
+        ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "the node's workload certificate is no longer usable — \
+                      the lease may not be renewed"
+                .to_string(),
+        }
+    }
+
     fn unknown_node(node_id: &str) -> Self {
         ApiError {
             status: StatusCode::NOT_FOUND,
@@ -878,6 +892,26 @@ impl NodeChannelState {
     /// rides the WHERE (`.2.2`): a renewal whose handshake was superseded
     /// between the check and this write matches no row and is refused — a
     /// stale heartbeat can never extend the session that fenced it.
+    ///
+    /// # A renewal also requires a usable credential (`SIGNOFF-REPAIR.4.1.3`)
+    ///
+    /// `.1.3.1` decided that revoking a node gates its RE-ENTRY and does not cut
+    /// the running session. Measured, re-entry was never required of a node that
+    /// simply never stopped: `heartbeat` read no ledger fact, so a revoked node
+    /// renewed its lease every `LEASE_TTL` for ever, never needed the handshake
+    /// that would have refused it, and kept polling, acking and emitting events.
+    /// Revocation of a running node was permanently ineffective.
+    ///
+    /// So the credential check goes HERE and deliberately not in `verify_fencing`.
+    /// Poll, ack and events keep their pure fencing check, which is exactly the
+    /// bounded tail `.1.3.1` chose: the session in flight is not cut, it simply
+    /// stops being extended, and it lapses within `LEASE_TTL`. Folding the
+    /// condition into the UPDATE rather than checking first leaves no window
+    /// between the decision and the write.
+    ///
+    /// The certificate's liveness is read on the DATABASE clock — the column is
+    /// written by the database, and `verify_cert_proof` asks the same question
+    /// the same way (`.3.4.3`'s lesson about comparing instants across clocks).
     pub async fn renew_lease(
         &self,
         node_id: &str,
@@ -888,6 +922,9 @@ impl NodeChannelState {
         let renewed: Option<DateTime<Utc>> = sqlx::query_scalar(
             "UPDATE node_leases SET lease_expires_at = $3, last_seen_at = $2 \
              WHERE node_id = $1 AND lease_epoch = $4 \
+               AND EXISTS (SELECT 1 FROM node_certificates c \
+                           WHERE c.node_id = node_leases.node_id \
+                             AND c.revoked_at IS NULL AND c.expires_at > now()) \
              RETURNING lease_expires_at",
         )
         .bind(node_id)
@@ -899,6 +936,29 @@ impl NodeChannelState {
         match renewed {
             Some(expiry) => Ok(expiry),
             None => Err(sqlx::Error::RowNotFound),
+        }
+    }
+
+    /// Why a renewal matched no row. The DECISION was already made by the
+    /// UPDATE — this only chooses the wording, so a node can tell a fenced
+    /// session (re-handshake and continue) from a withdrawn credential
+    /// (re-handshaking will not help). A read that itself fails falls back to
+    /// the fencing wording: the refusal is right either way, only the
+    /// explanation would be a guess.
+    async fn classify_renewal_refusal(&self, node_id: &str) -> ApiError {
+        let usable: Result<bool, sqlx::Error> = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM node_certificates \
+             WHERE node_id = $1 AND revoked_at IS NULL AND expires_at > now())",
+        )
+        .bind(node_id)
+        .fetch_one(&self.pool)
+        .await;
+        match usable {
+            Ok(false) => {
+                crate::telemetry::metrics().incr("lease_refusals");
+                ApiError::credential_refused()
+            }
+            _ => ApiError::fencing_refused(),
         }
     }
 
@@ -1401,10 +1461,13 @@ async fn heartbeat(
     state
         .verify_fencing(&req.node_id, &req.fencing_token, req.lease_epoch)
         .await?;
-    let lease_expires_at = state
+    let lease_expires_at = match state
         .renew_lease(&req.node_id, req.lease_epoch, Utc::now())
         .await
-        .map_err(|_| ApiError::fencing_refused())?;
+    {
+        Ok(expiry) => expiry,
+        Err(_) => return Err(state.classify_renewal_refusal(&req.node_id).await),
+    };
     Ok(Json(HeartbeatResponse {
         channel_version: CHANNEL_VERSION,
         fencing_token: req.fencing_token,

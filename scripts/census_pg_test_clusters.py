@@ -40,6 +40,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -190,10 +191,18 @@ def self_test() -> int:
         expect("an unreadable receipt", Cluster(broken.path), fragment="unreadable receipt")
 
         # The citation guard, in BOTH directions, against the real tracked tree.
+        #
+        # `SIGNOFF-REPAIR.11.4.3.1.7.1`: the absent-name probe is GENERATED, never
+        # written as a literal. It used to be the literal
+        # "run-selftest-no-such-cluster-name", which this very file contains and
+        # `git grep` searches — so the arm passed exactly once, while the file was
+        # still untracked, and failed from the instant it was committed. A probe
+        # written down here cannot be absent from here. A fresh uuid4 can.
+        absent = f"run-selftest-{uuid.uuid4().hex}"
         if tracked_references("run_pg_tests.py") == 0:
             failures.append("citation guard: a tracked filename reported zero references")
-        if tracked_references("run-selftest-no-such-cluster-name") != 0:
-            failures.append("citation guard: an absent name reported references")
+        if tracked_references(absent) != 0:
+            failures.append(f"citation guard: the absent name {absent} reported references")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 

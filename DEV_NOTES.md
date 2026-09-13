@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-13 — I ran the self-test out of habit, and the habit was the whole value
+
+- The §8 artifact review was due and the instrument already existed, so this looked like a two-command chore: census, retire. I ran `--self-test` first because a guard that authorises deleting 1.8 GB should be seen to work before it is trusted. It failed.
+- 🔴 The guard's absent-name arm searched the tracked tree for `run-selftest-no-such-cluster-name` and asserted zero hits — and that literal is written **in the file doing the searching**. A control cannot prove a string is absent from the tracked tree while being a tracked file that contains it.
+- ⭐ The dating is what makes it worth writing down: the file's add-commit and the string's introducing commit are the same commit. So the arm passed exactly once — in the author's working tree, before the file was tracked and `git grep` could see it — and has failed every time since. There was never a window in which a committed version of this control could pass.
+- ⚠️ And nothing ran it, which is the real reason it survived. Not just this instrument: `grep -n "self-test" scripts/check_doctrines.sh` returns 0, so the 17 registered doctrine checks have self-test arms that nothing invokes either. We have been writing two-sided controls and then relying on the author to remember to fire them. That is a bigger finding than the broken probe and I routed it out rather than absorbing it, because fixing it needs a cost census first — `make gate` runs on every commit and a gate people route around is a gate that lies.
+- ⚠️ The fix I did NOT make: narrowing the grep to exclude the script. It would have turned the self-test green in one line, and it would have blinded the guard to the file most likely to name a cluster in a comment. The leaf wrote that prohibition down before I started editing, which is the only reason I did not reach for it when the green was one line away.
+- ⭐ Generating the probe instead of writing it is the actual repair: a literal is absent from the tracked tree only by luck, and a fresh uuid is absent by construction. The difference matters precisely because the original author DID check — and got a pass that could never be reproduced.
+- On severity, which I had to think about before writing the changelog: the guard's other direction never broke, so cited clusters were protected the whole time. What was missing was the proof that the guard does not simply return non-zero for everything. That is not "the safety check was broken", it is "the safety check was half-verified", and half-verified is still not good enough to authorise a deletion — which is why I fixed it before retiring rather than after.
+
 ## 2026-09-13 — Checking why the easy option was unavailable is what found the defect
 
 - `.3.4.3.1.1` had two options: unify the server's outbound instants on one clock, or declare and measure their coherence. I went to check whether unification was actually possible before choosing, mostly as due diligence — the leaf had warned me not to assume "use the database clock everywhere".

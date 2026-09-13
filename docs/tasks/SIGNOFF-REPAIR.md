@@ -2165,6 +2165,35 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Commit: REPAIR-0041; clear brief, verify clean state and consume native handoff census before activating full checkpoint .2. No full local/remote CI or push.
 - promotion: promoted → docs/decisions/2026-09-09_compiler-artifact-disposition.md, three indexed answers.
 
+###### SIGNOFF-REPAIR.11.4.3.1.7.1 — The cluster instrument's self-test could only ever pass once
+
+- Opened: `pending`; found on 2026-09-13 by RUNNING `--self-test` before acting on the instrument's census, which is the only reason it was noticed.
+- 🔴 The finding: `census_pg_test_clusters.py --self-test` exits 1 with `SELF-TEST FAILED: citation guard: an absent name reported references`. The guard's absent-name arm searches tracked files for the literal `run-selftest-no-such-cluster-name` and asserts zero hits — but **that literal is written in the instrument's own source**, which is a tracked file, so `git grep -c -- "run-selftest-no-such-cluster-name"` returns `scripts/census_pg_test_clusters.py:1`. The control searches for a string it contains.
+- **Dated rather than estimated:** `git log --diff-filter=A -- scripts/census_pg_test_clusters.py` and `git log -S "run-selftest-no-such-cluster-name"` both name the SAME commit, `cb2f197` (REPAIR-0107, leaf `.11.4.3.1.7`). So the arm passed exactly once — while the file was still untracked and `git grep` could not see it — and has failed from the instant it was committed.
+- census of why that survived, the claim one counterexample would refute: `git grep -n "census_pg_test_clusters" -- scripts .githooks .github Makefile knowledge-map` returns **2** hits and both are inside the instrument's own usage docstring. **Nothing invokes it**, self-test or otherwise. Widened to the enforcer: `grep -n "self-test" scripts/check_doctrines.sh` returns **0** — the registered doctrine checks carry `--self-test` arms too, and the enforcer runs none of them. Author-run only, across the board.
+- ⚠️ What this does and does not compromise, stated precisely because the instrument guards a deletion: the guard's OTHER direction (a tracked filename reports non-zero) still passes, so cited clusters were still protected. What was lost is the proof that the guard is not simply returning non-zero for everything — i.e. the guard was half-verified, and a half-verified safety check must not authorise retiring 1.8 GB.
+- Owns: making the probe a name that CANNOT appear in a tracked file (generated per run rather than written as a literal), so the control cannot poison itself again; and deciding whether the instrument's self-test gains a runner, since "nothing ran it" is the reason a control could sit broken from its own first commit.
+- ⛔ Do not simply exclude the script from the grep: that would make the guard blind to the one file most likely to name a cluster in a comment, and it treats the symptom rather than the self-reference.
+- Acceptance: `--self-test` exits 0 with both citation directions firing; the absent-name probe is demonstrably absent by construction, not by luck; the §8 retirement runs only after the instrument's own control passes.
+- Status: `done`; REPAIR-0137.
+- Fix: the absent-name probe is `f"run-selftest-{uuid.uuid4().hex}"`, generated per run. A literal written in a tracked file can never be absent from the tracked tree; a fresh uuid always is. The comment beside it names the trap so the next author does not re-introduce a literal, and the failure message now prints the probe it used, so a future failure says WHICH name was found rather than restating a constant.
+- ⛔ The `git grep` was deliberately NOT narrowed to exclude this script, per the leaf's own prohibition: that would blind the guard to the one file most likely to name a cluster in a comment, and it treats the symptom rather than the self-reference.
+- Verification: `python3 -B scripts/project_env.py python3 -B scripts/census_pg_test_clusters.py --self-test` prints `self-test: 6 refusal arms and the citation guard's two directions all fire`, rc=0. **FALSIFIED** by restoring the literal: rc=1 with `SELF-TEST FAILED: citation guard: the absent name run-selftest-no-such-cluster-name reported references`, and rc=0 again on restore. Two-sided on the exact defect.
+- ⭐ **And the repair immediately paid for itself: the §8 review it gates had been blocked behind it.** With the control passing, the retirement ran — the first one since `cb2f197`, because the instrument's own self-test had been failing for every review in between.
+- **The §8 artifact review, run here** (`CLAUDE.md` §8; `MEMORY.md` recorded it owed on resumption). Census before: **34 clusters / 1,797,794,711 bytes**. Independent safety checks beyond the instrument's own: no process holds a `postmaster.pid` under `target/pg-tests` (probed per cluster, twice, and `ps aux | grep '[p]ostgres'` returns none), and `target/pg-tests` and the repository root report the same filesystem id `100001c0000001a`, so §13's same-volume requirement holds. Retired **30**, freeing **1,591,802,083 bytes**; residue verified at **4 clusters / 205,992,628 bytes**, and a re-census reports `retirable: 0`.
+- ⛔ The four survivors are named with WHY, because "kept" without a reason is how evidence gets deleted next time: `run-2o_84bf0`, `run-41n50qyw` and `run-q8myx344` are each cited by a tracked file and are therefore evidence; `run-ptzio417` is under the one-hour floor — it is THIS session's own falsification cluster from `.3.4.3.1.1`, and the floor is what stops a run still being read from being swept. All four were confirmed present after the retirement.
+- promotion: declined for a new record — the durable statement is the instrument itself, whose self-test now cannot poison itself and whose comment says why. ⚠️ But the second half of this leaf's finding is NOT closed by it and must not look closed: **nothing runs any `--self-test` in this repository**, the doctrine checks included (`grep -n "self-test" scripts/check_doctrines.sh` -> 0). That is why a control could sit broken from its own first commit, and it is routed to `.11.4.3.1.7.2` rather than absorbed here.
+- Commit: `REASONBRAID-REPAIR-0137 (leaf SIGNOFF-REPAIR.11.4.3.1.7.1): the self-test searched for a string it contained`.
+
+###### SIGNOFF-REPAIR.11.4.3.1.7.2 — Nothing runs a `--self-test`
+
+- Opened: `pending` by `.11.4.3.1.7.1`, whose repaired control had been failing from its own first commit because no runner existed to notice.
+- census, recorded here rather than in the parent because the claim quantifies over the tree: `git grep -n "census_pg_test_clusters" -- scripts .githooks .github Makefile knowledge-map` returns **2** hits, both inside the instrument's own usage docstring — nothing invokes it. Widened to the enforcer that would be the natural runner, `grep -n "self-test" scripts/check_doctrines.sh` returns **0**, so none of the 17 registered doctrine checks has its `--self-test` arm run either. Author-run only, across the board.
+- Owns: deciding whether self-tests get a runner, and which. ⛔ Census owed first, per `.11.6`: how many tracked scripts HAVE a `--self-test`, how long each takes, and whether running them in the pre-commit enforcer is affordable against the gate's existing cost — `make gate` is on every commit, and a gate people route around is a gate that lies (`.11.5`'s binding constraint).
+- ⚠️ The obvious rule — "the enforcer runs every self-test" — may be wrong in the way `.11.4.5.3`'s generator was. Some self-tests spawn processes or touch the filesystem, and a pre-commit hook is not the place for all of them. Measure before proposing.
+- Acceptance: the census is recorded with its command; the decision names which self-tests run where, with the cost measured rather than assumed; "measured and deliberately not mechanized" stays a legitimate outcome.
+- Verification / commit: pending.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.7 — Re-run the periodic artifact review, with a tracked instrument
 
 - Opened: `pending`; the `CLAUDE.md` §8 review is due (`MEMORY.md` recorded it as owed on resumption) and `.11.4.3.1.6`'s compiler-cache retirement left no instrument behind — its selection, probes and manifests were task-owned evidence, so the next review starts from prose.
@@ -2865,10 +2894,11 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1 | `SIGNOFF-REPAIR.3.4.3.1.2` | `pending` | let the node evaluate server instants in the server's terms, which closes the dispatch outage — `.1` measured the clock coherence it rests on |
-| 3 | `SIGNOFF-REPAIR.3.4.3.1.3` | `pending` | backward node skew makes the certificate rotate too late — the OPPOSITE direction, and not yet reproduced |
-| 4 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
-| 4 | `SIGNOFF-REPAIR.11.8` | `pending` | the HTTP surface and the book have drifted — 87 of 111 registered routes are unnamed in the book, an upper bound needing a refined census |
-| 5 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at ten |
+| 2 | `SIGNOFF-REPAIR.3.4.3.1.3` | `pending` | backward node skew makes the certificate rotate too late — the OPPOSITE direction, and not yet reproduced |
+| 3 | `SIGNOFF-REPAIR.3.5` | `pending` | tenant-owned administration: the real-target-ownership finding and the global one-unused-token index |
+| 4 | `SIGNOFF-REPAIR.11.4.3.1.7.2` | `pending` | nothing runs a `--self-test` in this repository, which is why a control sat broken from its own first commit |
+| 5 | `SIGNOFF-REPAIR.11.8` | `pending` | the HTTP surface and the book have drifted — 87 of 111 registered routes are unnamed in the book, an upper bound needing a refined census |
+| 6 | `SIGNOFF-REPAIR.11.6` | `pending` | census whether "measure the population before proposing the rule" generalises past five instances — it is now at ten |
 
 
 
@@ -2894,6 +2924,8 @@ The director resolved the visibility question: public repository visibility is i
 - **Policy review:** CLAIM_VERIFICATION matched the director-authorized donor at startup; README policy was already locally adopted and reviewed against its donor. Remaining containment/enforcement gaps are owned by `.11.4`; no automatic donor synchronization or cap increase occurred.
 
 ## Commit Log
+
+- `SIGNOFF-REPAIR.11.4.3.1.7.1`: `REASONBRAID-REPAIR-0137 (leaf SIGNOFF-REPAIR.11.4.3.1.7.1): the self-test searched for a string it contained`.
 
 - `SIGNOFF-REPAIR.3.4.3.1.1`: `REASONBRAID-REPAIR-0136 (leaf SIGNOFF-REPAIR.3.4.3.1.1): the stored certificate expiry was never read from the certificate`.
 
@@ -3290,6 +3322,16 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — after the fix both censuses return zero: `headings deeper than 6: 0`, `sections with >1 status: 0`. Both checks were FALSIFIED against the unrepaired tree restored from `HEAD`: HEADING-DEPTH exits 1 naming the level-7/8 lines, TASK-STATUS exits 1 naming exactly the five sections, and both return to rc=0 on the repair. Self-tests pass and are themselves two-sided — `HEADING-DEPTH self-test: 2 over-deep headings caught, level 6 and both fence styles ignored`, `TASK-STATUS self-test: 1 contradicting section caught, a single status and a fenced example ignored`.
 - [x] **NO REGRESSION** — `bash scripts/check_doctrines.sh` runs **15 checks** and prints `=== all doctrines green ===`. A defect introduced by this leaf's own registry rows was caught by reading that output and fixed: backticks inside a bash double-quoted string ran as command substitution (`line 36: pending: command not found`, and the words vanished from the rendered description); the rows are now backtick-free and `awk '/^DOCTRINES=\(/,/^\)/' scripts/check_doctrines.sh | grep -c '`'` returns 0. No Rust source changed, so no build gate is affected.
 - [x] **LOCKSTEP** — task tree, frontier and commit log, `DOCTRINE_ENFORCEMENT.md` (both registry rows, with their measured rationale), `scripts/check_doctrines.sh`, `LIVE_STATUS.md`, `MEMORY.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits: the two checks prove a leaf's status is unambiguous and its heading is real, and neither claims the status is TRUE — that remains the author's evidence, not a gate's.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.3.1.7.1
+
+- [x] **REPRODUCE / ISSUE** — `census_pg_test_clusters.py --self-test` exits 1 with `SELF-TEST FAILED: citation guard: an absent name reported references`. Directly reproduced: `git grep -c -- "run-selftest-no-such-cluster-name"` returns `scripts/census_pg_test_clusters.py:1`. The guard's absent-name arm searched the tracked tree for a literal written in its own tracked source.
+- [x] **ROOT CAUSE (WHY + WHERE)** — dated, not estimated: `git log --diff-filter=A` and `git log -S "run-selftest-no-such-cluster-name"` name the SAME commit `cb2f197` (REPAIR-0107). The arm passed exactly once — while the file was still untracked and `git grep` could not see it — and failed from the instant it was committed. It survived because `git grep -n "census_pg_test_clusters" -- scripts .githooks .github Makefile knowledge-map` returns 2 hits, both inside the instrument's own docstring: **nothing invokes it**.
+- [x] **FIX** — the probe is generated per run (`f"run-selftest-{uuid.uuid4().hex}"`), so it is absent by construction rather than by luck, and the failure message prints the probe it used. ⛔ The grep was NOT narrowed to exclude the script, per the leaf's own prohibition: that blinds the guard to the file most likely to name a cluster in a comment.
+- [x] **ADDRESSED (verified)** — `--self-test` prints `self-test: 6 refusal arms and the citation guard's two directions all fire`, rc=0. FALSIFIED by restoring the literal: rc=1 naming the exact probe, then rc=0 again on restore. Two-sided on the precise defect.
+- [x] **NO REGRESSION** — the §8 review this gated then ran, its first since `cb2f197`. Census 34 clusters / 1,797,794,711 bytes; retired 30, freeing 1,591,802,083; residue verified at 4 / 205,992,628 with `retirable: 0`. Independent checks beyond the instrument: no live `postmaster.pid` under `target/pg-tests` (probed per cluster, twice), and `target/pg-tests` shares the repository's filesystem id `100001c0000001a` (§13). All four survivors confirmed present afterwards, each with its stated reason. `make gate` prints `=== all doctrines green ===` (17 checks); no Rust source changed.
+- [x] **LOCKSTEP** — task tree (this leaf, the new `.11.4.3.1.7.2`, the frontier, this checklist, the commit log), `docs/TASK_TREE.md`, `scripts/census_pg_test_clusters.py`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` and `DEV_NOTES.md` carry the same scope and limits. lockstep: `docs/book/` unchanged — an internal maintenance instrument no book page documents.
+- ⛔ NOT claimed: the guard's OTHER direction never broke, so cited clusters were protected throughout — what was missing was the proof that the guard does not simply return non-zero for everything, which is why a half-verified safety check must not authorise a 1.6 GB deletion. And **the second half of the finding is NOT closed**: nothing runs any `--self-test` here, the doctrine checks included, which is routed to `.11.4.3.1.7.2` rather than absorbed.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.4.3.1.1
 

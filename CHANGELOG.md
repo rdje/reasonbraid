@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-13 — The self-test searched for a string it contained (`SIGNOFF-REPAIR.11.4.3.1.7.1`)
+
+- Before acting on the cluster instrument's census, I ran its `--self-test`. It failed: `citation guard: an absent name reported references`.
+- 🔴 The guard's absent-name arm searched the tracked tree for the literal `run-selftest-no-such-cluster-name` and asserted zero hits — and **that literal is written in the instrument's own tracked source**. `git grep -c` returns `scripts/census_pg_test_clusters.py:1`. The control searched for a string it contains.
+- **Dated rather than estimated:** the file's add-commit and the string's introducing commit are the SAME one, `cb2f197`. So the arm passed exactly once, while the file was still untracked and `git grep` could not see it, and has failed from the instant it was committed.
+- It survived because **nothing runs it** — the only mentions of the instrument anywhere in `scripts`, `.githooks`, `.github`, `Makefile` or `knowledge-map` are inside its own usage docstring. Widened to the enforcer that would be its natural runner: `grep -n "self-test" scripts/check_doctrines.sh` returns **0**, so none of the 17 registered doctrine checks has its self-test arm run either.
+- ⚠️ What this did and did not compromise: the guard's other direction never broke, so cited clusters stayed protected. What was missing is the proof that the guard is not simply returning non-zero for everything — a half-verified safety check, which must not authorise a deletion.
+- The probe is now generated per run (`uuid4`), absent by construction rather than by luck, and the failure message prints the probe it used. ⛔ The grep was deliberately **not** narrowed to exclude the script: that would blind the guard to the file most likely to name a cluster in a comment.
+- ⭐ **The repair immediately paid for itself: the §8 artifact review it gates had been blocked behind it.** Census 34 clusters / 1,797,794,711 bytes → retired 30, freeing **1,591,802,083 bytes**; residue verified at 4 clusters / 205,992,628 bytes with `retirable: 0`. The four survivors are named with why — three are cited by tracked files and are therefore evidence, one is this session's own falsification cluster under the one-hour floor. All four confirmed present afterwards.
+- Independent safety checks beyond the instrument's own: no live `postmaster.pid` under `target/pg-tests`, probed per cluster twice; and `target/pg-tests` shares the repository's filesystem id, satisfying the same-volume policy.
+- Validation: `--self-test` rc=0 with all six refusal arms and both citation directions firing. FALSIFIED by restoring the literal — rc=1 naming the exact probe, rc=0 again on restore. Gate (17 checks) rc=0; no Rust source changed.
+- ⛔ The second half of the finding is **not** closed: nothing runs any `--self-test` here. That is `SIGNOFF-REPAIR.11.4.3.1.7.2`, not something this commit fixed.
+
 ## 2026-09-13 — The stored certificate expiry was never read from the certificate (`SIGNOFF-REPAIR.3.4.3.1.1`)
 
 - The leaf asked whether the server's outbound instants could be unified on one clock. Measuring says **no**: `rcgen` signs `not_after` INTO the certificate from the server process clock, and a verifier enforces that and nothing else, so it cannot move to the database clock without changing what the CA signs.

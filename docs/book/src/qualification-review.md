@@ -237,6 +237,28 @@ was published as. The first eight of that group added these limitations:
 | Publishing and marking-effective accept declared values bound to nothing | A publication is written to any filesystem path the caller names, under enrolment-only authorization; a deployment assignment accepts any well-formed digest without comparing it to the publication; and marking a publication effective accepts any strings as its Git object identifiers without looking for them. | `.9.2`, `.9.3` |
 | The server changes the database before it validates the configuration it refuses to start without | An undeclared secret-store profile refuses the boot — after the migrations have already run. The bind address is also ungated: binding every interface is accepted while the startup line still reports the development profile. | `.11.12` |
 
+Every limitation listed above now has a leaf that can be finished, which was
+not true when they were first recorded. Reviewing that claim directly: of the ten
+leaves the earlier entries named as owner, eight had no acceptance criteria of
+their own and six had no sub-tasks — they named the right area and left the work
+undescribed. Eight of them have since been broken into eleven bounded leaves,
+each stating how to reproduce the defect, what it owns, and what must be
+observed — including a control that must be seen to fail against the current
+code before any repair is accepted.
+
+The work is ordered by severity rather than by the order it was found. First is
+the cross-tenant read on the MCP tools, then the authority check that accepts any
+grant identifier a caller can name, then the call-response path that binds the
+caller to one tenant and the call to none, then the table gate that disagrees
+with the renderer, then the publish verbs that accept a filesystem path and a set
+of object identifiers from the caller.
+
+⛔ One consequence is stated plainly because it is visible on this page's own
+neighbour: the doctrine reference still publishes one table row whose last cell
+is lost, because that row is the only real-world example left to test the
+corrected parser against. The leaf that owns the parser owns repairing the row in
+the same change.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

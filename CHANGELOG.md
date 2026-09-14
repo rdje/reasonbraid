@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Routing is not ownership (`SIGNOFF-REPAIR.11.13`)
+
+- **The director's correction.** This session surfaced six findings and reported an owner for each. Audited mechanically, **8 of the 10 named leaves carried no `- Acceptance:` line of their own and 6 had no children** — they could be read, not finished.
+- ⭐ **The one properly-owned finding got that way by accident of vocabulary**: `.11.12` exists because the clause ledger classified its clauses `unowned`, and that state forces a new leaf. `owned` and `attach` measure whether a clause is *visible* to a leaf; neither asks whether the leaf is *executable*.
+- **Eight containers censused and split into eleven bounded leaves**, each with its own reproduce, owns and acceptance, and each acceptance naming a control to be observed red before its repair: `.6.1.1`–`.6.1.4` (the MCP reads, the write seam's enrolment-as-authority, the untyped body index, the quota semantics), `.9.2.1` (the publish verbs' unbound path and fabricated Git ids), `.9.3.1`–`.9.3.3` (citing an authority equals holding one, a publication reviewable once for ever, the declared-versus-deployed digest), `.11.2.3` (the table-arity parser and the row still publishing broken), `.11.4.2.2` (the `MEMORY.md` cap).
+- **Frontier re-ranked by severity** — the MCP cross-tenant read leak leads.
+- ⚠️ The re-run audit reported two leaves as lacking acceptance and the audit was wrong; both were written `- Acceptance, …`. Fixed in the leaves, not by loosening the matcher.
+- Pending leaves 47 → 54: the count rises because routing became ownership.
+- **Promoted:** a leaf that cannot be picked up and finished is not an owner (`TOOLBOX.md`).
+- No product code, schema, test or script changed. 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0.
+
 ## 2026-09-14 — Correcting a number this activity published (`SIGNOFF-REPAIR.11.9.1.3.1`, tranche 4a)
 
 - **Tranche 4 sized at 10,519 characters — 4.12x the proved-executable size — and split five ways** on each record's own narrowest candidate, with one declared deviation: a 423-character singleton folded into its sibling in the same tree family.

@@ -157,6 +157,39 @@ So: before asserting what a markup rule does, render one minimal example with th
 own toolchain and read the output. If the project ships a renderer, it is already the
 instrument.
 
+### A leaf that cannot be picked up and finished is not an owner
+
+Recording a defect against a leaf feels like ownership and is not. The test is simple and
+mechanical: **can someone open that leaf and finish it?** A leaf whose goal line names six
+mechanisms, carries no acceptance of its own, and has never been split, cannot be
+finished — it can only be read.
+
+Measured across the ten leaves one session's findings named as owner
+(`SIGNOFF-REPAIR.11.13`): **eight had no `- Acceptance:` line of their own and six had no
+children.** The one finding that WAS properly owned got that way because the clause ledger
+classified it `unowned`, and that state's rule forces a new leaf. Every finding classified
+`owned` or `attach` got a sentence inside a container.
+
+⭐ **That is a gap the ledger's own vocabulary cannot see, and naming it is the point.**
+`owned` means *a leaf owns the clause and its own text makes the clause visible*; `attach`
+means the text does not, and is gated. Both measure whether a clause is VISIBLE to a leaf.
+Neither asks whether that leaf is EXECUTABLE.
+
+So, when routing a finding to an existing leaf, check the leaf:
+
+1. Does it carry an `- Acceptance:` line of its own, or only a goal line?
+2. Would executing it mean qualifying several unrelated mechanisms at once?
+3. Is there a control someone could write tomorrow and watch go red?
+
+If any answer is no, the routing is a note. Split the container, on the findings you
+already measured — that is the cheapest moment, because the measurement is what makes the
+children writable.
+
+⛔ This is a method, not a gate, and deliberately: "this leaf is too big to finish" is a
+judgement about scope, and a checker that flagged every acceptance-less leaf would fire on
+most of a healthy tree's upper nodes. What IS worth keeping mechanical is the convention —
+write `- Acceptance:` with the colon, so the question can at least be asked by a command.
+
 ### A count written while reading is not a count
 
 `TOOLBOX.md` already says to measure a population before proposing a rule over it. This

@@ -2162,7 +2162,7 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 
 ### SIGNOFF-REPAIR.6.1 — MCP read and write authorization
 
-- Status: `pending`.
+- Status: `active`; censused and SPLIT below into `.6.1.1`–`.6.1.4`, because its goal line names four mechanisms and `SIGNOFF-REPAIR.11.9.1.2.2` measured concrete live defects against every one of them. ⛔ The split is `SIGNOFF-REPAIR.11.13`'s ownership repair: this leaf carried the severest finding of the reconciliation as a ledger row with no acceptance of its own, which is routing, not owning.
 - Sources / owned surfaces: `mcp_read, mcp_write, reasonbraid-mcp`.
 - Goal and acceptance: Require per-target tenant and grant checks on inbox/thread/policy reads and all writes; reject scalar payloads without panic; prove policy/recruitment handlers cannot use enrollment as authority; keep quota admission semantics accurately documented.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-6-27-7` clause 4 and `R-66-1` clause 2, tranche 3b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ Both are about what is CLAIMED rather than what is required, and the goal line is written entirely in requirements.
@@ -2170,6 +2170,52 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
   2. **The write test's own prose invites an atomicity reading the seam does not provide, and no control tests it.** `tests/mcp_write.rs`'s third case is headed "rides the SAME thread-command pipeline (the effect + the audited allowance + the quota use)", naming three things as one pipeline, while `mcp_write.rs`'s header states the quota use "commits in the gate's own transaction". The test asserts a 200, reads the events and counts rows; nothing interrupts between the two commits to observe the split. ⚠️ Coverage is not documentation — this leaf's goal line names the documentation half only, so the missing CONTROL is recorded here.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.6.1.1 — The three MCP read tools return data the caller is not entitled to
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair. ⛔ **The severest finding this reconciliation has produced, and it sat for one session as a ledger row pointing at a container.**
+- Reproduce, at the source: `crates/reasonbraid-mcp/src/lib.rs`.
+  - `get_policy_bundle` never reads `args.principal`, and `server::policy_bundle(pool, _tenant_id)` takes its tenant as an UNDERSCORE-PREFIXED UNUSED parameter over `SELECT policy_id, version, digest, clauses FROM policy_versions ORDER BY policy_id, version` — **no `WHERE` clause at all**. Every tenant's policy documents and clauses are returned, and the tool wraps them as `{"tenant_id": args.tenant_id, …}`, labelling them with the CALLER's tenant.
+  - `list_inbox` declares `principal` in `ListInboxParams` and never reads it: `inbox_rows(&self.pool, &args.tenant_id, &args.node_id)` is the whole call.
+  - `get_thread` calls `classify`, receives `Network` for a foreign tenant, and returns the FULL projection anyway from `thread_state(pool, &args.tenant_id, &args.thread_id)` — the caller's own supplied tenant — printing `"visibility": "network"` beside the whole state. No `ThreadInspect` grant is consulted.
+- ⛔ And the module's own first paragraph (`:1`–`:13`) claims the opposite: "the SAME queries + the SAME authorization as the HTTP handlers" and "every read runs the reader classification".
+- Owns: binding each read to the caller — the principal's own tenant derived from the principal, never taken from the argument — and the per-target grant the HTTP surface applies; then correcting or deleting the module header so it states what the code does. ⛔ The tenant must be DERIVED from the principal, not compared to a caller-supplied one: `inspect_call` is the shape this project already proved right (`MEMORY.md`).
+- Acceptance: all four legs live against a real cluster —
+  1. A principal enrolled in tenant A calling `get_policy_bundle` receives ONLY tenant A's policy documents, proved by seeding a policy in tenant B and asserting its `policy_id` is absent.
+  2. A principal in tenant A calling `list_inbox` for a node in tenant B is REFUSED, and the refusal is typed rather than an empty list.
+  3. A principal in tenant A calling `get_thread` on tenant B's thread receives no `state` field, and the control asserts on a field that only the full projection carries.
+  4. Each control is observed RED against the current code before the repair, and the module header is edited in the SAME commit as the code.
+- ⚠️ The conformance fixtures in `reasonbraid-mcp` record tool SCHEMAS; changing a params struct moves a golden. Expect it and update the golden deliberately rather than regenerating it.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.6.1.2 — The MCP write seam uses enrolment where the handler needs authority
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce, at the source: `crates/reasonbraid-server/src/mcp_write.rs`.
+  - `join_call` runs `gate(pool, tenant_id, principal)` — enrolment in the CALLER-SUPPLIED tenant plus quota — then `respond_to_call_core(pool, principal, call_id, …)`, which fetches the call by `call_id` ALONE and never compares its tenant to the gated one. ⛔ Two caller-supplied identifiers, one checked — `MEMORY.md`'s standing warning, and the THIRD instance after `.3.5.3` and `.3.5.4`.
+  - A `decline`, `recommend` or `recuse` sets `participation = false`, so the eligibility gate is skipped entirely and nothing else binds the two.
+  - `propose_policy_change` runs the same gate and then `lifecycle::register_proposal(pool, tenant_id, &input)` with no grant check, while the seam's own header promises "the per-verb LOCAL grants + the audit ride the handlers themselves".
+- Owns: binding the call to the admitted tenant (derived from the call, not compared to the argument), and either adding the per-verb grant to the proposal path or correcting the header's claim — whichever the measurement says the HTTP verb does.
+- Acceptance: a role enrolled in tenant A is REFUSED when responding to tenant B's call, for EVERY response kind including `decline`; a principal without the proposal grant is refused by the handler; both controls observed RED first; and the seam header is true of every one of its three verbs at the close.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.6.1.3 — The write seam indexes an untyped JSON body
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce: `mcp_write.rs:149` is `body["tenant_id"] = serde_json::json!(tenant_id)` on a `serde_json::Value` the function received untyped, and `IndexMut<&str>` for `Value` PANICS on a scalar or an array.
+- ⚠️ **Bounded honestly**: the MCP tool passes a typed `ContributePayload`, so the panic is NOT reachable through that surface today. `mcp_write::respond` is `pub` and takes a `Value`, which is why the guard belongs at the seam and not at the caller — `.4.2.7`'s promoted rule, *a signature is a promise the body must keep*, on a third surface.
+- Owns: making the seam take the typed body, or refusing a non-object with a typed `invalid_command` before it indexes.
+- Acceptance: a scalar and an array body each return a typed refusal rather than unwinding, proved by a direct call to the `pub` function; the control is observed RED against the current code.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.6.1.4 — The quota's admission semantics, and the control that does not test them
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- The measured position, which is NOT a defect and is recorded so the leaf does not manufacture one: `gate()` commits its quota use in its own transaction before `run_thread_command` applies idempotency, so a replayed identical call spends quota again — and `mcp_write.rs`'s header states exactly that ("the quota counts the ADMITTED CALLS, never the domain effects"). The documentation is accurate today.
+- What IS open: `tests/mcp_write.rs`'s third case is headed "rides the SAME thread-command pipeline (the effect + the audited allowance + the quota use)", naming three things as one pipeline that the seam deliberately splits across two transactions; and no control interrupts between the two commits to observe the split.
+- Owns: deciding whether counting DENIED attempts is intended, reconciling the test's prose with the seam's, and adding the control that observes the two commits separately.
+- Acceptance: the decision is recorded with its reason; the test's heading is true of what it asserts; and a control proves the quota use survives a handler failure (or proves it does not), observed in both directions.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.6.2 — MCP durable delivery and transport
 
@@ -2451,16 +2497,28 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 
 ### SIGNOFF-REPAIR.9.2 — Atomic policy lifecycle and publication
 
-- Status: `pending`.
+- Status: `active`; the two publish-verb findings `SIGNOFF-REPAIR.11.9.1.3.1` measured are split out as `.9.2.1` with their own acceptance. ⛔ `SIGNOFF-REPAIR.11.13`'s ownership repair: a ledger row naming this leaf is not the same as this leaf owning the fix.
 - Sources / owned surfaces: `proposals/decisions/approvals, projections, publisher, reconciler`.
 - Goal and acceptance: Serialize stage transitions, bind projection and manifest to approved policy, constrain filesystem targets, reject fabricated effective Git IDs, make CAS retries recoverable, verify both immutable and effective refs, and reconcile DB/Git failure points.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-52-2` clause 1, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The publication commit is not deterministic, and the source says the opposite.** `publisher::publish` builds its commit with `signature(gix::date::Time::now_local_or_utc())` as both author and committer, so the object id is a function of the wall-clock second. The staging step's own documentation calls it "the idempotent re-write: the same content commits identically", and re-publishing byte-identical content one second later writes a different commit. ⚠️ Every other clause of this leaf is about ORDERING and BINDING; this one is about the identity of the object those clauses are trying to bind to, so a repair that settles the ordering on a non-deterministic id settles nothing. ⛔ ROADMAP §5's "same inputs/toolchain yield byte-identical outputs" is a stated quality attribute, so the decision — fix the timestamp, or withdraw the idempotence claim — belongs to this leaf rather than to a comment.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.9.2.1 — The publish verbs accept a filesystem path and a set of Git ids from the caller, unbound
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce, at the source, both under ENROLMENT-ONLY authorization:
+  - `api.rs::publish_publication` checks `reader_tenant(…).is_some()` and then reads `repo_path` straight from the request body and hands it to `publisher::publish`. No tenant binding, no path restriction, no operator authority. ⚠️ It COMPOSES with `R-52-2` clause 7, already owned by the parent: the module doc says "into the LOCAL bare repository" and `gix::open(repo_path)` accepts a non-bare one.
+  - `api.rs::mark_publication_effective` checks the same enrolment, reads `git_object_ids` from the body, and calls `publications::mark_effective` WITHOUT looking for those objects in any repository. The parent's goal line already says "reject fabricated effective Git IDs" — verbatim.
+- ⛔ `R-73-74-3`'s framing is preserved because it is the stronger claim: the deployment fixture USES the fabricated form, so the bypass is exercised by the suite meant to qualify it — this is proved, not merely absent.
+- Owns: deriving the repository location from server configuration rather than from the request, binding the verb to explicit tenant or operator authority, and verifying that every declared effective object EXISTS in the repository before the publication is marked effective.
+- Acceptance: a request naming a path outside the configured root is refused with a typed error; an enrolled principal without publication authority is refused; `mark_publication_effective` refuses an object id that resolves to nothing, and the existing fixture is RE-SEEDED with real objects rather than relaxed (`MEMORY.md`: never delete a fixture that depends on a defect). All three controls observed RED first.
+- ⚠️ Read with `.11.12`: the server's configured root does not exist yet as a concept, and inventing one here must not conflict with that leaf's boot-order decision.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.9.3 — Deployment, correction and review lifecycle
 
-- Status: `pending`.
+- Status: `active`; censused and SPLIT below into `.9.3.1`–`.9.3.3`, because `SIGNOFF-REPAIR.11.9.1.3.1` measured concrete live defects against three of its five mechanisms and a single leaf would have to qualify all of them at once. ⛔ `SIGNOFF-REPAIR.11.13`'s ownership repair.
 - Sources / owned surfaces: `deployment assignments, drift, corrections, reviews`.
 - Goal and acceptance: Bind desired digests/refs to publication, validate receipts and corrective authority, permit subsequent reviews after completed occurrences, enforce waiver constraints, and use relative test clocks with failure visibility.
 - ⭐ **ATTACHED CLAUSES, added by tranche 4a** (`R-40-42-5` clause 5 and `R-53-5` clause 3; same ledger). ⚠️ Read the second one BESIDE the `R-53-5` clause 2 row, which locates the cause of the requirement this leaf's goal line already names — they are the same two lines of code.
@@ -2470,6 +2528,37 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - ⚠️ **AND a finding this leaf must repair TOGETHER with its clause 4, measured while answering that clause's question** (`R-75-1`, tranche 3a). Neither side of the waiver path consults an expiry: `corrections::record_correction` requires `expires_at` to be present and RFC3339-parseable and never compares it to `now()`, and `reviews::schedule_reviews` selects `WHERE operation = 'waiver'` with no expiry predicate. Two consequences, both live: a waiver that lapsed a year ago still schedules a `repeated_waiver` review for ever, and the trigger named "repeated" fires on the FIRST waiver — one row yields one pair, which `policy.rs:3161` records and asserts. ⛔ A repair that only makes the two hardcoded `2026-09-15` expiries relative would leave both standing.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.9.3.1 — Citing an authority is the same as holding one
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce, at the source: `corrections.rs::authority_holds(pool, grant_id)` takes the grant ID **and nothing else**, and asks only `SELECT EXISTS (SELECT 1 FROM authority_grants WHERE grant_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now()))`. It never receives the caller, the action, the selector, the boundary, the publication, or `valid_from`. `record_policy_correction` above it admits on ENROLMENT alone.
+- ⛔ So any enrolled principal who can name any active grant records a suspension, a retraction or a waiver in its name. ⭐ The module's own error type for a missing grant is already called `GhostAuthority` — the concept is present and the check is not.
+- `deployments.rs` repeats the shape for `owning_authority`, so the repair must cover both or it will be half a repair.
+- Owns: binding the cited authority to the authenticated caller AND to the target's action, scope and boundary, on both call sites; and honouring `valid_from` alongside `expires_at`.
+- Acceptance: a principal in tenant A citing tenant B's active grant is REFUSED on BOTH surfaces; a grant whose `valid_from` is in the future is refused; a grant whose action or boundary does not cover the target is refused; the legitimate correction still succeeds with its audit intact. Every control observed RED first, and the refusals are typed rather than generic.
+- ⚠️ `.9.1`'s goal line owns "bind claimed authorities to the authenticated caller and live action/scope/boundary" for the policy REGISTRY. Coordinate: the same predicate should not be written twice differently. `policy.rs:185` admits on `status = 'active'` alone while `:458` also checks expiry — that asymmetry is `.9.1`'s and must be settled with this one.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.9.3.2 — A publication can be reviewed once, for ever
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce, at the source: `reviews::schedule_reviews` builds `review_id = format!("rev_{publication_id}_{trigger}")` — deterministic — and `migrations/0045_policy_reviews.sql:12` makes `review_id` the PRIMARY KEY. The dedupe skips a pair whose review is still `due`; once it is `done` the skip no longer applies, the INSERT collides with the existing key, and **`if inserted.is_ok()`** discards the error. No second review for that pair can ever be scheduled.
+- ⛔ The same `is_ok()` discards EVERY insert error, so a total storage failure returns `Ok(vec![])` — a successful empty schedule, indistinguishable from "nothing was due".
+- ⛔ And the `repeated_waiver` trigger fires on the FIRST waiver — one row yields one pair — and on waivers that lapsed long ago, because neither `record_correction` nor `schedule_reviews` consults an expiry. Two records reached this independently (`R-75-1` clause 1 and `R-53-5` clause 1).
+- Owns: an occurrence-scoped review identity, a real repeated-count threshold with a window, an expiry predicate on the waiver read, and an insert whose failure is reported rather than dropped.
+- Acceptance: a second occurrence after a completed review schedules a NEW review; a single waiver does NOT satisfy `repeated_waiver` and the threshold is stated in the book; a lapsed waiver does not trigger; a forced insert failure surfaces as an error rather than an empty success. All observed RED first.
+- ⚠️ `policy.rs`'s two hardcoded `expires_at` of `2026-09-15` must become relative clocks in the same commit (`.9.3`'s goal line: "use relative test clocks with failure visibility") — measured 2026-09-14 as NOT yet breaking, and they will the moment this leaf adds the expiry predicate.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.9.3.3 — A deployment's declared digest is bound to nothing it deploys
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- Reproduce, at the source: `deployments::assign` validates `is_sha256_hex(&input.desired_digest)` — the SHAPE — and compares it against no publication projection; `tests/policy.rs:2724` assigns `sha256:` followed by sixty-four `a`s with `desired_ref: "abc123"` and asserts 200. The receipt then overwrites the observed state from client-supplied data bound to no node, keeping no history, so a target reports `applied` carrying a digest the publication never had.
+- ⚠️ The canary `wave` is a bare `i64` that nothing sequences on — recorded as the current contract rather than as a defect, and the leaf must decide whether the wave is a SEQUENCER or a LABEL and say which in the book.
+- Owns: comparing the declared digest and ref against the publication's actual projection at assignment, binding the receipt to the reporting node, retaining what a receipt replaced, and settling the wave's meaning.
+- Acceptance: an assignment whose digest is not the publication's projection is REFUSED; a receipt from a node the target does not name is refused; the prior observed state is recoverable after a receipt; and the existing fixture is re-seeded with the real projection digest rather than relaxed. Observed RED first.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.10.1 — Adapter subprocess supervision
 
@@ -2575,6 +2664,23 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - ⭐ The durable lesson, and it is about the answer rather than the finding: **a claim I could not affirm in one word was one I had written from memory of the source rather than from the source.** All three corrections are verbs and attributions — "clone", "cites", "pointing at" — added while summarising, never while reading. The measurements, which came from commands, all held.
 - promotion: declined (`docs/CLAIM_VERIFICATION.md` §4.1 already states the one-word acceptance test and the three grading axes; this is an instance of the procedure working, not a new rule).
 - Commit: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.
+
+#### SIGNOFF-REPAIR.11.2.3 — The table-arity gate disagrees with the renderer that publishes this book
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair. ⛔ **I left a known-broken published row standing for a session with a rationale and no owner. The rationale survives; the absence of an owner does not.**
+- Reproduce, and it is the RENDERER's verdict rather than a reading of the spec: build a two-column table whose row is `` \| `x \| y` \| 2 \| `` with mdbook/pulldown-cmark, the renderer this project publishes its own book with. It emits **2 cells** — `` `x `` and `` y` `` — and DISCARDS the `2`. The escaped `\|` form renders as one `<code>x | y</code>` cell.
+- `scripts/check_table_arity.sh:39`–`:44` models the opposite (a pipe inside an inline code span is part of the cell), and its `--self-test` arm at `:73` asserts **0** defects for exactly that shape — so the false green is written into the control that is supposed to prove it.
+- census over all **322** tracked markdown files, both rules run side by side: the shipped rule finds **0** arity-defective rows; the renderer's rule finds **2**. Both were then confirmed by rendering them.
+  - `DOCTRINE_ENFORCEMENT.md:39` — the `INDEX-FRONTIER` row contains `` `\| — \|` `` inside a code span; the renderer emits THREE cells and the third is a bare `—`. **The doctrine registry's published page does not name the enforcer for `INDEX-FRONTIER`**, and its rationale is cut mid-sentence at "fixed this exact". ⛔ **Deliberately still standing** — it is the last real-world instance in 322 files, and `TOOLBOX.md`'s measured rule is that a self-test written alongside the code shares its blind spots, which this parser's demonstrably did. Reproduce at `ad63351`.
+  - `RECONCILIATION.md:111` — repaired in REPAIR-0175 with its superseded text named, because it is that leaf's own deliverable and a truncated Evidence cell publishes half a record.
+- Owns: correcting the cell splitter to split on every unescaped pipe as GFM does, correcting the self-test arm that asserts the wrong answer, and THEN repairing `DOCTRINE_ENFORCEMENT.md:39`.
+- Acceptance: in this order and not another —
+  1. The corrected parser is run against the LIVE `DOCTRINE_ENFORCEMENT.md:39` and FIRES — a control observed red on a row this leaf did not write, which is the whole reason the row was kept.
+  2. The self-test's `a pipe inside a code span is not a separator` arm is replaced by one asserting it IS a separator, plus an arm proving the escaped form is not.
+  3. `DOCTRINE_ENFORCEMENT.md:39` is repaired and the renderer confirms three cells with the enforcer named.
+  4. The whole-corpus scan returns **0** under the corrected rule, and the ratchet's staged-file path still passes.
+- ⚠️ The ratchet compares a staged file against HEAD, so correcting the parser RAISES the count for any file that already breached — `DOCTRINE_ENFORCEMENT.md` is the one. Repair the row in the SAME commit as the parser, or the gate blocks its own fix.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.11.3 — Operational scripts and evidence
 
@@ -3285,6 +3391,42 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 - promotion: declined. The rule exercised — a domain refusal and a storage failure are different families and the type should say so — is already stated in `site_authority/registry.rs`'s own source and was the thing this leaf applied rather than discovered.
 - Commit: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
 
+### SIGNOFF-REPAIR.11.13 — The reconciliation's findings were ROUTED, not owned
+
+- Status: `done`; REPAIR-0181.
+- Opened: `active`; **the director's correction on 2026-09-14**, after a session that surfaced six findings and reported each as "owned by" a leaf. It was not.
+- 🔴 **The finding, measured mechanically rather than conceded in prose.** For each of the ten leaves this session's findings name as owner, extracting the section and checking for an `- Acceptance:` line of its own:
+
+| Leaf | Status | Children | Has its own acceptance |
+| --- | --- | --- | --- |
+| `.6.1` | `pending` | 0 | **no — goal line only** |
+| `.9.3` | `pending` | 0 | **no — goal line only** |
+| `.9.2` | `pending` | 0 | **no — goal line only** |
+| `.11.2` | `pending` | 3 | **no — goal line only** |
+| `.8.1` | `pending` | 0 | **no — goal line only** |
+| `.4.4` | `pending` | 0 | **no — goal line only** |
+| `.10.1` | `pending` | 0 | **no — goal line only** |
+| `.7.3` | `pending` | 17 | **no — goal line only** |
+| `.11.4.2` | `pending` | 1 | yes |
+| `.11.12` | `pending` | 0 | yes |
+
+- ⛔ **Eight of ten had no acceptance of their own and six had no children.** `.11.12` is the only finding of the six that was genuinely owned — because it was `unowned` in the ledger and the ledger's rule FORCED a leaf. Everything classified `owned` or `attach` got a sentence inside a container and a report that said "owner: `.6.1`".
+- ⭐ **And that is exactly the gap the ledger's own vocabulary cannot see.** `owned` means *a leaf owns the clause AND its own text makes the clause visible* — it says nothing about whether that leaf can be EXECUTED. `attach` is stronger and is gated by `ATTACH-LANDED`. Neither state asks the question the director asked: **can someone pick this leaf up and finish it?** A container leaf with a six-mechanism goal line and no acceptance answers no.
+- ⚠️ This is `CLAUDE.md` §15 verbatim — *"Logging them is the first step, fixing them is the end goal"* — and the reconciliation had drifted into a very thorough first step. The classification work is not withdrawn: 204 clause rows measured at the source stand, and they are what made these leaves writable in an hour.
+- **Fix, in this commit:** every finding this session surfaced now has a BOUNDED leaf with its own reproduce, owns, and acceptance, and the containers that carried them are marked `active` and split.
+  - `.6.1` -> `.6.1.1` (the three MCP reads), `.6.1.2` (the write seam's enrolment-as-authority), `.6.1.3` (the untyped body index), `.6.1.4` (the quota semantics and its missing control).
+  - `.9.2` -> `.9.2.1` (the publish verbs' unbound path and fabricated Git ids).
+  - `.9.3` -> `.9.3.1` (citing an authority equals holding one), `.9.3.2` (a publication reviewable once for ever), `.9.3.3` (the declared-versus-deployed digest).
+  - `.11.2` -> `.11.2.3` (the table-arity parser, its self-test, and the row still standing broken).
+  - `.11.4.2` -> `.11.4.2.2` (the `MEMORY.md` cap).
+- ⭐ Each acceptance names a control to be observed RED before its repair, because `docs/CLAIM_VERIFICATION.md` leg 2 is the only thing that distinguishes a fix from a rewrite.
+- ⛔ **What this leaf does NOT do**, stated so the next session does not mistake the boundary: it writes no product code. Nine bounded leaves now exist where eight containers stood; executing them is their own work, and `.6.1.1` is the frontier's first row because a cross-tenant read leak outranks everything else open.
+- Acceptance: every finding surfaced in this session's report resolves to a leaf with its own `- Acceptance:` line, and the audit command above returns no container carrying a surfaced finding without one.
+- ⚠️ **The audit's first re-run reported two of the eleven as having none, and it was the AUDIT that was wrong** — `.6.1.1` and `.11.2.3` opened `- Acceptance, all four legs…` and `- Acceptance, in this order…`, which the exact-prefix match does not see. ⛔ Fixed in the LEAVES rather than by loosening the check: a mechanically checkable convention is worth more than two commas, and the alternative — a matcher that guesses at prose — is `SIGNOFF-REPAIR.11.6`'s measured failure mode. ⭐ The same shape as `.11.4.4`'s `- Opened:`/`- Status:` repair: make the document match a rule a tool can read, rather than teaching the tool to read prose.
+- Verification: the audit re-run at the close names `.6.1.1`–`.4`, `.9.2.1`, `.9.3.1`–`.3`, `.11.2.3`, `.11.4.2.2`, `.11.12` — eleven bounded leaves, each with acceptance. `make gate` green.
+- promotion: promoted. **"A leaf that cannot be picked up and finished is not an owner"** — `TOOLBOX.md`, because the ledger's six states measure whether a clause is VISIBLE to a leaf and none of them measures whether that leaf is EXECUTABLE.
+- Commit: `REASONBRAID-REPAIR-0181 (leaf SIGNOFF-REPAIR.11.13): own the findings this session only routed`.
+
 ### SIGNOFF-REPAIR.11.12 — `rb-server` acts on its configuration before it validates it
 
 - Opened: `pending` by `SIGNOFF-REPAIR.11.9.1.3.1`'s clause reconciliation of `R-36-39-9`, which no leaf had cited. Two clauses, one shape: the boot sequence commits to a decision before checking whether it is allowed to make it.
@@ -3371,7 +3513,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 
 #### SIGNOFF-REPAIR.11.4.2 — Complete containment inventory and enforcement review
 
-- 🔎 **Measured pressure routed here by `SIGNOFF-REPAIR.11.9.1.2.2` on 2026-09-14:** `MEMORY.md` stands at **7,161 bytes against its 7,168-byte cap** — seven bytes — and three consecutive leaves (`.11.9.1.1.3`, `.11.11`, `.11.9.1.2.1`/`.2.2`) each had to EVICT a standing warning to land. ⛔ The cap is not the repair: `MEMORY_ARCHITECTURE.md` says in terms 'demote content, do NOT raise the cap'. ⚠️ The shed rule has been sharpened twice in three commits to keep those evictions principled — `.11.4.2.1`'s 'shed one whose line NAMES its leaf', then 'a warning a GATE enforces is cheapest', then 'a FINDING with an owner on the frontier path belongs in the tree, not in the pointer'. A rule needing that much sharpening under load is a sign the POPULATION wants partitioning, which is this leaf's subject. ⚠️ `scripts/census_memory_warnings.py` reports 21 warnings, 10 leaf-anchored; run it before proposing anything over them.
+- 🔎 **Measured pressure OWNED here as `.11.4.2.2`, not merely routed** (`SIGNOFF-REPAIR.11.13`'s ownership repair). Original routing note from `SIGNOFF-REPAIR.11.9.1.2.2` on 2026-09-14: `MEMORY.md` stands at **7,161 bytes against its 7,168-byte cap** — seven bytes — and three consecutive leaves (`.11.9.1.1.3`, `.11.11`, `.11.9.1.2.1`/`.2.2`) each had to EVICT a standing warning to land. ⛔ The cap is not the repair: `MEMORY_ARCHITECTURE.md` says in terms 'demote content, do NOT raise the cap'. ⚠️ The shed rule has been sharpened twice in three commits to keep those evictions principled — `.11.4.2.1`'s 'shed one whose line NAMES its leaf', then 'a warning a GATE enforces is cheapest', then 'a FINDING with an owner on the frontier path belongs in the tree, not in the pointer'. A rule needing that much sharpening under load is a sign the POPULATION wants partitioning, which is this leaf's subject. ⚠️ `scripts/census_memory_warnings.py` reports 21 warnings, 10 leaf-anchored; run it before proposing anything over them.
 - Status: `pending`.
 - Owns: broader donor-package review and deliberate local adoption if appropriate; complete document/route utility census, lifecycle and pressure controls, exact-current-state derivation/verifiers, archive retrieval and collection bounds. Preserve existing owner decisions and do not infer complete adoption from the README-only guard.
 - Acceptance: each adopted contract has local data and executed positive/negative checks; any migration retains exact retrieval and does not raise caps to accommodate growth.
@@ -3408,6 +3550,16 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 - LOCKSTEP: `TOOLBOX.md` (the tool row, naming when to run it), `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md` (rotated), `DEV_NOTES.md`. ⛔ No `docs/knowledge/` promotion — see below.
 - promotion: declined, deliberately. The durable method statements this leaf exercised already exist and were CONFIRMED rather than extended: `a-census-is-an-instrument-not-a-table.md` (record the instrument's wrong numbers), `TOOLBOX.md` (a self-test written alongside the code shares its blind spots; check a first number a different way) and `.11.4.5.2` (classify a population before publishing it). A fourth instance of three known rules is evidence for them, not a new rule — `.11.6`'s threshold.
 - Commit: `REASONBRAID-REPAIR-0159 (leaf SIGNOFF-REPAIR.11.4.2.1): census the MEMORY warnings, and refute the worry that opened the leaf`.
+
+#### SIGNOFF-REPAIR.11.4.2.2 — `MEMORY.md` is at its cap and every leaf now has to evict
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair; measured by `.11.9.1.2.2` and extended by every leaf since.
+- The measurement: `MEMORY.md` stands at **7,144 of its 7,168-byte cap** — 24 bytes — and **all six leaves of this session** had to evict or compress a standing warning to land. `scripts/census_memory_warnings.py` reports **23** warnings, 11 leaf-anchored.
+- ⛔ The cap is not the repair: `MEMORY_ARCHITECTURE.md` says in terms "demote content, do NOT raise the cap", and `.11.4.2.1` already measured that the warnings are not orphans — 0 of 26 existed only there.
+- ⚠️ **The tell is the SELECTION RULE, not the size.** It has been sharpened three times in six commits to keep the evictions principled: `.11.4.2.1`'s "shed one whose line NAMES its leaf", then `.11.9.1.2.1`'s "a warning a GATE enforces is cheapest", then `.11.9.1.2.2`'s "a FINDING with an owner on the frontier path belongs in the tree, not the pointer". A rule that needs re-deriving every time it is applied is a sign the POPULATION wants partitioning.
+- Owns: deciding the partition. The candidate shape, to be measured rather than assumed: the pointer keeps TRAPS — things that would make the next session act wrongly — and a second, uncapped layer-B document keeps the method statements, each anchored to its leaf, with the pointer naming only the document.
+- Acceptance: the population is classified BEFORE the partition is proposed (`TOOLBOX.md`); the chosen split is stated with the count on each side; `MEMORY.md` ends comfortably under its cap with headroom named; and no warning's substance is lost — every one either stays, moves to a named document, or is shown to be enforced by a gate. ⛔ No cap increase.
+- Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.11.4.3 — Reconcile historical qualification and verification coverage
 
@@ -4294,8 +4446,13 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.9.1.3.2` | `pending` | tranche 4b, the largest child at 2,923 characters and the one carrying the declared deviation (the folded `.3.5` singleton). ⚠️ `MEMORY.md`'s standing warning applies directly — **DELEGATION IS ONE HOP DEEP**; `.3.4` is the delegation leaf and several of these records will look like they ask to widen it |
-| 1b | `SIGNOFF-REPAIR.11.12` | `pending` | `rb-server` migrates the database BEFORE validating the profile it refuses to boot without, and `--host` is ungated — opened by tranche 4a, and the two halves must be decided separately |
+| 1 | `SIGNOFF-REPAIR.6.1.1` | `pending` | 🔴 **the severest open defect this reconciliation has produced**: all three MCP read tools return data the caller is not entitled to, and `policy_bundle` takes its tenant as an UNUSED parameter over a `SELECT` with no `WHERE`. Four live acceptance legs, each observed RED first |
+| 1b | `SIGNOFF-REPAIR.9.3.1` | `pending` | citing an authority is the same as holding one — `authority_holds` takes the grant id and nothing else behind an enrolment-only endpoint, on TWO surfaces. Settle it with `.9.1`'s `policy.rs:185`/`:458` asymmetry rather than writing the predicate twice |
+| 1c | `SIGNOFF-REPAIR.6.1.2` | `pending` | the MCP write seam gates the caller's tenant and binds the call to none — the THIRD instance of the two-identifiers family after `.3.5.3`/`.3.5.4` |
+| 1d | `SIGNOFF-REPAIR.11.2.3` | `pending` | the table-arity gate disagrees with the renderer; ⛔ `DOCTRINE_ENFORCEMENT.md:39` is STILL PUBLISHING a broken row and is deliberately retained as the falsification target — repair it in the SAME commit as the parser or the ratchet blocks its own fix |
+| 1e | `SIGNOFF-REPAIR.9.2.1` | `pending` | the publish verbs take a filesystem path and a set of Git object ids from the caller, unbound, under enrolment-only authorization |
+| 2 | `SIGNOFF-REPAIR.11.9.1.3.2` | `pending` | tranche 4b, the largest child at 2,923 characters and the one carrying the declared deviation. ⚠️ **DELEGATION IS ONE HOP DEEP** — `.3.4` is the delegation leaf and several of these records will look like they ask to widen it |
+| 2b | `SIGNOFF-REPAIR.11.12` | `pending` | `rb-server` migrates the database BEFORE validating the profile it refuses to boot without, and `--host` is ungated — the two halves must be decided separately |
 | 1b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -4303,7 +4460,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **47 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **54 leaves are `pending`** across this tree. 🔴 **It rose by seven in one commit and that is the point**: `SIGNOFF-REPAIR.11.13` converted eight container leaves carrying surfaced findings into bounded leaves with their own acceptance. A pending count that goes UP because routing became ownership is the healthy direction. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -4372,6 +4529,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.11.9.1.2.2`: `REASONBRAID-REPAIR-0178 (leaf SIGNOFF-REPAIR.11.9.1.2.2): reconcile tranche 3b, and read the sentence at the top of the MCP module`.
 - `SIGNOFF-REPAIR.11.9.1.2.3`: `REASONBRAID-REPAIR-0179 (leaf SIGNOFF-REPAIR.11.9.1.2.3): reconcile tranche 3c, and measure a deadlock as a ratio`.
 - `SIGNOFF-REPAIR.11.9.1.3` / `.3.1`: `REASONBRAID-REPAIR-0180 (leaf SIGNOFF-REPAIR.11.9.1.3.1): reconcile tranche 4a, and correct a number this activity published`.
+- `SIGNOFF-REPAIR.11.13`: `REASONBRAID-REPAIR-0181 (leaf SIGNOFF-REPAIR.11.13): own the findings this session only routed`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.

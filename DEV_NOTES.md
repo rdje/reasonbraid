@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — "Owner: .6.1" was a sentence, not an owner
+
+- I reported six findings with an owner beside each and felt they were handled. The director asked whether they were owned or only routed. The honest way to answer was a command, not an opinion: extract each named leaf's section, look for an `- Acceptance:` line. Eight of ten had none. Six had no children. They were containers — readable, not finishable.
+- **The uncomfortable part is that the ledger told me they were owned.** Its `owned` state means *a leaf owns this clause and its own text makes the clause visible, so its future census will read it*. Every word of that is true of `.6.1` and the MCP leak. The state is about VISIBILITY. Nothing in the six-state vocabulary asks whether the leaf can be executed, and I read a green-looking classification as a finished disposition.
+- **The one finding I did own properly was an accident.** `.11.12` exists because two clauses came out `unowned`, and that state's rule forces a leaf with acceptance. So the vocabulary produced real ownership exactly where it admitted it had none, and produced the illusion of it everywhere else.
+- Splitting the eight containers took about an hour, and it was cheap *because* the clause work was already done — every child's reproduce section is a measurement I had already taken. That is the argument for the reconciliation, and also the reason it was not enough on its own: measurement makes the leaves writable, and somebody still has to write them.
+- **My audit was wrong on its first re-run**, reporting two of the eleven as acceptance-less. Both leaves said `- Acceptance, in this order…` with a comma. I fixed the leaves rather than the matcher. A checker that learns to read prose is the failure mode this project has already measured; a convention that a `grep` can check is worth two commas.
+- The pending count went from 47 to 54 and I want to be clear that this is the good direction. Seven leaves appeared because seven things that were being carried as prose are now work with acceptance attached. A repair tree whose pending count only falls is a tree that is closing leaves faster than it is finding owners for what it found.
+
 ## 2026-09-14 — I wrote "four places" and it was seven
 
 - Two tranches ago I recorded that a fixture accepts an unbound verdict digest "in four places" and attached that sentence to the leaf that owns it. Today a different record sent me back to the same file for a different reason, and I ran `grep -c` because the ledger row was in front of me. Seven. In seven distinct test functions, one each.

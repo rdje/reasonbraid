@@ -292,6 +292,34 @@ before repairing at the one you were handed.
 
 Full record: `docs/knowledge/a-claim-of-sameness-is-worth-its-call-graph.md`.
 
+### A number that decorates a finding is not covered by the finding's evidence
+
+Three claims published in one session were graded on challenge and failed, while every
+claim they were attached to held (`SIGNOFF-REPAIR.11.9.1`, 2026-09-14). The three legs had
+been run on the FINDINGS — re-derived, falsified, durable. The numbers that failed were
+ornaments on those findings, and nothing was watching them:
+
+- **"the 728-line `policy.rs`"** — measured, then the same session EDITED that file. It is
+  731. A constant about a file you go on to change is stale the moment you change it.
+- **"five sites"** — a correct CLASSIFICATION published beside a raw `git grep`, so a
+  reader re-deriving gets a different number. And the population was itself wrong:
+  `src/*.rs` is a glob that does **not recurse**, and it missed a subdirectory.
+- **"the third header asserting a check nobody wrote"** — it was two. The third was
+  accurate about its own code; folding it in made the generalization describe a population
+  that does not exist.
+
+⛔ **The test: for each number in a published sentence, is it the CLAIM's evidence, or is it
+scenery?** Scenery gets none of the three legs by default, because the legs were aimed at
+the claim. Either give it the legs — pin it to a commit, publish the classification beside
+the command, derive it — or cut it. A finding loses nothing by not saying how long a file
+is.
+
+⚠️ Two riders, both measured here. **Pin a census that your own change will invalidate**:
+`git grep <pattern> <sha> -- <path>` costs one argument and survives the repair. And
+**`*.rs` is not a recursive scan** — the whole-census warning this project already carries
+still caught its own author, because the scoping mistake was in the glob rather than in
+the filter.
+
 ### When correctness depends on enumerating what to exclude, make the failure cheap
 
 An exclusion list has to be right. Prefer a mechanism where being wrong costs little.

@@ -191,6 +191,21 @@ correction nor scheduling a review compares that field to the current time. The
 brittleness is real but conditional on the missing check being added, which is
 what the repair will do.
 
+The next five records concerned the MCP surface and the policy registry, and
+produced the sharpest read finding this review has recorded:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| All three MCP read tools return data the caller is not entitled to, while the module documents the opposite | The policy-bundle tool ignores both the caller and the tenant — its query has no tenant restriction at all — and returns every tenant's policy documents and clauses, labelled with the caller's own tenant. The inbox tool declares a caller argument and never reads it. The thread tool computes the correct reader class for a foreign tenant and then returns the full projection anyway, reporting that class beside it. The module's opening paragraph states that every read runs the same authorization as the HTTP handlers. | `.6.1` |
+| The MCP call-response tool checks the caller against one tenant and the call against none | A caller admitted on their own tenant can record a response on another tenant's recruitment call, and a decline, recommendation or recusal skips the eligibility check entirely. | `.6.1` |
+| Registering a policy accepts an expired authority grant | Registration checks the grant's status only, while resolution in the same module also checks its expiry — so a lapsed grant still registers a policy version. | `.9.1` |
+| A policy's applicability selector defaults to the wildcard | A missing or malformed selector field is read as "matches everything", which is fail-open in the place the design requires fail-closed. Policies in draft, superseded and deprecated states also remain applicable. | `.9.1` |
+
+⚠️ Two of the source record's claims were *narrowed* by measurement rather than
+confirmed, and both are recorded that way: a panic on a malformed payload is
+real but not reachable through the typed tool, and the quota's behaviour on a
+retried call is stated exactly as it behaves in the module's own header.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

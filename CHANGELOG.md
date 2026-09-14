@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-14 — The sentence at the top of the MCP module (`SIGNOFF-REPAIR.11.9.1.2.2`, tranche 3b)
+
+- **Tranche 3b reconciled five records into 27 clause rows**: 22 `owned`, 3 `attach`, **1 `none`** — the ledger's first, which completes the closed set of six states — and 0 `unowned`.
+- 🔴 **The MCP read surface leaks across tenants on all three read tools while the module's first paragraph claims the same authorization as the HTTP handlers.** `policy_bundle` takes its tenant as an unused `_tenant_id` over a `SELECT` with no `WHERE` clause and returns every tenant's policy clauses labelled with the caller's own tenant id; `list_inbox` declares a `principal` argument and never reads it; `get_thread` classifies, gets `Network` for a foreign tenant, and returns the full projection anyway.
+- 🔴 **`join_call` is the third instance of the two-caller-identifiers family**: gated on the caller's tenant, then the call is fetched by id alone and the two are never compared. A decline, recommendation or recusal skips the eligibility gate entirely.
+- 🔴 **`policy.rs` queries the grants table two ways twenty-seven lines apart** — registration on status alone, resolution on status and expiry — so an expired grant registers a policy version the resolver in the same file would refuse. Its selector default is fail-open where the owning goal line says fail-closed.
+- ⚠️ **Two measurements narrowed the record rather than confirming it**, and both are recorded as narrowings: the `body["tenant_id"]` panic is real but unreachable through the typed MCP tool, and the quota-per-retry behaviour is documented verbatim in the module header.
+- ⭐ `ATTACH-LANDED` fired on this leaf's three unattached clauses before they were written — the second consecutive tranche it has caught.
+- 🔎 **`MEMORY.md` stands at 7,161 bytes against a 7,168-byte cap**, with three consecutive leaves forced to evict a standing warning to land. Routed to `.11.4.2` with its measurement.
+- Validation: `--classified` 157 rows clean with all 32 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
+
 ## 2026-09-14 — One missing predicate at three sites (`SIGNOFF-REPAIR.11.9.1.2.1`, tranche 3a)
 
 - **Tranche 3 sized at 5,041 characters and split** on the same narrowest-candidate boundary that formed it — 1,624 / 1,655 / 1,762, all inside the 1,405–3,006 range this activity has proved executable in one commit.

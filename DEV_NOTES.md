@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — I wrote "four places" and it was seven
+
+- Two tranches ago I recorded that a fixture accepts an unbound verdict digest "in four places" and attached that sentence to the leaf that owns it. Today a different record sent me back to the same file for a different reason, and I ran `grep -c` because the ledger row was in front of me. Seven. In seven distinct test functions, one each.
+- The first thing I did was look for the excuse: the corpus must have grown. `git diff --stat` between the two commits over that file is empty, and the count at the earlier commit was already seven. The number was wrong when I typed it. I had counted while reading, which is not counting.
+- **The location is the part that stings.** This is the clause ledger — the instrument this project built specifically so that findings would be re-derivable instead of remembered. Building a careful mechanism does nothing for the numbers you hand-type into it. The rule I promoted is narrow and mechanical on purpose: every number in a durable record comes from a command, and the command goes beside it.
+- The second cheap thing worth keeping: asking whether the number is *stale* or *false* costs one `git show` and they need different repairs. A stale number says the world moved. A false one says something about the author, and only the second one warrants a promoted lesson.
+- **The finding got stronger, which is the outcome I did not expect.** Seven independent tests encode the unbound digest, not four places in some. Correcting downward would have been the uncomfortable case; I should not let that asymmetry make me lazier about the numbers that happen to favour me.
+- Elsewhere today: the corrections module's authority check takes a grant id and nothing else, behind an endpoint that only checks enrolment — so citing an authority is the same as holding one, and the module's own error type for a missing grant is called `GhostAuthority`. And the review scheduler builds a deterministic primary key, collides with it for ever after the first review closes, and throws the error away. The requirement was already written in the owning leaf's goal line; what this leaf added was the two lines that cause it. That is the honest shape of most of this work — not discovering that something is wrong, but finding where.
+
 ## 2026-09-14 — Four megabytes into a sixty-four kilobyte pipe
 
 - I had written "`run_browse` waits for the child to exit before reading its stdout" and was about to move on. That sentence is true and it is worth nothing: a reader has no way to tell whether it matters. Then I read the request the function writes two lines above: `max_output_bytes: 4 * 1024 * 1024`. A pipe buffer is 64 KiB. The ratio is the finding — the deadlock is not an edge case, it is most of the configured range, and it surfaces as a *timeout*, which sends the next person looking at the clock.

@@ -223,6 +223,20 @@ group at fifteen records and sixty-nine clauses:
 provider outcome does leave the worker as an error, but the type documents that
 as deliberate and what a caller does next was not measured here.
 
+The fourth group of records opened with a correction to this review's own
+published figure. A row recorded that a test fixture accepts an unbound
+adjudication digest "in four places"; counted with a command it is seven, across
+seven separate tests, and the file has not changed since the row was written. The
+row and the leaf that carries it are corrected, and the finding is larger than it
+was published as. The first eight of that group added these limitations:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| Citing an authority is the same as holding one | Recording a policy correction checks only that the named grant is active and unexpired — never the caller, the action, the selector, the boundary, the publication, or when the grant became valid — behind an endpoint that admits anyone enrolled. Any enrolled principal who knows an active grant's identifier can suspend, retract or waive a publication in its name. The deployment assignment path repeats the shape. | `.9.3` |
+| A policy review can only ever happen once per publication and trigger | The review's identifier is derived from the pair and is the table's primary key, so once the first review is marked done, every later attempt collides and the error is discarded. The same discarded error makes a storage failure look like "nothing was due". | `.9.3` |
+| Publishing and marking-effective accept declared values bound to nothing | A publication is written to any filesystem path the caller names, under enrolment-only authorization; a deployment assignment accepts any well-formed digest without comparing it to the publication; and marking a publication effective accepts any strings as its Git object identifiers without looking for them. | `.9.2`, `.9.3` |
+| The server changes the database before it validates the configuration it refuses to start without | An undeclared secret-store profile refuses the boot — after the migrations have already run. The bind address is also ungated: binding every interface is accepted while the startup line still reports the development profile. | `.11.12` |
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

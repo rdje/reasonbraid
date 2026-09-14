@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Correcting a number this activity published (`SIGNOFF-REPAIR.11.9.1.3.1`, tranche 4a)
+
+- **Tranche 4 sized at 10,519 characters — 4.12x the proved-executable size — and split five ways** on each record's own narrowest candidate, with one declared deviation: a 423-character singleton folded into its sibling in the same tree family.
+- 🔴 **A number this reconciliation itself published was wrong when written.** The clause ledger said a fixture accepts an unbound verdict digest "in four places"; `grep -c` says seven, across seven distinct test functions, and `git show` at the original commit proves the corpus did not move. Both sites corrected, the superseded figure named. **Promoted:** a count written while reading is not a count (`TOOLBOX.md`).
+- 🔴 **Any enrolled principal can act as any authority whose grant id they know.** The corrections module's authority check takes the grant id and nothing else — no caller, action, selector, boundary, publication or valid-from — behind an endpoint that admits on enrolment alone. The deployments module repeats the shape.
+- 🔴 **No second review can ever be scheduled for a (publication, trigger) pair**: the review id is deterministic and is the primary key, and the colliding insert's error is discarded. The same discard makes a storage failure return a successful empty schedule.
+- 🔴 **`rb-server` migrates the database on the line before it validates the profile it refuses to boot without**, and its bind address carries no predicate at all. New leaf `SIGNOFF-REPAIR.11.12`, with the two halves to be decided separately.
+- ⚠️ Two fixtures declare digests bound to nothing, and a metrics test's comment claims a counter assertion the test does not make.
+- ⭐ The fifth two-records-one-finding pair: one waiver satisfying a trigger named "repeated", reached independently by two records.
+- Validation: `--classified` 204 rows clean with all 40 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
+
 ## 2026-09-14 — Measure a deadlock as a ratio (`SIGNOFF-REPAIR.11.9.1.2.3`, tranche 3 complete)
 
 - **Tranche 3c reconciled five records into 22 clause rows**: 16 `owned`, 6 `attach`, 0 `unowned`. Tranche 3 is complete at 15 records and 69 clauses.

@@ -2428,7 +2428,7 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Status: `pending`.
 - Sources / owned surfaces: `thread engine, workflow registry, profiles tests`.
 - Goal and acceptance: Version and authorize shared workflow registration, prevent built-in override and MAX+1 races, track each challenge's resolution once, recover expired invitations, validate duration bounds and record attribution, and reconcile durable unresolved challenges with close contracts.
-- ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-80-82-1` clause 3, tranche 2a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The adjudication verdict's `target_digest` is bound to nothing.** `VerdictInput.target_digest` is a plain `String`, and `threads.rs` copies it verbatim into the contribution event — no format check, and no lookup against any proposal revision. `tests/policy.rs` accepts `"sha256:00"` against no claimed target in four places. "Record attribution" in the goal line covers the synthesizer's identity; it does not reach the digest the verdict claims to be about, and a verdict that names no real target cannot be checked by anyone later.
+- ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-80-82-1` clause 3, tranche 2a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The adjudication verdict's `target_digest` is bound to nothing.** `VerdictInput.target_digest` is a plain `String`, and `threads.rs` copies it verbatim into the contribution event — no format check, and no lookup against any proposal revision. `tests/policy.rs` accepts `"sha256:00"` against no claimed target in **SEVEN distinct test functions**, one occurrence each. ⛔ **CORRECTED by `SIGNOFF-REPAIR.11.9.1.3.1`**: this block and its ledger row both said "four places", and the number was wrong when written — `git diff --stat b227ce8 HEAD` over that file is empty and the count at `b227ce8` was already 7, so the corpus did not move. The finding is STRONGER than published. "Record attribution" in the goal line covers the synthesizer's identity; it does not reach the digest the verdict claims to be about, and a verdict that names no real target cannot be checked by anyone later.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -2463,6 +2463,9 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Status: `pending`.
 - Sources / owned surfaces: `deployment assignments, drift, corrections, reviews`.
 - Goal and acceptance: Bind desired digests/refs to publication, validate receipts and corrective authority, permit subsequent reviews after completed occurrences, enforce waiver constraints, and use relative test clocks with failure visibility.
+- ⭐ **ATTACHED CLAUSES, added by tranche 4a** (`R-40-42-5` clause 5 and `R-53-5` clause 3; same ledger). ⚠️ Read the second one BESIDE the `R-53-5` clause 2 row, which locates the cause of the requirement this leaf's goal line already names — they are the same two lines of code.
+  1. **The canary wave is a number nothing sequences on** (`R-40-42-5` clause 5). `deployments.rs` stores `wave` as a bare `i64` and no path orders execution by it, so the record's own phrase — "records-only honesty" — is the accurate description of today's contract. ⛔ No part of this goal line names waves or rollout ordering, so a census driven by it reads the column as satisfied by being stored. Decide whether the wave is a SEQUENCER or a LABEL, and say which in the book.
+  2. **`schedule_reviews` discards every insert error, so a total storage failure returns a successful empty schedule** (`R-53-5` clause 3). `if inserted.is_ok() { scheduled.push(…) }` is the whole error handling: a primary-key collision, a dead connection and a permission failure are indistinguishable from "nothing was due". ⚠️ The goal line's "permit subsequent reviews after completed occurrences" is about the DEDUPE; this is about what happens when the write fails, and the two share exactly one line of code — so a repair that fixes the dedupe without touching the `is_ok()` leaves the silence behind.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-75-1` clause 3, tranche 3a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **That an existing defect id dedupes PERMANENTLY is untested.** The goal line's "permit subsequent reviews after completed occurrences" is about the `(publication, trigger)` pair, which `schedule_reviews` dedupes on `status = 'due'`; this clause is about a different key and a different lifetime, and no control exercises it.
 - ⚠️ **AND a finding this leaf must repair TOGETHER with its clause 4, measured while answering that clause's question** (`R-75-1`, tranche 3a). Neither side of the waiver path consults an expiry: `corrections::record_correction` requires `expires_at` to be present and RFC3339-parseable and never compares it to `now()`, and `reviews::schedule_reviews` selects `WHERE operation = 'waiver'` with no expiry predicate. Two consequences, both live: a waiver that lapsed a year ago still schedules a `repeated_waiver` review for ever, and the trigger named "repeated" fires on the FIRST waiver — one row yields one pair, which `policy.rs:3161` records and asserts. ⛔ A repair that only makes the two hardcoded `2026-09-15` expiries relative would leave both standing.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -3141,6 +3144,79 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - Opened: `pending` by `.11.9.1`'s split. The largest tranche; expand it into children before implementation if 30 records will not fit one bounded leaf.
 - The 30 records: `R-31-32-4`, `R-33-35-1`, `R-33-35-2`, `R-36-39-2`, `R-36-39-3`, `R-36-39-6`, `R-36-39-9`, `R-40-42-3`, `R-40-42-4`, `R-40-42-5`, `R-40-42-7`, `R-43-1`, `R-43-4`, `R-44-45-4`, `R-51-3`, `R-53-1`, `R-53-5`, `R-54-2`, `R-56-57-3`, `R-58-3`, `R-59-1`, `R-59-2`, `R-61-62-2`, `R-63-2`, `R-73-74-3`, `R-75-2`, `R-76-77-3`, `R-78-1`, `R-86-1`, `R-89-1`.
 - Acceptance: as `.11.9.1.1`.
+- Status: `active`; sized, split, and its first child executed (REPAIR-0180). ⛔ The acceptance descends to `.11.9.1.3.1`–`.5` collectively.
+
+**The sizing, taken BEFORE the split — the method `.11.9.1.1` established and `.11.9.1.2` repeated.**
+
+- Tranche 4 is **10,519 characters** of record body across 30 records: **4.12x** tranche 1's proved-executable 2,554, and the largest tranche this activity has faced. The leaf's own opening line already anticipated it — "expand it into children before implementation if 30 records will not fit one bounded leaf" — and the measurement settles the conditional.
+- Grouping by each record's own narrowest candidate, the same measurement that formed the tranche, yields SIX groups. Five sit inside the 1,405–3,006 range this activity has proved executable in one commit; one is a singleton.
+
+| Child | Narrowest candidate | Records | Body characters |
+| --- | --- | --- | --- |
+| `.11.9.1.3.1` | `SIGNOFF-REPAIR.9.3`, named by 11 | `R-33-35-2`, `R-36-39-9`, `R-40-42-4`, `R-40-42-5`, `R-53-5`, `R-63-2`, `R-73-74-3`, `R-75-2` | 2,081 |
+| `.11.9.1.3.2` | `SIGNOFF-REPAIR.3.4`, named by 10 (+ the `.3.5` singleton) | `R-36-39-3`, `R-36-39-6`, `R-43-4`, `R-44-45-4`, `R-59-1`, `R-61-62-2`, `R-76-77-3`, `R-40-42-3` | 2,923 |
+| `.11.9.1.3.3` | `SIGNOFF-REPAIR.8.2`, named by 10 | `R-31-32-4`, `R-33-35-1`, `R-36-39-2`, `R-40-42-7`, `R-51-3`, `R-86-1` | 2,317 |
+| `.11.9.1.3.4` | `SIGNOFF-REPAIR.11.3`, named by 10 | `R-56-57-3`, `R-58-3`, `R-59-2`, `R-89-1` | 1,734 |
+| `.11.9.1.3.5` | `SIGNOFF-REPAIR.7.1`, named by 10 | `R-43-1`, `R-53-1`, `R-54-2`, `R-78-1` | 1,464 |
+
+- ⛔ **ONE DEVIATION from the derived boundary, declared rather than smuggled.** `R-40-42-3`'s narrowest candidate is `SIGNOFF-REPAIR.3.5`, which no other record names — a singleton group of 423 characters, less than a third of the smallest size ever executed. It is folded into `.11.9.1.3.2`, whose candidate `.3.4` is its sibling in the same tree family, taking that child to 2,923 characters — still inside the proved range and just under tranche 2c's 3,006. ⚠️ The boundary is otherwise untouched: five of the six groups stand exactly as the ranking drew them.
+- ⚠️ The proxy's honest limit, stated again because this tranche is the one that tests it: character count has predicted work four times and is still a proxy. `.11.9.1.3.2` is the largest child and also the one carrying a folded record from another surface, so it is the likeliest to want splitting again when it is read.
+
+###### SIGNOFF-REPAIR.11.9.1.3.1 — Tranche 4a: the eight records whose narrowest candidate is `SIGNOFF-REPAIR.9.3`
+
+- Opened: `pending` by `.11.9.1.3`'s split.
+- The eight records: `R-33-35-2`, `R-36-39-9`, `R-40-42-4`, `R-40-42-5`, `R-53-5`, `R-63-2`, `R-73-74-3`, `R-75-2` (2,081 characters).
+- Acceptance: as `.11.9.1.1`.
+- Status: `done`; REPAIR-0180. **26 clauses**: 22 `owned`, 2 `attach`, 2 `unowned`.
+
+🔴 **THIS LEAF CORRECTS A NUMBER THIS ACTIVITY ITSELF PUBLISHED, and the correction is about the activity's own reliability.** `RECONCILIATION.md`'s `R-80-82-1` clause 3 row — written by `.11.9.1.1.1` and attached to `SIGNOFF-REPAIR.8.1` — says `tests/policy.rs` accepts `"sha256:00"` against no claimed target **"in four places"**. `R-73-74-3` sent me to the same fixture, so I counted: the literal `"target_digest": "sha256:00"` appears **SEVEN** times, in **SEVEN DISTINCT test functions**, one each.
+
+- ⛔ **And the corpus did not move.** `git diff --stat b227ce8 HEAD -- crates/reasonbraid-server/tests/policy.rs` is EMPTY and `git show b227ce8:…/policy.rs | grep -c` returns **7**. The number was wrong when it was written, in a ledger whose entire purpose is that its rows re-derive. ⭐ The finding is STRONGER than published, not weaker — seven independent tests encode the unbound verdict digest, not four places in some.
+- ⚠️ `docs/CLAIM_VERIFICATION.md` leg 1 is re-derivation and this is what it is for. The superseded "four places" is named here and corrected in the row and in `.8.1`'s attached block, rather than edited into agreement.
+- ⚠️ The lesson is `.11.4.5.2`'s and it now has an instance inside the instrument built to apply it: **a count written while reading is not a count**. Every number in a ledger row should come from a command.
+
+🔴 **Any enrolled principal can act as any authority whose grant id they know.** `corrections.rs::authority_holds(pool, grant_id)` takes the grant ID AND NOTHING ELSE: it asks only `WHERE grant_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now())`. It never receives the caller, the action, the selector, the boundary, the publication, or `valid_from`. The endpoint above it checks enrolment alone. ⛔ So a correction — a suspension, a retraction, a waiver — is recorded citing an authority the caller does not hold, and the error type the module reaches for when the grant is missing is already called `GhostAuthority`. ⚠️ `deployments.rs` repeats the shape for `owning_authority`.
+
+🔴 **No second review can EVER be scheduled for a (publication, trigger) pair, and the cause is two lines apart.** `reviews::schedule_reviews` builds `review_id = format!("rev_{publication_id}_{trigger}")` — deterministic — and `migrations/0045_policy_reviews.sql:12` makes `review_id` the PRIMARY KEY. The dedupe skips a pair whose review is still `due`; once it is `done` the skip no longer applies, the INSERT collides with the existing primary key, and **`if inserted.is_ok()`** discards the error. ⭐ `SIGNOFF-REPAIR.9.3`'s goal line already says "permit subsequent reviews after completed occurrences" — this leaf does not discover the requirement, it locates the cause. ⚠️ The same `is_ok()` means a total storage failure returns `Ok(vec![])` — a successful empty schedule.
+
+🔴 **`rb-server` migrates the database BEFORE it validates the profile it refuses to boot without.** `sqlx::migrate!("../../migrations").run(&pool).await?` is the line before `SecretStore::resolve(&args.secret_store_profile)`, whose own comment says "an undeclared profile refuses the boot — never a silent fallback". The refusal is real and it arrives after the schema has already been changed. ⛔ And `--host` has `default_value = "127.0.0.1"` with no gate at all: `--host 0.0.0.0` binds every interface while the startup line still prints "(Phase 0 dev profile)". New owner `SIGNOFF-REPAIR.11.12`.
+
+⚠️ **Two fixtures declare digests bound to nothing, and one of them is the deployment path's own control.** `deployments::assign` validates `is_sha256_hex(&input.desired_digest)` — the SHAPE — and compares it to no publication projection; `policy.rs:2724` supplies `sha256:` followed by sixty-four `a`s and asserts 200. `mark_publication_effective` takes `git_object_ids` from the body under enrolment-only authorization and marks the publication effective without looking for those objects anywhere. ⭐ `SIGNOFF-REPAIR.9.2`'s goal line says "reject fabricated effective Git IDs" verbatim, and `R-73-74-3`'s own words are the right framing: this PROVES the route bypasses real publish verification rather than merely lacking it.
+
+⚠️ **A test comment claims a measurement the test does not make.** `command_api.rs`'s `the_metrics_surface_counts_match_the_records` is headed "MEASURED: the denial counter's delta matches the new denied authorization rows, **the replay counter's delta matches the replayed command**". It performs the replay and asserts `replayed == true`; the only `delta(…)` assertion in the test is `delta("authorization_denials")`. There is no replay-counter assertion.
+
+- **REPRODUCE / ROOT CAUSE, NO REGRESSION and LOCKSTEP** are in the commit acceptance below. No product code, schema, test or script changed.
+- Commit: `REASONBRAID-REPAIR-0180 (leaf SIGNOFF-REPAIR.11.9.1.3.1): reconcile tranche 4a, and correct a number this activity published`.
+
+###### SIGNOFF-REPAIR.11.9.1.3.2 — Tranche 4b: the records whose narrowest candidate is `SIGNOFF-REPAIR.3.4`, plus the `.3.5` singleton
+
+- Opened: `pending` by `.11.9.1.3`'s split.
+- The eight records: `R-36-39-3`, `R-36-39-6`, `R-43-4`, `R-44-45-4`, `R-59-1`, `R-61-62-2`, `R-76-77-3`, plus the folded `R-40-42-3` (2,923 characters — the largest child, and the one carrying the declared deviation).
+- ⚠️ `MEMORY.md`'s standing warning applies directly: **DELEGATION IS ONE HOP DEEP** — do not "fix" `delegable`/`max_delegation_depth` nor read a chain into the envelope. `.3.4` is the delegation leaf and several of these records will look like they ask for it.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.9.1.3.3 — Tranche 4c: the six records whose narrowest candidate is `SIGNOFF-REPAIR.8.2`
+
+- Opened: `pending` by `.11.9.1.3`'s split.
+- The six records: `R-31-32-4`, `R-33-35-1`, `R-36-39-2`, `R-40-42-7`, `R-51-3`, `R-86-1` (2,317 characters; `R-86-1` alone is 587 and names ten candidate leaves).
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.9.1.3.4 — Tranche 4d: the four records whose narrowest candidate is `SIGNOFF-REPAIR.11.3`
+
+- Opened: `pending` by `.11.9.1.3`'s split.
+- The four records: `R-56-57-3`, `R-58-3`, `R-59-2`, `R-89-1` (1,734 characters; `R-89-1` alone is 935).
+- ⚠️ `R-58-3` and `R-59-2` are two of the six records dispositioned in the `#### Historical census dispositions for .2.2` table — read those rows before classifying, exactly as `R-90-1` needed in tranche 2c.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.9.1.3.5 — Tranche 4e: the four records whose narrowest candidate is `SIGNOFF-REPAIR.7.1`
+
+- Opened: `pending` by `.11.9.1.3`'s split.
+- The four records: `R-43-1`, `R-53-1`, `R-54-2`, `R-78-1` (1,464 characters).
+- ⚠️ `.7.1` already carries THREE `attach` clauses from `R-53-4` and `R-31-32-2`/`R-53-3`/`R-78-2`, and `R-78-1` is a sibling of one of them — read those rows first.
+- Acceptance: as `.11.9.1.1`.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.11.9.1.4 — Tranche 5: narrowest candidate named by sixteen to eighteen records
@@ -3208,6 +3284,18 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 
 - promotion: declined. The rule exercised — a domain refusal and a storage failure are different families and the type should say so — is already stated in `site_authority/registry.rs`'s own source and was the thing this leaf applied rather than discovered.
 - Commit: `REASONBRAID-REPAIR-0172 (leaf SIGNOFF-REPAIR.11.10): a failed read is a storage failure, not a verdict about the site`.
+
+### SIGNOFF-REPAIR.11.12 — `rb-server` acts on its configuration before it validates it
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.9.1.3.1`'s clause reconciliation of `R-36-39-9`, which no leaf had cited. Two clauses, one shape: the boot sequence commits to a decision before checking whether it is allowed to make it.
+- **The finding, measured at the source.** `crates/reasonbraid-server/src/bin/rb-server.rs`:
+  - `sqlx::migrate!("../../migrations").run(&pool).await?` runs on the line BEFORE `secret_store::SecretStore::resolve(&args.secret_store_profile)`, whose own comment states the contract: *"an undeclared profile refuses the boot — never a silent fallback"*. The refusal is real and it arrives after the schema has already been migrated. A typo'd profile against the wrong database leaves that database changed and no service running.
+  - `host` is `#[arg(long, default_value = "127.0.0.1")]` with NO gate: `--host 0.0.0.0` binds every interface, and the startup line still prints `rb-server listening on http://{addr} (Phase 0 dev profile)`. The declared profile and the bind address are independent.
+- ROUTING EVIDENCE: this is `rb-server`'s startup sequence, which no existing leaf's goal line reaches. `.9.3` owns deployment/correction/review lifecycle, `.11.3` owns the operational SCRIPTS, `.11.2` owns the doctrine gates and the bootstrap template, and `.2.1` (done) owned the repository-local execution environment. What was measured is the ORDER of two statements in `main` and the absence of any predicate on one argument; what would make the routing wrong is if the migration were idempotent-and-harmless in every deployment profile, which is a claim about profiles this project has not qualified (G6/G7 are open).
+- ⚠️ **Neither half is the same defect as the other, and the leaf should not merge them.** The ordering is a fail-closed PURITY question — a refusal that has already acted. The bind gate is an exposure question whose answer may legitimately be "documented, not enforced, until the Internet profile exists". Decide them separately.
+- Owns: reordering the boot so every declared-configuration refusal precedes every mutation, and DECIDING whether the bind address is gated on the declared profile or explicitly documented as ungated. ⛔ Do not silently widen the dev profile's contract in either direction.
+- Acceptance: a control that boots with an undeclared profile against a database at a known migration version and proves the version UNCHANGED; and, for the bind, either a control that refuses a non-loopback bind under the dev profile or a recorded decision naming where the limit is published. ⚠️ `docs/book/src/` already carries the deployment limits the Phase-7 gate recorded — align with them rather than restating them.
+- Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.11.11 — An `attach` row's next action is the one thing the ledger cannot check
 
@@ -4206,7 +4294,8 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.9.1.3` | `pending` | tranche 4, the records whose narrowest candidate is named by ten or eleven. ⚠️ **SIZE IT FIRST** — `.11.9.1.1` and `.11.9.1.2` each measured the body characters before splitting, and both splits fell on the record's own narrowest candidate rather than on a size target. ⭐ Tranche 3c measured that the narrowest CANDIDATE was the OWNER of only 1 of its 5 records, so read each record's source before assuming the ranking names its leaf |
+| 1 | `SIGNOFF-REPAIR.11.9.1.3.2` | `pending` | tranche 4b, the largest child at 2,923 characters and the one carrying the declared deviation (the folded `.3.5` singleton). ⚠️ `MEMORY.md`'s standing warning applies directly — **DELEGATION IS ONE HOP DEEP**; `.3.4` is the delegation leaf and several of these records will look like they ask to widen it |
+| 1b | `SIGNOFF-REPAIR.11.12` | `pending` | `rb-server` migrates the database BEFORE validating the profile it refuses to boot without, and `--host` is ungated — opened by tranche 4a, and the two halves must be decided separately |
 | 1b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -4214,7 +4303,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **43 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **47 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -4282,6 +4371,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.11.9.1.2` / `.2.1`: `REASONBRAID-REPAIR-0177 (leaf SIGNOFF-REPAIR.11.9.1.2.1): reconcile tranche 3a, and find one mechanism at three sites`.
 - `SIGNOFF-REPAIR.11.9.1.2.2`: `REASONBRAID-REPAIR-0178 (leaf SIGNOFF-REPAIR.11.9.1.2.2): reconcile tranche 3b, and read the sentence at the top of the MCP module`.
 - `SIGNOFF-REPAIR.11.9.1.2.3`: `REASONBRAID-REPAIR-0179 (leaf SIGNOFF-REPAIR.11.9.1.2.3): reconcile tranche 3c, and measure a deadlock as a ratio`.
+- `SIGNOFF-REPAIR.11.9.1.3` / `.3.1`: `REASONBRAID-REPAIR-0180 (leaf SIGNOFF-REPAIR.11.9.1.3.1): reconcile tranche 4a, and correct a number this activity published`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.
@@ -5239,6 +5329,18 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh node_inbox node_channel node_work node_replacement` rc=0 with **4 suites, 55 tests, zero failures** (8 + 37 + 8 + 2), `pg-tests: stopped and removed target/pg-tests/run-q0vsfh8k`. ⭐ FALSIFIED in the strongest form available: the control was written BEFORE the repair, so the pre-repair run IS the neutralized build — nothing reverted, nothing reconstructed, and therefore none of the "broke a different thing" hazard `.4.2.8` was burned by. The control asserts the absence twice (empty row list AND no victim command id anywhere in the response text) and carries a positive arm — the OWNING administrator still reads both rows — so a fix that merely emptied the result fails it.
 - [x] **NO REGRESSION** — `cargo clippy -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0 in 3m23s; `cargo fmt --all -- --check` rc=0; `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks; `mdbook build` and both book checks rc=0. The three sibling suites are the regression evidence: they drive the inbox state this predicate now filters and are unchanged.
 - [x] **LOCKSTEP** — `crates/reasonbraid-server/src/api.rs`, `crates/reasonbraid-server/tests/node_inbox.rs`, task tree (`.3.5.3` closed, commit log, frontier), `docs/tasks/TASK_TREE.md`, `docs/book/src/node-channel.md`, `docs/book/src/cli.md`, `docs/book/src/authority.md`, `docs/book/src/qualification-review.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⛔ No gate registered and no migration: the column existed; only the query changed.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.9.1.3.1
+
+- [x] **REPRODUCE / ISSUE** — tranche 4 measured at **10,519 characters** across 30 records, **4.12x** tranche 1's proved-executable 2,554 and the largest this activity has faced. Split into five children on each record's own narrowest candidate, with ONE declared deviation: the `.3.5` singleton (423 characters, less than a third of the smallest size ever executed) folded into the `.3.4` child, its sibling in the same tree family.
+- [x] **ROOT CAUSE (WHY + WHERE)** — 🔴 **`corrections.rs::authority_holds(pool, grant_id)` takes the grant ID and nothing else**: `WHERE grant_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now())`, with no caller, action, selector, boundary, publication or `valid_from`, behind an endpoint that admits on enrolment alone — so any enrolled principal records a correction citing any active grant they can name. 🔴 **No second review can ever be scheduled for a (publication, trigger) pair**: `review_id` is `format!("rev_{pub}_{trigger}")`, `migrations/0045_policy_reviews.sql:12` makes it the PRIMARY KEY, and `if inserted.is_ok()` discards the collision. 🔴 **`rb-server` migrates the database on the line before it validates the profile it refuses to boot without**, and `--host` carries no predicate at all.
+- [x] **CORRECTED — a number THIS ACTIVITY published** — `RECONCILIATION.md`'s `R-80-82-1` clause 3 row and `.8.1`'s attached block both said `tests/policy.rs` accepts `"sha256:00"` "in four places". Measured: the literal appears **7** times in **7 distinct test functions**. ⛔ And the corpus did not move — `git diff --stat b227ce8 HEAD -- crates/reasonbraid-server/tests/policy.rs` is EMPTY and `git show b227ce8:… | grep -c` returns 7 — so the number was **wrong when written**, in a ledger whose purpose is that its rows re-derive. ⭐ The finding is stronger than published, not weaker. Both sites are corrected and the superseded figure is named.
+- [x] **FIX** — `RECONCILIATION.md` gains Tranche 4a: **26 clause rows**, 22 `owned`, 2 `attach`, **2 `unowned`**. Both `attach` clauses written into `.9.3` in this commit. The two `unowned` clauses open `SIGNOFF-REPAIR.11.12`, whose own text insists the two halves be decided separately.
+- [x] **ADDRESSED (verified)** — `--classified` -> `ledger clause rows: 204 / handled 22 / owned 133 / attach 40 / unowned 6 / declined 2 / none 1`, and `all 40 \`attach\` clauses are named by the leaf that owns them`, rc=0. `--self-test` -> `49 controls pass`, rc=0. ⭐ `ATTACH-LANDED` fired on this leaf's two unattached clauses before they were written — the FOURTH consecutive tranche it has caught.
+- [x] **The fifth two-records-one-finding pair** — `R-53-5` clause 1 and `R-75-1` clause 1 (tranche 3a) are both "one waiver satisfies a trigger named repeated". A record-level ledger would have counted it twice and still let it fall.
+- [x] **NO REGRESSION** — no product code, schema, test or script changed. `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks, rc=0. `mdbook build docs/book` rc=0. `git diff --check` rc=0.
+- [x] **LOCKSTEP** — `docs/tasks/SIGNOFF-REPAIR.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `docs/TASK_TREE.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
+- promotion: promoted. **"A count written while reading is not a count"** — every number in a durable record comes from a command, or it is a guess wearing a number's clothes. `.11.4.5.2` established classify-before-publishing; this is the narrower and sharper case, with an instance inside the instrument built to apply it. Recorded in `TOOLBOX.md`.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.9.1.2.3
 

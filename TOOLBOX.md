@@ -157,6 +157,32 @@ So: before asserting what a markup rule does, render one minimal example with th
 own toolchain and read the output. If the project ships a renderer, it is already the
 instrument.
 
+### A count written while reading is not a count
+
+`TOOLBOX.md` already says to measure a population before proposing a rule over it. This
+is the narrower case and it is easier to miss: a number that appears INSIDE a finding,
+written down while reading the code, because it felt like an observation rather than a
+claim.
+
+`SIGNOFF-REPAIR.11.9.1.1.1` recorded that a fixture accepts an unbound verdict digest
+"in four places". Two tranches later a different record sent a different reader to the
+same file, who ran `grep -c`: **seven**, in **seven distinct test functions**. And the
+corpus had not moved — `git diff --stat` between the two commits over that file is empty,
+and the count at the earlier commit was already seven. The number was wrong when written.
+
+⚠️ The part worth keeping is where it happened: inside the clause ledger, the instrument
+this project built specifically so findings would be re-derivable. Nothing about building
+a careful mechanism protects the numbers you type into it.
+
+So: **every number in a durable record comes from a command, and the command goes in the
+record beside it.** `grep -c`, `wc -l`, a `--json` field, a one-line script. If you cannot
+name the command that produced a figure, it is an impression with a digit in front of it.
+
+⭐ The correction was also the cheapest possible: one `grep -c` and one `git show` at the
+original commit, which together distinguish "the corpus grew" from "the number was
+wrong". Ask that second question — a stale number and a false number need different
+repairs, and only one of them says something about the author.
+
 ### Prefer a ratio, a single-hit grep, or a two-site contrast to a reading
 
 Reading a function and reporting what it does is the weakest form of a source finding:

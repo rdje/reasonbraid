@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — My own commit broke a link, and the narrow census told me it was rare
+
+- I noticed `KNOWLEDGE_MAP.md` in a commit I had not staged it into, checked why, and found the hook auto-stages it. That was the easy half. The hard half was that the map it staged named a file the commit did not carry — my commit shipped a dangling link, and every gate was green.
+- **The first census was too narrow and I nearly published its number.** I scanned `docs/knowledge/` because that was where my instance lived, got 2, and was about to write "two in all of history". The generator lists *three* directories. Scoping it whole gave 3, and the extra one is a decision record — a family my scan could not have seen. `MEMORY.md` has carried "SCOPE A CENSUS WHOLE" since `.11.2.2`, and I had read it this session.
+- **Then the fix itself nearly shipped 54 broken links.** `ls docs/tasks/*.md` and `git ls-files -- 'docs/tasks/*.md'` look like the same query. They are not: git's wildcard crosses `/` unless you ask for `:(glob)`. 15 files became 69, and since the link text is a `basename`, the 54 extras would all have pointed at nothing. The only reason it did not land is that I diffed the new render against the committed map instead of just running the gate — the gate would have gone green either way, because it compares the render to a file the hook had already overwritten with the same wrong render.
+- **That last point is the one worth keeping.** A checker that regenerates a derived file and compares it to the regenerated copy cannot detect a wrong generator. It is the same shape as this session's earlier leaf, where a self-test written from the same reading as the code could not disagree with it. Twice in one session, two different subsystems, one failure mode: the control and the thing it checks sharing an origin.
+- I kept the parent leaf's stale status line as a visible correction rather than a silent edit. It had said "child `.2` is pending" through two closures — a status summarised in a parent is a second copy of a fact the children own, which is precisely what `.11.4.5.3` gated for the tree index one heading below it.
+
 ## 2026-09-14 — My checker and my self-test were the same opinion, twice
 
 - I have written the sentence "the self-test proves it" often enough that it stopped being a claim and became a reflex. This leaf is the counterexample, and it is a clean one: the parser and its self-test were written from one reading of the GFM table rule, so the test could only ever confirm the implementation. Eight arms, all green, for as long as the gate has existed — and the predicate was wrong.

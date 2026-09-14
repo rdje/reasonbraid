@@ -5,10 +5,74 @@
 # The pre-commit hook redirects this into KNOWLEDGE_MAP.md and stages it, so map-drift is
 # structurally impossible. check_knowledge_map.sh diffs a fresh render against the committed
 # file to catch any out-of-band edit (e.g. in CI, where the hook did not run).
+#
+# ⛔ SOURCES ARE READ FROM THE INDEX, NOT THE WORKING TREE (SIGNOFF-REPAIR.11.4.5.4).
+#   The hook stages what this prints, so the map is committed against the INDEX; enumerating
+#   with `ls` read the WORKING TREE, and an UNTRACKED file in docs/tasks, docs/decisions or
+#   docs/knowledge therefore entered the committed map as a link the commit does not contain.
+#   Measured: 3 of the 139 commits touching the map carry such a link, two of them changelog
+#   rotations — a rotation MUST be its own commit (SIGNOFF-REPAIR.11.4.1.2), so the spine's
+#   correct sequencing rule is precisely what exposed the wrong source. `git ls-files` lists
+#   index entries (a staged-new file included, an untracked one not), and `git show :<path>`
+#   ⛔ The pathspec MUST carry `:(glob)`: git's default wildcard matching crosses `/`, so a
+#   plain `docs/tasks/*.md` returns 69 paths where the shell's `ls` returns 15 — it reaches
+#   into `docs/tasks/artifacts/`, and since the link is built from `basename`, every one of
+#   those 54 extra entries would have been published as a link to a file that is not there.
+#   `:(glob)` is fnmatch with FNM_PATHNAME, where a wildcard does not match a separator.
+#   reads the content that is about to be committed — which also stops an UNSTAGED edit to an
+#   `answers:` line being published into the map. Removing the failure mode rather than
+#   detecting it is `SIGNOFF-REPAIR.11.4.5.3`'s ruling.
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 MAP="$ROOT/KNOWLEDGE_MAP.md"
 if [ "${1:-}" = "--print-map-path" ]; then echo "$MAP"; exit 0; fi
+
+# --self-test: prove the render follows the INDEX, in a throwaway repository.
+# ⛔ Scratch is REPOSITORY-derived, never ambient (STORAGE-LOCALITY / §13), and mktemp
+#   names it by EXCLUSIVE CREATION rather than by a clock.
+if [ "${1:-}" = "--self-test" ]; then
+  self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  scratch="$ROOT/target/doctrine_scratch"; mkdir -p "$scratch"
+  tmp="$(mktemp -d "$scratch/gen-knowledge-map.XXXXXX")" || exit 1
+  trap 'rm -rf "$tmp"' EXIT
+  fails=0
+  ok() { echo "  arm ok  $1"; }
+  no() { echo "GEN-KNOWLEDGE-MAP self-test: MISS $1" >&2; fails=1; }
+  (
+    cd "$tmp" || exit 1
+    git init -q . && git config user.email t@t && git config user.name t
+    mkdir -p docs/knowledge docs/tasks/artifacts
+    printf 'answers: staged question\n\n# S\n' > docs/knowledge/staged.md
+    printf 'answers: untracked question\n\n# U\n' > docs/knowledge/untracked.md
+    printf '# nested\n' > docs/tasks/artifacts/nested.md
+    printf '# real tree\n' > docs/tasks/REAL.md
+    git add docs/knowledge/staged.md docs/tasks/REAL.md docs/tasks/artifacts/nested.md
+    out="$("$self")"
+    printf '%s' "$out" | grep -q 'docs/knowledge/staged.md' || echo "MISS:staged-absent"
+    printf '%s' "$out" | grep -q 'docs/knowledge/untracked.md' && echo "MISS:untracked-present"
+    printf '%s' "$out" | grep -q 'staged question' || echo "MISS:answers-missing"
+    printf '%s' "$out" | grep -q 'nested.md' && echo "MISS:nested-present"
+    printf '%s' "$out" | grep -q 'docs/tasks/REAL.md' || echo "MISS:real-absent"
+    # an UNSTAGED edit to answers: must not reach the render
+    printf 'answers: edited but unstaged\n\n# S\n' > docs/knowledge/staged.md
+    out2="$("$self")"
+    printf '%s' "$out2" | grep -q 'edited but unstaged' && echo "MISS:unstaged-edit-published"
+    printf '%s' "$out2" | grep -q 'staged question' || echo "MISS:index-answers-lost"
+    true
+  ) > "$tmp/result.txt" 2>/dev/null
+  for arm in "a staged source IS rendered:MISS:staged-absent" \
+             "an UNTRACKED source is NOT rendered:MISS:untracked-present" \
+             "its answers: line comes through:MISS:answers-missing" \
+             "a NESTED path is not matched by :(glob):MISS:nested-present" \
+             "a real top-level tree file IS rendered:MISS:real-absent" \
+             "an UNSTAGED answers: edit is not published:MISS:unstaged-edit-published" \
+             "the INDEX answers: text is used instead:MISS:index-answers-lost"; do
+    name="${arm%%:MISS:*}"; tok="MISS:${arm##*:MISS:}"
+    if grep -qx "$tok" "$tmp/result.txt" 2>/dev/null; then no "$name"; else ok "$name"; fi
+  done
+  [ "$fails" = 0 ] && echo "gen_knowledge_map --self-test: 7/7 arms" || exit 1
+  exit 0
+fi
 cd "$ROOT"
 
 cat <<'HDR'
@@ -29,7 +93,7 @@ echo
 echo "## Active task-trees"
 echo
 found=0
-for f in $(ls docs/tasks/*.md 2>/dev/null | LC_ALL=C sort); do
+for f in $(git ls-files -- ':(glob)docs/tasks/*.md' 2>/dev/null | LC_ALL=C sort); do
   b="$(basename "$f")"; [ "$b" = "TEMPLATE.md" ] && continue
   echo "- [\`$b\`](docs/tasks/$b)"; found=1
 done
@@ -39,7 +103,7 @@ echo
 echo "## Decision records"
 echo
 found=0
-for f in $(ls docs/decisions/*.md 2>/dev/null | LC_ALL=C sort); do
+for f in $(git ls-files -- ':(glob)docs/decisions/*.md' 2>/dev/null | LC_ALL=C sort); do
   b="$(basename "$f")"; case "$b" in INDEX.md|TEMPLATE.md) continue;; esac
   echo "- [\`$b\`](docs/decisions/$b)"; found=1
 done
@@ -53,9 +117,9 @@ echo
 echo "## Promoted lessons"
 echo
 found=0
-for f in $(ls docs/knowledge/*.md 2>/dev/null | LC_ALL=C sort); do
+for f in $(git ls-files -- ':(glob)docs/knowledge/*.md' 2>/dev/null | LC_ALL=C sort); do
   b="$(basename "$f")"; case "$b" in INDEX.md|TEMPLATE.md) continue;; esac
-  answers="$(sed -n 's/^answers: *//p' "$f" | head -1)"
+  answers="$(git show ":$f" 2>/dev/null | sed -n 's/^answers: *//p' | head -1)"
   if [ -n "$answers" ]; then
     echo "- [\`$b\`](docs/knowledge/$b) — $answers"
   else

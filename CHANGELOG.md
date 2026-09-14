@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Graded on the question, and one claim failed (`SIGNOFF-REPAIR.11.9.1.1`, `.11.11` opened)
+
+- The director asked whether I trusted the session's findings. The claim standard treats that as the grading event and its pass condition is answering yes in one word, with no keyboard. I could not, so I re-derived twelve published claims by routes different from the ones that produced them.
+- **Eleven held.** The certification count (3 of 6 invariants asserted per run) re-derives from the arm structure — three early-return pushes are mutually exclusive. The reconciler never reads `git.effective`: a grep for the field finds only comments and its declaration. `filter_profile` emits exactly fourteen fields, neither of the two the record named. `regions::route` still has no production caller. The sizing re-derives at 2,554 / 7,192 / 2.82×. All **15** `attach` rows are present in their owner leaves — I did not repeat tranche 1's mistake. The first `declined` row holds: the module carries exactly one wire-absence claim and it is about hidden fields.
+- 🔴 **One failed, and it was mine.** The eight uncited-but-named records were published with LINE NUMBERS. Two of the eight were stale before the session ended, having moved as this tree grew above them. A line number into a growing file is the `LIVE-DOC-CURRENCY` failure in another costume: true when written, false the next commit, and nothing checks it. All eight are now located by the heading they sit under, and the superseded form is named rather than quietly replaced.
+- ⚠️ A second, softer correction: the reproduction for that number reports **13** today rather than 8, because a `## Commit acceptance` heading is not a leaf heading either and five of this session's own blocks name records. The 8 is a true statement about the population at leaf-open, not a stable quantity — now said so.
+- The grading also produced a tracked gate candidate rather than a note. `SIGNOFF-REPAIR.11.11`: `attach` is the only ledger state whose next action is a sentence in someone else's leaf, and `--classified` cannot see whether it was written. Censused before proposing — 15 rows, **0 breaching today, 3 of 3 at tranche 1's close** — which is the shape this project allows a gate to have.
+- Validation: 18 doctrines green, `mdbook` rc=0. Documentation only.
+
 ## 2026-09-14 — A host claim is checked where a human typed it (`SIGNOFF-REPAIR.4.1.6`)
 
 - Reproduced through the supported routes: a non-ASCII host claim was accepted at token issuance and panicked when the node redeemed it. The node received a dropped connection rather than an answer; the server kept serving; no node row was written; and the token was left unconsumed.

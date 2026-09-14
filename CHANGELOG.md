@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-14 — `ATTACH-LANDED`: gating the one ledger state that cannot check itself (`SIGNOFF-REPAIR.11.11`)
+
+- **The reconciliation ledger's `attach` state is the only one of six whose next action is not "none"** — it requires a sentence written into a leaf the classifier does not own — and every other property of a row is visible in the row itself. `--classified` could therefore validate everything except the thing that mattered.
+- **Registered as `ATTACH-LANDED`**, the registry's 24th named doctrine (the enforcer's top-level count stays 18; it runs inside `PROJECT-SPECIFIC`, 7 sub-checks -> 8): an `attach` clause whose owning leaf's own section does not NAME its record now blocks the commit.
+- **The leaf had published a prediction before any instrument could test it, so the census was reproduced at four points by two independent routes** — the new refusal copied into a detached worktree at each tranche's closing commit, and a throwaway re-implementation over `git show`. Both report **3 breaching of 3** at tranche 1's close (`5862837`), then **0 of 7**, **0 of 15** and **0 of 26**. The three named are exactly the set found by hand: `R-53-4` clauses 2 and 3 on `.7.1`, `R-63-1` clause 4 on `.11.4`.
+- **Zero today, every historical instance caught, one bounded file** — the `REASON-CODE-DOC` shape. `SIGNOFF-REPAIR.11.9`'s rejected gate would have fired on 114 of 131. The same rule family, measured twice, decided oppositely both times.
+- The rule is the record id in the owner's own section, never a phrase, and it does not require the literal words `ATTACHED CLAUSE`. The id carries a right-hand boundary because `R-53-4` is a prefix of `R-53-41`.
+- Falsified twice and observed red both times, through the instrument and through the registered enforcer; both restored to rc=0.
+- Validation: `--self-test` 49 controls (42 before), `--classified` 110 rows clean, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema or test changed.
+
 ## 2026-09-14 — Ask the renderer, not the specification (`SIGNOFF-REPAIR.11.9.1.1.3`, tranche 2 complete)
 
 - **Tranche 2c reconciled the last four source-census records — `R-76-77-2`, `R-87-1`, `R-88-1`, `R-90-1` — into 38 clause rows**: 21 `owned`, 11 `attach`, 6 `handled`, **0 `unowned`**. Tranche 2 is complete at 14 records and 84 clauses.

@@ -192,8 +192,44 @@ def ledger() -> list[dict]:
     return out
 
 
-def ledger_breaches(rows: list[dict], known_records: set[str], known_leaves: set[str]) -> list[str]:
-    """Every way a ledger row can be wrong, named rather than counted."""
+# ⛔ A record id is matched with a right-hand boundary, never as a bare
+# substring: `R-53-4` is a prefix of `R-53-41`, and a leaf naming the second
+# would silently satisfy the first.
+def _names_record(text: str, record: str) -> bool:
+    """Does this text name this record id, as the id and not as a prefix?"""
+    return re.search(re.escape(record) + r"(?![0-9-])", text) is not None
+
+
+def ledger_breaches(
+    rows: list[dict],
+    known_records: set[str],
+    known_leaves: set[str],
+    sections: dict[str, str] | None = None,
+) -> list[str]:
+    """Every way a ledger row can be wrong, named rather than counted.
+
+    🔴 `attach` is the one state whose Next action is not "none": it requires a
+    SENTENCE to be written into a leaf the classifier does not own, and every
+    other property of a row is visible in the row itself. `SIGNOFF-REPAIR.11.9`'s
+    whole mechanism — a clause that an owning leaf's next census will not read —
+    was therefore live INSIDE the instrument built to stop it, and tranche 1
+    recorded three `attach` rows and performed none of the three attachments.
+
+    The rule is stated over the OWNER'S SECTION, not over a phrase: matching
+    prose would have to guess at paraphrase, which is the failure mode
+    `SIGNOFF-REPAIR.11.6` measures. It does NOT require the words
+    "ATTACHED CLAUSE" — that is a formatting convention, not a contract.
+
+    Measured before registering (`SIGNOFF-REPAIR.11.11`): at tranche 1's close
+    (`5862837`) it fires on 3 of 3; at every tranche close since, and on the
+    live ledger today, it fires on 0 of 7, 0 of 15 and 0 of 26. That is the
+    `REASON-CODE-DOC` shape — it catches the NEXT drift rather than presenting
+    a backlog people learn to waive.
+
+    `sections` is optional so the synthetic parser controls can omit it; when it
+    is None the attach rule is not evaluated, because "no sections supplied" is
+    not the same claim as "the owner's section is empty".
+    """
     out = []
     seen: set[tuple[str, int]] = set()
     for r in rows:
@@ -209,6 +245,14 @@ def ledger_breaches(rows: list[dict], known_records: set[str], known_leaves: set
             out.append(f"{where}: state {r['state']!r} names no owner")
         elif r["owner"] not in known_leaves:
             out.append(f"{where}: owner {r['owner']} is not a leaf of any tracked tree")
+        elif r["state"] == "attach" and sections is not None:
+            if not _names_record(sections.get(r["owner"], ""), r["record"]):
+                out.append(
+                    f"{where}: {r['record']} clause {r['clause']} is `attach` on "
+                    f"{r['owner']}, whose own section does not name {r['record']} — "
+                    f"the clause is classified and NOT attached, so that leaf's next "
+                    f"census will drop it"
+                )
         key = (r["record"], r["clause"])
         if key in seen:
             out.append(f"{where}: {r['record']} clause {r['clause']} appears twice")
@@ -295,9 +339,10 @@ def run(mode: str) -> int:
     if mode == "classified":
         pending = uncited_records(rows)
         known_records = {r["id"] for r in recs}
-        known_leaves = set(leaf_sections())
+        secs = leaf_sections()
+        known_leaves = set(secs)
         led = ledger()
-        breaches = ledger_breaches(led, known_records, known_leaves)
+        breaches = ledger_breaches(led, known_records, known_leaves, secs)
         done = {r["record"] for r in led}
         remaining = [r for r in pending if r not in done]
         counts: dict[str, int] = {}
@@ -324,7 +369,12 @@ def run(mode: str) -> int:
                 print(f"  {b}")
             print()
             return 1
-        print("ledger: every row names a real record, a state in the closed set and a real owner")
+        n_attach = counts.get("attach", 0)
+        print(
+            "ledger: every row names a real record, a state in the closed set and a "
+            f"real owner, and all {n_attach} `attach` clauses are named by the leaf "
+            "that owns them"
+        )
         return 0
 
     if mode == "json":
@@ -488,6 +538,41 @@ def self_test() -> int:
            parse_one("| `R-1-2` | 1 | handled | `A.1.2` | b |")]
     check("ledger-rejects-duplicate-clause", len(ledger_breaches(dup, known_r, known_l)), 1)
 
+    # ── the attach-landing rule (`SIGNOFF-REPAIR.11.11`) ────────────────────
+    # ⛔ Every arm here is fired in BOTH directions, because this refusal is the
+    # one that reads a document the row does not contain: a rule that only ever
+    # passes is not known to refuse anything.
+    attach_row = [parse_one("| `R-1-2` | 1 | attach | `A.1.2` | the clause |")]
+    def attach_breaches(secs):
+        return ledger_breaches(attach_row, known_r | {"R-1-20"}, known_l, secs)
+
+    check("ledger-attach-refuses-a-leaf-that-does-not-name-the-record",
+          len(attach_breaches({"A.1.2": "### A.1.2 — a leaf that says nothing about it\n"})), 1)
+    check("ledger-attach-accepts-a-leaf-that-names-the-record",
+          attach_breaches({"A.1.2": "### A.1.2 —\n- ATTACHED CLAUSE (`R-1-2` clause 1): the sentence.\n"}), [])
+    # ⭐ The rule is about the RECORD ID, not the formatting convention: a leaf
+    # that names the record in ordinary prose satisfies it (`.11.11` forbids
+    # requiring the literal words "ATTACHED CLAUSE").
+    check("ledger-attach-does-not-require-the-formatting-convention",
+          attach_breaches({"A.1.2": "### A.1.2 —\n- the scheme column R-1-2 names is caller-declared.\n"}), [])
+    # 🔴 The boundary control: `R-1-2` is a PREFIX of `R-1-20`, and a leaf that
+    # attached the second must not be read as having attached the first.
+    check("ledger-attach-is-not-satisfied-by-a-longer-record-id",
+          len(attach_breaches({"A.1.2": "### A.1.2 —\n- ATTACHED CLAUSE (`R-1-20` clause 1).\n"})), 1)
+    # An owner with no section at all is a breach, not a pass — the absent
+    # section is exactly the case where nothing was written.
+    check("ledger-attach-refuses-an-owner-with-no-section",
+          len(attach_breaches({})), 1)
+    # Omitting the sections SKIPS the rule rather than failing it: "not supplied"
+    # is a different claim from "the owner's section is empty".
+    check("ledger-attach-is-skipped-when-no-sections-are-supplied",
+          ledger_breaches(attach_row, known_r, known_l), [])
+    # ⛔ And it is an ATTACH rule: every other state's next action is "none", so
+    # an `owned` row whose leaf has not yet written a word is not a breach.
+    check("ledger-attach-rule-does-not-touch-other-states",
+          ledger_breaches([parse_one("| `R-1-2` | 1 | owned | `A.1.2` | why |")],
+                          known_r, known_l, {"A.1.2": "### A.1.2 — silent\n"}), [])
+
     # The ranking, on a fixture whose answer is the OPPOSITE of the fan-out
     # ranking — which is the whole point of the measurement that chose it.
     rank_rows = [
@@ -512,13 +597,13 @@ def self_test() -> int:
     live_led = ledger()
     check("live-ledger-has-rows", len(live_led) > 0, True)
     check("live-ledger-is-clean",
-          ledger_breaches(live_led, {r["id"] for r in recs}, set(sections)), [])
+          ledger_breaches(live_led, {r["id"] for r in recs}, set(sections), sections), [])
 
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL {f}", file=sys.stderr)
         return 1
-    print("census_record_reconciliation --self-test: 42 controls pass")
+    print("census_record_reconciliation --self-test: 49 controls pass")
     return 0
 
 

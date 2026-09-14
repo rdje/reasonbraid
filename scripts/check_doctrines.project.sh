@@ -76,4 +76,19 @@ if ! python3 -B scripts/census_reason_codes.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every `attach` clause is NAMED by the leaf that owns it (`SIGNOFF-REPAIR.11.11`).
+# `attach` is the one ledger state whose Next action is not "none": it needs a
+# SENTENCE written into a leaf the classifier does not own, and every other
+# property of a row is visible in the row itself. Tranche 1 recorded three and
+# wrote none, so `SIGNOFF-REPAIR.11.9`'s own mechanism was live inside the
+# instrument built to stop it. ⭐ Measured before registering: 3 of 3 breaching at
+# tranche 1's close (`5862837`), and 0 of 7, 0 of 15 and 0 of 26 at every tranche
+# close since — the `REASON-CODE-DOC` shape, not the backlog shape `.11.9`
+# rejected. ⛔ The rule is the RECORD ID in the owner's own section, never a
+# phrase: matching prose would have to guess at paraphrase.
+if ! python3 -B scripts/census_record_reconciliation.py --classified >/dev/null 2>&1; then
+    python3 -B scripts/census_record_reconciliation.py --classified >&2
+    exit 1
+fi
+
 exit 0

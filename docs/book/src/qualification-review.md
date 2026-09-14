@@ -163,6 +163,17 @@ the surface but outside the list is invisible to a census driven by the goal
 line. The earlier parts' leaves state *properties*, which generalise. All eleven
 are now written into the leaves that own them.
 
+The reconciliation's own instrument gained a gate. One of its six clause
+states, `attach`, means *a leaf owns this surface but its text does not mention
+the clause, so its next census will drop it* — and it is the only state whose
+required next action is to write a sentence into a leaf the classifier does not
+own. Every other property of a ledger row can be checked from the row. That one
+could not, and tranche 1 recorded three such clauses and attached none of them.
+A refusal now blocks any commit whose `attach` row is not named by the leaf that
+owns it. Before registering it, the rule was run against each tranche's closing
+commit: it fires on all three historical instances and on none of the
+twenty-six rows standing today.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

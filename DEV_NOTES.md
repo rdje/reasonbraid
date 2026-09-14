@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — I had already written down what the gate would find
+
+- `SIGNOFF-REPAIR.11.11` was opened with a census in it: *3 of 3 breaching at tranche 1's close, 0 of 15 today.* That number was obtained by hand, by reading leaves. The acceptance I wrote for myself said to reproduce it before registering anything, and the temptation was to treat "I already counted it" as reproduction.
+- It is not. A hand count and an instrument can agree by accident, and the instrument is what ships. So: a detached worktree at each of the four tranche-closing commits, the new refusal copied in, run against that commit's own ledger and that commit's own trees. 3 / 0 / 0 / 0. Then the same four measured a second time by a throwaway re-implementation over `git show`, written before I touched the real script. Same answer.
+- **The part that would have embarrassed me is the part the second route protects.** If the instrument had a bug that made it pass everything, the live ledger would still read clean and I would have registered a gate that gates nothing. The only defence is a point in history where the answer is known to be non-zero — and the reason one exists is that tranche 1 actually failed, and was written down instead of quietly fixed.
+- **Boundary matching turned out to matter.** `R-53-4` is a prefix of `R-53-41`. A substring test would let a leaf that attached the longer record satisfy a row about the shorter one, forever, invisibly. One lookahead, one control, and the control is the half that will still be true in six months.
+- I made the `sections` argument optional, and skipping the rule when it is absent felt like a hole until I wrote the control that names it: "no sections supplied" is a different claim from "the owner's section is empty". The synthetic parser controls legitimately have no sections. An owner with no section, *supplied*, is a breach — that is the case where nothing was written.
+- **Two gates, same rule shape, opposite verdicts, and both decided by counting.** `.11.9` proposed a citation gate that would have fired on 114 of 131 and was rejected, because a gate people waive is a gate that lies. This one fires on 0 of 26 and would have caught all 3 historical instances. The house style is not "add a gate" or "don't add a gate" — it is "measure what it would fire on", and it keeps producing different answers.
+
 ## 2026-09-14 — The gate was wrong about the format it gates
 
 - The record said "Table-arity parser treats pipes inside code as nonseparators, but GFM tables split unescaped pipes even code spans (must verify primary GFM spec when repairing), current selftest may encode falsegreen." Three claims, and the instinct is to go read the CommonMark and GFM specifications and reason about them.

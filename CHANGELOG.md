@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Ask the renderer, not the specification (`SIGNOFF-REPAIR.11.9.1.1.3`, tranche 2 complete)
+
+- **Tranche 2c reconciled the last four source-census records — `R-76-77-2`, `R-87-1`, `R-88-1`, `R-90-1` — into 38 clause rows**: 21 `owned`, 11 `attach`, 6 `handled`, **0 `unowned`**. Tranche 2 is complete at 14 records and 84 clauses.
+- **No new repair leaf was opened, and that is the measurement.** Tranches 2a and 2b each found a clause no leaf covered and opened `.11.10` and `.4.1.6`. Every one of these 38 reached an existing owner, because `.11.2` and `.11.3` already own the bootstrap, the doctrine gates and the backup/restore/dev/demo/load scripts.
+- 🔴 **`check_table_arity.sh` disagrees with the renderer that publishes this project's book, and its own self-test locks the error in.** The gate exists to catch GFM's silent cell-dropping; its splitter treats a pipe inside an inline code span as part of the cell. Asked of mdbook/pulldown-cmark directly, a two-column row reading `` \| `x \| y` \| 2 \| `` renders as **two** cells and the `2` is discarded. Census over 322 tracked markdown files: the gate finds **0** defective rows, the renderer's rule finds **2** — both confirmed by rendering them.
+- 🔴 **One of the two is the doctrine registry's own row.** `DOCTRINE_ENFORCEMENT.md:39` renders its third cell as a bare `—`, so the published page never names `scripts/check_tree_index_frontier.sh` as `INDEX-FRONTIER`'s enforcer. It is deliberately left unrepaired as the last real-world specimen, so `.11.2` can falsify its parser repair against a row it did not write.
+- 🔴 **`RECONCILIATION.md:111` was the other, in this leaf's own deliverable**, truncating the `R-53-2` Evidence cell at "three `.map_err(". Repaired here, with the superseded text named.
+- 🔴 **`pipefail` does not fix the demonstration's negative controls**, which is the record's own proposed remedy refuted by measurement: the four-way truth table is rc=0 in every cell, because `!` negates a pipeline whose status is 1 whether the CLI failed or simply matched nothing.
+- 🔴 **The load harness reports `PASS: every command committed` for a run that issued zero requests** (`--commands 0` and `--commands -5` both satisfy its exit gates), and issues 104 for a requested 100.
+- 🔴 **7 of the 9 doctrine checks that consume the staged file list then read the worktree**, `check_task_tree_ownership` among them; **`check_docpaths.sh` cannot see `/Volumes`**, this checkout's own prefix; and **the handoff census prints `handoff: OK` at rc=0 when both its process censuses fail**, while its `ps -Ao` arm covers 620 rows across 40 uids where its documentation claims one.
+- ⛔ **Refuted and recorded rather than dropped:** `R-87-1`'s premise that this project retains `MAINTAINING.md` is false, and was false at the census baseline. The sentinel finding stands; the framing that placed this repository in the blast radius does not.
+- **11 `attach` clauses written into `.5.2`, `.11.2` and `.11.3` in this commit**, per the ledger's rule; 26 of 26 `attach` rows verified present in their owners' sections by hand. **Promoted:** "ask the renderer, not the specification" (`TOOLBOX.md`).
+- Validation: `--classified` 110 rows clean, `--self-test` 42 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
+
 ## 2026-09-14 — Graded on the question, and one claim failed (`SIGNOFF-REPAIR.11.9.1.1`, `.11.11` opened)
 
 - The director asked whether I trusted the session's findings. The claim standard treats that as the grading event and its pass condition is answering yes in one word, with no keyboard. I could not, so I re-derived twelve published claims by routes different from the ones that produced them.

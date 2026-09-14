@@ -124,6 +124,39 @@ fixtures were written by the same author in the same idiom as the bug, so they w
 single-line. **A self-test written alongside the code shares its blind spots.** The
 disagreeing second number is what has no such loyalty.
 
+### Ask the renderer, not the specification
+
+When a rule is about a DOCUMENT FORMAT, the authority is the tool that publishes the
+page — not the prose that describes the format, and not a re-implementation of it. This
+is "ask the library, never restate it" (`SIGNOFF-REPAIR.11.9.1.1.2`) reaching text
+instead of code, and it is the cheaper question: one render answers it in seconds.
+
+`scripts/check_table_arity.sh` exists to catch GFM's silent cell-dropping. Its own cell
+splitter treats a pipe inside an inline code span as non-separating, and its `--self-test`
+asserts **0** defects for `` | `x | y` | 2 | `` — the shape at issue. Building that table
+with **mdbook/pulldown-cmark, the renderer this project publishes its book with**, emits
+**two** cells, `` `x `` and `` y` ``, and discards the `2` entirely. The escaped `\|` form
+renders as one `<code>x | y</code>` cell, which is what GFM's spec says too.
+
+⚠️ The consequence was not hypothetical and not visible to the gate: a census over 322
+tracked markdown files found **2** rows losing content under the renderer's rule while the
+gate reported **0** — one of them the doctrine registry's `INDEX-FRONTIER` row, whose third
+cell rendered as a bare `—` so the published page never named the enforcer that runs it.
+
+Two things make this worth a section rather than a note:
+
+1. **The self-test could not catch it, for the reason `TOOLBOX.md` already records** — the
+   fixtures were written by the author of the splitter, in the same mental model, so the
+   arm that encodes the bug reads as the arm that proves the feature. A rendered page has
+   no such loyalty.
+2. **A re-implementation is not a second opinion.** Reading the spec and writing a second
+   parser gives you two parsers and no oracle. Rendering gives you the answer the reader
+   will actually see.
+
+So: before asserting what a markup rule does, render one minimal example with the project's
+own toolchain and read the output. If the project ships a renderer, it is already the
+instrument.
+
 ### When correctness depends on enumerating what to exclude, make the failure cheap
 
 An exclusion list has to be right. Prefer a mechanism where being wrong costs little.

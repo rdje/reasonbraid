@@ -138,6 +138,31 @@ documented promise it was said to contradict concerns *hidden* fields and still
 holds — hidden means absent, unset means `null`, and a reader can still tell them
 apart.
 
+The tranche's third and last part read the remaining four records — the ones
+about this project's own scripts and gates — and closed tranche 2 at fourteen
+records and eighty-four clauses. It opened no new repair leaf, because every
+clause reached a leaf that already owned its surface. It did add nine
+limitations, and one of them is about the manual you are reading:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| The table-arity gate disagrees with the renderer that publishes this book | A pipe inside an inline code span is treated as part of the cell, and the renderer splits on it and discards whatever will not fit the header. Two tracked table rows lose content today while the gate reports none — including the doctrine registry's own row for the tree-index check, whose published third cell is a bare em dash instead of the script that runs it. The gate's self-test asserts the wrong behaviour, so it cannot catch this. | `.11.2` |
+| Seven of the nine doctrine checks that read the staged file list then open the worktree | Staged evidence can be satisfied by text that was never staged, including for the ownership check. | `.11.2` |
+| The document-path check cannot see this repository's own checkout prefix | It matches `/Users` and `/home` only; this checkout is under `/Volumes`, so the one absolute path this project would leak is the one the gate is blind to. | `.11.2` |
+| The handoff background-job census reports success when it fails | Both process censuses discard their errors and the script does not exit on error, so an unavailable census renders as "no job running". Its own `ps` arm also covers every user, where its documentation claims one. | `.11.2` |
+| The scaffold updater would overwrite the task-tree index | It lists that file as project-neutral while the file holds this project's index of active trees, and its own header promises the opposite. A local donor path is copied whole, build artifacts and caches included. | `.11.2` |
+| The template bootstrap treats the presence of one file as proof of a pristine copy | In a copy that still holds it, a named invocation overwrites the resume pointer, the decision index and the tree index. Its in-place edits are also written in a dialect a stock macOS `sed` rejects — mid-way through the destructive sequence. | `.11.2` |
+| The demonstration's negative controls pass when the command fails | Each runs a negation over a pipeline in a fresh shell, so a failing CLI and a genuine absence are indistinguishable. Its evidence-capturing requests also ignore HTTP status. | `.11.3` |
+| The load harness reports success for a run that issued nothing | A zero or negative command count passes both exit gates having sent no requests, and a positive count is rounded up per worker, so the published total can exceed the one requested. | `.11.3` |
+| The one-command development environment builds the caller's repository | It never changes to its own root before building, yet runs its own binary, and outside `make dev` it writes its build cache off the repository volume. Its teardown removes the cluster whether or not the database stopped, and reports success either way. | `.11.3` |
+
+Eleven of this part's thirty-eight clauses were `attach` — more than the other
+three parts together. The cause is measurable and worth stating: these leaves'
+goal lines are written as short lists of *named mechanisms*, so a finding inside
+the surface but outside the list is invisible to a census driven by the goal
+line. The earlier parts' leaves state *properties*, which generalise. All eleven
+are now written into the leaves that own them.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

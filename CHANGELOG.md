@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Citing an authority is not holding one (`SIGNOFF-REPAIR.9.3.1`)
+
+- **Measured live before the repair:** a principal in one tenant recorded a policy **retraction** under another tenant's grant, registered a deployment target owned by it, recorded a correction under a grant whose `valid_from` was tomorrow, and filed a policy **approval as another principal**. A new nine-leg control reported **6 breaching**.
+- ⛔ Reachable rather than theoretical: the dev enrolment mints `grt_<principal_id>`, so naming another principal's grant needs nothing but their id.
+- **The census took the family whole** — `git grep -n "FROM authority_grants"` finds **five sites asking one question in four spellings**, and `git grep -n "valid_from"` over those modules returns **rc=1**: not one of them consulted the column, though it is `NOT NULL`. The `expires_at IS NULL` arm four of them carried was dead for the same reason.
+- ⭐ **The one site that bound a subject was the one that had had the attention, and it was still half-bound** — it matched the grant to `input.approver`, a string off the wire that nothing tied to the caller. A third instance of the same mechanism, which no leaf had named; repairing the two the leaf named would have shipped half a repair.
+- **The fix is one definition, two shapes**: `authority::grant_is_live` and `authority::grant_held_by`. Three surfaces take the held-by form and receive the principal their handlers had already resolved and were discarding.
+- ⭐ `.9.1`'s measured asymmetry is settled — registration no longer accepts a grant the resolver in the same module would refuse — while `.9.1`'s semantic question, whether a policy's owner must be the registrar's own grant, is deliberately left to it.
+- ⚠️ **One acceptance leg was not expressible and is corrected rather than quietly weakened**: `GrantAction` and `TargetSelector` cannot NAME a publication, a deployment target or a correction, so "the grant's action covers the target" has nothing to compare. Opened as `.9.3.4`. This is the second such leg this session.
+- **Falsified one arm at a time**: subject binding → legs A and B; `valid_from` → leg C; approver-is-the-caller → leg G alone.
+- ⚠️ The falsification found a defect in the control itself: two approval legs shared a proposal, and a successful approval advances it, so each reported the other's outcome. Each leg now has its own.
+- After: **0 of 9 legs breach**, 12/12, with the eleven pre-existing policy tests unchanged under a stricter registration path.
+- Pending leaves 55 → 55: one closed, one opened. ⭐ Written 56 from arithmetic first; the tree's own re-derivation said 55.
+
 ## 2026-09-14 — A claim of sameness is worth its call graph (`SIGNOFF-REPAIR.6.1.1`)
 
 - **The severest defect this reconciliation produced, repaired.** `reasonbraid-mcp` carried a private re-implementation of the server's three inspection reads while its own header claimed *"the SAME queries + the SAME authorization as the HTTP handlers"*. The copy ran neither: `list_inbox` declared a `principal` it never read, `get_policy_bundle` never read one either, and `get_thread` computed the foreign-reader class and returned the full projection beside it.

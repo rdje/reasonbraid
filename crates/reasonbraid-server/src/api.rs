@@ -3038,7 +3038,7 @@ async fn record_policy_approval(
             "an unenrolled principal records no approval",
         ));
     }
-    match crate::lifecycle::record_approval(&state.pool, &input).await {
+    match crate::lifecycle::record_approval(&state.pool, &principal, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3268,7 +3268,7 @@ async fn register_deployment_target(
             "an unenrolled principal registers no target",
         ));
     }
-    match crate::deployments::register_target(&state.pool, &input).await {
+    match crate::deployments::register_target(&state.pool, &principal, &input).await {
         Ok(()) => Ok(Json(json!({ "target_id": input.target_id }))),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3412,7 +3412,7 @@ async fn record_policy_correction(
             "an unenrolled principal records no correction",
         ));
     }
-    match crate::corrections::record_correction(&state.pool, &input).await {
+    match crate::corrections::record_correction(&state.pool, &principal, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }

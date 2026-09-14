@@ -5,6 +5,7 @@
 //! universally lower) — the retraction NEVER deletes the original; the
 //! outcome links the publication to what happened after (§15.11).
 
+use reasonbraid_core::GrantSubject;
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -164,17 +165,27 @@ async fn publication_exists(pool: &PgPool, publication_id: &str) -> Result<(), C
     Ok(())
 }
 
-async fn authority_holds(pool: &PgPool, grant_id: &str) -> Result<(), CorrectionError> {
-    let holds: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants \
-         WHERE grant_id = $1 AND status = 'active' \
-         AND (expires_at IS NULL OR expires_at > now()))",
-    )
-    .bind(grant_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|_| CorrectionError::GhostAuthority(grant_id.to_string()))?;
-    if !holds.unwrap_or(false) {
+/// The cited authority must be one the CALLER HOLDS, not merely one that
+/// exists (`SIGNOFF-REPAIR.9.3.1`).
+///
+/// ⛔ This function used to take the grant id and nothing else — no caller, no
+/// action, no scope — so any enrolled principal who could name any active
+/// grant recorded a suspension, a retraction or a waiver in its name. The
+/// grant id is derivable (`grt_<principal_id>`), so naming one needs nothing
+/// but another principal's id. Measured before the repair: a principal in one
+/// tenant recorded a retraction under another tenant's grant.
+///
+/// ⭐ The error type was already called `GhostAuthority`: the concept was
+/// present and only the check was missing.
+async fn authority_holds(
+    pool: &PgPool,
+    grant_id: &str,
+    principal: &GrantSubject,
+) -> Result<(), CorrectionError> {
+    let held = crate::authority::grant_held_by(pool, grant_id, principal)
+        .await
+        .map_err(|_| CorrectionError::GhostAuthority(grant_id.to_string()))?;
+    if !held {
         return Err(CorrectionError::GhostAuthority(grant_id.to_string()));
     }
     Ok(())
@@ -226,13 +237,14 @@ pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), Corre
 /// retraction NEVER deletes the original — the correction is a NEW row.
 pub async fn record_correction(
     pool: &PgPool,
+    principal: &GrantSubject,
     input: &CorrectionInput,
 ) -> Result<Value, CorrectionError> {
     if !CORRECTION_OPERATIONS.contains(&input.operation.as_str()) {
         return Err(CorrectionError::UnknownOperation(input.operation.clone()));
     }
     publication_exists(pool, &input.publication_id).await?;
-    authority_holds(pool, &input.authority_grant).await?;
+    authority_holds(pool, &input.authority_grant, principal).await?;
     match input.operation.as_str() {
         "suspension" | "waiver" => {
             if input.expires_at.is_none() {

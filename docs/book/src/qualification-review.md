@@ -198,7 +198,7 @@ produced the sharpest read finding this review has recorded:
 | --- | --- | --- |
 | All three MCP read tools return data the caller is not entitled to, while the module documents the opposite — **repaired, `.6.1.1`** | The inbox tool declared a caller argument and never read it. The thread tool computed the correct reader class for a foreign tenant and returned the full projection anyway, reporting that class beside it; measured live, a caller in one tenant received another tenant's entire thread projection. The policy-bundle tool read neither its caller nor its tenant. ⚠️ **One part of this finding was corrected by measurement**: the policy registry has no tenant column and no site filters by one, so the bundle was not crossing a tenant boundary — it is a site-wide registry, and the HTTP surface returns the same set to any enrolled caller. What the tool owed was that surface's enrolment check, and what it got wrong besides was labelling a site-wide bundle with the caller's tenant. Whether the registry should be tenant-scoped is now `.6.1.5`. | `.6.1.1` |
 | The MCP call-response tool checks the caller against one tenant and the call against none | A caller admitted on their own tenant can record a response on another tenant's recruitment call, and a decline, recommendation or recusal skips the eligibility check entirely. | `.6.1` |
-| Registering a policy accepts an expired authority grant | Registration checks the grant's status only, while resolution in the same module also checks its expiry — so a lapsed grant still registers a policy version. | `.9.1` |
+| Registering a policy accepts an expired authority grant — **repaired, `.9.3.1`** | Registration checked the grant's status only, while resolution in the same module also checked its expiry, so a lapsed grant still registered a policy version. Both now ask one shared predicate, which is also the first time either consulted the grant's start date. ⚠️ Whether a policy's owner must be a grant the registrar personally holds is a separate question and remains `.9.1`'s. | `.9.3.1`, `.9.1` |
 | A policy's applicability selector defaults to the wildcard | A missing or malformed selector field is read as "matches everything", which is fail-open in the place the design requires fail-closed. Policies in draft, superseded and deprecated states also remain applicable. | `.9.1` |
 
 ⚠️ Two of the source record's claims were *narrowed* by measurement rather than
@@ -245,6 +245,21 @@ undescribed. Eight of them have since been broken into eleven bounded leaves,
 each stating how to reproduce the defect, what it owns, and what must be
 observed — including a control that must be seen to fail against the current
 code before any repair is accepted.
+
+A second repair has landed since. Naming an authority was treated as holding
+one: any enrolled principal who could name an active grant could record a policy
+retraction under it, register a deployment target owned by it, or file an
+approval as another person — and grant identifiers are derived from principal
+identifiers, so naming one takes nothing but an identifier the caller has seen.
+Taking the whole family in one search found five places asking that question in
+four different spellings, a third affected surface the repair's own leaf had not
+named, and one thing none of the five did: check whether the grant had begun. A
+grant scheduled to start tomorrow authorised everything today. All five now ask
+one shared predicate, and the three surfaces where a caller cites an authority
+require that caller to hold it. One part of that repair's stated goal could not
+be met and says so: the system has no way to name a publication or a deployment
+target as the thing an authority is *over*, so "this grant covers this target"
+has nothing to compare. That design question is now `SIGNOFF-REPAIR.9.3.4`.
 
 The work is ordered by severity rather than by the order it was found. The
 cross-tenant read on the MCP tools came first and is repaired: the three read

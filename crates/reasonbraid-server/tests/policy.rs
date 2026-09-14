@@ -3230,3 +3230,373 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
         "the done review rides the list"
     );
 }
+
+/// The cited-authority control (`SIGNOFF-REPAIR.9.3.1`): citing a grant must
+/// require HOLDING it, on every surface where a caller names one.
+///
+/// ⛔ The grant id is DERIVABLE, which is what makes this reachable rather
+/// than theoretical: the dev enrolment mints `grt_<principal_id>`, so any
+/// caller who has seen another principal's id can name that principal's
+/// grant. The control derives Bob's exactly as a caller would.
+///
+/// ⛔ The `valid_from` leg is separate on purpose. Before the repair NO site
+/// in the family consulted that column at all — `git grep -n valid_from` over
+/// `corrections.rs`, `deployments.rs`, `policy.rs` and `lifecycle.rs`
+/// returned rc=1 — so a grant that has not begun was as good as a live one.
+#[tokio::test]
+async fn citing_an_authority_requires_holding_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Two tenants, each with its own bootstrap human and its own dev grant.
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cite-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cite-bob" }),
+    )
+    .await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let bob_grant = format!("grt_{bob_id}");
+    assert_ne!(
+        alice["tenant_id"], bob["tenant_id"],
+        "the two enrolments mint distinct tenants"
+    );
+
+    // A publication for the correction to name, owned by ALICE's own grant so
+    // that nothing but the cited authority distinguishes the legs below.
+    let (status, registered) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "cite-pol",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "active",
+            "title": "the cited-authority control",
+            "intent": "the grant binding",
+            "domain": "deliberation",
+            "risk_class": "low",
+            "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "a cited authority is a held one" } ],
+            "applicability": [ { "layer": "organization", "target": "*" } ],
+            "exceptions": [],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers: {registered}");
+
+    // The publication the correction names, seeded directly. The full
+    // proposal -> decision -> approval -> projection -> publication chain is
+    // already driven end to end by
+    // `the_drift_corrections_and_outcomes_ride_the_records`; re-deriving it
+    // here would add a second copy of that pipeline to maintain and would put
+    // the thing under test — the authority binding — behind it.
+    sqlx::query(
+        "INSERT INTO policy_publications \
+         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, manifest_digest) \
+         VALUES ('cite-pub-1', 'cite-prp', 'cite-dec', 'cite-app', 'cite-proj', 'published', $1)",
+    )
+    .bind(DIGEST)
+    .execute(&pool)
+    .await
+    .expect("seed the publication the correction names");
+
+    let mut breaches: Vec<String> = Vec::new();
+
+    // Leg A — the correction surface: alice cites BOB's grant.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &alice_id,
+        &json!({
+            "correction_id": "cite-corr-foreign",
+            "publication_id": "cite-pub-1",
+            "operation": "retraction",
+            "authority_grant": bob_grant,
+            "reason": "recorded in an authority the caller does not hold",
+        }),
+    )
+    .await;
+    if status == 200 {
+        breaches.push(format!(
+            "A: alice recorded a correction in bob's authority: {body}"
+        ));
+    }
+
+    // Leg B — the deployment surface: the same citation, the same caller.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &alice_id,
+        &json!({
+            "target_id": "cite-target-foreign",
+            "target_type": "repository",
+            "owning_authority": bob_grant,
+        }),
+    )
+    .await;
+    if status == 200 {
+        breaches.push(format!(
+            "B: alice registered a target owned by bob's authority: {body}"
+        ));
+    }
+
+    // Leg C — `valid_from`: a grant that has NOT BEGUN is not a live one.
+    // Alice's own grant is moved into the future, so the only thing separating
+    // this leg from the passing leg D below is the column nothing consulted.
+    sqlx::query(
+        "UPDATE authority_grants SET valid_from = now() + interval '1 day' WHERE grant_id = $1",
+    )
+    .bind(&alice_grant)
+    .execute(&pool)
+    .await
+    .expect("postdate alice's grant");
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &alice_id,
+        &json!({
+            "correction_id": "cite-corr-notyet",
+            "publication_id": "cite-pub-1",
+            "operation": "retraction",
+            "authority_grant": alice_grant,
+            "reason": "recorded in an authority that has not begun",
+        }),
+    )
+    .await;
+    if status == 200 {
+        breaches.push(format!(
+            "C: alice recorded a correction in a grant that has not begun: {body}"
+        ));
+    }
+    sqlx::query(
+        "UPDATE authority_grants SET valid_from = now() - interval '1 hour' WHERE grant_id = $1",
+    )
+    .bind(&alice_grant)
+    .execute(&pool)
+    .await
+    .expect("restore alice's grant");
+
+    // Leg D — the legitimate correction still lands, with its record intact.
+    // Without this the repair could be a blanket refusal and every leg above
+    // would still pass.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &alice_id,
+        &json!({
+            "correction_id": "cite-corr-own",
+            "publication_id": "cite-pub-1",
+            "operation": "retraction",
+            "authority_grant": alice_grant,
+            "reason": "recorded in the caller's own authority",
+        }),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!("D: alice's OWN authority was refused: {body}"));
+    }
+    let (status, listed) = get(&client, &base, "/v1/policy-corrections", &alice_id).await;
+    assert_eq!(status, 200, "the corrections list: {listed}");
+    let recorded = listed
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .any(|r| r["correction_id"] == json!("cite-corr-own"))
+        })
+        .unwrap_or(false);
+    if !recorded {
+        breaches.push(format!(
+            "D: the legitimate correction left no row: {listed}"
+        ));
+    }
+    let foreign_landed = listed
+        .as_array()
+        .map(|rows| {
+            rows.iter().any(|r| {
+                r["correction_id"] == json!("cite-corr-foreign")
+                    || r["correction_id"] == json!("cite-corr-notyet")
+            })
+        })
+        .unwrap_or(false);
+    if foreign_landed {
+        breaches.push(format!(
+            "D: a refused correction left a row anyway: {listed}"
+        ));
+    }
+
+    // Leg F — the APPROVAL surface, the third instance of the same mechanism
+    // and the one the leaf did not name. It was the safest of the five sites
+    // (it alone matched the grant to a subject) and still half-bound: the
+    // subject it matched was `approver`, a string off the wire. So alice
+    // approves AS bob, citing bob's grant, and nothing tied either to her.
+    sqlx::query(
+        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
+         VALUES ('cite-prp-1', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the decided proposal");
+    sqlx::query(
+        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
+         VALUES ('cite-dec-1', 'cite-prp-1', 'consensus', '[]'::jsonb, 'cite-evt')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the decision");
+
+    // ⛔ A SECOND proposal for the positive leg, deliberately. Sharing one
+    // would couple the two: a successful foreign approval advances the
+    // proposal to `approved`, and the legitimate approval that follows then
+    // fails on the STAGE rather than on anything this leaf repairs. Measured
+    // exactly that way against the unrepaired code, which is how the coupling
+    // was found — a positive leg that can only pass when the negative leg
+    // already did is measuring them jointly.
+    sqlx::query(
+        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
+         VALUES ('cite-prp-2', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the second decided proposal");
+    sqlx::query(
+        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
+         VALUES ('cite-dec-2', 'cite-prp-2', 'consensus', '[]'::jsonb, 'cite-evt-2')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the second decision");
+
+    // And a THIRD for leg G, for the same reason: a successful approval
+    // advances its proposal, so two legs sharing one proposal report each
+    // other's outcome. Invisible while the repair holds and immediately
+    // visible under falsification — which is where it was found.
+    sqlx::query(
+        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
+         VALUES ('cite-prp-3', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the third decided proposal");
+    sqlx::query(
+        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
+         VALUES ('cite-dec-3', 'cite-prp-3', 'consensus', '[]'::jsonb, 'cite-evt-3')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed the third decision");
+
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &alice_id,
+        &json!({
+            "approval_id": "cite-app-foreign",
+            "proposal_id": "cite-prp-1",
+            "decision_id": "cite-dec-1",
+            "approver": bob_id,
+            "grant_id": bob_grant,
+            "quorum": { "participants": [bob_id] },
+        }),
+    )
+    .await;
+    if status == 200 {
+        breaches.push(format!("F: alice recorded an approval AS bob: {body}"));
+    }
+
+    // Leg G — alice cites her OWN grant and claims BOB as the approver.
+    //
+    // ⚠️ This leg was NOT red against the unrepaired code, and saying so is
+    // the point of it. The original predicate bound the grant to the CLAIMED
+    // APPROVER (`subject_id = $2`), so this exact request was refused — while
+    // the request leg F makes, where both the grant and the claim are bob's,
+    // sailed through. The repair moves the binding to the AUTHENTICATED
+    // CALLER, which closes F; this leg guards the link that move needs in its
+    // place, because grant-to-caller alone would let a caller file an
+    // approval under her own authority and attribute it to somebody else.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &alice_id,
+        &json!({
+            "approval_id": "cite-app-misattributed",
+            "proposal_id": "cite-prp-3",
+            "decision_id": "cite-dec-3",
+            "approver": bob_id,
+            "grant_id": alice_grant,
+            "quorum": { "participants": [alice_id] },
+        }),
+    )
+    .await;
+    if status == 200 {
+        breaches.push(format!(
+            "G: alice filed an approval under her own grant and attributed it to bob: {body}"
+        ));
+    }
+
+    // And alice approving as HERSELF, with her own grant, still lands.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &alice_id,
+        &json!({
+            "approval_id": "cite-app-own",
+            "proposal_id": "cite-prp-2",
+            "decision_id": "cite-dec-2",
+            "approver": alice_id,
+            "grant_id": alice_grant,
+            "quorum": { "participants": [alice_id] },
+        }),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!("F: alice's OWN approval was refused: {body}"));
+    }
+
+    // Leg E — the legitimate target still registers.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &alice_id,
+        &json!({
+            "target_id": "cite-target-own",
+            "target_type": "repository",
+            "owning_authority": alice_grant,
+        }),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!("E: alice's OWN authority was refused: {body}"));
+    }
+
+    assert!(
+        breaches.is_empty(),
+        "{} of the cited-authority legs breach:\n{}",
+        breaches.len(),
+        breaches.join("\n")
+    );
+}

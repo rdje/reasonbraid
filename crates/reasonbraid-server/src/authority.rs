@@ -389,6 +389,57 @@ where
     Ok(())
 }
 
+/// Is this grant LIVE right now — `active`, BEGUN, and not expired?
+///
+/// ⭐ The one definition of that question (`SIGNOFF-REPAIR.9.3.1`). Five sites
+/// asked it in four different spellings: `policy::register` checked `status`
+/// alone, `policy::resolve`, `corrections` and `deployments` added expiry, and
+/// `lifecycle` added expiry plus the subject. **None of the five consulted
+/// `valid_from`** — `git grep -n valid_from` over those four modules returned
+/// rc=1 — so a grant that had not begun was as good as a live one everywhere.
+///
+/// ⛔ The `expires_at IS NULL` branch four of them carried is NOT reproduced:
+/// `migrations/0004_authority.sql` declares the column `NOT NULL`, so that arm
+/// was dead, and copying it forward would keep teaching the next reader that
+/// the column is optional.
+pub(crate) async fn grant_is_live(pool: &PgPool, grant_id: &str) -> Result<bool, sqlx::Error> {
+    let live: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM authority_grants \
+         WHERE grant_id = $1 AND status = 'active' \
+         AND valid_from <= now() AND expires_at > now())",
+    )
+    .bind(grant_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(live.unwrap_or(false))
+}
+
+/// Is this grant live AND HELD BY this principal?
+///
+/// The predicate for every surface where a CALLER cites an authority. Citing
+/// one is not holding one: the dev enrolment mints `grt_<principal_id>`, so a
+/// grant id is derivable from any principal id a caller has seen, and a check
+/// that only asks whether the grant exists admits anyone who can name it.
+pub(crate) async fn grant_held_by(
+    pool: &PgPool,
+    grant_id: &str,
+    principal: &GrantSubject,
+) -> Result<bool, sqlx::Error> {
+    let (kind, id) = subject_parts(principal);
+    let held: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM authority_grants \
+         WHERE grant_id = $1 AND status = 'active' \
+         AND valid_from <= now() AND expires_at > now() \
+         AND subject_kind = $2 AND subject_id = $3)",
+    )
+    .bind(grant_id)
+    .bind(kind)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    Ok(held.unwrap_or(false))
+}
+
 fn subject_parts(subject: &GrantSubject) -> (&'static str, String) {
     match subject {
         GrantSubject::Human(id) => ("human", id.to_string()),

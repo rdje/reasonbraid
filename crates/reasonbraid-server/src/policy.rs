@@ -180,15 +180,23 @@ pub async fn register(
         }
     }
     // The ownership = the authority binding (ADR-019): the owning authority
-    // must be an ACTIVE grant — a label-only policy fails at registration.
-    let authority: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants WHERE grant_id = $1 AND status = 'active')",
-    )
-    .bind(&input.owning_authority)
-    .fetch_one(pool)
-    .await
-    .map_err(|_| PolicyError::GhostAuthority(input.owning_authority.clone()))?;
-    if !authority.unwrap_or(false) {
+    // must be a LIVE grant — a label-only policy fails at registration.
+    //
+    // ⭐ `SIGNOFF-REPAIR.9.3.1` settled the asymmetry `.11.9.1.2.2` measured:
+    // this site admitted on `status = 'active'` alone while `resolve` below,
+    // in the same module, also required the grant to be unexpired — so a
+    // lapsed grant registered a policy version the resolver would then refuse.
+    // Both now ask `authority::grant_is_live`, which is also the first time
+    // either consulted `valid_from`.
+    //
+    // ⛔ What this does NOT decide: whether the owning authority must be a
+    // grant the REGISTRAR holds. A policy may legitimately be owned by an
+    // authority other than the caller's, so that binding is a semantic
+    // question and stays `SIGNOFF-REPAIR.9.1`'s.
+    if !crate::authority::grant_is_live(pool, &input.owning_authority)
+        .await
+        .map_err(|_| PolicyError::GhostAuthority(input.owning_authority.clone()))?
+    {
         return Err(PolicyError::GhostAuthority(input.owning_authority.clone()));
     }
     let inserted = sqlx::query(
@@ -454,15 +462,10 @@ pub async fn resolve(
     // Step 1: the issuer authority — each owning grant must be ACTIVE and
     // unexpired (the label grants nothing; an expired grant grants nothing).
     for row in &loaded {
-        let valid: Option<bool> = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM authority_grants \
-             WHERE grant_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now()))",
-        )
-        .bind(&row.owning_authority)
-        .fetch_one(pool)
-        .await
-        .map_err(|_| PolicyError::expired_authority(&row.policy_id, &row.owning_authority))?;
-        if !valid.unwrap_or(false) {
+        let valid = crate::authority::grant_is_live(pool, &row.owning_authority)
+            .await
+            .map_err(|_| PolicyError::expired_authority(&row.policy_id, &row.owning_authority))?;
+        if !valid {
             return Err(PolicyError::expired_authority(
                 &row.policy_id,
                 &row.owning_authority,

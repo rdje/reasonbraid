@@ -3,6 +3,7 @@
 //! pair rides each assignment; the receipt attests the OBSERVED digest (the
 //! drift's comparison input, never the hope).
 
+use reasonbraid_core::GrantSubject;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -130,21 +131,25 @@ fn is_sha256_hex(digest: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Register one deployment target (the authority checked like the policies').
-pub async fn register_target(pool: &PgPool, input: &TargetInput) -> Result<(), DeploymentError> {
+/// Register one deployment target: the owning authority must be a grant the
+/// CALLER HOLDS (`SIGNOFF-REPAIR.9.3.1`).
+///
+/// ⛔ The check used to ask only whether the named grant existed and was
+/// active, so a caller owned a target with any grant it could name — the same
+/// defect as `corrections::authority_holds`, in a second module, and repaired
+/// with the same predicate rather than a second spelling of it.
+pub async fn register_target(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    input: &TargetInput,
+) -> Result<(), DeploymentError> {
     if !TARGET_TYPES.contains(&input.target_type.as_str()) {
         return Err(DeploymentError::UnknownType(input.target_type.clone()));
     }
-    let authority: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants \
-         WHERE grant_id = $1 AND status = 'active' \
-         AND (expires_at IS NULL OR expires_at > now()))",
-    )
-    .bind(&input.owning_authority)
-    .fetch_one(pool)
-    .await
-    .map_err(|_| DeploymentError::GhostAuthority(input.owning_authority.clone()))?;
-    if !authority.unwrap_or(false) {
+    let held = crate::authority::grant_held_by(pool, &input.owning_authority, principal)
+        .await
+        .map_err(|_| DeploymentError::GhostAuthority(input.owning_authority.clone()))?;
+    if !held {
         return Err(DeploymentError::GhostAuthority(
             input.owning_authority.clone(),
         ));

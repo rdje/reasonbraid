@@ -5,6 +5,7 @@
 //! proposal's status machine is the typed stage vocabulary (the `.2.3`
 //! approval, the `.4` publication, and the `.5` deployment advance it).
 
+use reasonbraid_core::GrantSubject;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -359,6 +360,7 @@ impl LifecycleError {
 /// memory.
 pub async fn record_approval(
     pool: &PgPool,
+    principal: &GrantSubject,
     input: &ApprovalInput,
 ) -> Result<StoredApproval, LifecycleError> {
     let proposal: Option<String> =
@@ -400,19 +402,29 @@ pub async fn record_approval(
     if quorum_participants == 0 {
         return Err(LifecycleError::empty_quorum());
     }
-    // The authority proof: the grant must be ACTIVE, unexpired, and HELD BY
-    // the approver (the subject match — a mismatched grant refuses).
-    let proof: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants \
-         WHERE grant_id = $1 AND status = 'active' \
-         AND (expires_at IS NULL OR expires_at > now()) AND subject_id = $2)",
-    )
-    .bind(&input.grant_id)
-    .bind(&input.approver)
-    .fetch_one(pool)
-    .await
-    .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
-    if !proof.unwrap_or(false) {
+    // The authority proof: the grant must be LIVE and HELD BY the approver —
+    // and the approver must BE the authenticated caller.
+    //
+    // ⛔ `SIGNOFF-REPAIR.9.3.1` found this site half-bound and it was the
+    // SAFEST of the five in the family, which is what made it worth reading
+    // closely: it alone matched the grant to a subject. But the subject it
+    // matched was `input.approver`, a string off the wire, and nothing tied
+    // that to the caller — so a caller could approve AS another principal by
+    // naming their grant, which is derivable from their id (`grt_<id>`). The
+    // grant was bound to a CLAIM, and the claim to nobody.
+    //
+    // ⚠️ Its predicate also matched `subject_id` alone, without
+    // `subject_kind`; the shared one binds both.
+    if principal.id_string() != input.approver {
+        return Err(LifecycleError::invalid_proof(
+            &input.grant_id,
+            &input.approver,
+        ));
+    }
+    let proof = crate::authority::grant_held_by(pool, &input.grant_id, principal)
+        .await
+        .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
+    if !proof {
         return Err(LifecycleError::invalid_proof(
             &input.grant_id,
             &input.approver,

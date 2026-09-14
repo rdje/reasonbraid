@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — My checker and my self-test were the same opinion, twice
+
+- I have written the sentence "the self-test proves it" often enough that it stopped being a claim and became a reflex. This leaf is the counterexample, and it is a clean one: the parser and its self-test were written from one reading of the GFM table rule, so the test could only ever confirm the implementation. Eight arms, all green, for as long as the gate has existed — and the predicate was wrong.
+- **What makes it sharp is that the wrong predicate produced the most reassuring artifact available**: a whole-corpus scan over 323 tracked files reporting zero defects. Nothing looks more finished than that. It was measuring the wrong question 323 times.
+- **The fix was not cleverness, it was asking.** Standing up a throwaway mdbook and reading cell counts out of the HTML took minutes and settled nine shapes, two of which I had backwards — including one I would never have doubted: an unpaired backtick run, which the old parser called a defect and the renderer does not care about at all. I had been treating the false-negative half as the whole bug.
+- **I also caught myself mid-repair doing the thing the memory pointer warns about.** I cited `scripts/check_table_arity.sh:92`–`:93` in the leaf, from a reading taken before my own edits added comment lines; the real lines were `:95`–`:96`. Wrong within the same hour, in the same file I was editing. Replaced with a `grep` locator that re-derives. The warning is in `MEMORY.md` precisely because this keeps happening, and it still caught me.
+- **Two details in the leaf's own record were wrong and I corrected them rather than repeating them**: where the published cell is cut, and how many corpus rows breach. Both were true when written; one had been repaired since by another leaf. A leaf's reproduce section is evidence with a timestamp, not a standing fact.
+- The leaf warned that correcting the parser would make the ratchet block its own fix. It does not, and working out *why* was worth more than the relief — both sides of the ratchet's comparison run the working-tree parser, so a rule correction moves them together. I kept the reasoning in the leaf, because the next person to correct a ratcheted rule will have the same worry.
+
 ## 2026-09-14 — "Owner: .6.1" was a sentence, not an owner
 
 - I reported six findings with an owner beside each and felt they were handled. The director asked whether they were owned or only routed. The honest way to answer was a command, not an opinion: extract each named leaf's section, look for an `- Acceptance:` line. Eight of ten had none. Six had no children. They were containers — readable, not finishable.

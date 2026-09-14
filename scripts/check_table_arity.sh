@@ -16,11 +16,16 @@
 #   ⛔ Scoped to staged files, never the whole tree — a blocker over pre-existing defects teaches
 #   bypass. `--all` reports the backlog, advisory.
 #
-# CELL COUNTING (the honest bound, stated): cells are split on pipes that are NOT escaped (`\|`)
-#   and NOT inside an inline code span (`` ` `` runs matched by length, per CommonMark); a leading
-#   and a trailing pipe are delimiters, not cells. A pipe inside a link or HTML is counted as a
-#   separator, as GFM does. A code span left UNPAIRED (an odd run) swallows the rest of the row —
-#   exactly the defect this rule catches, so it is counted as such rather than special-cased.
+# CELL COUNTING (the RENDERER's rule, asked rather than read off the spec): GFM splits a row into
+#   cells BEFORE inline parsing, so a pipe is a separator unless it is backslash-escaped (`\|`).
+#   Being inside an inline code span does NOT protect it. Measured against mdbook 0.5.2, the renderer
+#   this project publishes its own book with: `` | `x | y` | 2 | `` emits TWO cells — `` `x `` and
+#   `` y` `` — and DISCARDS the `2`; the escaped form `` | `x \| y` | 2 | `` emits one
+#   `<code>x | y</code>` cell and `2`. A leading and a trailing pipe are delimiters, not cells.
+#   ⛔ The first implementation modelled the OPPOSITE and its --self-test asserted that false answer,
+#   so the whole-corpus scan read 0 where the renderer saw 2 (`SIGNOFF-REPAIR.11.2.3`).
+#   Bound, stated: `\\|` (an escaped backslash, then a pipe) is treated here as an escaped pipe;
+#   zero instances exist in the tracked corpus, so the case is unexercised rather than decided.
 # CONTRACT: exit code is the verdict; explains on stderr; deterministic; read-only; fast.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,12 +41,6 @@ def cells(line):
     while i < n:
         c = s[i]
         if c == "\\" and i + 1 < n and s[i+1] == "|": buf += "|"; i += 2; continue
-        if c == "`":
-            m = re.match(r"`+", s[i:]); run = m.group(0); j = s.find(run, i + len(run))
-            while j != -1 and (j + len(run) < n and s[j + len(run)] == "`"):  # a longer run is not our closer
-                j = s.find(run, j + 1)
-            if j == -1: buf += s[i:]; i = n; continue          # unpaired: swallows the row
-            buf += s[i:j + len(run)]; i = j + len(run); continue
         if c == "|": out.append(buf); buf = ""; i += 1; continue
         buf += c; i += 1
     out.append(buf); return out
@@ -70,12 +69,15 @@ if [ "${1:-}" = "--self-test" ]; then
   t 0 "a well-formed 3-column table" '| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n| x | y | z |\n'
   t 1 "a row with one cell too many" '| a | b |\n|---|---|\n| 1 | 2 | 3 |\n'
   t 1 "a row with one cell too few" '| a | b | c |\n|---|---|---|\n| 1 | 2 |\n'
-  t 0 "a pipe inside a code span is not a separator" '| a | b |\n|---|---|\n| `x | y` | 2 |\n'
+  # Every arm below was rendered with mdbook 0.5.2 before being asserted (`SIGNOFF-REPAIR.11.2.3`);
+  # the want= column is the renderer's verdict, not a reading of the GFM spec.
+  t 1 "a RAW pipe inside a code span IS a separator (mdbook: 2 cells, the 3rd DISCARDED)" '| a | b |\n|---|---|\n| `x | y` | 2 |\n'
   t 0 "an escaped pipe is not a separator" '| a | b |\n|---|---|\n| x \\| y | 2 |\n'
-  t 1 "an unpaired backtick swallows the rest of the row" '| a | b |\n|---|---|\n| `` | 2 |\n'
+  t 0 "an escaped pipe INSIDE a code span is not a separator — the repair form" '| a | b |\n|---|---|\n| `x \\| y` | 2 |\n'
+  t 1 "a raw pipe inside a DOUBLE-backtick span is a separator too" '| a | b |\n|---|---|\n| `` x | y `` | 2 |\n'
+  t 0 "an unpaired backtick run is not an arity defect (mdbook: 2 cells)" '| a | b |\n|---|---|\n| `` | 2 |\n'
   t 0 "a table inside a code fence is not judged" '```\n| a | b |\n|---|---|\n| 1 |\n```\n'
-  t 0 "a double-backtick span holding a single backtick" '| a | b |\n|---|---|\n| `` x ` y `` | 2 |\n'
-  [ "$fails" = 0 ] && echo "TABLE-ARITY-RATCHET --self-test: 8/8 arms" || exit 1
+  [ "$fails" = 0 ] && echo "TABLE-ARITY-RATCHET --self-test: 9/9 arms" || exit 1
   exit 0
 fi
 
@@ -96,7 +98,7 @@ for f in $staged; do
     fail=1
     { echo "TABLE-ARITY-RATCHET: RISE — $f has $now row(s) whose cell count disagrees with their header (HEAD: $before):"
       git show ":$f" | arity_defects | while IFS=$'\t' read -r ln have want text; do echo "    line $ln: $have cell(s), header has $want: $text"; done
-      echo "  GFM silently DROPS the extra cells or PADS the missing ones. Fix the row (an escaped \\| or a code span for a literal pipe)."; } >&2
+      echo "  GFM silently DROPS the extra cells or PADS the missing ones. Write a literal pipe as an escaped \\| — a code span does NOT protect it."; } >&2
   fi
 done
 [ "$fail" = 0 ] && echo "TABLE-ARITY-RATCHET: ok ($(printf '%s\n' "$staged" | wc -l | tr -d ' ') staged markdown file(s), no rise)"

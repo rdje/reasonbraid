@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-14 — The arity gate modelled the opposite of the renderer, and its self-test agreed (`SIGNOFF-REPAIR.11.2.3`)
+
+`scripts/check_table_arity.sh` flags Markdown rows whose cell count disagrees with their header — the defect matters because GFM **silently** drops the extras and pads the missing, so the page looks fine and the reader loses a column. Its splitter treated a pipe inside an inline code span as part of the cell. GFM does the opposite: a row is split into cells **before** inline parsing, so only a backslash escape protects a pipe.
+
+- ⛔ **A green whole-corpus scan was measuring the wrong predicate.** Two rules run side by side over the same 323 tracked files at `dd4151b`: the shipped rule finds **0** arity-defective rows, the renderer's rule finds **1**. The leaf recorded 2; re-measured rather than inherited, because `RECONCILIATION.md:111` was genuinely repaired by REPAIR-0175 — so the one that remains is exactly the retained falsification target.
+- ⭐ **Asked the renderer nine times before asserting anything.** A throwaway mdbook 0.5.2 book under the repository-derived `TMPDIR` (§13), cell counts read out of the emitted `<tr>`/`<td>`: `` | `x | y` | 2 | `` → **2 cells**, backticks LITERAL, the `2` **discarded**; `` | x \| y | 2 | `` → 2 cells; `` | `x \| y` | 2 | `` → `<code>x | y</code>` and `2` — literal pipes *and* the code span, which is the repair form.
+- 🔴 **The `--self-test` was why it survived, not what would have caught it.** Its arm *"a pipe inside a code span is not a separator"* asserted `want=0` for the exact shape the renderer scores as a defect. Written from the same reading as the code, it could not disagree with it — `TOOLBOX.md`'s measured blind-spot rule, reproducing exactly.
+- ⛔ **A wrong model is wrong in both directions.** The old parser also scored an unpaired backtick run as a defect; the renderer emits 2 cells and no defect. That arm was asserting a **false positive**, and correcting the rule removed it rather than preserving it.
+- ⚠️ **The damage was on this project's own doctrine page.** The `INDEX-FRONTIER` registry row wrapped `` | — | `` in a code span, so the renderer cut the cell at *"8 completed trees write `"* — **516 of 1,027** characters — and published a bare `—` where `scripts/check_tree_index_frontier.sh` belongs. ⛔ The leaf's own note said the cut was at *"fixed this exact"*; measured, it is later, and the record is corrected rather than repeated. Repaired to `` `\| — \|` `` and re-rendered: **3 cells**, enforcer named, raw HTML `<code>| — |</code>`.
+- ⭐ **The leaf's warning that the ratchet would block its own fix did not materialise**, and the reason is recorded instead of the relief: the ratchet pipes both `git show ":$f"` and `git show "HEAD:$f"` through the *same* working-tree parser, so a rule correction moves `now` and `before` together — here 0 vs 1, a fall, promoted silently. Same-commit repair was still right, for the published page rather than for the gate.
+- **After:** 9/9 self-test arms, every one the renderer's verdict named in the arm's own title; `--all` → **0**; `make gate` → 18 checks green.
+- **Promoted:** `docs/knowledge/a-control-is-calibrated-against-the-renderer.md` — a control over a format you did not implement is calibrated against the consumer, never the spec.
+
 ## 2026-09-14 — Graded on challenge: the findings stand, three decorations did not (`SIGNOFF-REPAIR.11.9.1`)
 
 The director asked *"do you stand by your findings?"* — `docs/CLAIM_VERIFICATION.md` §4.1's grading question. Graded on all three axes, separately.

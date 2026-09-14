@@ -4245,6 +4245,24 @@ pub(crate) async fn respond_to_call_core(
     let Some(call) = crate::recruitment::call(pool, call_id).await? else {
         return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
     };
+    // The tenant binding (`SIGNOFF-REPAIR.6.1.2`), derived from the CALL —
+    // `inspect_call`'s shape, and the reason it lives here rather than at the
+    // MCP seam: the seam gates the caller against a tenant the CALLER
+    // SUPPLIES and then hands this core a call id, while the HTTP verb takes
+    // no tenant at all. Two surfaces, one core, and the core is where the
+    // call's own tenant is in scope.
+    //
+    // ⛔ Measured before the repair, on BOTH surfaces: a role enrolled in one
+    // tenant recorded a `decline` and a `recuse` against another tenant's
+    // call. Those two kinds set `participation = false`, so the eligibility
+    // gate below is skipped entirely and nothing else in the path ever looks
+    // at the respondent.
+    let respondent_tenant = reader_tenant(pool, principal).await?;
+    if respondent_tenant.as_deref() != Some(call.tenant_id.as_str()) {
+        return Err(ControlApiError::unauthorized(
+            "only a principal enrolled in the call's tenant responds to it",
+        ));
+    }
     if call.status != "open" {
         return Err(ControlApiError::invalid_transition(format!(
             "the call is {}",

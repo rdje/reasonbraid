@@ -656,3 +656,213 @@ async fn the_join_call_decline_and_the_proposal_ride_the_same_handlers() {
         "the proposal: {result}"
     );
 }
+
+/// The call-binding control (`SIGNOFF-REPAIR.6.1.2`): a response must be bound
+/// to the call's OWN tenant, on every surface that records one.
+///
+/// ⛔ The seam gates the caller against a tenant the CALLER SUPPLIES and then
+/// hands the call id to a core that fetches by that id ALONE — two identifiers,
+/// one checked. But the HTTP verb takes no tenant at all and rides the same
+/// core, so the binding belongs in the CORE and the control asserts both
+/// surfaces. A repair at the seam would leave the HTTP verb wide open and the
+/// seam's own test green.
+///
+/// ⭐ `decline` is a separate leg because it is the one that skips the
+/// eligibility gate entirely (`participation` is false), so nothing else in
+/// the path even incidentally looks at the respondent.
+#[tokio::test]
+async fn a_response_is_bound_to_the_calls_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Tenant A: the outsider role that will try to answer.
+    let (_alice_human, tenant_a, outsider_role) = bootstrap(
+        &client,
+        &base,
+        "mcpw-outsider",
+        json!(["thread_contribute", "thread_invitation_respond"]),
+    )
+    .await;
+
+    // Tenant B: its own human, thread and call.
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "mcpw-bob" }),
+    )
+    .await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = bob["tenant_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        tenant_a, tenant_b,
+        "the two enrolments mint distinct tenants"
+    );
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &bob_id,
+        &envelope(
+            "thread.create",
+            "mcpw-bind-create",
+            json!({
+                "tenant_id": tenant_b,
+                "subject": "bob's call",
+                "objective": "the call-binding control",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "bob creates his thread: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &bob_id,
+        &json!({
+            "tenant_id": tenant_b,
+            "thread_id": thread_id,
+            "expression": {
+                "scope": "tenant",
+                "capabilities": [],
+                "presence_states": ["available"],
+            },
+            "min_participants": 1,
+            "max_participants": 2,
+            "join_deadline": deadline,
+            "expires_at": expiry,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "bob's call opens: {opened}");
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+
+    let mut breaches: Vec<String> = Vec::new();
+
+    // The two NON-PARTICIPATION kinds, which are the ones that matter here:
+    // `participation` is false for them, so the eligibility gate is skipped
+    // entirely and nothing else in the path looks at the respondent.
+    //
+    // ⛔ `join` is deliberately NOT a leg. Measured: it is refused earlier,
+    // by `respondent_candidate` finding no enrolled node for the role — a
+    // different mechanism, and one that would make this control pass without
+    // the binding ever being checked. A leg that goes green for the wrong
+    // reason is worse than no leg.
+    let kinds = [
+        json!({ "kind": "decline" }),
+        json!({ "kind": "recuse", "reason_class": "conflict_of_interest" }),
+    ];
+
+    // Leg A — through the SEAM, gated on the outsider's OWN tenant, which is
+    // the shape the seam actually permits: the gate passes and the call is
+    // fetched by id alone.
+    for body in &kinds {
+        let kind = body["kind"].as_str().unwrap();
+        let outcome = reasonbraid_server::mcp_write_internal::join_call(
+            &pool,
+            &tenant_a,
+            &role_subject(&outsider_role),
+            &call_id,
+            body.clone(),
+        )
+        .await;
+        if let Ok(value) = outcome {
+            breaches.push(format!(
+                "A/{kind}: a role in tenant A answered tenant B's call through the seam: {value}"
+            ));
+        }
+    }
+
+    // Leg B — through the HTTP verb, which takes NO tenant at all and rides
+    // the same core. A repair placed at the seam would leave this open.
+    for body in &kinds {
+        let kind = body["kind"].as_str().unwrap();
+        let (status, response) = post(
+            &client,
+            &base,
+            &format!("/v1/calls/{call_id}/respond"),
+            &outsider_role,
+            body,
+        )
+        .await;
+        if status == 200 {
+            breaches.push(format!(
+                "B/{kind}: a role in tenant A answered tenant B's call over HTTP: {response}"
+            ));
+        }
+    }
+
+    // Leg C — no response row survived either attempt.
+    let recorded: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM recruitment_responses WHERE call_id = $1 AND respondent = $2",
+    )
+    .bind(&call_id)
+    .bind(&outsider_role)
+    .fetch_one(&pool)
+    .await
+    .expect("the response count");
+    if recorded != 0 {
+        breaches.push(format!(
+            "C: {recorded} response row(s) from a foreign tenant survived"
+        ));
+    }
+
+    // Leg D — tenant B's OWN role still answers, so the repair is not a
+    // blanket refusal.
+    let (status, insider) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role",
+            "name": "mcpw-insider",
+            "tenant_id": tenant_b,
+            "actions": ["thread_contribute", "thread_invitation_respond"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the insider role enrolls: {insider}");
+    let insider_role = insider["principal_id"].as_str().unwrap().to_string();
+
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/respond"),
+        &insider_role,
+        &json!({ "kind": "decline" }),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!("D/http: the call's own tenant was refused: {body}"));
+    }
+
+    let outcome = reasonbraid_server::mcp_write_internal::join_call(
+        &pool,
+        &tenant_b,
+        &role_subject(&insider_role),
+        &call_id,
+        json!({ "kind": "recuse", "reason_class": "conflict_of_interest" }),
+    )
+    .await;
+    if let Err(refused) = outcome {
+        breaches.push(format!(
+            "D/seam: the call's own tenant was refused: {}: {}",
+            refused.family, refused.message
+        ));
+    }
+
+    assert!(
+        breaches.is_empty(),
+        "{} of the call-binding legs breach:\n{}",
+        breaches.len(),
+        breaches.join("\n")
+    );
+}

@@ -281,6 +281,15 @@ Two traps met while proving it, both general:
   diff was empty, and the harness reported success while proving nothing. Use an
   instrument that does not depend on the file's tracking state.
 
+⭐ **The placement corollary** (`SIGNOFF-REPAIR.6.1.2`, the same rule arriving from the
+other side): when two surfaces share a core, an authorization binding belongs in the CORE,
+and the giveaway for having put it in the wrong place is that a seam-level repair would
+leave a sibling caller broken **while every test you can see passes**. Measured: a finding
+named an MCP seam; the HTTP verb over the same core took no tenant at all and was equally
+open, so repairing at the seam would have shipped a green suite over an open surface. ⚠️ A
+finding names the surface where someone happened to look — enumerate the core's callers
+before repairing at the one you were handed.
+
 Full record: `docs/knowledge/a-claim-of-sameness-is-worth-its-call-graph.md`.
 
 ### When correctness depends on enumerating what to exclude, make the failure cheap

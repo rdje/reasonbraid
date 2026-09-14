@@ -6,8 +6,28 @@
 //! PER-PRINCIPAL QUOTA (the `.1.3.2` `principal` scope, re-opened here:
 //! the call-volume bound — the use/denial event commits in the gate's own
 //! transaction, so the quota counts the ADMITTED CALLS, never the domain
-//! effects). The per-verb LOCAL grants + the audit ride the handlers
-//! themselves — the seam never widens an authority path.
+//! effects). The seam never widens an authority path.
+//!
+//! ⛔ **What each handler brings is NOT uniform, and this header used to
+//! say it was** (`SIGNOFF-REPAIR.6.1.2`). It claimed "the per-verb LOCAL
+//! grants + the audit ride the handlers themselves" for all three. As
+//! measured:
+//!
+//! - `respond` — TRUE. `run_thread_command` runs the idempotency, the
+//!   `thread_contribute` grant and the audit record.
+//! - `join_call` — no per-verb grant: the core checks the enrolled ROLE,
+//!   the call's state and, for the PARTICIPATION kinds only, eligibility.
+//!   `.6.1.2` added the tenant binding it was missing; there is still no
+//!   `GrantAction` for answering a call and no audit row.
+//! - `propose_policy_change` — NEITHER. `lifecycle::register_proposal`
+//!   inserts the row after an enrolment check and writes no audit record,
+//!   and the HTTP verb behind `POST /v1/policy-proposals` does exactly the
+//!   same. The tool is not weaker than the HTTP surface; the sentence was
+//!   simply describing a control neither of them has.
+//!
+//! ⭐ The tenant each handler receives is the gate's, not the caller's
+//! claim: `gate` refuses unless the argument EQUALS the principal's
+//! recorded tenant, so by the time a handler sees it the two cannot differ.
 
 use reasonbraid_core::actor_handle_for_subject;
 use reasonbraid_core::{GrantAction, GrantSubject, ResourceTarget, TenantId, ThreadId};

@@ -197,7 +197,7 @@ produced the sharpest read finding this review has recorded:
 | Limitation | Effect | Owner |
 | --- | --- | --- |
 | All three MCP read tools return data the caller is not entitled to, while the module documents the opposite — **repaired, `.6.1.1`** | The inbox tool declared a caller argument and never read it. The thread tool computed the correct reader class for a foreign tenant and returned the full projection anyway, reporting that class beside it; measured live, a caller in one tenant received another tenant's entire thread projection. The policy-bundle tool read neither its caller nor its tenant. ⚠️ **One part of this finding was corrected by measurement**: the policy registry has no tenant column and no site filters by one, so the bundle was not crossing a tenant boundary — it is a site-wide registry, and the HTTP surface returns the same set to any enrolled caller. What the tool owed was that surface's enrolment check, and what it got wrong besides was labelling a site-wide bundle with the caller's tenant. Whether the registry should be tenant-scoped is now `.6.1.5`. | `.6.1.1` |
-| The MCP call-response tool checks the caller against one tenant and the call against none | A caller admitted on their own tenant can record a response on another tenant's recruitment call, and a decline, recommendation or recusal skips the eligibility check entirely. | `.6.1` |
+| The call-response path checks the caller against one tenant and the call against none — **repaired, `.6.1.2`** | A caller admitted on their own tenant could record a response on another tenant's recruitment call, and a decline or recusal skips the eligibility check entirely. ⚠️ **The finding named the MCP tool and the plain HTTP verb was equally affected** — it takes no tenant at all and shares the same code — so the check was added to the shared path rather than to the tool, and the control exercises both. | `.6.1.2` |
 | Registering a policy accepts an expired authority grant — **repaired, `.9.3.1`** | Registration checked the grant's status only, while resolution in the same module also checked its expiry, so a lapsed grant still registered a policy version. Both now ask one shared predicate, which is also the first time either consulted the grant's start date. ⚠️ Whether a policy's owner must be a grant the registrar personally holds is a separate question and remains `.9.1`'s. | `.9.3.1`, `.9.1` |
 | A policy's applicability selector defaults to the wildcard | A missing or malformed selector field is read as "matches everything", which is fail-open in the place the design requires fail-closed. Policies in draft, superseded and deprecated states also remain applicable. | `.9.1` |
 
@@ -246,7 +246,18 @@ each stating how to reproduce the defect, what it owns, and what must be
 observed — including a control that must be seen to fail against the current
 code before any repair is accepted.
 
-A second repair has landed since. Naming an authority was treated as holding
+Two further repairs have landed since. The first: answering a recruitment call
+was not bound to the call's own tenant, so a participant enrolled in one
+organisation could decline or recuse themselves from another organisation's
+call. The finding named the tool surface; the plain HTTP route turned out to
+share the same code and to be equally open, which is why the check went into
+the shared path — a fix at the tool would have left the route open while every
+test in view still passed. The same change corrected a description that had
+claimed all three write tools carry a per-action permission check and an audit
+record: one of them does, and the sentence has been replaced by a per-tool
+account of what each actually brings.
+
+The second: Naming an authority was treated as holding
 one: any enrolled principal who could name an active grant could record a policy
 retraction under it, register a deployment target owned by it, or file an
 approval as another person — and grant identifiers are derived from principal

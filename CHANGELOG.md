@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-14 — The seam was named; the core was the defect (`SIGNOFF-REPAIR.6.1.2`)
+
+- **Measured live before the repair, on BOTH surfaces:** a role enrolled in one tenant recorded a `decline` and a `recuse` against another tenant's recruitment call — through the MCP seam **and over plain HTTP**. A new seven-leg control reported **5 breaching**.
+- 🔴 **The leaf named the MCP seam; the HTTP verb over the same core takes no tenant at all** and was equally open. ⛔ A repair at the seam would have left that verb wide open **and the seam's own suite green** — which is the argument for where the binding went: into `respond_to_call_core`, derived from the call, so both callers get it at once.
+- ⛔ **The fixture was wrong first and three legs were green for the wrong reason.** The control posted to `/v1/calls/{id}/responses`; the route is `/respond`, so every HTTP leg was reading a 404 as a refusal — the positive leg included. The corrected fixture moved two breaches onto the surface the leaf had not implicated.
+- ⛔ **One leg was removed rather than kept green.** The acceptance said "every response kind"; `join` is refused earlier, by the absence of an enrolled node, so it would pass without the binding ever being reached. The two kinds that skip the eligibility gate carry the claim.
+- ⭐ **The proposal half was settled by measurement, as the leaf directed**: `register_proposal` has no grant check and no audit row — and neither does the HTTP verb behind it. The tool is not weaker than the HTTP surface, so the seam's header was describing a control neither has. The header now states what each of the three verbs actually brings, separately, because they are not uniform.
+- **Promoted:** when two surfaces share a core, the binding belongs in the core — and the giveaway is a seam-level repair that leaves the seam's own suite green (`TOOLBOX.md`, `docs/knowledge/`).
+- After: **0 of 7 legs breach**, 5/5.
+
 ## 2026-09-14 — Citing an authority is not holding one (`SIGNOFF-REPAIR.9.3.1`)
 
 - **Measured live before the repair:** a principal in one tenant recorded a policy **retraction** under another tenant's grant, registered a deployment target owned by it, recorded a correction under a grant whose `valid_from` was tomorrow, and filed a policy **approval as another principal**. A new nine-leg control reported **6 breaching**.

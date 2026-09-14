@@ -78,5 +78,28 @@ was empty and the harness reported success while proving nothing. Use an
 instrument that does not depend on the file's tracking state — a grep census of
 the call sites, for instance — and check the run's own result against it.
 
+## ⭐ Where the check goes, when two surfaces share a core
+
+The same question arrives a second way: not "does this surface run the other's
+check" but "which of them should hold it". When two surfaces already share a
+core, the binding belongs in the **core**, and there is a clean giveaway for
+when you have put it in the wrong place.
+
+*Instance (reference deployment): a tool seam gated its caller against a tenant
+the caller supplied, then handed a core a target id; the core fetched by that id
+alone. The obvious repair is at the seam, where the finding was written. But the
+HTTP verb over the same core took **no tenant at all** — so a seam-level repair
+would have left that verb fully open **and the seam's own suite green**.*
+
+⛔ **That is the test: if fixing it at the seam would leave a sibling caller
+broken while every test you can see passes, the check is in the wrong place.**
+Put it where the target's own identity is in scope — which is the same place
+`inspect_call`-shaped code already looks — and both callers get it at once.
+
+⚠️ A corollary about the finding you inherited: it names the surface where
+someone happened to look. Before repairing at that surface, enumerate the
+core's callers. Here the leaf said "the MCP write seam"; the census said "two
+surfaces, one core", and the second one was worse.
+
 Related: `docs/CLAIM_VERIFICATION.md` leg 2 (prefer an oracle you did not
 build); `where-an-invariant-lives`; `a-signature-is-a-promise-the-body-must-keep`.

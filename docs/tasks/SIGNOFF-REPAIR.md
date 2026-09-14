@@ -2539,6 +2539,39 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Owns: deriving the repository location from server configuration rather than from the request, binding the verb to explicit tenant or operator authority, and verifying that every declared effective object EXISTS in the repository before the publication is marked effective.
 - Acceptance: a request naming a path outside the configured root is refused with a typed error; an enrolled principal without publication authority is refused; `mark_publication_effective` refuses an object id that resolves to nothing, and the existing fixture is RE-SEEDED with real objects rather than relaxed (`MEMORY.md`: never delete a fixture that depends on a defect). All three controls observed RED first.
 - ⚠️ Read with `.11.12`: the server's configured root does not exist yet as a concept, and inventing one here must not conflict with that leaf's boot-order decision.
+- Status: `active`; DECOMPOSED into `.1`, `.2` and `.3` by REPAIR-0189, each with its own acceptance and its own RED-first control.
+- ⛔ **Why it was decomposed rather than worked whole, measured rather than felt.** The three acceptance clauses are three different repairs: one invents server configuration and a containment predicate, one changes the WIRE CONTRACT of two verbs, and one adds a repository read to a database transition. They share a leaf because one reviewer found them together, not because they land together. Two further facts settled it: the acceptance requires each control observed RED **before** its fix, and a `cargo check -p reasonbraid-server --tests` on this machine does not complete inside ten minutes — so a single commit would mean three unrelated repairs sharing one red-to-green cycle, and a bisect could not separate them. `.11.13`'s precedent is exactly this: a container carrying several findings becomes bounded leaves that can each be finished.
+- ⚠️ The children are ORDERED and the order is load-bearing: `.1` invents the configured root, and `.3` needs a repository to look objects up in. `.2` is independent of both.
+- Verification / commit: per child.
+
+##### SIGNOFF-REPAIR.9.2.1.1 — The publish verb takes its repository location from the request body
+
+- Opened: `pending` by `SIGNOFF-REPAIR.9.2.1`'s decomposition.
+- Reproduce, at the source: `api.rs::publish_publication` reads `repo_path` straight from the request body and hands it to `publisher::publish`, which calls `gix::open(repo_path)`. Any enrolled principal names any path on the server's filesystem. ⚠️ It COMPOSES with `R-52-2` clause 7: the module doc says *"into the LOCAL bare repository"* and `gix::open` accepts a non-bare one.
+- Owns: a publication repository ROOT as server configuration (`rb-server` argument + `ApiState`), the request's `repo_path` resolved strictly INSIDE it, and a typed refusal for anything outside — including via `..` and via a symlink, which are different escapes and must be tested separately.
+- ⚠️ **Fail-closed is part of the contract, not a detail:** with NO root configured the verb refuses. `api_router(pool)` keeps its signature — 34 call sites across 34 files — and the root arrives through a new seam beside `api_router_gated` and `api_router_with_acquisition`, which is the established shape here.
+- ⚠️ `.11.12` owns `rb-server`'s boot ORDER. This leaf adds an argument and its validation; it must place that refusal BEFORE any mutation (so it does not deepen `.11.12`'s finding) and must NOT decide `.11.12`'s two questions — the secret-store ordering and the `--host` gate.
+- Acceptance: three controls, each observed RED first — a request whose `repo_path` escapes the configured root via `..` is refused with a typed error; one that escapes via a SYMLINK inside the root is refused; and a server with no configured root refuses the verb outright. The existing publish test is re-pointed at the configured root rather than deleted.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.9.2.1.2 — Both publish verbs are authorized by enrolment alone
+
+- Opened: `pending` by `SIGNOFF-REPAIR.9.2.1`'s decomposition.
+- Reproduce, at the source: `publish_publication` and `mark_publication_effective` each check `reader_tenant(…).is_some()` and nothing else. Enrolment in ANY tenant is the whole predicate for writing a publication into a Git repository and for declaring it effective.
+- Owns: binding both verbs to an explicitly held grant, in the shape this codebase already uses — `deployments::register_target` takes an `owning_authority` from the caller and requires `authority::grant_held_by(pool, grant_id, principal)`. ⛔ That is THE predicate (`MEMORY.md`, `.9.3.1`); never a sixth spelling.
+- ⚠️ **A known limit this leaf must RECORD rather than pretend to fix:** `.9.3.4` measured that no `GrantAction` and no `TargetSelector` can NAME a publication, so a held grant is effectively tenant-wide for this verb. Binding to a held grant is strictly stronger than enrolment and is the best the vocabulary expresses today; the narrowing belongs to `.9.3.4`. Say so in the leaf and in the book rather than implying the verb is narrowly scoped.
+- ⚠️ This CHANGES THE WIRE CONTRACT of two shipped verbs (a new required field). The book and every fixture that drives them move with it.
+- Acceptance: a control observed RED first in which an enrolled principal holding NO grant is refused by both verbs, and a holder succeeds; a grant that exists but is held by SOMEONE ELSE is also refused, because "names a grant" and "holds a grant" are the two things `.9.3.1` found conflated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.9.2.1.3 — `mark_effective` records Git object ids it never looks for
+
+- Opened: `pending` by `SIGNOFF-REPAIR.9.2.1`'s decomposition.
+- Reproduce, at the source: `publications::mark_effective` takes `git_object_ids: Vec<String>`, refuses only the EMPTY list, and writes them into the row. Nothing opens a repository. The parent's goal line already says *"reject fabricated effective Git IDs"*, verbatim.
+- ⛔ **The bypass is EXERCISED by the suite meant to qualify it**, which is the stronger claim and the reason `R-73-74-3`'s framing is preserved: `git grep -n '"git_object_ids": \["abc123"' crates/reasonbraid-server/tests/policy.rs` returns **3** sites, one of them the deployment fixture. The suite proves the transition works using ids that do not exist.
+- Owns: verifying every declared object EXISTS in the configured repository before the publication is marked effective, and RE-SEEDING those fixtures with real objects. ⛔ `MEMORY.md`: never delete a fixture that depends on a defect — re-seed it, so the test still asserts the transition and now asserts it honestly.
+- ⚠️ Depends on `.1`: the verification needs a repository, and the route currently takes no path. It must read the CONFIGURED root, not a caller-supplied one — otherwise the check is satisfiable by pointing at a repository the caller prepared.
+- Acceptance: a control observed RED first in which `mark_publication_effective` with an id that resolves to nothing is refused with a typed error; the three fixture sites carry ids read back from a real repository; and the existing empty-list and wrong-stage refusals still hold.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.9.3 — Deployment, correction and review lifecycle
@@ -4551,7 +4584,9 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.9.2.1` | `pending` | the publish verbs take a filesystem path and a set of Git object ids from the caller, unbound, under enrolment-only authorization |
+| 1 | `SIGNOFF-REPAIR.9.2.1.1` | `pending` | the publish verb takes its repository location from the REQUEST BODY — first child of `.9.2.1`, which REPAIR-0189 decomposed into three because its clauses are three different repairs sharing one leaf. ⚠️ It invents the server-configured root, so `.3` waits on it; `.2` (authority) does not |
+| 1b | `SIGNOFF-REPAIR.9.2.1.2` | `pending` | both publish verbs are authorized by ENROLMENT ALONE; binds them to a held grant in `register_target`'s shape. ⚠️ Changes the wire contract of two shipped verbs, and `.9.3.4`'s limit must be RECORDED, not papered over |
+| 1c | `SIGNOFF-REPAIR.9.2.1.3` | `pending` | `mark_effective` records Git object ids it never looks for, and **3 fixture sites exercise the bypass**. ⛔ Depends on `.1` for a repository to look them up in |
 | 2 | `SIGNOFF-REPAIR.11.9.1.3.2` | `pending` | tranche 4b, the largest child at 2,923 characters and the one carrying the declared deviation. ⚠️ **DELEGATION IS ONE HOP DEEP** — `.3.4` is the delegation leaf and several of these records will look like they ask to widen it |
 | 2b | `SIGNOFF-REPAIR.11.12` | `pending` | `rb-server` migrates the database BEFORE validating the profile it refuses to boot without, and `--host` is ungated — the two halves must be decided separately |
 | 3 | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
@@ -4564,7 +4599,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 10 | `SIGNOFF-REPAIR.11.4.6` | `pending` | the six MCP tools are a shipped user-visible surface with no book chapter, found while repairing one; ⛔ the 29-route-family census is a POPULATION and classifying it is the first half of the leaf, not a step before it |
 | 9 | `SIGNOFF-REPAIR.6.1.5` | `pending` | opened by `.6.1.1`, which measured it and did not answer it: the policy registry has no tenant column and no site filters by one, on BOTH surfaces. ⛔ Not a leak to plug — a design question, and ⛔ NOT answerable by a filter on one read while the write admits any enrolled principal |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **53 leaves are `pending`** across this tree. 🔴 **It rose by seven in one commit and that is the point**: `SIGNOFF-REPAIR.11.13` converted eight container leaves carrying surfaced findings into bounded leaves with their own acceptance. A pending count that goes UP because routing became ownership is the healthy direction. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **55 leaves are `pending`** across this tree. 🔴 **It rose by seven in one commit and that is the point**: `SIGNOFF-REPAIR.11.13` converted eight container leaves carrying surfaced findings into bounded leaves with their own acceptance. A pending count that goes UP because routing became ownership is the healthy direction. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 

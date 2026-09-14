@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Three repairs were sharing one leaf (`SIGNOFF-REPAIR.9.2.1`)
+
+`.9.2.1` carried three acceptance clauses over the publication verbs. They are three different repairs: one invents server configuration and a path-containment predicate, one changes the **wire contract** of two shipped verbs, and one adds a repository read to a database transition. They shared a leaf because one reviewer found them together, not because they land together.
+
+- **Decomposed into `.1` (repository root), `.2` (authority binding) and `.3` (object existence)**, each with its own acceptance and its own control observed RED before its fix — `.11.13`'s precedent, which converted eight containers into leaves that can actually be finished.
+- ⚠️ **Two facts settled it rather than taste.** The acceptance requires each control RED first, and `cargo check -p reasonbraid-server --tests` does not complete inside ten minutes on this machine — so one commit would mean three unrelated repairs sharing a single red-to-green cycle, and a bisect could not separate them.
+- ⚠️ The children are **ordered**: `.1` invents the configured root and `.3` needs a repository to look objects up in. `.2` is independent.
+- **Measured while writing the children, not asserted:** `git grep -n '"git_object_ids": \["abc123"' crates/reasonbraid-server/tests/policy.rs` → **3** sites, one of them the deployment fixture. The suite meant to qualify the transition exercises it with ids that do not exist, which is why `R-73-74-3`'s framing is preserved as the stronger claim.
+- Pending rose 53 → **55**, which is the healthy direction: three things carried as one unfinishable leaf are now three with acceptance attached.
+
 ## 2026-09-14 — The derived map was generated from the working tree and committed against the index (`SIGNOFF-REPAIR.11.4.5.4`)
 
 `.githooks/pre-commit` regenerates `KNOWLEDGE_MAP.md` and stages it, so *"map-drift is structurally impossible"*. But the generator enumerated its sources with `ls docs/{tasks,decisions,knowledge}/*.md` — the **working tree** — while the map it staged was committed against the **index**. An untracked file in any of those directories entered the committed map as a link the commit does not contain.

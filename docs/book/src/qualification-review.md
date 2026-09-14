@@ -206,6 +206,23 @@ confirmed, and both are recorded that way: a panic on a malformed payload is
 real but not reachable through the typed tool, and the quota's behaviour on a
 retried call is stated exactly as it behaves in the module's own header.
 
+The last five records of that group concern the processes the product spawns —
+the browser worker and the two provider adapters — and they close the third
+group at fifteen records and sixty-nine clauses:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| The browser worker waits for its child to finish before reading what the child wrote | The request allows four megabytes of output while an operating-system pipe holds at most sixty-four kilobytes, so any larger response blocks the child's own write, the child never finishes, and the wait runs to its deadline. The failure is reported as a timeout. | `.7.3` |
+| The browser worker's error and timeout paths leave processes behind | A failure writing the request abandons a running child without killing or waiting for it, and the timeout kills the worker but not the browser it started. | `.7.3` |
+| Each provider adapter can panic while reporting a failure | The stderr excerpt attached to a failure reason is cut at a byte offset rather than a character boundary, so a child that writes non-ASCII can crash the adapter on the path that was already handling an error. | `.10.1` |
+| Each provider adapter keeps every child it has ever started | The map of running children is added to and never removed from, so it grows by one unreaped process for the life of the server. The successful path also returns without waiting for the child or its output drain, while the failing path does both. | `.10.1` |
+| A per-attempt deadline is sent and never enforced | The value is computed, placed on the dispatch and carried in the contract; no adapter and no supervisor reads it. | `.4.4` |
+| A completed item that reaches the retry gate is quarantined as a dead letter | The gate refuses every state it does not name individually, completion included, and every refusal is reported to the server as a dead letter, which quarantines the row. The report itself never marks its own outgoing record as delivered. | `.4.4` |
+
+⚠️ Two source-record claims were narrowed rather than confirmed: an unknown
+provider outcome does leave the worker as an error, but the type documents that
+as deliberate and what a caller does next was not measured here.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

@@ -205,6 +205,41 @@ the vocabulary since tranche 1 and without an instance until now.
 | `R-66-1` | 2 | attach | `SIGNOFF-REPAIR.6.1` | the test COUNTS and never asserts atomicity: it checks a 200, reads the events, and counts quota rows. No control interrupts between the gate's commit and the handler's to observe the split. Coverage is not documentation, and the goal line names only the latter |
 | `R-66-1` | 3 | owned | `SIGNOFF-REPAIR.6.1` | same goal line. The record's own ask — decide whether counting DENIED attempts is intended, and reconcile it with the success-atomic reading the test's prose invites — is the decision "keep … accurately documented" requires before the wording can be called right |
 
+## Tranche 3c — the five records whose narrowest candidate leaf is `SIGNOFF-REPAIR.10.1`
+
+Owner: `SIGNOFF-REPAIR.11.9.1.2.3`. Ranking: `SIGNOFF-REPAIR.11.9.1`. Split and
+its sizing: `SIGNOFF-REPAIR.11.9.1.2`.
+
+⚠️ The narrowest CANDIDATE is `.10.1` for all five, and it is the OWNER for only
+one of them. `R-36-39-8` lands on `.7.3` and three records land on `.4.4`, whose
+own Sources line names the two test files two of them are about. That is
+`SIGNOFF-REPAIR.11.9`'s rule in action: the candidate list is a suggestion.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-36-39-8` | 1 | owned | `SIGNOFF-REPAIR.7.3` | goal line "drain pipes concurrently", verbatim. Live: `browse.rs::run_browse` polls `try_wait()` in a sleep loop until the child EXITS and only then calls `read_to_string` on the piped stdout. ⭐ MEASURED as a ratio rather than asserted: the request it writes sets `max_output_bytes` to **4 MiB** while an OS pipe buffer is at most 64 KiB, so the worker blocks on its own write for any response above roughly a sixty-fourth of the configured limit, never exits, and the loop runs to `deadline` and returns `TimedOut` |
+| `R-36-39-8` | 2 | owned | `SIGNOFF-REPAIR.7.3` | goal line "reap descendants". Live: the stdin write is `writeln!(stdin, "{request}").map_err(…)?` — the `?` returns while `child` is still alive, and dropping a `std::process::Child` neither kills nor waits, so the worker and everything under it is orphaned on that path |
+| `R-36-39-8` | 3 | owned | `SIGNOFF-REPAIR.7.3` | same goal line, the timeout path. Live: the deadline branch runs `child.kill()` then `child.wait()`, which reaches the WORKER process only — the browser it spawned is a descendant and a parent's death does not propagate. `stderr` is `Stdio::null()`, so nothing is left to diagnose it with either |
+| `R-36-39-8` | 4 | owned | `SIGNOFF-REPAIR.7.3` | "the same extraction spawner likely — inspect next" is the record's follow-on ask and rides on clauses 1–3; the extraction worker is this leaf's owned surface, so the inspection belongs to the same census |
+| `R-6-27-3` | 1 | owned | `SIGNOFF-REPAIR.10.1` | goal line "Bound UTF-8-safe stderr/stdout/chunk storage", verbatim. Live at TWO sites — `codex.rs:268` and `claude.rs:308` — `buf[buf.len() - 1024..].to_string()` is a BYTE slice of a `String`, and `String`'s range index panics when that offset is not a char boundary. Reachable whenever a child writes non-ASCII to stderr and the buffer passes 1024 bytes, on the FAILURE path |
+| `R-6-27-3` | 2 | owned | `SIGNOFF-REPAIR.10.1` | same goal line, the bound. Live at `codex.rs:219`–`:226` and `claude.rs:254`: `lines.next_line()` reads to a newline with NO length limit, so a child emitting megabytes without one allocates all of it before any check; and the check is `if buf.len() < 8192` BEFORE the append, so the real bound is 8,191 bytes plus one unbounded line |
+| `R-6-27-3` | 3 | owned | `SIGNOFF-REPAIR.10.1` | goal line "reap terminal children". Live: `children: Mutex<HashMap<String, Arc<Mutex<Child>>>>` is `insert`ed at `codex.rs:141` / `claude.rs:168` and `get`-ed at `:167` / `:194`, and **nothing ever removes**. The map grows by one `Child` per operation for the life of the process, and each retained handle is an unreaped process |
+| `R-6-27-3` | 4 | owned | `SIGNOFF-REPAIR.10.1` | same goal line, and the contrast is inside one function. Live: the EOF arm awaits the stderr drain with a 5-second bound and then `child.wait()`; the `turn.completed` arm sets `self.finished = true` and returns `AttemptEvent::Completed` IMMEDIATELY, awaiting neither. The SUCCESS path leaves the child unreaped and the drain task running; the failure path does it correctly |
+| `R-6-27-3` | 5 | owned | `SIGNOFF-REPAIR.10.1` | goal line "preserve honest pre-dispatch versus unknown-outcome semantics". Live: the EOF arm maps `Some(s)` — ANY non-success exit status — to `AttemptEvent::FailedKnown`, a definitive remote verdict. The cancel path at `:174` is `start_kill()`, so a CANCELLED attempt produces exactly such a status and is reported as a known provider failure |
+| `R-6-27-3` | 6 | attach | `SIGNOFF-REPAIR.10.1` | "usage mapping against providers unverified". `normalize_usage` maps each provider's receipt into `NormalizedUsage`, and no control compares either mapping against a real provider's documented field names. ⛔ Not one of the goal line's five mechanisms, and it is the one whose failure is SILENT: a mis-mapped token count settles a budget wrongly without any error |
+| `R-6-27-9` | 1 | owned | `SIGNOFF-REPAIR.4.4` | goal line "bound streams". Live: `supervisor.rs:229` builds `let mut chunks = Vec::new()` and pushes every `OutputChunk` with no ceiling on count, bytes or time, returning them in `ExecutionReport.chunks`; `record_completed(&attempt_id, usage.as_ref(), now)` journals the USAGE and not the output |
+| `R-6-27-9` | 2 | owned | `SIGNOFF-REPAIR.4.4` | goal line "Close terminal-result/outgoing-event crash gaps", verbatim. Live: the supervisor journals the completion and RETURNS; the worker persists the outgoing event afterwards, in a separate transaction. A crash between them loses the output, and the retry gate then reads a `completed` status |
+| `R-6-27-9` | 3 | owned | `SIGNOFF-REPAIR.4.4` | goal line "settle refused results". Live: `retry.rs:80` is a catch-all `Some(_) => RetryVerdict::Refuse`, so every status outside the four named arms — `completed` included — refuses; and `worker.rs:275` maps EVERY refusal to `report_dead_letter`, which the server auto-quarantines. A completed item reaching the gate is quarantined as a dead letter |
+| `R-6-27-9` | 4 | owned | `SIGNOFF-REPAIR.4.4` | goal line "outgoing-event crash gaps", and MEASURED as a contrast: `Node::emit_event` runs `record_outgoing_event` -> `send_event` -> `acknowledge_event`, while `Worker::report_dead_letter` runs `record_outgoing_event` -> `send_event` -> `eprintln!`. The ack exists, the sibling calls it, and this one site omits it, so a delivered dead letter stays pending in the journal for ever |
+| `R-6-27-9` | 5 | owned | `SIGNOFF-REPAIR.4.4` | goal line "require explicit duplicate-risk authorization before replaying unknown provider outcomes". Live: `SupervisorError::OutcomeUnknown` is returned as an `Err` from `supervisor.rs:358` and wrapped by `WorkerError::Supervision`, so it leaves `tick()` rather than reaching the retry gate in that tick. ⚠️ NARROWED: the type's own doc says this is deliberate — "a fact, not a retry recommendation: what to do with it is the caller's decision" — and whether a caller's loop re-dispatches in-process is NOT established here |
+| `R-6-27-9` | 6 | owned | `SIGNOFF-REPAIR.4.4` | goal line "bound streams/deadlines", verbatim. Live and settled by a census rather than a reading: `worker.rs:382` computes a deadline and ships it as `deadline: Some(deadline)`, and grepping every adapter source and the supervisor for `deadline` returns exactly ONE hit — `contract.rs:58`, the struct field's own declaration. The value is written by one side and read by nobody |
+| `R-6-27-9` | 7 | owned | `SIGNOFF-REPAIR.4.4` | "need tool-backed reproduction after full read" is the record's own acceptance for clauses 1–6 and rides on them; it is also `TOOLBOX.md`'s standing requirement, so the leaf inherits it either way |
+| `R-70-2` | 1 | attach | `SIGNOFF-REPAIR.4.4` | the negative control cannot tell the gate from the adapter. Live: `node_replacement.rs:549` scripts `FakeAdapter` with `ScriptStep::FailBeforeDispatch`, so the attempt fails whether or not the stale-decision gate refuses, while the comment above it claims "the replacement's dispatch refuses fail-closed (a stale decision…)". ⛔ This leaf's Sources line names the test; its goal line names product mechanisms only |
+| `R-70-2` | 2 | attach | `SIGNOFF-REPAIR.4.4` | the record's remedy — count the dispatch calls and use an adapter that WOULD succeed — rides on clause 1 and shares its fate. Recorded separately so a future reader is not told the two were merged |
+| `R-70-2` | 3 | attach | `SIGNOFF-REPAIR.4.4` | the loops discard the worker's errors. Live: `for _ in 0..4 { let _ = worker.tick().await; }` — the exact refusal reason is never observed, so a bounded retry exhausting is all the test can see, and that is consistent with several causes |
+| `R-71-72-2` | 1 | attach | `SIGNOFF-REPAIR.4.4` | the assertion counts the wrong event type for its own claim. Live: `node_work.rs` ends `a_revocation_invalidates_the_cached_decision_at_the_next_dispatch` by counting `thread.contribution_submitted` events == 1 under the message "the refused revise dispatched nothing" — but a revise is a DISTINCT event type, so that count is 1 whether or not the revise landed. ⭐ The record is fair to the test and so is this row: it also asserts `attempts[0].status == "failed_before_dispatch"`, which IS direct evidence of the refusal path and is what makes it stronger than `R-70-2`'s |
+| `R-71-72-2` | 2 | attach | `SIGNOFF-REPAIR.4.4` | the record's remedy — assert the adapter's call count AND the absence of revision events — rides on clause 1 and shares its fate |
+
 ## Coverage
 
 Tranche 1 is 7 records and 26 clauses: `R-31-32-1`, `R-47-2`, `R-53-4`, `R-63-1`,
@@ -229,6 +264,12 @@ finding is a SCHEMA shape rather than a code path.
 Tranche 3b is 5 records and 27 clauses: `R-31-32-3`, `R-48-49-1`, `R-50-3`,
 `R-6-27-7` and `R-66-1`. ⭐ It carries the ledger's FIRST `none` row, which
 completes the closed set: every one of the six states now has an instance.
+
+Tranche 3c is 5 records and 22 clauses: `R-36-39-8`, `R-6-27-3`, `R-6-27-9`,
+`R-70-2` and `R-71-72-2`. ⭐ **Tranche 3 is therefore COMPLETE**: 15 records,
+69 clauses, across `.11.9.1.2.1`–`.3`. ⚠️ Its narrowest candidate `.10.1` is
+the OWNER of only one of this child's five records — the clearest instance yet
+that a candidate list is a suggestion.
 
 ⛔ Every row carries a state from the closed set above, so a reader may take the
 absence of a record as "not yet classified" and nothing else. `R-55-2` sits at

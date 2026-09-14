@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-14 — Measure a deadlock as a ratio (`SIGNOFF-REPAIR.11.9.1.2.3`, tranche 3 complete)
+
+- **Tranche 3c reconciled five records into 22 clause rows**: 16 `owned`, 6 `attach`, 0 `unowned`. Tranche 3 is complete at 15 records and 69 clauses.
+- 🔴 **The browse worker waits for its child to exit before reading the child's piped stdout**, and the request it writes allows 4 MiB of output against an OS pipe buffer of at most 64 KiB — so the deadlock covers most of the intended range, not an edge case, and surfaces as a timeout. Its error path drops a live `Child` without killing or waiting; its timeout path kills the worker but not the browser beneath it.
+- 🔴 **Four adapter defects, each at two sites**, because `codex.rs` and `claude.rs` share a shape: a byte slice of a `String` that panics off a char boundary, an unbounded line read under a bound checked before the append, a child map that is never removed from, and a success path that returns without awaiting the drain or waiting the child while the failure path does both.
+- 🔴 **A deadline is computed, shipped, and read by nobody** — one grep hit across every adapter source and the supervisor, and it is the struct field's own declaration.
+- 🔴 **A completed item that reaches the retry gate is dead-lettered and auto-quarantined**, and that report never acknowledges its own journal row while its only sibling call site does.
+- ⚠️ **One clause was narrowed rather than confirmed** — `OutcomeUnknown`'s propagation is real and documented as deliberate by the type itself.
+- ⚠️ **The narrowest candidate was the owner of only one of the five records**, the clearest instance yet that a record's candidate list is a suggestion.
+- **Promoted:** prefer a ratio, a single-hit grep or a two-site contrast to a reading (`TOOLBOX.md`).
+- Validation: `--classified` 179 rows clean with all 38 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
+
 ## 2026-09-14 — The sentence at the top of the MCP module (`SIGNOFF-REPAIR.11.9.1.2.2`, tranche 3b)
 
 - **Tranche 3b reconciled five records into 27 clause rows**: 22 `owned`, 3 `attach`, **1 `none`** — the ledger's first, which completes the closed set of six states — and 0 `unowned`.

@@ -157,6 +157,38 @@ So: before asserting what a markup rule does, render one minimal example with th
 own toolchain and read the output. If the project ships a renderer, it is already the
 instrument.
 
+### Prefer a ratio, a single-hit grep, or a two-site contrast to a reading
+
+Reading a function and reporting what it does is the weakest form of a source finding:
+the reader has to trust your reading. Three cheap shapes carry their own proof, and
+`SIGNOFF-REPAIR.11.9.1.2.3` produced one of each in a single leaf.
+
+- **A RATIO says how much of the intended range is affected.** `run_browse` waits for the
+  child to exit before reading its piped stdout — true, and unactionable. The request it
+  writes sets `max_output_bytes` to **4 MiB**; an OS pipe buffer is at most **64 KiB**. The
+  deadlock therefore covers everything above roughly a sixty-fourth of the configured
+  limit, which is a statement about the design rather than about an edge case.
+- **A SINGLE-HIT GREP quantifies over every call site at once.** "Nothing enforces the
+  deadline" invites the reply "did you check all of them?". `grep -rn deadline` over every
+  adapter source and the supervisor returning exactly ONE hit — the struct field's own
+  declaration — closes that question in one command. ⚠️ Scope it WHOLE; a path filter that
+  excludes a directory makes this shape lie (`SIGNOFF-REPAIR.11.2.2`).
+- **A CONTRAST over a small closed population is conclusive rather than suggestive.**
+  "`report_dead_letter` does not acknowledge its outgoing row" could be the design. There
+  are exactly TWO callers of `record_outgoing_event`: `Node::emit_event` runs
+  `record_outgoing_event` -> `send_event` -> `acknowledge_event`, and this one runs
+  `record_outgoing_event` -> `send_event` -> `eprintln!`. Two of two is the whole
+  population, so the omission is not a reading.
+
+⭐ The same leaf found the shape a fourth time without looking for it: `codex.rs` and
+`claude.rs` carry four identical defects, so every one of them is "at two sites" rather
+than "in the adapter". Two sites is a claim about the codebase; one site is a claim about
+a file.
+
+⛔ None of these is a substitute for reading the source — each one came OUT of a reading.
+The rule is about what you publish: when a cheap command can turn your reading into a
+number, spend the command.
+
 ### When correctness depends on enumerating what to exclude, make the failure cheap
 
 An exclusion list has to be right. Prefer a mechanism where being wrong costs little.

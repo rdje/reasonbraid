@@ -248,6 +248,41 @@ a file.
 The rule is about what you publish: when a cheap command can turn your reading into a
 number, spend the command.
 
+### A claim of sameness is worth exactly the call graph that enforces it
+
+When one surface's documentation says it runs another's checks — *"the same queries + the
+same authorization as the HTTP handlers"* — and the code beneath it is a SECOND
+implementation, the sentence is holding an invariant no tool is maintaining. It is right
+the day it is typed and free to be wrong from the next commit, and it is worse than
+silence: the next reader trusts it INSTEAD of reading the query.
+
+`SIGNOFF-REPAIR.6.1.1` measured the end state of that. Three MCP read tools, a header
+asserting sameness, and a private re-implementation that ran none of it — one tool
+declared a `principal` it never read, one took its tenant as an underscore-prefixed
+unused parameter, one computed the correct foreign-reader class and returned the full
+projection beside it. Live, a caller in one tenant received another tenant's entire
+thread projection.
+
+⛔ **The repair is the CALL, not the three missing checks.** Adding them beside the copy
+leaves the mechanism intact and makes the sentence true, so the next omission is harder
+to see. Extract the shared halves, have the second surface consume them, and delete the
+copy — then sameness is a fact about the call graph and breaking it is a change the
+compiler sees. ⭐ The by-product is free correctness: the seam inherits everything the
+real read had accreted and the copy had not (here, a derived view and a view-backed
+select — two divergences nobody had found).
+
+Two traps met while proving it, both general:
+
+- **A fail-fast control is the wrong arity for a claim about a SET.** The claim was "all
+  three read tools"; the control stopped at the first breach and reported one. Accumulate
+  each leg's verdict and assert once at the end — one red leg became eight.
+- ⛔ **`git diff` cannot prove a change landed in a NEW file.** A falsification harness
+  printed the diff as evidence a gate had been neutralized; the file was untracked, the
+  diff was empty, and the harness reported success while proving nothing. Use an
+  instrument that does not depend on the file's tracking state.
+
+Full record: `docs/knowledge/a-claim-of-sameness-is-worth-its-call-graph.md`.
+
 ### When correctness depends on enumerating what to exclude, make the failure cheap
 
 An exclusion list has to be right. Prefer a mechanism where being wrong costs little.

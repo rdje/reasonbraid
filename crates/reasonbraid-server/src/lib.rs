@@ -53,6 +53,14 @@ pub mod mcp_listen_internal {
         listen_state as state, record_delivery_in_tx as record, resume_plan, ResumePlan,
     };
 }
+mod mcp_read;
+/// The seam for the MCP read half (the `.3.5.2` tools consume this — the same
+/// pattern as `mcp_write_internal`). Added by `SIGNOFF-REPAIR.6.1.1`, which
+/// found the read tools running a private re-implementation of an
+/// authorization their own module header said they shared.
+pub mod mcp_read_internal {
+    pub use crate::mcp_read::{inbox, policy_bundle, thread, ReadRefused};
+}
 mod mcp_write;
 /// The seam for the MCP write gate (the `.3.5.2` tools + the live suite
 /// consume this — the same pattern as `mcp_listen_internal`).

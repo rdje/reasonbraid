@@ -22,11 +22,14 @@ reasonbraid-server = { path = "../reasonbraid-server", version = "0.1.0" }
 rmcp = { version = "=3.2.0", default-features = false, features = ["macros", "server", "transport-async-rw"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "tls-none", "chrono"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Test-only since `SIGNOFF-REPAIR.6.1.1` deleted the crate's private
+# re-implementation of the server's reads: the library no longer names a
+# timestamp type, and only the live control still builds deadlines.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The live roundtrip's HTTP bootstrap (the server crate's TLS profile —
 # the workspace single-provider rule) + the test router's server.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }

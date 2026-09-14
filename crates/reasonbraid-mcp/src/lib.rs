@@ -1,16 +1,26 @@
 //! The MCP tools (`PHASE-8.3.3` + `PHASE-8.3.5.2`, ADR-024, §9.6): the
-//! READ tools over the inspection verbs — the SAME queries + the SAME
-//! authorization as the HTTP handlers — and the WRITE tools (`respond`,
-//! `join_call`, `propose_policy_change`) over the `.3.5.1` qualified
-//! gate: the enrollment binding + the per-principal quota, then the SAME
-//! domain handlers (a tool no handler backs is not exposed; the remote
-//! MCP metadata never grants authority).
+//! READ tools over the inspection verbs, through
+//! `reasonbraid_server::mcp_read_internal`, and the WRITE tools
+//! (`respond`, `join_call`, `propose_policy_change`) over the `.3.5.1`
+//! qualified gate, through `mcp_write_internal`: a tool no handler backs
+//! is not exposed, and the remote MCP metadata never grants authority.
 //!
 //! The principal rides the tool's argument (the dev profile's trust
-//! shape — the same principal the HTTP header carries); every read runs
-//! the reader classification (the per-reader visibility the HTTP surface
-//! enforces); every write rides the qualified gate. The tool payloads
-//! EXCLUDE the token fields — the tokens never enter the thread content.
+//! shape — the same principal the HTTP header carries). Every tool is a
+//! thin translation: parse the principal, call the seam, render the
+//! seam's typed refusal as a tool error. The tool payloads EXCLUDE the
+//! token fields — the tokens never enter the thread content.
+//!
+//! ⛔ This header used to claim "the SAME queries + the SAME
+//! authorization as the HTTP handlers" and "every read runs the reader
+//! classification" over a private re-implementation that ran NEITHER:
+//! `list_inbox` declared a `principal` it never read, `get_policy_bundle`
+//! took its tenant as an unused parameter, and `get_thread` computed the
+//! foreign-reader class and returned the full projection beside it
+//! (`SIGNOFF-REPAIR.6.1.1`). Measured before the repair, a principal in
+//! one tenant received another tenant's entire thread projection. The
+//! sameness is now a CALL rather than a sentence — which is the only
+//! form of it a reader can check.
 
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 
@@ -44,14 +54,17 @@ pub struct ListInboxParams {
     pub node_id: String,
 }
 
-/// `get_policy_bundle` — the authorized policy set: the registry's
-/// current policy documents (the digest-pinned forms).
+/// `get_policy_bundle` — the site's registered policy documents (the
+/// digest-pinned forms).
+///
+/// ⛔ No tenant: the registry is site-global, so a tenant argument here
+/// could only be ignored or checked against something it does not scope.
+/// The conformance golden moved with it, deliberately
+/// (`SIGNOFF-REPAIR.6.1.1`).
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct GetPolicyBundleParams {
     /// The caller's principal id (the dev-profile trust header's value).
     pub principal: String,
-    /// The tenant id.
-    pub tenant_id: String,
 }
 
 /// `respond` — the thread contribution (the qualified write profile).
@@ -123,10 +136,11 @@ pub struct ProposePolicyChangeParams {
 
 #[tool_router(server_handler)]
 impl McpTools {
-    /// Read one thread's current projection — the same classification the
-    /// HTTP `GET /v1/threads/{id}` applies (the per-reader visibility).
+    /// Read one thread's current projection — the SAME `thread_inspect`
+    /// authorization and the SAME tenant-bound select the HTTP
+    /// `GET /v1/threads/{id}` runs.
     #[tool(
-        description = "Read one thread's current projection (the same classification the HTTP inspection applies)"
+        description = "Read one thread's current projection (the same authorization and query the HTTP inspection runs)"
     )]
     async fn get_thread(
         &self,
@@ -134,75 +148,59 @@ impl McpTools {
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
         let principal = crate::principal(&args.principal)
             .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
-        let class = crate::server::classify(&self.pool, &principal, &args.thread_id)
-            .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        let Some(class) = class else {
-            return Ok(rmcp::model::CallToolResult::error(vec![
-                rmcp::model::ContentBlock::text(format!(
-                    "no thread `{}` visible to the principal",
-                    args.thread_id
-                )),
-            ]));
-        };
-        let state = crate::server::thread_state(&self.pool, &args.tenant_id, &args.thread_id)
-            .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        match state {
-            Some((version, state)) => Ok(rmcp::model::CallToolResult::success(vec![
-                rmcp::model::ContentBlock::text(
-                    serde_json::json!({
-                        "thread_id": args.thread_id,
-                        "version": version,
-                        "visibility": class.wire_name(),
-                        "state": state,
-                    })
-                    .to_string(),
-                ),
-            ])),
-            None => Ok(rmcp::model::CallToolResult::error(vec![
-                rmcp::model::ContentBlock::text(format!(
-                    "no thread `{}` in tenant `{}`",
-                    args.thread_id, args.tenant_id
-                )),
-            ])),
-        }
+        Ok(render(
+            reasonbraid_server::mcp_read_internal::thread(
+                &self.pool,
+                &principal,
+                &args.tenant_id,
+                &args.thread_id,
+            )
+            .await,
+        ))
     }
 
-    /// List one node's inbox rows with their delivery states — the same
-    /// surface the HTTP inspection exposes.
+    /// List one node's inbox rows with their delivery states — the SAME
+    /// `tenant_admin` authorization and the SAME select the HTTP
+    /// `GET /v1/nodes/inbox` runs.
     #[tool(description = "List one node's inbox rows with their delivery states")]
     async fn list_inbox(
         &self,
         Parameters(args): Parameters<ListInboxParams>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        let rows = crate::server::inbox_rows(&self.pool, &args.tenant_id, &args.node_id)
-            .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(rmcp::model::CallToolResult::success(vec![
-            rmcp::model::ContentBlock::text(
-                serde_json::json!({ "node_id": args.node_id, "rows": rows }).to_string(),
-            ),
-        ]))
+        let principal = crate::principal(&args.principal)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
+        Ok(render(
+            reasonbraid_server::mcp_read_internal::inbox(
+                &self.pool,
+                &principal,
+                &args.tenant_id,
+                &args.node_id,
+            )
+            .await,
+        ))
     }
 
-    /// The authorized policy set — the registry's current policy documents
-    /// (the digest-pinned forms).
+    /// The registered policy set — the SAME enrolment gate and the SAME
+    /// `policy::list` read the HTTP `GET /v1/policies` runs.
+    ///
+    /// ⛔ The registry is SITE-GLOBAL, and the response carries no tenant
+    /// because no tenant scoped it: `policy_versions` has no tenant column
+    /// and none of its sites filters by one. The tool used to take a tenant
+    /// and label the bundle with it, which told the caller these were their
+    /// tenant's policies. Whether the registry SHOULD be tenant-scoped is a
+    /// schema decision, owned by `SIGNOFF-REPAIR.6.1.5`.
     #[tool(
-        description = "The authorized policy set — the registry's current digest-pinned documents"
+        description = "The site's registered policy set — the registry's current digest-pinned documents"
     )]
     async fn get_policy_bundle(
         &self,
         Parameters(args): Parameters<GetPolicyBundleParams>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        let docs = crate::server::policy_bundle(&self.pool, &args.tenant_id)
-            .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(rmcp::model::CallToolResult::success(vec![
-            rmcp::model::ContentBlock::text(
-                serde_json::json!({ "tenant_id": args.tenant_id, "policies": docs }).to_string(),
-            ),
-        ]))
+        let principal = crate::principal(&args.principal)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
+        Ok(render(
+            reasonbraid_server::mcp_read_internal::policy_bundle(&self.pool, &principal).await,
+        ))
     }
 
     /// Contribute to a thread — the qualified write profile: the
@@ -307,6 +305,22 @@ impl McpTools {
     }
 }
 
+/// Render a read seam's result as a tool result: the value on success, the
+/// seam's typed `family: message` on refusal — the same shape the write
+/// tools already use for `WriteRefused`.
+fn render(
+    result: Result<serde_json::Value, reasonbraid_server::mcp_read_internal::ReadRefused>,
+) -> rmcp::model::CallToolResult {
+    match result {
+        Ok(value) => rmcp::model::CallToolResult::success(vec![rmcp::model::ContentBlock::text(
+            value.to_string(),
+        )]),
+        Err(refused) => rmcp::model::CallToolResult::error(vec![rmcp::model::ContentBlock::text(
+            format!("{}: {}", refused.family, refused.message),
+        )]),
+    }
+}
+
 /// Parse the dev-profile principal (the same shapes the HTTP header
 /// resolves).
 pub fn principal(id: &str) -> Result<reasonbraid_core::GrantSubject, String> {
@@ -322,154 +336,6 @@ pub fn principal(id: &str) -> Result<reasonbraid_core::GrantSubject, String> {
         Err(format!(
             "the principal `{id}` is outside the dev-profile wire space (`hpr_`/`rol_`)"
         ))
-    }
-}
-
-/// The read-side plumbing over the server's surfaces (the SAME queries
-/// the HTTP handlers run).
-pub mod server {
-    /// The reader's classification for a thread (the same classify
-    /// logic the HTTP profile/thread reads apply — the per-reader
-    /// visibility).
-    pub async fn classify(
-        pool: &sqlx::PgPool,
-        principal: &reasonbraid_core::GrantSubject,
-        thread_id: &str,
-    ) -> Result<Option<ReaderClassWire>, sqlx::Error> {
-        // The thread's role anchor: the thread_id is the aggregate id, not a
-        // role — the HTTP thread inspection classifies by the TENANT scope,
-        // not the per-profile class. The read-half maps the thread read to
-        // the tenant-scoped visibility: the principal's tenant vs the
-        // thread's tenant (the same rule the thread inspection applies).
-        let Some(reader_tenant) = principal_tenant(pool, principal).await? else {
-            return Ok(None);
-        };
-        let thread_tenant: Option<String> = sqlx::query_scalar(
-            "SELECT tenant_id FROM aggregate_state \
-             WHERE aggregate_id = $1 AND aggregate_type = 'thread'",
-        )
-        .bind(thread_id)
-        .fetch_optional(pool)
-        .await?;
-        let Some(thread_tenant) = thread_tenant else {
-            return Ok(None);
-        };
-        if reader_tenant == thread_tenant {
-            Ok(Some(ReaderClassWire::Tenant))
-        } else {
-            Ok(Some(ReaderClassWire::Network))
-        }
-    }
-
-    /// The reader class's wire name.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ReaderClassWire {
-        Tenant,
-        Network,
-    }
-
-    impl ReaderClassWire {
-        pub fn wire_name(self) -> &'static str {
-            match self {
-                ReaderClassWire::Tenant => "tenant",
-                ReaderClassWire::Network => "network",
-            }
-        }
-    }
-
-    async fn principal_tenant(
-        pool: &sqlx::PgPool,
-        principal: &reasonbraid_core::GrantSubject,
-    ) -> Result<Option<String>, sqlx::Error> {
-        let id = match principal {
-            reasonbraid_core::GrantSubject::Human(h) => h.to_string(),
-            reasonbraid_core::GrantSubject::Role(r) => r.to_string(),
-        };
-        if principal_is_human(principal) {
-            sqlx::query_scalar("SELECT tenant_id FROM human_principals WHERE principal_id = $1")
-                .bind(id)
-                .fetch_optional(pool)
-                .await
-        } else {
-            sqlx::query_scalar("SELECT tenant_id FROM agent_roles WHERE role_id = $1")
-                .bind(id)
-                .fetch_optional(pool)
-                .await
-        }
-    }
-
-    fn principal_is_human(principal: &reasonbraid_core::GrantSubject) -> bool {
-        matches!(principal, reasonbraid_core::GrantSubject::Human(_))
-    }
-
-    /// The thread's current projection (the same aggregate-state read the
-    /// HTTP inspection runs).
-    pub async fn thread_state(
-        pool: &sqlx::PgPool,
-        tenant_id: &str,
-        thread_id: &str,
-    ) -> Result<Option<(i64, serde_json::Value)>, sqlx::Error> {
-        sqlx::query_as(
-            "SELECT aggregate_version, state FROM aggregate_state \
-             WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
-        )
-        .bind(tenant_id)
-        .bind(thread_id)
-        .fetch_optional(pool)
-        .await
-    }
-
-    /// The node's inbox rows with the delivery states (the same
-    /// node_inbox read the HTTP inspection runs).
-    pub async fn inbox_rows(
-        pool: &sqlx::PgPool,
-        tenant_id: &str,
-        node_id: &str,
-    ) -> Result<Vec<serde_json::Value>, sqlx::Error> {
-        let rows: Vec<(i64, String, bool, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-            "SELECT cursor, command_id, acknowledged_at IS NOT NULL, quarantined_at \
-             FROM node_inbox WHERE tenant_id = $1 AND node_id = $2 ORDER BY cursor",
-        )
-        .bind(tenant_id)
-        .bind(node_id)
-        .fetch_all(pool)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(cursor, command_id, acknowledged, quarantined)| {
-                serde_json::json!({
-                    "cursor": cursor,
-                    "command_id": command_id,
-                    "acknowledged": acknowledged,
-                    "quarantined": quarantined.is_some(),
-                })
-            })
-            .collect())
-    }
-
-    /// The authorized policy set — the registry's current digest-pinned
-    /// documents (the same policy_versions read the HTTP surface runs).
-    pub async fn policy_bundle(
-        pool: &sqlx::PgPool,
-        _tenant_id: &str,
-    ) -> Result<Vec<serde_json::Value>, sqlx::Error> {
-        let rows: Vec<(String, String, String, serde_json::Value)> = sqlx::query_as(
-            "SELECT policy_id, version, digest, clauses FROM policy_versions \
-             ORDER BY policy_id, version",
-        )
-        .fetch_all(pool)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(policy_id, version, digest, clauses)| {
-                serde_json::json!({
-                    "policy_id": policy_id,
-                    "version": version,
-                    "digest": digest,
-                    "clauses": clauses,
-                })
-            })
-            .collect())
     }
 }
 
@@ -516,6 +382,12 @@ mod tests {
 
     /// The conformance goldens: each read tool's input schema names the
     /// principal + its target fields (the dev-profile trust shape).
+    ///
+    /// ⛔ `get_policy_bundle`'s golden MOVED at `SIGNOFF-REPAIR.6.1.1` and the
+    /// move is asserted rather than relaxed: the tool no longer takes a
+    /// tenant, because the registry is site-global and a tenant argument
+    /// there could only be ignored. A golden that merely stopped requiring
+    /// the field would pass again the day someone re-added it.
     #[test]
     fn the_tool_schemas_carry_the_principal_and_the_targets() {
         let router = McpTools::tool_router();
@@ -538,6 +410,17 @@ mod tests {
                 "list_inbox names `{field}`: {properties:?}"
             );
         }
+        let bundle = router.get("get_policy_bundle").expect("get_policy_bundle");
+        let schema = serde_json::to_value(bundle.input_schema.clone()).expect("the schema");
+        let properties = schema["properties"].as_object().expect("the properties");
+        assert!(
+            properties.contains_key("principal"),
+            "get_policy_bundle names `principal`: {properties:?}"
+        );
+        assert!(
+            !properties.contains_key("tenant_id"),
+            "get_policy_bundle names NO tenant — the registry is site-global: {properties:?}"
+        );
     }
 
     /// The write schemas: the principal + the targets ride the top
@@ -1078,6 +961,293 @@ mod tests {
             text_of(&result).contains("prp_mcp_tool_1"),
             "the proposal rides the handler: {}",
             text_of(&result)
+        );
+    }
+
+    // ── The entitlement control (`SIGNOFF-REPAIR.6.1.1`) ─────────────────
+
+    /// Every read leg records its own verdict and the run asserts at the end,
+    /// rather than stopping at the first breach. A fail-fast control over six
+    /// legs proves one of them RED and says nothing about the other five,
+    /// which is the wrong shape when the claim under test is *"all three read
+    /// tools"*.
+    fn record(breaches: &mut Vec<String>, leg: &str, held: bool, evidence: &str) {
+        if !held {
+            breaches.push(format!("{leg}: {evidence}"));
+        }
+    }
+
+    /// The three READ tools must refuse a caller who is not entitled to the
+    /// target, and must keep serving one who is.
+    ///
+    /// ⛔ The policy leg is NOT a tenant leg, and the finding that opened this
+    /// leaf read it as one. `policy_versions` carries no tenant column and
+    /// none of its six SQL sites filters by one — the registry is SITE-GLOBAL
+    /// by construction, the same set the HTTP `GET /v1/policies` returns to
+    /// any enrolled caller. What the tool owed that surface and never paid is
+    /// its ENROLMENT gate; what it additionally got wrong is labelling a
+    /// site-global bundle with the caller's own tenant.
+    ///
+    /// ⭐ The thread leg runs TWICE from the same principal — once naming the
+    /// foreign tenant, once naming her own — because a repair that only
+    /// compares the caller's tenant to the ARGUMENT passes the first and
+    /// fails the second. The two identifiers must be BOUND.
+    #[tokio::test]
+    async fn the_read_tools_refuse_the_unentitled_caller_live() {
+        let Some(pool) = live_pool().await else {
+            return;
+        };
+        let server = LiveServer::start(&pool).await;
+        let client = reqwest::Client::new();
+        let base = server.base();
+
+        // Two tenants, each with its own bootstrap human (the dev admin set —
+        // `thread_inspect` + `tenant_admin`, scoped to that tenant).
+        let (status, alice) = enroll(
+            &client,
+            &base,
+            serde_json::json!({ "kind": "human", "name": "mcp-read-alice" }),
+        )
+        .await;
+        assert_eq!(status, 200, "alice enrolls: {alice}");
+        let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+        let tenant_a = alice["tenant_id"].as_str().unwrap().to_string();
+
+        let (status, bob) = enroll(
+            &client,
+            &base,
+            serde_json::json!({ "kind": "human", "name": "mcp-read-bob" }),
+        )
+        .await;
+        assert_eq!(status, 200, "bob enrolls: {bob}");
+        let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+        let tenant_b = bob["tenant_id"].as_str().unwrap().to_string();
+        assert_ne!(
+            tenant_a, tenant_b,
+            "the two enrolments mint distinct tenants"
+        );
+
+        // Bob's thread, in tenant B, with a subject a leak would reveal.
+        let (status, created) = command(
+            &client,
+            &base,
+            "/v1/threads",
+            &bob_id,
+            &envelope(
+                "thread.create",
+                "k-read-control-create",
+                serde_json::json!({
+                    "tenant_id": tenant_b,
+                    "subject": "bobs-unshared-subject",
+                    "objective": "the foreign-read control",
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "bob creates his thread: {created}");
+        let bob_thread = created["thread_id"].as_str().unwrap().to_string();
+
+        // Bob's inbox row, in tenant B, with a command id a leak would reveal.
+        sqlx::query(
+            "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+             VALUES ($1, 1, $2, $3, $4, $5)",
+        )
+        .bind("nod-mcp-read-bob")
+        .bind("cmd-bobs-unshared-command")
+        .bind(&tenant_b)
+        .bind(&bob_thread)
+        .bind(serde_json::json!({ "kind": "control" }))
+        .execute(&pool)
+        .await
+        .expect("seed bob's inbox row");
+
+        let tools = McpTools { pool: pool.clone() };
+        let mut breaches: Vec<String> = Vec::new();
+
+        // Leg A — the thread, from a principal entitled to neither the thread
+        // nor (in the first shape) the tenant she names.
+        for (named_tenant, shape) in [
+            (tenant_b.clone(), "naming the foreign tenant"),
+            (tenant_a.clone(), "naming her own tenant"),
+        ] {
+            let result = tools
+                .get_thread(Parameters(GetThreadParams {
+                    principal: alice_id.clone(),
+                    tenant_id: named_tenant,
+                    thread_id: bob_thread.clone(),
+                }))
+                .await
+                .expect("the thread tool runs");
+            let text = text_of(&result);
+            record(
+                &mut breaches,
+                &format!("A/{shape}: refuses"),
+                result.is_error == Some(true),
+                &text,
+            );
+            record(
+                &mut breaches,
+                &format!("A/{shape}: no subject"),
+                !text.contains("bobs-unshared-subject"),
+                &text,
+            );
+            record(
+                &mut breaches,
+                &format!("A/{shape}: no state field"),
+                !text.contains("\"state\""),
+                &text,
+            );
+        }
+
+        // Leg B — the inbox: alice receives none of bob's rows, and the
+        // refusal is TYPED rather than an empty list.
+        let result = tools
+            .list_inbox(Parameters(ListInboxParams {
+                principal: alice_id.clone(),
+                tenant_id: tenant_b.clone(),
+                node_id: "nod-mcp-read-bob".into(),
+            }))
+            .await
+            .expect("the inbox tool runs");
+        let text = text_of(&result);
+        record(
+            &mut breaches,
+            "B: refuses",
+            result.is_error == Some(true),
+            &text,
+        );
+        record(
+            &mut breaches,
+            "B: no command id",
+            !text.contains("cmd-bobs-unshared-command"),
+            &text,
+        );
+
+        // Leg C — the policy bundle: the ENROLMENT gate the HTTP surface
+        // applies, on both shapes the tool never checked.
+        //
+        // ⛔ The leg asserts that NO BUNDLE came back, not that a particular
+        // channel carried the refusal. A tool has two: an `Err(ErrorData)` at
+        // the protocol level and a `CallToolResult::error` in the result. An
+        // unparseable argument belongs in the first — which is where the
+        // write tools already put it — and an authorization refusal in the
+        // second. A control keyed on one channel would have called the
+        // repaired malformed-principal case a failure while it was refusing
+        // correctly.
+        for (principal, shape) in [
+            ("bogus", "C/malformed principal"),
+            (
+                "hpr_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "C/unenrolled principal",
+            ),
+        ] {
+            let (refused, evidence) = match tools
+                .get_policy_bundle(Parameters(GetPolicyBundleParams {
+                    principal: principal.into(),
+                }))
+                .await
+            {
+                Err(protocol) => (true, format!("protocol refusal: {protocol}")),
+                Ok(result) => (result.is_error == Some(true), text_of(&result)),
+            };
+            record(
+                &mut breaches,
+                &format!("{shape}: no bundle returned"),
+                refused,
+                &evidence,
+            );
+        }
+
+        // Leg D — the positive half, so the repair cannot be a blanket
+        // refusal: each principal still reads their OWN tenant, and the
+        // bundle an enrolled caller receives carries no tenant label,
+        // because no tenant scoped it.
+        let result = tools
+            .get_thread(Parameters(GetThreadParams {
+                principal: bob_id.clone(),
+                tenant_id: tenant_b.clone(),
+                thread_id: bob_thread.clone(),
+            }))
+            .await
+            .expect("the thread tool runs");
+        let text = text_of(&result);
+        record(
+            &mut breaches,
+            "D: bob reads his own thread",
+            result.is_error != Some(true) && text.contains("bobs-unshared-subject"),
+            &text,
+        );
+
+        let result = tools
+            .list_inbox(Parameters(ListInboxParams {
+                principal: bob_id.clone(),
+                tenant_id: tenant_b.clone(),
+                node_id: "nod-mcp-read-bob".into(),
+            }))
+            .await
+            .expect("the inbox tool runs");
+        let text = text_of(&result);
+        record(
+            &mut breaches,
+            "D: bob reads his own tenant's inbox",
+            result.is_error != Some(true) && text.contains("cmd-bobs-unshared-command"),
+            &text,
+        );
+
+        // BOB registers a policy; ALICE, in the other tenant, must see it.
+        // ⛔ That is not a leak this leaf failed to close: `policy_versions`
+        // has no tenant column, and the HTTP `GET /v1/policies` returns the
+        // same row to the same caller. Asserting it here makes the
+        // site-global property OBSERVABLE, so `SIGNOFF-REPAIR.6.1.5` inherits
+        // a demonstration rather than a description.
+        let (status, registered) = post(
+            &client,
+            &base,
+            "/v1/policies",
+            &bob_id,
+            &serde_json::json!({
+                "policy_id": "mcp-read-site-pol",
+                "version": "1.0.0",
+                "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "lifecycle": "draft",
+                "title": "the site registry control",
+                "intent": "the site-global read",
+                "domain": "deliberation",
+                "risk_class": "low",
+                "owning_authority": format!("grt_{bob_id}"),
+                "clauses": [ { "id": "c1", "statement": "the registry is site-wide" } ],
+                "applicability": [ { "layer": "organization", "target": "*" } ],
+                "exceptions": [],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "bob registers a policy: {registered}");
+
+        let result = tools
+            .get_policy_bundle(Parameters(GetPolicyBundleParams {
+                principal: alice_id.clone(),
+            }))
+            .await
+            .expect("the bundle tool runs");
+        let text = text_of(&result);
+        record(
+            &mut breaches,
+            "D: an enrolled principal reads the site registry",
+            result.is_error != Some(true) && text.contains("mcp-read-site-pol"),
+            &text,
+        );
+        record(
+            &mut breaches,
+            "D: the site-global bundle carries no tenant label",
+            !text.contains("tenant_id"),
+            &text,
+        );
+
+        assert!(
+            breaches.is_empty(),
+            "{} of the entitlement legs breach:\n{}",
+            breaches.len(),
+            breaches.join("\n")
         );
     }
 }

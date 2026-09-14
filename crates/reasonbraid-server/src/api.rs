@@ -1281,7 +1281,7 @@ async fn issue_node_enroll_token(
 /// The `tenant_admin` gate the inbox operator actions share with token issuance:
 /// the decision is audited by [`authorize`] (allowed or denied — the `.5.1`
 /// stance), so quarantine and prune leave an authorization record behind them.
-async fn authorize_tenant_admin(
+pub(crate) async fn authorize_tenant_admin(
     pool: &PgPool,
     principal: &GrantSubject,
     tenant_id: TenantId,
@@ -1512,6 +1512,24 @@ async fn inspect_node_inbox(
 ) -> Result<Json<InboxInspection>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     authorize_tenant_admin(&state.pool, &principal, params.tenant_id).await?;
+    Ok(Json(
+        inbox_inspection(&state.pool, params.tenant_id, &params.node_id).await?,
+    ))
+}
+
+/// The inbox inspection's read half: the select whose predicate binds BOTH
+/// caller-supplied identifiers, which is the `SIGNOFF-REPAIR.3.5.3` repair.
+///
+/// ⭐ Shared with the MCP read seam since `SIGNOFF-REPAIR.6.1.1`. The seam's
+/// own read used to be a reduced re-implementation over the `node_inbox`
+/// TABLE; it now runs this one over the `node_inbox_state` VIEW, so the
+/// delivery state and the quarantine reason travel with the row on both
+/// surfaces.
+pub(crate) async fn inbox_inspection(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    node_id: &str,
+) -> Result<InboxInspection, ControlApiError> {
     #[derive(sqlx::FromRow)]
     struct InboxRowRow {
         cursor: i64,
@@ -1527,12 +1545,12 @@ async fn inspect_node_inbox(
         "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason, delivery_state \
          FROM node_inbox_state WHERE node_id = $1 AND tenant_id = $2 ORDER BY cursor",
     )
-    .bind(&params.node_id)
-    .bind(params.tenant_id.to_string())
-    .fetch_all(&state.pool)
+    .bind(node_id)
+    .bind(tenant_id.to_string())
+    .fetch_all(pool)
     .await?;
-    Ok(Json(InboxInspection {
-        node_id: params.node_id,
+    Ok(InboxInspection {
+        node_id: node_id.to_string(),
         rows: rows
             .into_iter()
             .map(|r| InboxRow {
@@ -1546,7 +1564,7 @@ async fn inspect_node_inbox(
                 delivery_state: r.delivery_state,
             })
             .collect(),
-    }))
+    })
 }
 
 /// The `POST /v1/nodes/inbox/prune` body: the retention window — DELIVERED
@@ -6718,8 +6736,40 @@ async fn thread_command(
 
 // ── Inspection (the `.6.1` acceptance: no database surgery) ─────────────────────
 
-/// Authorize an inspection read (the audit row is recorded for reads too — the
-/// audit view is complete, `.5.1`), then run the read.
+/// Authorize an inspection read: the `thread_inspect` grant over the target,
+/// through the guarded authorization that records the audit row for reads too
+/// (the audit view is complete, `.5.1`).
+///
+/// ⭐ Shared with the MCP read seam since `SIGNOFF-REPAIR.6.1.1`
+/// ([`crate::mcp_read`]). That surface's header claimed "the SAME
+/// authorization as the HTTP handlers" over a private re-implementation that
+/// ran none of it; the claim is now carried by this call rather than by a
+/// sentence, so the two surfaces cannot drift apart without the compiler
+/// noticing.
+pub(crate) async fn authorize_inspection(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    target: ResourceTarget,
+) -> Result<(), ControlApiError> {
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(principal),
+        principal: principal.clone(),
+        delegation: None,
+        action: GrantAction::ThreadInspect,
+        target,
+    };
+    match authority::authorize_guarded(pool, &authz).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )))
+        }
+        AuthorizationOutcome::Allowed { .. } => Ok(()),
+    }
+}
+
+/// Authorize an inspection read, then run it.
 async fn inspect<F, Fut>(
     state: &ApiState,
     principal: &GrantSubject,
@@ -6730,25 +6780,9 @@ where
     F: FnOnce(PgPool) -> Fut,
     Fut: std::future::Future<Output = Result<Value, ControlApiError>>,
 {
-    let authz = CommandAuthz {
-        actor: actor_handle_for_subject(principal),
-        principal: principal.clone(),
-        delegation: None,
-        action: GrantAction::ThreadInspect,
-        target,
-    };
-    match authority::authorize_guarded(&state.pool, &authz).await? {
-        AuthorizationOutcome::Denied { reason, record_id } => {
-            crate::telemetry::metrics().incr("authorization_denials");
-            Err(ControlApiError::unauthorized(format!(
-                "authorization denied ({record_id}): {reason}"
-            )))
-        }
-        AuthorizationOutcome::Allowed { .. } => {
-            let body = read(state.pool.clone()).await?;
-            Ok(json_response(StatusCode::OK, body))
-        }
-    }
+    authorize_inspection(&state.pool, principal, target).await?;
+    let body = read(state.pool.clone()).await?;
+    Ok(json_response(StatusCode::OK, body))
 }
 
 fn tenant_from_query(q: &ThreadQuery) -> Result<TenantId, ControlApiError> {
@@ -6781,48 +6815,64 @@ async fn get_thread(
             tenant_id,
             thread_id,
         },
-        |pool| async move {
-            let tenant = tenant_id.to_string();
-            let thread = thread_id.to_string();
-            let claim = tenant.clone();
-            let row: Option<(String, Value)> = crate::rls::with_tenant_claim(&pool, &claim, |tx| {
-                Box::pin(async move {
-                    sqlx::query_as(
-                        "SELECT aggregate_id, state FROM aggregate_state \
-                     WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
-                    )
-                    .bind(tenant)
-                    .bind(thread)
-                    .fetch_optional(&mut *tx)
-                    .await
-                })
-            })
-            .await?;
-            match row {
-                Some((_, state_json)) => {
-                    // The inspection view (`.1.3.1`): expiry is derived at read —
-                    // `invited` entries past their `expires_at` read as `expired`,
-                    // exactly like the channel's lease presence. The stored
-                    // projection is untouched.
-                    let stored: threads::ThreadProjection = serde_json::from_value(state_json)
-                        .map_err(|e| {
-                            ControlApiError::internal_with_log(format!(
-                                "corrupt stored thread state: {e}"
-                            ))
-                        })?;
-                    let viewed = threads::derived_view(stored);
-                    Ok(json!({
-                        "thread_id": thread_id.to_string(),
-                        "tenant_id": tenant_id.to_string(),
-                        "state": serde_json::to_value(&viewed)
-                            .expect("the projection serializes"),
-                    }))
-                }
-                None => Err(ControlApiError::scope_hidden()),
-            }
-        },
+        |pool| async move { thread_inspection(&pool, tenant_id, thread_id).await },
     )
     .await
+}
+
+/// The thread inspection's read half: the tenant-BOUND `aggregate_state`
+/// select under that tenant's RLS claim, plus the `.1.3.1` derived view.
+///
+/// The select's predicate is the binding: a thread id belonging to another
+/// tenant selects no row and leaves as [`ControlApiError::scope_hidden`], so
+/// the caller's named tenant and the requested thread cannot disagree and
+/// still return data.
+///
+/// ⭐ Shared with the MCP read seam since `SIGNOFF-REPAIR.6.1.1`: the query
+/// exists ONCE, so "the same queries as the HTTP handlers" is a call graph
+/// rather than a claim. The seam therefore also inherits the derived view —
+/// an `invited` entry past its `expires_at` reads `expired` on both surfaces,
+/// which it did not before, the tool having returned the stored projection.
+pub(crate) async fn thread_inspection(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    thread_id: ThreadId,
+) -> Result<Value, ControlApiError> {
+    let tenant = tenant_id.to_string();
+    let thread = thread_id.to_string();
+    let claim = tenant.clone();
+    let row: Option<(String, Value)> = crate::rls::with_tenant_claim(pool, &claim, |tx| {
+        Box::pin(async move {
+            sqlx::query_as(
+                "SELECT aggregate_id, state FROM aggregate_state \
+                 WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
+            )
+            .bind(tenant)
+            .bind(thread)
+            .fetch_optional(&mut *tx)
+            .await
+        })
+    })
+    .await?;
+    match row {
+        Some((_, state_json)) => {
+            // The inspection view (`.1.3.1`): expiry is derived at read —
+            // `invited` entries past their `expires_at` read as `expired`,
+            // exactly like the channel's lease presence. The stored
+            // projection is untouched.
+            let stored: threads::ThreadProjection =
+                serde_json::from_value(state_json).map_err(|e| {
+                    ControlApiError::internal_with_log(format!("corrupt stored thread state: {e}"))
+                })?;
+            let viewed = threads::derived_view(stored);
+            Ok(json!({
+                "thread_id": thread_id.to_string(),
+                "tenant_id": tenant_id.to_string(),
+                "state": serde_json::to_value(&viewed).expect("the projection serializes"),
+            }))
+        }
+        None => Err(ControlApiError::scope_hidden()),
+    }
 }
 
 #[derive(Debug, Deserialize)]

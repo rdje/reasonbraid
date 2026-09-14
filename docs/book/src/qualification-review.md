@@ -174,6 +174,23 @@ owns it. Before registering it, the rule was run against each tranche's closing
 commit: it fires on all three historical instances and on none of the
 twenty-six rows standing today.
 
+The next group of records — the first five of tranche 3 — added four
+limitations, three of which are one missing predicate seen from three places:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| A node's work is looked up by operation id alone, with the node it belongs to absent from the query | The reconciliation the handshake performs returns another node's event id for an operation id it names; a receipt written first under a known event id silently swallows the rightful node's own; and an inbox row is marked consumed by a different node's result carrying the same command id. Three places, two source records, one shape. | `.4.3` |
+| The inbox cursor's high-water mark is derived from the rows pruning deletes | Prune everything and the mark returns to zero, so the next item re-uses a cursor the node has already acknowledged and discards as seen. The existing test leaves a partial prefix that keeps the highest cursor, so the case never arises in it. | `.4.3` |
+| A review trigger named "repeated waiver" fires on the first waiver, and on waivers that expired long ago | Neither recording a waiver nor scheduling a review consults its expiry, so one bounded exception schedules a review for ever. A test records exactly one waiver and asserts the trigger fires. | `.9.3` |
+| A node with no usable certificate does not read as suspended | The presence view treats an unrevoked certificate as active without consulting its expiry, so a single expired leaf holds the node out of the suspended state. | `.4.1` |
+
+⚠️ One clause was *declined*: two tests hardcode a correction expiry of
+2026-09-15, and the record asked whether that makes them time-brittle already.
+Measured on both sides the day before, it does not — neither writing a
+correction nor scheduling a review compares that field to the current time. The
+brittleness is real but conditional on the missing check being added, which is
+what the repair will do.
+
 ### Proposed semantic introspection
 
 The director has proposed a clean semantic API, usable through MCP, for agents to

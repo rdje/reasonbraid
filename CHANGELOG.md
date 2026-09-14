@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-14 — One missing predicate at three sites (`SIGNOFF-REPAIR.11.9.1.2.1`, tranche 3a)
+
+- **Tranche 3 sized at 5,041 characters and split** on the same narrowest-candidate boundary that formed it — 1,624 / 1,655 / 1,762, all inside the 1,405–3,006 range this activity has proved executable in one commit.
+- **Tranche 3a reconciled five records into 20 clause rows**: 15 `owned`, 3 `attach`, 1 `handled`, 1 `declined`, 0 `unowned`.
+- 🔴 **A lookup keyed on `operation_id`/`command_id` with the owning node absent from the predicate lives at three sites**, reached by two different records and connected by no leaf: `node_channel.rs::event_id_for_operation` (the reconciliation lookup the handshake performs), the receipt insert's `ON CONFLICT (event_id) DO NOTHING` over a primary key that does not include `node_id`, and migration 0021's `delivery_state` view marking a row `consumed` from another node's result. `SIGNOFF-REPAIR.4.3`'s goal line already demands the proof that would have caught all three.
+- 🔴 **The cursor high-water mark is derived from the table prune deletes from.** `enqueue` writes `MAX(cursor)+1` and `current_cursor` reads `COALESCE(MAX(cursor), 0)` over `node_inbox`; prune everything and it rewinds to 0, re-issuing cursor 1 for a node that already acknowledged it. The prune test leaves a partial prefix that keeps the highest cursor, so `MAX` never has to answer for an empty inbox.
+- ⭐ **A dated answer to a question the record left open:** the hardcoded `expires_at` of `2026-09-15` does NOT break the two `policy.rs` tests tomorrow — neither the writer nor the reader compares a waiver's expiry to `now()`. The clause is declined as a present defect, and the same measurement found that `repeated_waiver` fires on long-lapsed waivers and on the first waiver, which is written into `.9.3`.
+- ⭐ **`ATTACH-LANDED`, registered one commit earlier, fired on this leaf's own three unattached clauses before they were written**, naming each row and its owner, and went green once the sentences landed. Its first production use caught the exact failure it was built for.
+- **A sharper shed rule at the `MEMORY.md` byte cap:** a warning a GATE now enforces is the cheapest of all to shed, because the machine states it at the moment it matters and names the offending row.
+- Validation: `--classified` 130 rows clean with all 29 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
+
 ## 2026-09-14 — `ATTACH-LANDED`: gating the one ledger state that cannot check itself (`SIGNOFF-REPAIR.11.11`)
 
 - **The reconciliation ledger's `attach` state is the only one of six whose next action is not "none"** — it requires a sentence written into a leaf the classifier does not own — and every other property of a row is visible in the row itself. `--classified` could therefore validate everything except the thing that mattered.

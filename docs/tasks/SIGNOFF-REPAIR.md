@@ -1582,6 +1582,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 - Sources / owned surfaces: `node_enrollment, node_channel, ca, rb-node, migrations`.
 - Goal and acceptance: Bind token use to current issuing authority; recover expired unused token issuance; enforce host/node/incarnation tenant lineage; make replacement lineage and lease effects consistent; serialize rotation/revocation and bound renewal after revocation.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-40-42-2` clauses 3–4, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ The goal line's "bound renewal after revocation" is about the LEAF certificate; neither clause below is about the leaf, and this leaf is already SPLIT, which is the expensive case the `attach` state exists to prevent.
+- ⭐ **ATTACHED CLAUSE, added by tranche 3a** (`R-85-1` clause 5; same ledger). **`node_presence.suspended` ignores certificate EXPIRY, so a node with no usable certificate does not read as suspended.** `migrations/0017_node_replacement_presence.sql` — the LATEST definition of the view — computes `suspended` as `EXISTS (a revoked cert) AND NOT EXISTS (a cert with revoked_at IS NULL)`. `node_certificates.expires_at` is `NOT NULL` (migration 0011) and the view never consults it, so a single expired-but-unrevoked leaf counts as "active" and holds the node out of `suspended` indefinitely. ⛔ The goal line's "make replacement lineage and lease effects consistent" is about REPLACEMENT — 0017 exists precisely so a replaced node is not suspended for ever — and expiry is a different predicate the view does not have. ⚠️ Read it beside `.4.2.3.1`: the LEASE reads the database clock and this view does not read a clock at all.
   1. **The CA has a one-year lifetime, no renewal path, and no check at load.** `ca.rs` signs the CA with `not_after = now + 365 days`; `ensure_server_ca` loads the stored row and returns it without comparing that window to now; nothing renews or rotates it. A deployment that has run a year issues leaves from an expired issuer, and the first symptom is every node failing verification at once.
   2. **A leaf may be signed to outlive its issuer.** `issue_node_leaf` sets `not_after = now + LEAF_TTL_SECS` (600 s) and never compares it with `ca.not_after`, so a leaf issued in the CA's last ten minutes outlives the certificate that signed it. ⛔ Clause 1's repair does not by itself add this comparison, which is why the two are separate rows.
 - Status: `active`; censused and split below, because the goal line names five mechanisms and a single leaf would have to qualify all of them at once — the shape `.3.4`, `.3.5` and `.3.3.4.10`/`.11` each took.
@@ -2105,6 +2106,7 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Status: `pending`.
 - Sources / owned surfaces: `node_inbox, node_events, node_inbox_state, channel polling`.
 - Goal and acceptance: Bind receipts/reconciliation/dedup to tenant and node; preserve monotonic cursors through pruning; serialize enqueue; prove command-id collisions across nodes cannot consume or hide foreign work.
+- ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-70-3` clause 1, tranche 3a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The prune test stops one step short of the defect, and stopping there is what makes it pass.** `node_inbox.rs::prune_deletes_only_delivered_rows_older_than_the_window` leaves survivors `cmd_prune_3`, `cmd_prune_4` and `cmd_prune_5` — a partial prefix that KEEPS the highest cursor, so `COALESCE(MAX(cursor), 0)` never has to answer for an empty inbox. There is no prune-everything-then-reconnect control anywhere in the suite. ⛔ This leaf's goal line demands ONE proof — that command-id collisions across nodes cannot consume or hide foreign work — and this is a different one: that a cursor high-water mark survives its table being emptied. ⚠️ Write it as a control BEFORE the repair, because the repair (a durable counter outside `node_inbox`) makes the current test pass either way.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -2453,6 +2455,8 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Status: `pending`.
 - Sources / owned surfaces: `deployment assignments, drift, corrections, reviews`.
 - Goal and acceptance: Bind desired digests/refs to publication, validate receipts and corrective authority, permit subsequent reviews after completed occurrences, enforce waiver constraints, and use relative test clocks with failure visibility.
+- ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-75-1` clause 3, tranche 3a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **That an existing defect id dedupes PERMANENTLY is untested.** The goal line's "permit subsequent reviews after completed occurrences" is about the `(publication, trigger)` pair, which `schedule_reviews` dedupes on `status = 'due'`; this clause is about a different key and a different lifetime, and no control exercises it.
+- ⚠️ **AND a finding this leaf must repair TOGETHER with its clause 4, measured while answering that clause's question** (`R-75-1`, tranche 3a). Neither side of the waiver path consults an expiry: `corrections::record_correction` requires `expires_at` to be present and RFC3339-parseable and never compares it to `now()`, and `reviews::schedule_reviews` selects `WHERE operation = 'waiver'` with no expiry predicate. Two consequences, both live: a waiver that lapsed a year ago still schedules a `repeated_waiver` review for ever, and the trigger named "repeated" fires on the FIRST waiver — one row yields one pair, which `policy.rs:3161` records and asserts. ⛔ A repair that only makes the two hardcoded `2026-09-15` expiries relative would leave both standing.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
@@ -3014,6 +3018,68 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 
 - Opened: `pending` by `.11.9.1`'s split.
 - The 15 records: `R-31-32-3`, `R-36-39-8`, `R-48-49-1`, `R-48-49-3`, `R-48-49-4`, `R-50-3`, `R-6-27-3`, `R-6-27-7`, `R-6-27-9`, `R-66-1`, `R-70-2`, `R-70-3`, `R-71-72-2`, `R-75-1`, `R-85-1`.
+- Acceptance: as `.11.9.1.1`.
+- Status: `active`; split on its own sizing and its first child executed (REPAIR-0177). ⛔ The acceptance above is NOT weakened: it descends to `.11.9.1.2.1`–`.3` collectively, exactly as `.11.9.1.1`'s did.
+
+**The sizing, taken BEFORE the split — the method `.11.9.1.1` established, applied unchanged.**
+
+- Tranche 3 is **5,041 characters** of record body across 15 records, **1.97x** tranche 1's proved-executable 2,554. Smaller than tranche 2's 7,192, and still not one commit's work at an acceptance that requires the SOURCE read for every clause.
+- ⭐ **The split boundary is again the record's own narrowest candidate — the same measurement that formed the tranche — and this time it falls out almost perfectly even**, which is a property of the corpus rather than of the chooser:
+
+| Child | Narrowest candidate | Records | Body characters |
+| --- | --- | --- | --- |
+| `.11.9.1.2.1` | `SIGNOFF-REPAIR.4.3`, named by 8 | `R-48-49-3`, `R-48-49-4`, `R-70-3`, `R-75-1`, `R-85-1` | 1,624 |
+| `.11.9.1.2.2` | `SIGNOFF-REPAIR.6.1`, named by 9 | `R-31-32-3`, `R-48-49-1`, `R-50-3`, `R-6-27-7`, `R-66-1` | 1,655 |
+| `.11.9.1.2.3` | `SIGNOFF-REPAIR.10.1`, named by 9 | `R-36-39-8`, `R-6-27-3`, `R-6-27-9`, `R-70-2`, `R-71-72-2` | 1,762 |
+
+- All three sit inside the range this activity has PROVED executable in one commit (1,405 to 3,006 characters), so the sizing supports three children and no more. ⚠️ Character count is a proxy for work and a weak one — tranche 2b was the smallest at 1,405 and produced 19 rows, tranche 2c the largest at 3,006 and produced 38 — but it is the proxy whose predictions have held four times, and it is reproducible.
+
+###### SIGNOFF-REPAIR.11.9.1.2.1 — Tranche 3a: the five records whose narrowest candidate is `SIGNOFF-REPAIR.4.3`
+
+- Opened: `pending` by `.11.9.1.2`'s split.
+- The five records: `R-48-49-3`, `R-48-49-4`, `R-70-3`, `R-75-1`, `R-85-1` (1,624 characters; `R-85-1` alone is 730 and names nine candidate leaves).
+- Acceptance: as `.11.9.1.1`.
+- Status: `done`; REPAIR-0177. **20 clauses**: 15 `owned`, 3 `attach`, 1 `handled`, 1 `declined`, **0 `unowned`**.
+
+⭐ **One mechanism appears at THREE separate sites, in two different records, and no leaf had connected them: a lookup keyed on `operation_id`/`command_id` ALONE, with the node it belongs to never in the predicate.**
+
+- `node_channel.rs::event_id_for_operation` — `SELECT event_id FROM node_events WHERE operation_id = $1 ORDER BY received_at LIMIT 1`. No `node_id`, no tenant. It is the reconciliation lookup the HANDSHAKE performs, so any enrolled node that names a victim's operation id is handed the victim's event id.
+- `node_channel.rs`'s receipt insert — `ON CONFLICT (event_id) DO NOTHING`, and `event_id` is `node_events`' whole primary key (migration 0003), with `node_id` a plain column. A node that writes first under a known event id makes the rightful node's receipt a silent no-op, returning `false`.
+- `migrations/0021_node_inbox_delivery_state.sql:19`–`:21` — the `delivery_state` view calls a row `consumed` when `EXISTS (… node_events e WHERE e.operation_id = i.command_id AND e.payload->>'kind' = 'work_result')`. The join carries no `e.node_id = i.node_id`, so ANOTHER node's result marks this node's inbox row consumed.
+
+🔴 **The third site is `R-85-1` clause 4 and the first two are `R-48-49-3`'s — two records, one mechanism, three sites, and `SIGNOFF-REPAIR.4.3`'s goal line already demands exactly the proof that would have caught all three**: *"prove command-id collisions across nodes cannot consume or hide foreign work"*. ⭐ This is the clause-level ledger's fourth two-records-one-finding pair, and the first where the shared finding is a SCHEMA shape rather than a code path.
+
+🔴 **The cursor high-water mark is derived from a DELETABLE table, so pruning rewinds it.** `enqueue` writes `(SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1)` and `current_cursor` reads `COALESCE(MAX(cursor), 0)` over the same rows. Prune DELETES acknowledged rows. Prune everything and the high-water mark is 0 again: the next enqueue re-issues cursor 1, which a node that already acknowledged cursor 1 discards as seen, and a node holding a high journal cursor against a server reporting a lower one is the `journal_lost` anomaly this module's own header names at `:43`. ⚠️ The remedy the record states — a separate durable counter rather than the deletable inbox — is the only shape that survives, and it is recorded as the clause's own text rather than invented here.
+
+⚠️ **And the test that would catch it stops one step short, which is `R-70-3`'s whole point.** `prune_deletes_only_delivered_rows_older_than_the_window` leaves survivors `cmd_prune_3`, `4`, `5` — a partial prefix that KEEPS the highest cursor, so `MAX` never returns NULL. There is no prune-everything-then-reconnect control anywhere in the suite.
+
+⭐ **A dated answer to a question the record asked with a question mark, and it is good news that expires.** `R-75-1` asks whether the hardcoded `expires_at` of `2026-09-15` lacks future validation. MEASURED today, 2026-09-14, on both sides: `corrections::record_correction` requires `expires_at` to be PRESENT and RFC3339-PARSEABLE for a suspension or a waiver and never compares it to `now()`; and `reviews::schedule_reviews` selects waivers with `WHERE operation = 'waiver'` and no expiry predicate at all. ⛔ **So the two `policy.rs` tests do NOT break tomorrow** — the record's "time brittles WHEN proper checks land" is exactly right, and the brittleness is conditional, not imminent.
+
+- 🔴 **But the measurement that answered it found a defect the record did not state.** The same absence of an expiry predicate means `repeated_waiver` fires on a waiver that lapsed a year ago, for ever. And the trigger named "repeated" fires on the FIRST one: one row in `policy_corrections` produces one `(publication, repeated_waiver)` pair, which is what `policy.rs:3161` records and asserts. ⛔ Not opened as new work — `SIGNOFF-REPAIR.9.3`'s goal line already says "enforce waiver constraints" — but written into that leaf, because a repair that only makes the test use a relative clock would leave both halves standing.
+
+⚠️ **`R-85-1` clause 3 is answered by the SOURCE, not by the tree**, the third time this activity has seen it. `migrations/0059_node_token_supersede.sql` is `SIGNOFF-REPAIR.4.1.1`'s repair and its comment states the record's mechanism verbatim — "an EXPIRED token still has `used_at IS NULL`, so it stayed in the index permanently" — along with why the predicate could not simply become `AND expires_at > now()` (a partial index predicate must be IMMUTABLE). `handled`.
+
+⛔ **The tenant-lineage clauses are REAL and are NOT this leaf's to open.** `migrations/0007` gives `nodes` two independent foreign keys (`host_id -> hosts`, `tenant_id -> tenants`) with nothing requiring them to agree, and the same shape for `incarnations` and `runs`; `authority_grants.boundary_id` references `enrollment_boundaries` by id alone. `SIGNOFF-REPAIR.4.1`'s goal line says "enforce host/node/incarnation tenant lineage" verbatim and `.3.3`'s says "enforce identity/tenant/subset/window correspondence", so both already own theirs.
+
+⭐ **A shed rule this leaf derived at the byte cap, sharper than the one `MEMORY.md` carries.** `.11.4.2.1`'s rule is "shed one whose line NAMES its leaf". This commit had to free 127 bytes and the census offered ten such lines — but one of them, the `attach` warning, is now enforced by `ATTACH-LANDED`. ⛔ **A warning a GATE enforces is the cheapest of all to shed**, because the machine states it at the moment it matters and names the offending row, which a sentence in a resume pointer cannot. It was cut to a one-line pointer at the gate rather than deleted, so a reader still knows the gate exists.
+
+- **REPRODUCE / ROOT CAUSE, NO REGRESSION and LOCKSTEP** are in the commit acceptance below. No product code, schema, test or script changed.
+- Commit: `REASONBRAID-REPAIR-0177 (leaf SIGNOFF-REPAIR.11.9.1.2.1): reconcile tranche 3a, and find one mechanism at three sites`.
+
+###### SIGNOFF-REPAIR.11.9.1.2.2 — Tranche 3b: the five records whose narrowest candidate is `SIGNOFF-REPAIR.6.1`
+
+- Opened: `pending` by `.11.9.1.2`'s split.
+- The five records: `R-31-32-3`, `R-48-49-1`, `R-50-3`, `R-6-27-7`, `R-66-1` (1,655 characters).
+- ⚠️ `R-48-49-1` shares a record family with tranche 3a's `R-48-49-3`/`-4`; read those rows before classifying, or the node-channel mechanism gets two owners.
+- Acceptance: as `.11.9.1.1`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.9.1.2.3 — Tranche 3c: the five records whose narrowest candidate is `SIGNOFF-REPAIR.10.1`
+
+- Opened: `pending` by `.11.9.1.2`'s split.
+- The five records: `R-36-39-8`, `R-6-27-3`, `R-6-27-9`, `R-70-2`, `R-71-72-2` (1,762 characters — the largest of the three).
+- ⚠️ Three are `R-6-27-*` and `R-70-*` records whose siblings are already classified (`R-6-27-2` in tranche 2b, `R-70-3` in tranche 3a); read those rows first.
+- ⚠️ `SIGNOFF-REPAIR.10.2` already carries two `attach` clauses from `R-6-27-2` about the same adapter harness. `.10.1` is the subprocess supervision leaf beside it — check which of the two owns each clause before writing.
 - Acceptance: as `.11.9.1.1`.
 - Verification / commit: pending.
 
@@ -4086,7 +4152,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.9.1.2` | `pending` | tranche 3, the next eight or nine records. ⚠️ Tranche 2c measured WHERE the `attach` rows come from — a goal line written as a list of named mechanisms rather than as properties — so read each record's narrowest candidate goal line before classifying. ⭐ `ATTACH-LANDED` now BLOCKS a commit that classifies a clause `attach` without writing the sentence, so the tranche's own discipline is mechanical |
+| 1 | `SIGNOFF-REPAIR.11.9.1.2.2` | `pending` | tranche 3b, the five records whose narrowest candidate is `.6.1` (1,655 characters). ⚠️ `R-48-49-1` shares a family with tranche 3a's `R-48-49-3`/`-4` — read those rows first or the node-channel mechanism gets two owners. ⭐ `ATTACH-LANDED` now BLOCKS a commit that classifies a clause `attach` without writing the sentence, and it fired on tranche 3a's three before they were written |
 | 1b | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
 | 4 | `SIGNOFF-REPAIR.11.7.1` | `pending` | whether §9.8 gains the nine post-roadmap codes at v0.5.0 — evidence measured, decision NOT taken, because the roadmap is frozen |
 | 5 | `SIGNOFF-REPAIR.4.2.3.1` | `pending` | the lease clock is written by the process and read by the database — routed out of `.4.2.3` at its closure, and the published 60 s TTL is nominal until it is settled |
@@ -4094,7 +4160,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 7 | `SIGNOFF-REPAIR.11.2.1` | `pending` | replace timestamp-only fixture ownership |
 | 8 | `SIGNOFF-REPAIR.3.5.2.1` | `pending` | the metrics read is unaudited — ⛔ HELD for a director decision: every shape breaks the route's contract or adds an authority-selection path |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **44 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
+⚠️ The frontier is a curated shortlist, not the remaining work: **45 leaves are `pending`** across this tree. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -4159,6 +4225,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.4.1.6`: `REASONBRAID-REPAIR-0174 (leaf SIGNOFF-REPAIR.4.1.6): a host claim is checked where a human typed it`.
 - `SIGNOFF-REPAIR.11.9.1.1.3`: `REASONBRAID-REPAIR-0175 (leaf SIGNOFF-REPAIR.11.9.1.1.3): reconcile tranche 2c, and ask the renderer what a table row really says`.
 - `SIGNOFF-REPAIR.11.11`: `REASONBRAID-REPAIR-0176 (leaf SIGNOFF-REPAIR.11.11): gate the one ledger state that cannot check itself`.
+- `SIGNOFF-REPAIR.11.9.1.2` / `.2.1`: `REASONBRAID-REPAIR-0177 (leaf SIGNOFF-REPAIR.11.9.1.2.1): reconcile tranche 3a, and find one mechanism at three sites`.
 - `SIGNOFF-REPAIR.3.5.3`: `REASONBRAID-REPAIR-0169 (leaf SIGNOFF-REPAIR.3.5.3): the inbox inspection reads only the tenant it was admitted for`.
 - `SIGNOFF-REPAIR.11.2.2`: `REASONBRAID-REPAIR-0170 (leaf SIGNOFF-REPAIR.11.2.2): the gates' own scratch comes back onto the repository volume, and the gate can see it`.
 - `SIGNOFF-REPAIR.11.2.2.1`: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.
@@ -5116,6 +5183,17 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **ADDRESSED (verified)** — `RB_DEMO=0 bash scripts/run_pg_tests.sh node_inbox node_channel node_work node_replacement` rc=0 with **4 suites, 55 tests, zero failures** (8 + 37 + 8 + 2), `pg-tests: stopped and removed target/pg-tests/run-q0vsfh8k`. ⭐ FALSIFIED in the strongest form available: the control was written BEFORE the repair, so the pre-repair run IS the neutralized build — nothing reverted, nothing reconstructed, and therefore none of the "broke a different thing" hazard `.4.2.8` was burned by. The control asserts the absence twice (empty row list AND no victim command id anywhere in the response text) and carries a positive arm — the OWNING administrator still reads both rows — so a fix that merely emptied the result fails it.
 - [x] **NO REGRESSION** — `cargo clippy -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0 in 3m23s; `cargo fmt --all -- --check` rc=0; `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks; `mdbook build` and both book checks rc=0. The three sibling suites are the regression evidence: they drive the inbox state this predicate now filters and are unchanged.
 - [x] **LOCKSTEP** — `crates/reasonbraid-server/src/api.rs`, `crates/reasonbraid-server/tests/node_inbox.rs`, task tree (`.3.5.3` closed, commit log, frontier), `docs/tasks/TASK_TREE.md`, `docs/book/src/node-channel.md`, `docs/book/src/cli.md`, `docs/book/src/authority.md`, `docs/book/src/qualification-review.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`. ⛔ No gate registered and no migration: the column existed; only the query changed.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.9.1.2.1
+
+- [x] **REPRODUCE / ISSUE** — `python3 -B scripts/census_record_reconciliation.py --rank` puts fifteen records in tranche 3, five of them sharing `SIGNOFF-REPAIR.4.3` as their narrowest candidate. Sizing BEFORE splitting, the method `.11.9.1.1` established: tranche 3 is **5,041 characters** of record body, **1.97x** tranche 1's proved-executable 2,554.
+- [x] **ROOT CAUSE (WHY + WHERE)** — every clause read at the SOURCE. 🔴 **One mechanism at THREE sites, reached by two records, and no leaf had connected them**: `node_channel.rs::event_id_for_operation` selects on `operation_id` alone; the receipt insert is `ON CONFLICT (event_id) DO NOTHING` where `event_id` is `node_events`' whole primary key (migration 0003) and `node_id` a plain column; and `migrations/0021_node_inbox_delivery_state.sql:19`–`:21` calls a row `consumed` on `e.operation_id = i.command_id` with no `e.node_id = i.node_id`. `.4.3`'s goal line already demands the proof that would have caught all three. 🔴 **And the cursor high-water mark is derived from a table prune deletes from** — `enqueue` writes `MAX(cursor)+1` and `current_cursor` reads `COALESCE(MAX(cursor), 0)` over `node_inbox`, so pruning everything rewinds it to 0 and re-issues cursor 1.
+- [x] **FIX** — `.11.9.1.2` split into `.11.9.1.2.1`–`.3` on the same narrowest-candidate boundary that formed the tranche (1,624 / 1,655 / 1,762 characters, all inside the 1,405–3,006 range proved executable). `.11.9.1.2.1` classifies its five records' **20 clauses**: 15 `owned`, 3 `attach`, 1 `handled`, 1 `declined`, **0 `unowned`**. All three `attach` clauses written into `.4.3`, `.9.3` and `.4.1` in this commit.
+- [x] **ADDRESSED (verified)** — `--classified` -> `ledger clause rows: 130 / handled 22 / owned 73 / attach 29 / unowned 4 / declined 2 / none 0`, and `all 29 \`attach\` clauses are named by the leaf that owns them`, rc=0. `--self-test` -> `49 controls pass`, rc=0. ⭐ **`ATTACH-LANDED`, registered one commit earlier, fired on this leaf's own three unattached clauses before they were written** — `RECONCILIATION.md:156`, `:160`, `:167`, naming `R-70-3`/`.4.3`, `R-75-1`/`.9.3` and `R-85-1`/`.4.1`, rc=1 — and went green once each sentence landed. The gate's first production use caught the exact failure it was built for, in the very next tranche.
+- [x] **MEASURED, and it answered a question the record asked with a question mark** — `R-75-1` asks whether the hardcoded `expires_at` of `2026-09-15` lacks future validation. On 2026-09-14, both sides: `corrections::record_correction` requires the field present and RFC3339-parseable for a suspension or waiver and never compares it to `now()`; `reviews::schedule_reviews` selects `WHERE operation = 'waiver'` with no expiry predicate. ⛔ **The two `policy.rs` tests therefore do NOT break tomorrow**, and the clause is `declined` AS A PRESENT DEFECT with the record's own conditional standing. 🔴 The same measurement found what the record did not state: `repeated_waiver` fires on waivers that lapsed long ago, and on the FIRST waiver — written into `.9.3` beside its clause-3 attachment.
+- [x] **NO REGRESSION** — no product code, schema, test or script changed: task-tree, ledger, live-document and book text only. `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks, rc=0. `mdbook build docs/book` rc=0. `git diff --check` rc=0.
+- [x] **LOCKSTEP** — `docs/tasks/SIGNOFF-REPAIR.md`, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`, `docs/TASK_TREE.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
+- promotion: declined. No new method statement — the sizing rule is `.11.9.1.1`'s, the derived-boundary rule is `.11.9.1.1`'s, and "measure it when the SOURCE cannot settle a clause" is already `TOOLBOX.md`'s and `MEMORY.md`'s.
 
 ## Commit acceptance — SIGNOFF-REPAIR.11.11
 

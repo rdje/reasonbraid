@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-14 — The gate I built yesterday blocked me today
+
+- `ATTACH-LANDED` went in one commit ago. The next tranche classified three clauses `attach`, I wrote the ledger rows, ran `--classified`, and it refused: three breaches, each naming the record, the owning leaf and what would happen if I shipped it. I had, in fact, not written the sentences yet. I would like to claim I was about to.
+- That is the whole argument for mechanizing a rule instead of remembering it, and it arrived faster than I expected — one commit. The rule had been written down in the ledger's vocabulary for four commits and was violated once in that span.
+- **Three sites, one predicate.** `event_id_for_operation` selects on `operation_id` alone. The receipt insert conflicts on `event_id`, which is the whole primary key. Migration 0021's view joins `e.operation_id = i.command_id`. Two of those came from one record and the third from a record five files away, and nothing in the tree had put them side by side — because the tree indexes by leaf, and the records index by reviewer. That is the gap this whole reconciliation activity exists to close, and this is the clearest instance it has produced.
+- **The one I nearly got wrong was the date.** A test hardcoding `2026-09-15` read, on 2026-09-14, like a bomb with ten hours on it. The honest move was to read both sides before saying so: the writer never compares the expiry to `now()`, and the scheduler selects waivers with no expiry predicate at all. Nothing breaks tomorrow. Had I published "these tests fail tomorrow" I would have been wrong in a way that costs someone a night.
+- **And the measurement that settled it found the real defect.** The absent expiry predicate means `repeated_waiver` fires on a waiver that lapsed a year ago, for ever — and on the FIRST waiver, since one row makes one pair. The record named the single-waiver half and not the expiry half. Answering a question with a question mark on it is usually worth more than confirming one without.
+- **At the byte cap, the cheapest warning to shed turned out to be the one a gate now enforces.** `MEMORY.md` carries the rule "shed one whose line names its leaf", which left ten candidates. The sharper cut is: the machine says it better than the prose can, at the moment it matters, with the row named. I cut it to a pointer at the gate rather than deleting it, so a reader still knows the gate is there.
+
 ## 2026-09-14 — I had already written down what the gate would find
 
 - `SIGNOFF-REPAIR.11.11` was opened with a census in it: *3 of 3 breaching at tranche 1's close, 0 of 15 today.* That number was obtained by hand, by reading leaves. The acceptance I wrote for myself said to reproduce it before registering anything, and the temptation was to treat "I already counted it" as reproduction.

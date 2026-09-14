@@ -134,6 +134,39 @@ actions. Both of those are `attach`, and they are the same finding.
 | `R-80-82-1` | 7 | handled | `SIGNOFF-REPAIR.2.2.2` | ⭐ handled by a DIFFERENT mechanism than the record proposed, which is why the row says so: the record asked for a disposable guard AND project-owned role isolation. The guard landed, and it is what supplies the isolation — `rls_probe` can now only exist inside a runner-owned disposable cluster, so the role name never needed to become unique |
 | `R-80-82-1` | 8 | handled | `SIGNOFF-REPAIR.3.2.3` | `tests/allowlist.rs` and `tests/regions.rs` both provision explicit site authority and assert the refusal for a principal without it; the HTTP suite adds the revoked-grant and revoked-boundary legs |
 
+## Tranche 3a — the five records whose narrowest candidate leaf is `SIGNOFF-REPAIR.4.3`
+
+Owner: `SIGNOFF-REPAIR.11.9.1.2.1`. Ranking: `SIGNOFF-REPAIR.11.9.1`. Split and
+its sizing: `SIGNOFF-REPAIR.11.9.1.2`.
+
+⭐ **Three of these rows are one mechanism at three sites** — a lookup keyed on
+`operation_id`/`command_id` with the owning node never in the predicate — reached
+by two different records. `SIGNOFF-REPAIR.4.3`'s goal line already demands the
+proof that would have caught all three.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-48-49-3` | 1 | owned | `SIGNOFF-REPAIR.4.3` | goal line "Bind receipts/reconciliation/dedup to tenant and node". Live: `node_channel.rs::event_id_for_operation` is `SELECT event_id FROM node_events WHERE operation_id = $1 ORDER BY received_at LIMIT 1` — no `node_id`, no tenant — and it is the reconciliation lookup the HANDSHAKE performs, so any enrolled node naming a victim's operation id is handed the victim's event id |
+| `R-48-49-3` | 2 | owned | `SIGNOFF-REPAIR.4.3` | same goal line, the dedup half. Live: the receipt insert is `ON CONFLICT (event_id) DO NOTHING`, and `migrations/0003_node_inbox.sql:31` makes `event_id` the whole primary key with `node_id` a plain column. A node that writes first under a known event id turns the rightful node's receipt into a silent no-op returning `false` |
+| `R-48-49-3` | 3 | owned | `SIGNOFF-REPAIR.4.3` | "Needs scope + payload digest conflict" is the record's remedy and rides on clauses 1–2; recorded separately so a future reader is not told the three were merged. The goal line's "bind … to tenant and node" IS the scope half of it |
+| `R-48-49-4` | 1 | owned | `SIGNOFF-REPAIR.4.3` | goal line "preserve monotonic cursors through pruning". Live: `enqueue` writes `(SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1)` and `current_cursor` reads `COALESCE(MAX(cursor), 0)` over the same rows — the high-water mark is DERIVED from a table prune deletes from |
+| `R-48-49-4` | 2 | owned | `SIGNOFF-REPAIR.4.3` | same goal line. Live: prune everything and `MAX` is NULL, so `current_cursor` answers 0 while the node still holds its journal's high cursor — the `journal_lost`-class anomaly this module's own header names at `node_channel.rs:43` |
+| `R-48-49-4` | 3 | owned | `SIGNOFF-REPAIR.4.3` | same goal line, the reuse half. Live: after a full prune the next enqueue re-issues cursor 1, and a node that already acknowledged cursor 1 discards it as seen — the work is silently dropped rather than refused |
+| `R-48-49-4` | 4 | owned | `SIGNOFF-REPAIR.4.3` | "a monotonic high-water must be a separate durable counter, not the deletable inbox" is the record's remedy for clauses 1–3 and the only shape that survives a prune. Recorded separately; it shares their fate |
+| `R-70-3` | 1 | attach | `SIGNOFF-REPAIR.4.3` | the TEST stops one step short of the defect. `node_inbox.rs::prune_deletes_only_delivered_rows_older_than_the_window` leaves survivors `cmd_prune_3`, `4`, `5` — a partial prefix that KEEPS the highest cursor, so `MAX` never returns NULL — and no prune-everything-then-reconnect control exists in the suite. The goal line demands one proof (`command-id collisions`) and not this one |
+| `R-70-3` | 2 | owned | `SIGNOFF-REPAIR.4.3` | "the core MAX cursor bug remains" is the SAME finding as `R-48-49-4` clauses 1–2, reached by a second record — the fourth such pair in this activity, and the reason a record-level ledger would have counted it twice |
+| `R-75-1` | 1 | owned | `SIGNOFF-REPAIR.9.3` | goal line "enforce waiver constraints". Live: `reviews::schedule_reviews` pushes one `(publication, "repeated_waiver")` pair per waiver ROW, so a single waiver satisfies a trigger named "repeated"; `policy.rs:3161` records exactly one and asserts the trigger fires, codifying it |
+| `R-75-1` | 2 | owned | `SIGNOFF-REPAIR.9.3` | goal line "permit subsequent reviews after completed occurrences", verbatim. Live: the dedupe is `EXISTS (… WHERE publication_id = $1 AND trigger = $2 AND status = 'due')`, so only a still-`due` review suppresses a reschedule — and the suite never exercises the after-`done` path the goal line names |
+| `R-75-1` | 3 | attach | `SIGNOFF-REPAIR.9.3` | that an existing defect id dedupes PERMANENTLY is untested. It is a coverage claim about a different key than clause 2's `(publication, trigger)` pair, and no part of the goal line reaches it |
+| `R-75-1` | 4 | owned | `SIGNOFF-REPAIR.9.3` | goal line "use relative test clocks with failure visibility", verbatim. Live: `policy.rs:2811` and `:3161` both hardcode `expires_at` of `2026-09-15T00:00:00Z` |
+| `R-75-1` | 5 | declined | `SIGNOFF-REPAIR.9.3` | ⭐ the record asks, with its own question mark, whether the absent future-validation makes those tests time-brittle NOW. MEASURED on 2026-09-14, both sides: `corrections::record_correction` requires `expires_at` to be present and RFC3339-parseable for a suspension or waiver and never compares it to `now()`; `reviews::schedule_reviews` selects `WHERE operation = 'waiver'` with no expiry predicate. ⛔ So the tests do NOT break on 2026-09-15 — declined AS A PRESENT DEFECT, with the record's own conditional ("time brittles when proper checks land") standing and clause 4 carrying the repair |
+| `R-85-1` | 1 | owned | `SIGNOFF-REPAIR.4.1` | goal line "enforce host/node/incarnation tenant lineage", verbatim. Live: `migrations/0007` gives `nodes` two INDEPENDENT foreign keys — `host_id -> hosts` and `tenant_id -> tenants` — with nothing requiring them to agree, and repeats the shape for `incarnations` (`role_id` + `tenant_id`) and `runs` (`incarnation_id` + `tenant_id`) |
+| `R-85-1` | 2 | owned | `SIGNOFF-REPAIR.3.3` | goal line "enforce identity/tenant/subset/window correspondence". Live: `migrations/0004_authority.sql:35` is `boundary_id TEXT NOT NULL REFERENCES enrollment_boundaries (boundary_id)` — by boundary id alone, never composite with the tenant |
+| `R-85-1` | 3 | handled | `SIGNOFF-REPAIR.4.1.1` | ⭐ answered by the SOURCE rather than by the tree. `migrations/0059_node_token_supersede.sql` states the record's mechanism verbatim — "an EXPIRED token still has `used_at IS NULL`, so it stayed in the index permanently" — and records why the predicate could not become `AND expires_at > now()`: a partial index predicate must be IMMUTABLE, so the liveness is written down as `superseded_at` and the index keys on the stamp |
+| `R-85-1` | 4 | owned | `SIGNOFF-REPAIR.4.3` | goal line "prove command-id collisions across nodes cannot consume or hide foreign work", verbatim — "consume" is the word the view uses. Live: `migrations/0021_node_inbox_delivery_state.sql:19`–`:21` calls a row `consumed` on `EXISTS (… node_events e WHERE e.operation_id = i.command_id AND e.payload->>'kind' = 'work_result')` with no `e.node_id = i.node_id`. ⭐ The THIRD site of `R-48-49-3`'s mechanism, reached by a second record |
+| `R-85-1` | 5 | attach | `SIGNOFF-REPAIR.4.1` | `node_presence.suspended` ignores certificate EXPIRY. `migrations/0017` — the latest definition — is `EXISTS (revoked) AND NOT EXISTS (revoked_at IS NULL)`, and `node_certificates.expires_at` is `NOT NULL` and never consulted, so one expired unrevoked leaf reads as "active" and blocks `suspended` when no usable certificate exists. The goal line's "make replacement lineage and lease effects consistent" is about REPLACEMENT; expiry is a different predicate and the view has none |
+| `R-85-1` | 6 | owned | `SIGNOFF-REPAIR.4.1` | "determine the intended observability contract and fix the drift conservatively" is the record's remedy and rides on clauses 1, 2, 4 and 5, whose owners are three different leaves. Recorded separately, with the largest share's owner named, so a future reader is not told it was merged |
+
 ## Coverage
 
 Tranche 1 is 7 records and 26 clauses: `R-31-32-1`, `R-47-2`, `R-53-4`, `R-63-1`,
@@ -149,6 +182,11 @@ Tranche 2c is 4 records and 38 clauses: `R-76-77-2`, `R-87-1`, `R-88-1` and
 `R-90-1` — the last of which alone carries 21, because its body is 1,383
 characters over six scripts. ⭐ **Tranche 2 is therefore COMPLETE**: 14 records,
 84 clauses, across `.11.9.1.1.1`–`.3`.
+
+Tranche 3a is 5 records and 20 clauses: `R-48-49-3`, `R-48-49-4`, `R-70-3`,
+`R-75-1` and `R-85-1`. ⭐ It carries the ledger's SECOND `declined` row and its
+fourth two-records-one-finding pair — and that pair is the first whose shared
+finding is a SCHEMA shape rather than a code path.
 
 ⛔ Every row carries a state from the closed set above, so a reader may take the
 absence of a record as "not yet classified" and nothing else. `R-55-2` sits at

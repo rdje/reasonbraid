@@ -3567,6 +3567,16 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 - Explicit limit: this rotates the working digest only. No record is deleted, no threshold raised, and no claim is made that any rotated entry was re-verified — each keeps the status it had at its own commit.
 - Status: `done`; DOC-0013.
 - Commit: `REASONBRAID-DOC-0013 (leaf SIGNOFF-REPAIR.11.4.1.2): rotate the changelog a fifteenth time`.
+##### SIGNOFF-REPAIR.11.4.1.3 — The sixteenth changelog rotation
+
+- Opened: `pending`. The same contract as `.11.4.1`, `.11.4.1.1` and `.11.4.1.2`, applied again from the same authority — no threshold change, no new archive, no record deleted.
+- Trigger, mechanical rather than noticed: `scripts/check_readme_stability.sh` refused with `CHANGELOG.md is 98433 bytes (> rotation threshold 96000)` while `.11.2.3`'s record was being appended. The containment working as `.11.4.1.1` describes it — the cap schedules the rotation, not an author's judgement about length.
+- ⚠️ Sequenced as its own commit and `.11.2.3`'s record was pulled aside first, per `.11.4.1.2`'s ruling: a rotation carrying somebody else's record would make the predecessor pointer describe a state that never existed on its own. The predecessor named here holds only pre-existing entries.
+- Acceptance, inherited verbatim: the retained and retired whole-record segments reconstruct the pre-rotation file byte-for-byte, the named commit and blob resolve, and the digest lands under the unchanged cap.
+- Verification: predecessor `dd4151b9d5652a5cb2095e333c34282b20d1d613`, blob `5f4dfee6e8bd8efafb9f8fc91f50f11143db83e5`, **95,076 bytes / 583 lines / 35 dated records**, SHA-256 `6dfcb84b4f7a5c5e462ddf288772083308a0fbde0715a43c02837ea7f803292d`. Split into **15 retained + 20 retired**; header + retained + retired + the original footer reconstruct that snapshot byte-for-byte with a matching SHA-256. FALSIFIED: flipping ONE byte of the retained segment (offset 40, `' '` → `'X'`) breaks both the equality and the digest. ⛔ The falsification arm was a NO-OP on its first run — it substituted a token the retained segment does not contain, so the "mutated" text was identical and the assertion passed for the wrong reason; it was rewritten to flip a byte by INDEX, which cannot silently match nothing. Both chain pointers re-measured rather than copied — `git cat-file -s 5f4dfee` returns `95076`, `git show dd4151b:CHANGELOG.md | shasum -a 256` returns the recorded digest, and the next link back, `2c1bbe8`, still returns the `92548` bytes and the digest its own notice claims. New digest **45,213 bytes / 392 lines / 15 records**, under the unchanged 96,000 cap. `check_readme_stability.sh` rc=0.
+- Explicit limit: this rotates the working digest only. No record is deleted, no threshold raised, and no claim is made that any rotated entry was re-verified — each keeps the status it had at its own commit.
+- Status: `done`; DOC-0016.
+- Commit: `REASONBRAID-DOC-0016 (leaf SIGNOFF-REPAIR.11.4.1.3): rotate the changelog a sixteenth time`.
 
 #### SIGNOFF-REPAIR.11.4.2 — Complete containment inventory and enforcement review
 

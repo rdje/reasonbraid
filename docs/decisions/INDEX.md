@@ -6,6 +6,7 @@ record must be listed below (the MEMORY-ARCH doctrine check enforces it). New re
 
 | Record | Type | One-line hook |
 | --- | --- | --- |
+| [2026-09-15_the-action-set-extends-the-target-selector-does-not.md](2026-09-15_the-action-set-extends-the-target-selector-does-not.md) | decision | `GrantAction` extends with administrative verbs and `TargetSelector` does not — an enumerating selector cannot name a publication created after the grant; and the extension is a MIGRATION, because boundaries store wire names so no existing row contains a new action. The leaf's roadmap-freeze premise is refuted: `git grep -c` over `ROADMAP.md` returns 0 for both types |
 | [2026-09-12_r2-acquisition-accept-set.md](docs/decisions/2026-09-12_r2-acquisition-accept-set.md) | decision | the R2 acquisition leg admits the RANKED pack's advertised media types; narrowing the registry row is rejected because no subset of the five is accepted and the advertisement is not what is wrong |
 | [2026-09-12_checkpoint-gate-authority.md](docs/decisions/2026-09-12_checkpoint-gate-authority.md) | decision | the remote run is the authoritative pre-push gate (a verified superset); the macOS setting and the volume move are both rejected, on measured grounds |
 | [2026-09-12_checkpoint-cost-model.md](docs/decisions/2026-09-12_checkpoint-cost-model.md) | decision | the checkpoint's 2,982 unaccounted seconds are macOS first-execution validation at ~21.9s per new executable on the repository volume; one more test file costs ~22s of every checkpoint |

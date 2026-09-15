@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-15 — The action set extends, the target selector does not (`SIGNOFF-REPAIR.9.3.4`)
+
+Five administrative surfaces can now say **who** an authority belongs to and none can say **what it is authority over**. `.9.3.4` owned that question. The decision is taken and recorded; the implementation is decomposed.
+
+- 🔴 **The leaf's own premise was false, and it is the premise that would have declined the extension.** It says `GrantAction` and `TargetSelector` are "closed wire vocabularies and §9.8 publishes a stable registry", and reads across to `.11.7.1`'s frozen-roadmap hold. §9.8 is the **reason-code** registry — a different vocabulary. `git grep -c "GrantAction\|TargetSelector" ROADMAP.md` returns **0**. The freeze does not reach these types, and the coupling between the two leaves dissolves with the premise.
+- ⭐ **The project had already ruled on how to do it**, in `docs/decisions/2026-09-06_authority-boundary.md`: *"Add an action/ceiling by extending the checker FIRST — a grant that exceeds the boundary must be unrepresentable, not merely unapproved."* Prescribed, with an ordering constraint the children inherit.
+- ⛔ **`TargetSelector` does NOT extend, measured rather than preferred.** `Threads { threads: Vec<ThreadId> }` enumerates its objects at grant time. That works for threads, which exist before anyone is authorized over them; it cannot work for the case that matters, because the ordinary flow publishes a **new** publication whose id does not exist when the grant is issued. A `Publications { … }` variant would be unusable for exactly the operation it was added for. The residual is accepted and published: narrowed by **verb**, still tenant-wide by **object**.
+- 🔴 **The extension is a MIGRATION, not an addition.** `migrations/0004_authority.sql:15` stores `permitted_actions` as a JSONB array of **wire names**, so no stored boundary contains a name that postdates it. The moment a verb requires a new action, every already-enrolled tenant's boundary fails to permit it and that verb stops working for them — fail-closed, which is the safe direction, and still live breakage.
+- ⛔ **The leaf's site census was stale and this session staled it.** It says "the three sites"; re-derived, `git grep -n "grant_held_by(\|grant_is_live(" -- ':(glob)crates/reasonbraid-server/src/**'` returns **6**, the fourth added by `.9.2.1.2` two commits ago. Pinned rather than silently refreshed.
+- **Decomposed into `.9.3.4.1`** (the vocabulary, the boundary checker, the default set, the stored-row disposition) **and `.9.3.4.2`** (the coverage check at all six sites), each with its own acceptance and its own red-first control. ⚠️ Not implemented here, and said plainly: `git grep -n "GrantAction::"` returns **207 references across 19 files**, and the change is three things at once with a live-breakage edge — the same reason REPAIR-0189 split `.9.2.1`.
+- ⛔ **Holding is not covering.** `.9.3.1` found "names a grant" and "holds a grant" conflated; scope is the third term, and a site that checks holding while claiming scope is the same defect one level up.
+
 ## 2026-09-15 — The build-cost finding did not survive its own grading (`SIGNOFF-REPAIR.9.2.1.1.1`)
 
 The director asked whether the findings had legs. One of them did not. Graded on `docs/CLAIM_VERIFICATION.md` §4.1's three axes, separately:

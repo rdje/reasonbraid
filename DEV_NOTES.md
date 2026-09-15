@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-15 — I overstated a security finding, and only a different question caught it
+
+- Four hours after publishing the §16.12 line-(4) finding I opened `git.rs` to start repairing it, and found `GitFetcher::classify` — a pre-flight that handles IP literals explicitly. My published claim said the initial URL was unclassified and that the DNS hook was the "ONLY destination control". Both were wrong. The defect is the redirect hops alone.
+- ⛔ **The finding got broader every time I restated it, and nothing in my process resisted that.** It went into a leaf annotation, a decision record, `LIVE_STATUS`, `TASK_TREE` and the book — five surfaces — all written from one reading of one function. Restating is not re-deriving, and I had treated the second as done because the first felt thorough.
+- ⭐ **What caught it was asking a DIFFERENT question of the same file.** Not "is my finding right?" — I would have re-read `ClassifiedGitHttp` and confirmed myself. It was "what validates the initial URL?", asked because I needed it to write the repair. ⚠️ A verification question aimed at your own conclusion tends to find your own conclusion.
+- **The correction makes the finding more useful, not less.** "An IP literal is never classified" is alarming and vague. "A hop an origin redirects you to is not classified, while a destination you name yourself is" tells a reader exactly what the exposure requires — a hostile or compromised origin — and exactly where the fix goes.
+- ⚠️ **I nearly let the book's wording stand** because it was defensible — it said the pack "relies on a hook that its library skips", which is true. But it let a reader infer the broader claim, and a page that is technically accurate while leaving the wrong impression is the thing this project keeps finding in its own gate records. Sharpened rather than defended.
+- **Same-day correction, named not edited.** Each site now carries what it used to say. That costs a paragraph and buys a reader the ability to see that the claim moved, which is the whole reason this tree corrects numbers in public rather than quietly.
+
 ## 2026-09-15 — Three options, all wrong, because they shared a premise nobody checked
 
 - `.3.5.2.1` had sat held for two days with three carefully-costed options: break every caller, add a new selection path, or fail later. I was about to pick the least bad. Then I looked at the schema and found `principal_id TEXT NOT NULL PRIMARY KEY` — **a principal has exactly one tenant** — which means the route never needed to name one. All three options were answers to a question that did not exist.

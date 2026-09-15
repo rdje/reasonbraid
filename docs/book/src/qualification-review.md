@@ -249,12 +249,20 @@ conclusion does not change: it was already *not met* for Internet exposure.
 
 ⛔ One of the seven turned out to be an **open defect** rather than a repaired
 one. The product has two resource-acquisition packs, and they follow HTTP
-redirects in opposite ways: the web fetcher refuses automatic redirects and
-re-checks the destination at every hop, while the Git pack follows up to five
-automatically and relies on a hook that its underlying library skips whenever the
-destination is written as a bare IP address — which the library says plainly in
-its own source. The Git pack's documentation claims the fetcher's behaviour. This
-is measured from source; reproducing it end to end comes with the repair.
+redirects in opposite ways. The web fetcher refuses automatic redirects and
+re-checks the destination at every hop. The Git pack checks the **first**
+destination before it connects — including one written as a bare IP address — and
+then follows up to five redirects automatically, with only a name-resolution hook
+behind them. That hook never runs for a bare IP address, which the underlying
+library states plainly in its own source.
+
+So the gap is the **redirect hops alone**: a request the caller makes directly is
+checked, and a hop that an origin sends it to is not. The exposure is therefore a
+Git origin that redirects into a private address range, rather than a caller
+naming one. The Git pack's own documentation nonetheless claims the fetcher's
+stronger behaviour. ⚠️ This is measured from source; reproducing it end to end
+comes with the repair, and the first published description of it overstated the
+gap by omitting the pre-flight check — corrected the same day.
 
 Until the remaining four records are re-derived, **a gate record's "shipped" count
 should be read as a claim about the evidence available on its date, not as a

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Correct a security finding I overstated the same day (`SIGNOFF-REPAIR.11.4.7.1`, `.7.2`)
+
+⛔ **The §16.12 line-(4) finding published four hours earlier was broader than the truth, and this corrects it at every site rather than editing it away.** The defect is real and still open; it is **narrower and sharper** than I wrote.
+
+- **What I published:** that an IP-literal destination — "the initial URL's or any of the five auto-followed redirect hops'" — never reaches `ClassifiedDns`, and that the DNS hook is R1's "ONLY destination control".
+- 🔴 **Both halves overstate it.** `GitFetcher::classify` is a genuine PRE-FLIGHT second control, and it handles the literal case explicitly: `if let Ok(ip) = host.parse::<IpAddr>() { return allow_ip(&self.policy, ip); }`. The initial URL is classified, literal or not.
+- ⭐ **So the defect is the REDIRECT HOPS ALONE.** The pre-flight checks the first destination and does not run again; `Policy::limited(5)` then follows up to five hops with only the DNS hook behind them, and that hook never fires for a bare address. A request the caller makes directly is checked; a hop an origin sends it to is not.
+- ⚠️ **That changes the exposure's shape, which is why it mattered enough to correct promptly.** It requires a Git origin that REDIRECTS into a private or link-local range — not a caller naming one, which the pre-flight already refuses.
+- Corrected at all four tracked sites plus the book: the `.7.2` annotation, `.11.4.7.1`'s verdict, `docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md` and `LIVE_STATUS.md`. Each NAMES the superseded claim rather than replacing it silently — the practice this tree applies to inherited numbers, applied to my own.
+- ⭐ **Found by reading the source I was about to repair.** The overstatement survived a decision record, a leaf, a status entry and a book page, because every one of them was written from the same reading. The only thing that caught it was opening `git.rs` again with a different question — *what validates the initial URL?* — rather than re-reading what I had already concluded.
+
 ## 2026-09-15 — Audit the metrics read against the tenant its caller already has (`SIGNOFF-REPAIR.3.5.2.1`)
 
 The director asked for the blockers to be unblocked with rationale. This one was held for two days on a question that measurement dissolves.

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Make B3's deferral trigger evaluable, and find the secret scan could not see the commit it was gating (`SIGNOFF-REPAIR.13.1.2`)
+
+⭐ **A deferral with a trigger nobody checks is an omission with extra steps.** `ACTION-BOUNDARY` makes blocker B3's revisit trigger a script instead of a sentence.
+
+- The gate pins the four facts B3's deferral rests on: `claude.rs::EXEC_ARGS` passes `--restricted` and `--tools` followed by the empty string; `codex.rs::EXEC_ARGS` passes `--sandbox read-only`; `threads::work_payload` dispatches exactly eight keys and no acquired bytes; and every `AdapterCapabilities` declares `tool_support: false` across 5 files and 4 `Adapter` implementers.
+- ⭐ **The fourth is pinned here because nothing enforces it at runtime.** `.13.1.1` measured that `verify_ladder` — the five-rung ladder that would refuse a tool-declaring adapter — has no production caller, and `AllowedCapabilities::dev()` permits `tool_support: true` anyway. A weaker guarantee honestly placed beats a stronger one imagined.
+- **Falsified five ways against the working tree**, each self-reversing: `--tools Bash`, `--restricted` removed, codex widened to `workspace-write`, an adapter declaring `tool_support: true`, and `work_payload` gaining an `acquired_evidence` field — all rc=1; `git diff --quiet -- crates` and `cmp -s` afterwards.
+- 🔴 **The gate's first real run failed on my own parser while its self-test was green.** `payload_keys` ended the function at `\npub `, which does not match `pub(crate) async fn`, so the slice ran to the end of a 5,000-line file and reported 26 phantom fields. Fixed with brace matching; the real-file probe now asserts the EXACT key set instead of "parsed something".
+- 🔴 **And registering it exposed a defect in the PREVIOUS commit — mine.** `SECRET-SCAN`, installed by REPAIR-0200, fired on REPAIR-0200's own fixture. ⛔ That leaf recorded `gitleaks detect` rc=0 as its evidence, measured against an **uncommitted** working tree, while the command scans **history** — so it verified the state before its own change, and the value it introduced surfaced at `b6445d1` the moment it was committed.
+- ⭐ **The irony is exact:** that leaf's headline lesson was "a rename cannot reach a HISTORICAL finding, because `detect` scans every commit". The same fact cuts the other way — a history scan cannot reach an UNCOMMITTED change — and I took only the half in front of me.
+- ⚠️ **The rename was also ineffective on its own terms.** `key-delegation-1` scores entropy 3.578 against a ~3.5 threshold it was never measured against. The value is now `idem-test-000001`: still 16 characters so `baseline == 308` holds, entropy 2.899 so it trips nothing. The fixture now says both properties are load-bearing.
+- **Fix:** `gitleaks git --staged` added as a FIRST arm to `SECRET-SCAN` — 0.03 s, and falsified by staging a high-entropy literal (rc=1) then restoring (rc=0). ⚠️ `detect --no-git` was measured and rejected: it walks `target/` and did not finish in 120 s. ⭐ The staged arm means the next such value is one you FIX, not one you permanently annotate.
+
 ## 2026-09-15 — Clear the secret scan, and give each supply-chain gate the trigger it actually has (`SIGNOFF-REPAIR.11.4.7.2.3`)
 
 ✅ **All three red things are now green.** `gitleaks detect --source . --redact` returns `no leaks found`, rc=0 — and both supply-chain gates now RUN locally instead of living in a CI workflow that has never executed.
@@ -297,67 +310,26 @@ The director asked *"do you stand by your findings?"* — `docs/CLAIM_VERIFICATI
 - **Promoted:** a leaf that cannot be picked up and finished is not an owner (`TOOLBOX.md`).
 - No product code, schema, test or script changed. 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0.
 
-## 2026-09-14 — Correcting a number this activity published (`SIGNOFF-REPAIR.11.9.1.3.1`, tranche 4a)
-
-- **Tranche 4 sized at 10,519 characters — 4.12x the proved-executable size — and split five ways** on each record's own narrowest candidate, with one declared deviation: a 423-character singleton folded into its sibling in the same tree family.
-- 🔴 **A number this reconciliation itself published was wrong when written.** The clause ledger said a fixture accepts an unbound verdict digest "in four places"; `grep -c` says seven, across seven distinct test functions, and `git show` at the original commit proves the corpus did not move. Both sites corrected, the superseded figure named. **Promoted:** a count written while reading is not a count (`TOOLBOX.md`).
-- 🔴 **Any enrolled principal can act as any authority whose grant id they know.** The corrections module's authority check takes the grant id and nothing else — no caller, action, selector, boundary, publication or valid-from — behind an endpoint that admits on enrolment alone. The deployments module repeats the shape.
-- 🔴 **No second review can ever be scheduled for a (publication, trigger) pair**: the review id is deterministic and is the primary key, and the colliding insert's error is discarded. The same discard makes a storage failure return a successful empty schedule.
-- 🔴 **`rb-server` migrates the database on the line before it validates the profile it refuses to boot without**, and its bind address carries no predicate at all. New leaf `SIGNOFF-REPAIR.11.12`, with the two halves to be decided separately.
-- ⚠️ Two fixtures declare digests bound to nothing, and a metrics test's comment claims a counter assertion the test does not make.
-- ⭐ The fifth two-records-one-finding pair: one waiver satisfying a trigger named "repeated", reached independently by two records.
-- Validation: `--classified` 204 rows clean with all 40 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
-
-## 2026-09-14 — Measure a deadlock as a ratio (`SIGNOFF-REPAIR.11.9.1.2.3`, tranche 3 complete)
-
-- **Tranche 3c reconciled five records into 22 clause rows**: 16 `owned`, 6 `attach`, 0 `unowned`. Tranche 3 is complete at 15 records and 69 clauses.
-- 🔴 **The browse worker waits for its child to exit before reading the child's piped stdout**, and the request it writes allows 4 MiB of output against an OS pipe buffer of at most 64 KiB — so the deadlock covers most of the intended range, not an edge case, and surfaces as a timeout. Its error path drops a live `Child` without killing or waiting; its timeout path kills the worker but not the browser beneath it.
-- 🔴 **Four adapter defects, each at two sites**, because `codex.rs` and `claude.rs` share a shape: a byte slice of a `String` that panics off a char boundary, an unbounded line read under a bound checked before the append, a child map that is never removed from, and a success path that returns without awaiting the drain or waiting the child while the failure path does both.
-- 🔴 **A deadline is computed, shipped, and read by nobody** — one grep hit across every adapter source and the supervisor, and it is the struct field's own declaration.
-- 🔴 **A completed item that reaches the retry gate is dead-lettered and auto-quarantined**, and that report never acknowledges its own journal row while its only sibling call site does.
-- ⚠️ **One clause was narrowed rather than confirmed** — `OutcomeUnknown`'s propagation is real and documented as deliberate by the type itself.
-- ⚠️ **The narrowest candidate was the owner of only one of the five records**, the clearest instance yet that a record's candidate list is a suggestion.
-- **Promoted:** prefer a ratio, a single-hit grep or a two-site contrast to a reading (`TOOLBOX.md`).
-- Validation: `--classified` 179 rows clean with all 38 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
-
-## 2026-09-14 — The sentence at the top of the MCP module (`SIGNOFF-REPAIR.11.9.1.2.2`, tranche 3b)
-
-- **Tranche 3b reconciled five records into 27 clause rows**: 22 `owned`, 3 `attach`, **1 `none`** — the ledger's first, which completes the closed set of six states — and 0 `unowned`.
-- 🔴 **The MCP read surface leaks across tenants on all three read tools while the module's first paragraph claims the same authorization as the HTTP handlers.** `policy_bundle` takes its tenant as an unused `_tenant_id` over a `SELECT` with no `WHERE` clause and returns every tenant's policy clauses labelled with the caller's own tenant id; `list_inbox` declares a `principal` argument and never reads it; `get_thread` classifies, gets `Network` for a foreign tenant, and returns the full projection anyway. ⛔ **CORRECTED by `.6.1.1` (REPAIR-0182):** `policy_versions` has NO tenant column — `git grep -n "tenant" -- migrations/0038_policy_registry.sql crates/reasonbraid-server/src/policy.rs` returns rc=1 — so the registry is SITE-GLOBAL and HTTP `api.rs::list_policies` returns the same unfiltered set to any enrolled caller. The missing `WHERE`, the unchecked principal and the false tenant label all STAND; the cross-tenant FRAMING does not. The schema question is `.6.1.5`.
-- 🔴 **`join_call` is the third instance of the two-caller-identifiers family**: gated on the caller's tenant, then the call is fetched by id alone and the two are never compared. A decline, recommendation or recusal skips the eligibility gate entirely.
-- 🔴 **`policy.rs` queries the grants table two ways twenty-seven lines apart** — registration on status alone, resolution on status and expiry — so an expired grant registers a policy version the resolver in the same file would refuse. Its selector default is fail-open where the owning goal line says fail-closed.
-- ⚠️ **Two measurements narrowed the record rather than confirming it**, and both are recorded as narrowings: the `body["tenant_id"]` panic is real but unreachable through the typed MCP tool, and the quota-per-retry behaviour is documented verbatim in the module header.
-- ⭐ `ATTACH-LANDED` fired on this leaf's three unattached clauses before they were written — the second consecutive tranche it has caught.
-- 🔎 **`MEMORY.md` stands at 7,161 bytes against a 7,168-byte cap**, with three consecutive leaves forced to evict a standing warning to land. Routed to `.11.4.2` with its measurement.
-- Validation: `--classified` 157 rows clean with all 32 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
-
-## 2026-09-14 — One missing predicate at three sites (`SIGNOFF-REPAIR.11.9.1.2.1`, tranche 3a)
-
-- **Tranche 3 sized at 5,041 characters and split** on the same narrowest-candidate boundary that formed it — 1,624 / 1,655 / 1,762, all inside the 1,405–3,006 range this activity has proved executable in one commit.
-- **Tranche 3a reconciled five records into 20 clause rows**: 15 `owned`, 3 `attach`, 1 `handled`, 1 `declined`, 0 `unowned`.
-- 🔴 **A lookup keyed on `operation_id`/`command_id` with the owning node absent from the predicate lives at three sites**, reached by two different records and connected by no leaf: `node_channel.rs::event_id_for_operation` (the reconciliation lookup the handshake performs), the receipt insert's `ON CONFLICT (event_id) DO NOTHING` over a primary key that does not include `node_id`, and migration 0021's `delivery_state` view marking a row `consumed` from another node's result. `SIGNOFF-REPAIR.4.3`'s goal line already demands the proof that would have caught all three.
-- 🔴 **The cursor high-water mark is derived from the table prune deletes from.** `enqueue` writes `MAX(cursor)+1` and `current_cursor` reads `COALESCE(MAX(cursor), 0)` over `node_inbox`; prune everything and it rewinds to 0, re-issuing cursor 1 for a node that already acknowledged it. The prune test leaves a partial prefix that keeps the highest cursor, so `MAX` never has to answer for an empty inbox.
-- ⭐ **A dated answer to a question the record left open:** the hardcoded `expires_at` of `2026-09-15` does NOT break the two `policy.rs` tests tomorrow — neither the writer nor the reader compares a waiver's expiry to `now()`. The clause is declined as a present defect, and the same measurement found that `repeated_waiver` fires on long-lapsed waivers and on the first waiver, which is written into `.9.3`.
-- ⭐ **`ATTACH-LANDED`, registered one commit earlier, fired on this leaf's own three unattached clauses before they were written**, naming each row and its owner, and went green once the sentences landed. Its first production use caught the exact failure it was built for.
-- **A sharper shed rule at the `MEMORY.md` byte cap:** a warning a GATE now enforces is the cheapest of all to shed, because the machine states it at the moment it matters and names the offending row.
-- Validation: `--classified` 130 rows clean with all 29 `attach` clauses named by their owners, `--self-test` 49 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
-
-## 2026-09-14 — `ATTACH-LANDED`: gating the one ledger state that cannot check itself (`SIGNOFF-REPAIR.11.11`)
-
-- **The reconciliation ledger's `attach` state is the only one of six whose next action is not "none"** — it requires a sentence written into a leaf the classifier does not own — and every other property of a row is visible in the row itself. `--classified` could therefore validate everything except the thing that mattered.
-- **Registered as `ATTACH-LANDED`**, the registry's 24th named doctrine (the enforcer's top-level count stays 18; it runs inside `PROJECT-SPECIFIC`, 7 sub-checks -> 8): an `attach` clause whose owning leaf's own section does not NAME its record now blocks the commit.
-- **The leaf had published a prediction before any instrument could test it, so the census was reproduced at four points by two independent routes** — the new refusal copied into a detached worktree at each tranche's closing commit, and a throwaway re-implementation over `git show`. Both report **3 breaching of 3** at tranche 1's close (`5862837`), then **0 of 7**, **0 of 15** and **0 of 26**. The three named are exactly the set found by hand: `R-53-4` clauses 2 and 3 on `.7.1`, `R-63-1` clause 4 on `.11.4`.
-- **Zero today, every historical instance caught, one bounded file** — the `REASON-CODE-DOC` shape. `SIGNOFF-REPAIR.11.9`'s rejected gate would have fired on 114 of 131. The same rule family, measured twice, decided oppositely both times.
-- The rule is the record id in the owner's own section, never a phrase, and it does not require the literal words `ATTACHED CLAUSE`. The id carries a right-hand boundary because `R-53-4` is a prefix of `R-53-41`.
-- Falsified twice and observed red both times, through the instrument and through the registered enforcer; both restored to rc=0.
-- Validation: `--self-test` 49 controls (42 before), `--classified` 110 rows clean, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema or test changed.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated seventeen times;
+the rotation contract in `README_POLICY.md`. This file has rotated eighteen times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the EIGHTEENTH rotation (2026-09-15)
+from the repository root:
+
+```bash
+git show b6445d1818e08f7fbcd7a4ca05525a3add1dad80:CHANGELOG.md
+```
+
+That snapshot is 94,399 bytes and contains 28 dated entries; its Git blob is
+`a17817dcd2e6f79efe176b4593eae45195cda305`, and its SHA-256 is
+`fc0818d18865d8e5fb7174b541d50578f3cb5e96594581a108d66433cf6a25ca`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-14 — Correcting a number this activity published (`SIGNOFF-REPAIR.11.9.1.3.1`, tranche 4a)`.
+It carries the SEVENTEENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the SEVENTEENTH rotation (2026-09-15)
 from the repository root:

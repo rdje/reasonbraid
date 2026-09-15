@@ -27,7 +27,7 @@ measured evidence, subject to the re-derivation noted below.
 | --- | --- | --- | --- |
 | **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | §2.6: AI review does not satisfy an independent-review requirement for Internet qualification |
 | **B2** | **Penetration test**, with critical and high findings resolved | An outside engagement | §19.6: the release is *cancelled*, not waived, if findings stand |
-| **B3** | **Prompt-injection action-boundary suite** | Arrives with the exposure profile's first action-bearing surface | There is nothing to attach it to yet |
+| **B3** | **Prompt-injection action-boundary suite** | Arrives with the exposure profile's first action-bearing surface | There is nothing to attach it to yet — and as of 2026-09-15 that is enforced rather than asserted: the `ACTION-BOUNDARY` gate pins the four facts this deferral rests on, so the commit that lands an action-bearing surface fails and says B3 is due |
 | **B4** | **Public-name clearance** (ADR-001) | Professional trademark, company, package and domain clearance | §2.7: the exact-name screen performed is explicitly *not* legal clearance |
 
 `ReasonBraid` remains a **working name**. Do not assume the crate, domain or

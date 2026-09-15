@@ -10,3 +10,11 @@
 # The working-tree value is now readable, matching every sibling fixture; this
 # fingerprint clears the HISTORICAL finding, which a rename cannot reach.
 b3802b16601fb4a2da67a8721d7659ae1e36aed9:crates/reasonbraid-core/tests/delegation_representation.rs:generic-api-key:74
+# SIGNOFF-REPAIR.13.1.2: the same fixture, one commit later, and this entry is
+# MY OWN defect rather than an inherited one. REPAIR-0200 renamed the value to
+# `key-delegation-1` as "forward hygiene"; it scores entropy 3.578 and still trips
+# `generic-api-key`. I verified that commit green against an UNCOMMITTED working
+# tree while the check scans HISTORY, so the finding appeared one commit late.
+# The value is now `idem-test-000001` (entropy 2.899) and trips nothing; this
+# fingerprint clears the version that is already in history.
+b6445d1818e08f7fbcd7a4ca05525a3add1dad80:crates/reasonbraid-core/tests/delegation_representation.rs:generic-api-key:80

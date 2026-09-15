@@ -71,13 +71,15 @@ fn baseline_envelope() -> CommandEnvelope {
         protocol_version: PROTOCOL_VERSION.to_string(),
         operation: "thread.contribute".to_string(),
         request_id: "req_00000000-0000-7000-8000-000000000001".parse().unwrap(),
-        // ⛔ EXACTLY 16 characters, and readable on purpose. The length is
-        // load-bearing — `baseline` below asserts 308 bytes — and the previous
-        // value was 16 hex digits, which `gitleaks` scored at entropy 3.875 and
-        // reported as a `generic-api-key` (`SIGNOFF-REPAIR.11.4.7.2.3`). Every
-        // sibling fixture already spells these readably (`k-forged`,
-        // `client-key-0001`); this one was the outlier.
-        idempotency_key: "key-delegation-1".to_string(),
+        // ⛔ EXACTLY 16 characters AND low entropy, both deliberate, both
+        // load-bearing. The LENGTH: `baseline` below asserts 308 bytes over the
+        // serialized envelope, which contains this field. The ENTROPY: gitleaks'
+        // `generic-api-key` rule fires on a `*_key` assignment above roughly 3.5
+        // bits/char — the original 16 hex digits scored 3.875, and the first
+        // replacement `key-delegation-1` still scored 3.578 and tripped it one
+        // commit later (`SIGNOFF-REPAIR.13.1.2`). This value scores 2.899.
+        // ⚠️ Changing it needs BOTH properties re-checked, not just the length.
+        idempotency_key: "idem-test-000001".to_string(),
         expected_aggregate_version: Some(7),
         body: json!({ "content": "the position I am asked to take" }),
         authority_context: None,

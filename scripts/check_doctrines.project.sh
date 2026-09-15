@@ -123,10 +123,25 @@ fi
 # it. A skip is a weaker guarantee than a pass and must never read like one — hence
 # the notice on stderr. CI installs the pinned 8.30.1 and is the real backstop, which
 # is exactly the backstop blocker C1 says has never run.
+# ⛔ TWO ARMS, AND THE SECOND EXISTS BECAUSE THE FIRST ALONE SHIPPED A DEFECT.
+# `gitleaks git` scans HISTORY. In a pre-commit hook that means it validates the
+# PREVIOUS state and cannot see the commit being made — so REPAIR-0200 verified
+# itself green against an uncommitted working tree, and the finding its own change
+# introduced surfaced one commit later (`SIGNOFF-REPAIR.13.1.2`). `--staged` is the
+# arm that reads what is actually being committed, and it costs 0.03 s.
+# ⚠️ `detect --no-git` was measured and REJECTED: it walks `target/` and
+# `.project-data/` and did not finish in 120 s.
 if command -v gitleaks >/dev/null 2>&1; then
-    if ! gitleaks detect --source . --redact --no-banner >/dev/null 2>&1; then
-        echo "SECRET-SCAN: gitleaks reported a finding — re-run to see it:" >&2
-        echo "  gitleaks detect --source . --redact" >&2
+    if ! gitleaks git --staged --redact --no-banner . >/dev/null 2>&1; then
+        echo "SECRET-SCAN: the STAGED changes contain a finding — re-run to see it:" >&2
+        echo "  gitleaks git --staged --redact ." >&2
+        echo "  Fix the value rather than allowlisting it: nothing is in history yet," >&2
+        echo "  so this is the one moment a fingerprint entry is NOT required." >&2
+        exit 1
+    fi
+    if ! gitleaks git --redact --no-banner . >/dev/null 2>&1; then
+        echo "SECRET-SCAN: gitleaks reported a finding in HISTORY — re-run to see it:" >&2
+        echo "  gitleaks git --redact ." >&2
         echo "  A verified test literal is cleared by its EXACT historical fingerprint" >&2
         echo "  in .gitleaksignore — never by suppressing the path or the rule." >&2
         exit 1
@@ -134,6 +149,18 @@ if command -v gitleaks >/dev/null 2>&1; then
 else
     echo "SECRET-SCAN: SKIPPED — gitleaks is not installed, so this commit is NOT" >&2
     echo "  secret-scanned. Install it (CI pins 8.30.1) or accept the CI backstop." >&2
+fi
+
+# Blocker B3's deferral trigger, made evaluable (`SIGNOFF-REPAIR.13.1.2`). §16.6's
+# prompt-injection action-boundary suite is DEFERRED on a measured ground: model
+# output cannot reach an action. ⛔ The problem was never the deferral — it was that
+# the revisit trigger was PROSE. `SIGNOFF-REPAIR.11.4.7.2` measured what that costs:
+# Phase 1 deferred a fuzz baseline until "the first untrusted parser"; that parser
+# shipped, the phase closed, and `git ls-files | grep -ic fuzz` still returns 0. The
+# trigger fired and nothing noticed, because nothing was built to notice.
+if ! scripts/check_action_boundary.sh >/dev/null 2>&1; then
+    scripts/check_action_boundary.sh >&2
+    exit 1
 fi
 
 exit 0

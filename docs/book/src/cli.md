@@ -39,12 +39,43 @@ will not help, because nothing about the request is wrong. A declared root that
 does not resolve to a directory refuses the **boot**, before the migrations run,
 so a typo cannot leave a changed database behind with no server on it.
 
-⚠️ Two honest limits. The containment decision is made once per request, against
-the filesystem as it stands then; a symlink swapped between that check and the
-repository being opened would not be seen. And the verb is still authorized by
-enrolment alone — binding it to a held grant is tracked separately under
-`SIGNOFF-REPAIR.9.2.1.2`, and until it lands any enrolled principal can publish
-into the configured root.
+### A recorded Git object id must exist
+
+`POST /v1/policy-publications/{id}/effective` is the record half of the same
+step: it moves a staged publication to `effective` and stores the Git object ids
+it was published under. Those ids used to be **recorded without being looked
+for** — any string the caller sent became the publication's Git provenance.
+
+The transition now requires every declared id to name an object that exists, so
+the request carries a `repo_path` naming the repository the ids are claimed to
+live in, resolved inside the configured root exactly as the publish verb's is:
+
+```json
+{ "repo_path": "live", "git_object_ids": ["b45ef6f…", "9f2c1a0…"] }
+```
+
+`repo_path` is **required**. A transition that cannot say which repository it is
+talking about cannot check anything, so a verb that used to take only the ids
+now takes both — a change to a shipped request shape, listed here because a
+client sending the old body gets `invalid_command`.
+
+The check is **per id**, not per request: one real id beside one fabricated id
+is refused, and the refusal names only the fabricated one. An id that is not a
+well-formed object id and one that is well-formed but resolves to nothing get
+the same answer, because both are claims about an object that is not there. A
+repository that cannot be opened at all is reported as a repository failure
+rather than as a verdict about the ids — an unreadable store must not read as a
+forged publication.
+
+⚠️ Three honest limits. The containment decision is made once per request,
+against the filesystem as it stands then; a symlink swapped between that check
+and the repository being opened would not be seen. An object is proved to
+**exist**, not to be this publication's own — a sibling repository inside the
+configured root holding a matching id would satisfy the check, and binding the
+ids to the publication's own refs needs the repository recorded alongside the
+publication. And both verbs are still authorized by enrolment alone — binding
+them to a held grant is tracked separately under `SIGNOFF-REPAIR.9.2.1.2`, and
+until it lands any enrolled principal can publish into the configured root.
 
 ## The flow
 

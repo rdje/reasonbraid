@@ -3188,6 +3188,12 @@ async fn list_publications(
 
 /// `POST /v1/policy-publications/{id}/effective` — the staged → effective
 /// transition with the Git object ids (the §15.7 step 8's record half).
+///
+/// `.9.2.1.3`: the declared ids must EXIST. The body therefore names the
+/// repository they are claimed to live in, `repo_path`, resolved inside the
+/// deployment's configured root exactly as the publish verb's is — a required
+/// field, and a wire-contract change to a shipped verb, because a transition
+/// that cannot say which repository it is talking about cannot check anything.
 async fn mark_publication_effective(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
@@ -3208,7 +3214,21 @@ async fn mark_publication_effective(
         .iter()
         .filter_map(|v| v.as_str().map(str::to_owned))
         .collect();
-    match crate::publications::mark_effective(&state.pool, &publication_id, git_object_ids).await {
+    let requested = body
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the repo_path is required"))?;
+    let repository =
+        crate::publisher::resolve_repository(state.publication_repo_root.as_deref(), requested)
+            .map_err(publication_repository_refused)?;
+    match crate::publications::mark_effective(
+        &state.pool,
+        &publication_id,
+        git_object_ids,
+        &repository,
+    )
+    .await
+    {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3330,7 +3350,7 @@ async fn publish_publication(
     }))
     .expect("the manifest serializes");
     let refs = crate::publisher::publish(
-        &repo_path,
+        repo_path.path(),
         &publication_id,
         &manifest,
         &projection.bytes,
@@ -3338,9 +3358,14 @@ async fn publish_publication(
     )
     .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let git_object_ids = vec![refs.publication_ref_id, refs.effective_ref_id];
-    let row = crate::publications::mark_effective(&state.pool, &publication_id, git_object_ids)
-        .await
-        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    let row = crate::publications::mark_effective(
+        &state.pool,
+        &publication_id,
+        git_object_ids,
+        &repo_path,
+    )
+    .await
+    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     Ok(Json(row))
 }
 

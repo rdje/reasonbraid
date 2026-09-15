@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-15 — A declared Git object id is now looked for before it is recorded (`SIGNOFF-REPAIR.9.2.1.3`)
+
+`publications::mark_effective` took `git_object_ids: Vec<String>`, refused only the empty list, and wrote them into the row. Nothing opened a repository. The publication's Git provenance was whatever the caller said it was.
+
+- ⛔ **The bypass was exercised by the suite meant to qualify it**, which is the sharper half of the finding. `git grep -n '"git_object_ids": \["abc123"' f3d77c9 -- crates/reasonbraid-server/tests/policy.rs` returns **3 sites**, and that suite was green — `13 passed; 0 failed`. Three fixtures proved the staged → effective transition using ids that resolve to nothing, and one of them is the deployment fixture.
+- **The check is per id, in the core.** `publisher::missing_objects` answers which declared ids name nothing; `publications::mark_effective` calls it. `git grep -n "publications::mark_effective" f3d77c9 -- crates/reasonbraid-server/src` returns **2 production callers**, both in `api.rs`, so a handler-level repair would have left the sibling open and its own suite green — `.6.1.2`'s rule applied rather than re-derived.
+- ⭐ **Containment became a type.** `resolve_repository` now returns a `PublicationRepository` newtype with no other constructor, so a verb that takes one cannot be reached with a path that has not passed `.9.2.1.1`'s check. A convention the next caller could forget is now one they cannot.
+- ⛔ **An unparseable id and a well-formed absent one are the same answer**, and both are asserted: a check that validated only the shape would refuse `abc123` and accept forty zeros. A repository that fails to open is reported as a repository failure, deliberately not as a verdict about the ids — an unreadable store must not read as a forged publication.
+- ⛔ **Per id, not per request:** one real id beside one fabricated id is refused and the message names only the fabricated one. "Does any declared id resolve" would let a real id launder a forged one.
+- ⚠️ **`repo_path` is now required on `POST /v1/policy-publications/{id}/effective`** — a change to a shipped request shape. The design question was recorded rather than assumed: the publications table has no repository column, the standalone verb exists for a Git half performed out of band where no column could have been filled, and `.9.2.1.1` had already shaped the root as a container. The caller names the repository; the configured root constrains which ones it can name.
+- **The three fixtures are re-seeded, not relaxed** — each asserts the same transition it always did, now with ids read back from a real bare repository under its own configured root.
+- 🔴 **I mapped one of the three sites to the wrong test and the compiler caught it.** The third is in `the_drift_corrections_and_outcomes_ride_the_records`; the reviews test never drives the transition. Seeding the wrong function produced `cannot find value \`object_ids\`` and `unused variable: \`object_ids\`` in one build — two errors naming both halves of the mistake. A line number in a 3,600-line file is not a location; the enclosing function is.
+- ⚠️ **A limit stated rather than implied:** an object is proved to exist, not to be this publication's own. A sibling repository inside the configured root holding a matching id would satisfy the check; binding the ids to the publication's own refs needs the repository recorded with the row, which is a migration and a different leaf.
+- **Verified:** `bash scripts/run_pg_tests.sh policy` → `13 passed; 0 failed`, rc=0; `cargo test -p reasonbraid-server --test publisher` → `7 passed; 0 failed`, rc=0.
+
 ## 2026-09-15 — The server says where a publication may be written, not the caller (`SIGNOFF-REPAIR.9.2.1.1`)
 
 `POST /v1/policy-publications/{id}/publish` read `repo_path` out of the request body and handed it to `gix::open`. Any enrolled principal named any path on the server's filesystem, and the module's own header said the publication went "into the LOCAL bare repository".

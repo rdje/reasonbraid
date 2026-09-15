@@ -197,6 +197,33 @@ async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) 
 
 const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+/// `SIGNOFF-REPAIR.9.2.1.3`: a publication repository under a configured root,
+/// and object ids READ BACK from it.
+///
+/// Three fixtures used to declare `["abc123", "def456"]`, which resolve to
+/// nothing — the suite meant to qualify the effective transition was proving it
+/// with ids that do not exist. ⛔ They are RE-SEEDED rather than relaxed or
+/// deleted: each still asserts the same transition, and now asserts it
+/// honestly. Returns the root to configure and the ids to declare.
+fn seeded_publication_repository(name: &str) -> (std::path::PathBuf, Vec<String>) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/policy-publish-tests")
+        .join(name);
+    let _ = std::fs::remove_dir_all(&root);
+    let repo_dir = root.join("live");
+    std::fs::create_dir_all(&repo_dir).expect("the repository dir creates");
+    let repo = gix::init_bare(&repo_dir).expect("the bare repository inits");
+    let ids = [b"first".as_slice(), b"second".as_slice()]
+        .iter()
+        .map(|data| {
+            repo.write_object(gix::objs::BlobRef { data })
+                .expect("the blob writes")
+                .to_string()
+        })
+        .collect();
+    (root, ids)
+}
+
 #[tokio::test]
 async fn the_policy_registry_validates_the_digest_pinned_document() {
     let _guard = guard().await;
@@ -1581,7 +1608,11 @@ async fn the_codex_and_claude_projections_ride_the_verb() {
 async fn the_publication_stages_and_marks_its_typed_state() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
-    let server = TestServer::start(&pool).await;
+    // `.9.2.1.3`: this fixture drives the effective transition, so it needs a
+    // configured repository and ids READ BACK from it — it used to declare
+    // `abc123`, which resolves to nothing.
+    let (repo_root, object_ids) = seeded_publication_repository("staging");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
     let base = server.base();
     let client = reqwest::Client::new();
 
@@ -1765,18 +1796,72 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     assert_eq!(status, 200, "the publication stages: {publication}");
     assert_eq!(publication["state"], json!("staged"));
 
+    // `.9.2.1.3` — a declared object id that resolves to nothing is REFUSED,
+    // and this is the exact shape the fixture itself used to send. Until that
+    // leaf the transition recorded whatever arrived: the suite meant to
+    // qualify it was proving the transition with ids that do not exist.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pb-pub/effective",
+        &human_id,
+        &json!({ "git_object_ids": ["abc123", "def456"], "repo_path": "live" }),
+    )
+    .await;
+    assert_eq!(status, 400, "a fabricated object id refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("name nothing in the publication repository"),
+        "{refused}"
+    );
+
+    // THE MATCHED PAIR, and it is per-id rather than per-request: swap ONE of
+    // the two for a real id and it is still refused, naming only the one that
+    // is missing. A check that asked "does any declared id resolve" would pass
+    // this, and would let a real id launder a fabricated one beside it.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pb-pub/effective",
+        &human_id,
+        &json!({ "git_object_ids": [object_ids[0].clone(), "def456"], "repo_path": "live" }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "one real id does not launder the other: {refused}"
+    );
+    let message = refused["message"].as_str().unwrap();
+    assert!(message.contains("def456"), "{refused}");
+    assert!(
+        !message.contains(&object_ids[0]),
+        "the real id is not named as missing: {refused}"
+    );
+
+    // A refused transition wrote nothing: the publication is still staged, so
+    // the leg below is still exercising staged -> effective.
+    let (status, listed) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert_eq!(status, 200, "{listed}");
+    assert_eq!(
+        listed[0]["state"],
+        json!("staged"),
+        "the refusal left the publication staged: {listed}"
+    );
+
     // 2. The effective transition records the Git object ids.
     let (status, effective) = post(
         &client,
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": ["abc123", "def456"] }),
+        &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
     )
     .await;
     assert_eq!(status, 200, "the publication marks effective: {effective}");
     assert_eq!(effective["state"], json!("effective"));
-    assert_eq!(effective["git_object_ids"], json!(["abc123", "def456"]));
+    assert_eq!(effective["git_object_ids"], json!(object_ids));
 
     // 3. The refusals: the bad manifest digest, the ghost projection, the
     // foreign decision, the non-approved proposal, the wrong-stage
@@ -1835,7 +1920,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": ["zzz"] }),
+        &json!({ "git_object_ids": ["zzz"], "repo_path": "live" }),
     )
     .await;
     assert_eq!(status, 400, "the terminal re-transition refuses: {refused}");
@@ -2370,7 +2455,11 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
 async fn the_deployment_rides_the_effective_publication_per_target() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
-    let server = TestServer::start(&pool).await;
+    // `.9.2.1.3`: this fixture drives the effective transition, so it needs a
+    // configured repository and ids READ BACK from it — it used to declare
+    // `abc123`, which resolves to nothing.
+    let (repo_root, object_ids) = seeded_publication_repository("deployment");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
     let base = server.base();
     let client = reqwest::Client::new();
 
@@ -2479,6 +2568,9 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
         let thread_id = thread_id.clone();
         let verdict_event = verdict_event.clone();
         let grant_id = grant_id.clone();
+        // `.9.2.1.3`: cloned here like every other capture, so the closure
+        // stays `Fn` and can build more than one chain.
+        let object_ids = object_ids.clone();
         async move {
             let proposal_id = format!("dp-prop-{suffix}");
             let decision_id = format!("dp-dec-{suffix}");
@@ -2567,7 +2659,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                     &base,
                     &format!("/v1/policy-publications/{publication_id}/effective"),
                     &human_id,
-                    &json!({ "git_object_ids": ["abc123", "def456"] }),
+                    &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
                 )
                 .await;
                 assert_eq!(status, 200, "the publication marks effective");
@@ -2726,7 +2818,11 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
 async fn the_drift_corrections_and_outcomes_ride_the_records() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
-    let server = TestServer::start(&pool).await;
+    // `.9.2.1.3`: this fixture drives the effective transition, so it needs a
+    // configured repository and ids READ BACK from it — it used to declare
+    // `abc123`, which resolves to nothing.
+    let (repo_root, object_ids) = seeded_publication_repository("drift");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
     let base = server.base();
     let client = reqwest::Client::new();
 
@@ -2913,7 +3009,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
                 &base,
                 &format!("/v1/policy-publications/{publication_id}/effective"),
                 &human_id,
-                &json!({ "git_object_ids": ["abc123", "def456"] }),
+                &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
             )
             .await;
             assert_eq!(status, 200, "the publication marks effective");

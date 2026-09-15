@@ -58,6 +58,12 @@ pub enum PublicationError {
     },
     MalformedDigest(String),
     EmptyObjectIds,
+    /// Declared Git object ids that name nothing in the publication
+    /// repository (`SIGNOFF-REPAIR.9.2.1.3`).
+    UnknownObjects(Vec<String>),
+    /// The publication repository could not be read at all — a deployment
+    /// fault, and deliberately NOT the same answer as an absent object.
+    RepositoryUnreadable(String),
     Duplicate(String),
 }
 
@@ -97,6 +103,16 @@ impl std::fmt::Display for PublicationError {
             }
             PublicationError::EmptyObjectIds => {
                 write!(f, "the effective publication records its Git object ids")
+            }
+            PublicationError::UnknownObjects(ids) => {
+                write!(
+                    f,
+                    "the declared Git object ids name nothing in the publication repository: {}",
+                    ids.join(", ")
+                )
+            }
+            PublicationError::RepositoryUnreadable(why) => {
+                write!(f, "the publication repository cannot be read: {why}")
             }
             PublicationError::Duplicate(what) => {
                 write!(
@@ -239,6 +255,7 @@ pub async fn mark_effective(
     pool: &PgPool,
     publication_id: &str,
     git_object_ids: Vec<String>,
+    repository: &crate::publisher::PublicationRepository,
 ) -> Result<StoredPublication, PublicationError> {
     if git_object_ids.is_empty() {
         return Err(PublicationError::EmptyObjectIds);
@@ -260,6 +277,23 @@ pub async fn mark_effective(
             publication_id: publication_id.to_string(),
             state,
         });
+    }
+    // `SIGNOFF-REPAIR.9.2.1.3`: a declared object id is a CLAIM about the
+    // repository, and nothing used to check it — the row recorded whatever the
+    // caller sent, and three of this project's own fixtures drove the
+    // transition with `abc123`, which is not even a well-formed id. ⛔ The
+    // check lives HERE, in the core both publish verbs go through, rather than
+    // in either handler: a seam-level repair would leave the sibling caller
+    // open and the seam's own suite green (`.6.1.2`). The repository is a
+    // `PublicationRepository`, which has no constructor but
+    // `publisher::resolve_repository`, so it has already passed containment.
+    // ⚠️ Ordered after the stage read on purpose, so the existing empty-list
+    // and wrong-stage refusals answer first and a doomed request never pays
+    // for a repository open.
+    let missing = crate::publisher::missing_objects(repository, &git_object_ids)
+        .map_err(|e| PublicationError::RepositoryUnreadable(e.to_string()))?;
+    if !missing.is_empty() {
+        return Err(PublicationError::UnknownObjects(missing));
     }
     sqlx::query(
         "UPDATE policy_publications SET state = 'effective', git_object_ids = $2 \

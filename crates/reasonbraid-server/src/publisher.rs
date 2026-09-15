@@ -92,6 +92,25 @@ impl std::fmt::Display for RepositoryRefusal {
     }
 }
 
+/// A publication repository location that has been RESOLVED inside the
+/// deployment's configured root (`SIGNOFF-REPAIR.9.2.1.1`).
+///
+/// It has no public constructor. [`resolve_repository`] is the only way to
+/// obtain one, so a verb that takes this type cannot be reached with a path
+/// that has not passed containment — the binding is structural rather than a
+/// convention a later caller can forget. `SIGNOFF-REPAIR.9.2.1.3` is why it is
+/// a type at all: a second verb needed the same guarantee, and two surfaces
+/// sharing a rule want the rule in one place they both have to go through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicationRepository(PathBuf);
+
+impl PublicationRepository {
+    /// The canonical path the repository is opened at.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// Canonicalize a DECLARED publication repository root, or say why it is not
 /// usable (`SIGNOFF-REPAIR.9.2.1.1`).
 ///
@@ -135,7 +154,7 @@ pub fn validate_root(declared: &Path) -> Result<PathBuf, RepositoryRefusal> {
 pub fn resolve_repository(
     configured_root: Option<&Path>,
     requested: &str,
-) -> Result<PathBuf, RepositoryRefusal> {
+) -> Result<PublicationRepository, RepositoryRefusal> {
     let root = validate_root(configured_root.ok_or(RepositoryRefusal::Unconfigured)?)?;
     let asked = Path::new(requested);
     let joined = if asked.is_absolute() {
@@ -154,7 +173,36 @@ pub fn resolve_repository(
             requested: requested.to_string(),
         });
     }
-    Ok(resolved)
+    Ok(PublicationRepository(resolved))
+}
+
+/// Which of the DECLARED Git object ids do not name an object that exists in
+/// the publication repository (`SIGNOFF-REPAIR.9.2.1.3`).
+///
+/// `mark_effective` used to write whatever ids the caller sent, so the record
+/// asserted the existence of objects nobody had looked for — and the project's
+/// own fixtures drove it with `abc123`, which is not even a well-formed id.
+/// An id that does not PARSE and one that parses and resolves to nothing are
+/// the same answer here: it is not in the repository.
+///
+/// Returns the missing ids in the order they were declared, empty when every
+/// one resolves. The repository failing to open is a different thing from an
+/// id being absent, so it comes back as [`PublishError::Open`] rather than as
+/// a verdict about the ids.
+pub fn missing_objects(
+    repository: &PublicationRepository,
+    declared: &[String],
+) -> Result<Vec<String>, PublishError> {
+    let repo = gix::open(repository.path()).map_err(|e| PublishError::Open(e.to_string()))?;
+    Ok(declared
+        .iter()
+        .filter(|declared| {
+            !declared
+                .parse::<gix::ObjectId>()
+                .is_ok_and(|oid| repo.find_object(oid).is_ok())
+        })
+        .cloned()
+        .collect())
 }
 
 /// The raw signature header value (the `name <email> seconds +HHMM` shape —

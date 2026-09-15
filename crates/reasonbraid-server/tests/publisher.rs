@@ -11,7 +11,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 
 use reasonbraid_server::publisher::{
-    publish, resolve_repository, validate_root, PublishError, RepositoryRefusal,
+    missing_objects, publish, resolve_repository, validate_root, PublishError, RepositoryRefusal,
 };
 use uuid::Uuid;
 
@@ -159,12 +159,12 @@ fn a_location_outside_the_configured_root_is_refused() {
     gix::init_bare(&inside).expect("the inside bare repository inits");
     let resolved = resolve_repository(Some(&root), "live").expect("an inside location resolves");
     assert_eq!(
-        resolved,
+        resolved.path(),
         inside
             .canonicalize()
             .expect("the inside location canonicalizes")
     );
-    publish(&resolved, "pub-inside", "{}", "# bundle", None)
+    publish(resolved.path(), "pub-inside", "{}", "# bundle", None)
         .expect("the publish rides the resolved location");
 
     // 7. The root itself is validated by ONE definition, which `rb-server`
@@ -201,11 +201,83 @@ fn a_location_outside_the_configured_root_is_refused() {
         );
         assert_eq!(
             resolve_repository(Some(&fixture.path), &spelled)
-                .unwrap_or_else(|e| panic!("{label} is inside the wider root: {e}")),
+                .unwrap_or_else(|e| panic!("{label} is inside the wider root: {e}"))
+                .path(),
             outside_canonical,
             "{label} resolves once the declared root contains it"
         );
     }
+
+    fixture.finish().expect("the fixture finishes");
+}
+
+// `SIGNOFF-REPAIR.9.2.1.3`: `mark_effective` wrote whatever object ids the
+// caller declared, so the record asserted the existence of objects nobody had
+// looked for — and three of this project's own fixtures drove the transition
+// with `abc123`, which is not even a well-formed id. This is the predicate the
+// repair puts in front of it.
+#[test]
+fn a_declared_object_id_must_exist_in_the_repository() {
+    let fixture = Fixture::new();
+    let root = fixture.path.join("root");
+    let repo_dir = root.join("live");
+    std::fs::create_dir(&root).expect("the root creates");
+    std::fs::create_dir(&repo_dir).expect("the repository dir creates");
+    let repo = gix::init_bare(&repo_dir).expect("the bare repository inits");
+    let real = repo
+        .write_object(gix::objs::BlobRef { data: b"seeded" })
+        .expect("the blob writes")
+        .to_string();
+    let repository = resolve_repository(Some(&root), "live").expect("the location resolves");
+
+    // 1. A real id, read back from the repository it was written to.
+    assert_eq!(
+        missing_objects(&repository, std::slice::from_ref(&real)).expect("the repository opens"),
+        Vec::<String>::new(),
+        "an id this repository holds is not missing"
+    );
+
+    // 2. The shape the fixtures used. ⛔ `abc123` does not PARSE as an object
+    //    id and a well-formed id may still resolve to nothing; both are the
+    //    same answer here, and both are asserted, because a check that only
+    //    validated the SHAPE would pass the second and still record a claim
+    //    about an object that is not there.
+    let malformed = "abc123".to_string();
+    let well_formed_absent = "0".repeat(40);
+    assert_eq!(
+        missing_objects(
+            &repository,
+            &[malformed.clone(), real.clone(), well_formed_absent.clone()]
+        )
+        .expect("the repository opens"),
+        vec![malformed, well_formed_absent],
+        "both an unparseable id and an absent one are missing, and the real one is not"
+    );
+
+    // 3. A repository that does not open is a DEPLOYMENT fault, deliberately
+    //    not a verdict about the ids — the two must not collapse into one
+    //    answer, or an unreadable store reads as a forged publication.
+    let empty = root.join("empty");
+    std::fs::create_dir(&empty).expect("the empty dir creates");
+    let not_a_repository = resolve_repository(Some(&root), "empty").expect("the location resolves");
+    assert!(matches!(
+        missing_objects(&not_a_repository, std::slice::from_ref(&real)),
+        Err(PublishError::Open(_))
+    ));
+
+    // 4. THE MATCHED PAIR: the SAME id, against a DIFFERENT repository inside
+    //    the same root, is missing. One knob moves — which repository is
+    //    asked — so if step 1 had passed for any reason other than the object
+    //    being there, this would pass too.
+    let sibling_dir = root.join("sibling");
+    std::fs::create_dir(&sibling_dir).expect("the sibling dir creates");
+    gix::init_bare(&sibling_dir).expect("the sibling bare repository inits");
+    let sibling = resolve_repository(Some(&root), "sibling").expect("the location resolves");
+    assert_eq!(
+        missing_objects(&sibling, std::slice::from_ref(&real)).expect("the repository opens"),
+        vec![real],
+        "the same id is missing from a repository that does not hold it"
+    );
 
     fixture.finish().expect("the fixture finishes");
 }

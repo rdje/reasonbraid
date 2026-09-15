@@ -2892,6 +2892,29 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - promotion: declined (`docs/CLAIM_VERIFICATION.md` §4.1 already states the one-word acceptance test and the three grading axes; this is an instance of the procedure working, not a new rule).
 - Commit: `REASONBRAID-DOC-0014 (leaf SIGNOFF-REPAIR.11.2.2.1): correct three claims .11.2.2 published`.
 
+#### SIGNOFF-REPAIR.11.2.4 — The visibility gate cannot see the abbreviation
+
+- Opened: `pending` by `SIGNOFF-REPAIR.11.4.7`'s gate-record census, which found a live instance while counting something else.
+- 🔴 **The gate built to stop ONE specific false claim has two live instances it cannot see.** `scripts/check_visibility_policy.sh` exists because, in its own header's words, "the superseded private-repository instruction had already leaked past two" reviews. Its `PATTERN` enumerates four sentence shapes, every one of them anchored on the full word `repositor(y|ies)`: a keep/make form, a copular form, a modal form and a "until the clearance gate" form. ⛔ **No abbreviation appears in any of the four**, which is the whole finding — read the script for the literal alternatives rather than reproducing them here, because writing one out trips the gate.
+- REPRODUCED with a positive control on the exact sentence rather than by reading the regex:
+
+  ```bash
+  printf '%s\n' "model has no external owners yet (the repo is private) —" \
+    | grep -qiE 'repositor(y|ies) +(is|are|was|were|stays?|remains?) +(\*\*)?privat' \
+    && echo MATCHED || echo "NOT MATCHED"
+  ```
+
+  returns **NOT MATCHED**, while `bash scripts/check_visibility_policy.sh` returns **rc=0** over the corpus containing it.
+- The two instances, located by file and enclosing construct: `docs/decisions/2026-09-07_phase6-gate-record.md` (deferral 2, "the real-owner acceptance") and `docs/tasks/PHASE-7.md:666`. Neither is in `.doctrine/visibility_exceptions.txt`, which carries three entries.
+- ⚠️ **BOTH ARE CORRECT HISTORY, and that is why the blind spot survived.** They are dated 2026-09-07 and 2026-09-08; the director's correction is 2026-09-09. Nothing is currently false because of them — so nothing ever failed, and the gap stayed invisible. ⛔ The gate's value is against a NEW or REWORDED sentence, and an abbreviation is exactly how a new one would arrive.
+- ⭐ **The gate PROVED precise for the forms it does cover, by refusing this leaf.** Writing the four shapes out longhand above tripped `VISIBILITY-POLICY` on this very section, which is the correct answer: the sentence I had written matched the modal form. ⛔ So the defect is a narrow coverage gap in a gate that otherwise works, not a gate that does not fire — and the acceptance below must preserve that precision rather than trading it for a looser match.
+- ⭐ **The same trap caught the instrument measuring it, which is worth keeping.** The census's first search used `\brepo\b`; `git grep -E` does not support `\b`, so it returned rc=1, no match — blind in precisely the way the gate is. It was caught only because a known line existed to test the tool against. **A search returning nothing is a claim about the SEARCH until a positive control says otherwise.**
+- Owns: deciding whether the pattern gains the abbreviation (and which other forms a census finds), and what happens to the two historical sentences — an exceptions entry naming each with its reason, or a past-tense rewording that keeps the provenance.
+- ⛔ Do not widen the pattern by guesswork. `.11.2.2`'s lesson applies: census the corpus for the forms that actually occur before writing the rule, and the gate's own header warns that a bare `privat` match is wrong because the corpus legitimately discusses private files, channels, overlays and repositories.
+- ⚠️ `docs/decisions/` supersedes rather than mutates, so the phase-6 record is NOT edited here; `.11.4.7.3` owns whether that record needs a superseding note.
+- Acceptance: the pattern's blind spot is reproduced with a control that fails against the current script; the widened pattern is derived from a census of the forms present, not invented; both historical instances are dispositioned explicitly; the gate's own `--self-test` gains an abbreviation case; and the existing three exceptions still pass.
+- Verification / commit: pending.
+
 #### SIGNOFF-REPAIR.11.2.3 — The table-arity gate disagrees with the renderer that publishes this book
 
 - Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair. ⛔ **I left a known-broken published row standing for a session with a rationale and no owner. The rationale survives; the absence of an owner does not.**
@@ -2954,7 +2977,90 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - ⛔ **Do not re-open or edit the Phase-7 gate record.** It is a dated decision record and §`docs/decisions/` supersedes rather than mutates; this leaf produces a SUPERSEDING record if the re-derivation changes the count.
 - ⚠️ Measure the coverage, do not read the suite names — that is the whole lesson of the five repairs above, and of `R-59-1` clause 2 in the same commit that opened this leaf.
 - Acceptance: every countable line of all five gate records carries a re-derivation with the command that produces it and a verdict from a closed set (stands / narrowed / must be re-earned); any line that must be re-earned names the leaf that earns it; a superseding decision record is written for each gate whose count moves; G6/G7's three external gaps are restated unchanged with their triggers; and the book's qualification chapter says plainly which gate claims currently re-derive and which do not. ⚠️ Expect this to be an ACTIVITY rather than one leaf and split it on a measurement, as `.11.9.1` did — do not absorb five records into one commit.
+- Status: `active`; censused and SPLIT below into `.11.4.7.1`–`.11.4.7.4`, on the measurement rather than on the record count. ⛔ The acceptance above is NOT weakened: it descends to the four children collectively, exactly as `.11.9.1`'s did.
+
+**The census, taken BEFORE the split — the method `.11.9.1.1` established.**
+
+- **The repair corpus, which is the cheap direction this leaf was told to work from.** `git log` carries **198** `REASONBRAID-{REPAIR,DOC}` commits; of those, **110 touched product source or a migration**:
+
+  ```bash
+  git log --format="%H|%s" | grep -E "REASONBRAID-REPAIR-[0-9]+" | while IFS='|' read -r sha subj; do
+    [ -n "$(git show --name-only --format="" "$sha" -- crates migrations | grep -E '\.rs$|\.sql$' | head -1)" ] && echo "$subj"
+  done | wc -l
+  ```
+
+- ⛔ **The FIRST pathspec I wrote returned 8, and it was wrong — recorded because the trap is one `MEMORY.md` already warns about.** `git show --stat -- 'crates/*/src'` matches a path that IS `crates/<x>/src`, not the files beneath it, so it silently reported almost nothing. The corrected form is proved in BOTH directions rather than assumed: it lists two `.rs` files for `HEAD` (which touched `federation.rs`) and returns zero for `HEAD~1` (docs-only). ⭐ A pathspec that returns a small number is indistinguishable from a small population until you run the negative control.
+- **The claim population, hand-classified because the mechanical count cannot see it all.** A regex over the five records finds **7** verdict-table rows, **19** numbered deferral items and **27** verdict-bearing assertions — but Phase 7 scores **0** on the first two, because its seven shipped §16.12 lines and its seven-row unsupported matrix are PROSE. ⚠️ So the regex is a LOCATOR, not the population, and saying so is the same honesty `.3.5.3` owed when 10 of its 24 handlers delegated their SQL away.
+
+  | Record | Gate | Verdict claims | Deferrals | Notes |
+  | --- | --- | --- | --- | --- |
+  | `phase1` | G1–G2 | **16** | 6 | 7 §26.1 acceptance rows + 4 G1 + 5 G2 (one carrying three `✓` sub-clauses) |
+  | `phase4` | G4 | **1** | 5 | one outcome; the hostile suite is its single test citation |
+  | `phase5` | G5 | **3** | 4 | outcome + the SHIPPED half + the BUILT half |
+  | `phase6` | G3 | **7** | 4 | outcome + five clause claims + Demonstration B |
+  | `phase7` | G6–G7 | **8** | — | outcome + the seven shipped §16.12 lines; plus 3 external gaps and a 7-row unsupported matrix |
+  | **TOTAL** | | **35** | **19** | |
+
+🔴 **THE CENSUS FOUND A DEFECT BEFORE ANY RE-DERIVATION RAN, AND IT IS ARITHMETIC.** `2026-09-07_phase1-gate-record.md` says "**Met** — with **five** named deferrals" in its Outcome line and "the **five** numbered deferrals above" in its `answers:` section — and its own table lists **SIX**. `awk '/^## Named deferrals/,/^## Options/' … | grep -cE '^\| [0-9]+ \|'` returns **6**.
+
+- ⛔ **It was wrong WHEN WRITTEN, not overtaken.** `git log -S "TLS/mTLS, supervision units, containers" -- <the record>` returns exactly one commit: `7e76030`, the gate package itself. The sixth row shipped in the same commit as the sentence that undercounts it.
+- ⭐ **And the book repeats it**: `docs/book/src/roadmap.md` says "The G1–G2 gate record is **Met** with five named deferrals". A deferral is a named limitation with a revisit trigger, so an undercount is one limitation not being carried forward — which is the whole function of the list.
+- ⭐ This is `R-80-82-1`'s "four places" one level up: a count written while reading, in a RELEASE GATE rather than in a ledger row. `.11.4.5.2`'s rule earns its fourth instance and its most consequential one.
+- ⚠️ The book is a live document and is corrected in this commit. ⛔ The RECORD is not: `docs/decisions/` supersedes rather than mutates, so `.11.4.7.2` owns writing the superseding note.
+
+🔴 **AND THE CENSUS FOUND A GATE THAT CANNOT SEE THE CLAIM IT WAS BUILT FOR.** `2026-09-07_phase6-gate-record.md:44` reads "(the repo is private)" — the superseded instruction the director corrected on 2026-09-09 — and `scripts/check_visibility_policy.sh` returns rc=0 over it. Its `PATTERN` enumerates four spellings of `repositor(y|ies)` and no abbreviation, so `repo is private` matches none of them. Proved with a positive control on the exact sentence rather than by reading the regex. **Two live instances**, both invisible to the gate: that record and `docs/tasks/PHASE-7.md:666`.
+
+- ⚠️ **Both are correct HISTORY — dated 2026-09-07 and 2026-09-08, before the 2026-09-09 correction — which is precisely why nobody noticed the gate could not see them.** The blind spot is harmless today and would not be the moment someone writes a NEW sentence with the abbreviation, which is the case the gate exists for. Routed to `.11.2.4`, beside `.11.2.2` and `.11.2.3`, the other two gates whose own behaviour disagreed with their purpose.
+- ⛔ **I did the same thing to myself while measuring it, and it belongs in the record.** My first census grep used `\brepo\b` and returned rc=1, no match — `git grep -E` does not support `\b`, so my instrument was blind in exactly the way the gate is. The finding survived only because I had a known line to check the tool against. ⭐ A search that returns nothing is a claim about the SEARCH until a positive control says otherwise.
+
+**The split, DERIVED from the census rather than from the record count.**
+
+⛔ The boundary is the RECORD, because re-deriving a gate line needs that phase's suites and its subject matter — grouping across records would mean holding five unrelated surfaces at once. Sizes then dictate the order and one fold.
+
+| Child | Record(s) | Verdict claims | Why this order |
+| --- | --- | --- | --- |
+| `.11.4.7.1` | `phase7` (G6–G7) | 8 | FIRST: the one the director asked about, and the only one with REPRODUCED counter-evidence already in hand |
+| `.11.4.7.2` | `phase1` (G1–G2) | 16 | the largest, and it carries the deferral undercount plus the superseding record |
+| `.11.4.7.3` | `phase6` (G3) | 7 | the binding-policy block and the visibility sentence |
+| `.11.4.7.4` | `phase4` + `phase5` (G4, G5) | 1 + 3 = 4 | ⛔ ONE DECLARED FOLD: four claims between them is below any size this project has executed alone, and both are subtraction-shaped gates — G4 blocks a claim by typed refusal, G5 by withdrawal |
+
+- ⚠️ The fold is declared rather than smuggled, exactly as `.11.9.1.3`'s `.3.5` singleton was. Everything else stands as the record boundary drew it.
+- Verification / commit: per child; the census, the split and the two routed findings land with this leaf.
+
+#### SIGNOFF-REPAIR.11.4.7.1 — Re-derive G6–G7's seven shipped lines
+
+- Opened: `pending` by `.11.4.7`'s split. **8 verdict claims**: the outcome plus the seven §16.12 lines the record counts as shipped.
+- ⛔ **The three EXTERNAL gaps are OUT OF SCOPE and must be restated unchanged**: (1) the externally reviewed threat model, (5) the prompt-injection action-boundary suite, (9) the penetration test. Two are engagements to commission and one arrives with a surface that does not exist; `.13.1` owns them as blocker rows.
+- The counter-evidence already in hand, all inside line (2)'s own subject — *authenticated enrollment, rotation, revocation and tenant-isolation tests*: `.6.1.1` (another tenant's whole thread projection through MCP), `.3.5.3` (another tenant's node inbox in full), `.3.3.4.10.3` (a prune destroying another tenant's rows), `.6.1.2` (answering another tenant's recruitment call), `.9.2.1.2` (both publish verbs on enrolment alone). ⚠️ Line (3) — *non-escalation and confused-deputy tests* — has its own: `.9.3.1` found five sites asking whether an authority EXISTS where the question is whether the caller HOLDS it.
+- ⛔ Ask the question of all seven rather than the two with known answers, which is the mistake `.3.3.4.10` made by scoping to mutations.
+- Acceptance: each of the seven carries a verdict from `stands` / `narrowed` / `must be re-earned` with the command that produces it; a superseding decision record states the new count and leaves the original untouched; the book's blockers and qualification chapters agree with it.
 - Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.11.4.7.2 — Re-derive G1–G2, and supersede its deferral count
+
+- Opened: `pending` by `.11.4.7`'s split. **16 verdict claims**: 7 §26.1 acceptance rows, 4 G1, 5 G2 — the largest of the four children.
+- 🔴 **Carries the census's arithmetic finding.** The record says five named deferrals, twice, and lists six; `git log -S` shows the sixth row shipped in the SAME commit as the sentence, so it was wrong when written. The book is corrected in `.11.4.7`'s own commit; this leaf owns the SUPERSEDING decision record, because `docs/decisions/` supersedes rather than mutates.
+- ⚠️ The acceptance table's rows are the §26.1 demo acceptance, and the demo still runs — so several of these may re-derive cheaply by running it. ⛔ Do not assume that: the demo asserting a property is not the same as the property holding on paths the demo does not drive, which is the whole lesson of the five repairs behind `.11.4.7.1`.
+- Acceptance: as `.11.4.7`, for this record's sixteen; plus the superseding record naming six deferrals and explaining that the original said five.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.11.4.7.3 — Re-derive G3's five clause claims
+
+- Opened: `pending` by `.11.4.7`'s split. **7 verdict claims**: the outcome, the five §20.6 clause claims (authority, consent, quorum, publication, correction) and Demonstration B's nine-step walk.
+- ⚠️ The record's outcome is already narrow and honest — *Met as machinery, blocked as binding use* — and §25.1's kill/pivot condition is named rather than discharged. ⛔ Re-deriving must not turn a deliberately narrow claim into a broader one.
+- Known counter-evidence to check against the **publication** and **correction** clauses specifically: `.9.2.1.1`/`.9.2.1.2`/`.9.2.1.3` (the publish verbs took a filesystem path from the request body, admitted any enrolled principal, and recorded Git object ids nothing looked for) and `.9.3.1` (a cited authority was not a held one). Both are inside clauses this record counts.
+- ⚠️ This record also carries the "(the repo is private)" sentence — correct history, invisible to the visibility gate. The GATE is `.11.2.4`'s; whether this record needs a superseding note about it is this leaf's.
+- Acceptance: as `.11.4.7`, for this record's seven.
+- Verification / commit: pending.
+
+#### SIGNOFF-REPAIR.11.4.7.4 — Re-derive G4 and G5, the two subtraction-shaped gates
+
+- Opened: `pending` by `.11.4.7`'s split, as its ONE DECLARED FOLD. **4 verdict claims** between them — G4's single outcome and G5's three — which is below any size this project has executed as a leaf alone.
+- ⭐ The fold is not only about size: both gates discharge their blocking function by SUBTRACTION rather than by evidence. G4 makes unsupported resources fail with a typed refusal; G5 withdrew the "deliberation improves answers" claim outright after a null result. So both re-derive by asking *is the claim still absent?* rather than *does the suite still pass?*, which is a different question from the other three children's and the reason they share a leaf.
+- ⚠️ G5's record states **H1 null** — no structured workflow beat `single`, at 2–4× the cost. ⛔ That is a result to PRESERVE, not to re-litigate; the re-derivation asks whether anything since has quietly re-introduced a quality claim.
+- Acceptance: as `.11.4.7`, for the four claims; plus an explicit statement that each gate's subtraction still holds — the absent claim is still absent.
+- Verification / commit: pending.
+
 
 #### SIGNOFF-REPAIR.11.4.6 — Which shipped surfaces the book does not cover, measured before it is called a gap
 
@@ -4822,10 +4928,11 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | --- | --- | --- | --- |
 
 | 1 | `SIGNOFF-REPAIR.3.4.6` | `pending` | the replay hash still does not bind the command's TARGET — named VERBATIM in `.3.4`'s goal line and dropped by its own five-child split (`.11.9.1.3.2`). ⚠️ The hash is a STORED value: `.3.4.2`'s migration answer is the precedent, NOT automatically the answer, because a target suffix changes every historical key where its context suffix changed none |
-| 1b | `SIGNOFF-REPAIR.11.4.7` | `pending` | 🔴 **can this project still state its own release-gate position?** FIVE gate records, four making countable "shipped/Met" claims, every one counted BEFORE the full source read — and the review has since reproduced cross-tenant defects inside G6/G7 line (2)'s own subject, tenant isolation. ⛔ The records are NOT dishonest: each claims the evidence its suites then carried and could not know their coverage. ⚠️ Opened at the director's challenge and WIDENED by it from one record to five. The three EXTERNAL G6/G7 gaps are out of scope — no local work produces them |
+| 1b | `SIGNOFF-REPAIR.11.4.7.1` | `pending` | 🔴 **can this project still state its own release-gate position?** `.11.4.7` is censused and split: **35 verdict claims and 19 deferrals** across five gate records, all counted BEFORE the full source read. This child re-derives G6–G7's **seven shipped §16.12 lines**, and line (2)'s own subject — tenant isolation — already has five reproduced counter-examples. ⛔ The records are NOT dishonest: each claims the evidence its suites then carried and could not know their coverage. ⚠️ The three EXTERNAL gaps are out of scope; `.13.1` owns them as blocker rows |
 | 1b | `SIGNOFF-REPAIR.11.9.1.3.3` | `pending` | tranche 4c, six records at 2,317 characters; `R-86-1` alone is 587 and names ten candidate leaves. ⭐ Tranche 4 is now 2 of 5 children done |
 | 1d | `SIGNOFF-REPAIR.9.3.4.1` | `pending` | the action vocabulary, the default boundary, and the rows already stored. ⭐ `.9.3.4`'s DECISION is taken (DOC-0020): `GrantAction` extends, `TargetSelector` does not, and the extension is a **migration** — `permitted_actions` is a JSONB array of wire names, so no stored boundary can contain a name that postdates it and the verb stops working for every existing tenant unless a disposition is chosen. ⛔ Extend the CHECKER first (`2026-09-06_authority-boundary.md`): an over-broad grant must be unrepresentable. ⚠️ 207 `GrantAction::` references across 19 files — the compiler is the blast-radius oracle |
 | 1e | `SIGNOFF-REPAIR.9.3.4.2` | `pending` | the coverage check at each of the **six** sites (the leaf said three; this session added the fourth). ⛔ Depends on `.1`. **Holding is not covering** — `.9.3.1` found "names" and "holds" conflated, and this is the third term |
+| 1f | `SIGNOFF-REPAIR.11.2.4` | `pending` | the visibility gate enumerates four sentence shapes and **no abbreviation**, so two live instances of the superseded private-repository claim sit in the corpus invisibly. ⚠️ Both are correct HISTORY — which is exactly why the gap survived; the risk is a NEW sentence. ⭐ The gate proved PRECISE by refusing the leaf that documented it |
 | 2 | `SIGNOFF-REPAIR.3.4.7` | `pending` | whether a delegated subject CONSENTS — the second mechanism `.3.4`'s goal line names verbatim and its split dropped. ⛔ MEASURED: `grep -i consent docs/adr/009-*.md` returns rc=1, the word is nowhere in the ADR that decides the representation. ⚠️ The consequence is bounded to ATTRIBUTION, which is not nothing — an audit record is §16.9 evidence |
 | 2b | `SIGNOFF-REPAIR.11.12` | `pending` | `rb-server` migrates the database BEFORE validating the profile it refuses to boot without, and `--host` is ungated — the two halves must be decided separately |
 | 3 | `SIGNOFF-REPAIR.3.5.4` | `pending` | the read census `.3.5.3` could not finish: 10 of 24 GET handlers delegate their SQL to a module, so the per-handler scan that found the inbox leak cannot see them |
@@ -4838,7 +4945,7 @@ a failed read is a storage failure, never a verdict about the site: Refused(Unde
 | 10 | `SIGNOFF-REPAIR.11.4.6` | `pending` | the six MCP tools are a shipped user-visible surface with no book chapter, found while repairing one; ⛔ the 29-route-family census is a POPULATION and classifying it is the first half of the leaf, not a step before it |
 | 9 | `SIGNOFF-REPAIR.6.1.5` | `pending` | opened by `.6.1.1`, which measured it and did not answer it: the policy registry has no tenant column and no site filters by one, on BOTH surfaces. ⛔ Not a leak to plug — a design question, and ⛔ NOT answerable by a filter on one read while the write admits any enrolled principal |
 
-⚠️ The frontier is a curated shortlist, not the remaining work: **59 leaves are `pending`** across this tree. 🔴 **It rose by seven in one commit and that is the point**: `SIGNOFF-REPAIR.11.13` converted eight container leaves carrying surfaced findings into bounded leaves with their own acceptance. A pending count that goes UP because routing became ownership is the healthy direction. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree. ⭐ It rose by two again at `SIGNOFF-REPAIR.11.9.1.3.2`, and the cause is the healthiest yet: two of the new leaves carry mechanisms `.3.4`'s OWN GOAL LINE names verbatim and its five-child split dropped, so the count going up is a tree that stopped over-reporting its own coverage.
+⚠️ The frontier is a curated shortlist, not the remaining work: **63 leaves are `pending`** across this tree. 🔴 **It rose by seven in one commit and that is the point**: `SIGNOFF-REPAIR.11.13` converted eight container leaves carrying surfaced findings into bounded leaves with their own acceptance. A pending count that goes UP because routing became ownership is the healthy direction. It fell to a single held row on 2026-09-13 and was refilled in the same commit, because a one-row frontier reads as an exhausted tree. ⭐ It rose by two again at `SIGNOFF-REPAIR.11.9.1.3.2`, and the cause is the healthiest yet: two of the new leaves carry mechanisms `.3.4`'s OWN GOAL LINE names verbatim and its five-child split dropped, so the count going up is a tree that stopped over-reporting its own coverage.
 
 🔴 **The command this caption used to publish that number was wrong, and it had been under-reporting for as long as the `TASK-STATUS` convention has existed.** It matched `- Status: \`pending\`` only. Since `TASK-STATUS` made a leaf's opening line `- Opened:`, a leaf that has never closed may carry `- Opened: \`pending\`` and **no `- Status:` line at all** — 11 leaves do. The caption said 36 where the tree held 46. A leaf's state is its last `- Status:` line if it has one and its `- Opened:` line otherwise, and the command re-derives it that way:
 
@@ -4905,6 +5012,7 @@ The director resolved the visibility question: public repository visibility is i
 
 ## Commit Log
 
+- `SIGNOFF-REPAIR.11.4.7` (census + split): `REASONBRAID-DOC-0022 (leaf SIGNOFF-REPAIR.11.4.7): census the five gate records, and find a wrong number inside a release gate`.
 - `SIGNOFF-REPAIR.3.3.4.12.2`: `REASONBRAID-REPAIR-0194 (leaf SIGNOFF-REPAIR.3.3.4.12.2): delete the superseded direction services, and make the book stop contradicting itself`.
 - `SIGNOFF-REPAIR.11.9.1.3.2`: `REASONBRAID-DOC-0021 (leaf SIGNOFF-REPAIR.11.9.1.3.2): reconcile tranche 4b, and find the two mechanisms .3.4's own split dropped`.
 - `SIGNOFF-REPAIR.9.3.4` (decision half): `REASONBRAID-DOC-0020 (leaf SIGNOFF-REPAIR.9.3.4): the action set extends, the target selector does not, and the extension is a migration`.
@@ -6013,6 +6121,20 @@ The director resolved the visibility question: public repository visibility is i
 - [x] **NO REGRESSION** — `cargo clippy -p reasonbraid-mcp -p reasonbraid-server --all-targets -- -D warnings` rc=0; `cargo fmt --all -- --check` rc=0. `bash scripts/run_pg_tests.sh mcp command_api node_inbox authority classification rls mcp_write quarantine` — the three refactored HTTP handlers' own suites plus the seam's — rc=0 with **8 suites, 80 tests, zero failures** (6 + 37 + 8 + 22 + 1 + 1 + 4 + 1), `pg-tests: stopped and removed`. ⭐ `command_api` reads `GET /v1/threads/{thread_id}?tenant_id=` at six sites and `node_inbox` covers `GET /v1/nodes/inbox`, so the two extracted read halves are exercised through the HTTP handlers as well as through the seam. The MCP suite was re-run AFTER `cargo fmt` reformatted its file, so the published result is from the committed bytes rather than from the pre-format ones. `env TMPDIR="$PWD/target/doctrine_scratch/commit" bash scripts/check_doctrines.sh` -> `=== all doctrines green ===`, 18 checks, rc=0. `mdbook build docs/book` rc=0. `git diff --check` rc=0.
 - [x] **LOCKSTEP** — `crates/reasonbraid-server/src/mcp_read.rs` (new), `crates/reasonbraid-server/src/api.rs`, `crates/reasonbraid-server/src/lib.rs`, `crates/reasonbraid-mcp/src/lib.rs`, `crates/reasonbraid-mcp/Cargo.toml`, `docs/tasks/SIGNOFF-REPAIR.md` (`.6.1.1` closed, `.6.1.5` opened, frontier, commit log), `docs/TASK_TREE.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
 - promotion: promoted. **"A claim of sameness is worth exactly the call graph that enforces it"** — when one surface's documentation says it runs another's checks, the repair is to make it CALL them, not to re-add the checks beside the copy. A second implementation is free to drift, and the sentence is what the next reader believes instead of the query. Recorded in `TOOLBOX.md`.
+
+## Commit acceptance — SIGNOFF-REPAIR.11.4.7
+
+- [x] **REPRODUCE / ISSUE** — five gate records exist and four make countable "shipped / Met" claims; **all were counted BEFORE the full source read**. The leaf could answer the director's Internet-exposure question for the three EXTERNAL gaps and not for the seven lines G6–G7 counts as shipped, because §16.12 line (2) is *tenant isolation* and five repairs have since reproduced defects inside that exact subject.
+- [x] **THE POPULATION, measured before anything was proposed** — **35 verdict claims and 19 deferrals**: G1–G2 16/6, G3 7/4, G4 1/5, G5 3/4, G6–G7 8/— plus three external gaps and a seven-row unsupported matrix. ⚠️ The mechanical regex returns 7 verdict-table rows, 19 deferral items and 27 assertions, and scores **zero** on Phase 7 whose claims are PROSE — so it is a LOCATOR and the population is hand-classified, stated as such rather than published as complete (the honesty `.3.5.3` owed for its ten delegating handlers).
+- [x] **THE CORPUS to map against them** — **110 of 198** repair commits touched product source or a migration. ⛔ The first pathspec returned **8**: `git show -- 'crates/*/src'` matches the directory path, not the files beneath it, the trap `MEMORY.md` warns about. The corrected form is proved in BOTH directions before its number is used — two `.rs` files for a commit that has them, zero for a docs-only one.
+- [x] 🔴 **A DEFECT FOUND BEFORE ANY RE-DERIVATION RAN, AND IT IS ARITHMETIC** — `2026-09-07_phase1-gate-record.md` says "**five** named deferrals" in its Outcome and "the **five** numbered deferrals above" in its `answers:`, and its own table lists **SIX** (`awk '/^## Named deferrals/,/^## Options/' … | grep -cE '^\| [0-9]+ \|'` → 6). `git log -S` over the sixth row returns exactly one commit — the gate package itself — so it was **wrong when written**. ⭐ `R-80-82-1`'s "four places" one level up, in a RELEASE GATE; `.11.4.5.2` earns its fourth instance.
+- [x] 🔴 **A GATE CANNOT SEE THE CLAIM IT WAS BUILT FOR** — `check_visibility_policy.sh` anchors all four sentence shapes on the full word `repositor(y|ies)`; two live instances written with the abbreviation are invisible, in the phase-6 gate record and `PHASE-7.md`, and neither is in the three-entry exceptions file. REPRODUCED with a positive control on the exact sentence: it returns NOT MATCHED while the gate returns rc=0 over the corpus containing it. ⚠️ **Both are correct HISTORY**, which is exactly why nothing failed and the gap survived. New owner `.11.2.4`.
+- [x] ⭐ **THE GATE THEN PROVED PRECISE BY REFUSING THIS COMMIT TWICE** — once for the leaf that wrote its shapes out longhand, once for the book page describing it. Both refusals were CORRECT. ⛔ So the defect is a narrow coverage gap in a gate that otherwise fires, not a gate that does not — and `.11.2.4`'s acceptance must preserve that precision rather than trade it for a looser match. Neither was resolved with an exceptions entry: the text was reworded, because an exception would weaken the corpus for a line that never needed the literal phrase.
+- [x] **FIX (the split), DERIVED from the census** — four children on the RECORD boundary, because re-deriving a line needs that phase's suites: `.11.4.7.1` G6–G7 (8 claims, first — reproduced counter-evidence in hand), `.11.4.7.2` G1–G2 (16, largest, carries the undercount and its superseding record), `.11.4.7.3` G3 (7), `.11.4.7.4` G4+G5 (4). ⛔ ONE DECLARED FOLD, and not only for size: both fold-members discharge their gate by SUBTRACTION, so both re-derive by asking *is the claim still absent?* rather than *does the suite still pass?* — a different question from the other three children's.
+- [x] **ADDRESSED (verified)** — the book's `roadmap.md` corrected 5 → 6 with a note saying why and naming the superseding leaf; the qualification chapter gains "Can this project still state its own release-gate position?"; `docs/decisions/` is NOT edited, per supersede-never-mutate.
+- [x] **NO REGRESSION** — no product code, schema, test or script changed. `make gate` **18 checks** rc=0 (after two correct refusals); `mdbook build docs/book` rc=0; `bash scripts/check_book_links.sh` rc=0; `git diff --check` rc=0.
+- [x] **LOCKSTEP** — `docs/tasks/SIGNOFF-REPAIR.md`, `docs/TASK_TREE.md`, `docs/book/src/roadmap.md`, `docs/book/src/qualification-review.md`, `MEMORY.md`, `LIVE_STATUS.md`, `CHANGELOG.md`, `DEV_NOTES.md`.
+- promotion: declined. The method rules exercised — measure the population before proposing the rule, prove a pathspec in both directions, and treat an empty search as a claim about the search — are in `TOOLBOX.md` and `docs/CLAIM_VERIFICATION.md` already, and `docs/knowledge/a-repair-owns-every-sentence-that-states-its-limit.md` (yesterday's) covers the gate-blind-spot half. ⭐ What is genuinely new is small and lives where its user is: the leaf records that a gate whose every instance is LEGITIMATE can never test its own coverage.
 
 ## Commit acceptance — SIGNOFF-REPAIR.3.3.4.12.2
 

@@ -50,11 +50,20 @@ Demonstration A passed **30/30** acceptance checks with real kill points
 `outcome_unknown`, duplicate transport → one domain effect, budget denial,
 `inconclusive` + the unresolved register, the audit reconstruction through the
 supported read surfaces only) — on the debug AND the release-built binaries.
-The G1–G2 gate record is **Met** with five named deferrals
+The G1–G2 gate record is **Met** with six named deferrals
 (`docs/decisions/2026-09-07_phase1-gate-record.md`), the subtraction record
 ships (`docs/decisions/2026-09-07_phase1-subtraction-record.md`), and the
 evidence manifest is `docs/evidence/2026-09-07_phase1-evidence-manifest.md`.
 Execution is recorded in `docs/tasks/PHASE-1.md` (`done`).
+
+⚠️ **Six, corrected from five.** The gate record's own summary line says *five*
+named deferrals and its table lists *six*, and this page repeated the smaller
+number. The sixth row shipped in the same commit as the sentence that undercounts
+it, so the count was wrong when written rather than overtaken later. A deferral is
+a named limitation with a revisit trigger, so an undercount is one limitation not
+being carried forward — which is the entire function of the list. The record
+itself is a dated decision and is superseded rather than edited; that supersession
+is tracked as `SIGNOFF-REPAIR.11.4.7.2`.
 
 ## Phase 2 — historical close
 

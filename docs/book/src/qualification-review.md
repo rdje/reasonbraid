@@ -223,6 +223,35 @@ group at fifteen records and sixty-nine clauses:
 provider outcome does leave the worker as an error, but the type documents that
 as deliberate and what a caller does next was not measured here.
 
+## Can this project still state its own release-gate position?
+
+Five gate records exist — for G1–G2, G3, G4, G5 and G6–G7 — and between them they
+count **35 verdict claims and 19 named deferrals**. Every one of those counts was
+taken *before* the full source review.
+
+⛔ **The records are not dishonest.** Each claims the evidence its test suites
+carried at the time, and that is true. What none of them could know is whether
+those suites *covered* the paths a later reading would find. That is the same
+defect as a test whose name promises more than it exercises — one level up, at a
+release gate.
+
+The clearest case is G6–G7's line (2), *authenticated enrollment, rotation,
+revocation and tenant-isolation tests*. Since it was counted as shipped, the
+review has reproduced — live, against supported surfaces — five separate
+cross-tenant defects inside that exact subject. All are repaired. The line has
+not been re-counted.
+
+Re-deriving all five records is tracked, split by record. Until it completes,
+**a gate record's "shipped" count should be read as a claim about the evidence
+available on its date, not as a current statement.**
+
+### Two things the census found before re-deriving anything
+
+| Finding | Effect |
+| --- | --- |
+| The **G1–G2 record undercounts its own deferrals** | It states *five named deferrals* twice; its own table lists **six**, and the sixth row shipped in the same commit as the sentence — so the number was wrong when written rather than overtaken. A deferral is a named limitation with a revisit trigger, so an undercount is one limitation not being carried forward. This manual repeated the smaller number and is now corrected, with a note on the [roadmap page](roadmap.md). The record itself is a dated decision and is superseded rather than edited |
+| A **gate cannot see the claim it was built to stop** | The check that guards against the superseded visibility instruction anchors all four of its sentence shapes on the full word *repository*. Two live sentences use the abbreviation instead and are invisible to it. Both are correct history — written before the visibility correction — which is exactly why nothing ever failed and the gap survived. The risk is a *new* sentence written the same way. ⭐ The check then proved precise by refusing **this page** while it was being written, twice: it fires correctly on every shape it knows |
+
 The fourth group's second part read eight more records — the seven whose
 narrowest candidate is the delegation leaf, plus one folded singleton — and its
 finding is about that leaf rather than about the records. `SIGNOFF-REPAIR.3.4` is

@@ -3,3 +3,10 @@
 # Provenance and controls: docs/decisions/2026-09-09_history-fixture-fingerprints.md
 82155f53146585dc047734447e7288ed5c14e187:crates/reasonbraid-server/tests/pg_guard.rs:generic-api-key:68
 82155f53146585dc047734447e7288ed5c14e187:crates/reasonbraid-server/tests/pg_guard.rs:generic-api-key:110
+# SIGNOFF-REPAIR.11.4.7.2.3: the ADR-009 comparative-measurement fixture's
+# idempotency key — 16 hex digits, entropy 3.875, scored as generic-api-key.
+# Verified a test constant, not a credential: it is an envelope field in a
+# byte-size instrument, referenced nowhere else (git grep returns 1 hit).
+# The working-tree value is now readable, matching every sibling fixture; this
+# fingerprint clears the HISTORICAL finding, which a rename cannot reach.
+b3802b16601fb4a2da67a8721d7659ae1e36aed9:crates/reasonbraid-core/tests/delegation_representation.rs:generic-api-key:74

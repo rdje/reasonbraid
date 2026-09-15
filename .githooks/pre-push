@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — the supply-chain gate that a COMMIT cannot usefully carry.
+#
+# Activated with the others:  git config core.hooksPath .githooks
+#
+# ⭐ WHY THIS EXISTS AND WHY IT IS NOT IN pre-commit (`SIGNOFF-REPAIR.11.4.7.2.3`).
+# `cargo deny`'s advisories check is TIME-triggered, not change-triggered. A commit
+# that edits a markdown file cannot introduce an advisory; an advisory published
+# overnight applies to a tree nobody has touched. Gating it on commits is therefore
+# both too often and too rarely — and it is the shape that let RUSTSEC-2026-0285 sit
+# unreported, because the only thing running it was a CI workflow that has never run
+# (blocker C1). A push is the moment the claim leaves this machine, so it is the
+# moment the dependency graph has to be re-asked.
+#
+# ⚠️ Priced before wiring: 1.15 s with the advisory database cached under the
+# repository-local CARGO_HOME (.project-data/cargo/advisory-dbs).
+#
+# ⛔ THIS IS NOT THE FULL CI RUN. It does not build, test or lint. `COMMIT.md` owns
+# the pre-push discipline; this hook mechanises only the part that was silently
+# unexecuted. Skips loudly rather than failing closed when cargo-deny is absent — a
+# skip is a weaker guarantee than a pass and must never read like one.
+set -e
+ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
+
+if ! command -v cargo-deny >/dev/null 2>&1 && ! cargo deny --version >/dev/null 2>&1; then
+  echo "pre-push: SKIPPED — cargo-deny is not installed, so this push is NOT" >&2
+  echo "  advisory-checked. Install it (cargo install cargo-deny) to restore the gate." >&2
+  exit 0
+fi
+
+echo "pre-push: cargo deny check (advisories, bans, licenses, sources)"
+if ! python3 -B scripts/project_env.py cargo deny check; then
+  echo "" >&2
+  echo "pre-push: REFUSED — the dependency gate failed. Fix or accept the finding in" >&2
+  echo "  a task-tree leaf before pushing; do not --no-verify past a live advisory." >&2
+  exit 1
+fi

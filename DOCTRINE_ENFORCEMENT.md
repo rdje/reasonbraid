@@ -13,8 +13,22 @@ every human, identically.
   what". Runnable by hand anytime.
 - **E3 — git hook.** `.githooks/pre-commit` calls the enforcer; `.githooks/commit-msg`
   checks the subject shape. Activate once per clone: `git config core.hooksPath .githooks`.
+- **E3b — pre-push hook.** `.githooks/pre-push` runs `cargo deny check`. ⭐ It is here
+  and not in `pre-commit` because of what it is TRIGGERED BY: a commit cannot introduce
+  an advisory, but an advisory published overnight applies to a tree nobody touched. So
+  the dependency gate is **time-triggered**, and a push — the moment a claim leaves this
+  machine — is when the graph must be re-asked. ⛔ This is NOT the full CI run: it does
+  not build, test or lint; `COMMIT.md` owns that discipline. 1.15 s with the advisory
+  database cached under the repository-local `CARGO_HOME`
+  (`SIGNOFF-REPAIR.11.4.7.2.3`).
 - **E4 — CI.** The same enforcer runs in CI (`.github/workflows/doctrines.yml`), so a
   locally `--no-verify`'d hook still fails the build. This is the "no matter what" backstop.
+  ⚠️ **Stated plainly because it was the cause of a real failure:** this backstop has
+  never run (blocker C1). Two supply-chain gates lived ONLY here and were therefore
+  executed by nothing at all — `cargo deny` was red on RUSTSEC-2026-0285 and `gitleaks`
+  on a `generic-api-key` finding, both unreported, until `SIGNOFF-REPAIR.11.4.7.2` ran
+  them by hand. E3/E3b now run both locally, so E4 is a backstop again rather than the
+  only stop.
 
 ## The enforcer registry
 
@@ -46,6 +60,7 @@ every human, identically.
 | `BOOK-LINKS` | every intra-book Markdown link resolves to a file that exists. ⭐ `mdbook build` does not validate links, so three dead ones shipped to the rendered book. Their cause is the instructive part: `DOCPATH` requires repo-root-relative references, an author applied that to INTRA-BOOK navigation, and mdbook resolves a link relative to its page — so `cli.md` rendered `href="docs/book/src/cli-state.html"` while the page is `cli-state.html`. The doctrine's intent was satisfied and the navigation broke. External URLs are deliberately out of scope: a network call in a commit hook is a flake generator | `scripts/check_book_links.sh` (`--self-test`) |
 | `REASON-CODE-DOC` | every reason code the SERVER emits is named in the book's error table. ROADMAP §9.8 publishes a stable registry of 20 codes and `KnownReasonCode` mirrors it exactly; the product emits **18**, of which **9 postdate that list**. Nothing broke — `ReasonCode::Unknown` preserves an unregistered code verbatim, which is the designed forward-compatibility path — but nothing told a client author those nine existed, so the only way to learn about `quota_unconfigured` was to receive one. ⛔ Emission is SERVER-side: a `code:` literal in the node or CLI crate is a client building a local error when a body will not parse, and counting those inflated the population from 18 to 19. ⭐ The gate fires on ZERO breaches today and would have fired on all nine, which is the shape a gate should have — it catches the NEXT drift instead of presenting a backlog (contrast `SIGNOFF-REPAIR.11.9`, where the same rule shape would have fired on 114 of 131 and was rejected) | `scripts/census_reason_codes.py --check` (`--self-test`) |
 | `ATTACH-LANDED` | every `attach` clause in `RECONCILIATION.md` is NAMED by the leaf that owns it. ⭐ `attach` is the ONE state of the ledger's six whose Next action is not "none": it requires a SENTENCE to be written into a leaf the classifier does not own, and every other property of a row — a real record, a state in the closed set, a real owner, no duplicate clause — is visible in the row itself. 🔴 So `SIGNOFF-REPAIR.11.9`'s own mechanism was live INSIDE the instrument built to stop it: tranche 1 classified three clauses `attach` and performed none of the three attachments, and the only reason it was found is that a human read two leaves end to end. ⛔ The rule is the RECORD ID in the OWNER'S OWN SECTION, never a phrase — matching prose would have to guess at paraphrase, which is the failure mode `SIGNOFF-REPAIR.11.6` measures — and it does NOT require the words `ATTACHED CLAUSE`, which are a formatting convention rather than a contract. The record id is matched with a right-hand boundary, because `R-53-4` is a prefix of `R-53-41`. ⭐ Measured at four points before registering: **3 of 3 breaching** at tranche 1's close (`5862837`), then **0 of 7**, **0 of 15** and **0 of 26** at each tranche close since. That is `REASON-CODE-DOC`'s shape — zero today, every historical instance caught — and not the backlog shape `SIGNOFF-REPAIR.11.9` rejected at 114 of 131 | `python3 -B scripts/census_record_reconciliation.py --classified` (`--self-test`) |
+| `SECRET-SCAN` | `gitleaks detect` finds no secret in the working tree or in history. ⭐ Wired at COMMIT time because a commit CAN introduce a secret — it is change-triggered, unlike the dependency gate below. A verified test literal is cleared by its EXACT historical fingerprint in `.gitleaksignore`, never by suppressing the path or the rule; a rename cannot clear a historical finding, because `detect` scans every commit. ⚠️ SKIPS LOUDLY when `gitleaks` is absent rather than failing closed, and says so on stderr — a skip is a weaker guarantee than a pass. 1.07–1.15 s over 488 commits (`SIGNOFF-REPAIR.11.4.7.2.3`) | `scripts/check_doctrines.project.sh` |
 | `PROJECT-SPECIFIC` | this project's own doctrines | `scripts/check_doctrines.project.sh` |
 
 **Project-specific doctrines go in `scripts/check_doctrines.project.sh`** (the pluggable

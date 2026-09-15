@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-15 — I planned the wrong fix, and the only reason I noticed was running it
+
+- The leaf I had written said: prefer renaming the test fixture over adding an allowlist entry, because "an allowlist entry is a permanent claim about a line". Good reasoning, wrong fix. `gitleaks detect` scans **history** — 488 commits — and attributes a finding to the commit that introduced the line. I renamed it, re-ran, and got rc=1 with the identical fingerprint.
+- ⭐ **A control's reach is a property of what it SCANS, not of what I changed.** I had reasoned about the working tree because that is what I was editing. The scanner had never agreed to that scope.
+- ⛔ **I had already told the director the rename was the fix.** That is twice in one session I stated a mechanism before reading it — the first was the adapter-load ladder. Both corrections came from running the thing rather than from re-reading my own conclusion, which is the same lesson as the SSRF overstatement earlier: a verification question aimed at your own answer tends to find your own answer.
+- ⚠️ **The near-miss worth recording: the rename was nearly a silent defect of its own.** The test asserts `baseline == 308` — a byte count over a serialized envelope containing that very field. A readable name of any other length would have moved the number, and the test would have failed with an arithmetic-looking error nowhere near the cause. I checked the length only because the assertion happened to be visible while I was reading for something else. That is luck, not method, so the file now carries a comment saying the length is fixed.
+- ⭐ **The gate-placement question turned out not to be about speed at all.** I started pricing both checks, expecting the answer to be "the fast one goes in pre-commit". Both are ~1.1 s. The real distinction is what each is triggered BY: a commit can introduce a secret; a commit cannot introduce an advisory. Once that was said out loud, the placement was obvious and the timings were almost decoration.
+- ⚠️ And the enforcer's published cost was stale by more than 2x — "about 3.15 s" in its own header, 6.65 s measured. Left alone deliberately: it belongs to another file, and fixing numbers in passing is how a bounded leaf stops being bounded.
+
 ## 2026-09-15 — A failing control that is the repair working, and four crates I could not see
 
 - The workspace suite failed on `cleanup_confirmed == true`. My first instinct was "flaky browser test". It is not: the assertion directly above it — `kind == "time_budget_exceeded"` — **passes**, and that is REPAIR-0089's fix doing exactly its job. That repair split the render's outcome from the cleanup fact so the product would stop claiming an unobserved termination. The product now reports `cleanup_confirmed: false` honestly, and the control fails on the honest answer.

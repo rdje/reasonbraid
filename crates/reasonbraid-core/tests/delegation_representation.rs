@@ -71,7 +71,13 @@ fn baseline_envelope() -> CommandEnvelope {
         protocol_version: PROTOCOL_VERSION.to_string(),
         operation: "thread.contribute".to_string(),
         request_id: "req_00000000-0000-7000-8000-000000000001".parse().unwrap(),
-        idempotency_key: "b3f1c2d4e5a60718".to_string(),
+        // ⛔ EXACTLY 16 characters, and readable on purpose. The length is
+        // load-bearing — `baseline` below asserts 308 bytes — and the previous
+        // value was 16 hex digits, which `gitleaks` scored at entropy 3.875 and
+        // reported as a `generic-api-key` (`SIGNOFF-REPAIR.11.4.7.2.3`). Every
+        // sibling fixture already spells these readably (`k-forged`,
+        // `client-key-0001`); this one was the outlier.
+        idempotency_key: "key-delegation-1".to_string(),
         expected_aggregate_version: Some(7),
         body: json!({ "content": "the position I am asked to take" }),
         authority_context: None,

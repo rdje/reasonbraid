@@ -108,4 +108,32 @@ if ! scripts/check_licence_grant.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# The secret scan runs at COMMIT time (`SIGNOFF-REPAIR.11.4.7.2.3`). It lived only
+# in `.github/workflows/supply-chain.yml` — remote CI, which has never run — so a
+# `generic-api-key` finding sat red and invisible from 2026-09-13. ⭐ The reason it
+# belongs HERE and `cargo deny` does not is what each is TRIGGERED BY: a commit can
+# introduce a secret, so the secret scan is change-triggered; an advisory appears
+# against code nobody touched, so `cargo deny` is TIME-triggered and lives in
+# `.githooks/pre-push`. ⚠️ Priced before wiring (`SIGNOFF-REPAIR.11.5`: a gate
+# people route around is a gate that lies): 1.07-1.15 s over three runs, scanning
+# 488 commits / 15.11 MB, against a 6.65 s enforcer — about +17%.
+#
+# ⛔ THE RESIDUAL, STATED RATHER THAN HIDDEN: this SKIPS LOUDLY when `gitleaks` is
+# absent, because failing closed would block every contributor who has not installed
+# it. A skip is a weaker guarantee than a pass and must never read like one — hence
+# the notice on stderr. CI installs the pinned 8.30.1 and is the real backstop, which
+# is exactly the backstop blocker C1 says has never run.
+if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks detect --source . --redact --no-banner >/dev/null 2>&1; then
+        echo "SECRET-SCAN: gitleaks reported a finding — re-run to see it:" >&2
+        echo "  gitleaks detect --source . --redact" >&2
+        echo "  A verified test literal is cleared by its EXACT historical fingerprint" >&2
+        echo "  in .gitleaksignore — never by suppressing the path or the rule." >&2
+        exit 1
+    fi
+else
+    echo "SECRET-SCAN: SKIPPED — gitleaks is not installed, so this commit is NOT" >&2
+    echo "  secret-scanned. Install it (CI pins 8.30.1) or accept the CI backstop." >&2
+fi
+
 exit 0

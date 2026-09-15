@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Clear the secret scan, and give each supply-chain gate the trigger it actually has (`SIGNOFF-REPAIR.11.4.7.2.3`)
+
+✅ **All three red things are now green.** `gitleaks detect --source . --redact` returns `no leaks found`, rc=0 — and both supply-chain gates now RUN locally instead of living in a CI workflow that has never executed.
+
+- 🔴 **A measurement corrected the plan mid-leaf.** The leaf preferred renaming the fixture over an allowlist entry. ⛔ **A rename cannot reach a historical finding**: `gitleaks detect` scans all 488 commits and attributes a finding to the commit that introduced the line, so after renaming, the scan still returned rc=1 with the same fingerprint. The exact-fingerprint entry is the only instrument that clears it — which is what `.gitleaksignore` exists for and what its two existing entries are.
+- **Both repairs taken.** The fingerprint carries its reason inline (a verified test constant, referenced nowhere else); the path and the rule are not suppressed, which that file's header forbids. The fixture is also renamed to the house idiom — it was the lone high-entropy hex among ~10 readable idempotency keys, and the next author copies what they see.
+- ⚠️ **The new name is exactly 16 characters, and that is load-bearing.** `delegation_representation.rs:172` asserts `baseline == 308` — a byte count over an envelope containing this field. A different length would have silently moved a measurement instrument's number. The file now says so.
+- ⭐ **The commit-time-gate question is settled on what each check is TRIGGERED BY, not on cost.** A commit can introduce a secret, so `SECRET-SCAN` is change-triggered and joins the doctrine gate (1.07–1.15 s over three runs, against a 6.65 s enforcer). An advisory appears against code nobody touched, so `cargo deny` is **time-triggered** — gating it on commits is both too often and too rarely — and it goes in a new `.githooks/pre-push` (1.15 s, advisory DB cached repo-locally).
+- ⛔ **Both skip LOUDLY when their tool is absent rather than failing closed**, with a notice naming what was not checked. Failing closed would block every contributor without `gitleaks` or `cargo-deny`; a skip is a weaker guarantee than a pass and must never read like one.
+- **Falsified three ways, self-reversing**: fingerprint removed → rc=1; `PATH` stripped of `gitleaks` → rc=0 with `SECRET-SCAN: SKIPPED` on stderr; `rustls 0.23.43` restored → `pre-push` rc=1 printing the advisory and `REFUSED`. Every file proved restored with `cmp -s`.
+- ⚠️ **Recorded, not fixed here:** `check_self_tests.sh`'s header publishes the enforcer's cost as "about 3.15 s". Measured today: **6.65 s**. It is another file's number, and correcting it in passing is how a leaf stops being bounded.
+
 ## 2026-09-15 — Take the rustls advisory, and enumerate the four lines it moved (`SIGNOFF-REPAIR.11.4.7.2.2`)
 
 ✅ **One of the three red things is now green.** `cargo deny check` returns `advisories ok, bans ok, licenses ok, sources ok`, rc=0.

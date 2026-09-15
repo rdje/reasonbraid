@@ -2,6 +2,7 @@
 
 - [Introduction](introduction.md)
 - [Current qualification and repairs](qualification-review.md)
+- [Blockers](blockers.md)
 - [Roadmap and progress](roadmap.md)
 - [The node journal](node-journal.md)
 - [The node channel](node-channel.md)

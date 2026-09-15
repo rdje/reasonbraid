@@ -1228,13 +1228,23 @@ The boundary and the agreement were read outside the transaction that used them
 too, so a boundary revoked in between produced a grant checked against authority
 that had already ended.
 
-⚠️ **What the guard does not do, stated because it would otherwise be assumed.**
-Moving the agreement read inside the transaction buys one consistent snapshot
-with the writes that depend on it. It does **not** order the import against a
-concurrent agreement revocation: `federation::propose`, `accept` and `revoke` take
-no tenant authority guard at all, so no guard set here can fence them. That
-ordering arrives with `SIGNOFF-REPAIR.3.3.4.12`, which owns the three direction
-verbs.
+⭐ **What moving the agreement read inside buys, and what closed the rest.**
+The read inside the transaction buys one consistent snapshot with the writes that
+depend on it. When `.3.3.4.11.3` landed that was ALL it bought: the three
+direction verbs took no tenant authority guard at all, so no guard set here could
+fence a concurrent agreement revocation. `SIGNOFF-REPAIR.3.3.4.12` then put each
+verb under its own tenant's exclusive guard, and `.3.3.4.12.1` made this import
+declare both tenants' keys in one sorted set — so the import **is** now fenced by
+a revocation from either side, as [administering a federation
+direction](#administering-a-federation-direction) describes.
+
+⛔ That paragraph said the opposite for two leaves after it stopped being true,
+and so did the same sentence in two source files. Both sentences were accurate
+when written and neither was revisited by the repairs that falsified them; the
+correction is `SIGNOFF-REPAIR.3.3.4.12.2`, which also deleted the three
+superseded services the sentence named. It is recorded rather than quietly fixed
+because nothing mechanical could have caught it: each sentence was well-formed,
+and only their conjunction was wrong.
 
 The effect record's target is the digest the server **re-derives** from the
 submitted card, not the one the caller presented. On every path but one they are

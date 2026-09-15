@@ -228,12 +228,16 @@ pub(crate) async fn attest_capability_in_one_transaction(
 // boundary revoked in between produced a grant checked against authority that had
 // already ended.
 //
-// ⚠️ What moving the agreement read inside buys, stated exactly because it is
+// ⭐ What moving the agreement read inside buys, stated exactly because it is
 // smaller than it looks: ONE consistent snapshot with the writes that depend on
-// it. It does NOT order the import against a concurrent agreement revocation —
-// `federation::{propose, accept, revoke}` take no guard at all, so no guard set
-// here can fence them. That ordering arrives with `SIGNOFF-REPAIR.3.3.4.12`,
-// which owns the three direction verbs.
+// it. When this was written it bought NOTHING MORE — the three direction verbs
+// took no guard at all, so no guard set here could fence them. `.3.3.4.12` then
+// put each verb under its own tenant's EXCLUSIVE guard and `.3.3.4.12.1` made
+// this import declare BOTH tenants' keys in one predeclared sorted set, so the
+// import IS now fenced by a revocation from either side. ⛔ The superseded
+// sentence stood here for two leaves after it stopped being true, and in the
+// book as well — `SIGNOFF-REPAIR.3.3.4.12.2` is why it says so rather than
+// simply being replaced.
 
 use reasonbraid_core::{AuthorityGrant, HumanPrincipalId};
 

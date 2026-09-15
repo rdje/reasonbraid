@@ -3,90 +3,23 @@
 //! pairing is BOTH-SIDES: each side records its own row; the EFFECTIVE
 //! agreement is the pair of `accepted` rows. A one-sided proposal widens
 //! nothing; a revocation falls back to the network pseudonym.
+//!
+//! ⛔ **The WRITERS are not here.** `authority::federation_admin` owns the three
+//! direction verbs — propose, accept and revoke — each as ONE transaction under
+//! the local tenant's exclusive authority guard, holding the admission, the
+//! mutation, the acceptance's cross-domain receipt and the final effect record
+//! together (`SIGNOFF-REPAIR.3.3.4.12`). This module is the READ side: the
+//! bilateral effective-agreement predicates the consumers ask.
+//!
+//! The superseded pool-based `propose`, `accept` and `revoke` that used to sit
+//! here were DELETED rather than left beside their replacements
+//! (`SIGNOFF-REPAIR.3.3.4.12.2`), for the reason `.3.3.4.8` gave when it removed
+//! the two superseded revocation services: a second, unordered path is a path
+//! someone eventually takes. They had no caller in the workspace, and being
+//! `pub` on a `pub mod` is exactly why nothing flagged them — the compiler's
+//! dead-code analysis cannot see a public item.
 
 use sqlx::PgPool;
-
-/// Propose (or re-propose) one agreement direction. The proposal widens
-/// NOTHING by itself (the pairing needs the remote side's own row).
-pub async fn propose(
-    pool: &PgPool,
-    tenant_id: &str,
-    remote_tenant_id: &str,
-    directory_visibility: bool,
-    recruitment: bool,
-) -> Result<String, sqlx::Error> {
-    let agreement_id = format!("fed_{}_{}", tenant_id, remote_tenant_id);
-    sqlx::query(
-        "INSERT INTO federation_agreements \
-         (agreement_id, tenant_id, remote_tenant_id, directory_visibility, recruitment, status) \
-         VALUES ($1, $2, $3, $4, $5, 'proposed') \
-         ON CONFLICT (tenant_id, remote_tenant_id) DO UPDATE SET \
-             directory_visibility = EXCLUDED.directory_visibility, \
-             recruitment = EXCLUDED.recruitment, \
-             status = 'proposed', accepted_at = NULL",
-    )
-    .bind(&agreement_id)
-    .bind(tenant_id)
-    .bind(remote_tenant_id)
-    .bind(directory_visibility)
-    .bind(recruitment)
-    .execute(pool)
-    .await?;
-    Ok(agreement_id)
-}
-
-/// Accept the REMOTE side's proposal (this tenant's own row). The effect
-/// of the agreement engages only when BOTH rows are accepted. The
-/// acceptance records the cross-domain receipt (`.1.4`, ADR-026): the
-/// remote reference is the remote tenant, the local reference is the
-/// agreement — the cross-reference, never the merged chain.
-pub async fn accept(
-    pool: &PgPool,
-    tenant_id: &str,
-    remote_tenant_id: &str,
-) -> Result<u64, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    let rows = sqlx::query(
-        "UPDATE federation_agreements SET status = 'accepted', accepted_at = now() \
-         WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'proposed'",
-    )
-    .bind(tenant_id)
-    .bind(remote_tenant_id)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
-    if rows > 0 {
-        crate::receipts::record_in_tx(
-            &mut *tx,
-            tenant_id,
-            remote_tenant_id,
-            crate::receipts::KIND_AGREEMENT,
-            remote_tenant_id,
-            &format!("fed_{tenant_id}_{remote_tenant_id}"),
-        )
-        .await?;
-    }
-    tx.commit().await?;
-    Ok(rows)
-}
-
-/// Revoke this tenant's direction (the fallback: the network pseudonym).
-pub async fn revoke(
-    pool: &PgPool,
-    tenant_id: &str,
-    remote_tenant_id: &str,
-) -> Result<u64, sqlx::Error> {
-    let rows = sqlx::query(
-        "UPDATE federation_agreements SET status = 'revoked' \
-         WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status != 'revoked'",
-    )
-    .bind(tenant_id)
-    .bind(remote_tenant_id)
-    .execute(pool)
-    .await?
-    .rows_affected();
-    Ok(rows)
-}
 
 /// The EFFECTIVE directory-visibility agreement: BOTH directions accepted
 /// AND both rows carry `directory_visibility`. The one-sided proposal or a
@@ -134,12 +67,16 @@ pub async fn has_effective_recruitment_agreement(
 /// The same bilateral read on a caller-owned transaction, so the rung and the
 /// writes that depend on it share ONE snapshot (`SIGNOFF-REPAIR.3.3.4.11.3`).
 ///
-/// ⚠️ A snapshot is all it buys, and the limit is worth stating where the
-/// function lives rather than only where it is called. [`propose`], [`accept`]
-/// and [`revoke`] above take NO tenant authority guard, so holding one — even the
-/// origin tenant's — orders this read against none of them. `SIGNOFF-REPAIR.3.3.4.12`
-/// owns putting the three direction verbs on the guarded shape; until then, an
-/// import is not fenced against a concurrent revocation and must not claim to be.
+/// ⭐ A snapshot was ALL it bought when this was written, because the three
+/// direction verbs took no tenant authority guard at all and nothing a caller
+/// held could order this read against them. That is no longer the limit:
+/// `authority::federation_admin` puts each verb under its own tenant's EXCLUSIVE
+/// guard (`SIGNOFF-REPAIR.3.3.4.12`), and the card import declares BOTH tenants'
+/// keys in one predeclared sorted set (`.3.3.4.12.1`) — so an import is now fenced
+/// by a revocation from either side. The superseded sentence is recorded here
+/// rather than simply deleted, because it was carried into two other source files
+/// and the book, and stayed true-sounding in all of them for two leaves after it
+/// stopped being true (`SIGNOFF-REPAIR.3.3.4.12.2`).
 pub(crate) async fn has_effective_recruitment_agreement_in_tx(
     tx: &mut sqlx::PgConnection,
     tenant_a: &str,

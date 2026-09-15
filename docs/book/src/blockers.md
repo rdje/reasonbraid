@@ -40,7 +40,7 @@ public deliberately.
 | # | Item | Status |
 | --- | --- | --- |
 | **C1** | **Remote CI has never run.** Every gate result recorded anywhere in this project — including the one full checkpoint pass — is a **local** qualification. The project's own doctrine names the *remote* run as the authoritative pre-push gate | The push cadence is roughly 300 commits and the branch is inside it, so this is not a schedule failure. It is a limit on what may be claimed |
-| **C2** | **No gate record's "shipped" count currently re-derives.** Five gate records exist and four count lines as shipped; all were counted *before* the full source review | The records are not dishonest — each claims the evidence its suites then carried. What was never measured is those suites' **coverage**, and the review has since reproduced cross-tenant defects inside the very subject one of those lines names |
+| **C2** | **Gate records counted their shipped lines before the full source review.** Five records exist and four count lines as shipped. The first has now been re-derived: of G6–G7's seven, **three must be re-earned, two are narrowed, two stand** | The records are not dishonest — each claims the evidence its suites then carried. What was never measured is those suites' **coverage**. Four records remain to re-derive |
 
 ## What C2 means for the Internet gate
 
@@ -56,8 +56,21 @@ tenant's node inbox in full, a prune destroying another tenant's rows, a
 participant answering another tenant's recruitment call, and both publish verbs
 admitting any enrolled principal. All are repaired.
 
-⛔ So the honest position is that Internet exposure has **three external
-blockers and one internal one**: the seven lines counted as shipped have to be
-re-derived against the repaired code before they can be counted again. That
-re-derivation is tracked, and it covers all five gate records rather than only
-this one.
+⛔ So Internet exposure has **three external blockers and one internal one**.
+The internal one now has a measured answer, recorded in
+`docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md`:
+
+| §16.12 line | Verdict |
+| --- | --- |
+| (2) enrollment, rotation, revocation, tenant-isolation tests | **must be re-earned** — all four subjects had live defects, all since repaired |
+| (3) non-escalation and confused-deputy tests | **must be re-earned** — including the confused-deputy shape itself |
+| (4) SSRF, DNS-rebinding, redirect, archive-bomb suite | **narrowed** — and the **only one of the seven still an open defect**: the two acquisition packs have opposite redirect designs, and the weaker one's documentation claims the stronger one's behaviour |
+| (6) dependency, SBOM, provenance, release-signing | **stands**, with the dependency ledger's empty tested-version rows noted |
+| (7) backup restore and compromised-key recovery | **narrowed** — the exercise runs; its fixture's own defects are open |
+| (8) rate-limit, cost-circuit-breaker, notification-storm | **must be re-earned** |
+| (10) incident runbooks, contacts, disclosure | **stands** |
+
+⚠️ **Re-earning the three is not repair work — the defects are fixed.** What is
+missing is the coverage measurement that would let each line be counted again,
+which is a different activity. The gate's conclusion is unchanged: **NOT MET for
+Internet exposure**, and the original record is added to rather than edited.

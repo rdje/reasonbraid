@@ -241,9 +241,24 @@ review has reproduced — live, against supported surfaces — five separate
 cross-tenant defects inside that exact subject. All are repaired. The line has
 not been re-counted.
 
-Re-deriving all five records is tracked, split by record. Until it completes,
-**a gate record's "shipped" count should be read as a claim about the evidence
-available on its date, not as a current statement.**
+Re-deriving all five records is tracked, split by record. **The first is done.**
+Of G6–G7's seven shipped lines, **three must be re-earned, two are narrowed and
+two stand** — the [blockers page](blockers.md) carries the table, and the reasoning
+is in `docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md`. The gate's
+conclusion does not change: it was already *not met* for Internet exposure.
+
+⛔ One of the seven turned out to be an **open defect** rather than a repaired
+one. The product has two resource-acquisition packs, and they follow HTTP
+redirects in opposite ways: the web fetcher refuses automatic redirects and
+re-checks the destination at every hop, while the Git pack follows up to five
+automatically and relies on a hook that its underlying library skips whenever the
+destination is written as a bare IP address — which the library says plainly in
+its own source. The Git pack's documentation claims the fetcher's behaviour. This
+is measured from source; reproducing it end to end comes with the repair.
+
+Until the remaining four records are re-derived, **a gate record's "shipped" count
+should be read as a claim about the evidence available on its date, not as a
+current statement.**
 
 ### Two things the census found before re-deriving anything
 

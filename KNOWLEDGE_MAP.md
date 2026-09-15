@@ -162,6 +162,7 @@
 - [`2026-09-12_verification-strategy-assessment.md`](docs/decisions/2026-09-12_verification-strategy-assessment.md)
 - [`2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md`](docs/decisions/2026-09-13_issuance-is-a-grant-not-a-kind-of-principal.md)
 - [`2026-09-14_host-claim-checked-at-issuance.md`](docs/decisions/2026-09-14_host-claim-checked-at-issuance.md)
+- [`2026-09-15_g6g7-shipped-lines-re-derived.md`](docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md)
 - [`2026-09-15_the-action-set-extends-the-target-selector-does-not.md`](docs/decisions/2026-09-15_the-action-set-extends-the-target-selector-does-not.md)
 
 ## Promoted lessons

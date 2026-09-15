@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Re-derive G6–G7's seven shipped lines, and find the one still open (`SIGNOFF-REPAIR.11.4.7.1`)
+
+**Three must be re-earned, two are narrowed, two stand.** ⛔ The gate's conclusion is UNCHANGED — G6–G7 remains NOT MET for Internet exposure — and `2026-09-08_phase7-gate-record.md` is byte-unchanged: `docs/decisions/` supersedes rather than mutates, so the new record ADDS to it.
+
+- ⭐ **"Since" is exact, and one command settles it.** The gate record closed **2026-09-08**; the earliest corrective repair is **2026-09-09**. Comparing every repair's timestamp against the record's returns **zero** that predate it — so all 110 code-touching repairs are "since" and no verdict has to argue about ordering.
+- **(2) enrollment / rotation / revocation / tenant-isolation — MUST BE RE-EARNED.** The line names FOUR things and the corpus falsified all four: `.4.1.1` and `.3.5.1` (enrollment), `.4.2.1` and `.4.2.9` (rotation), `.4.1.3` and `.3.1` (revocation), and five separate cross-tenant reads and writes.
+- **(3) non-escalation / confused-deputy — MUST BE RE-EARNED.** `.9.3.1` is the confused-deputy shape itself — five sites asking whether an authority EXISTS where the question is whether the caller HOLDS it, over grant ids derivable from principal ids.
+- 🔴 **(4) SSRF / rebinding / redirect / archive-bomb — NARROWED, and the only one of the seven still an OPEN defect.** Two packs, opposite designs: `fetcher.rs` sets `Policy::none()` and re-classifies every hop manually; `git.rs` sets `Policy::limited(5)` with a DNS hook as its only control — and hyper-util 0.1.20 says in its own source, *"If the host is already an IP addr (v4 or v6), skip resolving the dns and start connecting right away."* The R1 header meanwhile claims "every dial (redirect hops included) passes the destination policy". ⚠️ Source-measured; runtime reproduction pending. Owner `.7.2`, whose goal line names it verbatim; record `R-44-45-1`.
+- **(6) supply chain — STANDS**, narrowed by the dependency ledger's still-empty `tested_versions` for MCP and A2A. **(7) backup restore — NARROWED**: the exercise runs, `R-59-2`'s fixture defects are open. **(8) breaker / storm — MUST BE RE-EARNED**: `.3.3.4.9` found the breaker's two verbs mutating on the connection pool with no transaction, no guard and no record. **(10) runbooks / disclosure — STANDS.**
+- ⛔ The three EXTERNAL gaps are restated unchanged with their triggers and remain out of local scope (`.13.1`).
+- ⚠️ **NOT claimed: that re-earning is repair work.** The defects are repaired; what is missing is the coverage measurement that would let each line be counted again — a different activity, owned per line.
+
 ## 2026-09-15 — Census the five gate records, and find a wrong number inside a release gate (`SIGNOFF-REPAIR.11.4.7`)
 
 Can this project still state its own release-gate position? The leaf was opened by the director's question about Internet exposure and widened by his challenge from one gate record to five. This commit censuses them and splits; it re-derives nothing yet, deliberately.

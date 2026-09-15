@@ -699,14 +699,28 @@ pre-mutation state came back.
   administrator can inspect *authority* state while a revocation is in flight;
   process counters are not authority state.
 
-  ⚠️ Two things about it are still true and are **not** repaired. Its width is
-  deliberate and unchanged — any `tenant_admin` grant in **any** tenant admits,
-  and the payload is process-wide, so what a caller learns includes other
-  tenants' volume. That is aggregate counts with no identities and no per-tenant
-  breakdown. And unlike the inspection reads, this one writes **no authorization
-  record**, so it leaves no audit trace of who took it; `SIGNOFF-REPAIR.3.5.2.1`
-  owns both, because binding a record to a tenant means deciding how this route
-  names one.
+  ⭐ **The read is now audited, and it needed no wire change to become so**
+  (`SIGNOFF-REPAIR.3.5.2.1`). Every call commits an authorization record —
+  allowed or denied — and a successful one returns
+  `x-reasonbraid-authorization` naming it, so `curl -i` retains the receipt
+  exactly as it does on the other administrative routes.
+
+  The route still takes **no `tenant_id`**. It does not need one: a principal
+  belongs to exactly one tenant structurally, so the record binds to the tenant
+  the caller already has. That is why closing this gap broke no caller — the
+  three shapes originally considered all assumed the route had to start naming a
+  tenant, and none of them was necessary.
+
+  ⚠️ **One thing narrowed, and it is worth knowing.** The gate used to admit a
+  holder of `tenant_admin` in **any** tenant; it now requires you to administer
+  **your own**. Every principal this system can create holds its grant in its own
+  tenant, so no reachable caller loses access — but the rule is strictly
+  stronger than it was.
+
+  ⚠️ **The width of what you SEE is unchanged and still deliberate**: the
+  payload is process-wide, so an administrator's counters include other tenants'
+  volume. That is aggregate counts with no identities and no per-tenant
+  breakdown, and narrowing it would be a different decision from auditing it.
 - **SLOs:** the dev profile's hypotheses are the guard's own measurements
   (`docs/decisions/2026-09-07_phase2-slo-hypotheses.md`): acceptance, the
   demo's 34 checks, the restore exercise, and the reconcile-after-kill beats

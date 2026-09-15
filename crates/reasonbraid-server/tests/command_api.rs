@@ -4151,6 +4151,136 @@ async fn a_replay_cannot_cross_a_changed_authority_context() {
 /// boundary reads `revoked` AND the grant still reads `active`. Without both,
 /// a later reader cannot tell whether the repair works or whether revocation
 /// merely started cascading.
+/// `SIGNOFF-REPAIR.3.5.2.1`: the metrics read is AUDITED, and the record binds to
+/// the tenant the CALLER already has — the route still takes none.
+///
+/// ⭐ The route needs no `tenant_id` because a principal belongs to exactly one
+/// tenant structurally (`migrations/0007` makes both principal ids PRIMARY KEY),
+/// so the tenant is DERIVED from the authenticated caller. That is why closing
+/// this audit gap cost no wire change.
+///
+/// Both arms are here deliberately. A "repair" that simply refused everyone would
+/// pass a negative-only test and fail the positive one: an admitted read must
+/// still return every counter AND leave a record naming who took it.
+#[tokio::test]
+async fn the_metrics_read_commits_a_record_bound_to_the_callers_own_tenant() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "metrics-audited-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    // A role in the SAME tenant holds no `tenant_admin` — the negative arm.
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "metrics-audited-role", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll role: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    let before: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1 AND action = 'tenant_admin'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("count records before");
+
+    // 1. The ADMITTED read: 200, every counter, and a receipt naming its record.
+    let (status, body, receipt) =
+        get_with_inspection_receipt(&client, &base, "/v1/admin/metrics", &alice_id).await;
+    assert_eq!(status, 200, "the admin reads the metrics: {body}");
+    let receipt = receipt.expect("the admitted metrics read carries its admission receipt");
+    assert!(
+        receipt.starts_with("authz_"),
+        "the receipt names an authorization record: {receipt}"
+    );
+
+    // The POSITIVE arm: the payload is still the process-wide counter set, not a
+    // narrowed or emptied one. A wrong repair passes every other assertion here.
+    for counter in [
+        "authorization_denials",
+        "idempotency_replays",
+        "handshake_refusals",
+        "lease_refusals",
+        "dead_letters",
+        "results_folded",
+        "results_rejected",
+    ] {
+        assert!(
+            body.get(counter).is_some(),
+            "the counter `{counter}` is still published: {body}"
+        );
+    }
+
+    // 2. The record EXISTS, is bound to the caller's own tenant, and is an
+    //    ORDINARY evaluation — not the frozen-boundary inspection carve-out,
+    //    which `.3.5.2` ruled is not this surface's to inherit.
+    let row: Option<(String, String, String, String)> = sqlx::query_as(
+        "SELECT tenant_id, action, decision, evaluation->>'kind' \
+         FROM authorization_records WHERE record_id = $1",
+    )
+    .bind(&receipt)
+    .fetch_optional(&pool)
+    .await
+    .expect("read the metrics admission record");
+    let (record_tenant, action, decision, evaluation) =
+        row.expect("the receipt names a record that exists");
+    assert_eq!(
+        record_tenant, tenant,
+        "the record binds to the caller's OWN tenant"
+    );
+    assert_eq!(action, "tenant_admin");
+    assert_eq!(decision, "allowed");
+    assert_eq!(
+        evaluation, "boundary_checked",
+        "the ordinary evaluation, NOT the tenant_admin_inspection carve-out"
+    );
+
+    let after: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_records WHERE tenant_id = $1 AND action = 'tenant_admin'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("count records after");
+    assert!(
+        after > before,
+        "the read COMMITTED a record: before {before}, after {after}"
+    );
+
+    // 3. The NEGATIVE arm: a principal without `tenant_admin` is refused, and the
+    //    refusal is recorded too — a denial nobody can see is the defect this
+    //    leaf closed, in the other direction.
+    let (status, denied_body, _) =
+        get_with_inspection_receipt(&client, &base, "/v1/admin/metrics", &role_id).await;
+    assert_eq!(status, 403, "a non-admin is refused: {denied_body}");
+    let denials: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM authorization_records \
+         WHERE tenant_id = $1 AND action = 'tenant_admin' AND decision = 'denied'",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("count denials");
+    assert!(
+        denials >= 1,
+        "the refused read is recorded as a denial, not silently dropped"
+    );
+}
+
 #[tokio::test]
 async fn revoking_a_boundary_closes_the_metrics_surface() {
     let _guard = api_guard().await;

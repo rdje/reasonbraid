@@ -7176,52 +7176,75 @@ async fn get_events(
 async fn admin_metrics(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ControlApiError> {
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    // The process-global registry has no single tenant: the gate is "the
-    // caller HOLDS the tenant_admin action in ANY of their active grants"
-    // (the dev root trust — a tenant admin sees the process's counters). That
-    // WIDTH is deliberate and unchanged; `SIGNOFF-REPAIR.3.5.2` repairs what was
-    // not deliberate.
+    // `SIGNOFF-REPAIR.3.5.2.1`: this read is AUDITED, and the tenant its record
+    // binds to is the caller's OWN — not one the request names.
     //
-    // 🔴 The grant alone is not the authority. Revoking a BOUNDARY updates only
-    // `enrollment_boundaries` — `revocation.rs` does not cascade to
-    // `authority_grants` — so a grant under a revoked boundary keeps
-    // `status = 'active'`, and this surface kept admitting its holder after the
-    // authority that issued it had been withdrawn. Reproduced against the live
-    // route before this changed. The boundary is now joined and must itself be
-    // live, which is what `boundary_active_at` requires of every ordinary
-    // evaluation.
+    // ⭐ The route takes no `tenant_id`, and it does not need one. A principal
+    // belongs to exactly ONE tenant, structurally: `migrations/0007` declares
+    // `human_principals.principal_id` and `agent_roles.role_id` as PRIMARY KEY,
+    // each with a single `tenant_id`. So the tenant is DERIVED from the
+    // authenticated caller rather than supplied by it — the same shape
+    // `inspect_call` uses, and the reason no wire change was needed to start
+    // recording who took this read.
     //
-    // ⛔ Deliberately NOT the `evaluate_tenant_admin_read` carve-out. That
-    // exception admits under a revoked boundary so an administrator can inspect
+    // ⛔ Deliberately the ORDINARY guarded admission, not
+    // `authorize_tenant_admin_inspection`. That entry point applies the
+    // frozen-boundary carve-out, which exists so an administrator can inspect
     // AUTHORITY state while a revocation is in flight; process counters are not
-    // authority state and have no such need. This surface never called it, so it
-    // is not this surface's carve-out to inherit.
-    let holds_admin: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS( \
-             SELECT 1 FROM authority_grants g \
-             JOIN enrollment_boundaries b ON b.boundary_id = g.boundary_id \
-             WHERE g.subject_id = $1 AND g.status = 'active' \
-               AND g.actions ? 'tenant_admin' \
-               AND g.valid_from <= now() AND (g.expires_at IS NULL OR g.expires_at > now()) \
-               AND b.status = 'active' \
-               AND b.valid_from <= now() AND b.expires_at > now())",
-    )
-    .bind(principal.id_string())
-    .fetch_one(&state.pool)
-    .await?;
-    if !holds_admin.unwrap_or(false) {
+    // authority state, so `.3.5.2` ruled the carve-out is not this surface's to
+    // inherit. `authorize_guarded` records `boundary_checked` like any other
+    // ordinary read — which is also why no `TenantAdminInspection` variant is
+    // added and no stored evaluation discriminant changes.
+    //
+    // ⚠️ The width NARROWS, declared rather than smuggled. The superseded gate
+    // asked `subject_id = $1` with NO tenant predicate — any active
+    // `tenant_admin` grant in ANY tenant. Selection filters on the tenant, so
+    // the rule is now "an administrator of your own tenant". Nothing binds a
+    // grant's tenant to its subject's tenant (that is `R-85-1` clause 2's shape,
+    // owned at `.3.3`), but the only two producers — development enrolment and
+    // card import — both create the principal in the grant's own tenant, so no
+    // reachable caller loses access. The deliberate half of the width is intact:
+    // an admin still sees ALL the process's counters, not a per-tenant slice.
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "the metrics surface is tenant_admin-gated",
         ));
-    }
+    };
+    let tenant_id: TenantId = tenant.parse().map_err(|_| {
+        ControlApiError::internal_with_log(format!(
+            "the metrics caller's stored tenant `{tenant}` is malformed"
+        ))
+    })?;
+    let authz = CommandAuthz {
+        actor: actor_handle_for_subject(&principal),
+        principal: principal.clone(),
+        delegation: None,
+        action: GrantAction::TenantAdmin,
+        target: ResourceTarget::Tenant { tenant_id },
+    };
+    let receipt = match authority::authorize_guarded(&state.pool, &authz).await? {
+        AuthorizationOutcome::Denied { reason, record_id } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            return Err(ControlApiError::unauthorized(format!(
+                "authorization denied ({record_id}): {reason}"
+            )));
+        }
+        AuthorizationOutcome::Allowed { record_id, .. } => record_id,
+    };
     let snapshot: serde_json::Map<String, Value> = crate::telemetry::metrics()
         .snapshot()
         .into_iter()
         .map(|(k, v)| (k, json!(v)))
         .collect();
-    Ok(Json(Value::Object(snapshot)))
+    // The receipt names the admission this read committed. Without it the record
+    // would be unreachable: there is no list endpoint.
+    Ok((
+        [("x-reasonbraid-authorization", receipt)],
+        Json(Value::Object(snapshot)),
+    )
+        .into_response())
 }
 
 /// Preserve the registry response bodies while exposing the committed receipt.

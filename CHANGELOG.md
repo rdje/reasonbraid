@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Audit the metrics read against the tenant its caller already has (`SIGNOFF-REPAIR.3.5.2.1`)
+
+The director asked for the blockers to be unblocked with rationale. This one was held for two days on a question that measurement dissolves.
+
+- 🔴 **All three shapes the leaf considered shared a false premise: that the route must NAME a tenant.** It does not. `migrations/0007_identity_store.sql` declares `human_principals.principal_id` and `agent_roles.role_id` as **PRIMARY KEY**, each with one `tenant_id` — so a principal belongs to exactly one tenant, structurally, and the tenant is DERIVED from the authenticated caller. The same argument `.3.5.1` used about `nodes.node_id`.
+- **The fourth shape costs none of what the other three cost.** No `?tenant_id=` parameter, so no caller breaks. No new authority-selection path, because the tenant is known before anything is selected. No behaviour that starts failing when a caller gains a second grant. ⛔ And **no stored-format change**: the route uses the ORDINARY `authorize_guarded`, recording `boundary_checked`, so `TenantAdminInspection` gains no variant and no older reader meets a discriminant it cannot decode.
+- ⭐ **That also honours `.3.5.2`'s prohibition by construction rather than by luck.** `authorize_tenant_admin_inspection` applies the frozen-boundary carve-out, which exists so an administrator can inspect AUTHORITY state during a revocation; process counters are not authority state. Choosing the ordinary path is what keeps the prohibition intact.
+- ⚠️ **One declared narrowing**: the gate asked `subject_id = $1` with no tenant predicate — any `tenant_admin` grant in ANY tenant. It now requires an administrator of your OWN tenant. Nothing binds a grant's tenant to its subject's (that is `R-85-1` clause 2's shape, owned at `.3.3`), but both producers — development enrolment and card import — create the principal in the grant's own tenant, so no reachable caller loses access. The deliberate half of the width is intact: an admin still sees ALL the process's counters.
+- ⭐ **Deleting the hand-rolled gate removes a SEVENTH spelling of grant-liveness**, and the loosest: it omitted `subject_kind`, and its `(expires_at IS NULL OR expires_at > now())` branch was dead — the column is `NOT NULL`, so the disjunction read as leniency that was never there.
+- **Verified:** `command_api` **38 passed** (37 + this control) and `authority` **22 passed**, rc=0, cluster removed. ⭐ **FALSIFIED** against the exact superseded handler restored from `HEAD`: **37 passed / 1 failed**, the one failure being this control at `the admitted metrics read carries its admission receipt`. The other 37 pass throughout, so the neutralization discriminates rather than breaks.
+- ⚠️ The neutralization was made **self-reversing** — the restore was chained to the wait that consumed its result, and the repaired file copied aside first. A neutralized working tree is the one state a handoff must never be left in, and that should not depend on the session surviving to undo it.
+
 ## 2026-09-15 — Re-derive G6–G7's seven shipped lines, and find the one still open (`SIGNOFF-REPAIR.11.4.7.1`)
 
 **Three must be re-earned, two are narrowed, two stand.** ⛔ The gate's conclusion is UNCHANGED — G6–G7 remains NOT MET for Internet exposure — and `2026-09-08_phase7-gate-record.md` is byte-unchanged: `docs/decisions/` supersedes rather than mutates, so the new record ADDS to it.

@@ -16,7 +16,16 @@ days with every individual rule followed.
 | # | Blocker | What it is waiting for | What it does **not** block |
 | --- | --- | --- | --- |
 | **A1** | An administrative read of `/v1/admin/metrics` leaves **no record of who took it** | A choice between three route shapes, each with a real cost: requiring `?tenant_id=` **breaks every existing caller**; making it optional-unless-you-hold-two-admin-grants turns a working request into a failing one later; deriving the tenant from the admitting grant is non-breaking but needs a new authority-selection path | Access. The hole that let a **revoked** boundary keep this surface open is closed and controlled. What remains is the audit record and the route's width |
-| **B5** | The **licence** is undecided | The director | Nothing today. The workspace carries a licence field and the G1 gate names a licence policy, so the decision has consumers, but no current work fails without it |
+| **B5** | The licence is **declared but not granted** — ten manifests say `MIT OR Apache-2.0` and **the repository contains no licence text at all** | One fact: the **copyright holder's name**. Nothing else is open — which licences, their texts and where they go all follow from the declarations already in the tree | Building and testing. But it does affect anyone reading this public repository: a manifest's licence expression is metadata, not a grant, so absent the text the default is ordinary copyright and a reader has none of the rights the expression appears to offer |
+
+⚠️ **B5 is not an open choice, and the distinction matters if you are reading
+this repository.** The licence was chosen — `MIT OR Apache-2.0`, the Rust
+ecosystem's conventional dual licence — and declared in the workspace manifest and
+every crate. What is missing is the `LICENSE-MIT` and `LICENSE-APACHE` files that
+turn that declaration into a grant. Nothing in the dependency graph constrains the
+choice: every dependency licence is permissive, and the single file-level copyleft
+one is used unmodified. The project enforces a licence policy on what it consumes
+while granting nothing for what it publishes, and that is the gap.
 
 ## Blocked on the outside world
 

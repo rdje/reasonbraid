@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-15 — A failing control that is the repair working, and four crates I could not see
+
+- The workspace suite failed on `cleanup_confirmed == true`. My first instinct was "flaky browser test". It is not: the assertion directly above it — `kind == "time_budget_exceeded"` — **passes**, and that is REPAIR-0089's fix doing exactly its job. That repair split the render's outcome from the cleanup fact so the product would stop claiming an unobserved termination. The product now reports `cleanup_confirmed: false` honestly, and the control fails on the honest answer.
+- ⛔ **So "the test is wrong" and "the product is wrong" are both still live, and I refused to pick from the armchair.** `.11.4.7.2.4` owns deciding. What I would NOT accept is the tempting third option — loosen the assertion to accept either value — because REPAIR-0089 already refused it in writing, for the reason that it would stop proving the deadline cancels a real in-flight navigation.
+- ⭐ **Two load states before the word "flaky".** First observation was inside `cargo test --all` while another project was compiling on this machine (`elapsed_ms` 41170) — a genuine confound, and I nearly wrote it off. Re-ran isolated, single-threaded, machine quiet: identical failure, `elapsed_ms` 40022. One run would have licensed either conclusion; two licensed one.
+- 🔴 **The part I would have missed entirely: `cargo test` stops at the first failing binary.** The run aborted at the 11th, so `cli`, `core`, `node` and `server` never executed. I had been about to read "10 suites ok, 80 tests passed" as a partial pass. It is not a partial pass — it is four crates whose state is UNKNOWN, and an unknown reads like a pass to anyone who does not check the exit code.
+- ⚠️ **And the same shape, one level up, is why two supply-chain gates have been red for days.** `make deny` and `make secret-scan` are in no commit-time gate; they exist only in a CI workflow that has never run. Nobody was reading their exit code either, because nothing was producing one.
+- ⭐ **The question that found the biggest defect this session was not mine.** The director asked whether an open-weight model could join the network. Answering it made me read the admission path, which contradicted the answer I had already given him: the five-rung adapter-load ladder has no production caller. My census had not looked there because nothing pointed at it. A good question is a census you did not think to run.
+
 ## 2026-09-15 — My gate's self-test was green while the gate was wrong, twice
 
 - I wrote `check_licence_grant.sh` with a two-sided self-test, ran it, got 12 green cases, and shipped nothing — because the next thing I did was run it against the real tree, where it **failed a perfectly valid licence**. The MIT text crates ship is hard-wrapped at about 55 columns, so my sentinel `WITHOUT WARRANTY OF ANY KIND` spans a line break.

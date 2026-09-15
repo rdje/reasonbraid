@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Re-derive G1–G2's sixteen claims, and find three things red right now (`SIGNOFF-REPAIR.11.4.7.2`)
+
+🔴 **The verdicts are the smaller half. The finding is that `make deny`, `make secret-scan` and the workspace test suite all FAIL today — and nothing has been running the first two since Phase 1.**
+
+- **3 stand, 4 narrow, 9 must be re-earned**, each with the command that produces it. Record: `docs/decisions/2026-09-15_g1g2-sixteen-claims-re-derived.md`; the original is byte-unchanged since it was written.
+- ⛔ **`grep -c 'deny\|secret-scan\|gitleaks'` returns 0 for `check_doctrines.sh`, 0 for the project slot and 0 for `.githooks/pre-commit`.** Both supply-chain gates live only in `.github/workflows/supply-chain.yml`, which runs in remote CI — and remote CI has never run (blocker C1). `origin/main` is at 2026-09-12; the gitleaks finding entered on 2026-09-13, inside the unpushed range, so even a CI run would not have caught it. ⭐ C1 is not only a limit on what may be CLAIMED; it is why two gates have been red with nobody able to see it.
+- **`cargo deny check` rc=1** — RUSTSEC-2026-0285, `rustls 0.23.43`, fixed in ≥0.23.45. ⚠️ Dependency drift, not advisory drift: rustls was not in the lock at the gate commit (positive control: `tokio` was). Owner `.11.4.7.2.2`.
+- **`gitleaks detect` rc=1** — one `generic-api-key` hit on a test fixture named `idempotency_key`. A false positive, and the gate is red anyway. Owner `.11.4.7.2.3`.
+- 🔴 **`cargo test --all --locked` rc=101, aborting at the 11th test binary** — `cli`, `core`, `node` and `server` never execute. The failing control asserts `cleanup_confirmed == true` while the assertion above it passes, which means REPAIR-0089's fix is working: that repair deliberately made the product report `cleanup_confirmed: false` rather than claim an unobserved termination. ⛔ Reproduced on an idle machine (81.30 s, `elapsed_ms` 40022) after the first run was under load (41170) — two load states, one result, so not a flake. Owner `.11.4.7.2.4`.
+- ⛔ **The deferral count is SIX, not five** — the record says five twice and lists six, and `git log -S` puts the sixth row in the same commit as the sentence, so it was inconsistent the day it was written.
+- 🔴 **Deferral #5's revisit trigger fired and nothing revisited it.** The fuzz baseline was deferred until "the first untrusted parser — Phase 4's resource packs". Phase 4 closed; `fetcher.rs`, `git.rs`, `reasonbraid-extract` and `-browse` now parse untrusted input; `git ls-files | grep -ic fuzz` returns **0**; the word appears in exactly one decision record — the one that deferred it. Owner `.11.4.7.2.1`.
+- ⭐ **A deferral with a trigger nobody checks is an omission with extra steps.**
+- **Also opened `.13.1.1`, found answering a question from the director rather than by a leaf**: `verify_ladder` — `PHASE-8.4.4`'s five-rung fail-closed adapter-load ladder — has **no production caller**. Six of its eight `git grep` hits are inside its own `#[cfg(test)]` module; `pub use` hides it from `dead_code`. And `AllowedCapabilities::dev()`, the crate's only ceiling, sets `tool_support: true`. ⛔ Nothing unverified loads today — the adapters are compiled in — but the control is inert for the third-party case it exists for.
+
 ## 2026-09-15 — Grant the licence the manifests have been declaring (`SIGNOFF-REPAIR.13.2`)
 
 ✅ **Blocker B5 is closed, and with it the last row that named the director.** The repository declared `MIT OR Apache-2.0` in every manifest and contained no licence text at all. A licence expression is metadata; the operative default for a **public** repository without the texts is ordinary copyright, so readers held none of the rights the expression appeared to offer.

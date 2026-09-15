@@ -299,6 +299,12 @@ tests using Chrome for Testing **153.0.8010.36**. `make check` runs format and s
 lint first. The Rust CI job uses the same browser launcher. Linux and macOS on
 x86-64/ARM64 have exact archive size/SHA-256 pins; other platforms refuse.
 
+Both workspace runs pass `--no-fail-fast`. Cargo's default stops at the first
+failing test binary, which reached 11 of 94 here and left four crates unmeasured;
+`--no-fail-fast` reaches all 94 for 319.3 seconds of test execution. A command
+whose job is to report the workspace's state cannot report it from 11 binaries.
+A crate-scoped run during development keeps the default early stop.
+
 ```bash
 # Verify download, installation and version only.
 python3 -B scripts/project_env.py python3 -B scripts/ci_browser.py --verify-only
@@ -313,6 +319,19 @@ volume, verifies the download before extraction, validates internal framework
 links and checks the executable's exact version before dispatch. It overrides
 ambient `R3_BROWSER_BIN`; there is no desktop fallback. Direct Cargo commands
 bypass this setup and do not establish pinned-runtime coverage by themselves.
+
+That last sentence is now enforced rather than advised. The browse test support
+reads `R3_BROWSER_BIN` and nothing else, so a Cargo command that names no runtime
+**skips** the six real-browser controls instead of qualifying them against
+whatever browser the host happens to have installed. Each skip prints one line
+naming what went unqualified and the command that qualifies it, through a channel
+the test harness does not capture, so a skipped control cannot be mistaken for a
+passing one. The remaining eleven controls in that suite — including the injected
+escaped-writer refusal and the stalled-launch deadline — need no browser and
+always run.
+
+The production worker's own discovery is unchanged: a deployment runs the browser
+its host provides. Only the test harness refuses to guess.
 
 Download/version waits are bounded to 300/30 seconds; the command default is one
 hour. For a shorter selected run, insert `--timeout 120` before `--` for a two-minute

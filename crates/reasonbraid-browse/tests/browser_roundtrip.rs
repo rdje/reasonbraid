@@ -10,7 +10,7 @@ mod support;
 use futures_util::FutureExt;
 use std::panic::AssertUnwindSafe;
 use std::time::Duration;
-use support::{browser_binary, Fixture};
+use support::{browser_binary, skip_without_browser, Fixture};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Instant};
@@ -249,7 +249,7 @@ async fn gated_origin_requires_arrival_and_explicit_response_release() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_browser_renders_the_page_and_logs_the_network() {
     if browser_binary().is_none() {
-        println!("SKIP: no browser binary — set R3_BROWSER_BIN to run the render test");
+        skip_without_browser("the render and network-log round trip");
         return;
     }
     let fixture = Fixture::new();
@@ -446,7 +446,7 @@ fn completion(stderr: &str) -> serde_json::Value {
 #[tokio::test(flavor = "multi_thread")]
 async fn real_step_error_and_output_refusal_finish_before_returning() {
     if browser_binary().is_none() {
-        println!("SKIP: no browser binary — failure cleanup unqualified");
+        skip_without_browser("real step-error and output-refusal cleanup");
         return;
     }
     for (step, output_limit, expected) in [
@@ -541,7 +541,7 @@ async fn a_deadline_cancels_launch_but_still_reaps_the_owned_browser() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_real_navigation_deadline_stops_the_browser_and_origin() {
     if browser_binary().is_none() {
-        println!("SKIP: no browser binary — navigation deadline unqualified");
+        skip_without_browser("the real navigation deadline");
         return;
     }
     let fixture = Fixture::new();
@@ -592,7 +592,7 @@ async fn a_real_navigation_deadline_stops_the_browser_and_origin() {
 #[tokio::test(flavor = "multi_thread")]
 async fn overlapping_workers_use_distinct_profiles_under_the_same_root() {
     let Some(binary) = browser_binary() else {
-        println!("SKIP: no browser binary — overlapping profiles unqualified");
+        skip_without_browser("overlapping workers under one root");
         return;
     };
     let first = Fixture::new();
@@ -796,7 +796,7 @@ async fn worker_in_root(
 async fn moving_the_runtime_root_preserves_storage_and_next_invocation() {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt};
     if browser_binary().is_none() {
-        println!("SKIP: no browser binary — runtime-root relocation unqualified");
+        skip_without_browser("runtime-root relocation");
         return;
     }
     let first = Fixture::new();
@@ -880,7 +880,7 @@ async fn moving_the_runtime_root_preserves_storage_and_next_invocation() {
 async fn a_linked_storage_parent_refuses_before_starting_chrome() {
     use std::os::unix::fs::symlink;
     if browser_binary().is_none() {
-        println!("SKIP: no browser binary — worker storage refusal unqualified");
+        skip_without_browser("the linked-storage-parent refusal");
         return;
     }
     let fixture = Fixture::new();

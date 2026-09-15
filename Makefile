@@ -36,7 +36,7 @@ clippy:
 
 test:
 	$(PROJECT_RUN) cargo build --workspace --bins --locked
-	$(PROJECT_RUN) python3 -B scripts/ci_browser.py -- cargo test --all --locked
+	$(PROJECT_RUN) python3 -B scripts/ci_browser.py -- cargo test --all --locked --no-fail-fast
 
 # Supply-chain checks (wired into .github/workflows/supply-chain.yml — see docs/ci.md).
 deny:

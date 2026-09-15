@@ -1,6 +1,7 @@
 //! Owned on-volume fixtures and bounded worker groups for browser controls.
 
 use std::io;
+use std::io::Write as _;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
@@ -382,19 +383,45 @@ impl Drop for WorkerGroup {
     }
 }
 
+/// The browser runtime is NAMED by the harness, never discovered here.
+///
+/// `R3_BROWSER_BIN` is the only source. `scripts/ci_browser.py` sets it to the
+/// pinned Chrome for Testing build it has just downloaded, hash-verified and
+/// version-checked, and both `make test` and `.github/workflows/rust.yml` run
+/// the workspace suite through it.
+///
+/// ⛔ There is deliberately no fallback to a desktop browser, and the reason is
+/// measured rather than stylistic (`SIGNOFF-REPAIR.11.4.7.2.4`). Chrome starts
+/// `chrome_crashpad_handler`, which leaves the owned process group and keeps
+/// the inherited stderr write end open: `lsof` shows the worker's read end and
+/// that handler's fd 2 as the two ends of one pipe, with the handler at PPID 1
+/// and a process group the worker never owned. So whether the worker can
+/// confirm cleanup is a question about how quickly the ESCAPED handler exits —
+/// inside a second under the pinned runtime, but 6.2 s past the worker's own
+/// exit under desktop Google Chrome 152, which holds the pipe across the whole
+/// 10 s cleanup budget. Discovering a desktop browser here silently substituted
+/// an unqualified runtime and turned that latency into an assertion failure
+/// that read like a product defect. A pin another path can bypass is not a pin.
 pub fn browser_binary() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("R3_BROWSER_BIN") {
-        return Some(path.into());
-    }
-    [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-    ]
-    .into_iter()
-    .map(PathBuf::from)
-    .find(|p| p.is_file())
+    std::env::var_os("R3_BROWSER_BIN").map(PathBuf::from)
+}
+
+/// Announce a control that did not run, in a way the announcement survives.
+///
+/// libtest captures `println!`/`eprintln!` and replays them only for a FAILING
+/// test, so a skip announced through those macros reads exactly like a pass. A
+/// write through the `std::io::stderr()` handle is not captured — measured with
+/// a one-test `rustc --test` probe, not assumed — so this notice reaches the
+/// terminal of an ordinary `cargo test` run and names what went unchecked.
+pub fn skip_without_browser(unqualified: &str) {
+    let mut stderr = io::stderr();
+    let _ = writeln!(
+        stderr,
+        "SKIP (R3_BROWSER_BIN unset): {unqualified} is UNQUALIFIED by this run; \
+         run `make test`, which pins the Chrome for Testing runtime through \
+         scripts/ci_browser.py"
+    );
+    let _ = stderr.flush();
 }
 
 #[tokio::test]

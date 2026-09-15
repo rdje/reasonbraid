@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-15 — The suite had been picking its own browser (`SIGNOFF-REPAIR.11.4.7.2.4`)
+
+⭐ **A pin a second path can bypass is not a pin.** The only failing test in 94 binaries was a control qualified against the pinned Chrome for Testing runtime, being evaluated against whatever browser the host happened to have installed.
+
+- 🔴 **The leaf's own question offered two answers and the measurement refused both.** It asked whether the CONTROL over-asserts or the PRODUCT fails to confirm. Neither: `crates/reasonbraid-browse/tests/support/mod.rs::browser_binary()` carried a discovery list, so any run outside `scripts/ci_browser.py` — which is what `cargo test --all` is — silently selected `/Applications/Google Chrome.app/…`.
+- **Two-site contrast, one variable, same machine and the same competing load:** desktop Google Chrome 152.0.7977.83 → cleanup unconfirmed, failed 4 of 4, worker elapsed **41.07 s**; pinned Chrome for Testing 153.0.8010.36 → cleanup confirmed, passed 2 of 2, elapsed **31.13 s**. The ten-second difference is the whole 10 s cleanup budget spent on an end-of-file that cannot arrive.
+- **Pinpointed at the file descriptor, not inferred.** `lsof` prints the worker's fd 11 and `chrome_crashpad_handler`'s fd 2 as the two ends of one pipe; the handler runs at `PPID 1` in a process group the worker never owned and outlived the worker by **6.24 s**.
+- 🔴 **The pinned runtime escapes identically** — two handlers, `PPID 1`, foreign process groups, the same pipe — and differs only in exit latency. The control's green is therefore a latency property of a third-party process, not containment evidence. Annotated at `.7.3.2` with a number rather than left as a passing test's implied claim.
+- **Fix:** `browser_binary()` reads `R3_BROWSER_BIN` and nothing else. A run that names no runtime SKIPS the six real-browser controls; the other eleven, including the injected escaped-writer refusal, still run.
+- ⚠️ **A skip must never read like a pass.** `libtest` captures `println!`/`eprintln!` and replays them only for FAILING tests. Measured with a one-test `rustc --test` probe: a write through the `std::io::stderr()` HANDLE escapes the capture. Each skip now prints on an ordinary captured run, naming what went unqualified and the command that qualifies it.
+- ⛔ **No product code changed, deliberately.** The worker was telling the truth; loosening the assertion would have meant claiming a termination nobody observed, which REPAIR-0089 refused by name. The production worker's own browser discovery is untouched — a deployment runs what its host provides.
+- ⭐ **`--no-fail-fast` adopted** in `make test` and `.github/workflows/rust.yml`, on `.11.4.7.2.2`'s census: default fail-fast reached 11 of 94 binaries and left four crates unknown, against 94 for 319.3 s of test execution. A command that answers *is the workspace green* cannot answer it from 11 binaries; a crate-scoped run keeps its early stop.
+- **Falsified where it counts:** with the repair in place, naming the desktop browser explicitly still fails (rc=101, same assertion, 41.07 s), so the control still discriminates and the skip is not suppression.
+- 🔴 **No completed workspace run is claimed.** `make test` under the pinned runtime reached **78 of ~94 test binaries with zero failures** and was cut off by `ci_browser.py`'s own 3600 s command cap — the first timeout in 16 receipts, 12 of which read `completed exit=0`. Stitching it to the earlier 94-binary run would be exactly what `an-aborted-run-is-not-a-partial-pass` forbids. New owner `SIGNOFF-REPAIR.11.4.8`, which also owns the 191 MB the qualified path re-downloads on every invocation.
+
 ## 2026-09-15 — Make B3's deferral trigger evaluable, and find the secret scan could not see the commit it was gating (`SIGNOFF-REPAIR.13.1.2`)
 
 ⭐ **A deferral with a trigger nobody checks is an omission with extra steps.** `ACTION-BOUNDARY` makes blocker B3's revisit trigger a script instead of a sentence.

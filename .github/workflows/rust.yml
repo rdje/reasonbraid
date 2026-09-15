@@ -26,7 +26,7 @@ jobs:
           cargo build --workspace --bins --locked
           test -x target/debug/reasonbraid-extract
           test -x target/debug/reasonbraid-browse
-          python3 -B scripts/ci_browser.py -- cargo test --all --locked -- --nocapture
+          python3 -B scripts/ci_browser.py -- cargo test --all --locked --no-fail-fast -- --nocapture
           CHECKS
       - name: Retain browser setup receipts
         if: always()

@@ -50,3 +50,8 @@ hooks). Pull spine updates with `./scripts/update_scaffold.sh <reasonbraid-url>`
 - Record durable facts in `docs/decisions/`.
 - Commit per `COMMIT.md`; hooks + CI enforce doctrines.
 - Keep **roadmap ↔ code ↔ docs** in lockstep.
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
+option — the Rust ecosystem convention, matching every crate manifest here.

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-15 — My gate's self-test was green while the gate was wrong, twice
+
+- I wrote `check_licence_grant.sh` with a two-sided self-test, ran it, got 12 green cases, and shipped nothing — because the next thing I did was run it against the real tree, where it **failed a perfectly valid licence**. The MIT text crates ship is hard-wrapped at about 55 columns, so my sentinel `WITHOUT WARRANTY OF ANY KIND` spans a line break.
+- ⛔ **Then falsification found the worse one.** I truncated `LICENSE-APACHE` to five lines expecting a refusal and got `rc=0`. All four of my Apache sentinels lived in the title block. A file containing none of the licence passed a gate whose whole job was to assert the licence was there — and my own header comment claimed it caught exactly that.
+- 🔴 **One cause for both: I wrote the fixtures, so they were tidier than the files.** Nobody hand-wraps a fixture at 55 columns. A five-line fixture cannot express the difference between a document and its title block. The self-test was my mental model of the input checked against my mental model of the check; it passes whenever those agree, which is not the property I wanted.
+- ⭐ **Fixtures are now the real files, mutated.** `pathlib.Path("LICENSE-MIT").read_text()`, then truncate/reflow/swap *that*. The self-test now refuses to run if a licence file is absent rather than substituting an invented one and reporting green.
+- ⚠️ **The self-test and the falsification answer different questions, and I had been treating them as one.** The self-test asks whether the classifier is self-consistent. Falsification asks whether it is pointed at reality. Only the second can catch a fixture that lies.
+- ⭐ **Both holes are now PINNED cases carrying a comment saying what deleting them restores.** A regression test that does not say what it protects looks like a duplicate to whoever tidies next.
+- ⚠️ **And the gate found a number I had published four times.** "Ten manifests" appeared in the leaf, the blocker register, `LIVE_STATUS` and the book. It is 13. I never measured it — I only had to enumerate the manifests once the gate needed to iterate them. A wrong count that changes no conclusion is the kind nobody re-checks, including me.
+
 ## 2026-09-15 — I overstated a security finding, and only a different question caught it
 
 - Four hours after publishing the §16.12 line-(4) finding I opened `git.rs` to start repairing it, and found `GitFetcher::classify` — a pre-flight that handles IP literals explicitly. My published claim said the initial URL was unclassified and that the DNS hook was the "ONLY destination control". Both were wrong. The defect is the redirect hops alone.

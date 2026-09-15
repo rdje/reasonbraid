@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Grant the licence the manifests have been declaring (`SIGNOFF-REPAIR.13.2`)
+
+✅ **Blocker B5 is closed, and with it the last row that named the director.** The repository declared `MIT OR Apache-2.0` in every manifest and contained no licence text at all. A licence expression is metadata; the operative default for a **public** repository without the texts is ordinary copyright, so readers held none of the rights the expression appeared to offer.
+
+- **Shipped:** `LICENSE-APACHE` and `LICENSE-MIT` at the root, a four-line `## License` section in `README.md`, and `scripts/check_licence_grant.sh` registered as the **9th project-specific check** inside `PROJECT-SPECIFIC` (the enforcer's top-level count stays at 18). Copyright holder: **Richard DJE** — the one input not derivable from the tree. ⚠️ `git log` shows a committer, which is evidence of authorship and not a statement of ownership; inferring one from the other is exactly the guess a legal document must not contain.
+- ⛔ **The EXPRESSION is untouched.** The choice was made when the first manifest was written. Narrowing or broadening it here would have been a relicensing act wearing the clothes of a completion.
+- ⭐ **Neither text was typed.** `LICENSE-APACHE` is byte-identical (`cmp -s`) to the copy **104 crates** in this workspace's own registry ship; `LICENSE-MIT`'s body is whitespace-identical to the copy **127 crates** ship. A licence's operative content is its exact words, and a *plausible* paraphrase is the dangerous kind — nothing in a fluent reconstruction signals which clause drifted.
+- ⚠️ **Correction inside the same commit: "ten manifests" was never measured.** This leaf, the blocker register, `LIVE_STATUS.md` and the book all said ten. The census says **13** — the workspace root plus 12 crates, 5 literal and 8 inherited. Named at every site rather than silently swapped. ⭐ It survived because a wrong count that changes no conclusion is the kind nobody re-checks; it was caught only because the new gate had to enumerate the manifests to gate them.
+- ⛔ **487 commits of project history passed under every gate set this project has ever had, and not one of those sets contained a licence check** — `git log --oneline -- 'scripts/check_licence*'` returns nothing before this commit, and the current 18-doctrine set has only been in force for 67 of them (since `86dd272`). They governed documents, code, tables and claims, and none governed the grant. `LICENCE-GRANT` closes both directions: a declared identifier must have its text, **and a licence file must be named by the declared expression**, since a file left behind after an expression changes still reads as an offer.
+- 🔴 **Falsifying the new gate found two defects in it, and its self-test was green through both.** Sentinels were literal substrings while the real MIT text is hard-wrapped at ~55 columns, so the gate **failed a perfectly valid licence**; and all four Apache sentinels sat in the first five lines, so a five-line stub passed. Both because the fixtures were hand-written and therefore tidier than the shipped files. Fixtures are now the real files mutated, sentinels span the whole document with a length floor, and both holes are pinned as named cases. Promoted to `docs/knowledge/a-self-test-cannot-be-tidier-than-the-real-input.md`.
+- ✅ **A1 closes in the same pass**: its register row still called it "the only item genuinely awaiting a director decision" after REPAIR-0196 had dissolved the question — a stale row on the table built to stop rows going stale.
+- ⛔ **B4 is unaffected.** A licence grants permissions in the work; it says nothing about the name on it, and `ReasonBraid` remains an uncleared working name.
+- Record: `docs/decisions/2026-09-15_licence-granted-mit-or-apache-2.md`. Public register: `docs/book/src/blockers.md`.
+
 ## 2026-09-15 — Correct a security finding I overstated the same day (`SIGNOFF-REPAIR.11.4.7.1`, `.7.2`)
 
 ⛔ **The §16.12 line-(4) finding published four hours earlier was broader than the truth, and this corrects it at every site rather than editing it away.** The defect is real and still open; it is **narrower and sharper** than I wrote.
@@ -302,60 +316,26 @@ The director asked *"do you stand by your findings?"* — `docs/CLAIM_VERIFICATI
 - Falsified twice and observed red both times, through the instrument and through the registered enforcer; both restored to rc=0.
 - Validation: `--self-test` 49 controls (42 before), `--classified` 110 rows clean, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema or test changed.
 
-## 2026-09-14 — Ask the renderer, not the specification (`SIGNOFF-REPAIR.11.9.1.1.3`, tranche 2 complete)
-
-- **Tranche 2c reconciled the last four source-census records — `R-76-77-2`, `R-87-1`, `R-88-1`, `R-90-1` — into 38 clause rows**: 21 `owned`, 11 `attach`, 6 `handled`, **0 `unowned`**. Tranche 2 is complete at 14 records and 84 clauses.
-- **No new repair leaf was opened, and that is the measurement.** Tranches 2a and 2b each found a clause no leaf covered and opened `.11.10` and `.4.1.6`. Every one of these 38 reached an existing owner, because `.11.2` and `.11.3` already own the bootstrap, the doctrine gates and the backup/restore/dev/demo/load scripts.
-- 🔴 **`check_table_arity.sh` disagrees with the renderer that publishes this project's book, and its own self-test locks the error in.** The gate exists to catch GFM's silent cell-dropping; its splitter treats a pipe inside an inline code span as part of the cell. Asked of mdbook/pulldown-cmark directly, a two-column row reading `` \| `x \| y` \| 2 \| `` renders as **two** cells and the `2` is discarded. Census over 322 tracked markdown files: the gate finds **0** defective rows, the renderer's rule finds **2** — both confirmed by rendering them.
-- 🔴 **One of the two is the doctrine registry's own row.** `DOCTRINE_ENFORCEMENT.md:39` renders its third cell as a bare `—`, so the published page never names `scripts/check_tree_index_frontier.sh` as `INDEX-FRONTIER`'s enforcer. It is deliberately left unrepaired as the last real-world specimen, so `.11.2` can falsify its parser repair against a row it did not write.
-- 🔴 **`RECONCILIATION.md:111` was the other, in this leaf's own deliverable**, truncating the `R-53-2` Evidence cell at "three `.map_err(". Repaired here, with the superseded text named.
-- 🔴 **`pipefail` does not fix the demonstration's negative controls**, which is the record's own proposed remedy refuted by measurement: the four-way truth table is rc=0 in every cell, because `!` negates a pipeline whose status is 1 whether the CLI failed or simply matched nothing.
-- 🔴 **The load harness reports `PASS: every command committed` for a run that issued zero requests** (`--commands 0` and `--commands -5` both satisfy its exit gates), and issues 104 for a requested 100.
-- 🔴 **7 of the 9 doctrine checks that consume the staged file list then read the worktree**, `check_task_tree_ownership` among them; **`check_docpaths.sh` cannot see `/Volumes`**, this checkout's own prefix; and **the handoff census prints `handoff: OK` at rc=0 when both its process censuses fail**, while its `ps -Ao` arm covers 620 rows across 40 uids where its documentation claims one.
-- ⛔ **Refuted and recorded rather than dropped:** `R-87-1`'s premise that this project retains `MAINTAINING.md` is false, and was false at the census baseline. The sentinel finding stands; the framing that placed this repository in the blast radius does not.
-- **11 `attach` clauses written into `.5.2`, `.11.2` and `.11.3` in this commit**, per the ledger's rule; 26 of 26 `attach` rows verified present in their owners' sections by hand. **Promoted:** "ask the renderer, not the specification" (`TOOLBOX.md`).
-- Validation: `--classified` 110 rows clean, `--self-test` 42 controls, 18 doctrines green, `mdbook build` rc=0, `git diff --check` rc=0. No product code, schema, test or script changed.
-
-## 2026-09-14 — Graded on the question, and one claim failed (`SIGNOFF-REPAIR.11.9.1.1`, `.11.11` opened)
-
-- The director asked whether I trusted the session's findings. The claim standard treats that as the grading event and its pass condition is answering yes in one word, with no keyboard. I could not, so I re-derived twelve published claims by routes different from the ones that produced them.
-- **Eleven held.** The certification count (3 of 6 invariants asserted per run) re-derives from the arm structure — three early-return pushes are mutually exclusive. The reconciler never reads `git.effective`: a grep for the field finds only comments and its declaration. `filter_profile` emits exactly fourteen fields, neither of the two the record named. `regions::route` still has no production caller. The sizing re-derives at 2,554 / 7,192 / 2.82×. All **15** `attach` rows are present in their owner leaves — I did not repeat tranche 1's mistake. The first `declined` row holds: the module carries exactly one wire-absence claim and it is about hidden fields.
-- 🔴 **One failed, and it was mine.** The eight uncited-but-named records were published with LINE NUMBERS. Two of the eight were stale before the session ended, having moved as this tree grew above them. A line number into a growing file is the `LIVE-DOC-CURRENCY` failure in another costume: true when written, false the next commit, and nothing checks it. All eight are now located by the heading they sit under, and the superseded form is named rather than quietly replaced.
-- ⚠️ A second, softer correction: the reproduction for that number reports **13** today rather than 8, because a `## Commit acceptance` heading is not a leaf heading either and five of this session's own blocks name records. The 8 is a true statement about the population at leaf-open, not a stable quantity — now said so.
-- The grading also produced a tracked gate candidate rather than a note. `SIGNOFF-REPAIR.11.11`: `attach` is the only ledger state whose next action is a sentence in someone else's leaf, and `--classified` cannot see whether it was written. Censused before proposing — 15 rows, **0 breaching today, 3 of 3 at tranche 1's close** — which is the shape this project allows a gate to have.
-- Validation: 18 doctrines green, `mdbook` rc=0. Documentation only.
-
-## 2026-09-14 — A host claim is checked where a human typed it (`SIGNOFF-REPAIR.4.1.6`)
-
-- Reproduced through the supported routes: a non-ASCII host claim was accepted at token issuance and panicked when the node redeemed it. The node received a dropped connection rather than an answer; the server kept serving; no node row was written; and the token was left unconsumed.
-- That last fact is the one the opening inference had not reached. An outstanding unused token refuses a second issuance for the same node id, so the node id could not be enrolled until the token lapsed — bounded to the token's lifetime (an hour by default, a day at most), and bounded only because `SIGNOFF-REPAIR.4.1.1` already supersedes a lapsed token.
-- Two changes. `issue_node_leaf` returns a result instead of unwinding — a function whose only way to report a bad caller string is to panic leaves its caller's typed error path unreachable — and the issuance route checks the claim beside the node-id shape and the lifetime range, because that is where an operator typed it. The first makes the failure answerable; the second makes it unreachable.
-- The accepted set is deliberately unchanged: the check asks the certificate library rather than restating a grammar, so it narrows nothing and cannot drift from what issuance would have done. Whether a stricter host-name grammar should bind is deferred with its compatibility question named, in `docs/decisions/2026-09-14_host-claim-checked-at-issuance.md`.
-- Validation: 82 live tests across five suites and 103 library tests, rc=0; strict all-target lint on the server rc=0. Falsified in two halves, each hitting a disjoint control: removing the issuance check gave 18 passed / 1 failed with `left: 200, right: 400`; restoring the panic under the unchanged signature gave 19 passed / 2 failed, reproducing the transport error a second time.
-- One documented wire narrowing on `POST /v1/nodes/enroll-tokens`; no migration and no schema change.
-
-## 2026-09-14 — The first declined clause, and asking the library instead of the call site (`SIGNOFF-REPAIR.11.9.1.1.2`)
-
-- Tranche 2b classified 19 clauses over four records: 1 handled, 8 owned, 8 attach, 1 unowned, and the ledger's **first `declined`** row. That state was put in the vocabulary before any instance existed, because a deliberate rejection is invisible to every search; the first one is a clause whose mechanism is real and whose asserted contradiction is not.
-- One clause could not be settled by reading — `expect panic if malformed host` — because what the certificate library calls malformed is not knowable from the call site. A probe asked it: of eight host claims, rcgen 0.14.10 refused exactly one, the non-ASCII one. An empty string, 300 characters, `not a dns name!!`, `*.example.com` and `..` were all accepted.
-- That produced two findings pointing opposite ways. The panic is real and reachable — the host claim travels unvalidated from token issuance to enrolment and is handed to an `expect` — and it is much narrower than "malformed" suggests. And the accept set is far wider than a DNS name, so the certificate's host binding is effectively unvalidated, which is the larger finding and not the one the record named. New owner `.4.1.6`, opened with the sample explicitly labelled a sample and the blast radius explicitly not claimed.
-- All eight `attach` clauses were written into the leaves that own them in this same commit, under the rule added one commit ago: a completion invariant that accepts a failure as completion and an unbounded drain (`.10.2`); a certificate authority signed for a year with no renewal and a leaf never compared against its issuer (`.4.1`); a visibility default that publishes eleven of fourteen fields while its documentation promises self-only, a reversed doc example beside correct code, and a "full profile" reader that never receives two fields (`.5.1`); and a publication commit whose object id changes every second while its own documentation calls it idempotent (`.9.2`).
-- Validation: `--classified` 72 clause rows, ledger clean; `--self-test` 42 controls; uncited 106 → 102; 18 doctrines green; `mdbook build` rc=0. No product code, test or script changed — the probe was an untracked file, run once and removed.
-
-## 2026-09-14 — A failed read is not a verdict about the site (`SIGNOFF-REPAIR.11.10`)
-
-- `regions::route` converted any `sqlx::Error` into a routing refusal. Reproduced with the probe declaring its own premise first: `dev-local` is a seeded declaration, and with the pool closed the routing answered ``the region `dev-local` is undeclared — the routing refuses``. A statement about the site's configuration, produced by a failure that touched no configuration.
-- The same repair already existed one module away, with its reason in its own source: `SIGNOFF-REPAIR.3.2.1` put the `pair` verb on the site-authority service because "an unavailable database must never masquerade as an undeclared region". The review record named `pair` **and** `route`; only `pair` was reached, and the clause reconciliation found the other half.
-- A new `RouteError` keeps the two families apart — `Refused(RegionRefusal)` for a verdict reached by reading the configuration, `Storage(sqlx::Error)` for a decision that could not be made. `RegionRefusal` is byte-identical, variants and wording, because the phase acceptance and the operator contract rest on those names. The storage message names neither the region nor "undeclared".
-- Reachability stated honestly: `route` has no production caller today. It was repaired now rather than left to the store-and-forward lane that will inherit it, because an inheriting leaf censuses its own goal line.
-- Validation: `run_pg_tests.sh regions` 3 passed / 0 failed, rc=0; strict clippy on the crate's lib and this test rc=0 with no warnings; `cargo fmt --all -- --check` rc=0. Falsified against the exact superseded mechanism — the `map_err` restored under the new signature gives `2 passed; 1 failed`, the single failure this leaf's control naming `Refused(UndeclaredRegion { region: "dev-local" })`, with the other two tests still green.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated sixteen times;
+the rotation contract in `README_POLICY.md`. This file has rotated seventeen times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the SEVENTEENTH rotation (2026-09-15)
+from the repository root:
+
+```bash
+git show 143d7a3c9167b5df39faa0473d8e1ba082c6f8ee:CHANGELOG.md
+```
+
+That snapshot is 93,783 bytes and contains 29 dated entries; its Git blob is
+`1f82dd9504e85ed96c6a027d3d21cb5c8bbad0f7`, and its SHA-256 is
+`804dadbb42ec9d1031c946455d76a754f26b5ceecf58cb4c4ee20766ab88a4df`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-14 — Ask the renderer, not the specification (`SIGNOFF-REPAIR.11.9.1.1.3`, tranche 2 complete)`.
+It carries the SIXTEENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the SIXTEENTH rotation (2026-09-14)
 from the repository root:

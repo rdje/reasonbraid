@@ -93,4 +93,19 @@ if ! python3 -B scripts/census_record_reconciliation.py --classified >/dev/null 
     exit 1
 fi
 
+# The declared licence and the granted texts may not drift apart
+# (`SIGNOFF-REPAIR.13.2`). Blocker B5 was exactly this gap held open for the life
+# of the project: all 13 tracked manifests declared `MIT OR Apache-2.0` and the
+# repository contained no licence text at all, so a public repo offered readers a
+# grant it had never made. ⭐ Measured before registering: this gate fires on 0
+# breaches today and would have fired on every commit before the one that adds
+# it — the REASON-CODE-DOC shape, catching the next drift rather than presenting
+# a backlog. ⛔ It is two-directional on purpose: a licence FILE that no manifest
+# declares is also a breach, because a file left behind after an expression
+# changes still reads as an offer.
+if ! scripts/check_licence_grant.sh >/dev/null 2>&1; then
+    scripts/check_licence_grant.sh >&2
+    exit 1
+fi
+
 exit 0

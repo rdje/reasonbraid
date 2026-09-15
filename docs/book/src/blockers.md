@@ -13,19 +13,9 @@ days with every individual rule followed.
 
 ## Blocked on a decision only the director can make
 
-| # | Blocker | What it is waiting for | What it does **not** block |
-| --- | --- | --- | --- |
-| **A1** | An administrative read of `/v1/admin/metrics` leaves **no record of who took it** | A choice between three route shapes, each with a real cost: requiring `?tenant_id=` **breaks every existing caller**; making it optional-unless-you-hold-two-admin-grants turns a working request into a failing one later; deriving the tenant from the admitting grant is non-breaking but needs a new authority-selection path | Access. The hole that let a **revoked** boundary keep this surface open is closed and controlled. What remains is the audit record and the route's width |
-| **B5** | The licence is **declared but not granted** — ten manifests say `MIT OR Apache-2.0` and **the repository contains no licence text at all** | One fact: the **copyright holder's name**. Nothing else is open — which licences, their texts and where they go all follow from the declarations already in the tree | Building and testing. But it does affect anyone reading this public repository: a manifest's licence expression is metadata, not a grant, so absent the text the default is ordinary copyright and a reader has none of the rights the expression appears to offer |
-
-⚠️ **B5 is not an open choice, and the distinction matters if you are reading
-this repository.** The licence was chosen — `MIT OR Apache-2.0`, the Rust
-ecosystem's conventional dual licence — and declared in the workspace manifest and
-every crate. What is missing is the `LICENSE-MIT` and `LICENSE-APACHE` files that
-turn that declaration into a grant. Nothing in the dependency graph constrains the
-choice: every dependency licence is permissive, and the single file-level copyleft
-one is used unmodified. The project enforces a licence policy on what it consumes
-while granting nothing for what it publishes, and that is the gap.
+**Nothing, as of 2026-09-15.** Both rows that stood here are cleared, and *how*
+they cleared is worth more than the fact that they did — see
+[Cleared](#cleared) at the foot of this page.
 
 ## Blocked on the outside world
 
@@ -83,3 +73,24 @@ The internal one now has a measured answer, recorded in
 missing is the coverage measurement that would let each line be counted again,
 which is a different activity. The gate's conclusion is unchanged: **NOT MET for
 Internet exposure**, and the original record is added to rather than edited.
+
+## Cleared
+
+A row leaves the register above when it is cleared, and lands here with the date
+and the reason. This section exists so that a reader who saw a blocker can find
+out what happened to it, rather than watching it disappear.
+
+| # | Was blocking | Cleared | How |
+| --- | --- | --- | --- |
+| **A1** | An administrative read of `/v1/admin/metrics` left no record of who took it | 2026-09-15 | ⭐ **The question dissolved under measurement.** It was held two days for a choice between three route shapes, and all three shared a false premise — that the route must *name* a tenant. It does not: a principal belongs to exactly one tenant structurally, so the tenant is derivable from the authenticated caller. No wire change, no broken caller, no new authority-selection path. The read now commits a record bound to the caller's own tenant |
+| **B5** | The licence was declared in all 13 manifests and **granted nowhere** | 2026-09-15 | The copyright holder supplied the one fact only he held. `LICENSE-MIT` and `LICENSE-APACHE` now ship at the repository root, carrying the texts the declarations already named. Both were **copied from licence files shipped by crates in this workspace's own dependency graph and checked byte-for-byte**, not reproduced from memory — a paraphrased licence is not a licence |
+
+⚠️ **A1 is the one to learn from, and the lesson is not that held decisions
+dissolve.** It is that A1 sat for two days with nobody testing its premise,
+because *held for a decision* reads like a settled state rather than like work
+still owed. The instruction that cleared it — unblock the blockers, with a
+rationale — is what prompted anyone to check whether the question was real.
+
+⛔ Clearing B5 does **not** touch B4. A licence grants copyright permissions in
+the work; it says nothing about the name on it, and the public-name clearance
+above is a separate external gate.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Bind the idempotency hash to the command's target (`SIGNOFF-REPAIR.3.4.6`)
+
+🔴 **A caller addressed one thread and was handed another thread's event as its own result.** `request_hash` covered the operation, the actor, the body and the authority context — never the target.
+
+- **Reproduced before repairing.** The same actor, body and idempotency key against a *different thread in the same tenant* answered `200` with `"replayed":true`, carrying the first thread's `thread_id` and `event_id`. Thread two was never looked at: the idempotency claim is step 1 and authorization is step 2.
+- **Why it was possible:** a thread command's thread arrives as a PATH segment, the typed bodies carry `tenant_id` but no `thread_id`, and `migrations/0001_atomic_transaction.sql:39` keys `idempotency` on `(tenant_id, idempotency_key)` — tenant-wide.
+- **Fix:** `request_hash` gains `target: Option<&str>`, appended as `\ntarget={id}` only when present; all eleven operations of `POST /v1/threads/{thread_id}/commands` pass the path's thread.
+- ⭐ **The target is bound exactly where a caller can vary it independently of the key.** Three callers pass none, each with a structural reason at its own call site: a creation has no thread and its target is the tenant (already the idempotency primary key's first column); the MCP respond tool fixes the thread inside its key, and binding it there would change the key and turn an old call's replay into a **duplicate contribution**; a node result is keyed by the server-assigned `command_id`.
+- ⚠️ **The migration answer is not the previous one's.** Every historical key for those eleven operations now conflicts instead of replaying — the safe direction — while creation, MCP and node-result keys hash byte-identically and keep replaying. The leaf says which keys break rather than claiming none do.
+- **Verified:** 6 suites, 66 tests, zero failures. **Falsified** against the exact unrepaired sources: 38 passed / 1 failed. The same control asserts the committed-replay contract in its last arm, so a hash that merely stopped matching would fail it.
+
 ## 2026-09-16 — The qualified run finishes, and the deadline now bounds what it is about (`SIGNOFF-REPAIR.11.4.8`)
 
 ✅ **The workspace is green in ONE completed run: 103 suites, 816 passed, 0 failed, 3 ignored** — 94 test binaries plus 9 doc-test targets, under the pinned Chrome for Testing runtime, rc=0, `real 30m15.757s`, with zero skips.

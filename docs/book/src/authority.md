@@ -1069,13 +1069,13 @@ all four, on every delegated request:
 The audit record names the **subject** as the authority source, and the actor as
 the actor; forwarding preserves both.
 
-#### The idempotency key is bound to the authority context
+#### The idempotency key is bound to the authority context and the target
 
-A command's idempotency hash covers the operation, the actor, the request body
-**and the authority context when the request carries one**
-(`SIGNOFF-REPAIR.3.4.2`). It has to, because the idempotency claim is made
-*before* authorization and a replay returns the stored result without evaluating
-anything:
+A command's idempotency hash covers the operation, the actor, the request body,
+**the authority context when the request carries one** (`SIGNOFF-REPAIR.3.4.2`)
+and **the target the command acts on** (`SIGNOFF-REPAIR.3.4.6`). It has to,
+because the idempotency claim is made *before* authorization and a replay
+returns the stored result without evaluating anything:
 
 | | Superseded hash | Now |
 | --- | --- | --- |
@@ -1093,6 +1093,28 @@ is appended only when there is one — so every historical undelegated key keeps
 replaying. A historical *delegated* key now conflicts instead of replaying, which
 is the safe direction: it refuses rather than returning a result decided under a
 different authority.
+
+The **target** half closed a second way for a replay to answer the wrong
+question. A thread command's thread arrives as a path segment and no typed body
+carries it, while `idempotency` is keyed on `(tenant_id, idempotency_key)` — a
+*tenant-wide* key. So the same actor, body and key against a **different thread
+in the same tenant** hashed identically, and the second request replayed the
+first thread's stored result without thread two ever being looked at:
+
+| | Superseded hash | Now |
+| --- | --- | --- |
+| same actor, body and key, against a **different thread** | `200 replayed=true`, carrying thread **one**'s `thread_id` and `event_id` | `409 idempotency_mismatch` |
+| genuine replay: same actor, body, key and thread | the original result | unchanged |
+
+The target is bound exactly where a caller can vary it independently of the key —
+the eleven operations of `POST /v1/threads/{thread_id}/commands`. Three other
+callers pass no target and each has its own structural reason: a **creation** has
+no thread yet and its target is the tenant, which is already the first column of
+the idempotency primary key; the **MCP respond tool** derives its key as
+`mcp_respond_{thread}_{hash}`, so the thread is fixed inside the key; and a
+**node result** is keyed by the server-assigned `command_id`, which belongs to
+exactly one thread. Their historical keys therefore hash byte-identically and
+keep replaying.
 
 #### What `delegable` and `max_delegation_depth` do not do
 

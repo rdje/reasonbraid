@@ -429,11 +429,31 @@ fn delegation_from_envelope(
 /// replaying. A historical DELEGATED key now conflicts instead of replaying,
 /// which is the safe direction (it refuses rather than returning someone else's
 /// result) and is documented as the wire change it is.
+/// The canonical request hash: a WIRE CONTRACT, because the value is stored and
+/// a later request is compared against it.
+///
+/// It binds the operation, the actor, the body, the authority context the
+/// request was made under (`SIGNOFF-REPAIR.3.4.2`) and the TARGET the command
+/// acts on (`SIGNOFF-REPAIR.3.4.6`).
+///
+/// ⛔ `target` is `Some` exactly where the CALLER can vary the target
+/// independently of the idempotency key — which is the eleven operations of
+/// `thread_command`, whose thread arrives as a path segment while the typed
+/// bodies carry only `tenant_id`. Every other caller passes `None` and says
+/// why at its own call site: a creation has no thread yet, and the two
+/// server-keyed surfaces already fix the thread inside the key itself.
+///
+/// Each optional part is appended only when present, so a request that has
+/// neither hashes byte-identically to the original two-part shape and its
+/// historical key still replays. The two suffixes cannot be confused: the
+/// authority context serializes as a JSON object and the target line is
+/// `target=` followed by the id.
 pub(crate) fn request_hash(
     operation: &str,
     principal: &GrantSubject,
     body: &Value,
     authority: Option<&AuthorityContext>,
+    target: Option<&str>,
 ) -> String {
     let mut input = format!(
         "{operation}\n{}\n{}",
@@ -445,6 +465,10 @@ pub(crate) fn request_hash(
         input.push_str(
             &serde_json::to_string(context).expect("the typed authority context serializes"),
         );
+    }
+    if let Some(target) = target {
+        input.push_str("\ntarget=");
+        input.push_str(target);
     }
     let digest = Sha256::digest(input.as_bytes());
     digest.iter().map(|b| format!("{b:02x}")).collect()
@@ -4145,7 +4169,9 @@ async fn create_thread_auto(
     });
     let mut body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-    let hash = request_hash(threads::OP_CREATE, &principal, &body_value, None);
+    // `None` twice: no delegation, and no thread to bind — a creation's target is
+    // the tenant, which the idempotency primary key already carries.
+    let hash = request_hash(threads::OP_CREATE, &principal, &body_value, None, None);
     // `.5.2` (ADR-031): the explicit profile always wins; the routing class
     // resolves through the rule table ONLY when no profile is named (the
     // human authority outranks the rule).
@@ -6460,7 +6486,12 @@ pub(crate) async fn apply_node_result_in_tx(
     } else {
         json!({ "tenant_id": tenant_id.to_string(), "content": content })
     };
-    let hash = request_hash(operation, &principal, &body, None);
+    // `None` for the target: this path's idempotency key is the server-assigned
+    // `command_id`, which belongs to exactly one thread, so no caller can vary
+    // the target under a fixed key. Binding it here would change every stored
+    // hash and turn an in-flight redelivery into a conflict for no gain
+    // (`SIGNOFF-REPAIR.3.4.6`).
+    let hash = request_hash(operation, &principal, &body, None, None);
     let authz = CommandAuthz {
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
@@ -6655,11 +6686,15 @@ async fn create_thread(
     let workflow_steps = resolved.steps;
     body.workflow_profile = Some(resolved.profile_id);
     let tenant_id = body.tenant_id;
+    // `None`: a creation has no thread to bind. Its target is the TENANT, which
+    // is already the first column of `idempotency`'s primary key, so two creates
+    // that differ only in target cannot share a row (`SIGNOFF-REPAIR.3.4.6`).
     let hash = request_hash(
         threads::OP_CREATE,
         &principal,
         &envelope.body,
         envelope.authority_context.as_ref(),
+        None,
     );
     let delegation = delegation_from_envelope(&envelope)?;
     let authz = CommandAuthz {
@@ -6707,6 +6742,13 @@ async fn thread_command(
         ControlApiError::invalid_command(format!("thread_id `{thread_id_raw}` is malformed"))
     })?;
 
+    // The TARGET the command acts on, hashed alongside the body
+    // (`SIGNOFF-REPAIR.3.4.6`). It arrives as a path segment and no typed body
+    // carries it, so without this the same actor, body and key against a
+    // DIFFERENT thread in the same tenant hashed identically and replayed the
+    // first thread's stored result.
+    let target = thread_id.to_string();
+
     // Map the operation to its typed body, authorization action, and tenant scope.
     let (tenant_id, authz_action, hash) = match envelope.operation.as_str() {
         threads::OP_INVITE => {
@@ -6721,6 +6763,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6736,6 +6779,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6751,6 +6795,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6766,6 +6811,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6781,6 +6827,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6796,6 +6843,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6811,6 +6859,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6826,6 +6875,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6842,6 +6892,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6857,6 +6908,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }
@@ -6873,6 +6925,7 @@ async fn thread_command(
                     &principal,
                     &envelope.body,
                     envelope.authority_context.as_ref(),
+                    Some(target.as_str()),
                 ),
             )
         }

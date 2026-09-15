@@ -170,9 +170,15 @@ pub async fn respond(
     // The idempotency key is DETERMINISTIC over (thread, principal, body) —
     // the same call replays the original result (the tool is a replay
     // surface exactly like the HTTP envelope).
-    // `None`: the MCP tool sets no delegate (`delegation: None` below), so
-    // it hashes exactly as it always has (`SIGNOFF-REPAIR.3.4.2`).
-    let hash = crate::api::request_hash(crate::threads::OP_CONTRIBUTE, principal, &body, None);
+    // `None` twice: the MCP tool sets no delegate (`delegation: None` below), and
+    // it binds no target because its KEY already does — `mcp_respond_{thread}_…`
+    // fixes the thread, so the cross-target replay `SIGNOFF-REPAIR.3.4.6` closes
+    // is structurally impossible here. ⛔ Binding it would also change the key,
+    // since the key is derived from the hash: an old call repeated after the
+    // upgrade would find no row and CONTRIBUTE AGAIN rather than replay. A
+    // duplicate effect is a worse answer than a property this surface already has.
+    let hash =
+        crate::api::request_hash(crate::threads::OP_CONTRIBUTE, principal, &body, None, None);
     let key = format!("mcp_respond_{}_{hash}", thread);
     let authz = crate::authority::CommandAuthz {
         actor: actor_handle_for_subject(principal),

@@ -4138,6 +4138,112 @@ async fn a_replay_cannot_cross_a_changed_authority_context() {
     assert_eq!(replayed["replayed"], json!(true), "and says so: {replayed}");
 }
 
+/// 🔴 A replay may not cross a changed TARGET (`SIGNOFF-REPAIR.3.4.6`).
+///
+/// `request_hash` hashed the operation, the actor, the body and the authority
+/// context. The thread a command acts on reaches the handler as a PATH segment
+/// and the typed bodies carry `tenant_id` but no `thread_id`, so it was in none
+/// of the hashed inputs — while `migrations/0001_atomic_transaction.sql` keys
+/// `idempotency` on `(tenant_id, idempotency_key)`, a TENANT-wide key.
+///
+/// So the same actor, body and key against a DIFFERENT thread in the same tenant
+/// hashed identically, and the second request replayed the FIRST thread's stored
+/// result. The claim is made before authorization, so thread B was never even
+/// looked at. Measured on the superseded shape: `200` with `replayed=true`, and
+/// the returned `thread_id` was thread A's.
+///
+/// Both arms are here deliberately. A hash that simply never matched would pass
+/// the first assertion and fail the second — the committed-replay contract.
+#[tokio::test]
+async fn a_replay_cannot_cross_a_changed_target() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "target-hash-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    // Two threads, same tenant, same creator — so nothing but the TARGET differs.
+    let mut threads = Vec::new();
+    for (n, key) in [("one", "key-target-c1"), ("two", "key-target-c2")] {
+        let (status, created) = command(
+            &client,
+            &base,
+            "/v1/threads",
+            &alice_id,
+            &envelope(
+                "thread.create",
+                key,
+                json!({ "tenant_id": tenant, "subject": format!("target {n}"), "objective": "probe" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, 200, "create {n}: {created}");
+        threads.push(created["thread_id"].as_str().unwrap().to_string());
+    }
+    assert_ne!(threads[0], threads[1], "the two threads are distinct");
+
+    let body = json!({ "tenant_id": tenant, "content": "the same words, a different thread" });
+    let key = "key-target-1";
+
+    let (status, first) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{}/commands", threads[0]),
+        &alice_id,
+        &envelope("thread.contribute", key, body.clone()),
+    )
+    .await;
+    assert_eq!(status, 200, "the first contribution lands: {first}");
+    assert_ne!(
+        first["replayed"],
+        json!(true),
+        "the first request is not a replay: {first}"
+    );
+
+    // The same actor, body and key against the OTHER thread. Everything the hash
+    // used to see is identical; only the target differs.
+    let (status, second) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{}/commands", threads[1]),
+        &alice_id,
+        &envelope("thread.contribute", key, body.clone()),
+    )
+    .await;
+    assert_ne!(
+        status, 200,
+        "a changed target is not a replay of the first request: {second}"
+    );
+    assert_eq!(
+        second["code"],
+        json!("idempotency_mismatch"),
+        "it is the same key describing a different request: {second}"
+    );
+
+    // A GENUINE replay — same key, same body, same actor, same TARGET — still
+    // returns the original result. This is the contract the binding must keep.
+    let (status, replayed) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{}/commands", threads[0]),
+        &alice_id,
+        &envelope("thread.contribute", key, body),
+    )
+    .await;
+    assert_eq!(status, 200, "the genuine replay still replays: {replayed}");
+    assert_eq!(replayed["replayed"], json!(true), "and says so: {replayed}");
+}
+
 /// `SIGNOFF-REPAIR.3.5.2` — revoking a boundary closes the metrics surface.
 ///
 /// `GET /v1/admin/metrics` gated on a hand-rolled `SELECT EXISTS(…

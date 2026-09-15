@@ -103,6 +103,50 @@ same evaluation, and the audit row carries the chain.
   re-presentation require the revisit below. Current delegation constraints and
   authority selection are under `SIGNOFF-REPAIR.3.3`/`.3.4` repair.
 
+## Whether a delegated subject consents (`SIGNOFF-REPAIR.3.4.7`)
+
+**It does not, and in the dev profile that is deliberate: a delegation here is
+trusted impersonation inside one tenant, bounded to attribution.** The subject
+is not asked and cannot refuse; what the subject's grant does is supply the
+authority, and what the audit does is name the subject alongside the actor.
+
+**Consent was never a delegation requirement in this project.** Measured, so the
+next reader does not re-derive it: `grep -ic consent ROADMAP.md` returns **8**
+and **zero** of them fall inside §16.3 (lines 1754–1768), which is where the
+delegation invariants live. The roadmap's consent is §4.4's — an enrollment and
+mandate-domain act, carried on the `EnrollmentAuthorityBoundary` as
+`target_disclosure_and_acknowledgement`, shown to the target owner before
+enrollment completes. That is a different mechanism in a different lane. §16.3
+states six invariants and subject consent is not among them. This ADR was silent
+on consent because there was nothing to decide.
+
+**What bounds the consequence to attribution**, each clause pinned by a named
+control rather than by this paragraph:
+
+| The gate | What it refuses | The control that would fail if it went away |
+| --- | --- | --- |
+| the actor's own authority | a delegation the actor could not have made alone — `authorize_in_tx` re-evaluates the caller with `delegation: None` against the SAME action and target, and a denial there denies the whole request | `removal_keeps_tenant_binding_and_delegation_attenuation`, which asserts the refusal text `the caller's own authority failed` |
+| the subject's authority | a subject whose grant does not cover the action or target | `delegation_succeeds_within_the_subjects_grant_and_refuses_widening` |
+| the widening invariant | a claimed scope wider than the subject's grant or narrower than the request's target | `a_delegation_scope_is_the_ceiling_even_for_a_deputy_who_could_act_alone` |
+| participation | an actor who is not a participant of the thread, whoever is named as subject | `a_non_participant_actor_cannot_borrow_participation_by_delegating` |
+
+So a delegation reaches nothing the actor could not reach alone. What the
+subject loses is not access but **narrative**: an authorization record, which
+§16.9 makes high-impact evidence, names a principal as the authority behind an
+act it never agreed to.
+
+⚠️ **That is a real cost and it is accepted rather than dismissed.** It is
+accepted because the alternative is a mechanism this ADR has already subtracted:
+a subject cannot express consent without something for it to issue and something
+to verify — an issuance step, a store, a lifetime and a revocation path, which is
+option 2 wearing a different name.
+
+**Revisit trigger, mechanical rather than atmospheric:** a delegation that can
+cross a tenant boundary, a subject that is not an enrolled principal of the same
+tenant, or any relaxation of the four gates above. Each would break the
+containment that makes attribution the only consequence, and each is visible as a
+failing control rather than as a judgement call.
+
 ## Rollback / revisit trigger
 
 - Multi-hop delegation (depth > 2) or a measured re-presentation cost that

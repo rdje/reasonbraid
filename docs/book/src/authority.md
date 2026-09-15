@@ -1069,6 +1069,31 @@ all four, on every delegated request:
 The audit record names the **subject** as the authority source, and the actor as
 the actor; forwarding preserves both.
 
+#### The subject is not asked, and that is deliberate
+
+**A delegation here is trusted impersonation inside one tenant.** The subject
+does not consent to it and cannot refuse it; its grant supplies the authority and
+the audit names it alongside the actor.
+
+Consent was never a delegation requirement in this project, which is worth saying
+plainly because the word appears elsewhere and means something else. The
+roadmap's consent is §4.4's — an *enrollment* act, carried on the enrollment
+authority boundary as a disclosure shown to the target owner before enrollment
+completes. §16.3, where the delegation invariants live, states six of them and
+subject consent is not among them.
+
+Because the four gates above hold, **a delegation reaches nothing the actor could
+not reach alone**. What the subject loses is not access but narrative: an
+authorization record — which §16.9 treats as high-impact evidence — names it as
+the authority behind an act it never agreed to. That cost is accepted rather than
+dismissed, and the reasoning is recorded in ADR-009: a subject cannot express
+consent without something to issue and something to verify, which is the
+capability-token option that ADR subtracted, wearing a different name.
+
+It is revisited if a delegation can ever cross a tenant boundary, if a subject
+need not be an enrolled principal of the same tenant, or if any of the four gates
+is relaxed — each of which fails a named control rather than needing a judgement.
+
 #### The idempotency key is bound to the authority context and the target
 
 A command's idempotency hash covers the operation, the actor, the request body,

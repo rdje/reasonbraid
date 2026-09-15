@@ -36,7 +36,12 @@ clippy:
 
 test:
 	$(PROJECT_RUN) cargo build --workspace --bins --locked
-	$(PROJECT_RUN) python3 -B scripts/ci_browser.py -- cargo test --all --locked --no-fail-fast
+# Build the test targets BEFORE entering the browser harness: its deadline should
+# bound test EXECUTION, not a compile. Measured at SIGNOFF-REPAIR.11.4.8 — a cold
+# tree spent so long compiling inside the harness that the run was cut off at 78 of
+# 94 binaries, while the same work on a warm tree executes in 1,817 s.
+	$(PROJECT_RUN) cargo test --all --locked --no-run
+	$(PROJECT_RUN) python3 -B scripts/ci_browser.py --timeout 5400 -- cargo test --all --locked --no-fail-fast
 
 # Supply-chain checks (wired into .github/workflows/supply-chain.yml — see docs/ci.md).
 deny:

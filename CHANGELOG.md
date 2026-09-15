@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The qualified run finishes, and the deadline now bounds what it is about (`SIGNOFF-REPAIR.11.4.8`)
+
+✅ **The workspace is green in ONE completed run: 103 suites, 816 passed, 0 failed, 3 ignored** — 94 test binaries plus 9 doc-test targets, under the pinned Chrome for Testing runtime, rc=0, `real 30m15.757s`, with zero skips.
+
+- ⭐ **The arithmetic against the previous measurement is exact.** `SIGNOFF-REPAIR.11.4.7.2.2` measured 815 passed / 1 failed over the same 94 binaries; this run measures 816 / 0. One test moved and nothing else did — the control REPAIR-0202 repaired.
+- 🔴 **The first attempt was cut off** at 78 of 94 binaries by `ci_browser.py`'s own `COMMAND_SECONDS = 3600` cap, the first timeout in 16 receipts. The deadline was bounding a COMPILE: the same 94 binaries execute in **1,816.78 s** on a warm tree.
+- **Fix, in two places rather than by raising a number:** `make test` and `.github/workflows/rust.yml` run `cargo test --all --locked --no-run` before entering the browser harness, and pass `--timeout 5400` for the workspace run. `COMMAND_SECONDS = 3600` stays the script default for the crate-scoped runs the book documents, which finish in 31 s.
+- **The three acquisition phases, measured separately** by watching the harness's own fsynced receipt: download **51.54 s** (191,016,009 bytes, ~3.7 MB/s), extract + binary SHA-256 **0.63 s** (675 entries, 375,683,518 expanded bytes), version check **1.86 s** — **55.27 s** total.
+- ⛔ **A cache was refused on that number.** Acquisition is **3.0%** of the run and 93% of it is the download. The per-call fetch provides *these bytes, verified by this process on this invocation*; a cache provides bytes verified earlier plus a re-hash. Nearly the same is not the same, and the price of the difference is 52 seconds.
+- ⚠️ **The cold path is not re-measured.** 5400 rests on two observations, not a third run from a wiped tree; macOS's ~21.9 s first-execution validation per freshly written binary stays inside the harness because `--no-run` does not move it. The instrument that settles it is the remote runner — blocker **C1**.
+- **Artifact retirement, censused first:** `target/ci-browser/` went from **2.2 G** to **542 M**. Three retained failure payloads were retired to their receipts alone (each carries `archive_sha256` and `binary_sha256`, so the payload is byte-reproducible from the pin); `mac-arm64-0281kcb0` is kept because a tracked evidence record says it remains preserved.
+
 ## 2026-09-15 — The suite had been picking its own browser (`SIGNOFF-REPAIR.11.4.7.2.4`)
 
 ⭐ **A pin a second path can bypass is not a pin.** The only failing test in 94 binaries was a control qualified against the pinned Chrome for Testing runtime, being evaluated against whatever browser the host happened to have installed.

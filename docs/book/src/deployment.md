@@ -301,9 +301,24 @@ x86-64/ARM64 have exact archive size/SHA-256 pins; other platforms refuse.
 
 Both workspace runs pass `--no-fail-fast`. Cargo's default stops at the first
 failing test binary, which reached 11 of 94 here and left four crates unmeasured;
-`--no-fail-fast` reaches all 94 for 319.3 seconds of test execution. A command
-whose job is to report the workspace's state cannot report it from 11 binaries.
-A crate-scoped run during development keeps the default early stop.
+`--no-fail-fast` reaches all 94. A command whose job is to report the workspace's
+state cannot report it from 11 binaries. A crate-scoped run during development
+keeps the default early stop.
+
+Both also build the test targets with `cargo test --all --locked --no-run`
+*before* entering the browser launcher, and give the launcher `--timeout 5400`.
+The launcher's deadline should bound test **execution**, not a compile: a cold
+tree once spent so long compiling inside it that the run was cut off at 78 of 94
+binaries, while the same work on a warm tree executes in **1,816.78 seconds**.
+The launcher's own default stays 3600 seconds, which is the right bound for the
+crate-scoped invocations below — those finish in about 31 seconds.
+
+A completed workspace run under the pinned runtime measures **103 suites, 816
+passed, 0 failed, 3 ignored** across 94 test binaries and 9 doc-test targets, in
+`real 30m15.757s`. Acquiring the browser is 55.27 seconds of that — download
+51.54 s for 191,016,009 bytes, extraction and the binary's SHA-256 0.63 s, the
+version check 1.86 s — about 3% of the run, which is why each call keeps its own
+verified download rather than a cache.
 
 ```bash
 # Verify download, installation and version only.

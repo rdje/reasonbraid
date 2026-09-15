@@ -3131,7 +3131,21 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - ⚠️ **This is DEPENDENCY drift, not advisory-database drift against a fixed graph.** `git show ecceb8d:Cargo.lock | grep -c '^name = "rustls"$'` returns **0** — rustls entered the graph after Phase 1 (positive control: the same command for `tokio` returns **1**).
 - Owns: taking the upgrade, re-running the gate, and deciding whether `cargo update -p rustls` alone is right or the lockfile wants a wider refresh. ⚠️ A lockfile change is a supply-chain change: state what moved and what did not.
 - Acceptance: `cargo deny check` rc=0 with all four sections ok; the diff to `Cargo.lock` is enumerated rather than summarised; the workspace builds and its suites pass afterwards; and the leaf records whether any OTHER advisory was masked by the run stopping at the first.
-- Verification / commit: pending.
+- Status: `done`; REPAIR-0199. `cargo update -p rustls` — `rustls 0.23.43 → 0.23.45`. `cargo deny check` now returns **`advisories ok, bans ok, licenses ok, sources ok`**, rc=0.
+- ⭐ **The lock diff is FOUR LINES, enumerated rather than summarised**, which is the whole reason the acceptance asked for it: a lockfile bump is a supply-chain change, and "just a patch update" is a claim about a file nobody read.
+  ```
+  3824c3824  < version = "0.23.43"      > version = "0.23.45"
+  3826c3826  < checksum = "0283386c…"  > checksum = "0d41d731…"
+  ```
+  ⛔ Nothing transitive moved. `cargo update` reported `Locking 1 package to latest compatible version` and named 37 unchanged dependencies behind latest, which are deliberately left alone: this leaf owns ONE advisory, not a lockfile refresh.
+- **No other advisory was masked.** `cargo deny` does not stop at the first finding — it reports all four sections every run, and the failing run's advisories block contained exactly one `error[vulnerability]` (`grep -c '^error\[vulnerability\]'` = 1, `grep -c '^warning\['` = 0).
+- ⭐ **The exposure, stated at its real width rather than as "a TLS vulnerability".** RUSTSEC-2026-0285: rustls accepted TLS 1.3 handshake messages sent at the wrong encryption level when they followed a key-changing message in the same record (RFC 8446 §5.1 requires terminating with `unexpected_message`). ⛔ The handshake transcript stays AUTHENTICATED, so a network-position attacker cannot alter or complete a handshake; the practical effect is that a peer may send in plaintext what should have been encrypted without rustls rejecting the connection. Functionally the same bug as Go's CVE-2025-61730.
+- **NO REGRESSION, and it is the strongest evidence this tree has had all session:** `cargo test --all --locked --no-fail-fast` reaches **94 test binaries**, **102 suites ok / 1 failed**, **815 tests passed / 1 failed**. The single failure in the entire workspace is `.11.4.7.2.4`'s known browser control, which predates this change and reproduces without it.
+- ⭐ **That run also ANSWERS `.11.4.7.2.4`'s `--no-fail-fast` question with a measurement rather than a preference.** Default fail-fast reached **11** binaries and left four crates unknown; `--no-fail-fast` reached **94** and turned "unknown" into "one known failure". Cost: **319.3 s** of test execution, dominated by one 135.23 s suite. ⚠️ The verdict belongs to `.11.4.7.2.4`, which owns it — recorded here because this leaf is what produced the number.
+- ⛔ No product code, schema, migration, test or script changed. `Cargo.lock` is the entire diff.
+- promotion: declined. The method exercised — enumerate a dependency diff instead of summarising it — is an instance of `docs/knowledge/a-census-is-an-instrument-not-a-table`, not a new statement.
+- Verification: `cargo deny check` rc=0; `cargo test --all --locked --no-fail-fast` 815 passed / 1 pre-existing failure; `make gate` 18 checks rc=0.
+- Commit: `REASONBRAID-REPAIR-0199 (leaf SIGNOFF-REPAIR.11.4.7.2.2): take the rustls advisory, and enumerate the four lines it moved`.
 
 #### SIGNOFF-REPAIR.11.4.7.2.3 — The secret scan is red on a test fixture
 
@@ -3157,6 +3171,7 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - ⛔ **Do NOT resolve this by loosening the assertion to accept either value.** REPAIR-0089 explicitly refused that, for a stated reason: the control would stop proving that the deadline cancels a real in-flight navigation. Whatever is chosen must keep that proof.
 - ⚠️ And do not resolve it by widening the 30-second budget: `NAVIGATION_WINDOW` is the thing under test, the render reaches ~40 s against it, and the budget was already refused as a fix once.
 - ⭐ Worth asking while here: whether the workspace run should use `--no-fail-fast`, so one environment-sensitive control cannot hide the state of four crates. ⚠️ That is a measurement about run time, not a preference — price it.
+- ⭐ **PRICED, at `.11.4.7.2.2` (REPAIR-0199), and the number settles it.** Default fail-fast reaches **11** test binaries and leaves `cli`, `core`, `node` and `server` UNKNOWN. `--no-fail-fast` reaches **94**: **102 suites ok / 1 failed, 815 tests passed / 1 failed**, in **319.3 s** of test execution (one suite is 135.23 s of that). ⛔ So the cost of knowing is not extra failures — there is exactly ONE failure in the whole workspace, this one — it is run time on a run that already takes minutes. ⚠️ This leaf still owns the DECISION and where it belongs (`make test`? a pre-push path?); what it no longer owns is the measurement.
 - Acceptance: the failure is reproduced and attributed to (a) or (b) with runtime evidence, never to "flaky"; the repair keeps REPAIR-0089's proof that the deadline cancels a real navigation; `cargo test --all --locked` reaches every crate afterwards and its result is recorded whatever it is; and if `--no-fail-fast` is adopted, the timing census that justified it is in the leaf.
 - Verification / commit: pending.
 

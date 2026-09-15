@@ -40,6 +40,17 @@ told you it is incomplete; only the counts are quotable, and only for what ran.
 green" it does — the run needs `--no-fail-fast`, priced against its cost. Fail-fast
 is right for a tight edit loop and wrong for a claim about a workspace.
 
+⭐ **Priced, on the run that produced this note** (`SIGNOFF-REPAIR.11.4.7.2.2`):
+
+| | binaries reached | result | test execution |
+| --- | --- | --- | --- |
+| default (fail-fast) | **11** | 10 suites ok, 80 tests, 4 crates UNKNOWN | — |
+| `--no-fail-fast` | **94** | 102 suites ok / 1 failed, **815 passed / 1 failed** | **319.3 s** |
+
+⛔ The cost of knowing was **not** a pile of new failures — there was exactly ONE
+failure in the whole workspace, the same one that had been hiding the other four
+crates. The cost was run time, on a run that already took minutes.
+
 ## Was it flaky? Two load states before that word
 
 A failure observed **once** is a joint claim about the code *and* the machine it

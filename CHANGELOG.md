@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Take the rustls advisory, and enumerate the four lines it moved (`SIGNOFF-REPAIR.11.4.7.2.2`)
+
+✅ **One of the three red things is now green.** `cargo deny check` returns `advisories ok, bans ok, licenses ok, sources ok`, rc=0.
+
+- `cargo update -p rustls` — `0.23.43 → 0.23.45`, for **RUSTSEC-2026-0285**. ⭐ The lock diff is **four lines**, enumerated in the leaf rather than summarised: a lockfile bump is a supply-chain change, and "just a patch update" is a claim about a file nobody read. Nothing transitive moved; the 37 other dependencies behind latest are deliberately untouched, because this leaf owns one advisory and not a refresh.
+- ⭐ **The exposure at its real width:** rustls accepted TLS 1.3 handshake messages sent at the wrong encryption level after a key-changing message in the same record. ⛔ The transcript stays authenticated, so this is not handshake forgery — the effect is that a peer may send in plaintext what should have been encrypted without rustls rejecting it.
+- **No other advisory was masked**: `cargo deny` reports all four sections every run, and the failing run carried exactly one `error[vulnerability]` and zero warnings.
+- 🔴 **NO REGRESSION, measured with the strongest run this project has had:** `cargo test --all --locked --no-fail-fast` reaches **94 test binaries** — **102 suites ok / 1 failed, 815 tests passed / 1 failed**. The single failure in the entire workspace is `.11.4.7.2.4`'s known browser control, which predates this change.
+- ⭐ **That also prices `--no-fail-fast`, which `.11.4.7.2.4` asked for as a measurement rather than a preference.** Default fail-fast reached **11** binaries and left `cli`, `core`, `node` and `server` unknown; `--no-fail-fast` reached **94**, at **319.3 s** of test execution (one suite is 135.23 s of that). The cost of knowing was run time, not extra failures.
+
 ## 2026-09-15 — Re-derive G1–G2's sixteen claims, and find three things red right now (`SIGNOFF-REPAIR.11.4.7.2`)
 
 🔴 **The verdicts are the smaller half. The finding is that `make deny`, `make secret-scan` and the workspace test suite all FAIL today — and nothing has been running the first two since Phase 1.**

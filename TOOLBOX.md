@@ -73,38 +73,52 @@ The practical consequence is a number to plan with: **one more integration-test
 file costs about 22 seconds of every future checkpoint here**, whatever it
 tests. Publish that, and the next throughput argument is about evidence.
 
-### And a BLOCKED process looks exactly like a slow one — one command tells them apart
+### A blocked process looks exactly like a slow one — and one run tells you neither
 
-A second instance of the same mechanism, measured by `SIGNOFF-REPAIR.9.2.1.1`,
-with a discriminator worth keeping. `cargo check -p reasonbraid-server --tests`
-appeared to be crawling. It was not running at all:
+`SIGNOFF-REPAIR.9.2.1.1` watched `cargo check -p reasonbraid-server --tests`
+apparently crawl, and it was not running at all:
 
 ```bash
 for i in 1 2 3 4; do ps -o time= -p "$(pgrep -n rustc)"; sleep 5; done
 ```
 
-`0:03.84` four times. A slow process accumulates CPU; a blocked one does not, and
-**wall clock cannot tell you which you have**. The rest of the picture agreed:
-all threads in state `S`, the incremental dep-graph file byte-identical across
-the window, `taskpolicy -B` changing nothing, and `sample` unable even to attach
-(rc=124 at a 60 s timeout). A machine-wide census — `ps -eo pid,etime,time,command
-| grep -E "cargo|rustc"` — found no competing build, which is what retired the
-obvious "contention" explanation before it could be written down.
+`0:03.84` four times. **A slow process accumulates CPU; a blocked one does not,
+and the wall clock cannot tell you which you have.** That much is durable, and it
+is the reason to reach for `ps -o time=` before forming any opinion.
 
-⭐ **The fix was accidental and is the transferable part.** Reading the dependency
-metadata sequentially — `cat target/debug/deps/*.rmeta > /dev/null`, 3.8 GB by
-`du -ch`, ~25 s — cleared it, and the same command then completed in 2 m 39 s.
-The completed runs say the same thing without any drama: **2 m 39 s wall for 46 s
-user**, and the lib-only check **3 m 01 s wall for 5.8 s user + 11.3 s sys**, about
-**9 % CPU utilisation**.
+🔴 **Everything that leaf then concluded from it was wrong, and `.9.2.1.1.1`
+(DOC-0018) had to withdraw it.** The mistakes are worth more than the conclusion:
 
-⛔ The consequence for this project is a vocabulary correction, not a repair: every
-build-cost sentence here — the two-hour checkpoint included — has been describing
-an **I/O-bound** workload in CPU-bound language, and a decomposition that rests on
-"this build is expensive" should say *expensive against what*. ⚠️ A build cost
-measured on a contended machine with a cold cache and one measured idle and warm
-are not the same number disagreeing; they are two numbers answering different
-questions, and only one of them is usually the reader's.
+- **It published a point estimate for a quantity whose spread is 4.5×.** Three
+  runs of the same command, same work each time: **627.0 s, 148.9 s, 140.7 s**.
+  The leaf published *2 m 39 s* from one warm run and used it to contradict an
+  earlier ">10 minutes" note — which run 1 reproduces.
+- **It divided two arms by hand and reported one answer for both.** `--tests` ran
+  at **207 %** of a core and the lib-only check at **9 %**, a factor of 22, and
+  they were published adjacent as though they agreed.
+- **It named a mechanism this project had already adjudicated the other way.**
+  `docs/decisions/2026-09-12_checkpoint-cost-model.md` had measured the same
+  blocked-on-this-volume signature and attributed it to macOS first-execution
+  validation, naming `syspolicyd` — which the leaf independently observed at 74 %
+  and did not look up. `docs/CLAIM_VERIFICATION.md` leg 2 says the cheapest
+  oracle is your own project's history, and that the earlier ruling wins unless
+  you can name a difference. None was named.
+
+⭐ **What the interval actually shows, and it is the useful part.** The CPU work is
+constant — total CPU per run **340.0 s, 324.5 s, 309.0 s**, a spread of 31 s —
+while the wall clock moves by a factor of 4.5. The build does the same work every
+time; what changes is how long it waits. Run 1 spent about **472 s not computing**.
+
+⇒ The practical rules, in the order they would have saved the work above:
+
+1. **`ps -o time=` twice** before deciding a process is slow.
+2. **Three runs, reported as an interval**, before publishing a duration. One run
+   per arm is how *"these agree"* gets published when the within-arm spread is
+   larger than the difference.
+3. **Let the instrument compute the ratio.** `scripts/measure_check_phases.py`
+   now records `user_seconds`, `system_seconds` and `cpu_percent` per phase, and
+   its `--self-test` arms are the three measurements that were got wrong.
+4. **Search your own decisions directory before naming a mechanism.**
 
 ## Measure the population before proposing the rule over it
 

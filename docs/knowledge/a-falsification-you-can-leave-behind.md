@@ -72,6 +72,18 @@ containment's verdict about *that root* and nothing else.
 - **It reads as documentation.** The pair states the contract: this location is
   outside *this* root, and inside *that* one.
 
+## The honest limit of the instance above
+
+The refusal was observed **once**, in one session, by one harness. It is not
+re-derivable by a later reader, and it was deliberately **not** retested with
+different phrasing — working out whether a denial can be talked around is not a
+thing to spend a session on, and the answer would not change the rule.
+
+⭐ That limit is also the argument. The rule does not rest on *why* the
+neutralization was unavailable; it rests on the matched pair being the better
+control once you have written one. The type-changing case (1) reaches the same
+place with no harness involved at all.
+
 ## When it does not apply
 
 Some repairs have no such knob — the fix is unconditional, and there is no input

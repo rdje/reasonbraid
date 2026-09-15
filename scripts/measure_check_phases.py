@@ -29,6 +29,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import resource
 import subprocess
 import sys
 import time
@@ -79,6 +80,15 @@ def run_phase(
     environment: dict[str, str],
 ) -> dict[str, object]:
     log = directory / f"{name}.log"
+    # `SIGNOFF-REPAIR.9.2.1.1.1`: the CPU a phase actually consumes, recorded
+    # here rather than left to a reader's division. REPAIR-0190 published one
+    # phase's utilisation ratio beside another's and called them the same
+    # number; they were 9 % and 207 %, and the arm reporting 207 % was spending
+    # almost all of it in the KERNEL. A wall clock alone cannot tell a process
+    # that is blocked from one that is busy in a syscall, and that distinction
+    # is the whole difference between "this volume is slow" and "this work is
+    # expensive". `RUSAGE_CHILDREN` accumulates, so each phase takes a delta.
+    before = resource.getrusage(resource.RUSAGE_CHILDREN)
     started = time.monotonic()
     with log.open("wb") as handle:
         completed = subprocess.run(
@@ -91,19 +101,41 @@ def run_phase(
             check=False,
         )
     elapsed = time.monotonic() - started
+    after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    user = after.ru_utime - before.ru_utime
+    system = after.ru_stime - before.ru_stime
     record = {
         "phase": name,
         "command": command,
         "returncode": completed.returncode,
         "seconds": round(elapsed, 3),
+        "user_seconds": round(user, 3),
+        "system_seconds": round(system, 3),
+        # Percent of ONE core. Above 100 means several cores were busy; well
+        # below 100 means the phase spent its wall clock waiting rather than
+        # computing. Reported, never inferred.
+        "cpu_percent": cpu_percent(user, system, elapsed),
         "log": str(log.relative_to(ROOT)),
     }
     print(
         f"{name}: rc={completed.returncode} seconds={elapsed:.1f} "
+        f"user={user:.1f} sys={system:.1f} cpu={record['cpu_percent']}% "
         f"log={record['log']}",
         flush=True,
     )
     return record
+
+
+def cpu_percent(user: float, system: float, elapsed: float) -> float | None:
+    """CPU consumed as a percentage of ONE core, or None when unmeasurable.
+
+    A phase that took no measurable wall time has no meaningful ratio, and
+    returning 0.0 for it would read as "this phase was idle" — the exact
+    misreading this field exists to prevent.
+    """
+    if elapsed <= 0:
+        return None
+    return round((user + system) / elapsed * 100, 1)
 
 
 def cargo_reported_seconds(log: Path) -> float | None:
@@ -134,6 +166,65 @@ def harness_reported_seconds(log: Path) -> tuple[int, float]:
     return len(values), round(sum(values), 2)
 
 
+def self_test() -> int:
+    """Two-sided controls over the utilisation ratio (`.9.2.1.1.1`).
+
+    ⛔ These are the arms that would have stopped REPAIR-0190 publishing a
+    wrong number. It measured two real phases, divided both by hand, and
+    reported ONE ratio for both — 9 %, which was the idle arm's. The busy arm
+    was 207 %, and 198 % for a third. The arms below are those exact
+    measurements, so a change that makes the two indistinguishable fails here.
+    """
+    failures = 0
+
+    # The real measurements REPAIR-0190 took, with the answers it should have
+    # published. `--tests` and clippy are BUSY across several cores; the
+    # lib-only phase is genuinely idle. One instrument, three phases, and the
+    # spread between them is the finding.
+    for label, user, system, elapsed, want in [
+        ("cargo check --tests", 46.515, 282.784, 159.014, 207.1),
+        ("cargo check (lib only)", 5.836, 11.282, 181.718, 9.4),
+        ("cargo clippy --all-targets", 47.093, 267.743, 158.723, 198.4),
+    ]:
+        got = cpu_percent(user, system, elapsed)
+        if got != want:
+            print(f"SELF-TEST: {label} -> {got}, want {want}", file=sys.stderr)
+            failures += 1
+
+    # The busy and the idle arm must not be confusable. Stated as its own
+    # control rather than left implicit in the three above, because "they
+    # agreed" is precisely the claim that failed.
+    busy = cpu_percent(46.515, 282.784, 159.014)
+    idle = cpu_percent(5.836, 11.282, 181.718)
+    if busy is None or idle is None or busy < idle * 10:
+        print(
+            f"SELF-TEST: a busy phase ({busy}%) must be an order of magnitude "
+            f"above an idle one ({idle}%)",
+            file=sys.stderr,
+        )
+        failures += 1
+
+    # Kernel time counts. A phase burning its wall clock in syscalls is BUSY,
+    # and dropping system time would report it as idle — the opposite reading.
+    if cpu_percent(0.0, 120.0, 60.0) != 200.0:
+        print("SELF-TEST: system time must count toward utilisation", file=sys.stderr)
+        failures += 1
+
+    # An unmeasurable ratio is None, never 0.0: zero reads as "idle", which is
+    # a claim, and this instrument has none to make about a phase it could not
+    # time.
+    for elapsed in (0.0, -1.0):
+        if cpu_percent(1.0, 1.0, elapsed) is not None:
+            print(f"SELF-TEST: elapsed={elapsed} must yield None", file=sys.stderr)
+            failures += 1
+
+    if failures:
+        print(f"measure_check_phases --self-test: {failures} control(s) FAILED", file=sys.stderr)
+        return 1
+    print("measure_check_phases --self-test: 8 controls pass")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -142,7 +233,15 @@ def main() -> int:
         choices=[name for name, _, _ in PHASES],
         help="measure only these phases (repeatable); default is every phase",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run this instrument's own controls and exit",
+    )
     arguments = parser.parse_args()
+
+    if arguments.self_test:
+        return self_test()
 
     ambient = dict(os.environ)
     toolchain = toolchain_directory(ROOT, ambient)

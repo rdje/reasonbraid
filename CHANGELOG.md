@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## 2026-09-15 — The build-cost finding did not survive its own grading (`SIGNOFF-REPAIR.9.2.1.1.1`)
+
+The director asked whether the findings had legs. One of them did not. Graded on `docs/CLAIM_VERIFICATION.md` §4.1's three axes, separately:
+
+- **PROSE — fails.** *"This build is I/O-bound against the external repository volume"* and *"the mechanism is not CPU contention at all"* were never established.
+- **NUMBER — one fails.** *"About 9 % CPU utilisation"* is true of the lib-only arm and false by a factor of **22** of the `--tests` arm it was published beside (**207 %**).
+- **NAMED INSTANCE — fails, and that axis has no tolerance band.** *"The completed runs say the same thing"* is false; they disagree by more than an order of magnitude.
+
+🔴 **Re-derived as an interval, and the interval refutes the correction as well as the mechanism.** Three runs of the same command, same work each time, ratio computed by the tracked function rather than by hand:
+
+| run | wall | user | sys | cpu % |
+| --- | --- | --- | --- | --- |
+| 1 (coldest) | **627.0 s** | 49.7 s | 290.3 s | **54.2 %** |
+| 2 | 148.9 s | 37.1 s | 287.4 s | **217.9 %** |
+| 3 | 140.7 s | 34.7 s | 274.3 s | **219.7 %** |
+
+- ⛔ **The CPU work is constant; the wall clock is not.** Total CPU per run 340.0 / 324.5 / 309.0 s — a 31 s spread — against a wall clock moving **4.5×**. The build does the same work every time; what changes is how long it waits. Run 1 spent about **472 s not computing**.
+- 🔴 **Run 1 exceeds ten minutes, so `.9.2.1`'s original note was right and my correction of it was wrong.** It recorded ">10 minutes" under measured contention; I contradicted it from one warm run. Both are true, of different cache states, and neither is "the" build cost. A point estimate for a quantity whose own spread is 4.5× reads as precision and is luck — `CLAIM_VERIFICATION`'s stochastic rider, exactly.
+- ⛔ **The mechanism is withdrawn, not replaced.** Run 1's ~472 s of non-CPU wall time is real and unexplained here. It is *consistent* with `docs/decisions/2026-09-12_checkpoint-cost-model.md`'s adjudicated cost (~21.9 s per newly-written executable; 472/21.9 ≈ 22, the right order for this crate's proc-macro dylibs) — but consistency is not evidence, and that ruling's signature is `user 0.00 sys 0.00` while run 1 burned 340 s of CPU. **The earlier ruling stands as the leading candidate.**
+- 🔴 **The real failure was leg 2, and the standard names it.** *"The cheapest oracle is your own project's history… if you cannot name a difference, the earlier ruling wins."* That ruling had already adjudicated this exact signature and names `syspolicyd` — which I observed at 74 % and did not look up.
+- ⭐ **The leg-3 gap is closed where it belongs.** `scripts/measure_check_phases.py` now records `user_seconds`, `system_seconds` and `cpu_percent` per phase, so the ratio comes from the instrument instead of a reader's division — and it gains a `--self-test` whose arms **are** the three measurements that were got wrong, so a change making a busy phase indistinguishable from an idle one now fails a control. It had none before, so it was one of the eleven the `SELF-TEST` gate did not reach.
+- **What survives, with its conditions instead of as a fact about the crate:** warm, **141–149 s at ~218 % CPU**; cold, **627 s at 54 %**.
+
 ## 2026-09-15 — Publishing requires an authority the caller holds, not merely enrolment (`SIGNOFF-REPAIR.9.2.1.2`)
 
 `publish_publication` and `mark_publication_effective` each checked `reader_tenant(…).is_some()` and nothing else. **Enrolment in any tenant was the whole predicate** for writing a publication into a Git repository and for declaring one effective. This closes the last of `.9.2.1`'s three children, and with it the parent.
@@ -38,6 +61,7 @@
 - ⚠️ **Falsified by a matched pair rather than by neutralizing the shipped predicate, and the reason is recorded rather than hidden**: the harness refused the source weakening as a security change. The contrast is stronger anyway because it is **durable** — the same three locations, against a server whose declared root is the directory above, are now *accepted* and reach the record exactly as a legitimate location does. One knob moves; the legs flip. A neutralization would have proved the same thing once and left nothing behind.
 - ⚠️ Two limits stated rather than implied, in the leaf and in the book: containment is decided once per request against the filesystem as it then stands, so a symlink swapped before `gix::open` would not be seen; and the verb is still authorized by **enrolment alone** — that is `.9.2.1.2`, unchanged here.
 - ⛔ **A new wire code, with the population it moves pinned.** `publication_repository_unconfigured` is an `ext` code, the documented forward-compatible path, and touches no frozen document. The census now reads **19 emitted, 10 unregistered, 0 undocumented**; `.11.7.1` owed a verdict on nine and now owes one on ten, pinned at `2e72571` so the correction is visible rather than silent.
+- ⛔ **SUPERSEDED — the bullet below is preserved as written and is wrong in three ways; see the 2026-09-15 `.9.2.1.1.1` entry at the top of this file.** Its duration is one warm run of a 4.5×-spread quantity, its "9 %" belongs to a different arm than the one beside it, and its mechanism is withdrawn.
 - ✅ **`.9.2.1`'s build-cost note was re-measured, as it asked.** `cargo check -p reasonbraid-server --tests` finished in **2 m 39 s**, rc=0 — not the ">10 minutes" the decomposition recorded. ⛔ The two numbers answer different questions rather than contradicting each other, exactly as that note predicted: it measured a contended machine with a cold cache. 🔴 **And the re-measurement found the real mechanism, which is not CPU contention at all**: the first attempt sat at **3.84 s of CPU across 6 minutes**, blocked with all four threads asleep and its dep-graph file byte-identical, and cleared only after 3.8 GB of `.rmeta` was pulled into the page cache. The completed run spent **2 m 39 s wall for 46 s user**; the lib-only check, **3 m 01 s wall for 5.8 s user** — about 9 % CPU. This build is I/O-bound against the external repository volume. Evidence for `docs/decisions/2026-09-12_checkpoint-cost-model.md`, not a change to it.
 
 ## 2026-09-14 — Three repairs were sharing one leaf (`SIGNOFF-REPAIR.9.2.1`)

@@ -1805,7 +1805,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": ["abc123", "def456"], "repo_path": "live" }),
+        &json!({ "git_object_ids": ["abc123", "def456"], "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 400, "a fabricated object id refuses: {refused}");
@@ -1826,7 +1826,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": [object_ids[0].clone(), "def456"], "repo_path": "live" }),
+        &json!({ "git_object_ids": [object_ids[0].clone(), "def456"], "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(
@@ -1856,7 +1856,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
+        &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 200, "the publication marks effective: {effective}");
@@ -1920,7 +1920,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub/effective",
         &human_id,
-        &json!({ "git_object_ids": ["zzz"], "repo_path": "live" }),
+        &json!({ "git_object_ids": ["zzz"], "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 400, "the terminal re-transition refuses: {refused}");
@@ -2231,7 +2231,7 @@ async fn the_publish_verb_drives_the_git_half() {
         &base,
         "/v1/policy-publications/pu-pub/publish",
         &human_id,
-        &json!({ "repo_path": "not-a-repository" }),
+        &json!({ "repo_path": "not-a-repository", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 400, "the non-repository refuses: {refused}");
@@ -2262,7 +2262,7 @@ async fn the_publish_verb_drives_the_git_half() {
         &base,
         "/v1/policy-publications/pu-pub/publish",
         &human_id,
-        &json!({ "repo_path": "live" }),
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 200, "the publish drives the git half: {published}");
@@ -2277,7 +2277,7 @@ async fn the_publish_verb_drives_the_git_half() {
         &base,
         "/v1/policy-publications/pu-pub/publish",
         &human_id,
-        &json!({ "repo_path": "live" }),
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 400, "the terminal re-publish refuses: {refused}");
@@ -2328,8 +2328,12 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `.9.2.1.2`: the verb is now behind a held authority, so every leg below
+    // carries one — otherwise they would all be refused before the path is
+    // ever looked at, and this control would stop measuring containment.
+    let grant_id = format!("grt_{human_id}");
 
-    let publish = |base: String, principal: String, path: &'static str| {
+    let publish = |base: String, principal: String, grant: String, path: &'static str| {
         let client = client.clone();
         async move {
             post(
@@ -2337,14 +2341,20 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
                 &base,
                 "/v1/policy-publications/pc-absent/publish",
                 &principal,
-                &json!({ "repo_path": path }),
+                &json!({ "repo_path": path, "owning_authority": grant }),
             )
             .await
         }
     };
 
     // Leg A — `..` walks out of the configured root.
-    let (status, refused) = publish(base.clone(), human_id.clone(), "../outside").await;
+    let (status, refused) = publish(
+        base.clone(),
+        human_id.clone(),
+        grant_id.clone(),
+        "../outside",
+    )
+    .await;
     assert_eq!(status, 400, "the `..` escape refuses: {refused}");
     assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
     assert!(
@@ -2357,7 +2367,8 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
 
     // Leg B — a SYMLINK inside the root walks out of it. Every component the
     // caller named is inside the root, so a string containment test admits it.
-    let (status, refused) = publish(base.clone(), human_id.clone(), "escape").await;
+    let (status, refused) =
+        publish(base.clone(), human_id.clone(), grant_id.clone(), "escape").await;
     assert_eq!(status, 400, "the symlink escape refuses: {refused}");
     assert!(
         refused["message"]
@@ -2374,7 +2385,7 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
         &base,
         "/v1/policy-publications/pc-absent/publish",
         &human_id,
-        &json!({ "repo_path": outside.to_string_lossy() }),
+        &json!({ "repo_path": outside.to_string_lossy(), "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 400, "the absolute escape refuses: {refused}");
@@ -2390,7 +2401,7 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
     // refused by the publication lookup instead. Without this the three
     // refusals above are equally consistent with a verb that refuses
     // everything.
-    let (status, refused) = publish(base.clone(), human_id.clone(), "live").await;
+    let (status, refused) = publish(base.clone(), human_id.clone(), grant_id.clone(), "live").await;
     assert_eq!(
         status, 400,
         "an inside location reaches the lookup: {refused}"
@@ -2409,7 +2420,13 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
     // differs only in whether a root is declared. If the 503 came from
     // anywhere else, leg D would not answer 400.
     let unconfigured = TestServer::start(&pool).await;
-    let (status, refused) = publish(unconfigured.base(), human_id.clone(), "live").await;
+    let (status, refused) = publish(
+        unconfigured.base(),
+        human_id.clone(),
+        grant_id.clone(),
+        "live",
+    )
+    .await;
     assert_eq!(status, 503, "an unconfigured deployment refuses: {refused}");
     assert_eq!(
         refused["code"],
@@ -2435,7 +2452,7 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
             &wider.base(),
             "/v1/policy-publications/pc-absent/publish",
             &human_id,
-            &json!({ "repo_path": requested.to_string_lossy() }),
+            &json!({ "repo_path": requested.to_string_lossy(), "owning_authority": grant_id }),
         )
         .await;
         assert_eq!(status, 400, "{label}: {answered}");
@@ -2449,6 +2466,159 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
     }
 
     let _ = std::fs::remove_dir_all(&fixture);
+}
+
+/// `SIGNOFF-REPAIR.9.2.1.2` — both publication verbs checked
+/// `reader_tenant(…).is_some()` and nothing else, so enrolment in ANY tenant
+/// was the whole predicate for writing a publication into a Git repository and
+/// for declaring it effective.
+///
+/// Six legs over two tenants, on BOTH verbs. ⭐ The load-bearing pair is
+/// "names a grant" against "holds a grant": grant ids here are derivable
+/// (`grt_<principal_id>`), so a check that only asked whether an active grant
+/// EXISTS would be no check at all — which is exactly what `.9.3.1` found
+/// conflated on three other surfaces.
+#[tokio::test]
+async fn the_publication_verbs_require_an_authority_the_caller_holds() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let (repo_root, object_ids) = seeded_publication_repository("authority");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pa-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "pa-bob" })).await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let bob_grant = format!("grt_{bob_id}");
+    assert_ne!(
+        alice["tenant_id"], bob["tenant_id"],
+        "the two enrolments mint distinct tenants"
+    );
+
+    // A STAGED publication, seeded directly. The full proposal -> decision ->
+    // approval -> projection -> publication chain is already driven end to end
+    // by `the_publish_verb_drives_the_git_half`; re-deriving it here would put
+    // the thing under test — the authority binding — behind a second copy of
+    // that pipeline (the shape `citing_an_authority_requires_holding_it` uses).
+    sqlx::query(
+        "INSERT INTO policy_publications \
+         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, manifest_digest) \
+         VALUES ('pa-pub', 'pa-prp', 'pa-dec', 'pa-app', 'pa-proj', 'staged', $1)",
+    )
+    .bind(DIGEST)
+    .execute(&pool)
+    .await
+    .expect("the staged publication seeds");
+
+    let effective_body = |grant: &str| {
+        json!({
+            "git_object_ids": object_ids.clone(),
+            "repo_path": "live",
+            "owning_authority": grant,
+        })
+    };
+
+    // Leg A — an enrolled principal naming NO authority is refused by both
+    // verbs. Enrolment used to be the whole predicate.
+    for (verb, path) in [
+        ("publish", "/v1/policy-publications/pa-pub/publish"),
+        ("effective", "/v1/policy-publications/pa-pub/effective"),
+    ] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            path,
+            &alice_id,
+            &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
+        )
+        .await;
+        assert_eq!(
+            status, 400,
+            "{verb} without an authority refuses: {refused}"
+        );
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap()
+                .contains("owning_authority"),
+            "{verb}: {refused}"
+        );
+    }
+
+    // Leg B — naming an authority that is real, active and held by SOMEONE
+    // ELSE is refused by both verbs. ⭐ This is the leg that distinguishes
+    // holding from naming: `bob_grant` is derivable from bob's principal id,
+    // which alice can read off any response.
+    for (verb, path) in [
+        ("publish", "/v1/policy-publications/pa-pub/publish"),
+        ("effective", "/v1/policy-publications/pa-pub/effective"),
+    ] {
+        let (status, refused) =
+            post(&client, &base, path, &alice_id, &effective_body(&bob_grant)).await;
+        assert_eq!(
+            status, 403,
+            "{verb} under another principal's grant refuses: {refused}"
+        );
+        assert_eq!(refused["code"], json!("unauthorized"), "{verb}: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains("HOLDS"),
+            "{verb}: {refused}"
+        );
+    }
+
+    // Leg C — THE MATCHED PAIR for leg B: the same request, the same verb, the
+    // same everything except WHOSE grant is named, now passes the gate. If the
+    // refusals above came from anything but the holding check, this would be
+    // refused too.
+    //
+    // `publish` gets past the gate and is stopped by the projection the seeded
+    // row names, which does not exist — a LATER refusal, and therefore proof
+    // that the authority check admitted it.
+    let (status, admitted) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pa-pub/publish",
+        &alice_id,
+        &effective_body(&alice_grant),
+    )
+    .await;
+    assert_eq!(status, 400, "the holder is admitted: {admitted}");
+    assert_eq!(
+        admitted["code"],
+        json!("invalid_command"),
+        "the holder's refusal is not an authority refusal: {admitted}"
+    );
+    assert!(
+        !admitted["message"].as_str().unwrap().contains("HOLDS"),
+        "the holder is past the authority gate: {admitted}"
+    );
+
+    // And `effective` completes for the holder, so the positive arm is a real
+    // success rather than only a different refusal.
+    let (status, marked) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pa-pub/effective",
+        &alice_id,
+        &effective_body(&alice_grant),
+    )
+    .await;
+    assert_eq!(status, 200, "the holder marks effective: {marked}");
+    assert_eq!(marked["state"], json!("effective"), "{marked}");
+
+    let _ = std::fs::remove_dir_all(&repo_root);
 }
 
 #[tokio::test]
@@ -2659,7 +2829,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                     &base,
                     &format!("/v1/policy-publications/{publication_id}/effective"),
                     &human_id,
-                    &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
+                    &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": grant_id }),
                 )
                 .await;
                 assert_eq!(status, 200, "the publication marks effective");
@@ -3009,7 +3179,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
                 &base,
                 &format!("/v1/policy-publications/{publication_id}/effective"),
                 &human_id,
-                &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
+                &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": grant_id }),
             )
             .await;
             assert_eq!(status, 200, "the publication marks effective");

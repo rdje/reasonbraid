@@ -18,7 +18,8 @@ rb-server listening on http://127.0.0.1:4310 (Phase 0 dev profile)
 ### Where publications are written
 
 `POST /v1/policy-publications/{id}/publish` writes a publication into a local
-bare Git repository. **The server decides which filesystem it may write to, not
+bare Git repository. It takes an `owning_authority` the caller holds (see
+[Who may publish](#who-may-publish) below). **The server decides which filesystem it may write to, not
 the caller.** `--publication-repo-root` declares one directory; the request's
 `repo_path` names a location *inside* it, relative to it or absolute, and
 anything that resolves outside is refused with `invalid_command`:
@@ -51,7 +52,11 @@ the request carries a `repo_path` naming the repository the ids are claimed to
 live in, resolved inside the configured root exactly as the publish verb's is:
 
 ```json
-{ "repo_path": "live", "git_object_ids": ["b45ef6f…", "9f2c1a0…"] }
+{
+  "repo_path": "live",
+  "owning_authority": "grt_hpr_…",
+  "git_object_ids": ["b45ef6f…", "9f2c1a0…"]
+}
 ```
 
 `repo_path` is **required**. A transition that cannot say which repository it is
@@ -67,15 +72,36 @@ repository that cannot be opened at all is reported as a repository failure
 rather than as a verdict about the ids — an unreadable store must not read as a
 forged publication.
 
-⚠️ Three honest limits. The containment decision is made once per request,
+### Who may publish
+
+Both verbs used to admit **any enrolled principal**: enrolment in any tenant was
+the whole predicate for writing a publication into a Git repository and for
+declaring one effective. They now require an `owning_authority` — a grant the
+caller **holds**:
+
+```text
+403 unauthorized — the publication verbs require an authority the caller HOLDS
+```
+
+Naming a grant is not holding one. Grant ids are derivable from a principal id,
+so a check that asked only whether an active grant *exists* would be no check at
+all; the server compares the grant's subject to the authenticated caller.
+
+⚠️ **How far that scopes, stated plainly rather than implied.** A grant cannot
+currently *name* a publication: no grant action and no target selector in the
+authority vocabulary can express one, so a held grant is effectively
+**tenant-wide** for these verbs. Holding is strictly stronger than enrolment and
+is the best today's model expresses; narrowing it is tracked under
+`SIGNOFF-REPAIR.9.3.4`. Do not read the refusal above as meaning a caller is
+confined to a particular publication.
+
+⚠️ Two further honest limits. The containment decision is made once per request,
 against the filesystem as it stands then; a symlink swapped between that check
-and the repository being opened would not be seen. An object is proved to
+and the repository being opened would not be seen. And an object is proved to
 **exist**, not to be this publication's own — a sibling repository inside the
 configured root holding a matching id would satisfy the check, and binding the
 ids to the publication's own refs needs the repository recorded alongside the
-publication. And both verbs are still authorized by enrolment alone — binding
-them to a held grant is tracked separately under `SIGNOFF-REPAIR.9.2.1.2`, and
-until it lands any enrolled principal can publish into the configured root.
+publication.
 
 ## The flow
 

@@ -3194,6 +3194,7 @@ async fn list_publications(
 /// deployment's configured root exactly as the publish verb's is — a required
 /// field, and a wire-contract change to a shipped verb, because a transition
 /// that cannot say which repository it is talking about cannot check anything.
+/// `.9.2.1.2`: the caller also names an `owning_authority` it HOLDS.
 async fn mark_publication_effective(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
@@ -3207,6 +3208,10 @@ async fn mark_publication_effective(
             "an unenrolled principal marks nothing effective",
         ));
     }
+    // `.9.2.1.2`: authorized BEFORE anything is parsed out of the body or
+    // looked up, so an unauthorized caller learns nothing about the request
+    // they were not entitled to make.
+    held_publication_authority(&state, &principal, &body).await?;
     let git_object_ids: Vec<String> = body
         .get("git_object_ids")
         .and_then(|v| v.as_array())
@@ -3259,6 +3264,45 @@ async fn mark_publication_failed(
     }
 }
 
+/// Both publication verbs are bound to a grant the caller HOLDS
+/// (`SIGNOFF-REPAIR.9.2.1.2`), in the shape `deployments::register_target`
+/// already uses: the request names an `owning_authority` and
+/// [`authority::grant_held_by`] decides.
+///
+/// ⛔ That is THE predicate (`.9.3.1`), never a sixth spelling of the question.
+/// Naming a grant and holding one are exactly what that repair found conflated
+/// on three surfaces, and grant ids here are derivable (`grt_<principal_id>`),
+/// so "names an active grant" is not a check at all.
+///
+/// ⛔ ONE definition for the two verbs, rather than the same five lines twice:
+/// they do not share a core to put it in, so the shared thing is this function,
+/// and a later change cannot move one verb without the other.
+///
+/// ⚠️ **A limit this cannot fix and must not imply away** (`.9.3.4`): no
+/// `GrantAction` and no `TargetSelector` can NAME a publication, so a held grant
+/// is effectively tenant-wide for these verbs. Holding is strictly stronger than
+/// enrolment and is the best today's vocabulary expresses; the narrowing belongs
+/// to `.9.3.4`, and the book says so rather than implying the verb is scoped.
+async fn held_publication_authority(
+    state: &ApiState,
+    principal: &GrantSubject,
+    body: &serde_json::Value,
+) -> Result<(), ControlApiError> {
+    let owning_authority = body
+        .get("owning_authority")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ControlApiError::invalid_command("the owning_authority is required"))?;
+    let held = authority::grant_held_by(&state.pool, owning_authority, principal)
+        .await
+        .map_err(|_| ControlApiError::internal())?;
+    if !held {
+        return Err(ControlApiError::unauthorized(
+            "the publication verbs require an authority the caller HOLDS — naming a grant is not holding one",
+        ));
+    }
+    Ok(())
+}
+
 /// Map a publication-repository refusal onto the wire (`.9.2.1.1`).
 ///
 /// The two DEPLOYMENT faults answer `publication_repository_unconfigured`,
@@ -3293,6 +3337,7 @@ fn publication_repository_refused(refusal: crate::publisher::RepositoryRefusal) 
 /// marks effective. The repository is the deployment's CONFIGURED root
 /// (`.9.2.1.1`): `repo_path` names a location inside it and is resolved
 /// against it, and a deployment that declares no root refuses the verb.
+/// `.9.2.1.2`: the caller also names an `owning_authority` it HOLDS.
 async fn publish_publication(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
@@ -3306,6 +3351,10 @@ async fn publish_publication(
             "an unenrolled principal publishes nothing",
         ));
     }
+    // `.9.2.1.2`: authorized BEFORE the path is resolved or the publication is
+    // loaded — an unauthorized caller reaches neither the filesystem nor the
+    // database.
+    held_publication_authority(&state, &principal, &body).await?;
     let requested = body
         .get("repo_path")
         .and_then(|v| v.as_str())

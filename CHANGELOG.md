@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-15 — Publishing requires an authority the caller holds, not merely enrolment (`SIGNOFF-REPAIR.9.2.1.2`)
+
+`publish_publication` and `mark_publication_effective` each checked `reader_tenant(…).is_some()` and nothing else. **Enrolment in any tenant was the whole predicate** for writing a publication into a Git repository and for declaring one effective. This closes the last of `.9.2.1`'s three children, and with it the parent.
+
+- **One definition, two verbs.** `api::held_publication_authority` reads an `owning_authority` from the request and decides with `authority::grant_held_by` — `deployments::register_target`'s shape and `.9.3.1`'s predicate. The two verbs share no core to put the check in, so the shared thing is the function itself, and a later change cannot move one verb without the other. It runs **before** the path is resolved and before the publication is loaded, so an unauthorized caller reaches neither the filesystem nor the database.
+- ⭐ **Naming a grant is not holding one, and that is the load-bearing leg.** Grant ids here are derivable (`grt_<principal_id>`), so a check that asked only whether an active grant *exists* would be no check at all — the exact conflation `.9.3.1` found on three other surfaces. The control names another principal's real, active grant and is refused, beside the matched pair where **only the holder differs** and the same request is admitted.
+- **The positive arm differs by verb, and the difference is stated rather than smoothed over.** `effective` completes for the holder (200, state `effective`). `publish` is admitted and then stopped by the projection the seeded row names — a *later* refusal, asserted to be `invalid_command` and not to carry the authority message, which is what proves the gate let it through; the end-to-end success already lives in `the_publish_verb_drives_the_git_half`.
+- ⚠️ **The limit is RECORDED, not papered over** (`.9.3.4`). No grant action and no target selector can *name* a publication, so a held grant is effectively **tenant-wide** for these verbs. Holding is strictly stronger than enrolment and is the best today's vocabulary expresses; the book says so in its own words rather than implying the verb is narrowly scoped, and `.9.3.4` is promoted to frontier row 1b because this repair has now had to write that caveat in two places.
+- **The wire change's blast radius was measured, not assumed:** `git grep -rn "policy-publications"` over crates, docs, scripts and deploy returns route registrations, handler docs, `rb-server`'s argument help, two book lines and the phase records — and **no client outside `tests/policy.rs`**. Neither the CLI nor the MCP surface drives these verbs.
+- **Verified:** `bash scripts/run_pg_tests.sh policy` → `14 passed; 0 failed`, rc=0.
+- ⭐ **`.9.2.1` is closed, and the decomposition paid for itself**: three separate red-to-green cycles, three bisectable commits, each child's acceptance met on its own evidence — instead of one commit carrying three unrelated repairs, which is what REPAIR-0189 split it up to avoid.
+
 ## 2026-09-15 — A declared Git object id is now looked for before it is recorded (`SIGNOFF-REPAIR.9.2.1.3`)
 
 `publications::mark_effective` took `git_object_ids: Vec<String>`, refused only the empty list, and wrote them into the row. Nothing opened a repository. The publication's Git provenance was whatever the caller said it was.

@@ -223,6 +223,37 @@ group at fifteen records and sixty-nine clauses:
 provider outcome does leave the worker as an error, but the type documents that
 as deliberate and what a caller does next was not measured here.
 
+The fourth group's second part read eight more records — the seven whose
+narrowest candidate is the delegation leaf, plus one folded singleton — and its
+finding is about that leaf rather than about the records. `SIGNOFF-REPAIR.3.4` is
+open, all five of its sub-tasks are finished, and **two of the things its own
+description promises have no sub-task at all**: whether a delegated subject
+consents, and binding a command's replay key to the thread it acts on. The
+description names both in so many words. What hid them is arithmetic nobody
+checked — the sentence recording the split says it drew "five children along the
+four mechanisms the goal line names", and the goal line names five. Both now have
+owners, and the rule the case earns is written where the next split will meet it:
+count what the description promises against what the split delivered, and make
+the sentence recording it reconcile.
+
+That reading added five limitations, and the last of them is about this manual:
+
+| Limitation | Effect | Owner |
+| --- | --- | --- |
+| A role can start an automatic thread exactly **once per tenant, for ever** | The node-initiated creation derives its idempotency key from the role and the tenant alone, and the key table is keyed by tenant and key. A second automatic initiation therefore replays the first thread when the request matches and is refused as a key conflict when it does not. The test covering the surface makes one success and then only policy refusals, so no part of it reaches a second legitimate initiation. | `.5.2` |
+| The Git acquisition opens its repository with the library's **default** permissions, over an untrusted remote | The operator's global and system Git configuration and the Git environment variables are honoured while fetching a caller-supplied URL, against §12.5's default refusal of hooks, filters and alternates. The library ships an isolated mode, documented as prohibiting exactly that, and it is not used. Separate from the repaired question of where the acquisition WRITES. | `.7.2` |
+| Evidence quarantine **does not exist**, in either direction | The snapshot table has carried a quarantine column since it was created, and no code anywhere reads or writes it. The reason code that would report a quarantined snapshot, `evidence_quarantined`, is likewise never emitted — it is already listed on the [errors page](errors.md) among the registered codes this build never sends, and nothing had connected the two facts. | `.7.4` |
+| A citation can be validated against a **tombstoned** snapshot | Deleting a snapshot stamps the row rather than removing it, which is the intended honesty. The citation check and the derivation parent check both join that table without excluding stamped rows, so a deleted snapshot still supports a new assessment. Two sites, one omission. | `.7.4` |
+| Three superseded federation services remain, and **this manual contradicts itself about them** | The three direction verbs were moved onto the guarded, audited shape and the unguarded originals were left in place with no caller. The [authority chapter](authority.md) states under one heading that a card import is now fenced by a revocation from either side, and under another that nothing here can fence it and that the ordering "arrives with" the change that has already landed. The error understates what is protected, so nothing unsafe follows from it. | `.3.3.4.12.2` |
+
+Two further claims in the records were checked against the state of the code
+when the review was written, and both turn out to have been **accurate then and
+overtaken since** — a distinction worth keeping, because it separates a stale
+finding from a mistaken one. A third was narrowed rather than confirmed: a test
+named for expired *and revoked* grants exercises only expiry, which is exactly
+true, but the revoked case is covered elsewhere, so what is wrong is the name
+rather than the coverage.
+
 The fourth group of records opened with a correction to this review's own
 published figure. A row recorded that a test fixture accepts an unbound
 adjudication digest "in four places"; counted with a command it is seven, across

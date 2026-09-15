@@ -6,7 +6,7 @@
 //! via the compare-and-swap (the expected old id). No git CLI — the gix
 //! plumbing, the pure-Rust doctrine.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gix::bstr::BStr;
 
@@ -47,6 +47,114 @@ impl std::fmt::Display for PublishError {
             }
         }
     }
+}
+
+/// Why a caller-supplied publication repository location was refused
+/// (`SIGNOFF-REPAIR.9.2.1.1`). Before that leaf the publish verb handed
+/// `gix::open` whatever the request body said, so any enrolled principal
+/// named any path on the server's filesystem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepositoryRefusal {
+    /// The deployment declares no publication repository root, so the verb is
+    /// CLOSED. Fail-closed is the contract rather than a detail: a deployment
+    /// that never named a root must not publish into a caller-named path.
+    Unconfigured,
+    /// The configured root does not resolve to a usable directory — an
+    /// operator's problem, never the caller's.
+    RootUnusable { root: String, reason: String },
+    /// The requested location does not resolve: nothing is there, or a
+    /// component of the path is not a directory.
+    Unresolvable { requested: String, reason: String },
+    /// It resolves OUTSIDE the configured root.
+    Outside { requested: String },
+}
+
+impl std::fmt::Display for RepositoryRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RepositoryRefusal::Unconfigured => write!(
+                f,
+                "this deployment declares no publication repository root — the verb is closed until an operator configures one"
+            ),
+            RepositoryRefusal::RootUnusable { root, reason } => write!(
+                f,
+                "the configured publication repository root `{root}` is not usable: {reason}"
+            ),
+            RepositoryRefusal::Unresolvable { requested, reason } => write!(
+                f,
+                "the repository location `{requested}` does not resolve inside the configured publication repository root: {reason}"
+            ),
+            RepositoryRefusal::Outside { requested } => write!(
+                f,
+                "the repository location `{requested}` resolves outside the configured publication repository root"
+            ),
+        }
+    }
+}
+
+/// Canonicalize a DECLARED publication repository root, or say why it is not
+/// usable (`SIGNOFF-REPAIR.9.2.1.1`).
+///
+/// `rb-server` runs this at boot, before anything mutates, and
+/// [`resolve_repository`] runs it again on every request — one definition, so
+/// the boot check and the request check cannot drift into disagreeing about
+/// what a usable root is.
+pub fn validate_root(declared: &Path) -> Result<PathBuf, RepositoryRefusal> {
+    let root = declared
+        .canonicalize()
+        .map_err(|e| RepositoryRefusal::RootUnusable {
+            root: declared.display().to_string(),
+            reason: e.to_string(),
+        })?;
+    if !root.is_dir() {
+        return Err(RepositoryRefusal::RootUnusable {
+            root: declared.display().to_string(),
+            reason: "it is not a directory".to_string(),
+        });
+    }
+    Ok(root)
+}
+
+/// Resolve a caller-supplied publication repository location INSIDE the
+/// deployment's configured root (`SIGNOFF-REPAIR.9.2.1.1`).
+///
+/// A relative location is joined to the root; an absolute one is taken as
+/// given. Either way BOTH sides are canonicalized before they are compared,
+/// and that is what lets one question answer two different escapes: `..` and a
+/// symlink are two spellings of "somewhere else", and canonicalization resolves
+/// each into the real path it names. Comparing the strings would catch neither.
+///
+/// The location must already exist: a publication repository is opened, never
+/// created, and canonicalization is only defined over a path that resolves.
+///
+/// ⚠️ An honest limit, stated rather than implied: the containment decision is
+/// made once, against the filesystem as it is at the moment of the request, and
+/// the resolved path is then handed to [`publish`]. A symlink swapped between
+/// the two would not be seen. Closing that needs a directory handle the
+/// repository is opened relative to, which `gix::open` does not accept.
+pub fn resolve_repository(
+    configured_root: Option<&Path>,
+    requested: &str,
+) -> Result<PathBuf, RepositoryRefusal> {
+    let root = validate_root(configured_root.ok_or(RepositoryRefusal::Unconfigured)?)?;
+    let asked = Path::new(requested);
+    let joined = if asked.is_absolute() {
+        asked.to_path_buf()
+    } else {
+        root.join(asked)
+    };
+    let resolved = joined
+        .canonicalize()
+        .map_err(|e| RepositoryRefusal::Unresolvable {
+            requested: requested.to_string(),
+            reason: e.to_string(),
+        })?;
+    if !resolved.starts_with(&root) {
+        return Err(RepositoryRefusal::Outside {
+            requested: requested.to_string(),
+        });
+    }
+    Ok(resolved)
 }
 
 /// The raw signature header value (the `name <email> seconds +HHMM` shape —

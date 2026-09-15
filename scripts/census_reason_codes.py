@@ -19,8 +19,10 @@ This computes the three sets and checks the book documents every emitted code
 ⛔ EMISSION IS SERVER-SIDE. A `code: "…"` literal in `reasonbraid-node` or
 `reasonbraid-cli` is a CLIENT constructing a local error when a response body
 will not parse — it never travels the wire. Counting those inflates the emitted
-set: the raw grep finds 19 distinct codes, of which `unknown` is exactly this
-client-side sentinel, so 18 are emitted.
+set: the raw grep finds 20 distinct codes, of which `unknown` is exactly this
+client-side sentinel, so 19 are emitted. ⛔ Both numbers are a function of the
+tree, so do not read them from this line — `--json` re-derives `emitted` and
+`client_side` on every run. `SIGNOFF-REPAIR.9.2.1.1` moved them from 19/18.
 """
 
 from __future__ import annotations

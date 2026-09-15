@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    api_router, ca::ensure_server_ca_with_store, node_router, r5r3rx_enabled, secret_store,
-    sync_gated_entries, ui_router,
+    api_router_with_publication_root, ca::ensure_server_ca_with_store, node_router, publisher,
+    r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
 };
 
 #[derive(Debug, Parser)]
@@ -37,11 +37,29 @@ struct Args {
     /// boot — never a silent fallback to the dev rows.
     #[arg(long, default_value = secret_store::PROFILE_DEV_DATABASE)]
     secret_store_profile: String,
+
+    /// The publication repository ROOT (`.9.2.1.1`): the one directory
+    /// `POST /v1/policy-publications/{id}/publish` may write inside. Leaving
+    /// it unset CLOSES that verb — the caller's `repo_path` is a location
+    /// within this root, never a path the server will open on its word.
+    #[arg(long)]
+    publication_repo_root: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    // The declared publication root (`.9.2.1.1`): validated BEFORE anything
+    // mutates, so a typo'd path refuses the boot instead of refusing it after
+    // the schema has already moved. ⛔ This leaf adds this one argument and its
+    // check; the secret-store ordering below and the `--host` gate are
+    // `.11.12`'s to decide, and are deliberately left exactly where they are.
+    let publication_repo_root = match args.publication_repo_root.as_deref() {
+        Some(declared) => Some(publisher::validate_root(declared).map_err(|e| format!("{e}"))?),
+        None => None,
+    };
+
     let pool = sqlx::PgPool::connect(&args.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
@@ -60,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // disabled pack — the disabled pack has no row).
     sync_gated_entries(&pool, r5r3rx_enabled()).await?;
 
-    let app = api_router(pool.clone())
+    let app = api_router_with_publication_root(pool.clone(), publication_repo_root)
         .merge(node_router(pool, ca))
         .merge(ui_router());
     let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;

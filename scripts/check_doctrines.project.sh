@@ -66,7 +66,9 @@ fi
 
 # Every reason code the SERVER emits is named in the book's table
 # (`SIGNOFF-REPAIR.11.7`). §9.8 publishes a stable registry of 20 and the
-# product emits 18, NINE of which postdate that list; `ReasonCode::Unknown`
+# product emits 19, TEN of which postdate that list — re-derive both with
+# `python3 -B scripts/census_reason_codes.py`, never from this line, which
+# `SIGNOFF-REPAIR.9.2.1.1` already moved from 18/NINE. `ReasonCode::Unknown`
 # preserves them, so nothing broke — but nothing told a client author they
 # existed either. ⭐ This gate fires on ZERO breaches today and would have fired
 # on all nine, which is the shape a gate should have: it catches the NEXT

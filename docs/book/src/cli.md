@@ -15,6 +15,37 @@ $ rb-server --database-url postgres://postgres@127.0.0.1:55432/reasonbraid
 rb-server listening on http://127.0.0.1:4310 (Phase 0 dev profile)
 ```
 
+### Where publications are written
+
+`POST /v1/policy-publications/{id}/publish` writes a publication into a local
+bare Git repository. **The server decides which filesystem it may write to, not
+the caller.** `--publication-repo-root` declares one directory; the request's
+`repo_path` names a location *inside* it, relative to it or absolute, and
+anything that resolves outside is refused with `invalid_command`:
+
+```text
+$ rb-server --database-url postgres://… --publication-repo-root /srv/rb/publications
+```
+
+Both sides are resolved to real paths before they are compared, so the two ways
+out of a directory are refused by the same test: `../elsewhere` spelled by the
+caller, and a symlink inside the root pointing out of it — every component of
+which *is* inside the root, so comparing the text would let it through.
+
+**Leaving the flag off closes the verb.** A deployment that never declared a
+publication root answers `503 publication_repository_unconfigured` rather than
+opening whatever path arrived in the body; retrying with a different `repo_path`
+will not help, because nothing about the request is wrong. A declared root that
+does not resolve to a directory refuses the **boot**, before the migrations run,
+so a typo cannot leave a changed database behind with no server on it.
+
+⚠️ Two honest limits. The containment decision is made once per request, against
+the filesystem as it stands then; a symlink swapped between that check and the
+repository being opened would not be seen. And the verb is still authorized by
+enrolment alone — binding it to a held grant is tracked separately under
+`SIGNOFF-REPAIR.9.2.1.2`, and until it lands any enrolled principal can publish
+into the configured root.
+
 ## The flow
 
 ```text

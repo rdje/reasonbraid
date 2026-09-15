@@ -54,6 +54,7 @@ after §9.8 was published.
 | `idempotency_conflict` | 409 | ext | A bootstrap request id is already bound to a different request. Distinct from `idempotency_mismatch`, which is about a replayed command's payload. |
 | `locator_digest_conflict` | 409 | ext | A resource locator's digest is immutable, and the same locator arrived with a different one. |
 | `commit_outcome_unconfirmed` | 500 | ext | The transaction's outcome is genuinely unknown — **not** a failure. Inspect the target before retrying; the write may have committed. |
+| `publication_repository_unconfigured` | 503 | ext | The deployment declares **no** publication repository root, so the publish verb is closed. Like `quota_unconfigured` this is a deployment gap, not a request fault: retrying with another `repo_path` will not help until an operator configures one. |
 
 ⚠️ `commit_outcome_unconfirmed` is the one a client must not treat as a failure.
 It is the honest answer when the server cannot observe whether its own commit

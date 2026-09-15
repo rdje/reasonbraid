@@ -17,7 +17,10 @@ mod pg_cleanup;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
-use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
+use reasonbraid_server::{
+    api_router, api_router_with_publication_root, ca::ensure_server_ca, node_router,
+    PRINCIPAL_HEADER,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -112,7 +115,22 @@ struct TestServer {
 
 impl TestServer {
     async fn start(pool: &PgPool) -> Self {
-        let router = api_router(pool.clone());
+        Self::start_with_router(pool, api_router(pool.clone())).await
+    }
+
+    /// The `.9.2.1.1` seam: a server whose publication repository root is
+    /// DECLARED. `start` declares none, which is what the publish verb now
+    /// refuses — so a control that means to exercise the verb has to say
+    /// where publications live.
+    async fn start_with_publication_root(pool: &PgPool, root: &std::path::Path) -> Self {
+        Self::start_with_router(
+            pool,
+            api_router_with_publication_root(pool.clone(), Some(root.to_path_buf())),
+        )
+        .await
+    }
+
+    async fn start_with_router(pool: &PgPool, router: axum::Router) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral loopback port");
@@ -1917,7 +1935,18 @@ async fn the_publication_stages_and_marks_its_typed_state() {
 async fn the_publish_verb_drives_the_git_half() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
-    let server = TestServer::start(&pool).await;
+    // `.9.2.1.1`: the server declares WHERE publications may be written, and
+    // the request names a location inside it. This control is re-pointed at a
+    // configured root rather than deleted — it still asserts the Git half.
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/policy-publish-tests");
+    let repo_dir = repo_root.join("live");
+    let not_a_repository = repo_root.join("not-a-repository");
+    let _ = std::fs::remove_dir_all(&repo_root);
+    std::fs::create_dir_all(&repo_dir).expect("the dir creates");
+    std::fs::create_dir_all(&not_a_repository).expect("the non-repository dir creates");
+    gix::init_bare(&repo_dir).expect("the bare repo inits");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
     let base = server.base();
     let client = reqwest::Client::new();
 
@@ -2099,19 +2128,56 @@ async fn the_publish_verb_drives_the_git_half() {
         assert_eq!(status, 200, "the publication stages");
     }
 
-    // 1. The publish drives the Git half: the bare repo + the verb → the
-    // record marks effective with the ref ids.
-    let repo_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/policy-publish-tests/live");
-    let _ = std::fs::remove_dir_all(&repo_dir);
-    std::fs::create_dir_all(&repo_dir).expect("the dir creates");
-    gix::init_bare(&repo_dir).expect("the bare repo inits");
+    // 1. A publish into a NON-repository location refuses with the store
+    // contract's own open failure. ⛔ THIS LEG RUNS FIRST, AND THAT IS THE
+    // WHOLE POINT. It used to run third, after the publication had already
+    // been driven to `effective`, so the STAGE check answered it and it never
+    // reached `gix::open` at all — green for the wrong reason, for as long as
+    // it has existed. `.9.2.1.1` found it by pointing the leg at a location
+    // inside the configured root and watching it fail on the stage instead.
+    // The location exists and is a directory, so the containment check passes
+    // it through and only the repository open can refuse it.
+    assert!(
+        not_a_repository.is_dir(),
+        "the non-repository leg must exercise an existing location"
+    );
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "not-a-repository" }),
+    )
+    .await;
+    assert_eq!(status, 400, "the non-repository refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not open"),
+        "the refusal is the store contract's, not the stage check's or the \
+         containment check's: {refused}"
+    );
+    // The stage is asserted rather than assumed, so reordering this leg behind
+    // a successful publish fails loudly instead of silently changing what it
+    // measures.
+    let (status, staged) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert_eq!(status, 200, "{staged}");
+    assert_eq!(
+        staged[0]["state"],
+        json!("staged"),
+        "the refused publish left the publication staged: {staged}"
+    );
+
+    // 2. The publish drives the Git half: the bare repo + the verb → the
+    // record marks effective with the ref ids. The location is named RELATIVE
+    // to the configured root, which is the shape the root exists to support.
     let (status, published) = post(
         &client,
         &base,
         "/v1/policy-publications/pu-pub/publish",
         &human_id,
-        &json!({ "repo_path": repo_dir.to_string_lossy() }),
+        &json!({ "repo_path": "live" }),
     )
     .await;
     assert_eq!(status, 200, "the publish drives the git half: {published}");
@@ -2119,14 +2185,14 @@ async fn the_publish_verb_drives_the_git_half() {
     let object_ids = published["git_object_ids"].as_array().unwrap();
     assert_eq!(object_ids.len(), 2, "{published}");
 
-    // 2. A publish on a NON-staged publication refuses (the effective is
+    // 3. A publish on a NON-staged publication refuses (the effective is
     // terminal).
     let (status, refused) = post(
         &client,
         &base,
         "/v1/policy-publications/pu-pub/publish",
         &human_id,
-        &json!({ "repo_path": repo_dir.to_string_lossy() }),
+        &json!({ "repo_path": "live" }),
     )
     .await;
     assert_eq!(status, 400, "the terminal re-publish refuses: {refused}");
@@ -2135,18 +2201,169 @@ async fn the_publish_verb_drives_the_git_half() {
         "{refused}"
     );
 
-    // 3. A publish into a NON-repository path refuses (the store contract's
-    // open failure).
+    let _ = std::fs::remove_dir_all(&repo_root);
+}
+
+/// `SIGNOFF-REPAIR.9.2.1.1` — the publish verb used to take its repository
+/// location from the request body and hand it straight to `gix::open`, so any
+/// enrolled principal named any path on the server's filesystem.
+///
+/// Four legs, each observed RED before the repair. ⭐ Every leg drives a
+/// publication id that does not exist, and that is deliberate: it proves the
+/// path is refused BEFORE the publication is loaded, so an untrusted path never
+/// reaches the database. The fifth leg is the positive arm the four refusals
+/// need — an inside location gets PAST the containment check and fails on the
+/// missing publication instead, which no "refuse everything" repair could do.
+#[tokio::test]
+async fn the_publish_verb_stays_inside_the_configured_repository_root() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/policy-publish-tests/containment");
+    let root = fixture.join("root");
+    let outside = fixture.join("outside");
+    let _ = std::fs::remove_dir_all(&fixture);
+    std::fs::create_dir_all(&root).expect("the root creates");
+    std::fs::create_dir_all(&outside).expect("the outside directory creates");
+    gix::init_bare(&outside).expect("the outside bare repository inits");
+    std::os::unix::fs::symlink(&outside, root.join("escape")).expect("the symlink creates");
+    let inside = root.join("live");
+    std::fs::create_dir_all(&inside).expect("the inside directory creates");
+    gix::init_bare(&inside).expect("the inside bare repository inits");
+
+    let client = reqwest::Client::new();
+    let configured = TestServer::start_with_publication_root(&pool, &root).await;
+    let base = configured.base();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let publish = |base: String, principal: String, path: &'static str| {
+        let client = client.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-publications/pc-absent/publish",
+                &principal,
+                &json!({ "repo_path": path }),
+            )
+            .await
+        }
+    };
+
+    // Leg A — `..` walks out of the configured root.
+    let (status, refused) = publish(base.clone(), human_id.clone(), "../outside").await;
+    assert_eq!(status, 400, "the `..` escape refuses: {refused}");
+    assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("outside the configured publication repository root"),
+        "{refused}"
+    );
+
+    // Leg B — a SYMLINK inside the root walks out of it. Every component the
+    // caller named is inside the root, so a string containment test admits it.
+    let (status, refused) = publish(base.clone(), human_id.clone(), "escape").await;
+    assert_eq!(status, 400, "the symlink escape refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("outside the configured publication repository root"),
+        "{refused}"
+    );
+
+    // Leg C — an ABSOLUTE path outside the root, the shape the verb used to
+    // accept verbatim.
     let (status, refused) = post(
         &client,
         &base,
-        "/v1/policy-publications/pu-pub/publish",
+        "/v1/policy-publications/pc-absent/publish",
         &human_id,
-        &json!({ "repo_path": "/nonexistent/repo" }),
+        &json!({ "repo_path": outside.to_string_lossy() }),
     )
     .await;
-    assert_eq!(status, 400, "the non-repository refuses: {refused}");
-    let _ = std::fs::remove_dir_all(&repo_dir);
+    assert_eq!(status, 400, "the absolute escape refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("outside the configured publication repository root"),
+        "{refused}"
+    );
+
+    // Leg D — the POSITIVE arm: an inside location passes containment and is
+    // refused by the publication lookup instead. Without this the three
+    // refusals above are equally consistent with a verb that refuses
+    // everything.
+    let (status, refused) = publish(base.clone(), human_id.clone(), "live").await;
+    assert_eq!(
+        status, 400,
+        "an inside location reaches the lookup: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not exist"),
+        "an inside location must be refused by the RECORD, not by containment: {refused}"
+    );
+
+    // Leg E — a server that declares NO root closes the verb outright, and
+    // says so with a code a client cannot fix by retrying with another path.
+    // ⭐ This is leg D's matched pair: the same request, against a server that
+    // differs only in whether a root is declared. If the 503 came from
+    // anywhere else, leg D would not answer 400.
+    let unconfigured = TestServer::start(&pool).await;
+    let (status, refused) = publish(unconfigured.base(), human_id.clone(), "live").await;
+    assert_eq!(status, 503, "an unconfigured deployment refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("publication_repository_unconfigured"),
+        "{refused}"
+    );
+
+    // Leg F — THE FALSIFICATION of legs A to C, as a matched pair rather than
+    // as prose: the SAME three locations, against a server whose declared root
+    // is the directory ABOVE, legitimately contains them — and they are now
+    // accepted, reaching the record exactly as leg D does. One knob changes.
+    // If those refusals came from anything but containment, these would stay
+    // refused. ⭐ Each is spelled absolutely, because a relative location is
+    // joined to the root and so would not be the same location twice.
+    let wider = TestServer::start_with_publication_root(&pool, &fixture).await;
+    for (label, requested) in [
+        ("the `..` walk", root.join("../outside")),
+        ("the symlink", root.join("escape")),
+        ("the absolute location", outside.clone()),
+    ] {
+        let (status, answered) = post(
+            &client,
+            &wider.base(),
+            "/v1/policy-publications/pc-absent/publish",
+            &human_id,
+            &json!({ "repo_path": requested.to_string_lossy() }),
+        )
+        .await;
+        assert_eq!(status, 400, "{label}: {answered}");
+        assert!(
+            answered["message"]
+                .as_str()
+                .unwrap()
+                .contains("does not exist"),
+            "{label} must reach the record once the declared root contains it: {answered}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&fixture);
 }
 
 #[tokio::test]

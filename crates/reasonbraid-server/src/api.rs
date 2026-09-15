@@ -152,6 +152,20 @@ impl ControlApiError {
         }
     }
 
+    /// The deployment declares NO publication repository root
+    /// (`SIGNOFF-REPAIR.9.2.1.1`, fail-closed) — the publish verb refuses
+    /// until an operator configures one. The same shape as
+    /// [`Self::quota_unconfigured`], and for the same reason: this is a
+    /// deployment gap, never the caller's request, so a client retrying with
+    /// a different path gets nowhere.
+    pub fn publication_repository_unconfigured(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "publication_repository_unconfigured",
+            message: message.into(),
+        }
+    }
+
     /// The thread's classification lacks a qualified evaluator (`.1.4.3`,
     /// the evaluator-access control) — the delivery refuses until the
     /// deployment registers a qualified profile.
@@ -451,6 +465,11 @@ pub struct ApiState {
     r5r3rx_enabled: bool,
     /// The local credential broker (the R5 pack's engine).
     broker: std::sync::Arc<crate::broker::Broker>,
+    /// The publication repository ROOT this deployment declares
+    /// (`SIGNOFF-REPAIR.9.2.1.1`): the one directory the publish verb may
+    /// write inside. `None` is the fail-closed default — the verb refuses
+    /// rather than opening whatever path the request body names.
+    publication_repo_root: Option<std::path::PathBuf>,
 }
 
 /// The gate's environment switch: `RB_ENABLE_R5R3RX=1|true` — OFF by
@@ -515,6 +534,24 @@ impl ApiState {
             )),
             r5r3rx_enabled: enabled,
             broker,
+            publication_repo_root: None,
+        }
+    }
+
+    /// The publication seam (`SIGNOFF-REPAIR.9.2.1.1`): the deployment
+    /// declares the ONE repository root the publish verb may write inside.
+    ///
+    /// Every other constructor leaves it unset, so a state built any other way
+    /// refuses that verb instead of trusting the caller's path. That is the
+    /// direction the default has to fail in: a deployment that never thought
+    /// about publication storage must not be publishing anywhere.
+    pub fn with_publication_root(
+        pool: PgPool,
+        publication_repo_root: Option<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            publication_repo_root,
+            ..Self::new(pool)
         }
     }
 }
@@ -546,6 +583,24 @@ pub fn api_router_with_acquisition(
 ) -> Router {
     api_router_with_state(Arc::new(ApiState::with_acquisition(
         pool, enabled, broker, fetcher,
+    )))
+}
+
+/// The publication seam's router (`SIGNOFF-REPAIR.9.2.1.1`): the same router
+/// over a state that declares where a publication may be written. `api_router`
+/// keeps its signature — every one of its callers is untouched, which is why
+/// the root arrives through a seam rather than through its argument list — and
+/// it declares no root, which CLOSES the publish verb rather than leaving it
+/// open. Re-derive that caller set with
+/// `git grep -n "api_router(" -- ':(glob)crates/**/*.rs'` rather than trusting
+/// a count written here.
+pub fn api_router_with_publication_root(
+    pool: PgPool,
+    publication_repo_root: Option<std::path::PathBuf>,
+) -> Router {
+    api_router_with_state(Arc::new(ApiState::with_publication_root(
+        pool,
+        publication_repo_root,
     )))
 }
 
@@ -3184,12 +3239,40 @@ async fn mark_publication_failed(
     }
 }
 
+/// Map a publication-repository refusal onto the wire (`.9.2.1.1`).
+///
+/// The two DEPLOYMENT faults answer `publication_repository_unconfigured`,
+/// because no request can fix them; the two CALLER faults answer
+/// `invalid_command`. ⛔ The configured root is never echoed to the caller — it
+/// is a server-side path, so it goes to the log the way
+/// [`ControlApiError::internal_with_log`] sends its detail there.
+fn publication_repository_refused(refusal: crate::publisher::RepositoryRefusal) -> ControlApiError {
+    use crate::publisher::RepositoryRefusal as Refusal;
+    match refusal {
+        Refusal::Unconfigured => ControlApiError::publication_repository_unconfigured(
+            "this deployment declares no publication repository root — the publish verb is closed until an operator configures one",
+        ),
+        Refusal::RootUnusable { root, reason } => {
+            eprintln!(
+                "control api: the configured publication repository root `{root}` is not usable: {reason}"
+            );
+            ControlApiError::publication_repository_unconfigured(
+                "the deployment's publication repository root is not usable — an operator must repair it",
+            )
+        }
+        refusal @ (Refusal::Unresolvable { .. } | Refusal::Outside { .. }) => {
+            ControlApiError::invalid_command(refusal.to_string())
+        }
+    }
+}
+
 /// `POST /v1/policy-publications/{id}/publish` — the Git publication half
 /// (`.4.3.2`): the staged publication's bundle + the composed manifest
 /// ride the publisher (the staging branch, the fetch-back verification,
 /// the immutable ref, the effective channel via the CAS), then the record
-/// marks effective. The repo path is the DECLARED store (the dev-trusted
-/// operator surface — the `.5` deployment lane tightens it).
+/// marks effective. The repository is the deployment's CONFIGURED root
+/// (`.9.2.1.1`): `repo_path` names a location inside it and is resolved
+/// against it, and a deployment that declares no root refuses the verb.
 async fn publish_publication(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
@@ -3203,10 +3286,17 @@ async fn publish_publication(
             "an unenrolled principal publishes nothing",
         ));
     }
-    let repo_path = body
+    let requested = body
         .get("repo_path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ControlApiError::invalid_command("the repo_path is required"))?;
+    // `.9.2.1.1`: the caller names a location INSIDE the deployment's
+    // configured root, and it is resolved here — before the publication is
+    // loaded and before anything is written. An untrusted path is refused
+    // before it reaches the database, not after.
+    let repo_path =
+        crate::publisher::resolve_repository(state.publication_repo_root.as_deref(), requested)
+            .map_err(publication_repository_refused)?;
     let expected_effective = body
         .get("expected_effective")
         .and_then(|v| v.as_str())
@@ -3240,7 +3330,7 @@ async fn publish_publication(
     }))
     .expect("the manifest serializes");
     let refs = crate::publisher::publish(
-        std::path::Path::new(repo_path),
+        &repo_path,
         &publication_id,
         &manifest,
         &projection.bytes,

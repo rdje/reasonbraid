@@ -73,6 +73,39 @@ The practical consequence is a number to plan with: **one more integration-test
 file costs about 22 seconds of every future checkpoint here**, whatever it
 tests. Publish that, and the next throughput argument is about evidence.
 
+### And a BLOCKED process looks exactly like a slow one — one command tells them apart
+
+A second instance of the same mechanism, measured by `SIGNOFF-REPAIR.9.2.1.1`,
+with a discriminator worth keeping. `cargo check -p reasonbraid-server --tests`
+appeared to be crawling. It was not running at all:
+
+```bash
+for i in 1 2 3 4; do ps -o time= -p "$(pgrep -n rustc)"; sleep 5; done
+```
+
+`0:03.84` four times. A slow process accumulates CPU; a blocked one does not, and
+**wall clock cannot tell you which you have**. The rest of the picture agreed:
+all threads in state `S`, the incremental dep-graph file byte-identical across
+the window, `taskpolicy -B` changing nothing, and `sample` unable even to attach
+(rc=124 at a 60 s timeout). A machine-wide census — `ps -eo pid,etime,time,command
+| grep -E "cargo|rustc"` — found no competing build, which is what retired the
+obvious "contention" explanation before it could be written down.
+
+⭐ **The fix was accidental and is the transferable part.** Reading the dependency
+metadata sequentially — `cat target/debug/deps/*.rmeta > /dev/null`, 3.8 GB by
+`du -ch`, ~25 s — cleared it, and the same command then completed in 2 m 39 s.
+The completed runs say the same thing without any drama: **2 m 39 s wall for 46 s
+user**, and the lib-only check **3 m 01 s wall for 5.8 s user + 11.3 s sys**, about
+**9 % CPU utilisation**.
+
+⛔ The consequence for this project is a vocabulary correction, not a repair: every
+build-cost sentence here — the two-hour checkpoint included — has been describing
+an **I/O-bound** workload in CPU-bound language, and a decomposition that rests on
+"this build is expensive" should say *expensive against what*. ⚠️ A build cost
+measured on a contended machine with a cold cache and one measured idle and warm
+are not the same number disagreeing; they are two numbers answering different
+questions, and only one of them is usually the reader's.
+
 ## Measure the population before proposing the rule over it
 
 A rule, threshold or severity reasoned carefully from source is often changed by the

@@ -66,9 +66,13 @@ fi
 
 # Every reason code the SERVER emits is named in the book's table
 # (`SIGNOFF-REPAIR.11.7`). §9.8 publishes a stable registry of 20 and the
-# product emits 19, TEN of which postdate that list — re-derive both with
-# `python3 -B scripts/census_reason_codes.py`, never from this line, which
-# `SIGNOFF-REPAIR.9.2.1.1` already moved from 18/NINE. `ReasonCode::Unknown`
+# product emits 18, NINE of which postdate that list — re-derive both with
+# `python3 -B scripts/census_reason_codes.py`, never from this line, which has
+# now moved TWICE: `SIGNOFF-REPAIR.9.2.1.1` took it from 18/NINE to 19/TEN by
+# adding a code, and `SIGNOFF-REPAIR.11.14.3.2` took it back to 18/NINE by
+# RETIRING one (`locator_digest_conflict` disclosed the cross-tenant existence
+# §9.8 forbids). ⭐ The second move is why the "never from this line" clause is
+# not boilerplate: a count can fall as well as rise. `ReasonCode::Unknown`
 # preserves them, so nothing broke — but nothing told a client author they
 # existed either. ⭐ This gate fires on ZERO breaches today and would have fired
 # on all nine, which is the shape a gate should have: it catches the NEXT

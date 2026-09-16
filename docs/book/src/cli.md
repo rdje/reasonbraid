@@ -169,8 +169,14 @@ The contribute verb takes the structured body (`.1.5.1`):
   | `question` | `summary` (the kebab spelling normalizes to the wire's
   snake_case, e.g. `evidence-reference` → `evidence_reference`).
 - `--evidence-uri` (repeatable) — a reference the contribution cites, rendered in
-  the inspection view. References only: citing a URI is not fetching it —
-  acquisition arrives with a later phase (§3.7).
+  the inspection view. Citing is not fetching: the citation **registers** a §12.1
+  resource reference (ROADMAP §13.2 step 2) and the event carries the
+  `resource_id` it resolved to; acquisition is step 6 and is a separate act
+  (§3.7). ⚠️ Since `SIGNOFF-REPAIR.11.14.3.2` the value must be an absolute URI —
+  it needs a scheme, because the reference contract names one — so a note like
+  `--evidence-uri "see the internal wiki"` is refused rather than stored. Put
+  that in `--text`. The details are in
+  [the citation registration](deployment.md#how-a-deliberation-registers-the-evidence-it-cites).
 
 `thread.advance-round` moves the thread to its next round (`.1.5.2`):
 

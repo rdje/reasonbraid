@@ -104,6 +104,16 @@ of a URI is not a promise the core can resolve it.
       unknown-field 422, the malformed-digest 400 (the first run
       caught the digest validator's early-return bug), the
       read-back. Frontier → `.1.3`.
+      SUPERSEDED IN PART (2026-09-16,
+      `SIGNOFF-REPAIR.11.14.3.2`, REPAIR-0218): the
+      `locator_digest_conflict` half of this contract is RETIRED —
+      it leaked the cross-tenant existence ROADMAP §9.8 forbids and
+      let one principal make a locator uncitable by every other
+      tenant. The identity is the `(original_locator,
+      expected_digest)` PAIR this record already quotes from
+      migration 0023, and the control is renamed
+      `a_reference_submits_typed_and_the_locator_digest_pair_is_the_key`.
+      Everything else measured here stands.
     Acceptance: the typed reference + the submission land, measured
       (the immutability + the unknown-field refusals); no
       regression.

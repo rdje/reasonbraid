@@ -649,6 +649,86 @@ any other site action — `--action evidence_expire` on the boundary and on the
 grant bound to it. The full invocation, its environment and its prerequisites
 are in [Site authority](site-authority.md).
 
+### How a deliberation registers the evidence it cites
+
+ROADMAP §13.2 step 2 is *"register context and resource references"*. A
+contribution's `evidence_refs` is where that happens: each citation registers the
+§12.1 resource reference it names, **in the contribution's own transaction**, and
+the committed event carries the `resource_id` it resolved to.
+
+```json
+{
+  "tenant_id": "...",
+  "content": "the position this citation supports",
+  "kind": "evidence_reference",
+  "evidence_refs": [
+    {
+      "uri": "https://example.org/cited-report",
+      "digest": "sha256:<64 hex>",
+      "note": "the acquired report"
+    }
+  ]
+}
+```
+
+The timeline then shows the citation *resolved*:
+
+```json
+"evidence_refs": [
+  {
+    "uri": "https://example.org/cited-report",
+    "digest": "sha256:<64 hex>",
+    "note": "the acquired report",
+    "resource_id": "res_…"
+  }
+]
+```
+
+`resource_id` is the server's — it is not accepted on the wire, and the same row
+is what `POST /v1/resources` returns for that locator and digest. Citing is not
+acquiring: §13.2 registers at step 2 and acquires at step 6, so a citation of
+something the network has not yet fetched is the flow working, not an error.
+
+#### The key is the pair, not the locator
+
+A reference's identity is `(original_locator, expected_digest)` — the key
+`resource_references` has declared since it was created. Two consequences a
+client can rely on:
+
+| The request | The result |
+| --- | --- |
+| the same locator **and** the same digest, again | the **same** `resource_id`; `POST /v1/resources` reports `"replayed": true` |
+| the same locator at a **different** digest | a **second** reference. §12.6's live page changed, and §12.1 forbids erasing that distinction |
+| the same locator with **no** digest, twice | one unpinned reference, replayed the second time |
+
+⛔ `locator_digest_conflict` **no longer exists.** Until
+`SIGNOFF-REPAIR.11.14.3.2` the store refused a second digest for a locator, and
+that refusal was wrong twice over: §9.8 requires that cross-tenant existence is
+not leaked, and a 409 told the caller that somebody else had pinned that locator
+to a digest they were never shown; and it meant the first principal to pin a
+locator made that locator **uncitable by every other tenant**, in any form,
+including without a digest. A client that branched on the code should treat the
+citation as accepted.
+
+#### What a citation is refused for
+
+| The citation | Refused because |
+| --- | --- |
+| `{"uri": "see the internal wiki"}` | a §12.1 reference names a URI **scheme**; the citation's scheme is parsed from its own locator (RFC 3986 §3.1), never claimed beside it |
+| `{"uri": "https://…", "digest": "md5:…"}` | the digest is the ADR-011 `sha256:<64 hex>` scheme — the same rule `POST /v1/resources` applies |
+
+Both are new: before this change a citation's `uri` and `digest` were free text
+that nothing read. A contribution whose citation is refused commits nothing —
+the event and every reference it registers share one transaction.
+
+⚠️ **Two honest limits, published rather than implied.** Nothing yet checks an
+acquired snapshot's bytes against its reference's `expected_digest`, so the pin
+records an expectation it does not enforce (`SIGNOFF-REPAIR.11.14.3.6`). And
+`resource_references` stays *site-wide by design*: registering a citation puts
+its locator in a table any enrolled principal can read by `resource_id`, which
+is the same disposition `POST /v1/resources` already had
+(`SIGNOFF-REPAIR.11.14.3.4` owns whether that read should be bound).
+
 ### How a deliberation records an assessment
 
 ROADMAP §13.2's deliberation flow registers resource references (step 2) and

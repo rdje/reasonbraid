@@ -4048,8 +4048,14 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 
 /// `POST /v1/resources` — submit the typed §12.1 reference (any enrolled
 /// principal; the reference is declarative — the resolution is `.1.3`'s).
-/// The locator is IMMUTABLE: the same locator + digest is the replay, the
-/// same locator with a DIFFERENT digest is the typed conflict.
+///
+/// The identity is the `(original_locator, expected_digest)` PAIR
+/// (`SIGNOFF-REPAIR.11.14.3.2`): the same pair is the replay, and the same
+/// locator at a DIFFERENT digest is a second reference, because §12.6's page
+/// changes and §12.1 forbids erasing that distinction. ⛔ The former
+/// `locator_digest_conflict` is retired — it leaked the cross-tenant existence
+/// §9.8 forbids, and it let one principal make a locator uncitable by everyone
+/// else.
 async fn submit_resource(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -4062,34 +4068,20 @@ async fn submit_resource(
             "an unenrolled principal submits no reference",
         ));
     }
-    if let Some(error) = reference.digest_error() {
-        return Err(ControlApiError::invalid_command(error));
-    }
     let submitted_by = actor_handle_for_subject(&principal).to_string();
-    match crate::resources::submit(&state.pool, &reference, &submitted_by).await {
+    let mut conn = state.pool.acquire().await?;
+    match crate::resources::submit(&mut *conn, &reference, &submitted_by).await {
         Ok(outcome) => Ok(Json(outcome)),
-        Err(e) if e.as_database_error().is_some_and(|d| d.is_unique_violation()) => {
-            Err(ControlApiError {
-                status: StatusCode::CONFLICT,
-                code: "locator_digest_conflict",
-                message: "the locator's digest is immutable — the same locator with a different digest conflicts"
-                    .to_string(),
-            })
+        // The ADR-011 digest validation lives in the store, so both writers —
+        // this route and a contribution's citation — apply one rule.
+        Err(crate::resources::ReferenceError::InvalidDigest(reason)) => {
+            Err(ControlApiError::invalid_command(reason))
         }
-        Err(e) if e
-            .to_string()
-            .contains("locator_digest_conflict") =>
-        {
-            Err(ControlApiError {
-                status: StatusCode::CONFLICT,
-                code: "locator_digest_conflict",
-                message: "the locator's digest is immutable — the same locator with a different digest conflicts"
-                    .to_string(),
-            })
-        }
-        Err(e) => Err(ControlApiError::internal_with_log(format!(
-            "the reference submit failed: {e}"
-        ))),
+        // A store fault is the server's problem and must not be reported as
+        // though the caller's input were wrong (`.7.4.2`).
+        Err(crate::resources::ReferenceError::Storage(cause)) => Err(
+            ControlApiError::internal_with_log(format!("the reference submit failed: {cause}")),
+        ),
     }
 }
 

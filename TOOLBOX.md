@@ -73,6 +73,34 @@ The practical consequence is a number to plan with: **one more integration-test
 file costs about 22 seconds of every future checkpoint here**, whatever it
 tests. Publish that, and the next throughput argument is about evidence.
 
+### The per-file validation cost is not additive when builds run concurrently
+
+`SIGNOFF-REPAIR.11.14.3.2` re-measured the signature above during a cold
+`cargo test` build and found the same mechanism at a very different scale.
+Three `rustc` processes, alive 13:06, 06:17 and 04:09, had accumulated
+**4.13 s, 5.74 s and 4.04 s** of CPU — and re-sampling eight seconds later
+returned those three numbers **byte-identically**, while `syspolicyd` sat at
+39–55 %.
+
+```bash
+# the two-sample test, over every rustc at once
+for i in 1 2; do
+  pgrep -f "bin/rustc" | while read p; do printf '%s ' "$(ps -o time= -p $p | tr -d ' ')"; done
+  echo; sleep 10
+done
+ps -o %cpu= -p "$(pgrep -x syspolicyd | head -1)"
+```
+
+⭐ **The useful correction: 21.9 s is the cost of ONE validation, not the delay a
+build sees.** macOS serializes them, so a compilation that loads three fresh
+proc-macro dylibs waits behind every other validation the build has queued — and
+a thirteen-minute block is that queue, not a hung process. ⛔ So "it has been
+blocked for ten minutes" is NOT evidence of a hang on this volume, and killing a
+build on that reasoning throws away the queue position it already paid for.
+⚠️ The discriminator remains CPU: a queued process holds its CPU total exactly,
+and `syspolicyd` is busy on its behalf. If `syspolicyd` were idle too, that would
+be a different finding.
+
 ### A blocked process looks exactly like a slow one — and one run tells you neither
 
 `SIGNOFF-REPAIR.9.2.1.1` watched `cargo check -p reasonbraid-server --tests`

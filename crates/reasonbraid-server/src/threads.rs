@@ -273,8 +273,10 @@ pub struct RemoveParticipantBody {
 /// CONTRIBUTION can carry, `PHASE-1.5.1`): `position` is the stated default — a
 /// contribution without a `kind` IS a position. `evidence_reference` marks a
 /// contribution whose whole point is a reference; ANY kind may carry
-/// `evidence_refs` alongside it. Out-of-registry values are typed refusals
-/// (deny-unknown at the body boundary), never silently stored.
+/// `evidence_refs` alongside it, and every one of them REGISTERS the §12.1
+/// resource reference it names (`.11.14.3.2`, ROADMAP §13.2 step 2).
+/// Out-of-registry values are typed refusals (deny-unknown at the body
+/// boundary), never silently stored.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContributionKind {
@@ -340,6 +342,27 @@ pub struct EvidenceRef {
     pub digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+/// One evidence reference as the EVENT records it (`.11.14.3.2`, ROADMAP §13.2
+/// step 2): what the contributor stated, plus the §12.1 `resource_references`
+/// row the citation registered.
+///
+/// ⛔ Serialize-only, and a separate type rather than an optional field on
+/// [`EvidenceRef`]: `resource_id` is the SERVER's, and a `deny_unknown_fields`
+/// INPUT type carrying it would have let a caller supply one — the same reason
+/// ADR-029 keeps a claim's digest off the wire.
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisteredEvidenceRef {
+    pub uri: String,
+    /// Absent fields stay OMITTED, exactly as [`EvidenceRef`] serializes them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// The reference this citation resolves to. §13.2 registers it at step 2;
+    /// step 6 acquires against it.
+    pub resource_id: String,
 }
 
 /// `thread.contribute` body: the scope, the contribution content, the structured
@@ -1550,6 +1573,59 @@ where
                     )));
                 }
             }
+            // `.11.14.3.2` (ROADMAP §13.2 step 2, "register context and
+            // resource references"): a citation registers the §12.1 reference
+            // it names, on THIS transaction — so the contribution event and the
+            // row its citation resolves to commit together or not at all.
+            // ⛔ Registering, not refusing: step 2 registers and step 6
+            // acquires, so citing something the network has not yet fetched is
+            // the flow working
+            // (`docs/decisions/2026-09-16_a-citation-registers-the-reference-it-names.md`).
+            let submitted_by = crate::resources::actor_handle(principal);
+            let mut evidence_refs: Vec<RegisteredEvidenceRef> =
+                Vec::with_capacity(body.evidence_refs.len());
+            for citation in &body.evidence_refs {
+                let Some(scheme) = crate::resources::scheme_of(&citation.uri) else {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the evidence reference `{}` carries no URI scheme — a citation \
+                         registers a §12.1 resource reference, and that contract names one",
+                        citation.uri
+                    )));
+                };
+                let reference = crate::resources::ResourceReference {
+                    original_locator: citation.uri.clone(),
+                    scheme: scheme.to_owned(),
+                    media_type_hint: None,
+                    expected_digest: citation.digest.clone(),
+                    fragment_or_selector: None,
+                    credential_binding_ref: None,
+                    owning_node_or_capability: None,
+                    // The contributor states neither, so the row takes the
+                    // values `migrations/0023` declares as its column defaults
+                    // — which an explicit INSERT would otherwise bypass.
+                    visibility_scope: "network".to_owned(),
+                    purpose: None,
+                    retention_class: None,
+                    risk_class: "low".to_owned(),
+                };
+                let outcome =
+                    match crate::resources::submit(&mut *tx, &reference, &submitted_by).await {
+                        Ok(outcome) => outcome,
+                        // A store fault is the server's problem and must not be
+                        // reported as though the caller's input were wrong
+                        // (`.7.4.2`); every other variant IS about the input.
+                        Err(crate::resources::ReferenceError::Storage(cause)) => {
+                            return Err(ThreadError::CorruptState(cause.to_string()))
+                        }
+                        Err(error) => return Err(ThreadError::InvalidCommand(error.to_string())),
+                    };
+                evidence_refs.push(RegisteredEvidenceRef {
+                    uri: citation.uri.clone(),
+                    digest: citation.digest.clone(),
+                    note: citation.note.clone(),
+                    resource_id: outcome.resource_id,
+                });
+            }
             // `.11.14.3.1` (ROADMAP §13.2 step 6): the `assess` step's payload.
             // Every gate below already existed somewhere; what was missing was
             // the step that composes them, which is why two shipped profiles
@@ -1659,7 +1735,7 @@ where
                     "author": principal,
                     "content": body.content,
                     "kind": body.kind,
-                    "evidence_refs": body.evidence_refs,
+                    "evidence_refs": evidence_refs,
                     "claims": claims,
                     "target_claim_digest": body.target_claim_digest,
                     "ref_event_id": body.ref_event_id,

@@ -2291,7 +2291,7 @@ async fn the_panel_snapshot_carries_the_dependence_indicators() {
 /// is the typed immutability conflict; an unknown field and a malformed
 /// digest are typed refusals; the inspection reads the submitted shape back.
 #[tokio::test]
-async fn a_reference_submits_typed_and_the_locator_is_immutable() {
+async fn a_reference_submits_typed_and_the_locator_digest_pair_is_the_key() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
@@ -2354,15 +2354,37 @@ async fn a_reference_submits_typed_and_the_locator_is_immutable() {
     assert_eq!(replayed["resource_id"], json!(resource_id));
     assert_eq!(replayed["replayed"], json!(true));
 
-    // The immutability: the same locator with a DIFFERENT digest conflicts.
+    // The pair is the key (`SIGNOFF-REPAIR.11.14.3.2`): the same locator at a
+    // DIFFERENT digest is a SECOND reference. §12.6's live page changed, §12.1
+    // forbids erasing that security-relevant distinction, and the 409 this
+    // replaces told the caller that somebody else had pinned the locator to a
+    // digest they were never shown — the cross-tenant existence §9.8 forbids.
     let mut changed = body.clone();
     changed["expected_digest"] = json!(format!("sha256:{}", "b".repeat(64)));
-    let (status, conflicted) = submit(&changed).await;
-    assert_eq!(
-        status, 409,
-        "the locator's digest is immutable: {conflicted}"
+    let (status, second) = submit(&changed).await;
+    assert_eq!(status, 200, "the second pin registers: {second}");
+    assert_eq!(second["replayed"], json!(false));
+    assert_ne!(
+        second["resource_id"],
+        json!(resource_id),
+        "a different digest is a different reference: {second}"
     );
-    assert_eq!(conflicted["code"], json!("locator_digest_conflict"));
+
+    // And the UNPINNED submission is its own row, replayed on repeat —
+    // `migrations/0065` makes the constraint `NULLS NOT DISTINCT`, so a
+    // digest-less reference cannot multiply.
+    let mut unpinned = body.clone();
+    unpinned.as_object_mut().unwrap().remove("expected_digest");
+    let (status, fresh_unpinned) = submit(&unpinned).await;
+    assert_eq!(status, 200, "the unpinned submit: {fresh_unpinned}");
+    assert_eq!(fresh_unpinned["replayed"], json!(false));
+    let (status, replayed_unpinned) = submit(&unpinned).await;
+    assert_eq!(status, 200, "the unpinned replay: {replayed_unpinned}");
+    assert_eq!(replayed_unpinned["replayed"], json!(true));
+    assert_eq!(
+        replayed_unpinned["resource_id"], fresh_unpinned["resource_id"],
+        "one unpinned row, not one per submission: {replayed_unpinned}"
+    );
 
     // An unknown field is the typed 422.
     let mut forged = body.clone();
@@ -5907,6 +5929,332 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
     assert_eq!(total, 1, "only the accepted assessment exists");
     eprintln!(
         "assess step: the shipped evidence_review profile records an assessment keyed by a minted claim digest over a cited snapshot; forged digest, uncited snapshot, fake excerpt, misplaced payload, wrong step and unknown kind each refused by name; {total} row written"
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.2` (ROADMAP §13.2 step 2, "register context and
+/// resource references"): a contribution's `EvidenceRef` resolves to a
+/// registered `resource_references` row.
+///
+/// `EvidenceRef { uri, digest }` and `resource_references UNIQUE
+/// (original_locator, expected_digest)` are the SAME key — a contributor naming
+/// a URL at a digest is naming exactly the row the evidence store would hold —
+/// and before this leaf nothing joined them: six `evidence_refs` hits in one
+/// file, every one inert with respect to the store.
+///
+/// The key is the PAIR, which is what keeps one tenant's citation from blocking
+/// another's: two tenants legitimately cite one locator at two digests (§12.6,
+/// "a live Web page or branch can change"), and §12.1 forbids erasing that
+/// security-relevant distinction. A digest-less citation is a §12.1 reference
+/// with no pin, not a refusal.
+#[tokio::test]
+async fn the_contribution_citation_registers_a_resource_reference() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cite-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "cite-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "cite-subject",
+                "objective": "probe the citation registration",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let contribute =
+        |principal: String, thread: String, tenant: String, key: String, refs: Value| {
+            let client = client.clone();
+            let base = base.clone();
+            async move {
+                let response = client
+                    .post(format!("{base}/v1/threads/{thread}/commands"))
+                    .header(PRINCIPAL_HEADER, &principal)
+                    .json(&json!({
+                        "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                        "operation": "thread.contribute",
+                        "request_id": reasonbraid_core::RequestId::new().to_string(),
+                        "idempotency_key": key,
+                        "body": {
+                            "tenant_id": tenant,
+                            "content": "the position this citation supports",
+                            "kind": "evidence_reference",
+                            "evidence_refs": refs,
+                        },
+                        "client_context": {},
+                    }))
+                    .send()
+                    .await
+                    .expect("contribute request");
+                let status = response.status().as_u16();
+                let text = response.text().await.expect("contribute body");
+                let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+                (status, value)
+            }
+        };
+
+    let locator = "https://example.org/cited-report";
+    let first_digest = format!("sha256:{}", "1".repeat(64));
+    let second_digest = format!("sha256:{}", "2".repeat(64));
+
+    // ── The finding: the citation registers the reference it names ──
+    let (status, cited) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-first".into(),
+        json!([{ "uri": locator, "digest": first_digest, "note": "the acquired report" }]),
+    )
+    .await;
+    assert_eq!(status, 200, "the citing contribution commits: {cited}");
+
+    let registered: Vec<(String, Option<String>, String, String)> = sqlx::query_as(
+        "SELECT resource_id, expected_digest, scheme, submitted_by \
+         FROM resource_references WHERE original_locator = $1 \
+         ORDER BY created_at",
+    )
+    .bind(locator)
+    .fetch_all(&pool)
+    .await
+    .expect("read the references the citation registered");
+    assert_eq!(
+        registered.len(),
+        1,
+        "a contribution's `EvidenceRef` resolves to nothing — the citation is a string beside an evidence store holding the row it describes: {registered:?}"
+    );
+    assert_eq!(
+        registered[0].1.as_deref(),
+        Some(first_digest.as_str()),
+        "the citation's digest IS the reference's pin: {registered:?}"
+    );
+    assert_eq!(
+        registered[0].2, "https",
+        "the scheme is derived from the locator, never claimed beside it: {registered:?}"
+    );
+    // One namespace in `submitted_by`, whichever writer filled it: the citation
+    // path computes the same `actor_handle_for_subject` the route does, rather
+    // than storing the raw principal id beside the route's UUID handles.
+    assert!(
+        registered[0].3.starts_with("agt_"),
+        "the citation records the route's own actor-handle shape: {registered:?}"
+    );
+    let first_resource_id = registered[0].0.clone();
+
+    // The event carries the id, so the timeline's citation resolves.
+    let (status, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .cloned()
+        .expect("the citing contribution is in the timeline");
+    assert_eq!(
+        event["body"]["evidence_refs"][0]["resource_id"],
+        json!(first_resource_id),
+        "the event names the registered row: {event}"
+    );
+    assert_eq!(event["body"]["evidence_refs"][0]["uri"], json!(locator));
+    assert_eq!(
+        event["body"]["evidence_refs"][0]["note"],
+        json!("the acquired report"),
+        "the contributor's own words survive the registration: {event}"
+    );
+
+    // The replay: the same pair cited again is the SAME row.
+    let (status, again) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-replay".into(),
+        json!([{ "uri": locator, "digest": first_digest }]),
+    )
+    .await;
+    assert_eq!(status, 200, "the second citation commits: {again}");
+
+    // ── The pair is the key, so another tenant's citation is never blocked ──
+    let (status, other) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cite-other" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the other human enrolls: {other}");
+    let other_id = other["principal_id"].as_str().unwrap().to_string();
+    let other_tenant = other["tenant_id"].as_str().unwrap().to_string();
+    let (status, other_thread) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &other_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "cite-create-other",
+            "body": {
+                "tenant_id": other_tenant,
+                "subject": "cite-subject-other",
+                "objective": "cite the same page at a later version",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the other thread creates: {other_thread}");
+    let other_thread_id = other_thread["thread_id"].as_str().unwrap().to_string();
+    let (status, changed) = contribute(
+        other_id.clone(),
+        other_thread_id.clone(),
+        other_tenant.clone(),
+        "cite-changed".into(),
+        json!([{ "uri": locator, "digest": second_digest }]),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a live page changes (§12.6) and the second digest is a second reference, never a refusal that leaks the first tenant's pin (§9.8): {changed}"
+    );
+
+    // ── The digest-less citation: a §12.1 reference with no pin ──
+    let (status, unpinned) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-unpinned".into(),
+        json!([{ "uri": locator }]),
+    )
+    .await;
+    assert_eq!(status, 200, "the digest-less citation commits: {unpinned}");
+    let (status, unpinned_again) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-unpinned-again".into(),
+        json!([{ "uri": locator }]),
+    )
+    .await;
+    assert_eq!(status, 200, "it replays: {unpinned_again}");
+
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT resource_id, expected_digest FROM resource_references \
+         WHERE original_locator = $1 ORDER BY created_at",
+    )
+    .bind(locator)
+    .fetch_all(&pool)
+    .await
+    .expect("read every reference for the locator");
+    assert_eq!(
+        rows.len(),
+        3,
+        "three distinct pins, each cited twice: {rows:?}"
+    );
+    assert_eq!(rows[0].1.as_deref(), Some(first_digest.as_str()));
+    assert_eq!(rows[1].1.as_deref(), Some(second_digest.as_str()));
+    assert_eq!(
+        rows[2].1, None,
+        "the unpinned citation registers with no digest: {rows:?}"
+    );
+
+    // ── One namespace, two writers: the shipped route replays the row the
+    // citation minted, rather than conflicting with it ──
+    let (status, resubmitted) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({
+            "original_locator": locator,
+            "scheme": "https",
+            "expected_digest": first_digest,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the route replays the citation's row: {resubmitted}"
+    );
+    assert_eq!(resubmitted["resource_id"], json!(first_resource_id));
+    assert_eq!(resubmitted["replayed"], json!(true));
+
+    // ── Each refusal by NAME ──
+
+    // A citation with no scheme is not a reference — §12.1's contract needs one.
+    let (status, schemeless) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-schemeless".into(),
+        json!([{ "uri": "see the internal wiki" }]),
+    )
+    .await;
+    assert_eq!(status, 400, "the schemeless citation refuses: {schemeless}");
+    assert!(
+        schemeless["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("scheme"),
+        "the refusal names what is missing: {schemeless}"
+    );
+
+    // A digest outside ADR-011 is refused with the scheme it should have used.
+    let (status, malformed) = contribute(
+        human_id.clone(),
+        thread_id.clone(),
+        tenant_id.clone(),
+        "cite-malformed".into(),
+        json!([{ "uri": "https://example.org/other", "digest": "md5:not-sha256" }]),
+    )
+    .await;
+    assert_eq!(status, 400, "the malformed digest refuses: {malformed}");
+    assert!(
+        malformed["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("sha256"),
+        "the refusal names the scheme: {malformed}"
+    );
+
+    // Nothing the refusals attempted was written.
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM resource_references")
+        .fetch_one(&pool)
+        .await
+        .expect("count the references");
+    assert_eq!(total, 3, "only the accepted citations registered");
+    eprintln!(
+        "citation registration: a contribution's evidence reference resolves to a §12.1 row keyed by the (locator, digest) PAIR; a changed page is a second reference rather than a cross-tenant refusal; a digest-less citation registers unpinned and replays; the shipped route replays the citation's own row; a schemeless uri and a non-ADR-011 digest are each refused by name; {total} rows written"
     );
 }
 

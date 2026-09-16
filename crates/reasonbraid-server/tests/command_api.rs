@@ -284,8 +284,13 @@ async fn full_flow_inspects_state_through_the_api_only() {
                 "tenant_id": tenant,
                 "content": "Ship it: the kill-risk experiments are green.",
                 "kind": "claim",
+                // ⭐ The digest here was `sha256:abc123` until
+                // `SIGNOFF-REPAIR.11.14.3.2` — six characters where ADR-011 asks
+                // for sixty-four, and it passed for as long as it did because a
+                // citation's digest was free text nothing read. The citation now
+                // registers a §12.1 reference, so the digest is validated.
                 "evidence_refs": [
-                    { "uri": "https://example.org/kill-risk-report", "digest": "sha256:abc123", "note": "the WP2 sweep" },
+                    { "uri": "https://example.org/kill-risk-report", "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b", "note": "the WP2 sweep" },
                     { "uri": "https://example.org/journal-sweep" },
                 ],
             }),
@@ -414,13 +419,35 @@ async fn full_flow_inspects_state_through_the_api_only() {
         .find(|e| e["event_type"] == json!("thread.contribution_submitted"))
         .expect("the contribution event exists");
     assert_eq!(contribution["body"]["kind"], json!("claim"));
+    // The contributor's own words, plus the §12.1 reference each citation
+    // registered (`SIGNOFF-REPAIR.11.14.3.2`): the `resource_id` is minted per
+    // run, so the assertion is field-wise rather than a frozen array.
+    let cited = contribution["body"]["evidence_refs"].as_array().unwrap();
+    assert_eq!(cited.len(), 2, "{contribution}");
     assert_eq!(
-        contribution["body"]["evidence_refs"],
-        json!([
-            { "uri": "https://example.org/kill-risk-report", "digest": "sha256:abc123", "note": "the WP2 sweep" },
-            { "uri": "https://example.org/journal-sweep" },
-        ])
+        cited[0]["uri"],
+        json!("https://example.org/kill-risk-report")
     );
+    assert_eq!(
+        cited[0]["digest"],
+        json!("sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b")
+    );
+    assert_eq!(cited[0]["note"], json!("the WP2 sweep"));
+    assert_eq!(cited[1]["uri"], json!("https://example.org/journal-sweep"));
+    assert_eq!(
+        cited[1].get("digest"),
+        None,
+        "an unstated digest stays absent"
+    );
+    for citation in cited {
+        assert!(
+            citation["resource_id"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("res_"),
+            "the citation resolves to a registered reference: {citation}"
+        );
+    }
 
     let (status, audit) = get(
         &client,
@@ -1217,9 +1244,18 @@ async fn contribute_carries_a_typed_kind_and_evidence_refs() {
         contributions[1]["body"]["kind"],
         json!("evidence_reference")
     );
-    assert_eq!(
-        contributions[1]["body"]["evidence_refs"],
-        json!([{ "uri": "https://example.org/spec" }])
+    let named_refs = contributions[1]["body"]["evidence_refs"]
+        .as_array()
+        .unwrap();
+    assert_eq!(named_refs.len(), 1);
+    assert_eq!(named_refs[0]["uri"], json!("https://example.org/spec"));
+    assert!(
+        named_refs[0]["resource_id"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("res_"),
+        "the citation registers its §12.1 reference: {}",
+        contributions[1]
     );
 
     // An out-of-registry kind is refused, never silently stored.

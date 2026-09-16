@@ -49,15 +49,20 @@ self-verification beat for the dev loop itself.
 ## Reading historical changes
 
 The root `CHANGELOG.md` is a recent digest; older entries rotate into reachable
-Git history under the existing README policy. It has rotated four times, and the
-digest's own **"Historical entries and exact retrieval"** footer is the
-authoritative pointer: each rotation names the commit and blob holding the ledger
-immediately before it, so following that chain reaches every dated record back to
-the original 130.
+Git history under the existing README policy. The digest's own **"Historical
+entries and exact retrieval"** footer is the authoritative pointer, and it states
+how many rotations there have been: each one names the commit and blob holding
+the ledger immediately before it, so following that chain reaches every dated
+record back to the original 130.
 
-Read the footer rather than a commit id copied here — a second copy of the newest
-link is stale the next time the file rotates, which is exactly what happened to
-this paragraph between the first rotation and the fourth.
+Read the footer rather than anything copied here — a second copy of a fact the
+footer already carries is stale the next time the file rotates. ⚠️ **This
+paragraph is its own example, twice.** It once copied the newest commit id and
+went stale between the first rotation and the fourth; it then copied the ROTATION
+COUNT, said "four" while the footer said nineteen, and was corrected by
+`SIGNOFF-REPAIR.11.14.3.2` only because that leaf happened to read both. The
+count is gone rather than updated: `SIGNOFF-REPAIR.11.16` owns the general
+question of numbers restated where nothing derives them.
 
 ```bash
 sed -n '/^## Historical entries/,$p' CHANGELOG.md

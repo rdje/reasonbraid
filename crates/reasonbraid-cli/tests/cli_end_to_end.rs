@@ -362,9 +362,20 @@ async fn the_real_cli_drives_the_whole_flow() {
         contribution["body"]["kind"],
         serde_json::json!("evidence_reference")
     );
+    let cited = contribution["body"]["evidence_refs"].as_array().unwrap();
+    assert_eq!(cited.len(), 1);
     assert_eq!(
-        contribution["body"]["evidence_refs"],
-        serde_json::json!([{ "uri": "https://example.org/kill-risk" }])
+        cited[0]["uri"],
+        serde_json::json!("https://example.org/kill-risk")
+    );
+    // `SIGNOFF-REPAIR.11.14.3.2`: the citation resolves to the §12.1 reference
+    // it registered, so the CLI's `--evidence-uri` reaches the evidence store.
+    assert!(
+        cited[0]["resource_id"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("res_"),
+        "the citation registers its reference: {contribution}"
     );
 
     // `.1.5.2`: the human advances the round — the REAL binary drives the verb.

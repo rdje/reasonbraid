@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The suite stops building its inputs out of the host's git configuration (`SIGNOFF-REPAIR.7.2.5`)
+
+✅ **`SIGNOFF-REPAIR.7.2` is closed on every child; the last one was the test suite, not the product.**
+
+- **The finding**, measured by `.7.2.4` and deliberately not absorbed by it: the acquisition fixtures still called `gix::init` under `Permissions::all()` — the default that repair had just removed from production — so the repositories the controls build were a function of the host's system, application and user git configuration.
+- ⭐ **The reproduction cost one line**, because the previous leaf left an instrument behind. The same child process printed `acquisition HEAD: ref: refs/heads/main` beside `fixture HEAD: ref: refs/heads/smuggled`.
+- ⚠️ **Real width:** no assertion had moved. This is a reproducibility defect, not a security one.
+- **Fix:** one `init_fixture_repo` with `gix::open::Options::isolated()`, called by all four fixture sites.
+- ⛔ **The probe's own `gix::init_bare` is retained and its exemption stated in the source** — it is the matched pair's other half, and a control whose every open refuses the setting cannot tell a refusal from a setting that never arrived.
+- **Verified:** 109 passed / 0 failed / 1 ignored; the acquisition suite 12 passed / 1 ignored. Falsified by reverting one of the four sites, restored byte-identical.
+
 ## 2026-09-16 — Open the acquired repository with gix's isolated permissions (`SIGNOFF-REPAIR.7.2.4`)
 
 ✅ **The operator's git configuration and the server's environment no longer reach a repository fetched from a caller-supplied URL — and `SIGNOFF-REPAIR.7.2` is closed on all three of its split children.**

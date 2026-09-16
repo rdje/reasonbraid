@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE ACQUISITION LANE `.7.2` IS CLOSED ON EVERY CHILD, AND THE LAST ONE WAS THE SUITE ITSELF (`.7.2.5`, REPAIR-0208).** `.7.2.4` removed `Permissions::all()` from the production open; the FIXTURES had kept it, so the controls that prove the repair built their own inputs out of the host's system, application and user git configuration.
+
+- ⭐ **The reproduction cost one line**, because `.7.2.4` left an instrument behind. The same child process printed `acquisition HEAD: ref: refs/heads/main` beside `fixture HEAD: ref: refs/heads/smuggled` — one process, one environment, production refusing what the suite accepted.
+- ⚠️ **No assertion had moved, and the leaf says so rather than inflating it.** The fixtures assert commit ids, file counts, depths and refusal names, and `acquire_local` resolves through the advertised `HEAD`. What was wrong is that the suite's INPUTS varied with the host — a reproducibility defect, not a security one.
+- **Fix:** one `init_fixture_repo` with `gix::open::Options::isolated()`, called by all four fixture sites.
+- ⛔ **One open stays deliberately un-isolated and its exemption is in the source, not only in the tree**: the probe's own `gix::init_bare` is the matched pair's other half, and a control whose every open refuses the setting cannot tell a refusal from a setting that never arrived. The reader who would "fix" it is reading the file.
+- **Verified:** **109 passed / 0 failed / 1 ignored**, the acquisition suite 12 passed / 1 ignored. **Falsified** by reverting ONE of the four sites — `source_repo` — which fails the control, so it is driven by the fixture the suites use rather than by the helper's existence. Restored byte-identical.
+
 ✅ **THE ACQUIRED REPOSITORY IS OPENED WITH GIX'S ISOLATED PERMISSIONS, AND `.7.2` IS NOW CLOSED ON ALL THREE OF ITS SPLIT CHILDREN (`.7.2.4`, REPAIR-0207).** R1 called `gix::init_bare`, which is `ThreadSafeRepository::init(…, open::Options::default_for_level(Trust::Full))` — `Permissions::all()` — while fetching a CALLER-SUPPLIED URL.
 
 - **The census was owed before the fix, and it came out of gix 0.87.1's own source.** `Permissions::all()` admitted the system config (`$(prefix)/etc/gitconfig`), the application config (`$XDG_CONFIG_HOME/git/config`, else `$HOME/.config/git/config`), the user config (`~/.gitconfig`), environment-sourced config (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`), `include`/`includeIf` directives reaching outside the repository, the system and application `gitattributes`, and every `GIT_*`/`SSH_*` category. ⛔ The `git` binary's own configuration was off in BOTH modes and is not claimed as something the repair turned off.

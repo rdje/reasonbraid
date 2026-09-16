@@ -1256,8 +1256,28 @@ mod tests {
         }
     }
 
+    /// A fixture repository, opened the way the acquisition opens its own —
+    /// isolated from the host's system, application and user git configuration
+    /// and from the `GIT_*`/`SSH_*` environment — so the suite's INPUTS do not
+    /// change with whoever runs it. `.7.2.4` removed `Permissions::all()` from
+    /// production and measured that the fixtures had kept it.
+    ///
+    /// ⛔ `the_git_environment_probe` deliberately does NOT use this, and must
+    /// not be "fixed" to: its first open is the matched pair's other half, and
+    /// it has to keep honouring the setting to prove the setting arrived.
+    fn init_fixture_repo(dir: &std::path::Path) -> gix::Repository {
+        gix::ThreadSafeRepository::init_opts(
+            dir,
+            gix::create::Kind::WithWorktree,
+            gix::create::Options::default(),
+            gix::open::Options::isolated(),
+        )
+        .map(Into::into)
+        .expect("the fixture repository inits")
+    }
+
     fn source_repo(dir: &std::path::Path) -> gix::ObjectId {
-        let repo = gix::init(dir).expect("the source repo inits");
+        let repo = init_fixture_repo(dir);
         let blob = repo.write_blob(b"hello world").expect("the blob writes");
         let nested = repo
             .write_object(&gix::objs::Tree {
@@ -1345,7 +1365,7 @@ mod tests {
         let sub_dir = tmp.join("sub");
         std::fs::create_dir_all(&sub_dir).expect("the sub dir creates");
         {
-            let repo = gix::init(&sub_dir).expect("the sub repo inits");
+            let repo = init_fixture_repo(&sub_dir);
             let blob = repo.write_blob(b"x").expect("the blob writes");
             let tree = repo
                 .write_object(&gix::objs::Tree {
@@ -1400,7 +1420,7 @@ mod tests {
         let lfs_dir = tmp.join("lfs");
         std::fs::create_dir_all(&lfs_dir).expect("the lfs dir creates");
         {
-            let repo = gix::init(&lfs_dir).expect("the lfs repo inits");
+            let repo = init_fixture_repo(&lfs_dir);
             let pointer = repo
                 .write_blob(
                     b"version https://git-lfs.github.com/spec/v1\noid sha256:aaaa\nsize 1\n",
@@ -1438,7 +1458,7 @@ mod tests {
     /// the LFS gate reads, with nothing else in the tree to distract it.
     fn one_blob_repo(dir: &std::path::Path, filename: &str, content: &[u8]) {
         std::fs::create_dir_all(dir).expect("the fixture dir creates");
-        let repo = gix::init(dir).expect("the fixture repo inits");
+        let repo = init_fixture_repo(dir);
         let blob = repo.write_blob(content).expect("the blob writes");
         let tree = repo
             .write_object(&gix::objs::Tree {
@@ -1537,6 +1557,13 @@ mod tests {
         std::fs::create_dir_all(&owned).expect("the owned dir creates");
         init_acquisition_repository(&owned).expect("the acquisition open succeeds");
         println!("acquisition HEAD: {}", head_line(&owned));
+
+        // The suite's own inputs: the real fixture builder the acquisition
+        // controls use, not a stand-in for it.
+        let fixture = tmp.path().join("fixture");
+        std::fs::create_dir_all(&fixture).expect("the fixture dir creates");
+        source_repo(&fixture);
+        println!("fixture HEAD: {}", head_line(&fixture.join(".git")));
     }
 
     #[test]
@@ -1572,6 +1599,10 @@ mod tests {
         assert!(
             out.contains("acquisition HEAD: ref: refs/heads/main"),
             "the setting must not reach the acquisition's own open:\n{out}"
+        );
+        assert!(
+            out.contains("fixture HEAD: ref: refs/heads/main"),
+            "the setting must not reach the suite's own fixtures either:\n{out}"
         );
     }
 

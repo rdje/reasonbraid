@@ -1005,6 +1005,14 @@ prints each repository's `HEAD`. The first says `ref: refs/heads/smuggled` — s
 the setting really does arrive on this host — and the second says
 `ref: refs/heads/main`. Before the repair, both said `smuggled`.
 
+The same control covers the suite's own inputs. The acquisition fixtures had
+kept the default open after production lost it, so the repositories the tests
+build were themselves a function of whoever ran them; the probe now builds a
+real fixture under the same setting and its `HEAD` must read
+`ref: refs/heads/main` too. The probe's first open stays deliberately
+un-isolated, and its source says so: a control whose every open refuses the
+setting cannot tell a refusal from a setting that never arrived.
+
 ### The Git LFS policy, and what a pointer file is
 
 An acquisition **refuses** a Git LFS pointer, by name, and never treats it as

@@ -60,13 +60,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
 
-    let pool = sqlx::PgPool::connect(&args.database_url).await?;
-    sqlx::migrate!("../../migrations").run(&pool).await?;
-
+    // ⛔ EVERY declared-configuration refusal HAPPENS BEFORE ANY MUTATION
+    // (`SIGNOFF-REPAIR.11.12`). The secret-store profile and the bind address
+    // are both pure functions of the arguments — neither touches the database —
+    // and both used to be checked AFTER `migrate!` had already moved the
+    // schema. A typo'd profile against the wrong database left that database
+    // changed and no service running: a refusal that has already acted is not a
+    // refusal. Nothing below this line is allowed to be a check the boot could
+    // have made first.
+    //
     // The declared secret store (`.1.4.2`): resolved ONCE at boot — the
     // undeclared profile is the typed refusal, never a silent fallback.
     let store = secret_store::SecretStore::resolve(&args.secret_store_profile)
         .map_err(|e| format!("{e}"))?;
+    // ⚠️ Named rather than propagated: `main` returns `Box<dyn Error>`, whose
+    // `Termination` prints the DEBUG form, so the bare `?` here reported
+    // `Error: AddrParseError(Socket)` — no argument, no value, nothing an
+    // operator who typo'd `--host` could act on.
+    let addr: SocketAddr = format!("{}:{}", args.host, args.port)
+        .parse()
+        .map_err(|_| {
+            format!(
+                "the bind address `{}:{}` is not a host and port",
+                args.host, args.port
+            )
+        })?;
+
+    let pool = sqlx::PgPool::connect(&args.database_url).await?;
+    sqlx::migrate!("../../migrations").run(&pool).await?;
 
     // The workload-identity CA (`.1.2.1`, ADR-007): loaded from `server_ca` or
     // generated on first boot — it must survive restarts so issued leaves chain.
@@ -81,9 +102,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = api_router_with_publication_root(pool.clone(), publication_repo_root)
         .merge(node_router(pool, ca))
         .merge(ui_router());
-    let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    eprintln!("rb-server listening on http://{addr} (Phase 0 dev profile)");
+    // The startup line NAMES the exposure it has taken. It used to say
+    // "(Phase 0 dev profile)" for every bind, so a log could not tell a
+    // loopback boot from one reachable by every host on the network —
+    // and the trusted-LAN profile the book documents is exactly
+    // `--host 0.0.0.0`. ⛔ A report, not a gate
+    // (`docs/decisions/2026-09-16_rb-server-bind-exposure.md`).
+    eprintln!(
+        "rb-server listening on http://{addr} (Phase 0 dev profile; reachable from: {})",
+        reasonbraid_server::bind_exposure(&addr)
+    );
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

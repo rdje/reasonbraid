@@ -95,6 +95,48 @@ pub mod reviews;
 mod rls;
 pub mod routing;
 pub mod secret_store;
+
+/// How far a bind address reaches, as a word an operator can read in one line
+/// of a log (`SIGNOFF-REPAIR.11.12`).
+///
+/// ⛔ This is a REPORT, not a gate. `docs/book/src/deployment.md` documents
+/// `rb-server --host 0.0.0.0` as the supported **trusted LAN** profile, so a
+/// refusal here would break a shipped, documented deployment. What was wrong is
+/// that the startup line said "(Phase 0 dev profile)" for EVERY bind, so a log
+/// could not tell a loopback boot from one reachable by every host on the
+/// network. The decision and where the limit is published:
+/// `docs/decisions/2026-09-16_rb-server-bind-exposure.md`.
+pub fn bind_exposure(addr: &std::net::SocketAddr) -> &'static str {
+    let ip = addr.ip();
+    if ip.is_loopback() {
+        "loopback"
+    } else if ip.is_unspecified() {
+        "every interface"
+    } else {
+        "one named interface"
+    }
+}
+
+#[cfg(test)]
+mod bind_exposure_tests {
+    use super::bind_exposure;
+    use std::net::SocketAddr;
+
+    #[test]
+    fn the_startup_line_can_tell_a_loopback_boot_from_a_reachable_one() {
+        for (raw, expected) in [
+            ("127.0.0.1:4310", "loopback"),
+            ("[::1]:4310", "loopback"),
+            ("0.0.0.0:4310", "every interface"),
+            ("[::]:4310", "every interface"),
+            ("192.168.1.10:4310", "one named interface"),
+            ("[2001:db8::1]:4310", "one named interface"),
+        ] {
+            let addr: SocketAddr = raw.parse().expect("the fixture address parses");
+            assert_eq!(bind_exposure(&addr), expected, "{raw}");
+        }
+    }
+}
 pub mod snapshots;
 pub mod ssrf;
 mod telemetry;

@@ -968,6 +968,51 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### What `rb-server` checks before it touches the database
+
+Every configuration refusal now happens **before** anything mutates. The
+declared secret-store profile and the bind address are both pure checks — a
+match on a name and a parse — and both used to run *after*
+`sqlx::migrate!` had already moved the schema. A typo'd profile pointed at the
+wrong database left that database migrated and no service running, which is a
+refusal that has already acted.
+
+A control proves the order without needing PostgreSQL at all: it points the
+server at a port nothing serves, so a boot that reaches the connection reports
+`PoolTimedOut` and a boot that refuses first reports the configuration it
+refused. One knob — which argument is wrong — decides which message appears. A
+third control drives a valid configuration and asserts it still reaches the
+connection, so a repair that refused every boot would fail it.
+
+The bind-address refusal also names itself. `main` returns `Box<dyn Error>`,
+whose termination prints the *debug* form, so a typo'd `--host` used to report
+`Error: AddrParseError(Socket)` — no argument, no value. It now reads
+``the bind address `not a host:4310` is not a host and port``.
+
+### How far a boot reaches, and where that limit is published
+
+`rb-server --host 0.0.0.0` is **not** refused. It is the supported trusted-LAN
+profile this chapter documents, the one `deploy/`'s runbook and the two-host
+demonstration both walk, and gating it would refuse a shipped capability. What
+bounds Internet exposure is the G6/G7 gate and the blockers on the
+[Blockers](blockers.md) page — an externally reviewed threat model, a
+penetration test and a prompt-injection action-boundary suite — none of which is
+a property of a command-line argument.
+
+What was wrong is that the startup line could not tell the two apart: it printed
+`(Phase 0 dev profile)` whether the server was reachable from one loopback or
+from every host on the network. It now names its reach:
+
+```text
+rb-server listening on http://127.0.0.1:4310 (Phase 0 dev profile; reachable from: loopback)
+rb-server listening on http://0.0.0.0:4310 (Phase 0 dev profile; reachable from: every interface)
+```
+
+The classification is a pure function with its own control over six addresses,
+both IPv6 forms included. The decision, its rejected alternatives — a refusal, a
+confirmation flag — and what it deliberately does **not** claim are recorded in
+`docs/decisions/2026-09-16_rb-server-bind-exposure.md`.
+
 ### What a rendered page is allowed to fetch
 
 The R3 browser pack advertises two deny-policies to every caller that reads the

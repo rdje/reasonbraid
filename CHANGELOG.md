@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Every configuration refusal happens before the first mutation (`SIGNOFF-REPAIR.11.12`)
+
+✅ **`rb-server` used to migrate the database and then discover it could not run.**
+
+- **The ordering, which was never a decision:** `sqlx::migrate!` ran before `SecretStore::resolve` and before the bind-address parse, both pure functions of the arguments. Both now run before `PgPool::connect`.
+- ⭐ **The control needs no PostgreSQL:** point the server at a port nothing serves, and a boot that reaches the connection reports `PoolTimedOut` while a boot that refuses first reports the configuration it refused.
+- 🔴 **The first draft of those controls passed against the defect**, because they asserted on a string the failure never prints. The neutralization is what found it — a control's discriminator has to be the string the failure actually prints.
+- **The bind is reported, not refused**, decided separately: `rb-server --host 0.0.0.0` is the supported trusted-LAN profile the book documents, and what bounds Internet exposure is G6/G7 with blockers B1–B3, not a predicate on an argument. The startup line now names its reach instead of printing `(Phase 0 dev profile)` for every bind. Record: `docs/decisions/2026-09-16_rb-server-bind-exposure.md`.
+- **Also repaired:** a typo'd `--host` reported `Error: AddrParseError(Socket)` — the debug form, with no argument and no value; it now names both.
+- **Verified:** 3 passed in the new boot suite, 112 passed / 1 ignored in the server lib; clippy, fmt, gate, book and links rc=0.
+
 ## 2026-09-16 — The R3 pack enforces the deny-policies it advertises (`SIGNOFF-REPAIR.7.3.5`)
 
 🔴 **The resolver registry told every caller the browser pack denied redirects and subresources. It denied neither — proved with a real browser.**

@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE R3 PACK ADVERTISED TWO DENY-POLICIES IT DID NOT ENFORCE, AND A REAL BROWSER PROVED IT (`.7.3.5`, REPAIR-0210).**
+
+- ⛔ **This was never "a control is missing".** `resolvers.rs::gated_advertises` publishes the R3 pack to every caller with `redirect_policy: "deny"` and `subresource_policy: "deny"` — two lines a caller reads when CHOOSING a pack — and the worker enforced neither. ⭐ `a-claim-of-sameness-is-worth-its-call-graph` in a REGISTRY rather than a module header, which is worse: a header is read by maintainers, an advertisement by callers.
+- 🔴 **Reproduced under the pinned Chrome for Testing runtime, on the ORIGIN's own counter**: the page's `<img>` named `0.0.0.0`, the browser dialed it and the origin served it — `left: 1, right: 0`.
+- ⭐ **The instrument is `0.0.0.0` again, its second use in this tree.** It classifies `reserved` and the kernel routes it at the LOCAL host, so the same origin answers the subresource and its counter reports whether anything reached a SOCKET. ⛔ A control asserting on the network log would have recorded the browser's INTENT — that log is written from `EventRequestWillBeSent`, which fires whether or not a dial happens.
+- **The repair enforces exactly what is advertised**, at the CDP `Fetch` domain: a `Document` request for a URL the caller asked to navigate to continues, everything else fails with `BlockedByClient`. A non-document request IS a subresource; a document request for a URL nobody asked for IS a redirect.
+- **Every refusal is NAMED on the receipt** — `refused_requests` carries the URL, the policy and Chrome's resource type — while the network log still records the attempt, so the disclosure and the refusal stay two separate facts.
+- 🔴 **The behavioural consequence is stated rather than discovered:** a page that assembles its visible text from an external stylesheet or script now renders LESS text than it would in a desktop browser. That is what "deny" means, and it is the posture the pack advertises for untrusted content. ⚠️ Changing the ADVERTISEMENT to `allow` was the alternative and is rejected — it would publish a weaker guarantee than §12.3–12.4's posture.
+- **The interception task is owned like every other**: `BrowserOwner::intercept` joins under the same deadline as `handler` and `network`, feeds `cleanup_confirmed` and is aborted in `Drop` — `.7.3.1`/`.7.3.2` own exactly this class of escape.
+- ⭐ **Falsified twice with a real browser.** Removing the subresource arm reproduces the red; the blackout almost-fix, refusing EVERY request including the navigation, fails with `net::ERR_BLOCKED_BY_CLIENT` — so the control discriminates a policy from a prohibition.
+- **Verified:** **18 passed / 0 failed** across the whole browser suite with every pre-existing control unchanged; 111 passed / 0 failed / 1 ignored in the server lib; 8 passed in the worker's own units. Clippy `-D warnings`, fmt, gate, book and links all rc=0.
+
 🔴 **A CREDENTIAL BOUND TO ONE ORIGIN WAS BEING DELIVERED TO ANOTHER, AND THE REPAIR LANDS ONE COMMIT AFTER THE CLASSIFICATION FOUND IT (`.7.2.6`, REPAIR-0209).**
 
 - 🔴 **Reproduced at runtime, and the secret ARRIVED** — this stopped being a source measurement. The origin's own record against the unrepaired loop is `[("fetch.test", true), ("second.test", true)]`: the `Authorization` header was delivered to a host the caller never named and the broker never bound.

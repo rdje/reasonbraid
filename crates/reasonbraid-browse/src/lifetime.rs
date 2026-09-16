@@ -29,6 +29,10 @@ pub struct Lifetime {
     pub browser: Option<chromiumoxide::Browser>,
     handler: Option<JoinHandle<()>>,
     pub network: Option<JoinHandle<()>>,
+    /// The `Fetch.requestPaused` decision loop. Owned exactly like `network`,
+    /// so a worker that finishes leaves no task answering a browser that is
+    /// already gone (`SIGNOFF-REPAIR.7.3.5`).
+    pub intercept: Option<JoinHandle<()>>,
     stderr: Option<JoinHandle<io::Result<Vec<u8>>>>,
     finished: bool,
 }
@@ -42,6 +46,7 @@ impl Lifetime {
             browser: None,
             handler: None,
             network: None,
+            intercept: None,
             stderr: None,
             finished: false,
         })
@@ -168,6 +173,7 @@ impl Lifetime {
         }
         let handler_result = join_aborted(&mut self.handler, deadline).await;
         let network_result = join_aborted(&mut self.network, deadline).await;
+        let intercept_result = join_aborted(&mut self.intercept, deadline).await;
         let mut stderr_result = Ok(Vec::new());
         if let Some(mut task) = self.stderr.take() {
             stderr_result = match timeout_at(deadline, &mut task).await {
@@ -185,6 +191,7 @@ impl Lifetime {
         let cleanup = process_result
             .and(handler_result)
             .and(network_result)
+            .and(intercept_result)
             .and(stderr_result.as_ref().map(|_| ()).map_err(Clone::clone));
         let receipt = serde_json::json!({
             "workspace": self.workspace.relative(),
@@ -277,7 +284,10 @@ impl Drop for Lifetime {
             if let Some(child) = self.child.as_mut() {
                 let _ = child.start_kill();
             }
-            for task in [&self.handler, &self.network].into_iter().flatten() {
+            for task in [&self.handler, &self.network, &self.intercept]
+                .into_iter()
+                .flatten()
+            {
                 task.abort();
             }
             if let Some(task) = &self.stderr {

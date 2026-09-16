@@ -57,6 +57,10 @@ struct Origin {
     base: String,
     hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     navigation_release: tokio::sync::watch::Sender<bool>,
+    /// How many times the destination the R3 pack advertises as DENIED was
+    /// actually dialed. ⛔ A counter on the origin, not an assertion about the
+    /// browser's intent: it reports what reached a socket.
+    refused_hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     navigation_arrivals: tokio::sync::watch::Sender<u64>,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<std::io::Result<()>>>,
@@ -68,6 +72,11 @@ async fn spawn_origin() -> Origin {
     use axum::Router;
     let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = std::sync::Arc::clone(&hits);
+    let refused_hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let refused_hits_counter = std::sync::Arc::clone(&refused_hits);
+    // The port is known only after the bind, and the page has to name it, so
+    // the route reads it from a slot the bind fills in.
+    let refused_port_slot = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let (navigation_release, navigation_gate) = tokio::sync::watch::channel(false);
     let (navigation_arrivals, _) = tokio::sync::watch::channel(0_u64);
     let app = Router::new()
@@ -111,11 +120,51 @@ async fn spawn_origin() -> Origin {
                     async { ([("content-type", "application/javascript")], "console.log(1);") }
                 }
             }),
+        )
+        // The subresource control's page. Its `<img>` names `0.0.0.0`, which
+        // `ssrf::classify_v4` puts in the `reserved` class and the kernel
+        // routes at the LOCAL host — so the SAME origin answers it, and
+        // `refused_hits` reports whether the browser actually dialed a
+        // destination the R3 pack advertises as denied.
+        .route(
+            "/page-with-refused-subresource",
+            get({
+                let counter = std::sync::Arc::clone(&counter);
+                let refused_port = std::sync::Arc::clone(&refused_port_slot);
+                move || {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let port = refused_port.load(std::sync::atomic::Ordering::SeqCst);
+                    async move {
+                        (
+                            [("content-type", "text/html")],
+                            format!(
+                                "<!doctype html><html><head><title>Render Title</title></head>\
+                                 <body><h1>Rendered Heading</h1>\
+                                 <img src=\"http://0.0.0.0:{port}/refused-subresource\" alt=\"x\">\
+                                 </body></html>"
+                            ),
+                        )
+                    }
+                }
+            }),
+        )
+        .route(
+            "/refused-subresource",
+            get({
+                let counter = std::sync::Arc::clone(&counter);
+                let refused = std::sync::Arc::clone(&refused_hits_counter);
+                move || {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    refused.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    async { ([("content-type", "image/png")], "not-an-image") }
+                }
+            }),
         );
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("the origin binds");
     let port = listener.local_addr().expect("the port is known").port();
+    refused_port_slot.store(port as usize, std::sync::atomic::Ordering::SeqCst);
     let (shutdown, stopped) = oneshot::channel();
     let (closed, listener_closed) = oneshot::channel();
     let listener = OwnedListener {
@@ -132,6 +181,7 @@ async fn spawn_origin() -> Origin {
     Origin {
         base: format!("http://127.0.0.1:{port}"),
         hits,
+        refused_hits,
         navigation_release,
         navigation_arrivals,
         shutdown: Some(shutdown),
@@ -307,6 +357,79 @@ async fn the_browser_renders_the_page_and_logs_the_network() {
             "{log:?}"
         );
         assert!(origin.hits.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    })
+    .catch_unwind()
+    .await;
+    conclude(fixture, origin, result).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_subresource_the_pack_advertises_as_denied_is_not_dialed() {
+    // The R3 pack ADVERTISES `subresource_policy: "deny"` and
+    // `redirect_policy: "deny"` in the resolver registry every caller reads
+    // (`resolvers.rs::gated_advertises`). The worker enforces neither: it
+    // subscribes to `EventRequestWillBeSent` purely to LOG, so the page's own
+    // requests reach whatever they name.
+    //
+    // ⭐ The instrument is `0.0.0.0`: `ssrf::classify_v4` puts it in the
+    // `reserved` class and the kernel routes a connection to it at the LOCAL
+    // host, so the same origin answers and its counter reports whether the
+    // request was DIALED. A control that only checked the network log would
+    // record the browser's intent, not the socket.
+    if browser_binary().is_none() {
+        skip_without_browser("the subresource destination control");
+        return;
+    }
+    let fixture = Fixture::new();
+    let origin = spawn_origin().await;
+    let result = AssertUnwindSafe(async {
+        let request = serde_json::json!({
+            "url": format!("{}/page-with-refused-subresource", origin.base),
+            "steps": [{ "action": "navigate", "url": format!("{}/page-with-refused-subresource", origin.base) }],
+            "limits": { "max_steps": 4, "max_output_bytes": 1048576, "time_budget_secs": 30 }
+        });
+        let output = fixture
+            .worker(&request)
+            .await
+            .expect("bounded worker completes");
+        let response: serde_json::Value =
+            serde_json::from_str(&output.stdout).expect("the response is JSON");
+        assert_eq!(response["page_title"], "Render Title", "{response}");
+        let log = response["network_log"].as_array().expect("the network log");
+        assert!(
+            log.iter()
+                .any(|e| e["url"].as_str().unwrap().contains("/refused-subresource")),
+            "the disclosure still records the attempt: {log:?}"
+        );
+        assert_eq!(
+            origin
+                .refused_hits
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a destination the pack advertises as denied must not be dialed"
+        );
+        // ⛔ A denial nobody can see is indistinguishable from a page that
+        // never asked, so the refusal is NAMED on the receipt.
+        let refusals = response["refused_requests"]
+            .as_array()
+            .expect("the receipt carries the refusals");
+        let subresource = refusals
+            .iter()
+            .find(|r| r["url"].as_str().unwrap().contains("/refused-subresource"))
+            .unwrap_or_else(|| panic!("the refusal is named: {refusals:?}"));
+        assert_eq!(subresource["policy"], "subresource", "{subresource}");
+        assert_eq!(subresource["resource_type"], "Image", "{subresource}");
+        // The document itself was asked for, so it is NOT refused — the repair
+        // is a policy, not a blackout.
+        assert!(
+            !refusals
+                .iter()
+                .any(|r| r["url"]
+                    .as_str()
+                    .unwrap()
+                    .contains("/page-with-refused-subresource")),
+            "the requested navigation must still be allowed: {refusals:?}"
+        );
     })
     .catch_unwind()
     .await;

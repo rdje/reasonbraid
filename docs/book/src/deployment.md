@@ -968,6 +968,40 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### What a rendered page is allowed to fetch
+
+The R3 browser pack advertises two deny-policies to every caller that reads the
+resolver registry — `redirect_policy: "deny"` and `subresource_policy: "deny"` —
+and it now enforces both.
+
+The server's pre-flight classifies exactly **one** URL: the locator the caller
+named. Everything after that is the page's own doing, and until this repair the
+worker enforced nothing at all. It subscribed to Chrome's request events purely
+to write the network log, so an image, a stylesheet, a script or a redirect went
+wherever the page pointed it. A control drove a page whose `<img>` named
+`0.0.0.0` — a reserved address the destination policy refuses, which the kernel
+routes at the local host — and the origin recorded the request arriving.
+
+The gate is Chrome's `Fetch` domain, which pauses every request before it leaves
+the browser. A **document** request for a URL the worker was asked to navigate
+to continues; everything else fails with `BlockedByClient`. That is exactly the
+two advertised lines: a non-document request is a subresource, and a document
+request for a URL nobody asked for is a redirect.
+
+Each refusal is named on the render receipt, in `refused_requests`, with the URL,
+the policy that refused it and Chrome's own resource type. The network log still
+records the attempt, so the disclosure and the refusal are two separate facts and
+a reader can see both. A denial nobody can see is indistinguishable from a page
+that never asked.
+
+**The consequence, stated rather than discovered.** A page that assembles its
+visible text from an external stylesheet or script renders less text here than it
+would in a desktop browser. That is what "deny" means, and it is the posture this
+pack advertises for untrusted content: the rendered evidence is what the document
+itself carries. Denying every request including the navigation is *not* the
+policy — a control asserts that the requested page still loads, so a repair that
+blacked the browser out would fail it.
+
 ### Where a credential goes, and where it stops
 
 The R5 pack acquires a resource with a credential the broker resolves for one

@@ -4,6 +4,12 @@
 //! before the spawn), reads ONE response line, and KILLS the worker when
 //! the time budget trips — the killing budget inside the deployment's
 //! container boundary is the quarantine's enforcement.
+//!
+//! ⛔ The pre-flight classifies ONE url. Everything the PAGE then asks for is
+//! bounded by the worker's own enforcement of the two advertised deny-policies
+//! (`SIGNOFF-REPAIR.7.3.5`), and `BrowserReceipt::refused_requests` carries
+//! what it refused — a denial nobody can see is indistinguishable from a page
+//! that never asked.
 
 use std::fmt;
 use std::io::Read;
@@ -19,9 +25,24 @@ pub struct BrowseWorkerResponse {
     pub parent_digest: String,
     pub chunks: Vec<BrowseChunk>,
     pub network_log: Vec<NetworkEntry>,
+    /// Every request the worker's two advertised deny-policies refused
+    /// (`SIGNOFF-REPAIR.7.3.5`). `#[serde(default)]` so a worker built before
+    /// the field existed still parses — an older worker sends no refusals
+    /// because it performed none.
+    #[serde(default)]
+    pub refused_requests: Vec<RefusedRequest>,
     pub page_title: String,
     pub browser_version: String,
     pub worker_version: String,
+}
+
+/// One request the R3 worker refused, named on the receipt.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RefusedRequest {
+    pub url: String,
+    /// `subresource` or `redirect` — the advertised policy that refused it.
+    pub policy: String,
+    pub resource_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -45,6 +66,10 @@ pub struct BrowserReceipt {
     pub parent_digest: String,
     pub chunks: Vec<BrowseChunk>,
     pub network_log: Vec<NetworkEntry>,
+    /// What the pack's advertised deny-policies actually refused on this
+    /// render. ⛔ A denial nobody can see is indistinguishable from a page that
+    /// never asked.
+    pub refused_requests: Vec<RefusedRequest>,
     pub page_title: String,
     pub browser_version: String,
     pub requested_url: String,

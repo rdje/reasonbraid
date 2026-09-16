@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The R3 pack enforces the deny-policies it advertises (`SIGNOFF-REPAIR.7.3.5`)
+
+🔴 **The resolver registry told every caller the browser pack denied redirects and subresources. It denied neither — proved with a real browser.**
+
+- **Reproduced first:** the page's `<img src="http://0.0.0.0:{port}/…">` was dialed and the origin served it, `left: 1, right: 0` on the origin's own counter, under the pinned Chrome for Testing runtime.
+- **Why it was possible:** `resolvers.rs::gated_advertises` publishes `redirect_policy: "deny"` and `subresource_policy: "deny"`, while the worker subscribed to Chrome's request events purely to write the network log.
+- **Fix:** the CDP `Fetch` domain pauses every request before it leaves the browser; a document request for a URL the caller asked to navigate to continues, everything else fails with `BlockedByClient`. Each refusal is named on the receipt in `refused_requests`, and the network log still records the attempt.
+- 🔴 **Behavioural consequence, stated rather than discovered:** a page that assembles its text from an external stylesheet or script renders less text than in a desktop browser. That is what "deny" means. Changing the advertisement to `allow` was the rejected alternative.
+- **The interception task is owned** by `BrowserOwner::intercept`, joined under the same deadline as the other owned tasks and aborted in `Drop`.
+- ⭐ **Falsified twice with a real browser**, the second time into the blackout almost-fix, which fails with `net::ERR_BLOCKED_BY_CLIENT` — the control discriminates a policy from a prohibition.
+- **Verified:** 18 passed / 0 failed across the browser suite with every pre-existing control unchanged; 111 passed / 1 ignored in the server lib; clippy, fmt, gate, book and links rc=0.
+
 ## 2026-09-16 — A credential stops at the origin the caller named (`SIGNOFF-REPAIR.7.2.6`)
 
 🔴 **The `Authorization` header was being delivered to whatever host the origin redirected to — reproduced at runtime, with the origin's own record as the evidence.**

@@ -301,6 +301,13 @@ fn gated_advertises() -> Vec<ResolverAdvertise> {
                 "worker": "process-per-render",
                 "network_log": true,
                 "container_required": true,
+                // ⛔ Where the two deny-policies above are ENFORCED, not just
+                // advertised. Until `SIGNOFF-REPAIR.7.3.5` they were claims:
+                // the worker logged every request the page made and refused
+                // none, and a control drove a page whose `<img>` named
+                // `0.0.0.0` and watched the origin record the dial.
+                "deny_enforcement": "cdp-fetch-interception",
+                "refusals_on_receipt": true,
             }),
         },
         ResolverAdvertise {

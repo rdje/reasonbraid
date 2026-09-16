@@ -3,6 +3,13 @@
 //! network log (every request the page makes is recorded — the disclosure),
 //! and the refusal vocabulary — every refusal names its kind. The rendered
 //! text is ALWAYS a Derivation (the parent digest + the derived chunks).
+//!
+//! The registry advertises this pack with `subresource_policy: "deny"` and
+//! `redirect_policy: "deny"`, and since `SIGNOFF-REPAIR.7.3.5` the worker
+//! ENFORCES both through the CDP `Fetch` domain: a document request for a URL
+//! the caller asked to navigate to continues, and every other request — a
+//! subresource, or a document the caller never named, which is what a redirect
+//! is — fails with `BlockedByClient` and is NAMED in `refused_requests`.
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod lifetime;
@@ -43,6 +50,8 @@ pub struct BrowseResponse {
     pub parent_digest: String,
     pub chunks: Vec<DerivedChunk>,
     pub network_log: Vec<NetworkEntry>,
+    /// Every request the two advertised deny-policies refused, in order.
+    pub refused_requests: Vec<RefusedRequest>,
     pub page_title: String,
     pub browser_version: String,
     pub worker_version: String,
@@ -58,6 +67,17 @@ pub struct DerivedChunk {
 pub struct NetworkEntry {
     pub url: String,
     pub method: String,
+}
+
+/// One request the page issued and the worker REFUSED, named on the receipt
+/// rather than silently absent. ⛔ A denial nobody can see is indistinguishable
+/// from a page that never asked.
+#[derive(Debug, Clone, Serialize)]
+pub struct RefusedRequest {
+    pub url: String,
+    /// `subresource` or `redirect` — the advertised policy that refused it.
+    pub policy: &'static str,
+    pub resource_type: String,
 }
 
 /// A refusal carries TWO independent facts, never one collapsed into the other.
@@ -307,6 +327,94 @@ async fn run_inner(
         }));
     }
 
+    // ⛔ THE ADVERTISED DENY-POLICIES, ENFORCED. The resolver registry tells
+    // every caller that this pack runs with `subresource_policy: "deny"` and
+    // `redirect_policy: "deny"` (`resolvers.rs::gated_advertises`), and until
+    // `SIGNOFF-REPAIR.7.3.5` the worker enforced neither: it subscribed to
+    // `EventRequestWillBeSent` purely to LOG, so the page's own requests
+    // reached whatever they named. A control drove a page whose `<img>` named
+    // `0.0.0.0` and the origin recorded the dial.
+    //
+    // The gate is the CDP `Fetch` domain, which pauses every request BEFORE it
+    // leaves the browser: a DOCUMENT request for a URL this worker was asked to
+    // navigate to continues, and everything else fails. That is exactly the two
+    // advertised lines — a document request for a URL nobody asked for IS the
+    // redirect, and every non-document request IS a subresource.
+    //
+    // ⚠️ The consequence is stated rather than discovered: a page that assembles
+    // its text from an external stylesheet or script renders less text here than
+    // in a desktop browser. That is what "deny" means, and it is the posture
+    // this pack advertises for untrusted content.
+    let refusals = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<RefusedRequest>::new()));
+    {
+        use chromiumoxide::cdp::browser_protocol::fetch::{
+            ContinueRequestParams, EnableParams, EventRequestPaused, FailRequestParams,
+            RequestPattern,
+        };
+        use chromiumoxide::cdp::browser_protocol::network::{ErrorReason, ResourceType};
+
+        // Every request the caller explicitly asked for, normalised the way the
+        // browser will present it back.
+        let requested: std::collections::HashSet<String> = std::iter::once(request.url.clone())
+            .chain(request.steps.iter().filter_map(|step| match step {
+                BrowseStep::Navigate { url } => Some(url.clone()),
+                _ => None,
+            }))
+            .collect();
+
+        page.execute(
+            EnableParams::builder()
+                .pattern(RequestPattern::builder().url_pattern("*").build())
+                .build(),
+        )
+        .await
+        .map_err(|e| ("page_failed".to_owned(), e.to_string()))?;
+
+        let mut paused = page
+            .event_listener::<EventRequestPaused>()
+            .await
+            .map_err(|e| ("page_failed".to_owned(), e.to_string()))?;
+        let refusals_for_task = std::sync::Arc::clone(&refusals);
+        let page_for_task = page.clone();
+        owner.intercept = Some(tokio::spawn(async move {
+            while let Some(event) = paused.next().await {
+                let url = event.request.url.clone();
+                let is_document = matches!(event.resource_type, ResourceType::Document);
+                let policy = if !is_document {
+                    Some("subresource")
+                } else if requested.contains(&url) {
+                    None
+                } else {
+                    Some("redirect")
+                };
+                let outcome = match policy {
+                    None => page_for_task
+                        .execute(ContinueRequestParams::new(event.request_id.clone()))
+                        .await
+                        .map(|_| ()),
+                    Some(policy) => {
+                        refusals_for_task.lock().await.push(RefusedRequest {
+                            url,
+                            policy,
+                            resource_type: format!("{:?}", event.resource_type),
+                        });
+                        page_for_task
+                            .execute(FailRequestParams::new(
+                                event.request_id.clone(),
+                                ErrorReason::BlockedByClient,
+                            ))
+                            .await
+                            .map(|_| ())
+                    }
+                };
+                // A request the browser has already torn down cannot be
+                // answered; the refusal is still recorded, which is the fact
+                // the receipt needs.
+                let _ = outcome;
+            }
+        }));
+    }
+
     for step in &request.steps {
         match step {
             BrowseStep::Navigate { url } => {
@@ -383,6 +491,7 @@ async fn run_inner(
         }]
     };
     let network_log = log.lock().await.clone();
+    let refused_requests = refusals.lock().await.clone();
     let response = BrowseResponse {
         parent_digest: digest_sha256_hex(
             chunks
@@ -394,6 +503,7 @@ async fn run_inner(
         ),
         chunks,
         network_log,
+        refused_requests,
         page_title: title,
         browser_version: version,
         worker_version: WORKER_VERSION.to_owned(),
@@ -411,6 +521,7 @@ mod tests {
             parent_digest: digest_sha256_hex(b""),
             chunks: Vec::new(),
             network_log: Vec::new(),
+            refused_requests: Vec::new(),
             page_title: String::new(),
             browser_version: "test".to_owned(),
             worker_version: WORKER_VERSION.to_owned(),

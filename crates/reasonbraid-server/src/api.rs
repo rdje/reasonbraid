@@ -2288,6 +2288,7 @@ async fn resolve_resource(
                                 parent_digest: response.parent_digest,
                                 chunks: response.chunks,
                                 network_log: response.network_log,
+                                refused_requests: response.refused_requests,
                                 page_title: response.page_title,
                                 browser_version: response.browser_version,
                                 requested_url: reference.original_locator.clone(),

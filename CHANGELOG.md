@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Open the acquired repository with gix's isolated permissions (`SIGNOFF-REPAIR.7.2.4`)
+
+✅ **The operator's git configuration and the server's environment no longer reach a repository fetched from a caller-supplied URL — and `SIGNOFF-REPAIR.7.2` is closed on all three of its split children.**
+
+- **Census first, from gix 0.87.1's own source.** `gix::init_bare` is `ThreadSafeRepository::init(…, open::Options::default_for_level(Trust::Full))` → `Permissions::all()`: the system config, the `$XDG_CONFIG_HOME` application config, `~/.gitconfig`, `GIT_CONFIG_COUNT`-sourced config, `include`/`includeIf` directives reaching outside the repository, the system and application `gitattributes`, and every `GIT_*`/`SSH_*` environment category. The `git` binary's own configuration was off in both modes and is not claimed as a change.
+- 🔴 **Reproduced before the repair.** With the opener reverted, a setting supplied only through the process environment landed in the acquisition's own repository: `acquisition HEAD: ref: refs/heads/smuggled`.
+- **Fix:** a named `init_acquisition_repository` calling `ThreadSafeRepository::init_opts(…, gix::open::Options::isolated())` — the remedy gix itself names, whose doc is the acceptance in its own words. The repository's own config is still loaded; gix always loads it, and this process just created it.
+- ⭐ **The control is a child process carrying a matched pair.** `GIT_CONFIG_*` cannot be set in-process without mutating state every parallel test shares, so the control re-executes its own test binary with the setting in `Command::env`. The probe opens one repository the superseded way and one the production way, and the first must still say `smuggled` — otherwise a green result would only mean the setting never arrived.
+- ⛔ **This is what `.7.2.1` could not reach**: owning where gix writes says nothing about what gix reads.
+- 🔎 **Routed, not reported:** the acquisition fixtures still build their inputs under `Permissions::all()`, so the suite's inputs vary with the host's git configuration — a reproducibility defect, owned by the new `.7.2.5`.
+- **Verified:** 109 passed / 0 failed / 1 ignored, the twelve acquisition controls unchanged; clippy, fmt, gate, book and link check all rc=0. Falsified self-reversing, restored byte-identical.
+
 ## 2026-09-16 — Anchor the LFS gate to the pointer's own grammar (`SIGNOFF-REPAIR.7.2.3`)
 
 ✅ **A repository that merely documented Git LFS could not be acquired, and the acquisition's LFS policy is now stated rather than implied.**

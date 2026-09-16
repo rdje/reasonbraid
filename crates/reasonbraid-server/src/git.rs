@@ -6,9 +6,13 @@
 //! the refusing class BEFORE the clone starts), the ref selector rides the
 //! URL fragment, the budgets trip with their names, the default-deny refusal
 //! list is enforced (submodules/gitlinks and LFS pointers are REFUSED, never
-//! skipped), NO checkout execution happens (the target is a bare repository —
-//! the working tree is never materialized, hooks never run), and the resolved
-//! immutable commit is recorded.
+//! skipped — and the LFS gate reads the pointer's own grammar at offset 0, not
+//! a byte run anywhere in the head), NO checkout execution happens (the target
+//! is a bare repository — the working tree is never materialized, hooks never
+//! run), the repository is opened with `gix::open::Options::isolated()` so the
+//! operator's system/application/user git configuration and the `GIT_*`/`SSH_*`
+//! environment reach NOTHING while a caller-supplied URL is fetched, and the
+//! resolved immutable commit is recorded.
 //!
 //! gix is the engine (the `.3.1` census: pure Rust, no C). The fetch runs in
 //! a blocking worker (gix's blocking client); the async pre-flight runs on
@@ -796,6 +800,34 @@ fn acquire_blocking(
     acquire_into(workspace, &parsed, limits, transport_factory)
 }
 
+/// Create the acquisition's bare repository.
+///
+/// ⚠️ Deliberately NOT `gix::init_bare`, which is
+/// `ThreadSafeRepository::init(…, open::Options::default_for_level(Trust::Full))`
+/// — `Permissions::all()`. That opens a repository fetched from a
+/// caller-supplied URL while honouring the operator's system config
+/// (`$(prefix)/etc/gitconfig`), application config (`$XDG_CONFIG_HOME/git/config`,
+/// else `$HOME/.config/git/config`), user config (`~/.gitconfig`),
+/// environment-sourced config (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`), `include`
+/// and `includeIf` directives that reach outside the repository, the system and
+/// application `gitattributes`, and every `GIT_*`/`SSH_*` environment category.
+///
+/// `open::Options::isolated()` is the remedy gix names for exactly this, in its
+/// own words: "prevent accessing anything else than the repository
+/// configuration file, prohibiting accessing the environment or spreading
+/// beyond the git repository location". The repository's OWN config is still
+/// loaded — gix always loads it, and it is the one this process just created.
+fn init_acquisition_repository(dir: &std::path::Path) -> Result<gix::Repository, GitError> {
+    gix::ThreadSafeRepository::init_opts(
+        dir,
+        gix::create::Kind::Bare,
+        gix::create::Options::default(),
+        gix::open::Options::isolated(),
+    )
+    .map(Into::into)
+    .map_err(|e| GitError::TransferFailed(format!("the target repository failed: {e}")))
+}
+
 fn acquire_into(
     workspace: Arc<OwnedDirectory>,
     url: &Url,
@@ -803,8 +835,7 @@ fn acquire_into(
     transport_factory: Box<TransportFactory>,
 ) -> Result<GitAcquisition, GitError> {
     let target_dir = workspace.path();
-    let repo = gix::init_bare(target_dir)
-        .map_err(|e| GitError::TransferFailed(format!("the target repository failed: {e}")))?;
+    let repo = init_acquisition_repository(target_dir)?;
     let remote = repo
         .remote_at(url.as_str())
         .map_err(|e| GitError::TransferFailed(format!("the remote failed: {e}")))?;
@@ -1470,6 +1501,78 @@ mod tests {
             acquire_local(&source, &GitLimits::default()).expect("the documentation is acquired");
         assert_eq!(acquisition.file_count, 1);
         assert_eq!(acquisition.paths, vec!["lfs.md".to_string()]);
+    }
+
+    /// The bare repository's `HEAD`, read as the file git writes it.
+    fn head_line(git_dir: &std::path::Path) -> String {
+        std::fs::read_to_string(git_dir.join("HEAD"))
+            .expect("the HEAD file reads")
+            .trim()
+            .to_string()
+    }
+
+    /// The child half of `a_git_setting_in_the_environment_cannot_reach_the_acquisition`.
+    ///
+    /// ⚠️ `#[ignore]`d on purpose: it is meaningless without the environment
+    /// its parent sets, and setting `GIT_CONFIG_*` in THIS process would mutate
+    /// state every other test in the binary shares — which is why Rust makes
+    /// `set_var` unsafe. The parent re-executes this binary so the setting is
+    /// in place before the process starts.
+    #[test]
+    #[ignore = "driven by a_git_setting_in_the_environment_cannot_reach_the_acquisition, which supplies its environment"]
+    fn the_git_environment_probe() {
+        let tmp =
+            OwnedDirectory::create("git", "test-gix-env").expect("the fixture workspace creates");
+
+        // The superseded open, kept as the matched pair's other half: it proves
+        // the setting really does reach a DEFAULT open on this host, so a green
+        // result below is a refusal rather than a setting that never arrived.
+        let ambient = tmp.path().join("ambient");
+        std::fs::create_dir_all(&ambient).expect("the ambient dir creates");
+        gix::init_bare(&ambient).expect("the default open succeeds");
+        println!("default-permissions HEAD: {}", head_line(&ambient));
+
+        // The acquisition's own open, exactly as production calls it.
+        let owned = tmp.path().join("owned");
+        std::fs::create_dir_all(&owned).expect("the owned dir creates");
+        init_acquisition_repository(&owned).expect("the acquisition open succeeds");
+        println!("acquisition HEAD: {}", head_line(&owned));
+    }
+
+    #[test]
+    fn a_git_setting_in_the_environment_cannot_reach_the_acquisition() {
+        // R1 fetches a caller-supplied URL. `gix::init_bare` opens the target
+        // with `Permissions::all()`, so the operator's system, application and
+        // user configuration, `include`/`includeIf` directives reaching outside
+        // the repository, and every `GIT_*`/`SSH_*` environment category are
+        // honoured while that fetch runs. `init.defaultBranch` is the readable
+        // end of that: it is set here through `GIT_CONFIG_COUNT`, the
+        // environment-sourced config source, and it lands in the repository's
+        // own `HEAD`.
+        let exe = std::env::current_exe().expect("the test binary names itself");
+        let probe = std::process::Command::new(exe)
+            .args([
+                "--exact",
+                "git::tests::the_git_environment_probe",
+                "--include-ignored",
+                "--nocapture",
+            ])
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "init.defaultBranch")
+            .env("GIT_CONFIG_VALUE_0", "smuggled")
+            .output()
+            .expect("the probe process runs");
+        let out = String::from_utf8_lossy(&probe.stdout).into_owned();
+        let err = String::from_utf8_lossy(&probe.stderr).into_owned();
+        assert!(probe.status.success(), "the probe failed:\n{out}\n{err}");
+        assert!(
+            out.contains("default-permissions HEAD: ref: refs/heads/smuggled"),
+            "the setting must reach a DEFAULT open, or this control proves nothing:\n{out}"
+        );
+        assert!(
+            out.contains("acquisition HEAD: ref: refs/heads/main"),
+            "the setting must not reach the acquisition's own open:\n{out}"
+        );
     }
 
     #[test]

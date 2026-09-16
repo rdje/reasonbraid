@@ -968,6 +968,43 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### What the operator's git configuration can reach during an acquisition
+
+Nothing. An R1 acquisition fetches a **caller-supplied** URL, so the repository
+it fetches into is opened with `gix::open::Options::isolated()` — in gix's own
+words, permissions that "prevent accessing anything else than the repository
+configuration file, prohibiting accessing the environment or spreading beyond
+the git repository location".
+
+The acquisition used to call `gix::init_bare`, which is
+`ThreadSafeRepository::init(…, open::Options::default_for_level(Trust::Full))`
+— `Permissions::all()`. A census of gix 0.87.1's own source names every source
+that admitted, and what isolating it turns off:
+
+| Source | `gix::init_bare` | The acquisition now |
+| --- | --- | --- |
+| The repository's own `config` | loaded | loaded — gix always loads it, and this process just created it |
+| System config, `$(prefix)/etc/gitconfig` | loaded | refused |
+| Application config, `$XDG_CONFIG_HOME/git/config`, else `$HOME/.config/git/config` | loaded | refused |
+| User config, `~/.gitconfig` | loaded | refused |
+| Environment config, `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` | loaded | refused |
+| `include` and `includeIf` directives | followed | not followed |
+| System and application `gitattributes` | loaded | refused |
+| `GIT_*` and `SSH_*` environment categories (`home`, `xdg_config_home`, `http_transport`, `identity`, `objects`, `git_prefix`, `ssh_prefix`) | all allowed | all denied |
+| The `git` binary's own configuration | not loaded | not loaded — off in both |
+
+This closes the last of ROADMAP §12.5's "default refusal of submodules, hooks,
+filters, alternates, and external diff/clean drivers" that a directory boundary
+could not reach: owning *where* gix writes says nothing about *what* gix reads.
+
+A control proves it rather than asserting it, and it proves both halves in one
+run. A child process is started with `GIT_CONFIG_COUNT=1`,
+`GIT_CONFIG_KEY_0=init.defaultBranch`, `GIT_CONFIG_VALUE_0=smuggled`; it opens
+one repository the superseded way and one the way the acquisition does, and
+prints each repository's `HEAD`. The first says `ref: refs/heads/smuggled` — so
+the setting really does arrive on this host — and the second says
+`ref: refs/heads/main`. Before the repair, both said `smuggled`.
+
 ### The Git LFS policy, and what a pointer file is
 
 An acquisition **refuses** a Git LFS pointer, by name, and never treats it as

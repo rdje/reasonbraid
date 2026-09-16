@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Reconcile tranche 4c, and find the mechanism `.7.2`'s split dropped (`SIGNOFF-REPAIR.11.9.1.3.3`)
+
+🔴 **26 clauses across six records — 9 `handled`, 10 `owned`, 5 `attach`, 2 `unowned` — and the finding is about a lane this session closed three commits ago.**
+
+- ⛔ **A correction to this session's own claim.** REPAIR-0208 published "`SIGNOFF-REPAIR.7.2` is now closed on every child". True of the three children the split produced; false of the goal line, which names "validate destinations **and credential forwarding** at every redirect and dial". The superseded claim is named, not edited away.
+- 🔴 **Tracing the dropped mechanism found a live defect:** `fetcher.rs::fetch_with` re-attaches `extra_header` on every iteration of its manual redirect loop, and `fetch_authenticated`'s only production caller is the R5 arm passing a broker-resolved credential — so a credential bound to one binding reaches whatever host the origin redirects to, while the disclosure names only the last hop. ⚠️ Not an SSRF; the hop is re-classified. What crosses is the credential. Source-measured, runtime reproduction pending. New owner `.7.2.6`.
+- ⭐ **The lesson is the project's own standing warning** — count a goal line's mechanisms against the children a split produces — relearned one commit later on the lane whose parent records it.
+- 🔴 **`.7.3` carries the same shape twice:** the R3 pack classifies one URL and hands the page to a browser that records every request and refuses none (new owner `.7.3.5`); its sibling mechanism, browser credential binding, is a population of zero and deliberately gets no leaf.
+- 🔴 **Twelve of twelve policy, evaluation, deployment and evidence tables carry zero `tenant_id` columns** — a design position nobody has taken, owned now by `.11.14` as one decision record rather than twelve filters.
+- ⭐ `R-36-39-2` is wholly `handled`: `git show 9c2d2ba` proves all four clauses were true when written and are repaired at HEAD.
+- **No product code, schema, test or script changed.** `--classified` is clean at 270 rows with all 52 `attach` clauses named by their leaves.
+
 ## 2026-09-16 — The suite stops building its inputs out of the host's git configuration (`SIGNOFF-REPAIR.7.2.5`)
 
 ✅ **`SIGNOFF-REPAIR.7.2` is closed on every child; the last one was the test suite, not the product.**

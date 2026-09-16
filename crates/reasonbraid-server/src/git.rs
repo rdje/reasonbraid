@@ -441,26 +441,85 @@ fn fetch_refspec(url: &Url) -> String {
 
 // ── the classified transport ─────────────────────────────────────────────
 
-/// The R1 dial: a blocking reqwest client whose DNS rides the `.2.2` belt —
-/// every dial (redirect hops included) passes the destination policy; no
-/// proxy environment; the redirect cap is the client's own.
+/// The R1 dial: a blocking reqwest client on which **every** dial, redirect
+/// hops included, passes the destination policy — and it takes TWO mechanisms
+/// to say that truthfully, which is why they are named here.
+///
+/// - A **hostname** destination is resolved through `ClassifiedDns`, so the
+///   policy sees every address before a socket opens.
+/// - An **IP-literal** destination reaches no resolver at all: hyper-util
+///   0.1.20 says so in its own source — *"If the host is already an IP addr
+///   (v4 or v6), skip resolving the dns and start connecting right away."*
+///   The initial URL is covered by `GitFetcher::classify`'s pre-flight, which
+///   parses an IP literal explicitly; a REDIRECT hop to one was covered by
+///   nothing until `SIGNOFF-REPAIR.7.2.2` put the same policy in the redirect
+///   decision itself.
+///
+/// ⛔ The hop cap moved with it. `Policy::limited(5)` enforced the cap and
+/// nothing else; a custom policy owns both, so the cap is re-stated here
+/// rather than inherited.
+///
+/// No proxy environment (§12.4: the proxy stays in the threat model).
 struct ClassifiedGitHttp {
     client: blocking_reqwest::Client,
+    /// The redirect policy can only answer *follow*, *stop* or *error* — it
+    /// cannot return a typed refusal. The reason travels out of band here, so
+    /// a refused hop surfaces as `DestinationRefused` naming the address and
+    /// the class instead of as a generic transport failure.
+    refusal: RefusalSlot,
 }
+
+/// Out-of-band channel from the redirect policy to the caller of `send`.
+type RefusalSlot = Arc<std::sync::Mutex<Option<GitError>>>;
+
+/// The R1 redirect cap, previously the argument to `Policy::limited`.
+const MAX_REDIRECT_HOPS: usize = 5;
 
 impl ClassifiedGitHttp {
     fn new(
         resolver: Arc<dyn DestinationResolver>,
         policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync>,
     ) -> Result<Self, GitError> {
+        let refusal: RefusalSlot = Arc::new(std::sync::Mutex::new(None));
+        let hop_policy = {
+            let refusal = Arc::clone(&refusal);
+            let policy = Arc::clone(&policy);
+            move |attempt: reqwest::redirect::Attempt| {
+                if attempt.previous().len() > MAX_REDIRECT_HOPS {
+                    return attempt.error(format!("more than {MAX_REDIRECT_HOPS} redirect hops"));
+                }
+                // Only an IP literal is classified here. A hostname hop is
+                // already covered by `ClassifiedDns`, and re-resolving it in a
+                // SYNCHRONOUS policy would either block the connector or
+                // duplicate the belt's answer.
+                let literal = attempt
+                    .url()
+                    .host_str()
+                    .and_then(|host| host.parse::<IpAddr>().ok());
+                if let Some(ip) = literal {
+                    if let SsrfVerdict::Refused { reason } = policy(&ip) {
+                        let refused = GitError::DestinationRefused {
+                            host: ip.to_string(),
+                            reason,
+                        };
+                        let detail = refused.to_string();
+                        if let Ok(mut slot) = refusal.lock() {
+                            *slot = Some(refused);
+                        }
+                        return attempt.error(detail);
+                    }
+                }
+                attempt.follow()
+            }
+        };
         let client = blocking_reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::limited(5))
+            .redirect(reqwest::redirect::Policy::custom(hop_policy))
             .no_proxy()
             .dns_resolver(Arc::new(ClassifiedDns::new(resolver, policy)))
             .user_agent("reasonbraid-r1-git/0.1")
             .build()
             .map_err(|_| GitError::TransferFailed("the R1 HTTP client failed to build".into()))?;
-        Ok(Self { client })
+        Ok(Self { client, refusal })
     }
 
     fn send(
@@ -480,9 +539,20 @@ impl ClassifiedGitHttp {
         if let Some(body) = body {
             builder = builder.body(body);
         }
-        let response = builder
-            .send()
-            .map_err(|e| GitError::TransferFailed(format!("the request failed: {e}")))?;
+        // Clear first: the slot belongs to the client, which outlives one
+        // request, and a stale refusal must never be attributed to a later one.
+        if let Ok(mut slot) = self.refusal.lock() {
+            *slot = None;
+        }
+        let response = match builder.send() {
+            Ok(response) => response,
+            Err(e) => {
+                let refused = self.refusal.lock().ok().and_then(|mut slot| slot.take());
+                return Err(refused.unwrap_or_else(|| {
+                    GitError::TransferFailed(format!("the request failed: {e}"))
+                }));
+            }
+        };
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
             return Err(GitError::HttpStatus(status));
@@ -1389,5 +1459,194 @@ mod tests {
             }) => {}
             other => panic!("the object ceiling must trip: {other:?}"),
         }
+    }
+
+    // ---- the classified dial: every hop, including an IP literal ----------
+
+    /// A resolver that answers only the hosts a test names, so the wire tests
+    /// stay offline (the `.2.2` seam, carried over).
+    struct StaticResolver(std::collections::HashMap<String, IpAddr>);
+
+    impl DestinationResolver for StaticResolver {
+        fn resolve(
+            &self,
+            host: &str,
+            port: u16,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = io::Result<Vec<std::net::SocketAddr>>> + Send>,
+        > {
+            let found = self
+                .0
+                .get(host)
+                .map(|ip| vec![std::net::SocketAddr::new(*ip, port)]);
+            Box::pin(async move {
+                found.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "unknown test host"))
+            })
+        }
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.7.2.2` — a redirect hop to an IP LITERAL reached no
+    /// destination control at all.
+    ///
+    /// `Policy::limited(5)` auto-followed up to five hops with only the DNS
+    /// belt behind them, and hyper-util 0.1.20 skips the resolver when the host
+    /// is already an IP address — in its own source. `GitFetcher::classify` is
+    /// a real pre-flight, but it runs ONCE, on the initial URL. So an origin
+    /// that REDIRECTED into a refused range was dialed with nothing consulted.
+    ///
+    /// ⚠️ **The deviations a local origin forces, named rather than left to be
+    /// discovered.** (1) The scheme is `http`: production reaches this client
+    /// only through `harden_git_url`, which is https-only, and a local TLS
+    /// origin would need a trust anchor the production client deliberately does
+    /// not have. (2) The policy allows `127.0.0.1`, which `ssrf::evaluate`
+    /// refuses, exactly as the R0 wire tests widen it. Everything else — the
+    /// redirect policy, the DNS belt, `no_proxy`, the hop cap — is the shipped
+    /// construction.
+    ///
+    /// ⭐ **The redirect target is `0.0.0.0`, and that is the whole instrument.**
+    /// It classifies as `reserved`, and the kernel routes a connection to it at
+    /// the local host — measured before this test was written — so the SAME
+    /// origin answers `/private` and its hit counter reports whether the hop was
+    /// actually dialed. The unrepaired client scored 1; a refusal that merely
+    /// failed to connect could not be told from one that classified.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_redirect_hop_to_an_ip_literal_is_classified_like_every_other_dial() {
+        use axum::http::header::LOCATION;
+        use axum::http::StatusCode;
+        use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the test origin binds");
+        let port = listener.local_addr().expect("the origin port").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&hits);
+        let app = axum::Router::new()
+            .route(
+                "/start",
+                get(move || async move {
+                    // An IP literal, so no resolver is consulted for this hop.
+                    (
+                        StatusCode::FOUND,
+                        [(LOCATION, format!("http://0.0.0.0:{port}/private"))],
+                    )
+                }),
+            )
+            .route(
+                "/private",
+                get(move || {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    async { "the refused destination answered" }
+                }),
+            );
+        let origin = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let resolver: Arc<dyn DestinationResolver> = Arc::new(StaticResolver(
+            [("git.test".to_owned(), IpAddr::from([127, 0, 0, 1]))]
+                .into_iter()
+                .collect(),
+        ));
+        let policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync> =
+            Arc::new(|ip: &IpAddr| match ip {
+                IpAddr::V4(v4) if v4.octets() == [127, 0, 0, 1] => SsrfVerdict::Allowed,
+                other => crate::ssrf::evaluate(*other),
+            });
+
+        let url = format!("http://git.test:{port}/start");
+        let result = tokio::task::spawn_blocking(move || {
+            let http = ClassifiedGitHttp::new(resolver, policy)?;
+            http.send(reqwest::Method::GET, &url, Vec::<String>::new(), None)
+                .map(|(_, response)| response.status().as_u16())
+        })
+        .await
+        .expect("the blocking dial joins");
+
+        origin.abort();
+
+        match result {
+            Err(GitError::DestinationRefused { host, reason }) => {
+                assert_eq!(host, "0.0.0.0", "the refusal names the hop's address");
+                assert!(
+                    reason.contains("reserved"),
+                    "and the class it belongs to: {reason}"
+                );
+            }
+            other => panic!("the IP-literal hop must be refused by name: {other:?}"),
+        }
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "the refused destination was never dialed — a named refusal that still \
+             connected would be a report, not a control"
+        );
+    }
+
+    /// The other half of the same contract: a hop the policy ALLOWS is still
+    /// followed, so the repair refuses a class rather than refusing redirects.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_allowed_redirect_hop_is_still_followed() {
+        use axum::http::header::LOCATION;
+        use axum::http::StatusCode;
+        use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the test origin binds");
+        let port = listener.local_addr().expect("the origin port").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&hits);
+        let app = axum::Router::new()
+            .route(
+                "/start",
+                get(move || async move {
+                    (
+                        StatusCode::FOUND,
+                        [(LOCATION, format!("http://127.0.0.1:{port}/landing"))],
+                    )
+                }),
+            )
+            .route(
+                "/landing",
+                get(move || {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    async { "followed" }
+                }),
+            );
+        let origin = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let resolver: Arc<dyn DestinationResolver> = Arc::new(StaticResolver(
+            [("git.test".to_owned(), IpAddr::from([127, 0, 0, 1]))]
+                .into_iter()
+                .collect(),
+        ));
+        let policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync> =
+            Arc::new(|ip: &IpAddr| match ip {
+                IpAddr::V4(v4) if v4.octets() == [127, 0, 0, 1] => SsrfVerdict::Allowed,
+                other => crate::ssrf::evaluate(*other),
+            });
+
+        let url = format!("http://git.test:{port}/start");
+        let status = tokio::task::spawn_blocking(move || {
+            let http = ClassifiedGitHttp::new(resolver, policy)?;
+            http.send(reqwest::Method::GET, &url, Vec::<String>::new(), None)
+                .map(|(_, response)| response.status().as_u16())
+        })
+        .await
+        .expect("the blocking dial joins");
+
+        origin.abort();
+
+        assert_eq!(status, Ok(200), "an allowed hop is followed");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "and it reached the destination exactly once"
+        );
     }
 }

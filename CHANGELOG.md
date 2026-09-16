@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Classify every redirect hop, and prove the unrepaired one was dialed (`SIGNOFF-REPAIR.7.2.2`)
+
+✅ **The last §16.12 line that was still an open defect is repaired — and it was reproduced at runtime first.**
+
+- 🔴 **The unrepaired client did not merely fail to refuse; it dialed and was answered.** With `Policy::limited(5)` restored, the control fails with `the IP-literal hop must be refused by name: Ok(200)`: the redirect to `http://0.0.0.0:{port}/private` was followed and the refused destination served the request.
+- **Why it was possible:** `git.rs` built its client with `Policy::limited(5)` and a DNS belt, hyper-util 0.1.20 skips the resolver when the host is already an IP address — in its own source — and `GitFetcher::classify` runs once, on the initial URL. A hostname hop was covered; an IP-literal hop reached nothing.
+- ⭐ **The instrument is `0.0.0.0`.** It classifies as `reserved` and the kernel routes a connection to it at the local host — measured with a two-socket probe before the control was written — so the same origin answers and its hit counter reports whether the hop was actually dialed. A control that only asserted "an error happened" could not tell a classification from a connection that failed. `127.0.0.2` was the obvious first choice and does not bind on this host (`Errno 49`).
+- **Fix:** `Policy::custom` applies the pre-flight's own policy to each hop whose host is an IP literal, re-states the five-hop cap that `limited` used to own, and carries a typed refusal through a slot `send` clears before each request — reqwest's redirect policy can answer only follow, stop or error.
+- **The DNS belt can now say what it refused**: `ClassifiedDns::resolve` returned an empty address list when every address was refused, surfacing as a bare connect failure. ⚠️ Never a safety gap — it failed closed — and it is recorded as diagnosability.
+- ✅ **The R1 module header is true again**, and now names the two mechanisms that make it so instead of claiming the other pack's property.
+- ⚠️ **Two residuals recorded rather than absorbed:** the POST path has no error channel for a refusal, and an `https → http` hop is still unrefused.
+- **Verified:** 105 passed / 0 failed, every pre-existing destination control unchanged. **Falsified** self-reversing, restored byte-for-byte. A second control keeps the repair a classification rather than a prohibition.
+
 ## 2026-09-16 — Split the acquisition lane into the three repairs its goal line was carrying (`SIGNOFF-REPAIR.7.2`)
 
 ⛔ **One leaf, one `- Status: pending.`, no acceptance of its own, and three repairs that share nothing but a subsystem.**

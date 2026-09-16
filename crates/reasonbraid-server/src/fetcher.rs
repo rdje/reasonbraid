@@ -326,7 +326,27 @@ impl Resolve for ClassifiedDns {
                 .await
                 .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
             addrs.truncate(16);
-            addrs.retain(|addr| matches!(policy(&addr.ip()), SsrfVerdict::Allowed));
+            let resolved = addrs.len();
+            // The first refusal is kept so the belt can SAY what it refused.
+            // Retaining alone failed closed but reported nothing: a host whose
+            // every address is private used to surface as a bare connect
+            // failure, indistinguishable from an origin being down
+            // (`SIGNOFF-REPAIR.7.2.2`).
+            let mut refusal = None;
+            addrs.retain(|addr| match policy(&addr.ip()) {
+                SsrfVerdict::Allowed => true,
+                SsrfVerdict::Refused { reason } => {
+                    refusal.get_or_insert_with(|| format!("{}: {reason}", addr.ip()));
+                    false
+                }
+            });
+            if addrs.is_empty() && resolved > 0 {
+                let detail = refusal.unwrap_or_else(|| "every address was refused".to_owned());
+                return Err::<Addrs, Box<dyn std::error::Error + Send + Sync>>(
+                    format!("the destination policy refused every address of `{host}` ({detail})")
+                        .into(),
+                );
+            }
             let addrs: Addrs = Box::new(addrs.into_iter());
             Ok::<Addrs, Box<dyn std::error::Error + Send + Sync>>(addrs)
         })

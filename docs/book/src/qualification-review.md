@@ -256,13 +256,32 @@ then follows up to five redirects automatically, with only a name-resolution hoo
 behind them. That hook never runs for a bare IP address, which the underlying
 library states plainly in its own source.
 
-So the gap is the **redirect hops alone**: a request the caller makes directly is
-checked, and a hop that an origin sends it to is not. The exposure is therefore a
+So the gap was the **redirect hops alone**: a request the caller makes directly is
+checked, and a hop that an origin sends it to was not. The exposure was therefore a
 Git origin that redirects into a private address range, rather than a caller
-naming one. The Git pack's own documentation nonetheless claims the fetcher's
-stronger behaviour. ⚠️ This is measured from source; reproducing it end to end
-comes with the repair, and the first published description of it overstated the
-gap by omitting the pre-flight check — corrected the same day.
+naming one. The first published description of it overstated the gap by omitting
+the pre-flight check, and was corrected the same day.
+
+✅ **This one is repaired.** The Git pack's redirect decision now applies the same
+destination policy the pre-flight applies, so a hop written as a bare IP address
+is classified before anything connects, and a refused hop is named — the address
+and the class it belongs to — instead of failing as a generic transport error. A
+hop the policy allows is still followed, and the five-hop cap moved into the same
+decision rather than being lost with the policy it replaced.
+
+⚠️ **It was reproduced before it was repaired, and the reproduction is the part
+worth trusting.** A local origin redirects to `0.0.0.0`, which classifies as a
+reserved address and which the operating system routes to the local host — so the
+same origin answers the redirected request and counts the hit. Against the
+unrepaired client that counter read **one**: the refused destination was dialed and
+replied. Against the repaired one it reads zero and the caller gets a named
+refusal. A control that only checked for an error could not tell a classification
+apart from a connection that happened to fail.
+
+The same repair gave the name-resolution hook a voice: a host whose every address
+is refused now says so, rather than returning an empty address list that surfaced
+as an ordinary connection failure. That was never a safety gap — it failed closed —
+but an operator could not tell it from an origin being down.
 
 Until the remaining four records are re-derived, **a gate record's "shipped" count
 should be read as a claim about the evidence available on its date, not as a

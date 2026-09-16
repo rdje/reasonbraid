@@ -63,7 +63,7 @@ The internal one now has a measured answer, recorded in
 | --- | --- |
 | (2) enrollment, rotation, revocation, tenant-isolation tests | **must be re-earned** — all four subjects had live defects, all since repaired |
 | (3) non-escalation and confused-deputy tests | **must be re-earned** — including the confused-deputy shape itself |
-| (4) SSRF, DNS-rebinding, redirect, archive-bomb suite | **narrowed** — and the **only one of the seven still an open defect**: the two acquisition packs have opposite redirect designs, and the weaker one's documentation claims the stronger one's behaviour |
+| (4) SSRF, DNS-rebinding, redirect, archive-bomb suite | **narrowed** — and its open defect is now **repaired**: the Git pack classified only its first destination and auto-followed up to five hops behind a name-resolution hook that never runs for a bare IP address. Every hop is now classified by the same policy, a refused hop is named rather than failing as a transport error, and it was reproduced before it was repaired |
 | (6) dependency, SBOM, provenance, release-signing | **stands**, with the dependency ledger's empty tested-version rows noted |
 | (7) backup restore and compromised-key recovery | **narrowed** — the exercise runs; its fixture's own defects are open |
 | (8) rate-limit, cost-circuit-breaker, notification-storm | **must be re-earned** |

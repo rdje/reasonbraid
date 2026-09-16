@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Close the clock split, and record the acceptance clause it could not meet (`SIGNOFF-REPAIR.3.4.3.1`)
+
+⛔ **A container leaf's closure is its own acceptance, clause by clause — and one of these three could not be met.**
+
+- The leaf read `active` while all three children read `done` (REPAIR-0136 / 0138 / 0139): `SIGNOFF-REPAIR.11.4.5.3`'s finding running the other way, the tree over-reporting remaining work instead of under-reporting it.
+- 🔴 **Clause 3 is UNMET and superseded, not quietly satisfied.** *"The `.3.4.3` backward-skew controls pass unchanged"* — both assert the receipt-anchoring clamp that `.3.4.3.1.2` removes, and both drove a state production cannot reach. The supersession lived inside the child; it now sits at the parent whose acceptance it belongs to, so a reader need not open a child to learn that a third of this leaf's acceptance was withdrawn.
+- ⭐ **The withdrawn property is stronger now**, which is what makes the supersession honest: "one TTL of real time whatever this node's clock says" is asserted in both skew directions, and the clamp could only do it for one.
+- **Clause 2's margin, stated rather than implied:** the control drives the node 600 s ahead against a 60 s TTL — ten times the threshold that refused every dispatch — and proves the gate's allow by a channel error rather than by a success, because a refusal in that path returns `Ok`.
+- ⚠️ **One residual carried forward:** `lease_expires_at` is received on the handshake and the heartbeat and never read — a latent third cross-clock comparison.
+- **Verified:** 14 suites, 78 passed, 0 failed, 2 ignored, rc=0, all four clock controls passing by name. No source changed.
+
 ## 2026-09-16 — The subject is not asked, and the specification never asked for it (`SIGNOFF-REPAIR.3.4.7`)
 
 ⛔ **Consent was never a delegation requirement in this project**, which is a different finding from the one this leaf was opened to make.

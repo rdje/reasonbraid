@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Anchor the LFS gate to the pointer's own grammar (`SIGNOFF-REPAIR.7.2.3`)
+
+✅ **A repository that merely documented Git LFS could not be acquired, and the acquisition's LFS policy is now stated rather than implied.**
+
+- 🔴 **Reproduced before the repair.** Two new controls fail against the unrepaired predicate — a documentation file whose first line quotes the version line in backticks, and a manifest for an unrelated specification — both `Refused { what: "Git LFS" }`, `test result: FAILED. 9 passed; 2 failed`.
+- **Why it was possible:** the gate refused a blob when the ten-byte run `version ht` appeared anywhere in its first 64 bytes. A real pointer carries `version https://git-lfs.github.com/spec/v1` at offset 0, so the predicate was both too broad and unanchored.
+- ⚠️ **The direction matters and is recorded:** this OVER-refused. An availability and correctness fault, never a bypass, and no bypass is claimed because none was measured.
+- **Fix:** a named predicate, `is_lfs_pointer`, doing a 42-byte prefix test at offset 0 that must end at a newline or at the end of a blob carrying nothing else — the specification makes the `version` line the pointer's first line. `oid` and `size` are deliberately not required: a truncated pointer is still not the content.
+- **Policy, decided rather than inherited: refuse.** A pointer's bytes were never transferred by the clone, so they were never classified by the destination policy and never counted against a budget; accepting one would report a stand-in as content. Now written in `docs/book/src/deployment.md`, where ROADMAP §12.5's "explicit Git LFS policy" can be checked against the code.
+- ⭐ **Falsified in two directions.** Restoring the search fails both controls; an anchored-but-not-spec-matched `starts_with(b"version ht")` passes the prose control and fails the other — so the two controls bound different halves of the repair.
+- ⚠️ **The leaf's own acceptance number was wrong and is corrected:** the version line measures 42 bytes, not the 41 it claimed.
+- ⚠️ **Two residuals recorded rather than absorbed:** git-lfs's legacy `hawser`/`git-media` version URLs are not matched, and the refusal names the file rather than its path.
+- **Verified:** 108 passed / 0 failed, with the pre-existing pointer fixture unchanged; clippy `-D warnings`, `cargo fmt --check`, `make gate`, `mdbook build` and the book link check all rc=0.
+
 ## 2026-09-16 — Classify every redirect hop, and prove the unrepaired one was dialed (`SIGNOFF-REPAIR.7.2.2`)
 
 ✅ **The last §16.12 line that was still an open defect is repaired — and it was reproduced at runtime first.**

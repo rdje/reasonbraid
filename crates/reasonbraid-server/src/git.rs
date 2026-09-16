@@ -937,6 +937,35 @@ fn acquire_into(
     })
 }
 
+/// The Git LFS v1 pointer's version line, which the specification makes the
+/// pointer's FIRST line — 42 bytes, no trailing newline of its own here so
+/// that a pointer ending at the line boundary matches as readily as one with
+/// the `oid`/`size` lines after it.
+const LFS_POINTER_VERSION_LINE: &[u8] = b"version https://git-lfs.github.com/spec/v1";
+
+/// Whether a blob IS a Git LFS pointer file, and therefore a stand-in for
+/// content this acquisition never fetched.
+///
+/// The specification makes the `version` line the pointer's FIRST line, so
+/// this is a prefix test at offset 0 rather than a search. The superseded
+/// predicate looked for the ten-byte run `version ht` anywhere in the first 64
+/// bytes, which refused any file that merely QUOTED the spec URL near its
+/// start — a repository documenting LFS was rejected as if it carried the
+/// content it describes. That defect over-refused; it was never a way past
+/// the gate.
+///
+/// The line must also END where a line ends — at the newline, or at the end
+/// of a blob carrying nothing else — so a longer URL with this one as its
+/// prefix is not a pointer. The `oid` and `size` lines are deliberately NOT
+/// required: a truncated or malformed pointer is still not the content, and
+/// the refusal is the same either way.
+fn is_lfs_pointer(data: &[u8]) -> bool {
+    matches!(
+        data.strip_prefix(LFS_POINTER_VERSION_LINE),
+        Some([]) | Some([b'\n', ..])
+    )
+}
+
 /// The recursive tree walk: counts files, trips the depth ceiling, and
 /// enforces the refusal list — a gitlink (submodule) entry or an LFS
 /// pointer file is the NAMED refusal, never a silent skip.
@@ -1009,9 +1038,7 @@ fn walk_tree(
             .try_into_blob()
             .ok();
         if let Some(blob) = blob {
-            let data = &blob.data;
-            let head = &data[..data.len().min(64)];
-            if head.windows(10).any(|w| w == b"version ht") {
+            if is_lfs_pointer(&blob.data) {
                 return Err(GitError::Refused {
                     what: "Git LFS",
                     detail: format!("the pointer file `{}`", entry.filename()),
@@ -1374,6 +1401,94 @@ mod tests {
             }) => {}
             other => panic!("the LFS pointer must refuse: {other:?}"),
         }
+    }
+
+    /// A one-file repository whose single blob carries `content` — the shape
+    /// the LFS gate reads, with nothing else in the tree to distract it.
+    fn one_blob_repo(dir: &std::path::Path, filename: &str, content: &[u8]) {
+        std::fs::create_dir_all(dir).expect("the fixture dir creates");
+        let repo = gix::init(dir).expect("the fixture repo inits");
+        let blob = repo.write_blob(content).expect("the blob writes");
+        let tree = repo
+            .write_object(&gix::objs::Tree {
+                entries: vec![gix::objs::tree::Entry {
+                    mode: gix::objs::tree::EntryKind::Blob.into(),
+                    oid: blob.detach(),
+                    filename: filename.into(),
+                }],
+            })
+            .expect("the fixture tree writes")
+            .detach();
+        repo.commit_as(
+            fixture_identity(),
+            fixture_identity(),
+            "HEAD",
+            "fixture",
+            tree,
+            gix::commit::NO_PARENT_IDS,
+        )
+        .expect("the fixture commit writes");
+    }
+
+    #[test]
+    fn the_pointer_version_line_alone_still_refuses() {
+        // The 42-byte version line with NOTHING after it: no trailing newline,
+        // no `oid`, no `size`. The spec makes the version line the pointer's
+        // first line, so this is the smallest thing that is still a pointer,
+        // and the gate must not need the rest of the file to say so.
+        let tmp = OwnedDirectory::create("git", "test-lfs-prefix")
+            .expect("the fixture workspace creates");
+        let source = tmp.path().join("prefix");
+        one_blob_repo(&source, "big.bin", LFS_POINTER_VERSION_LINE);
+        match acquire_local(&source, &GitLimits::default()) {
+            Err(GitError::Refused {
+                what: "Git LFS",
+                detail,
+            }) => assert!(
+                detail.contains("big.bin"),
+                "the refusal names the path: {detail}"
+            ),
+            other => panic!("the bare version line must refuse: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_file_quoting_the_pointer_line_is_acquired() {
+        // The false refusal this leaf repairs. A repository that DOCUMENTS Git
+        // LFS carries the version line as prose, not at offset 0 — the gate
+        // used to search the first 64 bytes for the ten-byte run `version ht`
+        // and reject the documentation as if it were the content it describes.
+        let tmp =
+            OwnedDirectory::create("git", "test-lfs-prose").expect("the fixture workspace creates");
+        let source = tmp.path().join("prose");
+        one_blob_repo(
+            &source,
+            "lfs.md",
+            b"`version https://git-lfs.github.com/spec/v1` is the pointer's first line.\n",
+        );
+        let acquisition =
+            acquire_local(&source, &GitLimits::default()).expect("the documentation is acquired");
+        assert_eq!(acquisition.file_count, 1);
+        assert_eq!(acquisition.paths, vec!["lfs.md".to_string()]);
+    }
+
+    #[test]
+    fn a_version_line_naming_another_spec_is_acquired() {
+        // Anchoring alone is not enough: a file whose FIRST line is a version
+        // line for some other specification is not an LFS pointer either, so
+        // the gate matches the LFS spec URL rather than the word `version`.
+        let tmp =
+            OwnedDirectory::create("git", "test-lfs-other").expect("the fixture workspace creates");
+        let source = tmp.path().join("other");
+        one_blob_repo(
+            &source,
+            "manifest.txt",
+            b"version https://example.org/manifest/v1\nentries 4\n",
+        );
+        let acquisition =
+            acquire_local(&source, &GitLimits::default()).expect("the manifest is acquired");
+        assert_eq!(acquisition.file_count, 1);
+        assert_eq!(acquisition.paths, vec!["manifest.txt".to_string()]);
     }
 
     #[test]

@@ -968,6 +968,38 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### The Git LFS policy, and what a pointer file is
+
+An acquisition **refuses** a Git LFS pointer, by name, and never treats it as
+the file it stands for. A pointer is roughly 130 bytes of text naming an object
+on a separate LFS endpoint: its bytes were never transferred by this clone, so
+they were never classified by the destination policy and never counted against
+the object, file or decompressed-size budgets. Accepting one would put a
+stand-in into the snapshot manifest and report it as content. The policy is
+therefore refusal rather than a declared passthrough, and this paragraph is
+where ROADMAP §12.5's "explicit Git LFS policy" can be checked against the
+code.
+
+A pointer is identified by the specification's own grammar: the version line
+
+```text
+version https://git-lfs.github.com/spec/v1
+```
+
+is the pointer's **first** line, so the gate is a 42-byte prefix test at offset
+0 that must end at the newline — or at the end of a blob carrying nothing else.
+The `oid` and `size` lines are deliberately not required: a truncated pointer is
+still not the content, and the refusal is the same either way.
+
+The superseded gate searched a blob's first 64 bytes for the ten-byte run
+`version ht` instead, so **any** file that merely quoted the spec URL near its
+start was refused as if it were the content it describes — a repository whose
+README explains LFS could not be acquired at all. That defect ran in the
+over-refusing direction: it was an availability and correctness fault in the
+acquisition, never a way to smuggle a pointer past the gate. `SIGNOFF-REPAIR.7.2.3`
+repaired it, and the page you are reading quotes the version line itself, which
+is exactly the shape the old gate rejected.
+
 ### The extraction worker's completion contract
 
 The server spawns one direct worker process per extraction and owns exactly that

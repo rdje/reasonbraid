@@ -532,7 +532,7 @@ read that citation:
 | `GET /v1/snapshots/stale` | the tenant's own stale rows | those rows are absent from the list |
 | `GET /v1/snapshots/{id}` | 200 with the row | 404 |
 | `GET /v1/snapshots/{id}/derivations` | 200 with the children | 404 |
-| `GET /v1/snapshots/{id}/assessments` | 200 with the assessments | 404 |
+| `GET /v1/snapshots/{id}/assessments` | 200 with the tenant's OWN assessments | 404 |
 | `DELETE /v1/snapshots/{id}` | tombstones the row | 404 |
 
 A tenant that did not cite a snapshot receives 404 rather than 403. The two
@@ -551,6 +551,37 @@ someone else had already acquired would have been refused its own evidence.
 Instead the replay records the second citation, both tenants read the shared
 row, and a count of `evidence_citations` for that snapshot returns 2.
 
+### Who may read an assessment
+
+An assessment is an authored opinion rather than a shared receipt, and the
+schema already says so: `claim_assessments` replays on
+`(claim_id, snapshot_id, assessment, author)`, so two tenants asserting the same
+thing about the same evidence hold two separate rows. It therefore carries a
+server-recorded `authored_by_tenant`, and both assessment reads return only the
+rows the reading tenant wrote:
+
+| Surface | Returns |
+| --- | --- |
+| `GET /v1/snapshots/{id}/assessments` | the reader's own assessments of a snapshot it cited; 404 if it did not cite the snapshot |
+| `GET /v1/claims/{claim_id}/assessments` | the reader's own assessments of that claim |
+
+The claim-keyed read has no citation gate and cannot have one — a claim spans
+snapshots and the route names none. That matters because `claim_id` is
+caller-supplied text the server never mints: there is no claims table, and the
+identifier is whatever the submitter typed. Before this binding the route
+answered any enrolled principal for any identifier it could guess. The authoring
+gate is what makes a guessed identifier useless; whether the namespace should be
+free at all is open under `SIGNOFF-REPAIR.11.14.3`.
+
+Two tenants that cite the *same* snapshot each read their own assessments of it
+and not the other's. Their `derivations` of it remain shared, because a
+derivation is content-addressed in the way a snapshot is — that half is open
+under the same leaf family.
+
+⛔ `author` and `verifier` on an assessment are still unauthenticated caller
+labels. The authorization never reads them; it reads the server-recorded tenant.
+Making those fields trustworthy is open under `SIGNOFF-REPAIR.7.4`.
+
 Two limits are published rather than implied:
 
 - **Snapshots written before this binding have no recorded citer, so no tenant
@@ -563,6 +594,9 @@ Two limits are published rather than implied:
   removes it from the others' staleness surface. Who may delete shared evidence
   is open under `SIGNOFF-REPAIR.7.4.4`. Who may run the site-wide retention
   sweep is settled below.
+- **An assessment written before its binding has no recorded author tenant** and
+  is likewise read by no one. There is nothing to recover it from: `author` is a
+  caller label, not a principal.
 
 Run the control in the owned disposable PostgreSQL environment:
 

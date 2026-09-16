@@ -3739,13 +3739,12 @@ async fn submit_assessment(
     Json(submission): Json<crate::claims::AssessmentSubmission>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal submits no assessment",
         ));
-    }
-    match crate::claims::submit(&state.pool, &submission).await {
+    };
+    match crate::claims::submit(&state.pool, &submission, &tenant).await {
         Ok(assessment_id) => Ok(Json(json!({ "assessment_id": assessment_id }))),
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged
@@ -3757,8 +3756,15 @@ async fn submit_assessment(
     }
 }
 
-/// `GET /v1/snapshots/{id}/assessments` — the snapshot's assessments, for a
-/// tenant that cited the snapshot (`.11.14.1`).
+/// `GET /v1/snapshots/{id}/assessments` — the snapshot's assessments that
+/// THIS TENANT AUTHORED, for a tenant that cited the snapshot.
+///
+/// Two gates, and both are needed. The citation gate (`.11.14.1`) keeps a
+/// tenant from learning that a snapshot exists at all. The authoring gate
+/// (`.11.14.2`) keeps two tenants that BOTH cite one shared row from reading
+/// each other's analytical position on it — the residual `.11.14.1` measured
+/// and could not close, because the citation both of them hold is exactly what
+/// its own gate admits on.
 async fn list_snapshot_assessments(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -3772,25 +3778,33 @@ async fn list_snapshot_assessments(
     };
     cited_snapshot(&state.pool, &snapshot_id, &tenant).await?;
     Ok(Json(
-        crate::claims::assessments_for_snapshot(&state.pool, &snapshot_id).await?,
+        crate::claims::assessments_for_snapshot(&state.pool, &snapshot_id, &tenant).await?,
     ))
 }
 
-/// `GET /v1/claims/{claim_id}/assessments` — the claim's assessments.
+/// `GET /v1/claims/{claim_id}/assessments` — the claim's assessments that THIS
+/// TENANT AUTHORED (`.11.14.2`).
+///
+/// ⛔ There is no citation gate here and there cannot be: a claim spans
+/// snapshots and this route names no snapshot. ⚠️ `claim_id` is caller-supplied
+/// text the server never mints — `git grep -n "CREATE TABLE claims" --
+/// migrations` returns nothing — so before this binding the route was an oracle
+/// over guessable identifiers, which is strictly worse than `.11.14.1`'s
+/// enumeration. The authoring gate is what makes a guessed identifier useless;
+/// the namespace itself is `.11.14.3`'s.
 async fn list_claim_assessments(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(claim_id): Path<String>,
 ) -> Result<Json<Vec<crate::claims::StoredAssessment>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no assessments",
         ));
-    }
+    };
     Ok(Json(
-        crate::claims::assessments_of_claim(&state.pool, &claim_id).await?,
+        crate::claims::assessments_of_claim(&state.pool, &claim_id, &tenant).await?,
     ))
 }
 

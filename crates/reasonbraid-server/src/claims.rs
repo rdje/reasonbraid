@@ -98,9 +98,15 @@ impl std::error::Error for AssessmentError {}
 /// Submit an assessment: the kind must be one of the five; the citation is
 /// VALIDATED — the excerpt must appear in the snapshot's raw bytes. The
 /// same claim + snapshot + kind + author is the REPLAY.
+///
+/// The AUTHORING tenant is recorded by the server and is what the read
+/// surfaces are bound to (`SIGNOFF-REPAIR.11.14.2`). ⛔ It is not
+/// `submission.author`, which is an unauthenticated caller label — a
+/// predicate over a field the caller controls is not an authorization.
 pub async fn submit(
     pool: &PgPool,
     submission: &AssessmentSubmission,
+    authored_by_tenant: &str,
 ) -> Result<String, AssessmentError> {
     if !ASSESSMENT_KINDS.contains(&submission.assessment.as_str()) {
         return Err(AssessmentError::UnknownKind(submission.assessment.clone()));
@@ -137,8 +143,9 @@ pub async fn submit(
     sqlx::query(
         "INSERT INTO claim_assessments \
          (assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
-          selector, rationale, source_authority, freshness, independence, uncertainty) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+          selector, rationale, source_authority, freshness, independence, uncertainty, \
+          authored_by_tenant) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
     )
     .bind(&assessment_id)
     .bind(&submission.claim_id)
@@ -153,38 +160,63 @@ pub async fn submit(
     .bind(&submission.freshness)
     .bind(&submission.independence)
     .bind(&submission.uncertainty)
+    .bind(authored_by_tenant)
     .execute(pool)
     .await
     .map_err(AssessmentError::Storage)?;
     Ok(assessment_id)
 }
 
-/// The read surface: the snapshot's assessments (oldest first).
+/// The stored assessment's columns — one definition for both bound reads.
+const ASSESSMENT_COLUMNS: &str =
+    "assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
+     selector, rationale, source_authority, freshness, independence, uncertainty, created_at";
+
+/// The read surface: the snapshot's assessments THIS TENANT AUTHORED (oldest
+/// first).
+///
+/// ⭐ Bound on the author rather than on the parent snapshot's citation, which
+/// is what settles `SIGNOFF-REPAIR.11.14.1`'s co-citation residual here: two
+/// tenants that cite the same shared snapshot both hold the citation, so a
+/// citation-based gate would have disclosed each one's analytical position to
+/// the other. ⚠️ It settles it for assessments only — `derivations` are
+/// content-addressed and remain shared.
 pub async fn assessments_for_snapshot(
     pool: &PgPool,
     snapshot_id: &str,
+    tenant_id: &str,
 ) -> Result<Vec<StoredAssessment>, sqlx::Error> {
     rows(
         pool,
-        "SELECT assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
-                selector, rationale, source_authority, freshness, independence, uncertainty, created_at \
-         FROM claim_assessments WHERE snapshot_id = $1 ORDER BY created_at",
+        &format!(
+            "SELECT {ASSESSMENT_COLUMNS} FROM claim_assessments \
+             WHERE snapshot_id = $1 AND authored_by_tenant = $2 ORDER BY created_at"
+        ),
         snapshot_id,
+        tenant_id,
     )
     .await
 }
 
-/// The read surface: the claim's assessments (oldest first).
+/// The read surface: the claim's assessments THIS TENANT AUTHORED (oldest
+/// first).
+///
+/// ⛔ `claim_id` is caller-supplied text the server never mints, so this read
+/// is keyed on a guessable identifier. The binding is what makes that
+/// harmless; the namespace itself is `SIGNOFF-REPAIR.11.14.3`'s.
 pub async fn assessments_of_claim(
     pool: &PgPool,
     claim_id: &str,
+    tenant_id: &str,
 ) -> Result<Vec<StoredAssessment>, sqlx::Error> {
     rows(
         pool,
-        "SELECT assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
-                selector, rationale, source_authority, freshness, independence, uncertainty, created_at \
-         FROM claim_assessments WHERE claim_id = $1 ORDER BY created_at",
+        &format!(
+            "SELECT {ASSESSMENT_COLUMNS} FROM claim_assessments \
+             WHERE claim_id = $1 AND authored_by_tenant = $2 ORDER BY created_at"
+        ),
         claim_id,
+        tenant_id,
     )
     .await
 }
@@ -193,9 +225,11 @@ async fn rows(
     pool: &PgPool,
     query: &str,
     bind: &str,
+    tenant_id: &str,
 ) -> Result<Vec<StoredAssessment>, sqlx::Error> {
     let rows = sqlx::query_as::<_, AssessmentRow>(query)
         .bind(bind)
+        .bind(tenant_id)
         .fetch_all(pool)
         .await?;
     Ok(rows.into_iter().map(Into::into).collect())

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — An assessment is read by the tenant that authored it (`SIGNOFF-REPAIR.11.14.2`)
+
+🔴 **A guessed claim identifier returned every tenant's assessments. Reproduced RED, closed, and it corrected the decision record this family rests on.**
+
+- **RED:** three assessments returned to a tenant that authored one of them, through the identifier `clm_budget` — the shipped control's own, because nothing mints the namespace. `40 passed; 1 failed`. GREEN: **98 / 0** across six suites.
+- 🔎 **`.11.14`'s per-table verdict was wrong for this table.** It grouped `claim_assessments` with the content-addressed evidence tables and concluded no column was possible. `claim_assessments_replay_idx (claim_id, snapshot_id, assessment, author)` carries the author, so two tenants asserting the same thing already hold two rows: an assessment is an authored opinion, not a shared receipt. The record gains a Correction section and one superseded verdict; the other eleven stand.
+- **The binding** is a server-recorded `authored_by_tenant` (`migrations/0064`), read by both assessment surfaces. `author` stays a caller label and the authorization never reads it — that clause is `.7.4`'s.
+- ⭐ **It closed `.11.14.1`'s co-citation residual for assessments:** two tenants citing one shared snapshot no longer read each other's positions on it. ⛔ Open for `derivations`, which are content-addressed.
+- 🔴 **New owned leaf `.11.14.3`:** the product has a real claim identity — a server-computed digest membership-checked inside a thread — and the evidence graph does not use it, so an assessment may cite a claim no contribution ever made.
+- **Verification:** `profiles` 41/41, `migration_upgrade` 4, `command_api` 39, `evaluation` 3, `mcp` 6, `cli_end_to_end` 5; strict server clippy; `cargo fmt --all --check`; `make gate`; `make book`.
+
 ## 2026-09-16 — The retention sweep becomes a site-operator act on the server's clock (`SIGNOFF-REPAIR.7.4.3`)
 
 🔴 **One enrolled principal, naming the year 3000, tombstoned every tenant's live evidence. Reproduced RED, then closed on both of its two independent defects.**

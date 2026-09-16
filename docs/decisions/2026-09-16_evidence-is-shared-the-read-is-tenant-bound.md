@@ -6,6 +6,8 @@ answers:
   - What does §16.8 actually require to be tenant-scoped?
   - How is a snapshot's citing tenant derived, and why can it not be a column?
   - Why can a snapshot written before the tenant binding be read by nobody?
+  - Why does claim_assessments get a tenant column when the evidence tables do not?
+  - Can two tenants citing the same snapshot read each other's assessments of it?
 ---
 # The evidence chain is shared by design; what must be tenant-bound is the authorization decision, not the row
 
@@ -154,3 +156,43 @@ migration has no recoverable citer and is read by no tenant until it is cited
 again; and the site-wide retention sweep remains unauthorized — any enrolled
 principal can tombstone every tenant's live evidence on a clock it supplies
 itself, owned by `SIGNOFF-REPAIR.7.4.3`.
+
+## Correction (2026-09-16, `SIGNOFF-REPAIR.11.14.2`, `REASONBRAID-REPAIR-0215`)
+
+🔎 **The per-table verdict above is wrong for `claim_assessments`, and the
+schema is what shows it.** The table places `evidence_snapshots`, `derivations`
+and `claim_assessments` together under *site-wide row, tenant-bound read*, and
+justifies "none of the twelve gains a column" from content-addressing: a row
+several tenants share cannot carry an owner.
+
+Compare the two replay keys the record did not read:
+
+| Index | Key | Shared between tenants? |
+| --- | --- | --- |
+| `derivations_replay_idx` | `(parent_snapshot_id, derived_kind, derived_digest)` | **yes** — content-addressed, one row serves every tenant |
+| `claim_assessments_replay_idx` | `(claim_id, snapshot_id, assessment, author)` | **no** — the key carries the AUTHOR |
+
+Two tenants asserting the same thing about the same evidence already hold two
+separate rows. An assessment is an **authored opinion**, not a shared receipt,
+so the argument that correctly forbids a `tenant_id` column on
+`evidence_snapshots` and `derivations` never reached it. `claim_assessments`
+takes a server-derived `authored_by_tenant` column (`migrations/0064`), and the
+verdict for that one row of the table is superseded:
+
+| Table | Superseded verdict | Verdict |
+| --- | --- | --- |
+| `claim_assessments` | site-wide row, tenant-bound read | **tenant-owned row**, authored by one tenant, read by that tenant |
+
+⭐ **This also closes a residual `.11.14.1` measured and could not close.** That
+leaf bound the child reads on their PARENT snapshot's citation, so two tenants
+citing one shared snapshot each read the other's assessments of it — the gate
+admitted on the very citation they both held. Binding on the author closes it
+for assessments. ⛔ It stays open for `derivations`, which are content-addressed
+and shared by exactly the construction this record describes, and that limit is
+published in the book rather than implied.
+
+⛔ **The eleven other verdicts stand.** The error was one of grouping, not of
+reasoning: content-addressing does make a row unable to carry an owner, and the
+question that was not asked per table is whether each row is actually shared.
+`author` and `verifier` remain unauthenticated caller strings and are NOT what
+the binding reads — that clause belongs to `SIGNOFF-REPAIR.7.4`.

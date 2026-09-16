@@ -5237,6 +5237,274 @@ async fn the_retention_sweep_requires_site_authority_and_the_server_clock() {
     );
 }
 
+/// An assessment is read by the tenant that AUTHORED it
+/// (`SIGNOFF-REPAIR.11.14.2`).
+///
+/// `GET /v1/claims/{claim_id}/assessments` admitted any enrolled principal over
+/// a namespace the server never mints: no `claims` table exists, `claim_id` is
+/// caller-supplied `TEXT` with no key, and the shipped control's own id is
+/// `clm_budget`. That makes it an ORACLE over guessable identifiers — the
+/// property `.11.14.1`'s enumeration explicitly did not have.
+///
+/// The binding is the AUTHORING tenant rather than the parent snapshot's
+/// citation, and the schema is why: `claim_assessments_replay_idx` is
+/// `(claim_id, snapshot_id, assessment, author)`, so two tenants asserting the
+/// same thing about the same evidence hold two SEPARATE rows. An assessment is
+/// an authored opinion, not a shared receipt, so `.11.14`'s content-addressing
+/// argument — which correctly forbids a column on `evidence_snapshots` and
+/// `derivations` — does not reach it.
+///
+/// That also settles `.11.14.1`'s co-citation residual for assessments: the
+/// last legs cite ONE shared snapshot from both tenants and require that
+/// neither reads the other's position on it.
+#[tokio::test]
+async fn an_assessment_is_read_by_the_tenant_that_authored_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alpha) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assess-alpha" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A's human enrolls: {alpha}");
+    let alpha_id = alpha["principal_id"].as_str().unwrap().to_string();
+    let (status, beta) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assess-beta" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B's human enrolls: {beta}");
+    let beta_id = beta["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        alpha["tenant_id"], beta["tenant_id"],
+        "two distinct tenants"
+    );
+
+    // One snapshot per tenant, plus one both of them cite.
+    let cite = |principal: String, locator: &'static str, payload: &'static [u8]| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({ "original_locator": locator, "scheme": "https" }))
+                .send()
+                .await
+                .expect("reference request");
+            let reference: Value = response.json().await.expect("reference json");
+            let reference_id = reference["resource_id"].as_str().unwrap().to_string();
+            let response = client
+                .post(format!("{base}/v1/snapshots"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({
+                    "reference_id": reference_id,
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(payload),
+                }))
+                .send()
+                .await
+                .expect("snapshot request");
+            let status = response.status().as_u16();
+            let snapshot: Value = response.json().await.expect("snapshot json");
+            assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+            snapshot["snapshot_id"].as_str().unwrap().to_string()
+        }
+    };
+    let beta_bytes = b"the beta tenant assessed evidence";
+    let shared_bytes = b"the shared evidence both tenants acquired";
+    let beta_snapshot = cite(
+        beta_id.clone(),
+        "https://example.org/assess-beta",
+        beta_bytes,
+    )
+    .await;
+    let shared_from_beta = cite(
+        beta_id.clone(),
+        "https://example.org/assess-shared",
+        shared_bytes,
+    )
+    .await;
+    let shared_from_alpha = cite(
+        alpha_id.clone(),
+        "https://example.org/assess-shared",
+        shared_bytes,
+    )
+    .await;
+    assert_eq!(
+        shared_from_alpha, shared_from_beta,
+        "the shared locator and digest replay to one snapshot"
+    );
+    let shared_snapshot = shared_from_alpha;
+
+    // A claim identifier nobody mints. `clm_budget` is the id the shipped
+    // control uses, which is the point: the namespace is guessable because the
+    // server never generates it.
+    let guessable = "clm_budget";
+    let assess =
+        |principal: String, snapshot: String, excerpt: &'static str, rationale: &'static str| {
+            let client = client.clone();
+            let base = base.clone();
+            async move {
+                let (status, body) = post(
+                    &client,
+                    &base,
+                    "/v1/assessments",
+                    &principal,
+                    &json!({
+                        "claim_id": guessable,
+                        "snapshot_id": snapshot,
+                        "assessment": "supports",
+                        "author": principal,
+                        "excerpt": excerpt,
+                        "rationale": rationale,
+                    }),
+                )
+                .await;
+                assert_eq!(status, 200, "the assessment submits: {body}");
+                body["assessment_id"].as_str().unwrap().to_string()
+            }
+        };
+    let beta_private = assess(
+        beta_id.clone(),
+        beta_snapshot.clone(),
+        "beta tenant assessed evidence",
+        "tenant B's private analytical position",
+    )
+    .await;
+    let beta_shared = assess(
+        beta_id.clone(),
+        shared_snapshot.clone(),
+        "shared evidence both tenants",
+        "tenant B's position on the shared evidence",
+    )
+    .await;
+    let alpha_shared = assess(
+        alpha_id.clone(),
+        shared_snapshot.clone(),
+        "shared evidence both tenants",
+        "tenant A's own position on the shared evidence",
+    )
+    .await;
+    assert_ne!(
+        alpha_shared, beta_shared,
+        "two tenants asserting the same thing hold SEPARATE rows — the replay key carries the author"
+    );
+
+    let ids = |body: &Value| {
+        body.as_array()
+            .expect("the assessment array")
+            .iter()
+            .map(|row| row["assessment_id"].as_str().unwrap().to_string())
+            .collect::<Vec<String>>()
+    };
+
+    // The finding: the claim-keyed read, over an identifier tenant A guessed.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/claims/{guessable}/assessments"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A reads its own claim side: {body}");
+    let seen = ids(&body);
+    assert!(
+        seen.contains(&alpha_shared),
+        "tenant A must still read its OWN assessment — a binding, not a blackout: {seen:?}"
+    );
+    assert!(
+        !seen.contains(&beta_private),
+        "tenant A read tenant B's position on evidence A never cited: {seen:?}"
+    );
+    assert!(
+        !seen.contains(&beta_shared),
+        "tenant A read tenant B's position on the SHARED snapshot: {seen:?}"
+    );
+
+    // And the snapshot-keyed read over the row both tenants cite. `.11.14.1`
+    // bound this surface on the parent's citation, which both tenants hold, so
+    // before this repair it disclosed B's position to A.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{shared_snapshot}/assessments"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "tenant A reads the shared snapshot's side: {body}"
+    );
+    let seen = ids(&body);
+    assert!(
+        seen.contains(&alpha_shared),
+        "tenant A reads its own position on the shared snapshot: {seen:?}"
+    );
+    assert!(
+        !seen.contains(&beta_shared),
+        "a co-citing tenant read the other's analytical position: {seen:?}"
+    );
+
+    // Symmetry: tenant B reads its own two and neither of A's.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/claims/{guessable}/assessments"),
+        &beta_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B reads its own claim side: {body}");
+    let seen = ids(&body);
+    assert!(seen.contains(&beta_private), "{seen:?}");
+    assert!(seen.contains(&beta_shared), "{seen:?}");
+    assert!(
+        !seen.contains(&alpha_shared),
+        "tenant B read tenant A's position: {seen:?}"
+    );
+
+    // The gates below the binding are unchanged and attributed: a well-formed
+    // stranger is refused by the enrolment gate, a malformed one by the parser.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/claims/{guessable}/assessments"),
+        STRANGER,
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an unenrolled principal reads assessments: {body}"
+    );
+    assert_eq!(body["code"], json!("unauthorized"), "{body}");
+
+    let authored: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM claim_assessments WHERE authored_by_tenant IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count unattributed assessments");
+    assert_eq!(
+        authored, 0,
+        "every assessment this control wrote is attributed"
+    );
+    eprintln!(
+        "assessment binding: the claim-keyed and snapshot-keyed reads are bound to the AUTHORING tenant; the shared snapshot carries one assessment per tenant and neither reads the other's; {authored} unattributed rows"
+    );
+}
+
 /// The G4 hostile-content suite (PHASE-4.7.1): ONE gate-citable test
 /// assembling the hostile scenarios end-to-end — every refusal NAMES its
 /// reason (the unsupported, denied, mutable, and non-reproducible paths

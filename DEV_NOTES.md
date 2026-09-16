@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-16 — "The specification is silent" is a census, and I published one over two sections of twenty-five
+
+- I escalated a decision to the director as genuinely undecidable: two defensible designs, a frozen roadmap that "settles it neither way". The roadmap settled it. §13.2 names the join as steps 2, 5 and 6 of the canonical deliberation flow, and I had read §12.7 and §5.2.2.
+- ⛔ **The failure is not that I missed a section. It is that "the spec does not say" is a claim over the WHOLE spec, and I made it from a targeted search.** I searched for the terms I already had — `claim`, `evidence gate`, `12.7` — which finds the sections that share my vocabulary and cannot find the section that describes the same thing in different words. §13.2 never says "claim_assessments" or "evidence chain"; it says *acquire/assess evidence within the allowed plan*.
+- ⭐ **The tree already has the gate for this and I did not apply it to myself.** `GAP-CLAIM-CENSUS` exists because "nothing checks X" is a census claim, not a description. "The specification does not say X" is the same shape over a different corpus, and it is not gated — `docs/tasks/` is scanned, `ROADMAP.md` is not.
+- **What would have caught it, cheaply:** enumerate the corpus before asserting absence. `grep -n '^### ' ROADMAP.md | wc -l` gives the population; a silence claim should name how much of it was read. I had searched two sections and generalized over twenty-five.
+- 🔎 **The tell was visible and I did not read it as one.** The product shipped a step vocabulary containing `assess` and two built-in profiles declaring it. A vocabulary entry with no implementation is not evidence of an open design question — it is evidence of an implementation gap, because someone had already decided the step should exist. I treated an artefact of the answer as part of the puzzle.
+- ⚠️ **The cost is specific, not abstract.** Escalating costs the director a decision they should not have had to make, and it arrives dressed as rigour — "I held this rather than deciding unilaterally" reads as restraint. ⭐ Restraint that is actually an unread section is the same failure shape as the conservative-sounding verdict in `a-grouping-is-not-an-argument`: the answer that looks careful escapes the check that a bolder one would have drawn.
+
 ## 2026-09-16 — A verdict inherits the reasoning of whatever it was grouped with
 
 - `.11.14`'s decision record answered twelve tables at once. It found the right reason — the evidence chain is content-addressed, so a row several tenants share cannot carry an owner — and then applied it to a table where it was not true. `claim_assessments` was listed beside `evidence_snapshots` and `derivations` under "site-wide row, tenant-bound read", and "none of the twelve gains a column" followed from a property that table does not have.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The deliberation flow owns the evidence chain (`SIGNOFF-REPAIR.11.14.3`)
+
+🔎 **The decision was held for the director on the grounds that the frozen roadmap settled it neither way. That was wrong: §13.2 settles it, and had not been read.**
+
+- **§13.2 "Rigorous deliberation reference flow"** is step 2 *register context and resource references*, step 5 *normalize claims … and requested evidence*, step 6 *acquire/assess evidence within the allowed plan*. The canonical flow contains both halves. The earlier claim was written from §12.7 and §5.2.2 — two sections of twenty-five.
+- 🔴 **The product already encodes it, and the encoding is inert.** `STEP_KINDS` carries `assess`; `evidence_review` and `policy_proposal` — 2 of 8 shipped built-ins — declare it; and `git grep -n '"assess"' -- crates/reasonbraid-server/src` returns **one hit, the vocabulary constant**. A tenant running the built-in profile for reviewing evidence advances onto a step that records nothing.
+- ✅ **Decision:** the deliberation flow owns the evidence chain, joined where §13.2 names it — `assess` writes a `claim_assessments` row keyed by a membership-checked claim digest over a CITED snapshot; a contribution's `EvidenceRef` resolves to a `resource_references` row (the same key). Four alternatives rejected, including a `thread_id` column on the content-addressed tables.
+- ⭐ Every part the join needs already exists — the claim digest and its membership check, `.11.14.1`'s citation gate, `.11.14.2`'s authoring binding, `claims::submit`'s excerpt validation, `resources::submit`'s replay. This is wiring, not design.
+- Split into `.11.14.3.1`–`.3`, checked against the leaf's four mechanisms so none is dropped.
+- No code changed; decision and task-tree only.
+
 ## 2026-09-16 — The site authorization skeleton is one copy again (`SIGNOFF-REPAIR.7.4.5`)
 
 ✅ **A duplication created deliberately two commits earlier, and closed on schedule rather than left to be found.**

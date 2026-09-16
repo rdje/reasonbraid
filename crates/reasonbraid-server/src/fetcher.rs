@@ -10,7 +10,11 @@
 //! re-classifies, and counts against the hop cap — there is no auto-follow.
 //! TLS verifies against the system roots; no proxy environment is honored;
 //! no cookie state and no ambient credentials exist (the client sets exactly
-//! one static user agent, nothing else).
+//! one static user agent, nothing else). A caller-SUPPLIED credential
+//! (`fetch_authenticated`) is bound to the origin the caller named and is
+//! dropped on a hop that leaves it — the hop is still followed, because it was
+//! re-classified and is a legitimate address; what does not cross is the
+//! secret. `FetchedDocument::credential_hosts` records where it actually went.
 
 use std::fmt;
 use std::future::Future;
@@ -218,6 +222,11 @@ pub struct FetchedDocument {
     pub final_url: Url,
     /// Every hop visited, first to last (the final URL included).
     pub chain: Vec<Url>,
+    /// The DISTINCT hosts a caller-supplied credential header was actually
+    /// sent to, in order — empty when the fetch carried none. ⛔ Measured at
+    /// the moment the header is attached, so the disclosure reports where the
+    /// secret WENT rather than where the acquisition ENDED.
+    pub credential_hosts: Vec<String>,
     pub status: u16,
     pub content_type: Option<String>,
     pub sniffed: SniffedKind,
@@ -497,6 +506,13 @@ impl Fetcher {
                 self.limits.max_url_length,
             )?;
             let mut chain: Vec<Url> = Vec::new();
+            let mut credential_hosts: Vec<String> = Vec::new();
+            // The origin the CALLER named. A caller-supplied credential is
+            // bound to it — the broker resolved the binding for this
+            // acquisition, not for wherever the origin decides to send us —
+            // so it travels no further, exactly as a browser and `curl -L`
+            // drop `Authorization` on a cross-host redirect.
+            let credential_origin = current.origin();
             let mut method = method;
             let mut hops: u8 = 0;
             loop {
@@ -505,7 +521,19 @@ impl Fetcher {
                 chain.push(current.clone());
                 let mut request_builder = self.client.request(method.clone(), current.clone());
                 if let Some((name, value)) = &extra_header {
-                    request_builder = request_builder.header(*name, value);
+                    // ⛔ The hop is already re-hardened and re-classified, so a
+                    // cross-origin hop is a LEGITIMATE public address — what
+                    // must not cross is the secret. A hop that leaves the
+                    // origin is still followed, and still succeeds when the
+                    // destination needs no credential (the signed-URL shape);
+                    // it simply carries none.
+                    if current.origin() == credential_origin {
+                        request_builder = request_builder.header(*name, value);
+                        let host = current.host_str().unwrap_or("unknown").to_owned();
+                        if credential_hosts.last() != Some(&host) {
+                            credential_hosts.push(host);
+                        }
+                    }
                 }
                 let request = request_builder
                     .build()
@@ -609,6 +637,7 @@ impl Fetcher {
                 return Ok(FetchedDocument {
                     final_url: current,
                     chain,
+                    credential_hosts,
                     status: status.as_u16(),
                     content_type,
                     sniffed,
@@ -1187,6 +1216,7 @@ mod tests {
                 Url::parse("https://example.org/start").unwrap(),
                 Url::parse("https://example.org/final").unwrap(),
             ],
+            credential_hosts: Vec::new(),
             status: 200,
             content_type: Some("text/html".to_owned()),
             sniffed: SniffedKind::Html,
@@ -1425,13 +1455,106 @@ mod tests {
         (port, hits)
     }
 
+    /// Which (host, `Authorization` present) pairs an origin actually
+    /// received. ⛔ The presence, never the value: a control that prints a
+    /// credential is a control that leaks one.
+    type CredentialLog = Arc<std::sync::Mutex<Vec<(String, bool)>>>;
+
+    /// An origin that redirects ACROSS an origin boundary and records what
+    /// arrives. `/cross` leaves `fetch.test` for `second.test`; `/same` stays
+    /// on `fetch.test`; `/landing` is the same handler for both, so the only
+    /// thing that differs between the two controls is the origin of the hop.
+    async fn spawn_credential_origin() -> (u16, CredentialLog) {
+        let log: CredentialLog = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the credential origin binds");
+        let port = listener.local_addr().expect("the port is known").port();
+        let record = {
+            let log = Arc::clone(&log);
+            move |headers: axum::http::HeaderMap| {
+                let host = headers
+                    .get(axum::http::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown")
+                    .to_owned();
+                let has_auth = headers.contains_key(axum::http::header::AUTHORIZATION);
+                log.lock().expect("the credential log locks").push((
+                    host.split(':').next().unwrap_or("unknown").to_owned(),
+                    has_auth,
+                ));
+            }
+        };
+        let app = Router::new()
+            .route(
+                "/cross",
+                get({
+                    let record = record.clone();
+                    move |headers: axum::http::HeaderMap| {
+                        record(headers);
+                        async move {
+                            AxumResponse::builder()
+                                .status(StatusCode::TEMPORARY_REDIRECT)
+                                .header(AXUM_LOCATION, format!("http://second.test:{port}/landing"))
+                                .body(Body::empty())
+                                .expect("the cross-origin redirect builds")
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/same",
+                get({
+                    let record = record.clone();
+                    move |headers: axum::http::HeaderMap| {
+                        record(headers);
+                        async move {
+                            AxumResponse::builder()
+                                .status(StatusCode::TEMPORARY_REDIRECT)
+                                .header(AXUM_LOCATION, format!("http://fetch.test:{port}/landing"))
+                                .body(Body::empty())
+                                .expect("the same-origin redirect builds")
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/landing",
+                get({
+                    let record = record.clone();
+                    move |headers: axum::http::HeaderMap| {
+                        record(headers);
+                        async {
+                            AxumResponse::builder()
+                                .header(AXUM_CONTENT_TYPE, "text/plain")
+                                .body(Body::from("landed"))
+                                .expect("the landing response builds")
+                        }
+                    }
+                }),
+            );
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("the credential origin serves");
+        });
+        (port, log)
+    }
+
     fn test_fetcher(
         port: u16,
         policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync>,
         limits: FetchLimits,
     ) -> Fetcher {
+        // TWO names for one listener: a redirect between them is a genuine
+        // cross-ORIGIN hop (scheme + host + port), which is what the credential
+        // rule turns on, without needing a second socket.
         let resolver = Arc::new(StaticResolver {
-            hosts: [("fetch.test".to_owned(), IpAddr::from([127, 0, 0, 1]))].into(),
+            hosts: [
+                ("fetch.test".to_owned(), IpAddr::from([127, 0, 0, 1])),
+                ("second.test".to_owned(), IpAddr::from([127, 0, 0, 1])),
+            ]
+            .into(),
         });
         Fetcher::from_config(FetcherConfig {
             limits,
@@ -1539,6 +1662,60 @@ mod tests {
             1,
             "only the first hop was dialed — the escape never connected"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_credential_does_not_cross_an_origin_boundary() {
+        // R5 resolves a credential for ONE binding and acquires ONE resource.
+        // `fetch_with` rebuilds the request on every iteration of its manual
+        // redirect loop, so before this repair the caller's `Authorization`
+        // header was re-attached to each hop — and the origin, not the
+        // fetcher, chose where those hops went.
+        let (port, log) = spawn_credential_origin().await;
+        let fetcher = test_fetcher(port, allow_loopback(), FetchLimits::default());
+        let document = fetcher
+            .fetch_authenticated(&format!("http://fetch.test:{port}/cross"), "Bearer s3cr3t")
+            .await
+            .expect("the cross-origin redirect still resolves");
+        assert_eq!(document.status, 200);
+        let seen = log.lock().expect("the credential log locks").clone();
+        assert_eq!(
+            seen,
+            vec![
+                ("fetch.test".to_owned(), true),
+                ("second.test".to_owned(), false),
+            ],
+            "the first origin receives the credential and the second must not: {seen:?}"
+        );
+        assert_eq!(
+            document.credential_hosts,
+            vec!["fetch.test".to_owned()],
+            "the receipt names the hosts the credential actually reached"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_same_origin_redirect_still_carries_the_credential() {
+        // The other half of the pair: a rule, not a prohibition. Without this,
+        // a repair that stripped the header from EVERY hop would pass the
+        // control above and quietly break every authenticated redirect.
+        let (port, log) = spawn_credential_origin().await;
+        let fetcher = test_fetcher(port, allow_loopback(), FetchLimits::default());
+        let document = fetcher
+            .fetch_authenticated(&format!("http://fetch.test:{port}/same"), "Bearer s3cr3t")
+            .await
+            .expect("the same-origin redirect resolves");
+        assert_eq!(document.status, 200);
+        let seen = log.lock().expect("the credential log locks").clone();
+        assert_eq!(
+            seen,
+            vec![
+                ("fetch.test".to_owned(), true),
+                ("fetch.test".to_owned(), true),
+            ],
+            "a same-origin hop keeps the credential: {seen:?}"
+        );
+        assert_eq!(document.credential_hosts, vec!["fetch.test".to_owned()]);
     }
 
     #[tokio::test(flavor = "multi_thread")]

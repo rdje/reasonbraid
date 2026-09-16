@@ -968,6 +968,34 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### Where a credential goes, and where it stops
+
+The R5 pack acquires a resource with a credential the broker resolves for one
+binding. That credential is bound to **the origin the caller named** — scheme,
+host and port — and it is dropped on any redirect hop that leaves it.
+
+The hop itself is still followed. It has already been re-hardened and
+re-classified by the same destination policy as the first dial, so it is a
+legitimate public address; what must not cross an origin boundary is the secret,
+not the request. An acquisition that redirects to a signed URL on a CDN
+therefore still succeeds, carrying no credential to the CDN — which is how
+browsers and `curl --location` have behaved for years. A redirect that stays on
+the caller's origin keeps the credential, so this is a rule rather than a
+prohibition, and a control asserts each half.
+
+Before this repair the credential was re-attached on **every** hop of the
+fetcher's manual redirect loop, and the origin — not the caller and not the
+server — chose where those hops went. A control drove an authenticated fetch
+through a redirect from `fetch.test` to `second.test` and the origin recorded
+receiving the `Authorization` header at both.
+
+The acquisition receipt now says where the credential actually went. A fetched
+document carries `credential_hosts`, the distinct hosts the header was attached
+to, recorded at the moment of attachment; the snapshot's disclosure policy names
+that list and the disclosure record names its first entry. It used to name the
+**final** URL's host, so a credential sent to one host was disclosed against
+whichever host the redirect chain happened to end on.
+
 ### What the operator's git configuration can reach during an acquisition
 
 Nothing. An R1 acquisition fetches a **caller-supplied** URL, so the repository

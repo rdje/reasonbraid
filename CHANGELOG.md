@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — A credential stops at the origin the caller named (`SIGNOFF-REPAIR.7.2.6`)
+
+🔴 **The `Authorization` header was being delivered to whatever host the origin redirected to — reproduced at runtime, with the origin's own record as the evidence.**
+
+- **Reproduced first:** `[("fetch.test", true), ("second.test", true)]` against the required `[("fetch.test", true), ("second.test", false)]`. The secret arrived at a host the caller never named and the broker never bound.
+- **Why it was possible:** `fetch_with` rebuilds the request inside its manual redirect loop and re-attached `extra_header` on every iteration; `fetch_authenticated`'s only production caller is the R5 arm passing a broker-resolved credential.
+- **The rule, decided rather than inherited:** the credential is bound to the origin the caller named (`url::Origin` equality — scheme, host and port) and is dropped on a hop that leaves it, while the hop is still followed. Refusing the hop was rejected: it breaks the signed-URL redirect the pack exists for, and the hop is already re-classified.
+- **The disclosure became a measurement:** `FetchedDocument::credential_hosts` records where the header actually went, replacing `final_url.host_str()` — whichever host the chain happened to end on.
+- ⭐ **Falsified twice**, the second time into the almost-fix (`chain.len() == 1`), which passes the cross-origin control and fails the same-origin one — the two controls bound different halves.
+- **Verified:** 111 passed / 0 failed / 1 ignored, the fetcher suite 21 passed with every pre-existing R0 control unchanged; clippy, fmt, gate, book and links rc=0.
+
 ## 2026-09-16 — Reconcile tranche 4c, and find the mechanism `.7.2`'s split dropped (`SIGNOFF-REPAIR.11.9.1.3.3`)
 
 🔴 **26 clauses across six records — 9 `handled`, 10 `owned`, 5 `attach`, 2 `unowned` — and the finding is about a lane this session closed three commits ago.**

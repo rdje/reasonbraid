@@ -2186,9 +2186,20 @@ async fn resolve_resource(
                         .await
                     {
                         Ok(document) => {
+                            // ⛔ The disclosure names where the credential WENT.
+                            // It used to name `final_url` — the LAST hop — so a
+                            // credential the fetcher had sent to one host was
+                            // disclosed against whichever host the redirect
+                            // chain happened to end on. `credential_hosts` is
+                            // recorded at the moment the header is attached
+                            // (`SIGNOFF-REPAIR.7.2.6`).
                             let disclosure = state.broker.disclose(
                                 &binding,
-                                document.final_url.host_str().unwrap_or("unknown"),
+                                document
+                                    .credential_hosts
+                                    .first()
+                                    .map(String::as_str)
+                                    .unwrap_or("unknown"),
                                 chrono::Utc::now(),
                             );
                             match disclosure {
@@ -2221,7 +2232,7 @@ async fn resolve_resource(
                                             extraction_version: None,
                                             quarantine_status: "none".to_owned(),
                                             redactions: serde_json::json!([]),
-                                            disclosure_policy: serde_json::json!({ "credential_class": disclosure.credential_class, "host": disclosure.host }),
+                                            disclosure_policy: serde_json::json!({ "credential_class": disclosure.credential_class, "host": disclosure.host, "credential_hosts": document.credential_hosts }),
                                             license: None,
                                             fresh_until: None,
                                         },

@@ -1,0 +1,18 @@
+# ReasonBraid — the machine-readable pointer to this project's disclosure route
+# (RFC 9116). The policy itself is SECURITY.md; this file exists so a scanner
+# or a researcher finds the channel without reading the repository.
+#
+# ⚠️ The software is UNRELEASED and the Internet qualification gate (ROADMAP
+# §16.12, G6/G7) is NOT MET. There is no production deployment to report against;
+# reports concern this source.
+
+Contact: https://github.com/rdje/reasonbraid/security/advisories/new
+Policy: https://github.com/rdje/reasonbraid/blob/main/SECURITY.md
+Preferred-Languages: en, fr
+Canonical: https://github.com/rdje/reasonbraid/blob/main/.well-known/security.txt
+
+# ⛔ No Expires field is published here on purpose. RFC 9116 requires one on a
+# SERVED security.txt, and this file is not served — it is a tracked pointer in a
+# repository with no domain (the name is uncleared: docs/adr/001). A date nothing
+# renews is the LIVE-DOC-CURRENCY defect this project gates against. When a
+# domain is cleared and this file is served, it gains Expires and a renewal owner.

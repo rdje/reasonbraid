@@ -168,6 +168,7 @@
 - [`2026-09-15_test-browser-runtime-is-named-not-discovered.md`](docs/decisions/2026-09-15_test-browser-runtime-is-named-not-discovered.md)
 - [`2026-09-15_the-action-set-extends-the-target-selector-does-not.md`](docs/decisions/2026-09-15_the-action-set-extends-the-target-selector-does-not.md)
 - [`2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md`](docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md)
+- [`2026-09-16_internet-qualification-route.md`](docs/decisions/2026-09-16_internet-qualification-route.md)
 - [`2026-09-16_rb-server-bind-exposure.md`](docs/decisions/2026-09-16_rb-server-bind-exposure.md)
 
 ## Promoted lessons

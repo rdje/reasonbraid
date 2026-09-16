@@ -7,12 +7,26 @@ qualification or provide a confidential disclosure channel.
 
 ## Reporting a vulnerability
 
-- Report privately to the **accountable owner**, Richard DJE; role authority is
-  recorded in `docs/decisions/2026-09-06_accountable-owners.md`. Use an established
-  private contact channel. Do not put sensitive details in public issues, commits,
-  pull requests or logs. If a channel is not established, arrange one with the
-  owner before sharing confidential details; this policy does not assert a
-  dedicated reporting endpoint exists.
+**Use GitHub private vulnerability reporting** on this repository: open the
+**Security** tab and choose *Report a vulnerability*. The report is authenticated
+and confidential, it creates a draft advisory that preserves the evidence and the
+coordination trail, and it publishes no personal address that could go stale.
+The decision and its rejected alternatives are recorded in
+`docs/decisions/2026-09-16_internet-qualification-route.md`.
+
+⚠️ **Status: the channel is declared and awaits one repository setting.** Private
+vulnerability reporting must be enabled by the repository owner under
+*Settings → Code security*. Until the Security tab offers *Report a
+vulnerability*, treat the fallback below as the route — this policy does not
+promise a channel that is not yet accepting reports.
+
+- **Fallback, while the switch is off:** contact the **accountable owner**,
+  Richard DJE, whose role authority is recorded in
+  `docs/decisions/2026-09-06_accountable-owners.md`, through an established
+  private channel. If none is established, arrange one before sharing
+  confidential details.
+- ⛔ Do not put sensitive details in public issues, commits, pull requests or
+  logs. A public repository cannot provide an embargo.
 - A useful report names the affected surface, reproduction steps and impact.
   Triage verifies the evidence and assigns a task-tree owner; confidentiality
   applies while the owner coordinates the response.

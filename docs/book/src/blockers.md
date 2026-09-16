@@ -17,6 +17,33 @@ days with every individual rule followed.
 they cleared is worth more than the fact that they did — see
 [Cleared](#cleared) at the foot of this page.
 
+## The route out, decided 2026-09-16
+
+⭐ **Three of the four outside blockers share one prerequisite, and it is work
+inside this repository.** The Phase-7 subtraction record has the exposure profile
+waiting on the qualification gaps while two of those gaps wait on the exposure
+profile. That circle is an artefact of the record's stated reason, not of the
+gate: ROADMAP §16.12 blocks Internet-capable **deployment** and §25.1 blocks
+**exposing** remote enrollment. Neither forbids *building* a candidate and
+leaving it off.
+
+`SIGNOFF-REPAIR.14` now owns an exposure-profile candidate — built, frozen, never
+deployed — under a standing prohibition that no leaf in it may turn the profile
+on or claim any part of G6/G7. Once it is frozen, the external review and the
+penetration test have something to run against, which is exactly what their own
+revisit triggers ask for.
+
+The other decisions, with their rejected alternatives, are in
+`docs/decisions/2026-09-16_internet-qualification-route.md`: apply to an
+open-source audit programme first with a commercial fallback twelve weeks after
+the candidate freeze; report vulnerabilities through GitHub private reporting
+rather than a published address; and clear the name in the United States, the
+European Union and the holder's own jurisdiction.
+
+⛔ **None of this advances the gate by itself.** G6/G7 remains **NOT MET** and
+B1–B4 remain open. What changed is that three of them now have a named next
+action here instead of a wait.
+
 ## Blocked on the outside world
 
 No amount of work inside this repository produces any of these. The first three

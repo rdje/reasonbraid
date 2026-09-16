@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Take the four Internet-qualification decisions and open the exposure-candidate lane (`SIGNOFF-REPAIR.14`)
+
+⭐ **Three of the four outside blockers share one prerequisite, and it is work inside this repository.**
+
+- **The structural finding:** the Phase-7 subtraction record has the exposure profile (S-1) waiting on the qualification gaps while B2 waits on "the exposure profile's candidate freeze" and B3 on "its first action-bearing surface". That circle is an artefact of S-1's stated reason — ROADMAP §16.12 blocks Internet-capable **deployment** and §25.1 blocks **exposing**. Neither forbids building a candidate and leaving it off.
+- **Decision 1 — build the candidate, un-deployed.** `SIGNOFF-REPAIR.14` owns it under a standing prohibition: no leaf in the lane may deploy the profile or claim any part of G6/G7. First slice measured: `mtls.rs` builds a complete `rustls::ServerConfig` whose only callers are `tests/mtls.rs:42` and `:72`, and `grep -c mtls` over `rb-server.rs` returns 0.
+- **Decision 2 — OSS audit programme first, commercial fallback twelve weeks after the freeze.** §2.6 requires independence, not procurement; the repo is public and the software unreleased, which is the profile those programmes exist for. The fallback is dated because "we applied" is not a plan.
+- **Decision 3 — GitHub private vulnerability reporting.** `SECURITY.md` said in its own words that no dedicated endpoint existed. The channel publishes no personal address, creates a draft advisory that is the evidence-preservation machinery §16.12 asks for, and needs one owner-side switch, which the policy names and marks pending. `.well-known/security.txt` publishes the pointer and states why it carries no `Expires`.
+- **Decision 4 — clearance covers the US, the EU and the holder's jurisdiction.** Deferrable because the rename cost is measured: 67 source files, 191 lines, and every shipped binary already neutral.
+- ⛔ **None of this advances the gate.** G6/G7 is NOT MET and B1–B4 remain open. Three now have a named next action here instead of a wait.
+- No product code, schema, test or script changed.
+
 ## 2026-09-16 — The evidence chain is shared by design; the authorization decision is what must name the tenant (`SIGNOFF-REPAIR.11.14`)
 
 ✅ **The decision on twelve tenant-less tables is taken — and taking it found a live cross-tenant enumeration path.**

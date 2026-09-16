@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-16 — I rewrote a file from a sentence about it instead of from its specification
+
+- The director said "MEMORY.md is just the next action, task, pointer and it is an overwrite not an append", and I built a file from that sentence. It was a better file than the 7 KB log it replaced, and it was still wrong: `MEMORY_ARCHITECTURE.md` §6 ends with a fenced block introduced as *"the entire contents of a demoted MEMORY.md"*, with five named fields. I had a one-line summary of a specification and treated it as the specification.
+- ⛔ **`CLAUDE.md` lists that document as MANDATORY reading and I had read it — in an earlier session.** That is the whole failure: I was working from a remembered gist while the file sat two directories up, and the gist was accurate but lossy. A summary of a spec is not a spec, and the cost was a field I dropped entirely.
+- 🔴 **The dropped field is the one that matters most to the thing the file is for.** `in_flight_uncommitted` is what tells a resuming session whether work is stranded. A resume pointer that cannot say "there is half-finished work and here is how to finish it" has lost the one question only it can answer. I invented three sections and deleted the field.
+- ⭐ **The sharpest part is the direction of the mistake.** DOC-0032's whole argument was that durable facts do not belong in the pointer — and in the same commit I put two environment quirks into it, which §4 assigns to layer C by name, and which were **already** in `2026-09-09_repository-local-command-environment.md`. I removed fourteen duplicates and added two, while writing the paragraph explaining why duplicates are the defect.
+- ⚠️ **What I would do differently is mechanical, not attitudinal**: when the subject of a change is a file that some document governs, open that document first, in the same turn, and diff the artefact against it. I did that for `COMMIT.md` all session and not for the one file whose governing document is named MANDATORY in the bootstrap.
+
 ## 2026-09-16 — I reported a symptom as a finding and the director named the defect in one sentence
 
 - I ended a report with "`MEMORY.md` is at exactly 7,168 of 7,168 bytes; every commit now requires an eviction", filed it as a thing to watch, and moved on. The answer came back: *"MEMORY.md is just the next action, task, pointer and it is a overwrite not an append."* ⭐ **I had been treating the cap as the problem and the eviction as the cost of doing business, when the file had simply stopped being the kind of file it says it is.**

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Conform the resume pointer to the template that governs it (`SIGNOFF-REPAIR.11.4.2.3`)
+
+⛔ **DOC-0032 rewrote layer A without re-reading `MEMORY_ARCHITECTURE.md` §6, which specifies the file's exact template.**
+
+- **Five deviations:** the title dropped its cap reminder; `How to resume` did not name `MEMORY_ARCHITECTURE.md`; the `Current state` block used free-form bullets instead of the five named fields and **omitted `in_flight_uncommitted`**; the block heading dropped its overwrite rule; and three sections were invented.
+- ⛔ **The invented "Traps" section was a layer violation:** environment quirks belong to layer C by §4's write path, and `2026-09-09_repository-local-command-environment.md` already carried `project_env.py`. The commit that removed durable facts from the pointer put two more back in.
+- **Three measurements:** 26 lines / 7,168 bytes → 35 / 3,583 → **16 / 1,395**, with 34 lines and 5,773 bytes free. No cap raised.
+- ⚠️ §6 also prefers a DERIVED current-state block. Four of five fields are mechanical; the census is owed before proposing anything, and `.11.4.5.3` rejected its own generator on the inverse ratio. New owner `.11.4.2.4`.
+- No product code, schema, test or script changed.
+
 ## 2026-09-16 — The pointer stops being a log (`SIGNOFF-REPAIR.11.4.2.2`)
 
 ✅ **`MEMORY.md` was at exactly 7,168 of 7,168 bytes and every commit had to evict. The cause was shape, not size.**

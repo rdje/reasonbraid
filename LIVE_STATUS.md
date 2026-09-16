@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⛔ **THE POINTER REWRITE DID NOT FOLLOW THE SPECIFICATION THAT GOVERNS IT, AND IS CORRECTED (`.11.4.2.3`, DOC-0033).**
+
+- 🔴 DOC-0032 rewrote layer A from a one-line director instruction and `COMMIT.md`, and did not re-read `MEMORY_ARCHITECTURE.md` §6 — which ends with a fenced block introduced as "the entire contents of a demoted `MEMORY.md`". `CLAUDE.md` lists that document as MANDATORY reading.
+- **Five deviations, enumerated.** The title dropped its cap reminder; `How to resume` did not name `MEMORY_ARCHITECTURE.md`, the template's first line; the `Current state` block used free-form bullets instead of the five named fields and **omitted `in_flight_uncommitted`** — the field that tells a resuming session whether work is stranded; the block heading dropped "(OVERWRITE this block each update — do not append)"; and three sections were invented.
+- ⛔ **The last one was a LAYER violation, not a shape one.** The "traps" it added were environment quirks, which §4's write path assigns to layer C by name — and they were already there: `2026-09-09_repository-local-command-environment.md` carries `project_env.py` at lines 21 and 63–70. ⭐ A commit that removed a log of durable facts from the pointer put two more durable facts back into it.
+- **Three measurements:** **26 lines / 7,168 bytes** (the log) → **35 / 3,583** (invented structure) → **16 / 1,395** (the template), with 34 lines and 5,773 bytes free. No cap raised at any point.
+- ⭐ **What DOC-0032 got right stands:** the partition was correct and the census still reports 0 standing warnings. What it got wrong is deriving the target shape from a conversation rather than from the file that defines it.
+- ⚠️ **Routed rather than absorbed:** §6 also says "prefer derived over hand-written". Four of the five fields are mechanically derivable and one is a judgement sentence — the inverse of `.11.4.5.3`, which rejected its generator because 13 of 14 rows were curated prose. The census is still owed; new owner `.11.4.2.4`.
+
 ✅ **THE RESUME POINTER STOPS BEING A LOG, AND `.11.4.2.1`'s OWN DATA HAD THE ANSWER ELEVEN COMMITS EARLIER (`.11.4.2.2`, DOC-0032).**
 
 - **The measurement:** `wc -c MEMORY.md` returned **7168** against a 7,168-byte cap — zero headroom — and every one of this session's thirteen commits had to evict or compress a standing warning to land.

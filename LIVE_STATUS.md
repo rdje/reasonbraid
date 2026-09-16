@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔎 **A CLAIM I PUBLISHED TO THE DIRECTOR DID NOT SURVIVE ITS OWN FALSIFICATION (`.11.2.5`).**
+
+- **The claim:** "the enforcement layer is doing real work, not ceremony", offered on the strength of two gates catching me in one session. Falsifying it rather than restating it: **two of three sub-claims held, one did not.**
+- ✅ `INDEX-FRONTIER` — verified by a DISCRIMINATING test, which is the part that matters: reconstructing the stale cell returns rc=**1** with the two leaf ids named, and restoring it returns rc=**0**. The gate is neither always-red nor always-green.
+- ✅ `GAP-CLAIM-CENSUS` refused an unmeasured claim of mine — that happened, and re-deriving it showed exactly WHY it happened.
+- 🔴 **And why it happened is the defect.** Two probes, identical claim line, one variable: a section that also contains `` `cargo clippy …` `` is **not flagged**; the same claim alone **is**. `check_gap_claims.sh:71` discharges a claim when ANY line of its section matches `CENSUS_RE` (`:60`), which includes `cargo `, `make ` and `git grep`. ⛔ **Every closed leaf's `[x] ADDRESSED` box names one by construction** — `TASK-ACCEPTANCE` requires tool output in each box — so the census gate is INERT for exactly the leaves that are complete. It caught me because `.7.4.5` was still being opened. The catch was real; the mechanism was luck.
+- 🔎 **And my own CORRECTION was over-approximated in the other direction.** It cited "17 hits across 6 files" as evidence that denials are checked. Classifying rather than counting: **9 across 3 files** genuinely assert a site denial left an audit row; the other 8 are aggregate counters, fixture rows and one TENANT audit. `.7.4.5`'s census now says so.
+- ⚠️ Not an argument for widening the pattern — the script's own `:17` explains that firing on 81 pre-existing claims "teaches bypass". The scoping is sound; the DISCHARGE test is the defect: it asks whether a section contains a command, not whether it contains a command *for this claim*.
+
 ✅ **THE SITE AUTHORIZATION SKELETON IS ONE COPY AGAIN (`.7.4.5`, REPAIR-0216).**
 
 - `.7.4.3` created the second copy deliberately — refactoring the control flow of an authorization path inside the commit that repairs a hole in it is how a second hole ships — and opened this leaf in the same breath. It is closed two commits later.

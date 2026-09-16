@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Close the delegation lane on its goal line, three verdicts of which are not "done" (`SIGNOFF-REPAIR.3.4`)
+
+✅ **Eight children, reconciled against the leaf's own goal line rather than against their statuses.**
+
+- Closing on the children's statuses alone would have been the shape `.3.4.3.1` had just shown is wrong one commit earlier: a third of THAT leaf's acceptance turned out to be unmeetable, and nothing about its children said so.
+- **Three of the six verdicts are not "done".** Delegability is **refused as a gate** — `delegable` governs grant chains that have no producer, and enforcing it would have broken a shipped, tested feature. Bounded depth is **deliberately unenforced** over a population of zero, said so in the book rather than repaired. Consent is **not a requirement**: §16.3 states six delegation invariants and none is consent.
+- **Three are done and measured:** participation enforced (by a gate the census had not looked for), the replay hash bound to the authority context and to the target, with committed-replay semantics asserted in the same control as each binding, and cached expiry and future-clock behaviour made explicit.
+- ⚠️ **Three residuals carried forward by name:** delegation chains and their depth bound have no producer and the wire cannot carry one; `lease_expires_at` is received on the handshake and the heartbeat and never read; a delegation's attribution claim names a subject that never agreed in an authorization record §16.9 makes high-impact evidence.
+- ⛔ **The split bullet's wrong count is kept verbatim** — it says "five children along the four mechanisms the goal line names" while the goal line names five. That sentence hid two mechanisms for eleven commits, and correcting it in place would hide the hiding.
+
 ## 2026-09-16 — Close the clock split, and record the acceptance clause it could not meet (`SIGNOFF-REPAIR.3.4.3.1`)
 
 ⛔ **A container leaf's closure is its own acceptance, clause by clause — and one of these three could not be met.**

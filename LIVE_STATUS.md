@@ -5,6 +5,22 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE DELEGATION LANE IS CLOSED, AND THREE OF ITS SIX VERDICTS ARE NOT "DONE" (`.3.4`, DOC-0025).** Eight children, reconciled against the leaf's own GOAL LINE rather than against their statuses — the discipline `.3.4.3.1` had to learn one commit earlier, where a third of its acceptance turned out to be unmeetable.
+
+| Mechanism the goal line names | Carried by | Verdict |
+| --- | --- | --- |
+| enforce delegability | `.3.4.1` | ⛔ **REFUSED as a gate** — the flag governs grant chains that have no producer |
+| enforce bounded depth | `.3.4.1` | ⛔ **Deliberately unenforced** over a population of zero, and said so in the book |
+| enforce participation | `.3.4.1` | ✅ Enforced, by a gate the census had not looked for |
+| enforce consent | `.3.4.7` | ⛔ **Not a requirement** — §16.3 states six invariants and none is consent |
+| bind the hash to the authority context | `.3.4.2` | ✅ Bound |
+| bind the hash to the target | `.3.4.6` | ✅ Bound |
+| preserve committed-replay semantics | `.3.4.2` + `.3.4.6` | ✅ Asserted in the SAME control as each binding |
+| make cached expiry and future-clock behaviour explicit | `.3.4.3` + `.3.4.3.1` | ✅ Explicit; one clause recorded UNMET and superseded |
+
+- ⚠️ **Three residuals carried forward by name rather than absorbed into a closure:** delegation CHAINS and their depth bound have no producer and the wire cannot carry one (⛔ do not "fix" `delegable`/`max_delegation_depth`); `lease_expires_at` is received on the handshake and the heartbeat and **never read**; and a delegation's ATTRIBUTION claim names a subject that never agreed in an authorization record §16.9 makes high-impact evidence.
+- ⛔ **The split bullet's wrong count is kept verbatim.** It says "five children along the **four** mechanisms the goal line names"; the goal line names five. That sentence is what hid two mechanisms for eleven commits, and correcting it in place would hide the hiding.
+
 ⛔ **A CONTAINER LEAF'S CLOSURE IS ITS OWN ACCEPTANCE, CLAUSE BY CLAUSE — AND ONE OF THESE COULD NOT BE MET (`.3.4.3.1`, DOC-0024).** The leaf read `active` while all three children read `done` (REPAIR-0136 / 0138 / 0139), which is `.11.4.5.3`'s finding running the other way: the tree over-reporting remaining work. ⛔ Closing it was never bookkeeping. Its clause *"the `.3.4.3` backward-skew controls pass unchanged"* is **UNMET**: both controls assert the receipt-anchoring clamp that `.3.4.3.1.2` removes, and both drove a state production cannot reach — a known revocation epoch with no clock offset, when the two arrive in the same response. That supersession lived inside the child and is now recorded at the parent whose acceptance it belongs to.
 
 - ⭐ **The withdrawn property is STRONGER now**, which is the only thing that makes the supersession honest: "one TTL of real time whatever this node's clock says" is asserted in BOTH skew directions, and the clamp could only do it for one.

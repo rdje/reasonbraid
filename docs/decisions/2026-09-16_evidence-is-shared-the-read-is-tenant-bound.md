@@ -4,6 +4,8 @@ answers:
   - Why do twelve tables have no tenant column when ROADMAP §16.8 says tenant id is everywhere?
   - Is the evidence store site-wide by design or by omission?
   - What does §16.8 actually require to be tenant-scoped?
+  - How is a snapshot's citing tenant derived, and why can it not be a column?
+  - Why can a snapshot written before the tenant binding be read by nobody?
 ---
 # The evidence chain is shared by design; what must be tenant-bound is the authorization decision, not the row
 
@@ -112,3 +114,43 @@ cross-tenant read/write path"*. This is one.
 It does not say the current behaviour is safe. It says the repair is an
 authorization decision on three read surfaces plus a site-operator gate on six
 tables — not twelve migrations — and that two tables wait on `.6.1.5`.
+
+## Outcome (2026-09-16, `SIGNOFF-REPAIR.11.14.1`, `REASONBRAID-REPAIR-0213`)
+
+The read binding this record calls for is implemented, and implementing it
+established one durable fact this record could not have stated: **the citing
+tenant is not derivable from the schema at all.** Every path was measured and
+every one failed.
+
+- `evidence_snapshots` carries no principal column; its only link out is
+  `reference_id`.
+- `resource_references`'s only actor column is `submitted_by`, which
+  `api.rs::submit_resource` fills from `actor_handle_for_subject(&principal)` —
+  `Uuid::new_v5(NAMESPACE_OID, subject.describe())`. It joins to neither
+  `human_principals` nor `agent_roles`.
+- It would be the wrong answer even if it joined: `resources::submit` replays on
+  the **locator alone**, so the second tenant to cite a URL receives the first
+  tenant's row and `submitted_by` never moves.
+- Nothing else links a snapshot to anything: `git grep -ln snapshot_id --
+  migrations` returns three files, and all three are the evidence tables.
+
+So a citation is many-to-many by construction — one shared row, N citing
+tenants — and no scalar on either end can hold it. It is recorded at the moment
+of citation instead: `migrations/0062_evidence_citations.sql`,
+`PRIMARY KEY (snapshot_id, tenant_id)`, written by `snapshots::submit` on the
+fresh insert **and on the replay**. The replay write is the part that matters:
+it is what stops a tenant-scoped read from hiding a row from its own author,
+which is the trap this record's rejected alternative 2 names.
+
+Applies to the three tables this record marks *site-wide row, tenant-bound
+read*. `evidence_snapshots` and the snapshot-keyed half of `derivations` and
+`claim_assessments` are bound. The claim-keyed read
+(`GET /v1/claims/{claim_id}/assessments`) is **not**, and is owned by
+`SIGNOFF-REPAIR.11.14.2`: it is keyed on a claim, and no `claims` table exists
+for it to be scoped by.
+
+Two limits, published rather than implied: a snapshot written before the
+migration has no recoverable citer and is read by no tenant until it is cited
+again; and the site-wide retention sweep remains unauthorized — any enrolled
+principal can tombstone every tenant's live evidence on a clock it supplies
+itself, owned by `SIGNOFF-REPAIR.7.4.3`.

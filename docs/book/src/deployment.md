@@ -506,10 +506,67 @@ python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh profiles
 ```
 
 The test uses the existing HTTP at override only to drive its owned fixture.
-Production expiry authority/scope and caller-clock restrictions, actual freshness-
-horizon refresh and object retirement remain open under SIGNOFF-REPAIR.7.4. This
+That override is unbounded on the production route, and the sweep it drives carries
+no tenant predicate, so expiry authority/scope and caller-clock restrictions remain
+open — now as a bounded leaf, SIGNOFF-REPAIR.7.4.3. Actual freshness-horizon refresh
+and object retirement remain open under SIGNOFF-REPAIR.7.4. This
 fixture repair changes no production policy. Evidence:
 `docs/tasks/artifacts/signoff_review/retention-fixture-clock.md`.
+
+### Who may read an evidence snapshot
+
+An evidence snapshot is one row shared by every tenant that acquired the same
+bytes. `resource_references` is unique on `(original_locator, expected_digest)`
+and `snapshot_objects` is keyed by digest alone, so two tenants citing the same
+URL at the same digest hold the same snapshot: that is the content-addressed
+design, not an accident, and it is why the row carries no owning tenant.
+
+What names the tenant is the decision to disclose the row. `evidence_citations`
+records which tenants cited which snapshot, and the server writes a citation
+every time a snapshot is acquired through `POST /v1/snapshots` or through a
+resolver pack — on a replay as well as on a first acquisition. Five surfaces
+read that citation:
+
+| Surface | A tenant that cited the snapshot | Any other enrolled tenant |
+| --- | --- | --- |
+| `GET /v1/snapshots/stale` | the tenant's own stale rows | those rows are absent from the list |
+| `GET /v1/snapshots/{id}` | 200 with the row | 404 |
+| `GET /v1/snapshots/{id}/derivations` | 200 with the children | 404 |
+| `GET /v1/snapshots/{id}/assessments` | 200 with the assessments | 404 |
+| `DELETE /v1/snapshots/{id}` | tombstones the row | 404 |
+
+A tenant that did not cite a snapshot receives 404 rather than 403. The two
+answers are deliberately indistinguishable: a refusal that separated them would
+confirm that an identifier exists, which is the enumeration the binding closes.
+An unenrolled principal still receives 401 on all five.
+
+Recording the citation on the write is what makes the read safe to narrow. If
+the reads had been filtered without it, a tenant that submitted a snapshot
+someone else had already acquired would have been refused its own evidence.
+Instead the replay records the second citation, both tenants read the shared
+row, and a count of `evidence_citations` for that snapshot returns 2.
+
+Two limits are published rather than implied:
+
+- **Snapshots written before this binding have no recorded citer, so no tenant
+  reads them.** The attribution cannot be recovered: the only actor column
+  reachable from a snapshot is a reference's `submitted_by`, which stores a
+  one-way `Uuid::new_v5` of the submitting subject that joins to no identity
+  table, and which the locator replay leaves naming the first citer regardless.
+  Re-acquiring such a snapshot records the citation and restores the read.
+- **A shared row can still be tombstoned by any one of its citers**, which
+  removes it from the others' staleness surface. Who may delete shared evidence,
+  and who may run the site-wide retention sweep, are open under
+  `SIGNOFF-REPAIR.7.4.3`.
+
+Run the control in the owned disposable PostgreSQL environment:
+
+```bash
+RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
+```
+
+`the_evidence_reads_are_bound_to_the_citing_tenant` drives two enrolled tenants
+through all five surfaces, including the shared row both of them cite.
 
 ## Public repository and publication checks
 

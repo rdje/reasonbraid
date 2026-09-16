@@ -4,6 +4,16 @@
 //! ADR-011 digest — identical bytes = one object), and the tombstone rule
 //! (the deletion records the reason and the time — never a silent
 //! disappearance).
+//!
+//! The row is SHARED and the read is TENANT-BOUND (`SIGNOFF-REPAIR.11.14.1`,
+//! `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md`).
+//! Content-addressing makes one row serve every tenant that cites the same
+//! bytes, so ROADMAP §16.8's tenant is carried by the disclosure DECISION
+//! rather than by a column: `evidence_citations` records which tenants cited
+//! a snapshot, `submit` writes that citation on the fresh insert AND on the
+//! replay, and every read surface here is bound to it. There is deliberately
+//! no unbound read in this module — a caller cannot ask for a snapshot
+//! without naming the tenant the answer is for.
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -50,6 +60,23 @@ pub struct SnapshotSubmission {
 
 fn default_storage() -> String {
     "standard".to_owned()
+}
+
+/// Who cited a snapshot: the tenant whose evidence reads will show the row,
+/// and the actor handle that asked for the acquisition.
+///
+/// This is the §16.8 authorization input the evidence chain was missing. It
+/// is a citation and not an owner: the same row is legitimately cited by
+/// several tenants, because `resource_references` is UNIQUE on
+/// `(original_locator, expected_digest)` and `snapshot_objects` is keyed by
+/// digest alone — two tenants acquiring the same bytes share one row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Citer {
+    /// The citing tenant — the read surfaces compare against this.
+    pub tenant_id: String,
+    /// The actor handle that asked (recorded for the audit trail; the
+    /// disclosure decision is the TENANT's).
+    pub principal: String,
 }
 
 impl SnapshotSubmission {
@@ -147,11 +174,23 @@ impl std::error::Error for SnapshotError {}
 /// Submit a snapshot: the bytes MUST hash to the declared digest (the
 /// content-addressing is verified, not trusted); the same reference +
 /// digest is the REPLAY (the same id). The object store upserts the bytes.
+///
+/// The citation is recorded on BOTH outcomes. A replay is a genuine second
+/// acquisition by this tenant, and it is the only record that the shared row
+/// belongs on that tenant's read surfaces — skipping it there would hide a
+/// row from one of its own authors, which is the trap `SIGNOFF-REPAIR.6.1.5`
+/// names and the reason a read-side predicate alone was rejected.
+///
+/// A store fault between the snapshot write and the citation write leaves the
+/// row cited by nobody, which is fail-CLOSED: it discloses nothing, the caller
+/// is told the store failed, and the next acquisition of the same bytes takes
+/// the replay path and records the citation.
 pub async fn submit(
     pool: &PgPool,
     submission: &SnapshotSubmission,
     bytes: &[u8],
     retrieved_at: chrono::DateTime<chrono::Utc>,
+    citer: &Citer,
 ) -> Result<SnapshotOutcome, SnapshotError> {
     if let Some(reason) = submission.digest_error() {
         return Err(SnapshotError::InvalidDigest(reason));
@@ -202,6 +241,9 @@ pub async fn submit(
         .bind(&existing)
         .execute(pool)
         .await;
+        record_citation(pool, &existing, citer)
+            .await
+            .map_err(SnapshotError::Storage)?;
         return Ok(SnapshotOutcome {
             snapshot_id: existing,
             replay: true,
@@ -241,10 +283,32 @@ pub async fn submit(
     .execute(pool)
     .await
     .map_err(SnapshotError::Storage)?;
+    record_citation(pool, &snapshot_id, citer)
+        .await
+        .map_err(SnapshotError::Storage)?;
     Ok(SnapshotOutcome {
         snapshot_id,
         replay: false,
     })
+}
+
+/// Record one citation — idempotent, so a re-acquisition by the same tenant
+/// keeps the original time and actor.
+async fn record_citation(
+    pool: &PgPool,
+    snapshot_id: &str,
+    citer: &Citer,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO evidence_citations (snapshot_id, tenant_id, cited_by) \
+         VALUES ($1, $2, $3) ON CONFLICT (snapshot_id, tenant_id) DO NOTHING",
+    )
+    .bind(snapshot_id)
+    .bind(&citer.tenant_id)
+    .bind(&citer.principal)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// The snapshot row (sqlx's tuple impls stop short of the full width).
@@ -277,46 +341,90 @@ struct SnapshotRow {
     refreshed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Read a snapshot (the tombstone state rides the same row).
-pub async fn get(pool: &PgPool, snapshot_id: &str) -> Result<Option<StoredSnapshot>, sqlx::Error> {
-    let row: Option<SnapshotRow> = sqlx::query_as::<_, SnapshotRow>(
-        "SELECT snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
-                resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
-                immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
-                retention_class, extraction_version, quarantine_status, redactions, \
-                disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at \
-         FROM evidence_snapshots WHERE snapshot_id = $1",
-    )
+impl From<SnapshotRow> for StoredSnapshot {
+    fn from(row: SnapshotRow) -> Self {
+        Self {
+            snapshot_id: row.snapshot_id,
+            reference_id: row.reference_id,
+            original_locator: row.original_locator,
+            final_locator: row.final_locator,
+            retrieved_at: row.retrieved_at,
+            resolver_id: row.resolver_id,
+            resolver_version: row.resolver_version,
+            network_class: row.network_class,
+            auth_class: row.auth_class,
+            provider_receipt: row.provider_receipt,
+            immutable_source_version: row.immutable_source_version,
+            raw_digest: row.raw_digest,
+            byte_length: row.byte_length,
+            media_type: row.media_type,
+            storage_class: row.storage_class,
+            retention_class: row.retention_class,
+            extraction_version: row.extraction_version,
+            quarantine_status: row.quarantine_status,
+            redactions: row.redactions,
+            disclosure_policy: row.disclosure_policy,
+            deleted_at: row.deleted_at,
+            deletion_reason: row.deletion_reason,
+            license: row.license,
+            fresh_until: row.fresh_until,
+            refreshed_at: row.refreshed_at,
+        }
+    }
+}
+
+/// The stored snapshot's columns — one definition, so the two bound reads
+/// cannot drift into different row shapes.
+const SNAPSHOT_COLUMNS: &str =
+    "snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
+     resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
+     immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
+     retention_class, extraction_version, quarantine_status, redactions, \
+     disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at";
+
+/// The disclosure predicate (§16.8): a snapshot is readable by a tenant that
+/// CITED it and by no other. `$2` is the tenant in both bound reads, so this
+/// fragment carries its own parameter index.
+const CITED_BY_TENANT: &str = "EXISTS (SELECT 1 FROM evidence_citations c \
+     WHERE c.snapshot_id = evidence_snapshots.snapshot_id AND c.tenant_id = $2)";
+
+/// Read a snapshot this tenant cited (the tombstone state rides the same row).
+///
+/// A row the tenant did not cite reads as ABSENT rather than forbidden: a
+/// refusal that distinguishes the two would confirm that an identifier the
+/// caller may not read exists, which is the enumeration this binding closes.
+pub async fn get_for_tenant(
+    pool: &PgPool,
+    snapshot_id: &str,
+    tenant_id: &str,
+) -> Result<Option<StoredSnapshot>, sqlx::Error> {
+    let row: Option<SnapshotRow> = sqlx::query_as::<_, SnapshotRow>(&format!(
+        "SELECT {SNAPSHOT_COLUMNS} FROM evidence_snapshots \
+         WHERE snapshot_id = $1 AND {CITED_BY_TENANT}"
+    ))
     .bind(snapshot_id)
+    .bind(tenant_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|row| StoredSnapshot {
-        snapshot_id: row.snapshot_id,
-        reference_id: row.reference_id,
-        original_locator: row.original_locator,
-        final_locator: row.final_locator,
-        retrieved_at: row.retrieved_at,
-        resolver_id: row.resolver_id,
-        resolver_version: row.resolver_version,
-        network_class: row.network_class,
-        auth_class: row.auth_class,
-        provider_receipt: row.provider_receipt,
-        immutable_source_version: row.immutable_source_version,
-        raw_digest: row.raw_digest,
-        byte_length: row.byte_length,
-        media_type: row.media_type,
-        storage_class: row.storage_class,
-        retention_class: row.retention_class,
-        extraction_version: row.extraction_version,
-        quarantine_status: row.quarantine_status,
-        redactions: row.redactions,
-        disclosure_policy: row.disclosure_policy,
-        deleted_at: row.deleted_at,
-        deletion_reason: row.deletion_reason,
-        license: row.license,
-        fresh_until: row.fresh_until,
-        refreshed_at: row.refreshed_at,
-    }))
+    Ok(row.map(StoredSnapshot::from))
+}
+
+/// Whether this tenant cited the snapshot — the gate the CHILD reads
+/// (`/derivations`, `/assessments`) apply to their parent before disclosing
+/// anything about it, including whether it exists.
+pub async fn is_cited_by(
+    pool: &PgPool,
+    snapshot_id: &str,
+    tenant_id: &str,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM evidence_citations \
+         WHERE snapshot_id = $1 AND tenant_id = $2)",
+    )
+    .bind(snapshot_id)
+    .bind(tenant_id)
+    .fetch_one(pool)
+    .await
 }
 
 /// The tombstone: the deletion records the reason + the time — the row
@@ -391,55 +499,37 @@ pub async fn expire_due(
     Ok(standard + result.rows_affected())
 }
 
-/// The staleness surface: the LIVE snapshots whose freshness horizon has
-/// passed (the assessments read this — the re-fetch is the caller's).
-pub async fn stale(
+/// The staleness surface: the LIVE snapshots THIS TENANT CITED whose
+/// freshness horizon has passed (the assessments read this — the re-fetch is
+/// the caller's).
+///
+/// This is the surface the enumeration ran through. It is a list rather than
+/// a lookup by identifier, so an unbound version hands any enrolled principal
+/// the whole site's research trail — every other tenant's locators, resolvers
+/// and credential classes — without needing to guess a single id.
+///
+/// ⛔ It stays a TENANT read rather than moving behind a site-operator grant.
+/// Nothing operator-shaped consumes it: `git grep -n "snapshots::stale" -- crates`
+/// and `git grep -n "snapshots/stale" -- crates` together return the route,
+/// this function, its own doc lines and one test — no CLI, no MCP tool, no
+/// worker. A freshness horizon is a decision about a tenant's own
+/// re-acquisition; the operator-shaped verb over these rows is `expire_due`.
+pub async fn stale_for_tenant(
     pool: &PgPool,
     now: chrono::DateTime<chrono::Utc>,
+    tenant_id: &str,
 ) -> Result<Vec<StoredSnapshot>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, SnapshotRow>(
-        "SELECT snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
-                resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
-                immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
-                retention_class, extraction_version, quarantine_status, redactions, \
-                disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at \
-         FROM evidence_snapshots \
+    let rows = sqlx::query_as::<_, SnapshotRow>(&format!(
+        "SELECT {SNAPSHOT_COLUMNS} FROM evidence_snapshots \
          WHERE deleted_at IS NULL AND fresh_until IS NOT NULL AND fresh_until < $1 \
-         ORDER BY fresh_until",
-    )
+           AND {CITED_BY_TENANT} \
+         ORDER BY fresh_until"
+    ))
     .bind(now)
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| StoredSnapshot {
-            snapshot_id: row.snapshot_id,
-            reference_id: row.reference_id,
-            original_locator: row.original_locator,
-            final_locator: row.final_locator,
-            retrieved_at: row.retrieved_at,
-            resolver_id: row.resolver_id,
-            resolver_version: row.resolver_version,
-            network_class: row.network_class,
-            auth_class: row.auth_class,
-            provider_receipt: row.provider_receipt,
-            immutable_source_version: row.immutable_source_version,
-            raw_digest: row.raw_digest,
-            byte_length: row.byte_length,
-            media_type: row.media_type,
-            storage_class: row.storage_class,
-            retention_class: row.retention_class,
-            extraction_version: row.extraction_version,
-            quarantine_status: row.quarantine_status,
-            redactions: row.redactions,
-            disclosure_policy: row.disclosure_policy,
-            deleted_at: row.deleted_at,
-            deletion_reason: row.deletion_reason,
-            license: row.license,
-            fresh_until: row.fresh_until,
-            refreshed_at: row.refreshed_at,
-        })
-        .collect())
+    Ok(rows.into_iter().map(StoredSnapshot::from).collect())
 }
 
 #[cfg(test)]

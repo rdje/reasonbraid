@@ -2088,12 +2088,16 @@ async fn resolve_resource(
     Json(req): Json<ResolveRequest>,
 ) -> Result<Json<crate::resolvers::ResolutionOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal resolves no reference",
         ));
-    }
+    };
+    // Each pack below may acquire bytes and persist a snapshot. The tenant
+    // that asked for the resolution is the tenant whose evidence reads must
+    // show that row (`.11.14.1`) — an acquisition nobody cites is an
+    // acquisition nobody can read.
+    let citer = citer(&principal, tenant);
     let Some((_, reference, _, _)) = crate::resources::get(&state.pool, &resource_id).await? else {
         return Err(ControlApiError::not_found(format!(
             "no reference `{resource_id}`"
@@ -2152,6 +2156,7 @@ async fn resolve_resource(
                         },
                         &document.bytes,
                         chrono::Utc::now(),
+                        &citer,
                     )
                     .await;
                     outcome.acquisition = Some(crate::resolvers::Acquisition::Web(receipt));
@@ -2238,6 +2243,7 @@ async fn resolve_resource(
                                         },
                                         &document.bytes,
                                         chrono::Utc::now(),
+                                        &citer,
                                     )
                                     .await;
                                     outcome.acquisition =
@@ -2395,6 +2401,7 @@ async fn resolve_resource(
                                 },
                                 &document.bytes,
                                 chrono::Utc::now(),
+                                &citer,
                             )
                             .await;
                             // A failed snapshot is NOT a successful acquisition.
@@ -3750,19 +3757,20 @@ async fn submit_assessment(
     }
 }
 
-/// `GET /v1/snapshots/{id}/assessments` — the snapshot's assessments.
+/// `GET /v1/snapshots/{id}/assessments` — the snapshot's assessments, for a
+/// tenant that cited the snapshot (`.11.14.1`).
 async fn list_snapshot_assessments(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(snapshot_id): Path<String>,
 ) -> Result<Json<Vec<crate::claims::StoredAssessment>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no assessments",
         ));
-    }
+    };
+    cited_snapshot(&state.pool, &snapshot_id, &tenant).await?;
     Ok(Json(
         crate::claims::assessments_for_snapshot(&state.pool, &snapshot_id).await?,
     ))
@@ -3816,22 +3824,41 @@ async fn submit_derivation(
 }
 
 /// `GET /v1/snapshots/{id}/derivations` — the parent/derived traversal
-/// (the snapshot's children, oldest first).
+/// (the snapshot's children, oldest first), for a tenant that cited the
+/// parent (`.11.14.1`).
 async fn list_derivations(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(snapshot_id): Path<String>,
 ) -> Result<Json<Vec<crate::derivations::StoredDerivation>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no derivations",
         ));
-    }
+    };
+    cited_snapshot(&state.pool, &snapshot_id, &tenant).await?;
     Ok(Json(
         crate::derivations::children_of(&state.pool, &snapshot_id).await?,
     ))
+}
+
+/// The child reads' shared gate (`SIGNOFF-REPAIR.11.14.1`): a snapshot this
+/// tenant did not cite is reported ABSENT rather than forbidden, so the
+/// refusal cannot be used to confirm that an identifier exists — which is the
+/// enumeration the binding closes. The message is the same one `get_snapshot`
+/// returns for an identifier that truly does not exist.
+async fn cited_snapshot(
+    pool: &PgPool,
+    snapshot_id: &str,
+    tenant: &str,
+) -> Result<(), ControlApiError> {
+    if crate::snapshots::is_cited_by(pool, snapshot_id, tenant).await? {
+        return Ok(());
+    }
+    Err(ControlApiError::not_found(format!(
+        "no snapshot `{snapshot_id}`"
+    )))
 }
 
 /// `POST /v1/snapshots/expire-due` — the retention enforcement: the
@@ -3863,20 +3890,25 @@ async fn expire_due_snapshots(
 }
 
 /// `GET /v1/snapshots/stale` — the staleness surface (the LIVE snapshots
-/// whose freshness horizon passed — the assessments read this).
+/// THIS TENANT CITED whose freshness horizon passed — the assessments read
+/// this).
+///
+/// This list was the cross-tenant enumeration (`.11.14.1`): admitted on
+/// enrolment and unfiltered, it handed any enrolled principal every other
+/// tenant's locators, resolvers and credential classes without requiring a
+/// single identifier to be guessed.
 async fn list_stale_snapshots(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::snapshots::StoredSnapshot>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no staleness",
         ));
-    }
+    };
     Ok(Json(
-        crate::snapshots::stale(&state.pool, chrono::Utc::now()).await?,
+        crate::snapshots::stale_for_tenant(&state.pool, chrono::Utc::now(), &tenant).await?,
     ))
 }
 
@@ -3895,23 +3927,33 @@ struct SnapshotRequest {
 
 /// `POST /v1/snapshots` — submit the snapshot (any enrolled principal; the
 /// same reference + digest is the replay).
+///
+/// The submitting tenant is recorded as a CITER (`.11.14.1`), on the replay
+/// as well as on the fresh insert. The write stays open to any enrolled
+/// principal — narrowing the read without recording the write is exactly the
+/// shape that hides a row from its own author (`.6.1.5`).
 async fn submit_snapshot(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(request): Json<SnapshotRequest>,
 ) -> Result<Json<crate::snapshots::SnapshotOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal submits no snapshot",
         ));
-    }
+    };
     let bytes = base64_decode(&request.bytes_base64).ok_or_else(|| {
         ControlApiError::invalid_command("the bytes_base64 field is not valid base64")
     })?;
-    match crate::snapshots::submit(&state.pool, &request.submission, &bytes, chrono::Utc::now())
-        .await
+    match crate::snapshots::submit(
+        &state.pool,
+        &request.submission,
+        &bytes,
+        chrono::Utc::now(),
+        &citer(&principal, tenant),
+    )
+    .await
     {
         Ok(outcome) => Ok(Json(outcome)),
         // A store fault is the server's problem and must not be reported as
@@ -3924,20 +3966,23 @@ async fn submit_snapshot(
     }
 }
 
-/// `GET /v1/snapshots/{id}` — the read (the tombstone state rides the row).
+/// `GET /v1/snapshots/{id}` — the read, for a tenant that cited the snapshot
+/// (the tombstone state rides the row).
+///
+/// A row this tenant did not cite is ABSENT, not forbidden (`.11.14.1`): the
+/// two answers are indistinguishable on the wire by design.
 async fn get_snapshot(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(snapshot_id): Path<String>,
 ) -> Result<Json<crate::snapshots::StoredSnapshot>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no snapshot",
         ));
-    }
-    match crate::snapshots::get(&state.pool, &snapshot_id).await? {
+    };
+    match crate::snapshots::get_for_tenant(&state.pool, &snapshot_id, &tenant).await? {
         Some(snapshot) => Ok(Json(snapshot)),
         None => Err(ControlApiError::not_found(format!(
             "no snapshot `{snapshot_id}`"
@@ -3947,6 +3992,14 @@ async fn get_snapshot(
 
 /// `DELETE /v1/snapshots/{id}` — the tombstone: the deletion records the
 /// reason + the time (the row stays — never a silent disappearance).
+///
+/// Bound to the citing tenant alongside the reads it shares a route with
+/// (`.11.14.1`). Leaving it on enrolment would have let a tenant DELETE the
+/// evidence it had just been stopped from READING. ⚠️ What the binding does
+/// NOT settle is the SHARED row: two tenants may cite one snapshot, and
+/// either can still tombstone it for both. That is a design question about
+/// content-addressed evidence rather than a missing predicate, and it is
+/// owned by `SIGNOFF-REPAIR.7.4.3`.
 async fn tombstone_snapshot(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -3954,12 +4007,12 @@ async fn tombstone_snapshot(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal tombstones no snapshot",
         ));
-    }
+    };
+    cited_snapshot(&state.pool, &snapshot_id, &tenant).await?;
     let reason = body
         .get("reason")
         .and_then(|v| v.as_str())
@@ -5075,6 +5128,16 @@ fn profile_error(e: sqlx::Error, role_id: &str) -> ControlApiError {
 }
 
 /// The reader's tenant (their identity row), when enrolled.
+/// The evidence citer (`SIGNOFF-REPAIR.11.14.1`): the tenant whose reads the
+/// acquisition will appear on, plus the actor handle that asked for it — the
+/// same handle `submit_resource` records as a reference's `submitted_by`.
+fn citer(principal: &GrantSubject, tenant: String) -> crate::snapshots::Citer {
+    crate::snapshots::Citer {
+        tenant_id: tenant,
+        principal: actor_handle_for_subject(principal).to_string(),
+    }
+}
+
 pub(crate) async fn reader_tenant(
     pool: &PgPool,
     principal: &GrantSubject,

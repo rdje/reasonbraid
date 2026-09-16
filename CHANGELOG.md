@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The evidence reads are bound to the citing tenant (`SIGNOFF-REPAIR.11.14.1`)
+
+🔴 **Any enrolled principal could enumerate every tenant's evidence trail. Reproduced RED against a two-tenant fixture, then closed on all five surfaces.**
+
+- **RED:** `the_evidence_reads_are_bound_to_the_citing_tenant` failed at `profiles.rs:4790` — `tenant A enumerated tenant B's evidence trail: [...]`, two rows on A's staleness surface. `38 passed; 1 failed`. GREEN after: **39 passed, 0 failed**.
+- 🔎 **The leaf's own prediction — derive the citing tenant "through the reference" — was refuted by measurement.** `submitted_by` is `Uuid::new_v5(NAMESPACE_OID, subject.describe())`, joining to no identity table, and `resources::submit` replays on the **locator alone**, so it names the first citer forever. `git grep -ln snapshot_id -- migrations` returns 3 files, all evidence tables.
+- ⭐ **A citation is many-to-many and no scalar holds it.** `migrations/0062_evidence_citations.sql` — `PRIMARY KEY (snapshot_id, tenant_id)` — written by `snapshots::submit` on the fresh insert **and on the replay**. The replay write is what keeps `.6.1.5`'s trap closed: the shared row carries **2** citations and both tenants read it.
+- **Bound:** `GET /v1/snapshots/stale`, `/{id}`, `/{id}/derivations`, `/{id}/assessments`, and `DELETE /{id}` — the fifth beyond the leaf's four, because it shares a route with the read. A foreign tenant gets **404**, not 403.
+- **Unbound reads are no longer representable:** `snapshots::get`/`stale` are replaced by `get_for_tenant`/`stale_for_tenant`; the 25-field row mapping and the column list each collapse from two copies to one.
+- ⛔ `stale` stays a TENANT read on a census — nothing operator-shaped consumes it.
+- ⚠️ **Published limits:** no backfill is possible, so a pre-migration snapshot is read by no tenant until cited again; a shared row can still be tombstoned by any one citer.
+- 🔴 **Two new owned leaves:** `.7.4.3` — `expire-due` is enrolment-gated with an unbounded caller `at` and no tenant predicate, so one request tombstones every tenant's live evidence, irreversibly; `.11.14.2` — `GET /v1/claims/{claim_id}/assessments` is an oracle over a namespace the server never mints.
+- **Verification:** `profiles` 39/39; `migration_upgrade` 4/4, `rls` 1/1, `command_api`, `evaluation`, `mcp`, `cli_end_to_end`; strict server clippy; `cargo fmt --all --check`; `make gate`; `make book`.
+
 ## 2026-09-16 — Conform the resume pointer to the template that governs it (`SIGNOFF-REPAIR.11.4.2.3`)
 
 ⛔ **DOC-0032 rewrote layer A without re-reading `MEMORY_ARCHITECTURE.md` §6, which specifies the file's exact template.**

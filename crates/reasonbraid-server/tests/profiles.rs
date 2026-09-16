@@ -71,6 +71,7 @@ async fn pool() -> Option<PgPool> {
             "recruitment_calls",
             "agent_roles",
             "human_principals",
+            "evidence_citations",
             "claim_assessments",
             "derivations",
             "evidence_snapshots",
@@ -4607,6 +4608,317 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
         .unwrap();
     assert_eq!(final_audit, original_audit);
     eprintln!("retention fixture: temporary/standard exact TTL boundaries preserved; after-boundary tombstones 1/1; repeated expiry 0; audit row unchanged; replay retains creation time");
+}
+
+/// The tenant binding on the evidence reads (`SIGNOFF-REPAIR.11.14.1`,
+/// `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md`).
+///
+/// The snapshot ROW is shared by design: `resource_references` is UNIQUE on
+/// `(original_locator, expected_digest)` and `snapshot_objects` is keyed by
+/// digest alone, so two tenants citing the same URL at the same digest share
+/// one row by construction. What ROADMAP §16.8 requires of such a row is that
+/// the decision to DISCLOSE it names the tenant — and that decision was
+/// missing. All four read surfaces admitted on ENROLMENT, so
+/// `GET /v1/snapshots/stale` returned every tenant's rows to every principal:
+/// an enumeration of which documents another tenant acquired, when, through
+/// which resolver and under which credential class.
+///
+/// The control proves a BINDING and not a blackout — tenant A still receives
+/// every row tenant A cited, including a row whose bytes tenant B acquired
+/// first, because the citation is a SET and the replay records the second
+/// citer (`SIGNOFF-REPAIR.6.1.5`'s trap: a tenant-scoped read over an
+/// unscoped write hides rows from their own author).
+#[tokio::test]
+async fn the_evidence_reads_are_bound_to_the_citing_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    /// One citation: the reference, then the snapshot over its bytes. The
+    /// freshness horizon is already past, so the row sits on the staleness
+    /// surface the moment it lands.
+    async fn cite(
+        client: &reqwest::Client,
+        base: &str,
+        principal: &str,
+        locator: &str,
+        payload: &[u8],
+        fresh_until: &str,
+    ) -> (String, String) {
+        let response = client
+            .post(format!("{base}/v1/resources"))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&json!({ "original_locator": locator, "scheme": "https" }))
+            .send()
+            .await
+            .expect("reference request");
+        let status = response.status().as_u16();
+        let reference: Value = response.json().await.expect("reference json");
+        assert_eq!(status, 200, "the reference submits: {reference}");
+        let reference_id = reference["resource_id"].as_str().unwrap().to_string();
+        let response = client
+            .post(format!("{base}/v1/snapshots"))
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&json!({
+                "reference_id": reference_id,
+                "original_locator": locator,
+                "final_locator": locator,
+                "resolver_id": "r0-https-fetcher",
+                "resolver_version": "0.1.0",
+                "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                "byte_length": payload.len(),
+                "media_type": "text/plain",
+                "fresh_until": fresh_until,
+                "bytes_base64": util::base64(payload),
+            }))
+            .send()
+            .await
+            .expect("snapshot request");
+        let status = response.status().as_u16();
+        let snapshot: Value = response.json().await.expect("snapshot json");
+        assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+        (
+            reference_id,
+            snapshot["snapshot_id"].as_str().unwrap().to_string(),
+        )
+    }
+
+    // Two tenants, by construction: a human enrolment that names no tenant
+    // MINTS one (`api.rs::enroll` — `TenantId::new()`), so these two humans
+    // cannot share a tenant.
+    let (status, alpha) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "evidence-alpha" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A's human enrolls: {alpha}");
+    let alpha_id = alpha["principal_id"].as_str().unwrap().to_string();
+    let (status, beta) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "evidence-beta" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B's human enrolls: {beta}");
+    let beta_id = beta["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        alpha["tenant_id"], beta["tenant_id"],
+        "the fixture needs two DISTINCT tenants: {alpha} / {beta}"
+    );
+
+    let past = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    let alpha_bytes = b"the alpha tenant evidence";
+    let beta_bytes = b"the beta tenant evidence";
+    let (_, alpha_snapshot) = cite(
+        &client,
+        &base,
+        &alpha_id,
+        "https://example.org/alpha-evidence",
+        alpha_bytes,
+        &past,
+    )
+    .await;
+    let (_, beta_snapshot) = cite(
+        &client,
+        &base,
+        &beta_id,
+        "https://example.org/beta-evidence",
+        beta_bytes,
+        &past,
+    )
+    .await;
+    assert_ne!(alpha_snapshot, beta_snapshot);
+
+    // Tenant B's snapshot carries children on both child surfaces, so a leak
+    // there discloses content and not merely an identifier.
+    let derived = "the beta tenant derived chunk";
+    let (status, derivation) = post(
+        &client,
+        &base,
+        "/v1/derivations",
+        &beta_id,
+        &json!({
+            "parent_snapshot_id": beta_snapshot,
+            "derived_kind": "chunk",
+            "derived_digest": reasonbraid_server::fetcher::digest_sha256_hex(derived.as_bytes()),
+            "content": derived,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B's derivation submits: {derivation}");
+    let (status, assessment) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &beta_id,
+        &json!({
+            "claim_id": "clm_beta",
+            "snapshot_id": beta_snapshot,
+            "assessment": "supports",
+            "author": beta_id,
+            "excerpt": "beta tenant evidence",
+            "rationale": "the excerpt appears in the acquired bytes",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B's assessment submits: {assessment}");
+
+    let stale_ids = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, rows) = get(&client, &base, "/v1/snapshots/stale", &principal).await;
+            assert_eq!(status, 200, "the staleness surface reads: {rows}");
+            rows.as_array()
+                .expect("the stale array")
+                .iter()
+                .map(|row| row["snapshot_id"].as_str().unwrap().to_string())
+                .collect::<Vec<String>>()
+        }
+    };
+
+    // Surface 1 — the ENUMERATION. This is the finding: before the repair
+    // tenant A's list contained tenant B's row, with its locator, its
+    // resolver and its credential class.
+    let alpha_stale = stale_ids(alpha_id.clone()).await;
+    assert!(
+        alpha_stale.contains(&alpha_snapshot),
+        "tenant A reads its OWN stale row — a binding, not a blackout: {alpha_stale:?}"
+    );
+    assert!(
+        !alpha_stale.contains(&beta_snapshot),
+        "tenant A enumerated tenant B's evidence trail: {alpha_stale:?}"
+    );
+    let beta_stale = stale_ids(beta_id.clone()).await;
+    assert!(
+        beta_stale.contains(&beta_snapshot),
+        "tenant B reads its OWN stale row: {beta_stale:?}"
+    );
+    assert!(
+        !beta_stale.contains(&alpha_snapshot),
+        "tenant B enumerated tenant A's evidence trail: {beta_stale:?}"
+    );
+
+    // Surfaces 2–4 — the single row and its two child reads. A tenant that
+    // did not cite the snapshot must not learn that it exists, so the refusal
+    // is the absence (404) rather than a forbidden that confirms the id.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{beta_snapshot}"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 404, "tenant A read tenant B's snapshot: {body}");
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{beta_snapshot}/derivations"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 404, "tenant A read tenant B's derivations: {body}");
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{beta_snapshot}/assessments"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 404, "tenant A read tenant B's assessments: {body}");
+
+    // The same three surfaces for the row tenant A DID cite: a binding, not
+    // a blackout.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{alpha_snapshot}"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A reads its own snapshot: {body}");
+    assert_eq!(body["snapshot_id"], json!(alpha_snapshot));
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{alpha_snapshot}/derivations"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A reads its own derivations: {body}");
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{alpha_snapshot}/assessments"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A reads its own assessments: {body}");
+
+    // The SHARED row, which is why the binding is a citation set and not a
+    // column: tenant A cites the locator and digest tenant B acquired first.
+    // The reference replays to B's row and the snapshot replays to B's id —
+    // and both tenants now read it. A design that stored one owner on the
+    // receipt would hide this row from one of its two authors.
+    let (replayed_reference, replayed_snapshot) = cite(
+        &client,
+        &base,
+        &alpha_id,
+        "https://example.org/beta-evidence",
+        beta_bytes,
+        &past,
+    )
+    .await;
+    assert_eq!(
+        replayed_snapshot, beta_snapshot,
+        "the shared row replays to one id: {replayed_reference}"
+    );
+    let alpha_stale = stale_ids(alpha_id.clone()).await;
+    assert!(
+        alpha_stale.contains(&beta_snapshot),
+        "tenant A cited the shared row and must read it: {alpha_stale:?}"
+    );
+    let beta_stale = stale_ids(beta_id.clone()).await;
+    assert!(
+        beta_stale.contains(&beta_snapshot),
+        "tenant B's own citation survives tenant A's: {beta_stale:?}"
+    );
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{beta_snapshot}"),
+        &alpha_id,
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A reads the row it now cites: {body}");
+
+    // The enrolment gate stays where it was: an unenrolled principal reads
+    // nothing at all, and the tenant binding did not replace that refusal.
+    let (status, body) = get(
+        &client,
+        &base,
+        "/v1/snapshots/stale",
+        "hum_00000000000000000000000000000000",
+    )
+    .await;
+    assert_eq!(
+        status, 401,
+        "an unenrolled principal reads no staleness: {body}"
+    );
+
+    let citations: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_citations WHERE snapshot_id = $1")
+            .bind(&beta_snapshot)
+            .fetch_one(&pool)
+            .await
+            .expect("count the shared row's citations");
+    assert_eq!(citations, 2, "the shared row carries BOTH citing tenants");
+    eprintln!(
+        "evidence binding: 4 read surfaces bound to the citing tenant; foreign reads 404/absent; own reads 200; the shared row carries {citations} citations"
+    );
 }
 
 /// The G4 hostile-content suite (PHASE-4.7.1): ONE gate-citable test

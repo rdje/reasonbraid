@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⛔ **HELD FOR A DIRECTOR DECISION: THE DELIBERATION AND THE EVIDENCE CHAIN ARE TWO SYSTEMS THAT NEVER MEET (`.11.14.3`).**
+
+- **The census, in both directions, over nine modules.** Evidence-store symbols inside `threads.rs`, `agg.rs`, `projections.rs`, `workflows.rs`, `matching.rs` → **0, 0, 0, 0, 0**. Deliberation symbols inside `claims.rs`, `snapshots.rs`, `derivations.rs`, `resources.rs` → **0, 0, 0, 0**. No call, no shared key, no shared type.
+- 🔴 **The sharper half is the citation end, because the key already matches.** A contribution cites evidence as `EvidenceRef { uri, digest, note }` (`threads.rs:329`), written verbatim into the event body at `:1527` and resolved by nothing. `resource_references` is `UNIQUE (original_locator, expected_digest)` — **the same key**. A contributor naming a URL at a digest is naming exactly the row the evidence store would hold, and the two are never joined. A deliberation's citations are strings; a complete acquisition → snapshot → derivation → assessment pipeline sits beside them holding the rows those strings describe.
+- **The other half:** `claim_assessments.claim_id` is caller-supplied `TEXT` while `threads.rs:401` mints a SERVER-COMPUTED claim digest that `threads.rs:1605` membership-checks. An assessment can cite a claim no contribution ever made.
+- ⚠️ **This is not a disclosure path** — `.11.14.1` and `.11.14.2` closed those — **and not a defect in either subsystem alone.** Both work, are tested, and meet their own acceptance. It is a seam no leaf ever owned, because every leaf owned one side of it.
+- ⛔ **Why it is HELD rather than decided.** Binding the two decides whether the evidence chain is thread-scoped, whether a contribution's citation must resolve to an acquired snapshot before it is accepted, and whether an assessment may exist outside a deliberation at all. `ROADMAP.md` is FROZEN; §12.7 lives in the evidence chapter and names no thread, and §5.2.2/ADR-029 defines claims without naming the evidence store. Two defensible designs, a frozen specification, and a change to the product's shape.
+
 🔴 **AN ASSESSMENT IS READ BY THE TENANT THAT AUTHORED IT — AND `.11.14`'s OWN DECISION RECORD WAS WRONG ABOUT THIS TABLE (`.11.14.2`, REPAIR-0215).**
 
 - **RED:** `tenant A read tenant B's position on evidence A never cited: [3 assessment ids]`. Tenant A, reading a claim identifier it GUESSED, received all three assessments — including tenant B's position on evidence A never touched. The identifier is `clm_budget`, which is the shipped control's own: the namespace is guessable because nothing mints it. `40 passed; 1 failed`. After the repair: **98 / 0** across six suites.

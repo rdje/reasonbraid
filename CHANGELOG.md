@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Own the advertised policy lines `.7.3.5` did not check (`SIGNOFF-REPAIR.7.3.6`)
+
+- `.7.3.5` found the R3 pack advertising two deny-policies it did not enforce, and repaired exactly those two. The other four lines of the same advertisement were never checked, and a caller choosing a pack reads all of them.
+- **Population, by command:** 18 policy-field literals across the three gated packs in `resolvers.rs`, plus the four non-gated packs' rows in migrations `0024`–`0027` (19 `'deny'`, 5 `'follow-classified'`, 5 `'listed'`, 4 `'none'`, 1 `'process'`). ⚠️ Two populations, not one sum — one traces to a call graph, the other to a database row nothing traces.
+- **The three R3 lines named:** `javascript_policy: "allow-bounded"` has no stated meaning and `.7.3.5` made it MORE ambiguous; `egress_class: "listed"` implies an allowlist where the code classifies; `sandbox_level: "vm_container"` describes the operator's obligation as though it were the product's behaviour.
+- ⚠️ The answer is not assumed to be "enforce them" — at least one line may be honestly corrected instead, and that is the leaf's decision to take.
+- No code changed.
+
 ## 2026-09-16 — Take the four Internet-qualification decisions and open the exposure-candidate lane (`SIGNOFF-REPAIR.14`)
 
 ⭐ **Three of the four outside blockers share one prerequisite, and it is work inside this repository.**

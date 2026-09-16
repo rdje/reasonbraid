@@ -7,11 +7,13 @@
 
 mod operator;
 mod registry;
+mod retention;
 
 pub use operator::{
     disable_boundary, disable_grant, inspect, issue_boundary, issue_grant, Collection,
 };
 pub use registry::{execute, RegistryCommand};
+pub use retention::expire_evidence;
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -125,6 +127,10 @@ pub enum Action {
     RegionDeclare,
     RegionPair,
     RegionUnpair,
+    /// The evidence retention sweep (`SIGNOFF-REPAIR.7.4.3`). Which snapshots
+    /// are due is a property of the SHARED row's `retention_class`, not of any
+    /// one tenant's citation, so enforcing retention is a site act.
+    EvidenceExpire,
 }
 
 impl Action {
@@ -136,6 +142,7 @@ impl Action {
             Self::RegionDeclare => "region_declare",
             Self::RegionPair => "region_pair",
             Self::RegionUnpair => "region_unpair",
+            Self::EvidenceExpire => "evidence_expire",
         }
     }
 }

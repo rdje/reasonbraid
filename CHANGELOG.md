@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The retention sweep becomes a site-operator act on the server's clock (`SIGNOFF-REPAIR.7.4.3`)
+
+🔴 **One enrolled principal, naming the year 3000, tombstoned every tenant's live evidence. Reproduced RED, then closed on both of its two independent defects.**
+
+- **RED:** `an enrolled principal without site authority swept the site: {"tombstoned":2}` at HTTP **200** — the response body counts both tenants' rows. `39 passed; 1 failed`. GREEN after: six site-touching suites **67 / 0**.
+- **Two defects, either sufficient.** The gate was enrolment over a sweep with no tenant predicate; the cutoff was an unbounded `at` read from the request body, so the caller chose which rows were due.
+- ⛔ **Not a tenant verb, on the schema:** `retention_class` is a column on the SHARED row, so which rows are due is a site fact no citation owns. It takes the new `evidence_expire` site capability, with the tombstones and their audit committing as one guarded transaction — `migrations/0063`, `site_authority::retention`.
+- ⛔ **The caller's clock is removed, not bounded.** A row stamped "the retention expired" is a factual claim; the cutoff is the database's own post-lock `clock_timestamp()`, and `at` is now a **400**. The TTL-boundary controls drive `snapshots::expire_due` directly and keep every assertion they made through the wire.
+- 🔎 **Fixed a defect in REPAIR-0213's own control, one commit old:** an enrolment-gate leg asserted 401 while presenting a malformed principal id, so it measured the header parser. The gate answers **403** `unauthorized`; 401 `unauthenticated` is the parser's answer. The book carried the wrong number too. Both corrected; both controls now present a well-formed stranger.
+- ⚠️ **Narrowed before writing code:** the shared-row deletion question is split to `.7.4.4` with its own acceptance and a derived candidate answer. **Duplication named, not hidden:** `.7.4.5` owns the second copy of the site authorization skeleton, created deliberately rather than refactoring an authorization path inside the commit that repairs a hole in it.
+- **Verification:** `profiles` 40/40, `site_authority` 11, `site_registry_http` 8, `site_operator_cli` 3, `regions` 3, `allowlist` 2; `migration_upgrade`, `rls`, `command_api`, `evaluation`, `mcp`, `cli_end_to_end`; strict server clippy; `cargo fmt --all --check`; `make gate`; `make book`.
+
 ## 2026-09-16 — The evidence reads are bound to the citing tenant (`SIGNOFF-REPAIR.11.14.1`)
 
 🔴 **Any enrolled principal could enumerate every tenant's evidence trail. Reproduced RED against a two-tenant fixture, then closed on all five surfaces.**

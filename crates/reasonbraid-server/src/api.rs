@@ -3861,32 +3861,32 @@ async fn cited_snapshot(
     )))
 }
 
-/// `POST /v1/snapshots/expire-due` — the retention enforcement: the
-/// live snapshots whose class TTL passed are TOMBSTONED with the reason
-/// (the optional `at` overrides the clock — the tests drive the expiry).
+/// `POST /v1/snapshots/expire-due` — the retention enforcement: the live
+/// snapshots whose class TTL passed are TOMBSTONED with the reason.
+///
+/// A SITE act, not a tenant one (`.7.4.3`). Which snapshots are due is a
+/// property of the shared row's `retention_class` rather than of any one
+/// tenant's citation, so the sweep takes the `evidence_expire` site capability
+/// and is audited like every other site-wide act.
+///
+/// ⛔ The caller supplies a reason and NOT a time. The route previously took an
+/// unbounded `at` from the request body — a test affordance left on a
+/// production route — so one enrolled principal naming a far-future instant
+/// tombstoned every tenant's live evidence, stamping each row with "the
+/// retention expired" when it had not. The cutoff is now the database's own
+/// clock, read inside the transaction that writes the tombstones and their
+/// audit record.
 async fn expire_due_snapshots(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    body: Option<Json<serde_json::Value>>,
-) -> Result<Json<serde_json::Value>, ControlApiError> {
+    request: Result<Json<SiteReasonRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal enforces no retention",
-        ));
-    }
-    let at = body
-        .and_then(|Json(value)| {
-            value
-                .get("at")
-                .and_then(|v| v.as_str())
-                .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-        })
-        .unwrap_or_else(chrono::Utc::now);
-    let tombstoned = crate::snapshots::expire_due(&state.pool, at).await?;
-    Ok(Json(json!({ "tombstoned": tombstoned })))
+    let req = site_request(request)?;
+    site_receipt_response(
+        site::expire_evidence(&state.pool, &principal, &req.reason).await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/snapshots/stale` — the staleness surface (the LIVE snapshots
@@ -7382,28 +7382,47 @@ async fn site_registry_response(
     principal: &GrantSubject,
     command: RegistryCommand,
 ) -> Result<Response, ControlApiError> {
-    match site::execute(&state.pool, principal, &command).await {
+    let outcome = site::execute(&state.pool, principal, &command).await;
+    if let Err(site::Error::Refused {
+        reason: "undeclared_region",
+        audit_id,
+    }) = &outcome
+    {
+        // A domain refusal, not an authority one: the caller held the grant and
+        // asked for something the registry cannot express.
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "code": "undeclared_region",
+                "message": "both regions must be declared before pairing",
+                "audit_id": audit_id,
+            })),
+        )
+            .into_response());
+    }
+    site_receipt_response(
+        outcome,
+        "a current site grant for this action and its actual boundary are required",
+    )
+}
+
+/// One site receipt on the wire: the audit id rides the response either way, so
+/// an allowed act and a refused one are equally traceable.
+fn site_receipt_response(
+    outcome: Result<site::Receipt, site::Error>,
+    denial: &'static str,
+) -> Result<Response, ControlApiError> {
+    match outcome {
         Ok(receipt) => Ok((
             [("x-reasonbraid-site-audit", receipt.audit_id)],
             Json(receipt.result),
         )
             .into_response()),
         Err(site::Error::Refused { reason, audit_id }) => {
-            let (status, message) = if reason == "undeclared_region" {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "both regions must be declared before pairing",
-                )
-            } else {
-                crate::telemetry::metrics().incr("authorization_denials");
-                (
-                    StatusCode::FORBIDDEN,
-                    "a current site grant for this action and its actual boundary are required",
-                )
-            };
+            crate::telemetry::metrics().incr("authorization_denials");
             Ok((
-                status,
-                Json(json!({"code": reason, "message": message, "audit_id": audit_id})),
+                StatusCode::FORBIDDEN,
+                Json(json!({"code": reason, "message": denial, "audit_id": audit_id})),
             )
                 .into_response())
         }
@@ -7429,7 +7448,7 @@ fn site_request<T>(
         ControlApiError {
             status,
             code: "invalid_command",
-            message: "registry request requires the documented JSON fields, bounded names and a nonblank reason".into(),
+            message: "a site request requires the documented JSON fields, bounded names and a nonblank reason".into(),
         }
     })
 }

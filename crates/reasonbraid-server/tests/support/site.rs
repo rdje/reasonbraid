@@ -4,6 +4,10 @@ use reasonbraid_core::GrantSubject;
 use reasonbraid_server::site_authority::{self as site, Action, Reason, Scope};
 use sqlx::PgPool;
 
+/// Every site capability. Each test binary compiles this module separately, so
+/// a suite that provisions one named action rather than the whole set leaves
+/// this unreferenced in its own crate.
+#[allow(dead_code)]
 pub const ALL: &[Action] = &[
     Action::RegistryInspect,
     Action::AdapterAllow,
@@ -11,6 +15,7 @@ pub const ALL: &[Action] = &[
     Action::RegionDeclare,
     Action::RegionPair,
     Action::RegionUnpair,
+    Action::EvidenceExpire,
 ];
 
 pub async fn provision(pool: &PgPool, principal: &str, actions: &[Action]) -> (String, String) {

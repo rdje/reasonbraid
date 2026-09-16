@@ -505,12 +505,12 @@ Run these controls in the owned disposable PostgreSQL environment:
 python3 -B scripts/project_env.py bash scripts/run_pg_tests.sh profiles
 ```
 
-The test uses the existing HTTP at override only to drive its owned fixture.
-That override is unbounded on the production route, and the sweep it drives carries
-no tenant predicate, so expiry authority/scope and caller-clock restrictions remain
-open — now as a bounded leaf, SIGNOFF-REPAIR.7.4.3. Actual freshness-horizon refresh
-and object retirement remain open under SIGNOFF-REPAIR.7.4. This
-fixture repair changes no production policy. Evidence:
+The boundary controls above drive the sweep directly rather than over HTTP,
+because the caller's clock is no longer a wire field: expiry authority, scope and
+the caller clock were repaired under SIGNOFF-REPAIR.7.4.3 and are described in
+"Who may run the retention sweep" below. Every assertion these controls make is
+the one they made through the route. Actual freshness-horizon refresh and object
+retirement remain open under SIGNOFF-REPAIR.7.4. Evidence:
 `docs/tasks/artifacts/signoff_review/retention-fixture-clock.md`.
 
 ### Who may read an evidence snapshot
@@ -538,7 +538,12 @@ read that citation:
 A tenant that did not cite a snapshot receives 404 rather than 403. The two
 answers are deliberately indistinguishable: a refusal that separated them would
 confirm that an identifier exists, which is the enumeration the binding closes.
-An unenrolled principal still receives 401 on all five.
+
+A principal that is enrolled nowhere is refused earlier and differently: a
+well-formed but unknown principal receives **403** `unauthorized` from the
+enrolment gate, and a principal whose identifier is not of the right shape
+receives **401** `unauthenticated` from the header parser, before any gate
+runs.
 
 Recording the citation on the write is what makes the read safe to narrow. If
 the reads had been filtered without it, a tenant that submitted a snapshot
@@ -555,9 +560,9 @@ Two limits are published rather than implied:
   table, and which the locator replay leaves naming the first citer regardless.
   Re-acquiring such a snapshot records the citation and restores the read.
 - **A shared row can still be tombstoned by any one of its citers**, which
-  removes it from the others' staleness surface. Who may delete shared evidence,
-  and who may run the site-wide retention sweep, are open under
-  `SIGNOFF-REPAIR.7.4.3`.
+  removes it from the others' staleness surface. Who may delete shared evidence
+  is open under `SIGNOFF-REPAIR.7.4.4`. Who may run the site-wide retention
+  sweep is settled below.
 
 Run the control in the owned disposable PostgreSQL environment:
 
@@ -567,6 +572,48 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
 
 `the_evidence_reads_are_bound_to_the_citing_tenant` drives two enrolled tenants
 through all five surfaces, including the shared row both of them cite.
+
+### Who may run the retention sweep
+
+Retention is enforced by `POST /v1/snapshots/expire-due`, which tombstones every
+live snapshot whose class TTL has passed. It is a **site-operator** act, not a
+tenant one, and it requires the `evidence_expire` capability on an explicitly
+issued site grant — the same machinery the shared adapter and region registries
+use. Tenant enrolment, and tenant-administrator authority, convey none of it.
+
+The reason is in the schema rather than in a policy preference: `retention_class`
+is a column on the shared snapshot row, not on a citation, so *which rows are
+due* is a site-wide fact that no single tenant owns.
+
+The request carries a reason and no time:
+
+```http
+POST /v1/snapshots/expire-due
+{"reason": "the scheduled retention sweep"}
+```
+
+| Caller | Answer |
+| --- | --- |
+| holds a live `evidence_expire` grant on its actual boundary | 200 `{"tombstoned": n, "swept_at": …}` |
+| any other principal, enrolled or not | 403 `site_authority_required`, with the audit id |
+| supplies an `at` field, or no reason | 400 |
+
+The cutoff is the database's own clock, read inside the transaction that writes
+the tombstones and the audit record together. It is not a caller input, and that
+is the repair: the route previously accepted an unbounded `at`, so one enrolled
+principal naming a far-future instant tombstoned every tenant's live `standard`
+and `temporary` evidence — stamping each row `"the retention expired"` when it
+had not, with nothing in the product able to clear `deleted_at` again.
+
+Allowed and refused sweeps both leave a `public.site_audit` row naming the actor,
+the action, the grant and boundary, the outcome and the time. A sweep that finds
+nothing due records `noop` rather than nothing, so an operator can show the sweep
+ran.
+
+Issue the capability through the deployment-controlled operator tool, exactly as
+any other site action — `--action evidence_expire` on the boundary and on the
+grant bound to it. The full invocation, its environment and its prerequisites
+are in [Site authority](site-authority.md).
 
 ## Public repository and publication checks
 

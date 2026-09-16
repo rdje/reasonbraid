@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-16 — A control that passes for the wrong reason is worse than one that fails
+
+- `REPAIR-0213` shipped a leg that read, in full: present `hum_00000000000000000000000000000000`, expect **401**, message "an unenrolled principal reads no staleness". It passed. It was measuring nothing of the kind. `hum_…` is not a principal shape in this system — the shapes are `hpr_…` and `rol_…` — so `resolve_principal` refused the header before any gate ran, and the 401 came from the parser. The gate the leg named answers **403**.
+- ⛔ **The wrong number travelled.** I wrote the same 401 into the book, in a table of what each caller receives, which is the surface the director actually reads. A control that fails is loud; a control that passes for the wrong reason ships its mistake into the documentation with a green run behind it.
+- ⭐ **What found it was not a review.** It was the NEXT leaf reusing the same idea — a stranger calling a gated route — and asserting the status the gate really returns. The second use is where the first use's assumption got tested, which is an argument for a shared fixture over a copied literal: `STRANGER` is now one constant, defined next to a sentence explaining why it must be well-formed.
+- **The two refusals are genuinely different and the control now says so.** `unauthenticated` (401) means "I cannot tell who you are"; `unauthorized` (403) means "I know who you are and you are enrolled nowhere". Collapsing them costs the distinction between a malformed client and an unprovisioned one, which is exactly what an operator reads a status code for.
+- ⚠️ **The generalization worth keeping.** A negative control needs its refusal ATTRIBUTED, not merely observed. Asserting a status proves something was refused; asserting the `code` as well proves *which gate did it*. Every leg I added in this leaf asserts both, and that is the cheap habit that would have caught this one before it was written.
+- ⭐ **Second habit, from the same leaf.** After the repair, the original attack payload stopped reaching the gate at all — it is refused at the body, because the field it exploited no longer exists. The leg asserting 403 became a leg asserting 400, and the authority gate lost its coverage silently. A repair that makes an attack UNEXPRESSIBLE quietly retires the control that proved the attack; the control has to be re-pointed at the gate, or the gate ends up untested by the very commit that added it.
+
 ## 2026-09-16 — The place a fact "obviously" lives, and the three reasons it was not there
 
 - `SIGNOFF-REPAIR.11.14.1` opened with a prescription: the citing tenant is derived "through the reference rather than stored on the receipt". It reads like the careful answer — it refuses the naive column, it respects the content-addressed design, and it names a real foreign key. It was wrong, and it took three independent measurements to see it, each of which would have been enough on its own.

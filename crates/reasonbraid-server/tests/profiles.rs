@@ -15,12 +15,20 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/site.rs"]
+mod site_fixture;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
 use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+
+/// A principal of the right SHAPE that no enrolment ever mints. A malformed id
+/// is refused by `resolve_principal` before any authorization runs, so a control
+/// that wants to measure a gate must present a well-formed stranger.
+const STRANGER: &str = "hpr_00000000-0000-7000-8000-00000000dead";
 
 static PROFILE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -90,6 +98,17 @@ async fn pool() -> Option<PgPool> {
     )
     .await
     .expect("purge checked fixture plan");
+    // This suite provisions site authority (`.7.4.3`), so it clears the site
+    // tables the way the other suites that touch them do. The guard row is a
+    // singleton the migration seeds and is deliberately left alone.
+    sqlx::raw_sql(
+        "DELETE FROM public.site_audit; \
+         DELETE FROM public.site_grants; \
+         DELETE FROM public.site_boundaries",
+    )
+    .execute(&pool)
+    .await
+    .expect("clear site authority fixtures");
     Some(pool)
 }
 
@@ -4370,7 +4389,8 @@ mod util {
 
 /// The license/retention + the freshness (PHASE-4.6.4): the license +
 /// the freshness horizon ride the snapshot, the retention enforcement
-/// TOMBSTONES the expired classes (the `at` override drives the test),
+/// TOMBSTONES the expired classes (the sweep is driven directly — the
+/// caller's clock is not on the wire, `.7.4.3`),
 /// the staleness surface lists the passed horizons, and the replay
 /// REFRESHES the freshness record (the re-fetch policy).
 #[tokio::test]
@@ -4492,21 +4512,21 @@ async fn the_retention_enforcement_and_the_freshness_surface() {
         .await
         .unwrap()
     };
+    // The TTL boundaries are a property of `(now, created_at, retention_class)`
+    // and are driven directly, because the caller's clock is no longer on the
+    // wire: `POST /v1/snapshots/expire-due` used to take an unbounded `at` from
+    // the request body, which let any enrolled principal tombstone every
+    // tenant's evidence (`SIGNOFF-REPAIR.7.4.3`). Every assertion below is the
+    // one it made through HTTP; what the route is responsible for — the site
+    // capability, the server clock and the audit record — is measured by
+    // `the_retention_sweep_requires_site_authority_and_the_server_clock`.
     let expire_at = |at: chrono::DateTime<chrono::Utc>| {
-        let client = client.clone();
-        let base = base.clone();
-        let human_id = human_id.clone();
+        let pool = pool.clone();
         async move {
-            let response = client
-                .post(format!("{base}/v1/snapshots/expire-due"))
-                .header(PRINCIPAL_HEADER, &human_id)
-                .json(&json!({ "at": at }))
-                .send()
+            let mut conn = pool.acquire().await.expect("a connection for the sweep");
+            reasonbraid_server::snapshots::expire_due(&mut conn, at)
                 .await
-                .expect("expire request");
-            assert_eq!(response.status().as_u16(), 200, "retention response");
-            let outcome: Value = response.json().await.unwrap();
-            outcome["tombstoned"].as_u64().expect("tombstone count")
+                .expect("the retention sweep")
         }
     };
 
@@ -4897,6 +4917,20 @@ async fn the_evidence_reads_are_bound_to_the_citing_tenant() {
 
     // The enrolment gate stays where it was: an unenrolled principal reads
     // nothing at all, and the tenant binding did not replace that refusal.
+    // ⚠️ The principal is WELL-FORMED and merely unknown. An id of the wrong
+    // shape is refused by `resolve_principal` before any gate runs, so a
+    // malformed value here would assert 401 while measuring the header parser.
+    let (status, body) = get(&client, &base, "/v1/snapshots/stale", STRANGER).await;
+    assert_eq!(
+        status, 403,
+        "an unenrolled principal reads no staleness: {body}"
+    );
+    assert_eq!(body["code"], json!("unauthorized"), "{body}");
+    // The two refusals are distinct and the control names both, because
+    // conflating them is how the first version of this leg passed for the
+    // wrong reason: a malformed principal is `unauthenticated` (401) from
+    // `resolve_principal`, and a well-formed unenrolled one is `unauthorized`
+    // (403) from the gate.
     let (status, body) = get(
         &client,
         &base,
@@ -4906,8 +4940,9 @@ async fn the_evidence_reads_are_bound_to_the_citing_tenant() {
     .await;
     assert_eq!(
         status, 401,
-        "an unenrolled principal reads no staleness: {body}"
+        "a malformed principal is unauthenticated: {body}"
     );
+    assert_eq!(body["code"], json!("unauthenticated"), "{body}");
 
     let citations: i64 =
         sqlx::query_scalar("SELECT count(*) FROM evidence_citations WHERE snapshot_id = $1")
@@ -4918,6 +4953,287 @@ async fn the_evidence_reads_are_bound_to_the_citing_tenant() {
     assert_eq!(citations, 2, "the shared row carries BOTH citing tenants");
     eprintln!(
         "evidence binding: 4 read surfaces bound to the citing tenant; foreign reads 404/absent; own reads 200; the shared row carries {citations} citations"
+    );
+}
+
+/// The retention sweep is a SITE-OPERATOR act (`SIGNOFF-REPAIR.7.4.3`).
+///
+/// `POST /v1/snapshots/expire-due` admitted any enrolled principal and read its
+/// cutoff straight from the request body with no upper bound, while
+/// `snapshots::expire_due` carries no tenant predicate. One request naming a
+/// far-future instant therefore tombstoned every tenant's live `standard` and
+/// `temporary` evidence — irreversibly, since nothing in the product clears
+/// `deleted_at`.
+///
+/// Which rows are DUE is a property of the shared row's `retention_class`, not
+/// of any one tenant's citation, so the sweep cannot be a tenant verb. It takes
+/// the `evidence_expire` site capability, on
+/// `docs/decisions/2026-09-09_site-operator-authority.md`'s shape, and it runs
+/// on the server's own clock.
+#[tokio::test]
+async fn the_retention_sweep_requires_site_authority_and_the_server_clock() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alpha) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "sweep-alpha" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A's human enrolls: {alpha}");
+    let alpha_id = alpha["principal_id"].as_str().unwrap().to_string();
+    let (status, beta) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "sweep-beta" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B's human enrolls: {beta}");
+    let beta_id = beta["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        alpha["tenant_id"], beta["tenant_id"],
+        "two distinct tenants"
+    );
+
+    // Tenant B's evidence, live and nowhere near its retention horizon.
+    let submit = |principal: String, locator: &'static str, payload: &'static [u8]| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({ "original_locator": locator, "scheme": "https" }))
+                .send()
+                .await
+                .expect("reference request");
+            let reference: Value = response.json().await.expect("reference json");
+            let reference_id = reference["resource_id"].as_str().unwrap().to_string();
+            let response = client
+                .post(format!("{base}/v1/snapshots"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({
+                    "reference_id": reference_id,
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "retention_class": "standard",
+                    "bytes_base64": util::base64(payload),
+                }))
+                .send()
+                .await
+                .expect("snapshot request");
+            let status = response.status().as_u16();
+            let snapshot: Value = response.json().await.expect("snapshot json");
+            assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+            snapshot["snapshot_id"].as_str().unwrap().to_string()
+        }
+    };
+    let beta_snapshot = submit(
+        beta_id.clone(),
+        "https://example.org/sweep-beta",
+        b"the beta tenant retained evidence",
+    )
+    .await;
+    let alpha_snapshot = submit(
+        alpha_id.clone(),
+        "https://example.org/sweep-alpha",
+        b"the alpha tenant retained evidence",
+    )
+    .await;
+
+    let live = |snapshot_id: String| {
+        let pool = pool.clone();
+        async move {
+            let deleted: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+                "SELECT deleted_at FROM evidence_snapshots WHERE snapshot_id = $1",
+            )
+            .bind(&snapshot_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read the tombstone state");
+            deleted.is_none()
+        }
+    };
+    assert!(live(beta_snapshot.clone()).await, "B's row starts live");
+    assert!(live(alpha_snapshot.clone()).await, "A's row starts live");
+
+    // The finding, replayed verbatim: tenant A, holding nothing but an
+    // enrolment, names the year 3000. On the unrepaired route this returned
+    // `200 {"tombstoned":2}` — both tenants' rows, on a clock A invented.
+    // The clock is no longer a field this route has, so the request is refused
+    // at the body: the attack is not expressible rather than merely denied.
+    let response = client
+        .post(format!("{base}/v1/snapshots/expire-due"))
+        .header(PRINCIPAL_HEADER, &alpha_id)
+        .json(&json!({ "at": "3000-01-01T00:00:00Z" }))
+        .send()
+        .await
+        .expect("sweep request");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.expect("sweep json");
+    assert_eq!(status, 400, "the caller's clock reached the sweep: {body}");
+    assert!(
+        live(beta_snapshot.clone()).await,
+        "tenant A tombstoned tenant B's live evidence"
+    );
+    assert!(
+        live(alpha_snapshot.clone()).await,
+        "tenant A tombstoned its own live evidence on a clock it invented"
+    );
+
+    // And a WELL-FORMED sweep from the same principal is refused on authority,
+    // which is the gate the clock was hiding: on the unrepaired route this body
+    // returned 200 for any enrolled principal.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/snapshots/expire-due",
+        &alpha_id,
+        &json!({ "reason": "a sweep tenant A is not entitled to run" }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an enrolled principal without site authority swept the site: {body}"
+    );
+    assert_eq!(body["code"], json!("site_authority_required"));
+    assert!(
+        body["audit_id"].is_string(),
+        "the denial is recorded: {body}"
+    );
+    assert!(
+        live(beta_snapshot.clone()).await,
+        "B's row survives the denial"
+    );
+    assert!(
+        live(alpha_snapshot.clone()).await,
+        "A's row survives the denial"
+    );
+
+    // A principal enrolled nowhere is refused by the same gate, with the same
+    // answer. The route deliberately does not distinguish "not enrolled" from
+    // "not authorized": site authority is independent of tenant enrolment by
+    // design, and a separate refusal would report who is enrolled.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/snapshots/expire-due",
+        STRANGER,
+        &json!({ "reason": "a sweep from nowhere" }),
+    )
+    .await;
+    assert_eq!(status, 403, "an unknown principal swept the site: {body}");
+    assert_eq!(body["code"], json!("site_authority_required"));
+    assert!(
+        body["audit_id"].is_string(),
+        "the denial is recorded: {body}"
+    );
+
+    // The authority is a site-operator grant for this action, issued only
+    // through the deployment-controlled service.
+    site_fixture::provision(
+        &pool,
+        &alpha_id,
+        &[reasonbraid_server::site_authority::Action::EvidenceExpire],
+    )
+    .await;
+
+    // The sweep is a repair of AUTHORITY, not a removal: an authorized operator
+    // still expires exactly what its retention class makes due. `standard` is
+    // thirty days, so the fixture ages one row rather than inventing a clock.
+    sqlx::query("UPDATE evidence_snapshots SET created_at = now() - interval '31 days' WHERE snapshot_id = $1")
+        .bind(&beta_snapshot)
+        .execute(&pool)
+        .await
+        .expect("age tenant B's row past its retention horizon");
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/snapshots/expire-due",
+        &alpha_id,
+        &json!({ "reason": "the scheduled retention sweep" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the authorized sweep runs: {body}");
+    assert_eq!(body["tombstoned"], json!(1), "exactly the due row: {body}");
+    assert!(
+        !live(beta_snapshot.clone()).await,
+        "the aged row is tombstoned"
+    );
+    assert!(
+        live(alpha_snapshot.clone()).await,
+        "a row inside its horizon survives the sweep"
+    );
+
+    // The caller's clock is gone from the wire: an `at` field is no longer a
+    // field this route accepts, so a fabricated retention expiry is not
+    // expressible rather than merely unauthorized.
+    let response = client
+        .post(format!("{base}/v1/snapshots/expire-due"))
+        .header(PRINCIPAL_HEADER, &alpha_id)
+        .json(&json!({ "reason": "a sweep", "at": "3000-01-01T00:00:00Z" }))
+        .send()
+        .await
+        .expect("clock-override request");
+    assert_eq!(
+        response.status().as_u16(),
+        400,
+        "the route still accepts a caller-supplied clock"
+    );
+    let missing_reason = client
+        .post(format!("{base}/v1/snapshots/expire-due"))
+        .header(PRINCIPAL_HEADER, &alpha_id)
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("reason-less request");
+    assert_eq!(
+        missing_reason.status().as_u16(),
+        400,
+        "the sweep requires a reason"
+    );
+    assert!(
+        live(alpha_snapshot.clone()).await,
+        "the refused request changed nothing"
+    );
+
+    // The deletion record says what actually happened.
+    let reason: String =
+        sqlx::query_scalar("SELECT deletion_reason FROM evidence_snapshots WHERE snapshot_id = $1")
+            .bind(&beta_snapshot)
+            .fetch_one(&pool)
+            .await
+            .expect("read the deletion reason");
+    assert_eq!(reason, "the retention expired");
+
+    // The act is audited as a site decision, denial included.
+    let decisions: Vec<(String, String)> = sqlx::query_as(
+        "SELECT outcome, reason FROM public.site_audit \
+         WHERE action = 'evidence_expire' ORDER BY decided_at",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read the site audit");
+    assert!(
+        decisions.iter().any(|(outcome, _)| outcome == "denied"),
+        "the unauthorized sweep left no denial record: {decisions:?}"
+    );
+    assert!(
+        decisions.iter().any(|(outcome, _)| outcome == "applied"),
+        "the authorized sweep left no applied record: {decisions:?}"
+    );
+    eprintln!(
+        "retention sweep: unauthorized 403 with both tenants' rows live; authorized sweep tombstoned 1 due row and left 1 live; caller clock refused 400; {} site audit rows",
+        decisions.len()
     );
 }
 

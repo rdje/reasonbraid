@@ -297,7 +297,10 @@ python3 -B scripts/project_env.py target/debug/rb-site grant revoke "$RB_SITE_GR
 python3 -B scripts/project_env.py target/debug/rb-site boundary revoke "$RB_SITE_BOUNDARY" --reason 'retire ceiling'
 ```
 
-Repeat `--action` to grant additional capabilities. A request to issue beyond the
+The site actions are `registry_inspect`, `adapter_allow`, `adapter_revoke`,
+`region_declare`, `region_pair`, `region_unpair` and `evidence_expire` — the
+last being the evidence retention sweep (see
+[Deployment](deployment.md)). Repeat `--action` to grant additional capabilities. A request to issue beyond the
 parent's action set or window is refused and audited. Suspension cannot be undone
 by this tool: issue replacement authority when access must be restored. Repeated
 revocation returns `changed: false` and creates a no-op audit. There is no automatic

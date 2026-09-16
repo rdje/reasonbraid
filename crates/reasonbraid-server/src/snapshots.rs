@@ -475,8 +475,19 @@ pub fn retention_ttl(retention_class: &str) -> Option<chrono::Duration> {
 /// The retention enforcement: every live snapshot whose class TTL has
 /// passed (measured from `created_at` against `now`) is TOMBSTONED with
 /// the reason — never silently removed. Returns the tombstoned count.
+///
+/// ⛔ This sweep carries no tenant predicate, and cannot: `retention_class`
+/// is a column on the SHARED row, so which snapshots are due is a site-wide
+/// fact rather than any one tenant's. That is why the authority to invoke it
+/// is a site-operator capability and the caller does not choose `now`
+/// (`SIGNOFF-REPAIR.7.4.3`; `site_authority::expire_evidence` passes the
+/// database's own `clock_timestamp()`, read after the guard lock).
+///
+/// Takes a connection rather than the pool so the tombstones, the
+/// authorization and its audit commit as ONE transaction — a sweep that
+/// committed without its audit record would be an unattributable deletion.
 pub async fn expire_due(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
@@ -485,7 +496,7 @@ pub async fn expire_due(
     )
     .bind("the retention expired")
     .bind(now - chrono::Duration::days(30))
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     let standard = result.rows_affected();
     let result = sqlx::query(
@@ -494,7 +505,7 @@ pub async fn expire_due(
     )
     .bind("the retention expired")
     .bind(now - chrono::Duration::days(1))
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(standard + result.rows_affected())
 }

@@ -277,6 +277,126 @@ struct Outcome {
     at: DateTime<Utc>,
 }
 
+/// What an authorized site act produced: the receipt body and the audit's
+/// outcome word (`applied`, `noop` or `inspected`).
+struct Effect {
+    result: Value,
+    outcome: &'static str,
+}
+
+impl Effect {
+    fn write(result: Value, changed: u64) -> Self {
+        Self {
+            result,
+            outcome: if changed == 0 { "noop" } else { "applied" },
+        }
+    }
+}
+
+/// One ordered site transaction, shared by every site act
+/// (`SIGNOFF-REPAIR.7.4.5`).
+///
+/// Take the guard, read the clock AFTER the lock wait, evaluate the subject's
+/// grants for `action`, and then either commit an audited denial or run
+/// `effect` and audit what it produced. The effect, the denial and the audit
+/// record all commit together: an audit failure rolls back an otherwise
+/// allowed write, and a denial still commits its own record.
+///
+/// `effect` runs ONLY once a live grant on its actual boundary has been found.
+/// It returns `Err(reason)` for a DOMAIN refusal — the caller held the grant
+/// and asked for something the subsystem cannot do — which is audited as
+/// `denied` WITH the grant and boundary attached, and surfaced as a typed
+/// `Refused` the HTTP layer maps to its own status.
+///
+/// ⛔ The clock passed to `effect` is the database's own `clock_timestamp()`
+/// read after the guard lock, never `now()` and never a caller's: a site act
+/// that stamps rows with a time is making a factual claim about them
+/// (`SIGNOFF-REPAIR.7.4.3`).
+///
+/// This was two copies until `.7.4.5`. `.7.4.3` created the second one
+/// deliberately rather than refactor an authorization path inside the commit
+/// that repaired a hole in it, and opened the leaf that merged them.
+async fn authorized<F>(
+    pool: &PgPool,
+    subject: &GrantSubject,
+    action: Action,
+    target: Value,
+    requested_reason: &str,
+    effect: F,
+) -> Result<Receipt, Error>
+where
+    F: for<'c> FnOnce(
+        &'c mut sqlx::PgConnection,
+        DateTime<Utc>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Result<Effect, &'static str>, Error>>
+                + Send
+                + 'c,
+        >,
+    >,
+{
+    let mut tx = begin(pool).await?;
+    let at = lock(&mut tx).await?;
+    let (actor_kind, actor) = subject_parts(subject);
+    let intent = Intent {
+        actor_kind,
+        actor,
+        action: action.as_str(),
+        target,
+        requested_reason: requested_reason.to_owned(),
+    };
+    let evaluation = evaluate(&mut tx, subject, action, at).await?;
+    let Some(grant_id) = evaluation.grant_id else {
+        let audit_id = audit(
+            &mut tx,
+            &intent,
+            Outcome {
+                grant_id: None,
+                boundary_id: None,
+                outcome: "denied",
+                reason: "site_authority_required",
+                evaluation: evaluation.checks,
+                at,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        return Err(Error::Refused {
+            reason: "site_authority_required",
+            audit_id,
+        });
+    };
+    // A domain refusal is separate from a SQL error: an unavailable database
+    // must never masquerade as one, so the closure returns the two distinctly.
+    let produced = effect(&mut tx, at).await?;
+    let (outcome, reason) = match &produced {
+        Ok(effect) => (effect.outcome, effect.outcome),
+        Err(refusal) => ("denied", *refusal),
+    };
+    let audit_id = audit(
+        &mut tx,
+        &intent,
+        Outcome {
+            grant_id: Some(grant_id),
+            boundary_id: evaluation.boundary_id,
+            outcome,
+            reason,
+            evaluation: evaluation.checks,
+            at,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    match produced {
+        Ok(effect) => Ok(Receipt {
+            audit_id,
+            result: effect.result,
+        }),
+        Err(reason) => Err(Error::Refused { reason, audit_id }),
+    }
+}
+
 async fn audit(tx: &mut Tx<'_>, intent: &Intent, outcome: Outcome) -> Result<String, Error> {
     let id = identifier("sau");
     sqlx::query(

@@ -28,57 +28,24 @@ pub async fn expire_evidence(
     subject: &GrantSubject,
     reason: &Reason,
 ) -> Result<Receipt, Error> {
-    let mut tx = begin(pool).await?;
-    let at = lock(&mut tx).await?;
-    let (actor_kind, actor) = subject_parts(subject);
-    let intent = Intent {
-        actor_kind,
-        actor,
-        action: Action::EvidenceExpire.as_str(),
-        target: json!({ "store": "evidence_snapshots" }),
-        requested_reason: reason.as_str().to_owned(),
-    };
-    let evaluation = evaluate(&mut tx, subject, Action::EvidenceExpire, at).await?;
-    let Some(grant_id) = evaluation.grant_id else {
-        let audit_id = audit(
-            &mut tx,
-            &intent,
-            Outcome {
-                grant_id: None,
-                boundary_id: None,
-                outcome: "denied",
-                reason: "site_authority_required",
-                evaluation: evaluation.checks,
-                at,
-            },
-        )
-        .await?;
-        tx.commit().await?;
-        return Err(Error::Refused {
-            reason: "site_authority_required",
-            audit_id,
-        });
-    };
-    let tombstoned = crate::snapshots::expire_due(&mut tx, at).await?;
-    // A sweep that tombstones nothing is still an authorized act and still
-    // records one, so an operator can prove the sweep ran and found nothing due.
-    let outcome = if tombstoned == 0 { "noop" } else { "applied" };
-    let audit_id = audit(
-        &mut tx,
-        &intent,
-        Outcome {
-            grant_id: Some(grant_id),
-            boundary_id: evaluation.boundary_id,
-            outcome,
-            reason: outcome,
-            evaluation: evaluation.checks,
-            at,
+    authorized(
+        pool,
+        subject,
+        Action::EvidenceExpire,
+        json!({ "store": "evidence_snapshots" }),
+        reason.as_str(),
+        |conn, at| {
+            Box::pin(async move {
+                let tombstoned = crate::snapshots::expire_due(conn, at).await?;
+                // A sweep that tombstones nothing is still an authorized act and
+                // still records one, so an operator can prove it ran and found
+                // nothing due.
+                Ok(Ok(Effect::write(
+                    json!({ "tombstoned": tombstoned, "swept_at": at }),
+                    tombstoned,
+                )))
+            })
         },
     )
-    .await?;
-    tx.commit().await?;
-    Ok(Receipt {
-        audit_id,
-        result: json!({ "tombstoned": tombstoned, "swept_at": at }),
-    })
+    .await
 }

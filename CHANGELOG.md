@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The site authorization skeleton is one copy again (`SIGNOFF-REPAIR.7.4.5`)
+
+✅ **A duplication created deliberately two commits earlier, and closed on schedule rather than left to be found.**
+
+- `.7.4.3` restated ~35 lines of the authorize/apply/audit transaction rather than refactor an authorization path inside the commit that repaired a hole in it. This leaf merges them into one `site_authority::authorized(...)`.
+- **What the compiler cannot check is enumerated and tied to named controls:** a denial still commits its record; a domain refusal keeps its grant, boundary and its own 400; an audit failure rolls back an allowed effect (`audit_failure_rolls_back_the_registry_effect`); the effect runs only after a live grant, on the transaction's connection; the clock is the post-lock `clock_timestamp()`.
+- **Verification:** `site_authority` 11, `site_registry_http` 8, `site_operator_cli` 3, `regions` 3, `allowlist` 2, `profiles` 41 — **68 / 0**, every count identical to the pre-refactor run. Strict server clippy and `cargo fmt --all --check` rc=0.
+- No migration, route, wire shape or qualification category changed, and the book is deliberately untouched: it describes the contract this preserves, not the shape of the code.
+
 ## 2026-09-16 — An assessment is read by the tenant that authored it (`SIGNOFF-REPAIR.11.14.2`)
 
 🔴 **A guessed claim identifier returned every tenant's assessments. Reproduced RED, closed, and it corrected the decision record this family rests on.**

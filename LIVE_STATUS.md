@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE SITE AUTHORIZATION SKELETON IS ONE COPY AGAIN (`.7.4.5`, REPAIR-0216).**
+
+- `.7.4.3` created the second copy deliberately — refactoring the control flow of an authorization path inside the commit that repairs a hole in it is how a second hole ships — and opened this leaf in the same breath. It is closed two commits later.
+- **One `site_authority::authorized(pool, subject, action, target, reason, effect)` owns the transaction:** take the guard, read the clock AFTER the lock wait, evaluate the grant, then either commit an audited denial or run the effect and audit what it produced. Both call sites become an action, a target, a reason and a closure.
+- ⭐ **What a reader must check that the compiler cannot, each tied to a NAMED existing control rather than to inspection:** a denial still commits its own record (the denial controls assert a `denied` row and an `audit_id`); a domain refusal keeps its grant and boundary and its own 400 (`undeclared_region`); an audit failure rolls back an allowed effect (`audit_failure_rolls_back_the_registry_effect` injects a raising trigger and requires `Err(Sql(_))` with 0 registry rows and 0 audit rows); the effect runs only after a live grant and on the transaction's own connection; and the clock is the post-lock `clock_timestamp()`.
+- **Verification: 11 + 8 + 3 + 3 + 2 + 41 = 68 passed, 0 failed** — every count identical to the pre-refactor run. No migration, route, wire shape or qualification category moved.
+- ⚠️ One non-behavioural change recorded so it is not a puzzle later: `execute` now clones its `RegistryCommand` into the closure, because a boxed effect future quantified over the connection's lifetime cannot capture a reference to it.
+
 ⛔ **HELD FOR A DIRECTOR DECISION: THE DELIBERATION AND THE EVIDENCE CHAIN ARE TWO SYSTEMS THAT NEVER MEET (`.11.14.3`).**
 
 - **The census, in both directions, over nine modules.** Evidence-store symbols inside `threads.rs`, `agg.rs`, `projections.rs`, `workflows.rs`, `matching.rs` → **0, 0, 0, 0, 0**. Deliberation symbols inside `claims.rs`, `snapshots.rs`, `derivations.rs`, `resources.rs` → **0, 0, 0, 0**. No call, no shared key, no shared type.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Measure the split-coverage gate, decline it, and write the table that finds the defects (`SIGNOFF-REPAIR.11.15`)
+
+🔴 **Two splits had dropped a mechanism their own goal line names. The obvious gate is measured unsound; the practice it would have enforced found two live defects on its first use.**
+
+- **The census:** of 299 leaves, 14 declare a split and **1** carried a mechanism-to-child mapping (`scripts/census_split_coverage.py`, tracked, 6 self-test controls).
+- ⛔ **Gate declined, twice over.** Requiring the mapping fires on 13 of 14 — `.11.9`'s rejected shape. Comparing a prose child-count to the real one gives false positives by construction, because most such sentences are about other leaves. Counting mechanisms in a goal line is not mechanizable.
+- ⭐ **The method paid immediately:** `.7.2`'s table found `max_time` declared in `GitLimits`, defaulted to 120 s and read by nothing, while R0 enforces the identical field — and three ref-verification clauses owned by the lane with no child. New owners `.7.2.7`, `.7.2.8`.
+- 🔴 **The instrument's first number was wrong** and a `grep -c` disagreeing with it is what caught the indented-table blind spot. A second count was a substring artefact (`configu-ratio-n`). Both kept, not edited away.
+- Promoted to `TOOLBOX.md`: "Enumerate a goal line's mechanisms against the children a split produces — the act, not the count."
+- No product code, schema or test changed.
+
 ## 2026-09-16 — Own the browser suite's retained-fixture accumulation (`SIGNOFF-REPAIR.7.3.2.1`)
 
 - **Measured during §8 artifact cleanup, not reported as a worry.** `du -sk target/browser-lifetime-controls/*` returns **12 fixtures, 515,424 KiB** across four sessions. The browser harness retains a fixture on a FAILED run deliberately — the evidence is the point — and nothing retires one.

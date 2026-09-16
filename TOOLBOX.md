@@ -120,6 +120,31 @@ time; what changes is how long it waits. Run 1 spent about **472 s not computing
    its `--self-test` arms are the three measurements that were got wrong.
 4. **Search your own decisions directory before naming a mechanism.**
 
+## Enumerate a goal line's mechanisms against the children a split produces
+
+When a broad leaf is censused and split, the children are drawn from the leaf's own goal
+line — and nothing re-reads that goal line afterwards to ask whether they cover it. Twice
+in this project a split dropped a mechanism its goal line names verbatim:
+`SIGNOFF-REPAIR.3.4` dropped two, found eleven commits later; `SIGNOFF-REPAIR.7.2`
+dropped one, found three commits later, and it was a live credential leak.
+
+> Write the mechanisms down in a table beside the children, **in the leaf**. The act is
+> the instrument; the count is not.
+
+⛔ **This is a method and not a gate, measured twice over** (`SIGNOFF-REPAIR.11.15`).
+Requiring the table would have fired on **13 of 14** split-declaring leaves the day it was
+registered — `SIGNOFF-REPAIR.11.9`'s rejected shape. Comparing a prose count of children to
+the real child count produces false positives by construction: `.11.9`'s own section says
+"three children" and has one, because the sentence is about another leaf's three. And
+counting the mechanisms IN a goal line is not mechanizable at all — the goal lines use
+semicolons, slashes and "and" interchangeably, so any counter is guessing at grammar.
+
+⭐ **The argument is that it pays on first use.** Writing one of the thirteen tables —
+`.7.2`'s — found `max_time` declared in `GitLimits`, defaulted to 120 seconds and read by
+nothing, while R0's identically-named field is enforced; and three ref-verification clauses
+owned by the lane with no child. The backlog is tracked by
+`scripts/census_split_coverage.py`, not by memory.
+
 ## Measure the population before proposing the rule over it
 
 A rule, threshold or severity reasoned carefully from source is often changed by the
@@ -405,6 +430,7 @@ agent should be able to reach for the right tool without reading the source. -->
 | `scripts/check_book_frontier.sh` | whether a book page names a frontier leaf the task tree no longer has; `--self-test` proves row-1 extraction and the claim matcher | `bash scripts/check_book_frontier.sh [--self-test]` |
 | `python3 -B scripts/project_env.py cargo test -p reasonbraid-node` | the WP3 journal kill-point sweep + CLI integration tests (file-based SQLite, no service) | `python3 -B scripts/project_env.py cargo test -p reasonbraid-node` |
 | `scripts/census_reason_codes.py` | which reason codes the server emits, which the §9.8 registry publishes, and which the book documents — the three sets and their differences, with client-side sentinels excluded; `--check` is the `REASON-CODE-DOC` gate and `--self-test` proves the client/server split both ways plus the book-row matcher | `python3 -B scripts/census_reason_codes.py [--check] [--json] [--self-test]` |
+| `scripts/census_split_coverage.py` | which leaves DECLARE a split, how many children each really has, and whether the leaf carries a mechanism-to-child mapping or only a prose count. ⛔ A BACKLOG instrument, never a gate: `SIGNOFF-REPAIR.11.15` measured the gate firing on **13 of 14** and rejected it as `.11.9`'s shape, and measured the count-comparison rule producing false positives by construction. It counts the ACT of enumerating, never the mechanisms in a goal line, which is not mechanizable. `--self-test`'s 6 controls prove the tree id is not hardcoded, that a grandchild is not a child, that a table is not inherited across sections, and — the blind spot this instrument shipped with — that an INDENTED mapping table is seen, which a `grep -c` disagreeing with its first number is what caught | `python3 -B scripts/census_split_coverage.py [--self-test]` |
 | `scripts/census_record_reconciliation.py` | which source-census records are cited by the leaves they route to, which are not, and how far the clause ledger has classified them. `--rank` orders the backlog by each record's NARROWEST candidate leaf — ⭐ the OPPOSITE of ordering by the record's own fan-out, which `SIGNOFF-REPAIR.11.9.1` measured and rejected. `--classified` re-reads `docs/tasks/artifacts/signoff_review/RECONCILIATION.md` and refuses an unknown record, a state outside the closed six, an owner that is no leaf, a `none` row with an owner, a non-`none` row without one, a duplicated clause, or — the `ATTACH-LANDED` gate — an `attach` clause whose owning leaf's own section does not NAME its record, which is the one property a row cannot carry about itself. Never a defect count; `--self-test`'s 42 controls prove both record-id shapes, that a parent's section excludes its children, line-RANGE citation matching, the elided `` `:N` `` form and — the fifth defect this instrument had — that a SOURCE path's line number after a census citation is not one; seven more fire the `attach` rule in BOTH directions, including that a longer record id does not satisfy a shorter one | `python3 -B scripts/census_record_reconciliation.py [--uncited] [--rank] [--classified] [--json] [--self-test]` |
 | `scripts/census_memory_warnings.py` | which of `MEMORY.md`'s standing warnings are anchored in a durable layer and which name no leaf — run it BEFORE evicting one at the byte cap, so the choice is derived rather than "whatever looks least costly"; `--self-test` proves the segmentation both ways (a marker after a sentence terminator opens a warning, one after `;`/`:` continues it, and a terminator inside `**`/`*`/`` ` `` still opens) | `python3 -B scripts/census_memory_warnings.py [--json] [--self-test]` |
 | `scripts/census_pg_test_clusters.py` | which disposable PostgreSQL clusters the runner retained after a failure, how big and how old each is, and which are safe to retire — the §8 periodic review, with the judgement in the tool instead of in a habit; `--self-test` fires all six refusals plus the citation guard's two directions | `python3 -B scripts/project_env.py python3 -B scripts/census_pg_test_clusters.py [--retire --confirm]` |

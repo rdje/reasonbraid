@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A SPLIT IS DRAWN FROM A GOAL LINE AND NOTHING CHECKED IT COVERED ONE — MEASURED, GATE DECLINED, AND THE ONE TABLE WRITTEN FOUND TWO LIVE DEFECTS (`.11.15`, REPAIR-0212).**
+
+- **The census**, `python3 -B scripts/census_split_coverage.py`: of **299** leaves, **14** declare a split, and **1** carried a mechanism-to-child mapping. Two of the fourteen had already dropped a mechanism their goal line names — `.3.4` two, found eleven commits later; `.7.2` one, found three commits later, and it was a live credential leak.
+- ⛔ **BOTH candidate gates are measured unsound.** Requiring the mapping fires on **13 of 14** — `.11.9`'s rejected shape, "a backlog wearing a gate's clothes". Comparing a prose child-count to the real one produces false positives by construction: `.11.9`'s own section says "three children" and has one, because the sentence is about another leaf's three. ⭐ Counting the mechanisms IN a goal line is not mechanizable at all — the goal lines use semicolons, slashes and "and" interchangeably.
+- ⭐ **What ships is `.11.8`'s answer, not `.11.9`'s**: the population is 13, small enough to track. A tracked, self-tested instrument inside `SELF-TEST`'s population, plus a `TOOLBOX.md` statement — never a gate.
+- 🔴 **The method paid on first use, which is the whole argument.** Writing ONE of the thirteen tables — `.7.2`'s — found `max_time` declared in `GitLimits`, defaulted to 120 s and **read by nothing**, while R0's identically-named field is enforced at `fetcher.rs:648`; and three ref-verification clauses owned by the lane with no child. New owners `.7.2.7` and `.7.2.8`.
+- 🔴 **The instrument was wrong on its first run and a second route caught it.** It reported 0 of 14; `grep -c` returned 1, because `.3.4`'s table is INDENTED and the pattern anchored at the line start. ⚠️ A second number was a substring artefact the same way — `grep -c "ratio" git.rs` returned 10, all `configu-ratio-n`; word-bounded it is 0. Both are kept rather than edited away.
+- ⚠️ **And the practice was living in the wrong layer**: the enumeration that found `.3.4`'s gap is in `LIVE_STATUS.md`, where no instrument derives it and no reader of the leaf meets it. The table belongs in the leaf.
+
 ✅ **EVERY `rb-server` CONFIGURATION REFUSAL NOW HAPPENS BEFORE THE FIRST MUTATION, AND THE BIND IS A DOCUMENTED CHOICE REPORTED AT BOOT (`.11.12`, REPAIR-0211).** The leaf's two halves were decided SEPARATELY, as its own text required, and they did not come out the same way.
 
 - **Half 1 — the ordering — was never a decision.** `sqlx::migrate!` ran before `SecretStore::resolve` and before the address parse, both pure functions of the arguments. A typo'd profile against the wrong database left that database migrated and no service running: a refusal that has already acted is not a refusal.

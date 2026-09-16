@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The pointer stops being a log (`SIGNOFF-REPAIR.11.4.2.2`)
+
+✅ **`MEMORY.md` was at exactly 7,168 of 7,168 bytes and every commit had to evict. The cause was shape, not size.**
+
+- The `- **Next action:**` bullet had become a ~6,000-byte SINGLE LINE carrying sixteen lessons — one line of twenty-six. An append-only log inside one bullet of a pointer.
+- 🔴 **`.11.4.2.1` had measured the answer eleven commits earlier and the framing hid it.** It asked "would anything be LOST if a warning were evicted?", found 0 of 26 orphans, concluded the worry was refuted — and never asked why anything durable elsewhere was in the pointer at all. ⭐ A census answers the question it was given; the framing is the part to falsify.
+- **Partition, with the count on each side: 14 leave, 2 stay.** Every leaver is recorded in its leaf, `docs/knowledge/`, `TOOLBOX.md`, `docs/decisions/`, or is gate-enforced. The two that stay are pointer-shaped, not lesson-shaped.
+- **Headroom, named:** 35 lines of 50, 3,583 bytes of 7,168 — no cap raised. The census now reports 0 standing warnings, 0 uncited, against 16 before.
+- ⚠️ The eviction ritual is dissolved, not improved: three sharpenings of a selection rule for a choice that should not have existed.
+- ✅ **The vulnerability channel is live** — GitHub private vulnerability reporting was enabled by the owner, so `SECURITY.md` states it plainly and names no fallback.
+- No product code, schema, test or script changed.
+
 ## 2026-09-16 — Own the advertised policy lines `.7.3.5` did not check (`SIGNOFF-REPAIR.7.3.6`)
 
 - `.7.3.5` found the R3 pack advertising two deny-policies it did not enforce, and repaired exactly those two. The other four lines of the same advertisement were never checked, and a caller choosing a pack reads all of them.

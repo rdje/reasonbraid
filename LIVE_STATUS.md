@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE RESUME POINTER STOPS BEING A LOG, AND `.11.4.2.1`'s OWN DATA HAD THE ANSWER ELEVEN COMMITS EARLIER (`.11.4.2.2`, DOC-0032).**
+
+- **The measurement:** `wc -c MEMORY.md` returned **7168** against a 7,168-byte cap — zero headroom — and every one of this session's thirteen commits had to evict or compress a standing warning to land.
+- **The cause was SHAPE, not size.** The file's `- **Next action:**` bullet had become a **~6,000-byte single line** carrying sixteen lessons, one line of twenty-six. An append-only log was living inside one bullet of a pointer, which is why the byte cap bound while the line cap never did.
+- 🔴 **`.11.4.2.1` had already measured the answer and the framing hid it.** That census asked "would anything be LOST if a warning were evicted?" and found **0 of 26 orphans**, concluded "the worry is refuted", and the evictions continued. The question it did not ask is the one that mattered: *if all 26 are durable elsewhere, why is any of them in the pointer at all?* ⭐ **A census answers the question it was given — the framing is the part to falsify.**
+- **The partition, with the count on each side: 14 leave, 2 stay.** Each leaver is recorded in its own leaf, `docs/knowledge/`, `TOOLBOX.md`, `docs/decisions/` or is gate-enforced (`SECRET-SCAN`). The two that stay are pointer-shaped rather than lesson-shaped — the `docs/knowledge/` pointer, and the `project_env.py` trap that costs a fresh session its first command.
+- ⛔ **The instrument proves no substance was lost, not the author**: `scripts/census_memory_warnings.py` now reports **0** standing warnings with **0** uncited, against 16 before.
+- **Headroom, named:** **35 lines of 50** and **3,583 bytes of 7,168** — over half the byte cap unused, with **no cap raised**. ⚠️ The headroom is not the repair either: what keeps it is the rule now at the top of the file — overwritten, never appended, and a fact worth keeping goes to a durable layer.
+- ⚠️ **The eviction ritual is DISSOLVED, not improved.** Three successive sharpenings of the selection rule were refinements of a choice that should not have existed. The leaf's own diagnosis was right: a rule that needs re-deriving every time it is applied is a sign the population wants partitioning — and the population was the whole log.
+- ✅ **Also in this commit:** the vulnerability channel is LIVE. GitHub private vulnerability reporting was enabled by the repository owner on 2026-09-16, so `SECURITY.md` states the channel plainly and names no fallback route — naming two channels is how a report reaches the one nobody watches.
+
 ⭐ **THE FOUR B1–B4 DECISIONS ARE TAKEN, AND THREE OF THE FOUR OUTSIDE BLOCKERS SHARE ONE IN-REPO PREREQUISITE (DOC-0030, lane `SIGNOFF-REPAIR.14`).**
 
 - ⭐ **The structural finding.** `2026-09-08_phase7-subtraction-record.md` has S-1 (the Internet exposure) not built because "the qualification gate is incomplete", while **B2** waits on "the exposure profile's candidate freeze" and **B3** on "its first action-bearing surface". That is a circular wait — and it is an artefact of S-1's stated REASON, not of the gate. ROADMAP §16.12 blocks Internet-capable **deployment**; §25.1 blocks **exposing** remote enrollment. Neither forbids BUILDING.

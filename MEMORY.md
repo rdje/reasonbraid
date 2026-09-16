@@ -1,26 +1,35 @@
-# MEMORY — resume pointer
+# MEMORY — the layer-A resume pointer
+
+⛔ **This file is OVERWRITTEN, never appended.** It carries the next action, the active tree, and the traps that would make a fresh session act wrongly in its first hour. It is not a log and not a lesson store. **A fact worth keeping goes to a durable layer** — the owning leaf under `docs/tasks/`, `docs/decisions/`, `docs/knowledge/`, `TOOLBOX.md` or the book — and the pointer names the layer, not the fact. (Director instruction 2026-09-16; `SIGNOFF-REPAIR.11.4.2.2`.)
 
 ## How to resume
 
 1. Read `CLAUDE.md`, `README.md`, `MEMORY_ARCHITECTURE.md`, `TOOLBOX.md`, `DOCTRINE_ENFORCEMENT.md`, `COMMIT.md`.
-2. Open `docs/tasks/SIGNOFF-REPAIR.md` and its Current Frontier.
-3. Source-review records: `docs/tasks/artifacts/signoff_review/INDEX.md`.
+2. Open `docs/tasks/SIGNOFF-REPAIR.md` → **Current Frontier**. Row 1 is the next leaf; the caption's `awk` command re-derives the pending count.
+3. Method statements: `TOOLBOX.md` and `docs/knowledge/` — **consult, do not re-derive**. Source-review records: `docs/tasks/artifacts/signoff_review/INDEX.md`.
 
 ## Current state
 
-- **Project:** ReasonBraid; public repository rdje/reasonbraid must remain public (director correction 2026-09-09 supersedes the wrong README/ADR private instruction). Working-name clearance is open and does not block public visibility.
-- **Active tree:** `SIGNOFF-REPAIR`. Local is **152 commits ahead** of `origin/main` (`c17841c`) — re-derive, never carry: `git rev-list --count origin/main..HEAD`. ⚠️ **62 leaves are `pending`** — re-derive with the frontier caption's awk command, which reads BOTH `- Status:` and the `- Opened:`-only spelling (11 carry only the latter).
-- **Next action:** row 1 `.11.14.1` 🔴 **ANY ENROLLED PRINCIPAL ENUMERATES EVERY TENANT'S EVIDENCE TRAIL** — `snapshots::stale` has NO tenant predicate; disclosure + enumeration, not a write. ✅ `.11.14` DECIDED (DOC-0029): ⛔ **NO table gains `tenant_id`** — `UNIQUE (original_locator, expected_digest)` makes evidence SHARED by design; §16.8 names the authorization DECISION, not the table. ⛔ **EVERY CONFIG REFUSAL BEFORE THE FIRST MUTATION** (`.11.12`) ⛔ **A REGISTRY ADVERTISEMENT IS A CLAIM WITH CALLERS** (`.7.3.5`); ⛔ a credential is bound to the origin the CALLER named (`.7.2.6`) — both were REPRODUCED, not source-measured. ⛔ anchor a predicate to its GRAMMAR (`.7.2.3`); ⛔ `open::Options::isolated()` (`.7.2.4`/`.5`). ⭐ `0.0.0.0` = a REFUSED address the kernel routes locally (`.7.2.2`). ✅ **`.3.4` CLOSED** (DOC-0025): 3 of 6 verdicts NOT "done" — delegability refused as a gate, depth unenforced, consent not a requirement. ✅ `.3.4.6`+`.3.4.7` DONE: the hash binds the TARGET; ⛔ **CONSENT WAS NEVER A DELEGATION REQUIREMENT** — §16.3 has 0 of the roadmap's 8 mentions; §4.4's is ENROLLMENT consent. ✅ **A1 + B5 CLEARED; no director-held blocker remains** (`.13.2`): A1 dissolved by measurement; B5 granted (holder Richard DJE; texts CORROBORATED on disk, never typed; gate `LICENCE-GRANT`); B4 name clearance stands. 🔴 **A SELF-TEST CANNOT BE TIDIER THAN THE REAL INPUT** — fixtures are the REAL file, mutated; falsification found two holes it stayed green through (`knowledge/a-self-test-cannot-be-tidier-than-the-real-input`). ✅ deny + gitleaks RUN LOCALLY: `SECRET-SCAN` at commit, `cargo deny` in `.githooks/pre-push`. ✅ **WORKSPACE GREEN IN ONE RUN**: 103 suites, **816 pass / 0 fail**, 30m (`.11.4.8`). 🔴 **`verify_ladder` HAS NO PRODUCTION CALLER** (`.13.1.1`; `pub use` hides it from `dead_code`). 🔴 **ENUMERATE a goal line's mechanisms against a split's children — the ACT, not the count** (`.11.15`, `TOOLBOX.md`). The gate is DECLINED: it fires on 13 of 14. `scripts/census_split_coverage.py` tracks the backlog. 🔴 **A LEAF WITH NO `- Acceptance:` IS NOT AN OWNER** — `owned`/`attach` measure VISIBILITY, never EXECUTABILITY (`.11.13`). ⛔ **EVERY NUMBER COMES FROM A COMMAND** (`.11.9.1.2.3`/`.11.9.1.3.1`); `git show` at the original commit tells stale from false. Prefer a RATIO, a SINGLE-HIT GREP or a TWO-SITE CONTRAST. ⛔ **VERIFY THE PREMISE THE DECISION TURNS ON** (`.9.3.4`; frontier 1d/1e carry the ruling). ⛔ **A NUMBER DECORATING A FINDING GETS NONE OF ITS LEGS** (3 of 3 failed): PIN a census your own change invalidates; ⛔ a git PATHSPEC `*` crosses `/` — `:(glob)` (`.11.4.5.4`). ⛔ **A CITED AUTHORITY MUST BE A HELD ONE** (`.9.3.1`): `authority::grant_held_by`/`grant_is_live` are THE predicate — never a sixth spelling; grant ids are derivable (`grt_<id>`). ⭐ **Before evicting a warning here, run `scripts/census_memory_warnings.py`** (`.11.4.2.1`) — prefer one whose line NAMES its leaf. Ledger: `signoff_review/RECONCILIATION.md` (`--rank`/`--classified`). ⛔ **EVERY channel WRITE re-checks the lease IN-TX, row locked** (`.2.2`/`.4.2.3`/`.4.2.4`); ⛔ **`poll` NOT**; ⛔ **no tenant guard on `ack`**. The lease reads the **DB clock** but is WRITTEN process-side, so 60 s TTL is nominal (`.4.2.3.1`). ⚠️ **Method records: `docs/knowledge/` — consult, do not re-derive.** ⚠️ ALWAYS `python3 -B scripts/project_env.py cargo …`; a bare `cargo` uses another CARGO_HOME.
-- **Gates:** 18 top-level; project checks NEST inside `PROJECT-SPECIFIC` — measure the count, never increment it; `DOCTRINE_ENFORCEMENT.md` mirrors them and `git log` names the leaf that added each. **The REMOTE run is the authoritative pre-push gate** — before a push run only `make gate`, `make book`, `cargo fmt --all -- --check` and the Python controls.
-- **Architecture decision:** shared registries require explicit site-operator grants; tenant enrollment cannot mint them (`docs/decisions/2026-09-09_site-operator-authority.md`).
-- **Support request:** the director's content-withheld report is prepared, NOT submitted (`target/extraction-input-controls/`, ignored, 0600).
-- **Roadmap:** Phase 0–7 historical records exist; qualification is under corrective review, Phase 8 incomplete. Resume `PHASE-8.5.3` after its prerequisites, then `.5.4`, `.6`.
-- **B1–B4 route DECIDED** (`2026-09-16_internet-qualification-route.md`, lane `.14`): ⭐ §16.12 blocks DEPLOYMENT, §25.1 EXPOSING — an un-deployed candidate is PERMITTED and is B1/B2/B3's shared prerequisite.
-- **Defects/BLOCKERS:** findings owned in the tree; ⛔ no zero-defect claim. 🔴 **Blocker register `.13`**: the `Ack?` table heading `## Blockers` + `docs/book/src/blockers.md`. **RE-SURFACE every `Ack? = no` row EVERY stopping-point reply**; clear only on director engagement with THAT row.
-- **Latest commit:** `git log -1 --oneline`; review baseline `9c2d2ba`.
-- **Continuity:** **the book's CLI chapters carry the full recovery contract (RequestId/outcome after commit uncertainty, `--resume-bootstrap`) and its limits — read them rather than a copy here.** Semantic introspection/MCP remains the tracked `.6.4` proposal, no pivot.
-- **Reading:** the full-source census is historical evidence at `9c2d2ba` (131 records), NOT a currency claim later. The Rust corpus exceeds one session; re-read the roadmap, the book and the leaf's sources in full, resuming the rest from the records.
-- **Push cadence:** ~300-commit batches; the full rule and the ENDED red-remote exception are in `COMMIT.md`. ⛔ Do not push per commit.
-- **PNT:** resumed by the director 2026-09-11 in full PNT mode. No background job in flight. Commit each bounded leaf; full CI before push.
-- **Storage:** all project output/cache/temp stores are repository-derived, on its volume. Run `scripts/census_pg_test_clusters.py` (`--retire --confirm`) rather than rebuilding the judgement. ⛔ The build-cache disposition is `.11.4.3.1.8`'s — the cache Cargo does NOT collect is the larger one. Installed tools are read-only exceptions; use fresh ownership evidence, never a frozen manifest.
-- **External gates:** G6/G7 Internet qualification and ADR-001 name clearance are open; none blocks local repairs.
+- **Project:** ReasonBraid. The public repository `rdje/reasonbraid` must remain public (director, 2026-09-09). Working-name clearance is open and blocks package/domain/marketing release only — never repairs (`docs/adr/001`).
+- **Active tree:** `SIGNOFF-REPAIR`. Re-derive both numbers rather than reading them here: `git rev-list --count origin/main..HEAD`, and the frontier caption's `awk` (it must read the `- Opened:`-only spelling as well as `- Status:`).
+- **Next action:** frontier row 1 — `SIGNOFF-REPAIR.11.14.1`, the cross-tenant evidence enumeration. Reproduce before repairing.
+- **Latest commit:** `git log -1 --oneline`. Source-review baseline: `9c2d2ba`.
+- **Roadmap:** Phase 0–7 records exist; qualification is under corrective review and Phase 8 is incomplete. After `SIGNOFF-REPAIR`, resume `PHASE-8.5.3`.
+
+## Standing obligations
+
+- **Blockers.** The register is `SIGNOFF-REPAIR.13` (`## Blockers` in the tree) and `docs/book/src/blockers.md`. **Re-surface every `Ack? = no` row in EVERY stopping-point reply**, as a labelled list. Clear a row only when the director engages with *that* row.
+- **PNT mode**, resumed by the director 2026-09-11. Commit each bounded leaf per `COMMIT.md`; no background job may outlive a handoff.
+- **Push cadence: batches of ~300 commits.** ⛔ Never per commit. The rule and its ended red-remote exception are in `COMMIT.md`.
+- ⛔ **No zero-defect claim.** Findings are owned in the tree, never merely reported.
+
+## Traps — what a fresh session gets wrong
+
+- ⚠️ **Always `python3 -B scripts/project_env.py cargo …`.** A bare `cargo` uses a different `CARGO_HOME` and re-downloads the world. **One `cargo` at a time** — check `pgrep -fl cargo` first.
+- ⛔ **Never raise a cap to fit content** (`MEMORY_ARCHITECTURE.md`): demote it.
+- ⛔ **Every published number comes from a command**, re-run at HEAD — and check an instrument's first number a *different* way (`docs/CLAIM_VERIFICATION.md`, `TOOLBOX.md`). That habit has caught a wrong number in this file's own history.
+- **Storage:** every output, cache, scratch and temporary store is repository-derived and on the repository's volume (`CLAUDE.md` §13).
+
+## Where the rest lives
+
+A leaf's findings and evidence are in its own section of `docs/tasks/SIGNOFF-REPAIR.md`; durable cross-cutting decisions in `docs/decisions/` and its `INDEX.md`; transferable methods in `TOOLBOX.md` and `docs/knowledge/`; what each gate enforces and why in `DOCTRINE_ENFORCEMENT.md`; current progress and qualification limits in `LIVE_STATUS.md`; and what a user or operator sees in `docs/book/`.

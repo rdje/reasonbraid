@@ -14,17 +14,15 @@ coordination trail, and it publishes no personal address that could go stale.
 The decision and its rejected alternatives are recorded in
 `docs/decisions/2026-09-16_internet-qualification-route.md`.
 
-⚠️ **Status: the channel is declared and awaits one repository setting.** Private
-vulnerability reporting must be enabled by the repository owner under
-*Settings → Code security*. Until the Security tab offers *Report a
-vulnerability*, treat the fallback below as the route — this policy does not
-promise a channel that is not yet accepting reports.
+✅ **The channel is live.** Private vulnerability reporting was enabled by the
+repository owner on 2026-09-16, so the Security tab accepts reports now. This
+policy no longer names a fallback route, because naming two channels is how a
+report goes to the one nobody watches.
 
-- **Fallback, while the switch is off:** contact the **accountable owner**,
-  Richard DJE, whose role authority is recorded in
+- **If the Security tab does not offer it** — an older client, or a fork — reach
+  the **accountable owner**, Richard DJE, whose role authority is recorded in
   `docs/decisions/2026-09-06_accountable-owners.md`, through an established
-  private channel. If none is established, arrange one before sharing
-  confidential details.
+  private channel, and arrange one before sharing confidential details.
 - ⛔ Do not put sensitive details in public issues, commits, pull requests or
   logs. A public repository cannot provide an embargo.
 - A useful report names the affected surface, reproduction steps and impact.

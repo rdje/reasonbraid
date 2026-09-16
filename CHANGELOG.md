@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The evidence chain is shared by design; the authorization decision is what must name the tenant (`SIGNOFF-REPAIR.11.14`)
+
+✅ **The decision on twelve tenant-less tables is taken — and taking it found a live cross-tenant enumeration path.**
+
+- ⭐ **The measurement changed the question:** `migrations/0023:21` declares `UNIQUE (original_locator, expected_digest)`, so two tenants citing one URL share one row by construction. The evidence chain is content-addressed by design; a `tenant_id` column would break the dedupe the digest exists for.
+- ⭐ **§16.8 asks for tenant id in every *authorization decision*, not every table** — and that is exactly the layer where it is absent.
+- **Verdict: none of the twelve gains a column.** Three gain a tenant-bound read, the six `evaluation_*` gain a site-operator grant gate, `deployment_targets` is operator infrastructure, two defer to `.6.1.5` by name. Record: `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md`.
+- 🔴 **The live path:** `snapshots::stale` carries no tenant predicate and `GET /v1/snapshots/stale` admits on enrolment alone, returning every tenant's `original_locator`, `auth_class` and `provider_receipt`. A disclosure path and an enumeration, not a write path. New owner `.11.14.1`, reproduce-first.
+- No product code, schema or test changed.
+
 ## 2026-09-16 — Measure the split-coverage gate, decline it, and write the table that finds the defects (`SIGNOFF-REPAIR.11.15`)
 
 🔴 **Two splits had dropped a mechanism their own goal line names. The obvious gate is measured unsound; the practice it would have enforced found two live defects on its first use.**

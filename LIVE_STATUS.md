@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TAKING `.11.14`'s DECISION FOUND A LIVE CROSS-TENANT ENUMERATION PATH (DOC-0029; the defect is `.11.14.1`).**
+
+- ⭐ **The measurement changed the question.** `migrations/0023_resource_references.sql:21` declares `UNIQUE (original_locator, expected_digest)` — two tenants citing the same URL at the same digest **share one row by construction**, and `snapshot_objects` is keyed by `digest` alone. The evidence chain is content-addressed BY DESIGN (ADR-011); a `tenant_id` column would break the constraint or duplicate identical bytes, making the store worse.
+- ⭐ **And ROADMAP §16.8 does not ask for one**: it says tenant id is part of every *aggregate key* and every *authorization DECISION*. A snapshot is not an aggregate — it is an immutable receipt over shared bytes — and what is missing is the decision to disclose it. ⛔ Reading the sentence as "every table" would have produced twelve unnecessary migrations.
+- **The verdict: none of the twelve gains a column.** Three gain a tenant-bound READ (`.11.14.1`); the six `evaluation_*` gain a site-operator grant gate on the shape `2026-09-09_site-operator-authority.md` already describes; `deployment_targets` is operator infrastructure; `policy_publications` and `deployment_assignments` DEFER to `.6.1.5` by name.
+- 🔴 **The live path, measured while deciding:** `snapshots::stale` is `SELECT … FROM evidence_snapshots WHERE deleted_at IS NULL AND fresh_until IS NOT NULL AND fresh_until < $1 ORDER BY fresh_until` — no tenant predicate, no principal, no limit — and `GET /v1/snapshots/stale` admits on enrolment alone. A row carries `original_locator`, `auth_class` and `provider_receipt`, so tenant A learns which documents B acquired, when and under which credential class.
+- ⚠️ **Real width:** a DISCLOSURE path, not a write path, and an ENUMERATION rather than an oracle for a known id — which makes it worse than `.3.5`'s node-token finding, where the ids were unguessable. ⛔ Whether the acquired BYTES are reachable by another route is NOT measured and is not claimed.
+- ⛔ **The repair is not a column.** The binding belongs on the decision, which means deriving the citing tenant through the reference; and `.6.1.5`'s trap applies in full — a tenant-scoped read over an unscoped write hides rows from their own author, so the read binding and the write authority are one repair.
+
 🔴 **A SPLIT IS DRAWN FROM A GOAL LINE AND NOTHING CHECKED IT COVERED ONE — MEASURED, GATE DECLINED, AND THE ONE TABLE WRITTEN FOUND TWO LIVE DEFECTS (`.11.15`, REPAIR-0212).**
 
 - **The census**, `python3 -B scripts/census_split_coverage.py`: of **299** leaves, **14** declare a split, and **1** carried a mechanism-to-child mapping. Two of the fourteen had already dropped a mechanism their goal line names — `.3.4` two, found eleven commits later; `.7.2` one, found three commits later, and it was a live credential leak.

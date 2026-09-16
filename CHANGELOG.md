@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Own the browser suite's retained-fixture accumulation (`SIGNOFF-REPAIR.7.3.2.1`)
+
+- **Measured during §8 artifact cleanup, not reported as a worry.** `du -sk target/browser-lifetime-controls/*` returns **12 fixtures, 515,424 KiB** across four sessions. The browser harness retains a fixture on a FAILED run deliberately — the evidence is the point — and nothing retires one.
+- ⭐ `.11.4.8`'s `target/ci-browser/` retirement is the shape to copy: keep the receipt, drop the payload any run reproduces. This session applied that precedent by hand to its own four failure artefacts, reclaiming 1.7 GB, and opened the leaf so the rule exists rather than the habit.
+- ⛔ Not a locality defect: the fixtures are exclusively created under `target/` on the repository volume. This is accumulation without a retirement rule.
+- New owner `.7.3.2.1`, with acceptance. No code changed.
+
 ## 2026-09-16 — Every configuration refusal happens before the first mutation (`SIGNOFF-REPAIR.11.12`)
 
 ✅ **`rb-server` used to migrate the database and then discover it could not run.**

@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE ACQUISITION LANE WAS CARRYING THREE DIFFERENT REPAIRS UNDER ONE GOAL LINE, AND IS NOW SPLIT (`.7.2`, DOC-0026).** `.7.2` held one `- Status: pending.`, no `- Acceptance:` of its own, and three repairs that share nothing but a subsystem: a client's redirect policy, a content predicate over a blob's first 64 bytes, and how a repository is opened. Two of the three are `attach` clauses the goal line does not make visible at all. ⛔ `.11.13`'s rule is that a leaf without acceptance is not an owner, so each child carries one.
+
+- **`.7.2.2` — classify every redirect hop, including an IP literal.** `Policy::limited(5)` auto-follows up to five hops with only the DNS belt behind them, and hyper-util 0.1.20 skips the resolver when the host is already an IP address, in its own comment. The pre-flight classifies the FIRST destination only.
+- **`.7.2.3` — the LFS gate refuses on a ten-byte run, not on a pointer.** `head.windows(10).any(|w| w == b"version ht")` over the first 64 bytes, where a real pointer is that line at offset 0. ⚠️ It OVER-refuses: an availability defect, not a bypass.
+- **`.7.2.4` — the repository is opened with gix's DEFAULT permissions over an untrusted remote**, while gix 0.87.1 ships the named remedy it does not use, `open::Options::isolated()`.
+- ⭐ **The census NARROWED the published finding**: a hostname redirect hop IS covered, because hyper-util resolves it through `ClassifiedDns`, whose `resolve` retains only policy-allowed addresses. The uncovered destination is precisely an IP-LITERAL hop, and the leaf says so rather than keeping the wider claim.
+- ⚠️ **And it turned up one nobody had recorded:** `ClassifiedDns::resolve` uses `addrs.retain(...)` rather than erroring, so a hostname resolving only into a refused range yields an EMPTY address list and a generic connect failure instead of a named `DestinationRefused`. It fails closed — diagnosability, not safety — and is owned at `.7.2.2`, whose repair touches the same belt.
+
 ✅ **THE DELEGATION LANE IS CLOSED, AND THREE OF ITS SIX VERDICTS ARE NOT "DONE" (`.3.4`, DOC-0025).** Eight children, reconciled against the leaf's own GOAL LINE rather than against their statuses — the discipline `.3.4.3.1` had to learn one commit earlier, where a third of its acceptance turned out to be unmeetable.
 
 | Mechanism the goal line names | Carried by | Verdict |

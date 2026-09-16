@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-16 — Split the acquisition lane into the three repairs its goal line was carrying (`SIGNOFF-REPAIR.7.2`)
+
+⛔ **One leaf, one `- Status: pending.`, no acceptance of its own, and three repairs that share nothing but a subsystem.**
+
+- **`.7.2.2` — classify every redirect hop, including an IP literal.** `Policy::limited(5)` auto-follows up to five hops with only the DNS belt behind them, and hyper-util 0.1.20 skips the resolver when the host is already an IP address — in its own comment. The pre-flight classifies the first destination only.
+- **`.7.2.3` — the LFS gate refuses on a ten-byte run, not on a pointer.** `head.windows(10).any(|w| w == b"version ht")` over the first 64 bytes, where a real pointer carries that line at offset 0. ⚠️ It over-refuses: an availability defect, not a bypass, and the leaf says which direction it runs.
+- **`.7.2.4` — the repository is opened with gix's default permissions** over an untrusted remote, while gix 0.87.1 ships the named remedy it does not use, `open::Options::isolated()`. Distinct from `.7.2.1`, which owned the directory: this is about what gix reads.
+- ⭐ **The census narrowed the published finding.** A hostname redirect hop IS covered — hyper-util resolves it through `ClassifiedDns`, which retains only policy-allowed addresses — so the uncovered destination is precisely an IP-literal hop.
+- ⚠️ **And turned up one nobody had recorded:** `ClassifiedDns::resolve` retains allowed addresses rather than erroring, so a hostname resolving only into a refused range gives a generic connect failure instead of a named `DestinationRefused`. It fails closed, so it is diagnosability rather than safety, and it is owned rather than reported.
+- The parent's opening line is renamed `- Opened:` so the leaf carries exactly one `- Status:` — which `TASK-STATUS` refused the commit until it did.
+
 ## 2026-09-16 — Close the delegation lane on its goal line, three verdicts of which are not "done" (`SIGNOFF-REPAIR.3.4`)
 
 ✅ **Eight children, reconciled against the leaf's own goal line rather than against their statuses.**

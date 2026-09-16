@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE `assess` STEP RECORDS AN ASSESSMENT AGAINST THE THREAD — THE DELIBERATION AND THE EVIDENCE CHAIN NOW MEET (`.11.14.3.1`, REPAIR-0217).**
+
+- **RED was the error message itself:** `unknown field \`assessment\`, expected one of \`tenant_id\`, \`content\`, \`kind\`, \`evidence_refs\`, \`claims\`, \`target_claim_digest\`, \`verdict\`, \`ref_event_id\`, \`synthesis\``. ⭐ The contribution body carries a payload for `verdict` and one for `synthesis` — the other two step-bound kinds — and **none for an assessment**. `41 passed; 1 failed`; after the repair **42 / 0**, plus ten regression suites.
+- **The control drives the SHIPPED `evidence_review` profile**, not a fixture, so the RED is a tenant's real path: create the thread, contribute a claim on `solicit`, advance twice to `assess`, and try to record what the step is named for.
+- **Accepted path checked three ways rather than once:** the stored row (`claim_id` = the digest, the snapshot, `supports`, `authored_by_tenant`), the claim-keyed HTTP read, and the timeline event's `assessment` object.
+- ⭐ **Every gate already existed; the leaf composed them.** `claim_exists_in_thread` (the check an evidence request already gets), `snapshots::is_cited_by` (`.11.14.1`), `claims::submit`'s §12.7 vocabulary and excerpt validation, `.11.14.2`'s authoring tenant. **No migration** — the schema was already right, which is the evidence that DOC-0037 was correct to call this wiring rather than design.
+- ⭐ **What needed new code was ATOMICITY.** `claims::submit` and `is_cited_by` took a `&PgPool` and could not join the thread's transaction, so an assessment could have been written while its contribution rolled back. Both are now executor-generic on the house's `E: DerefMut` bound; the `assess` path passes `&mut *tx`, and the event and the row commit together. A storage fault maps to `CorruptState`, never `InvalidCommand` (`.7.4.2`).
+- **Six refusals, each naming its gate:** wrong step, a digest that is not a claim of this thread, a snapshot this tenant never cited, an excerpt absent from the acquired bytes, the payload on another kind, and an assessment word outside the five.
+- 🔎 **The diagnostic was then run over the WHOLE vocabulary, and classified rather than counted.** Of thirteen `STEP_KINDS`: 6 gate a kind, 3 are terminals, 2 appear only in the default profile's list, and **2 return zero** — `critique` and `retrospect`. ⛔ Those two are NOT claimed as defects: a step with no dedicated kind is still a real phase, and what made `assess` different was the complete STORE sitting unreachable behind its zero with §13.2 naming the step that should reach it.
+- ⛔ **`POST /v1/assessments` stays**, with a free-text `claim_id` — removing a shipped route is a breaking change §13.2 does not ask for. ⚠️ That leaves two writers producing two kinds of identifier into one column, so `.11.14.3.3` is widened to own the remaining writer as well as the legacy rows, and the book publishes the split rather than implying uniformity.
+
 🔎 **A CLAIM I PUBLISHED TO THE DIRECTOR DID NOT SURVIVE ITS OWN FALSIFICATION (`.11.2.5`).**
 
 - **The claim:** "the enforcement layer is doing real work, not ceremony", offered on the strength of two gates catching me in one session. Falsifying it rather than restating it: **two of three sub-claims held, one did not.**

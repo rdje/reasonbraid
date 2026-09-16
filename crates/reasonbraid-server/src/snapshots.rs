@@ -412,18 +412,26 @@ pub async fn get_for_tenant(
 /// Whether this tenant cited the snapshot — the gate the CHILD reads
 /// (`/derivations`, `/assessments`) apply to their parent before disclosing
 /// anything about it, including whether it exists.
-pub async fn is_cited_by(
-    pool: &PgPool,
+/// Generic over the executor so a deliberation can ask this question INSIDE
+/// its own transaction (`SIGNOFF-REPAIR.11.14.3.1`): an `assess` contribution
+/// and the assessment row it records commit together, so the citation it was
+/// admitted on cannot be withdrawn between the check and the write.
+pub async fn is_cited_by<'e, E>(
+    mut executor: E,
     snapshot_id: &str,
     tenant_id: &str,
-) -> Result<bool, sqlx::Error> {
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evidence_citations \
          WHERE snapshot_id = $1 AND tenant_id = $2)",
     )
     .bind(snapshot_id)
     .bind(tenant_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *executor)
     .await
 }
 

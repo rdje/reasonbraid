@@ -5505,6 +5505,411 @@ async fn an_assessment_is_read_by_the_tenant_that_authored_it() {
     );
 }
 
+/// The `assess` step records an assessment against the thread
+/// (`SIGNOFF-REPAIR.11.14.3.1`,
+/// `docs/decisions/2026-09-16_the-deliberation-flow-owns-the-evidence-chain.md`).
+///
+/// ROADMAP §13.2's deliberation flow is: step 2 register context and resource
+/// references, step 5 normalize claims and requested evidence, step 6
+/// acquire/assess evidence within the allowed plan. The product encodes it —
+/// `STEP_KINDS` carries `assess`, and `evidence_review` and `policy_proposal`
+/// declare the step — but `git grep -n '"assess"' -- crates/reasonbraid-server/src`
+/// returned ONE hit before this repair: the vocabulary constant itself. A tenant
+/// running the shipped profile for reviewing evidence advanced onto a step at
+/// which nothing could be recorded, beside a complete assessment store.
+///
+/// The claim is named by its SERVER-COMPUTED digest and membership-checked
+/// against this thread, so the identifier cannot be invented; the snapshot must
+/// be one this tenant CITED (`SIGNOFF-REPAIR.11.14.1`); and the row is authored
+/// by the thread's tenant (`SIGNOFF-REPAIR.11.14.2`).
+#[tokio::test]
+async fn the_assess_step_records_an_assessment_against_the_thread() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assess-step-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // The shipped built-in whose steps are `solicit, evidence_request, assess,
+    // decide` (`migrations/0032_workflow_profiles.sql`).
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "as-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "as-assess",
+                "objective": "probe the assess step",
+                "workflow_profile": "evidence_review",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the evidence_review thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: String, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // The evidence this deliberation will assess: a reference, then a snapshot
+    // over bytes the excerpt genuinely appears in. Submitting it as this tenant
+    // is what records the citation (`.11.14.1`).
+    let payload = b"the acquired report states the migration preserved every row";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({ "original_locator": "https://example.org/assess-evidence", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference submits: {reference}");
+    let reference_id = reference["resource_id"].as_str().unwrap().to_string();
+    let (status, snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &human_id,
+        &json!({
+            "reference_id": reference_id,
+            "original_locator": "https://example.org/assess-evidence",
+            "final_locator": "https://example.org/assess-evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+            "byte_length": payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(payload),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap().to_string();
+
+    // Step 0 `solicit`: the claim whose digest the assessment will name. The
+    // digest is the SERVER's — the client sends content only.
+    let claim_content = "the migration preserved every row";
+    let claim_digest = reasonbraid_server::fetcher::digest_sha256_hex(claim_content.as_bytes());
+    let (status, claimed) = command(
+        "as-claim".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the claim under review",
+            "kind": "claim",
+            "claims": [ { "content": claim_content } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the claim contributes: {claimed}");
+
+    let assessment_body = |digest: &str, snapshot: &str, excerpt: &str| {
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the evidence supports the claim",
+            "kind": "assessment",
+            "assessment": {
+                "claim_digest": digest,
+                "snapshot_id": snapshot,
+                "assessment": "supports",
+                "excerpt": excerpt,
+                "rationale": "the report states it in the acquired bytes",
+            },
+        })
+    };
+
+    // The step gate, before the step: an assessment during `solicit` refuses.
+    let (status, early) = command(
+        "as-early".into(),
+        "thread.contribute",
+        assessment_body(&claim_digest, &snapshot_id, "preserved every row"),
+    )
+    .await;
+    assert_eq!(status, 400, "the early assessment refuses: {early}");
+    assert!(
+        early["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("assess"),
+        "the refusal names its step: {early}"
+    );
+
+    // solicit → evidence_request → assess.
+    for (key, _) in [("as-advance-1", 0), ("as-advance-2", 0)] {
+        let (status, advanced) = command(
+            key.to_string(),
+            "thread.advance_round",
+            json!({ "tenant_id": tenant_id }),
+        )
+        .await;
+        assert_eq!(status, 200, "the round advances: {advanced}");
+    }
+
+    // ── The finding: on its own step, the assessment is recorded ──
+    let (status, assessed) = command(
+        "as-assess".into(),
+        "thread.contribute",
+        assessment_body(&claim_digest, &snapshot_id, "preserved every row"),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the `assess` step records nothing — the step is declared by a shipped profile and wired to no contribution kind: {assessed}"
+    );
+
+    // The row exists, keyed by the MINTED digest and authored by this tenant.
+    let stored: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT claim_id, snapshot_id, assessment, authored_by_tenant \
+         FROM claim_assessments WHERE claim_id = $1",
+    )
+    .bind(&claim_digest)
+    .fetch_all(&pool)
+    .await
+    .expect("read the assessment the step recorded");
+    assert_eq!(stored.len(), 1, "exactly one assessment: {stored:?}");
+    assert_eq!(
+        stored[0].1, snapshot_id,
+        "it cites the snapshot: {stored:?}"
+    );
+    assert_eq!(stored[0].2, "supports", "{stored:?}");
+    assert_eq!(
+        stored[0].3.as_deref(),
+        Some(tenant_id.as_str()),
+        "authored by the thread's tenant: {stored:?}"
+    );
+
+    // And it is reachable through the claim-keyed read, whose identifier is now
+    // a digest the server minted rather than a label a caller invented.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/claims/{claim_digest}/assessments"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the claim's assessments read: {listed}");
+    let rows = listed.as_array().expect("the assessment array");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["snapshot_id"], json!(snapshot_id));
+
+    // The event carries the assessment's facts, so the timeline shows what was
+    // asserted and against which evidence.
+    let (status, timeline) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    let event = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| {
+            e["event_type"] == json!("thread.contribution_submitted")
+                && e["body"]["kind"] == json!("assessment")
+        })
+        .cloned()
+        .expect("the assessment event is in the timeline");
+    assert_eq!(
+        event["body"]["assessment"]["claim_digest"],
+        json!(claim_digest)
+    );
+    assert_eq!(
+        event["body"]["assessment"]["snapshot_id"],
+        json!(snapshot_id)
+    );
+    assert_eq!(event["body"]["assessment"]["assessment"], json!("supports"));
+
+    // ── Each refusal by NAME, so a caller learns which gate stopped it ──
+
+    // A forged claim digest is not a claim of this thread.
+    let forged = reasonbraid_server::fetcher::digest_sha256_hex(b"never claimed here");
+    let (status, refused) = command(
+        "as-forged".into(),
+        "thread.contribute",
+        assessment_body(&forged, &snapshot_id, "preserved every row"),
+    )
+    .await;
+    assert_eq!(status, 400, "the forged digest refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("claim"),
+        "{refused}"
+    );
+
+    // A snapshot this tenant never cited is not readable and not assessable.
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assess-step-other" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the other tenant enrols: {stranger}");
+    let other_id = stranger["principal_id"].as_str().unwrap().to_string();
+    let other_payload = b"another tenant's acquired document";
+    let (status, other_reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &other_id,
+        &json!({ "original_locator": "https://example.org/assess-other", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{other_reference}");
+    let (status, other_snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &other_id,
+        &json!({
+            "reference_id": other_reference["resource_id"].as_str().unwrap(),
+            "original_locator": "https://example.org/assess-other",
+            "final_locator": "https://example.org/assess-other",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(other_payload),
+            "byte_length": other_payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(other_payload),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{other_snapshot}");
+    let (status, refused) = command(
+        "as-uncited".into(),
+        "thread.contribute",
+        assessment_body(
+            &claim_digest,
+            other_snapshot["snapshot_id"].as_str().unwrap(),
+            "another tenant's acquired",
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "the uncited snapshot refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("snapshot"),
+        "{refused}"
+    );
+
+    // The excerpt must appear in the acquired bytes — citation existence alone
+    // never satisfies an evidence gate (ROADMAP §12.7).
+    let (status, refused) = command(
+        "as-fake-excerpt".into(),
+        "thread.contribute",
+        assessment_body(&claim_digest, &snapshot_id, "preserved NO rows at all"),
+    )
+    .await;
+    assert_eq!(status, 400, "the fake excerpt refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("excerpt"),
+        "{refused}"
+    );
+
+    // An assessment payload on another kind is refused, the way a verdict is.
+    let (status, refused) = command(
+        "as-wrong-kind".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "a position carrying an assessment",
+            "kind": "position",
+            "assessment": {
+                "claim_digest": claim_digest,
+                "snapshot_id": snapshot_id,
+                "assessment": "supports",
+                "excerpt": "preserved every row",
+                "rationale": "misplaced",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the misplaced assessment refuses: {refused}");
+
+    // An unknown assessment kind is refused by name.
+    let (status, refused) = command(
+        "as-unknown-kind".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "an unsupported judgement",
+            "kind": "assessment",
+            "assessment": {
+                "claim_digest": claim_digest,
+                "snapshot_id": snapshot_id,
+                "assessment": "proves",
+                "excerpt": "preserved every row",
+                "rationale": "not one of the five",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "the unknown assessment kind refuses: {refused}"
+    );
+
+    // Nothing the refusals attempted was written.
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM claim_assessments")
+        .fetch_one(&pool)
+        .await
+        .expect("count the assessments");
+    assert_eq!(total, 1, "only the accepted assessment exists");
+    eprintln!(
+        "assess step: the shipped evidence_review profile records an assessment keyed by a minted claim digest over a cited snapshot; forged digest, uncited snapshot, fake excerpt, misplaced payload, wrong step and unknown kind each refused by name; {total} row written"
+    );
+}
+
 /// The G4 hostile-content suite (PHASE-4.7.1): ONE gate-citable test
 /// assembling the hostile scenarios end-to-end — every refusal NAMES its
 /// reason (the unsupported, denied, mutable, and non-reproducible paths

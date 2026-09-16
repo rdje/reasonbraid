@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-16 — A vocabulary entry with no uses is an answer, not a question
+
+- The `assess` step existed in `STEP_KINDS`, two shipped profiles declared it, and `git grep -n '"assess"' -- crates/reasonbraid-server/src` returned **one hit: the constant itself**. I had treated that as part of an open design question — *should these two subsystems be joined?* — and escalated it.
+- ⭐ **It was the opposite. A declared-but-unreferenced vocabulary entry is evidence that someone already decided the thing should exist**, and therefore a pointer at the specification that asked for it. Reading it as ambiguity inverts the evidence: the ambiguity was mine, not the system's.
+- **The generalizable diagnostic is cheap and I ran it too late.** For any closed vocabulary — an enum, a `const` array, a step list, an action set — count each entry's occurrences outside its own definition. A zero is either a genuine phase that needs no code, or a capability nothing can reach. Which one it is depends on a second question: **is there a store, a route or a table sitting behind the zero?**
+- **So I ran it over all thirteen steps afterwards, and classified rather than counted**, because the same session had already been burned by a lexical census. Six gate a kind, three are terminals, two appear only in the default profile's list, two return zero. ⛔ And the two zeroes are *not* defects: `critique` and `retrospect` are sequencing phases with nothing behind them. What made `assess` different was never the zero — it was the complete assessment store, with five kinds and excerpt validation, unreachable behind it.
+- ⚠️ **The honest reading of the whole episode.** Three sessions' worth of repairs — the citation binding, the authoring binding, the membership check — were each built as isolated security fixes, and every one of them turned out to be a prerequisite for a join specified in §13.2 all along. The work was right; the *story* I had about it was that these were unrelated holes. A specification read early would have made them one lane.
+- ⭐ **What I would do differently, stated as a rule rather than a regret:** before deciding that a subsystem boundary is a design question, grep the specification for the FLOW that would cross it, and grep the code for a vocabulary entry naming it. Both are one command. Both were available on day one.
+
 ## 2026-09-16 — "The specification is silent" is a census, and I published one over two sections of twenty-five
 
 - I escalated a decision to the director as genuinely undecidable: two defensible designs, a frozen roadmap that "settles it neither way". The roadmap settled it. §13.2 names the join as steps 2, 5 and 6 of the canonical deliberation flow, and I had read §12.7 and §5.2.2.

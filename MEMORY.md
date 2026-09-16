@@ -9,8 +9,8 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- latest_commit: `84fa043` — "REASONBRAID-DOC-0036 (leaf SIGNOFF-REPAIR.11.2.5): the census gate is discharged by any command in the section" (ahead of origin: 161; push at ~300)
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `SIGNOFF-REPAIR.11.14.3.1` (`pending`)
-- next_action: Drive the shipped `evidence_review` profile to its `assess` step and observe that NO assessment can be attached to the thread — `git grep -n '"assess"' -- crates/reasonbraid-server/src` returns 1 hit, the vocabulary constant. RED before any repair.
+- latest_commit: `ba6e77e` — "REASONBRAID-DOC-0037 (leaf SIGNOFF-REPAIR.11.14.3): the deliberation flow owns the evidence chain" (ahead of origin: 162; push at ~300)
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `SIGNOFF-REPAIR.11.14.3.2` (`pending`)
+- next_action: §13.2 step 2 — observe a contribution accepted with an `EvidenceRef` matching no `resource_references` row, RED first. ⛔ The disposition is NOT assumed to be refusal: §13.2 says *register* at step 2 and acquires at step 6.
 - in_flight_uncommitted: none — working tree clean, no background job.
 - blockers: **B1** external threat-model review, **B2** penetration test, **B3** prompt-injection suite, **B4** name clearance — all OUTSIDE, all `Ack? = no`; **C1** remote CI has never run (cadence only), **C2** no gate record's shipped count re-derives. Register and the standing re-surfacing obligation: `SIGNOFF-REPAIR.13` + `docs/book/src/blockers.md`.

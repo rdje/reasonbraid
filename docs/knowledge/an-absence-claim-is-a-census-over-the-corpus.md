@@ -45,6 +45,25 @@ returns zero — applied to prose, which usually has no gate watching it.
 things joined?", search for the verbs a join would use, not the nouns the two
 things are called. The section you need may name neither.
 
+## The companion diagnostic, for code
+
+For any closed vocabulary — an enum, a `const` array, a step list, an action set
+— count each entry's occurrences **outside its own definition**:
+
+```bash
+for v in "${VOCAB[@]}"; do
+  n=$(git grep -h "\"$v\"" -- src | grep -v '^\s*"'"$v"'",$' | wc -l)
+  printf '%-18s %s\n' "$v" "$n"; done
+```
+
+⛔ **Then classify the zeroes rather than reporting them.** A zero is either a
+genuine entry that needs no code, or a capability nothing can reach, and the
+question that separates them is: *is there a store, route or table sitting
+behind it?* In the instance that produced this card, thirteen entries yielded two
+zeroes and **neither was a defect** — while the entry that WAS a defect had a
+complete, unreachable store behind it and a specification naming the step that
+should reach it.
+
 ## The tell that is easy to misread
 
 ⛔ **An unimplemented vocabulary entry is not evidence of an open question. It is

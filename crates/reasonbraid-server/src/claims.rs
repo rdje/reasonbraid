@@ -103,11 +103,19 @@ impl std::error::Error for AssessmentError {}
 /// surfaces are bound to (`SIGNOFF-REPAIR.11.14.2`). ⛔ It is not
 /// `submission.author`, which is an unauthenticated caller label — a
 /// predicate over a field the caller controls is not an authorization.
-pub async fn submit(
-    pool: &PgPool,
+/// Generic over the executor for the same reason [`crate::snapshots::is_cited_by`]
+/// is: the `assess` step records an assessment inside the thread's own
+/// transaction, so the contribution event and the row it produces commit
+/// together or not at all (`SIGNOFF-REPAIR.11.14.3.1`).
+pub async fn submit<'e, E>(
+    mut executor: E,
     submission: &AssessmentSubmission,
     authored_by_tenant: &str,
-) -> Result<String, AssessmentError> {
+) -> Result<String, AssessmentError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
     if !ASSESSMENT_KINDS.contains(&submission.assessment.as_str()) {
         return Err(AssessmentError::UnknownKind(submission.assessment.clone()));
     }
@@ -117,7 +125,7 @@ pub async fn submit(
          WHERE s.snapshot_id = $1",
     )
     .bind(&submission.snapshot_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
     let bytes = bytes.ok_or(AssessmentError::SnapshotMissing)?;
@@ -133,7 +141,7 @@ pub async fn submit(
     .bind(&submission.snapshot_id)
     .bind(&submission.assessment)
     .bind(&submission.author)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
     if let Some(existing) = existing {
@@ -161,7 +169,7 @@ pub async fn submit(
     .bind(&submission.independence)
     .bind(&submission.uncertainty)
     .bind(authored_by_tenant)
-    .execute(pool)
+    .execute(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
     Ok(assessment_id)

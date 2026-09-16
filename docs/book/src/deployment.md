@@ -649,6 +649,56 @@ any other site action — `--action evidence_expire` on the boundary and on the
 grant bound to it. The full invocation, its environment and its prerequisites
 are in [Site authority](site-authority.md).
 
+### How a deliberation records an assessment
+
+ROADMAP §13.2's deliberation flow registers resource references (step 2) and
+acquires or assesses evidence (step 6). The `assess` workflow step is where that
+happens, and two shipped built-in profiles declare it — `evidence_review`
+(`solicit`, `evidence_request`, **`assess`**, `decide`) and `policy_proposal`
+(`solicit`, `revise`, **`assess`**, `vote`, `approve`).
+
+A contribution of kind `assessment`, on the `assess` step, records one §12.7
+assessment:
+
+```json
+{
+  "tenant_id": "...",
+  "content": "the evidence supports the claim",
+  "kind": "assessment",
+  "assessment": {
+    "claim_digest": "<a claim digest of this thread>",
+    "snapshot_id": "<a snapshot this tenant cited>",
+    "assessment": "supports",
+    "excerpt": "preserved every row",
+    "rationale": "the report states it in the acquired bytes"
+  }
+}
+```
+
+The claim is named by the digest **the server computed** when the claim was
+contributed — the client never supplies it — so the identifier cannot be
+invented. Six refusals, each naming the gate that produced it:
+
+| The request | Refused because |
+| --- | --- |
+| the step is not `assess` | the contribution names the step it requires and the step it found |
+| the claim digest is not a claim of this thread | the membership check an evidence request already applies |
+| the snapshot is not one this tenant cited | assess evidence this deliberation acquired |
+| the excerpt is not in the snapshot's bytes | citation existence alone never satisfies an evidence gate (§12.7) |
+| the assessment payload rides another kind | it rides an `assessment`-kind contribution only |
+| the assessment word is outside the five | `supports`, `contradicts`, `contextualizes`, `source_only`, `unverifiable` |
+
+The contribution event and the assessment row commit in **one transaction**, so
+a deliberation never records an assessment the evidence store did not accept,
+and never accepts one the timeline does not show. The resulting row is readable
+through `GET /v1/claims/{claim_digest}/assessments` by the tenant that authored
+it.
+
+⛔ `POST /v1/assessments` still exists and still takes a free-text `claim_id`.
+It is the non-deliberation path, and its identifier is a label rather than a
+minted digest — bound only by the authoring tenant. Unifying that namespace is
+open under `SIGNOFF-REPAIR.11.14.3.3`.
+
 ## Public repository and publication checks
 
 This project is public and must remain public. The director confirmed that the

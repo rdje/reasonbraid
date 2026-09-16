@@ -293,6 +293,12 @@ pub enum ContributionKind {
     /// (`verdict` body field: the judged digest + the rule + the §13.4
     /// outcome), legal on the `adjudicate` step only.
     Verdict,
+    /// `.11.14.3.1` (ROADMAP §13.2 step 6): the evidence assessment — the
+    /// §12.7 record linking ONE claim of this thread to ONE snapshot this
+    /// tenant cited, legal on the `assess` step only. This is the step's
+    /// payload; before it existed, `assess` was a step two shipped profiles
+    /// declared and nothing could execute on.
+    Assessment,
     /// `.3.2` (ADR-030): the moderation kinds — the CLOSED vocabulary. A
     /// moderation action is a contribution, never a new authority: the
     /// capability-shaped fields (verdict/claims/evidence_refs/target) are
@@ -360,6 +366,10 @@ pub struct ContributeBody {
     /// contribution.
     #[serde(default)]
     pub verdict: Option<VerdictInput>,
+    /// `.11.14.3.1`: the assessment. Legal only on an `assessment`-kind
+    /// contribution, on the `assess` step.
+    #[serde(default)]
+    pub assessment: Option<AssessmentInput>,
     /// `.3.2` (ADR-030): the moderated event's id — legal only on a
     /// moderation-kind contribution; the reference must exist in the thread.
     #[serde(default)]
@@ -407,6 +417,46 @@ pub struct VerdictInput {
 pub struct ClaimRecord {
     pub content: String,
     pub digest: String,
+}
+
+/// One evidence assessment riding an `assess`-step contribution
+/// (`SIGNOFF-REPAIR.11.14.3.1`, ROADMAP §12.7 + §13.2 step 6).
+///
+/// The claim is named by its SERVER-COMPUTED digest and checked for membership
+/// of THIS thread, so the identifier cannot be invented — the defect
+/// `SIGNOFF-REPAIR.11.14.2` measured on the standalone route. The snapshot must
+/// be one this tenant CITED (`SIGNOFF-REPAIR.11.14.1`), and the excerpt must
+/// appear in its acquired bytes, because §12.7 is explicit that citation
+/// existence alone never satisfies an evidence gate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssessmentInput {
+    /// A claim digest of THIS thread.
+    pub claim_digest: String,
+    /// A snapshot this thread's tenant cited.
+    pub snapshot_id: String,
+    /// One of the five §12.7 assessments.
+    pub assessment: String,
+    /// The excerpt, which must appear in the snapshot's raw bytes.
+    pub excerpt: String,
+    /// The entailment rationale — why the excerpt bears on the claim.
+    pub rationale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier: Option<String>,
+    #[serde(default = "unassessed")]
+    pub source_authority: String,
+    #[serde(default = "unassessed")]
+    pub freshness: String,
+    #[serde(default = "unassessed")]
+    pub independence: String,
+    #[serde(default = "unassessed")]
+    pub uncertainty: String,
+}
+
+fn unassessed() -> String {
+    "unassessed".to_owned()
 }
 
 /// The client-side claim input: content only (`PHASE-5.2.2`).
@@ -1365,13 +1415,15 @@ where
             // it references, never rewrites).
             if body.kind.is_moderation_kind() {
                 if body.verdict.is_some()
+                    || body.assessment.is_some()
                     || !body.claims.is_empty()
                     || !body.evidence_refs.is_empty()
                     || body.target_claim_digest.is_some()
                 {
                     return Err(ThreadError::InvalidCommand(
-                        "a moderation action carries no verdict, claims, evidence references, \
-                         or claim target — the prohibition is the vocabulary's negative space"
+                        "a moderation action carries no verdict, assessment, claims, evidence \
+                         references, or claim target — the prohibition is the vocabulary's \
+                         negative space"
                             .to_string(),
                     ));
                 }
@@ -1413,6 +1465,11 @@ where
             if body.verdict.is_some() && body.kind != ContributionKind::Verdict {
                 return Err(ThreadError::InvalidCommand(
                     "the verdict rides a `verdict`-kind contribution only".to_string(),
+                ));
+            }
+            if body.assessment.is_some() && body.kind != ContributionKind::Assessment {
+                return Err(ThreadError::InvalidCommand(
+                    "the assessment rides an `assessment`-kind contribution only".to_string(),
                 ));
             }
             // The evidence_reference kind CARRIES evidence — an empty refs
@@ -1493,6 +1550,84 @@ where
                     )));
                 }
             }
+            // `.11.14.3.1` (ROADMAP §13.2 step 6): the `assess` step's payload.
+            // Every gate below already existed somewhere; what was missing was
+            // the step that composes them, which is why two shipped profiles
+            // declared `assess` and nothing could execute on it.
+            let recorded_assessment = if body.kind == ContributionKind::Assessment {
+                let Some(input) = body.assessment.as_ref() else {
+                    return Err(ThreadError::InvalidCommand(
+                        "an `assessment` contribution requires an `assessment` payload".to_string(),
+                    ));
+                };
+                if step != Some("assess") {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "the `assessment` contribution requires the current step to be `assess` \
+                         (it is `{}`)",
+                        step.unwrap_or("none")
+                    )));
+                }
+                // The claim is named by a digest the SERVER computed, and it
+                // must be a claim of THIS thread — the same check an evidence
+                // request already gets, and the reason the identifier cannot be
+                // invented the way the standalone route's `claim_id` can.
+                if !claim_exists_in_thread(&mut *tx, tenant_id, thread_id, &input.claim_digest)
+                    .await
+                    .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "claim digest `{}` is not a claim of this thread",
+                        input.claim_digest
+                    )));
+                }
+                // The evidence must be evidence this tenant ACQUIRED. Without
+                // this, an assessment would be a way to learn that a snapshot
+                // exists — the enumeration `.11.14.1` closed on the read side.
+                if !crate::snapshots::is_cited_by(
+                    &mut *tx,
+                    &input.snapshot_id,
+                    &tenant_id.to_string(),
+                )
+                .await
+                .map_err(|e| ThreadError::CorruptState(e.to_string()))?
+                {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "snapshot `{}` is not cited by this tenant — assess evidence this \
+                         deliberation acquired",
+                        input.snapshot_id
+                    )));
+                }
+                // The store owns the §12.7 vocabulary, the excerpt validation
+                // against the acquired bytes, and the replay. It runs on THIS
+                // transaction, so the contribution event and the assessment row
+                // commit together or not at all.
+                let submission = crate::claims::AssessmentSubmission {
+                    claim_id: input.claim_digest.clone(),
+                    snapshot_id: input.snapshot_id.clone(),
+                    assessment: input.assessment.clone(),
+                    author: principal.to_owned(),
+                    verifier: input.verifier.clone(),
+                    excerpt: input.excerpt.clone(),
+                    selector: input.selector.clone(),
+                    rationale: input.rationale.clone(),
+                    source_authority: input.source_authority.clone(),
+                    freshness: input.freshness.clone(),
+                    independence: input.independence.clone(),
+                    uncertainty: input.uncertainty.clone(),
+                };
+                match crate::claims::submit(&mut *tx, &submission, &tenant_id.to_string()).await {
+                    Ok(assessment_id) => Some(assessment_id),
+                    // A store fault is the server's problem and must not be
+                    // reported as though the caller's input were wrong
+                    // (`.7.4.2`); every other variant IS about the input.
+                    Err(crate::claims::AssessmentError::Storage(cause)) => {
+                        return Err(ThreadError::CorruptState(cause.to_string()))
+                    }
+                    Err(error) => return Err(ThreadError::InvalidCommand(error.to_string())),
+                }
+            } else {
+                None
+            };
             // `.2.2` (ADR-029): the digest is SERVER-computed over the claim
             // content — the client never supplies it, so an objection can
             // only name a digest the server derived.
@@ -1533,6 +1668,15 @@ where
                         "target_digest": v.target_digest,
                         "rule": v.rule,
                         "outcome": v.outcome.canonical(),
+                    })),
+                    "assessment": body.assessment.as_ref().map(|a| json!({
+                        "claim_digest": a.claim_digest,
+                        "snapshot_id": a.snapshot_id,
+                        "assessment": a.assessment,
+                        "excerpt": a.excerpt,
+                        "rationale": a.rationale,
+                        "selector": a.selector,
+                        "assessment_id": recorded_assessment,
                     })),
                     "round": projection.current_round,
                     "blind": blind,

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-16 — The `assess` step records an assessment against the thread (`SIGNOFF-REPAIR.11.14.3.1`)
+
+✅ **DOC-0037's decision, executed. The deliberation and the evidence chain meet at the point §13.2 names.**
+
+- **RED was the error message:** `unknown field \`assessment\`` — the contribution body had a payload for `verdict` and one for `synthesis`, and none for an assessment. The control drives the SHIPPED `evidence_review` profile, so the RED is a tenant's real path. `41 passed; 1 failed` → **42 / 0**.
+- A contribution of kind `assessment` on the `assess` step records a §12.7 row whose `claim_id` is the digest **the server computed** and membership-checked against that thread, over a snapshot the tenant **cited**, authored by the tenant.
+- ⭐ **Every gate already existed** — the membership check, `.11.14.1`'s citation gate, `.11.14.2`'s authoring binding, `claims::submit`'s excerpt validation. **No migration.** The repair added a body, a kind and an ordering, and no new rule.
+- ⭐ **Atomicity needed the new code:** `claims::submit` and `is_cited_by` became executor-generic so the contribution event and the assessment row commit in one transaction.
+- Six refusals each name their gate: wrong step, foreign claim digest, uncited snapshot, absent excerpt, misplaced payload, unknown assessment word.
+- 🔎 The diagnostic was re-run over all thirteen `STEP_KINDS` and classified: 6 gate a kind, 3 are terminals, 2 are default-profile only, 2 are pure sequencing — and the two zeroes are explicitly NOT claimed as defects, because no store sits behind them.
+- **Verification:** `profiles` 42, `command_api` 39, `command_ordering` 7, `escalation` 4, `node_channel` 37, `evaluation` 3, `mcp_write` 5, `mcp` 6, `cli_end_to_end` 5, `migration_upgrade` 4; strict server clippy; `cargo fmt --all --check`; `make gate`; `make book`.
+
 ## 2026-09-16 — The deliberation flow owns the evidence chain (`SIGNOFF-REPAIR.11.14.3`)
 
 🔎 **The decision was held for the director on the grounds that the frozen roadmap settled it neither way. That was wrong: §13.2 settles it, and had not been read.**

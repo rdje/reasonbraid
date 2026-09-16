@@ -3744,7 +3744,8 @@ async fn submit_assessment(
             "an unenrolled principal submits no assessment",
         ));
     };
-    match crate::claims::submit(&state.pool, &submission, &tenant).await {
+    let mut conn = state.pool.acquire().await?;
+    match crate::claims::submit(&mut *conn, &submission, &tenant).await {
         Ok(assessment_id) => Ok(Json(json!({ "assessment_id": assessment_id }))),
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged
@@ -3867,7 +3868,8 @@ async fn cited_snapshot(
     snapshot_id: &str,
     tenant: &str,
 ) -> Result<(), ControlApiError> {
-    if crate::snapshots::is_cited_by(pool, snapshot_id, tenant).await? {
+    let mut conn = pool.acquire().await?;
+    if crate::snapshots::is_cited_by(&mut *conn, snapshot_id, tenant).await? {
         return Ok(());
     }
     Err(ControlApiError::not_found(format!(

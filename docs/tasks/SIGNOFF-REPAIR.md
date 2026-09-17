@@ -4794,7 +4794,24 @@ git grep -n expected_digest 69b6374 -- crates/reasonbraid-server/src   # -> 13 h
 - ⛔ Do NOT assume the answer is to fail the resolution. The comment's intent is defensible: the acquisition DID happen, the receipt is a true statement about the network, and turning a persistence outcome into an acquisition failure would misreport the other direction. The honest candidates are an `acquisition_error` beside the receipt, a separate `persisted` field on the outcome, or failing the request — and the third is a wire change to a shipped response.
 - Owns: deciding what a resolution reports when its evidence was not persisted, and making the two arms say it.
 - Acceptance: a control resolves a pinned reference whose served bytes differ and observes the silent receipt RED first; the disposition is recorded with its rejected alternatives; and the resolution's contract is stated in the book beside the pin.
-- Verification / commit: pending.
+- ⭐ **THE DISPOSITION WAS NOT AN OPEN QUESTION, AND THAT IS THE FINDING.** This leaf was opened naming three candidates — an `acquisition_error` beside the receipt, a `persisted` field, or failing the request. Reading the R2 arm's own call site settled it: `SIGNOFF-REPAIR.7.4.2` had already decided exactly this, in a comment written at the site — *"A failed snapshot is NOT a successful acquisition. This path used to discard the error and still set `outcome.acquisition`, so a caller was told the document had been acquired while no evidence row and no derivation existed."* It sets `acquisition_error { kind: "evidence_unstored" }` and returns WITHOUT an `acquisition`. ⛔ So this is a shipped decision with two unconverted call sites, not a design choice — a different and much cheaper thing to find, and it was found by MEASURING the neighbour rather than by reasoning from the leaf's own framing.
+- 🔴 **REPRODUCE, falsified against the exact unconverted arms** (`git stash push -- crates/reasonbraid-server/src/api.rs`, control run, file restored). A reference pinned to bytes the origin does not serve, resolved through R0:
+
+```json
+{"acquisition":{"acquired_at":"2026-09-17T10:04:42.363813Z","byte_count":412,
+  "chain":["http://127.0.0.1:56360/feed.xml","http://127.0.0.1:56360/feed.xml"],
+  "content_type":"text/xml; charset=utf-8","digest":"sha256:561688a4…",
+  "final_url":"http://127.0.0.1:56360/feed.xml","sniffed":"text"},
+ "resolvers":["r0-https-fetcher"],"unresolvable_now":false}
+```
+
+  A complete receipt — digest, byte count, redirect chain — with **0** snapshots stored and **no** `acquisition_error` at all. `47 passed; 1 failed`.
+- **FIX** — the R0 and R5 arms take the R2 shape verbatim: on `Err`, log `acquisition_evidence_unstored`, set `acquisition_error { kind: "evidence_unstored", message }`, and return without setting `acquisition`. `grep -n "let _ = crate::snapshots::submit" crates/reasonbraid-server/src/*.rs` now returns **nothing**. ⛔ No new field and no wire change: the vocabulary is the one `.7.4.2` shipped, so a client that already handles `evidence_unstored` from R2 handles it from R0 and R5 unchanged.
+- **ADDRESSED (verified)** — the pinned reference's resolution answers `evidence_unstored` with NO acquisition receipt and 0 snapshots; the UNPINNED reference through the SAME deployment acquires, persists **1** snapshot and names no error — the bound that a repair reporting `evidence_unstored` for every resolution would fail. `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` → **48 passed / 0 failed**.
+- ⚠️ **What this does not change**: the acquisition still HAPPENED, and the log line records it. What the caller no longer receives is a receipt implying evidence that is not there. The three candidates the leaf named are all superseded by the existing decision rather than weighed — recorded so a reader does not re-open a question `.7.4.2` closed.
+- lockstep: README.md unchanged (objective, layout and standard commands untouched; this leaf converts two handler arms onto a shipped contract and states it in the book chapter that documents the pin).
+- Status: `done`.
+- Verification / commit: `REASONBRAID-REPAIR-0225`.
 
 ### SIGNOFF-REPAIR.11.13 — The reconciliation's findings were ROUTED, not owned
 
@@ -6154,7 +6171,8 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.14.3.12` | `pending` | opened by `.11.14.3.6`, which gave an older discard a likely cause: `api.rs`'s R0 and R5 arms call `let _ = crate::snapshots::submit(…)`, so resolving a PINNED reference whose page drifted now returns an acquisition receipt and **no snapshot**, silently. ⛔ Do NOT assume the answer is to fail the resolution — the acquisition DID happen and the receipt is a true statement about the network. Censused to **two** sites (the R2 arm already captures its result) |
+| 1 | `SIGNOFF-REPAIR.11.14.3.11` | `pending` | opened by `.11.14.3.6`, and it is a gap in `.11.14.3.4`'s OWN census one commit earlier: that census enumerated the routes under `/v1/resources` and `POST /v1/snapshots` names a reference in its BODY. ⭐ `.3.5.3`'s shape in a different family, and the lesson is promoted (`a-census-is-as-wide-as-its-key`). ⚠️ Weaker than it sounds — the id is unguessable, there is no list verb, and a submission carries the BYTES, which is the asymmetry that made the snapshot replay safe and cuts the other way here. ⛔ Do NOT assume symmetry with the read settles it |
+| 1a0d | `SIGNOFF-REPAIR.11.14.3.12` | `done` | ✅ REPAIR-0225 — and the finding was that the disposition was ALREADY DECIDED: `.7.4.2` shipped `evidence_unstored` on the R2 arm and the other two were never migrated onto it |
 | 1a | `SIGNOFF-REPAIR.11.14.3.11` | `pending` | opened by `.11.14.3.6`, and it is a gap in `.11.14.3.4`'s OWN census one commit earlier: that census enumerated the routes under `/v1/resources` and `POST /v1/snapshots` names a reference in its BODY. ⭐ `.3.5.3`'s shape in a different family. ⚠️ Weaker than it sounds — the id is unguessable, there is no list verb, and a submission carries the BYTES, which is the asymmetry that made the snapshot replay safe and cuts the other way here |
 | 1a0c | `SIGNOFF-REPAIR.11.14.3.6` | `done` | ✅ REPAIR-0224 — a pinned reference accepts only the bytes it names; the plural is relocated to the unpinned one, not forbidden |
 | 1a0 | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | opened by `.11.14.3.4`'s own execution: `credential_binding_ref` is a caller-supplied field that SELECTS a credential, the broker's store carries **no tenant at all**, and the pair key makes the field shared — a second tenant registering the same pair inherits the first's binding. ⚠️ **Measured LATENT, not live**: `RB_ENABLE_R5R3RX` is off by default and no production path registers a binding, so every shipped deployment runs an empty broker store. ⭐ `.13.1.1`'s shape — a finished mechanism with no production producer |

@@ -761,11 +761,31 @@ the changed page's snapshot belongs:
 ⛔ **The refusal quotes neither digest.** You already have the one you sent, and
 the pinned one belongs to a reference this route does not check you may read.
 
-⚠️ **Two acquisition paths discard the persistence result** — the R0 and R5 arms
-of `POST /v1/resources/{id}/resolve` — so resolving a pinned reference whose page
-has drifted returns an acquisition receipt and **no snapshot**, silently. That
-discard predates the pin and now has a likely cause;
-`SIGNOFF-REPAIR.11.14.3.12` owns it.
+#### A resolution that could not store its evidence says so
+
+`POST /v1/resources/{id}/resolve` answers with a receipt **only when the evidence
+is there**. If the acquisition succeeded and the snapshot did not persist — the
+commonest reason now being a pin the served bytes do not match — the resolution
+carries the refusal instead:
+
+```json
+{"resolvers":["r0-https-fetcher"],"unresolvable_now":false,
+ "acquisition_error":{"kind":"evidence_unstored","message":"…"}}
+```
+
+There is **no `acquisition` field** in that answer. A receipt describes a
+document you can go and read; one returned beside an empty evidence store would
+say the document was acquired while nothing was stored.
+
+⛔ **Two of the three acquisition arms used to do exactly that.** The R2 arm has
+reported `evidence_unstored` since `SIGNOFF-REPAIR.7.4.2`; the R0 and R5 arms
+discarded the store's answer and set the receipt regardless.
+`SIGNOFF-REPAIR.11.14.3.12` put all three on the same contract — the same `kind`,
+so a client already handling it from R2 handles it from R0 and R5 unchanged.
+
+⚠️ The acquisition itself still happened, and the server logs it
+(`acquisition_evidence_unstored`, with the resource id and the reason). What the
+caller no longer receives is a receipt implying evidence that is not there.
 
 #### Who may read a reference
 

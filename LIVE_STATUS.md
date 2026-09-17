@@ -5,6 +5,26 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RESOLUTION SAYS WHEN ITS EVIDENCE WAS NOT PERSISTED (`.11.14.3.12`, REPAIR-0225).**
+
+⭐ **The leaf named three candidate dispositions. Reading the neighbour's call site showed the decision had already been taken.**
+
+- **The finding, and it is not the one the leaf was opened on.** `SIGNOFF-REPAIR.7.4.2` decided this for the R2 arm and wrote the reason AT THE CALL SITE: *"A failed snapshot is NOT a successful acquisition. This path used to discard the error and still set `outcome.acquisition`, so a caller was told the document had been acquired while no evidence row and no derivation existed."* It sets `acquisition_error { kind: "evidence_unstored" }` and returns without an `acquisition`. ⛔ So this was a **shipped decision with two unconverted call sites**, not a design choice — a different and much cheaper thing to find, and found by measuring the neighbour rather than reasoning from the leaf's framing.
+- 🔴 **RED, falsified against the exact unconverted arms** (`git stash push -- api.rs`, control run, file restored). A reference pinned to bytes the origin does not serve, resolved through R0:
+
+```json
+{"acquisition":{"byte_count":412,"digest":"sha256:561688a4…",
+  "chain":["http://127.0.0.1:56360/feed.xml","http://127.0.0.1:56360/feed.xml"],
+  "final_url":"http://127.0.0.1:56360/feed.xml","sniffed":"text"},
+ "resolvers":["r0-https-fetcher"],"unresolvable_now":false}
+```
+
+  A complete receipt — digest, byte count, redirect chain — with **0** snapshots stored and **no** `acquisition_error` at all. `47 passed; 1 failed`.
+- **FIX** — the R0 and R5 arms take the R2 shape verbatim. `grep -n "let _ = crate::snapshots::submit" crates/reasonbraid-server/src/*.rs` now returns **nothing**. ⛔ No new field and no wire change: a client already handling `evidence_unstored` from R2 handles it from R0 and R5 unchanged.
+- **ADDRESSED** — the pinned reference's resolution answers `evidence_unstored` with NO receipt and 0 snapshots; the **unpinned** reference through the SAME deployment acquires, persists **1** snapshot and names no error. That second arm is the bound a repair reporting `evidence_unstored` for everything would fail.
+- ⚠️ The acquisition still happened and the server logs it. What the caller no longer receives is a receipt implying evidence that is not there.
+- **Verification:** `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` → **48 passed / 0 failed**.
+
 ✅ **A REFERENCE'S `expected_digest` NAMES ITS BYTES (`.11.14.3.6`, REPAIR-0224).**
 
 🔴 **A §12.1 field a caller supplied to say "these are the bytes I expect" constrained nothing, and enforcing it is what makes the pair key mean something.**

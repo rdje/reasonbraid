@@ -9627,3 +9627,191 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
         "reference pin: a pinned reference refuses a snapshot of other bytes (400, no digest quoted, 0 rows written) and accepts its own; an UNPINNED reference still holds {versions} versions; the same locator at the other digest is a second reference and acquires normally"
     );
 }
+
+/// Declare that THIS deployment's R0 pack serves the origin's scheme — the
+/// `widen_r2_to_http` shape, for the acquisition-only pack.
+async fn widen_r0_to_http(pool: &PgPool) -> Value {
+    let shipped: Value = sqlx::query_scalar(
+        "SELECT schemes FROM resolver_capabilities WHERE resolver_id = 'r0-https-fetcher'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("the R0 pack is installed");
+    assert_eq!(
+        shipped,
+        json!(["https"]),
+        "the migration's R0 schemes are the baseline this control widens"
+    );
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r0-https-fetcher'",
+    )
+    .bind(json!(["https", "http"]))
+    .execute(pool)
+    .await
+    .expect("this deployment's R0 pack also serves the local origin");
+    shipped
+}
+
+async fn restore_r0_schemes(pool: &PgPool, shipped: &Value) {
+    sqlx::query(
+        "UPDATE resolver_capabilities SET schemes = $1::jsonb \
+         WHERE resolver_id = 'r0-https-fetcher'",
+    )
+    .bind(shipped)
+    .execute(pool)
+    .await
+    .expect("the shipped R0 schemes are restored");
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.12`: a resolution whose evidence did not persist says
+/// so, on every arm rather than on one.
+///
+/// `.7.4.2` decided this for the R2 arm and wrote the reason at the call site —
+/// *"A failed snapshot is NOT a successful acquisition … a caller was told the
+/// document had been acquired while no evidence row and no derivation existed"*.
+/// The R0 and R5 arms were never migrated onto it: both called
+/// `let _ = crate::snapshots::submit(…)` and set `outcome.acquisition` regardless.
+///
+/// ⭐ **The disposition was therefore not an open question** — it was a shipped
+/// decision with two unconverted call sites, which is a different and cheaper
+/// thing to find. The leaf that opened this one posed it as a three-way choice;
+/// reading `.7.4.2`'s own call site settled it.
+///
+/// The failure is made REACHABLE by `.11.14.3.6`: a pinned reference whose page
+/// has drifted is a common, caller-meaningful reason for the store to refuse,
+/// where before the only cause was a storage fault.
+#[tokio::test]
+async fn a_resolution_says_when_its_evidence_was_not_persisted() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let (origin, _origin_handle) = start_feed_origin().await;
+    let port = origin.port();
+    let server = TestServer::start_with_router(
+        &pool,
+        reasonbraid_server::api_router_with_acquisition(
+            pool.clone(),
+            false,
+            std::sync::Arc::new(reasonbraid_server::broker::Broker::default()),
+            admitting_fetcher(port),
+        ),
+    )
+    .await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "unstored-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // The reference is pinned to bytes the origin does NOT serve, so the store
+    // refuses the snapshot while the acquisition itself succeeds.
+    let locator = format!("http://127.0.0.1:{port}/feed.xml");
+    let wrong_pin = reasonbraid_server::fetcher::digest_sha256_hex(b"not what the origin serves");
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({
+            "original_locator": locator,
+            "scheme": "http",
+            "expected_digest": wrong_pin,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the pinned reference registers: {reference}");
+    let resource_id = reference["resource_id"].as_str().unwrap().to_string();
+
+    // The registry row is shared with every other suite in this database, so it
+    // is restored before anything is asserted.
+    let shipped_schemes = widen_r0_to_http(&pool).await;
+    let (status, outcome) = post(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}/resolve"),
+        &human_id,
+        &json!({ "required_sandbox": "none", "required_egress": "listed" }),
+    )
+    .await;
+    restore_r0_schemes(&pool, &shipped_schemes).await;
+
+    assert_eq!(status, 200, "the resolution answers: {outcome}");
+    assert_eq!(
+        outcome["resolvers"][0],
+        json!("r0-https-fetcher"),
+        "the R0 pack is the ranked resolver for this control: {outcome}"
+    );
+
+    // ── The finding: the receipt without the evidence ───────────────────────
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&resource_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the reference's snapshots");
+    assert_eq!(stored, 0, "the pin refused the snapshot: {outcome}");
+    assert!(
+        outcome.get("acquisition").is_none(),
+        "no evidence row means no acquisition receipt — a caller must not be \
+         told the document was acquired while nothing was stored: {outcome}"
+    );
+    assert_eq!(
+        outcome["acquisition_error"]["kind"],
+        json!("evidence_unstored"),
+        "the resolution NAMES the persistence failure, in the vocabulary \
+         `.7.4.2` already shipped on the R2 arm: {outcome}"
+    );
+
+    // ── The bound: an unpinned reference through the same deployment ────────
+    //
+    // A repair that reported `evidence_unstored` for every resolution would
+    // fail here.
+    let (status, unpinned) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({ "original_locator": locator, "scheme": "http" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the unpinned reference registers: {unpinned}");
+    let unpinned_id = unpinned["resource_id"].as_str().unwrap().to_string();
+
+    let shipped_schemes = widen_r0_to_http(&pool).await;
+    let (status, ok) = post(
+        &client,
+        &base,
+        &format!("/v1/resources/{unpinned_id}/resolve"),
+        &human_id,
+        &json!({ "required_sandbox": "none", "required_egress": "listed" }),
+    )
+    .await;
+    restore_r0_schemes(&pool, &shipped_schemes).await;
+    assert_eq!(status, 200, "the unpinned resolution answers: {ok}");
+    assert!(
+        ok.get("acquisition_error").is_none(),
+        "a resolution whose evidence DID persist names no error: {ok}"
+    );
+    assert!(
+        ok.get("acquisition").is_some(),
+        "…and carries its receipt: {ok}"
+    );
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&unpinned_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the unpinned reference's snapshots");
+    assert_eq!(stored, 1, "the evidence is there: {ok}");
+
+    eprintln!(
+        "resolution persistence: a pinned reference whose page drifted answers `evidence_unstored` with NO acquisition receipt and 0 snapshots, instead of a silent receipt; the unpinned reference through the same deployment acquires, persists 1 snapshot and names no error"
+    );
+}

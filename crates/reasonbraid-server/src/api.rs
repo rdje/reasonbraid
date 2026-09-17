@@ -2131,9 +2131,13 @@ async fn resolve_resource(
                         chrono::Utc::now(),
                     );
                     // The snapshot store (`.6.1`): the acquired bytes land
-                    // under their digest — a persistence failure leaves the
-                    // receipt returned (the acquisition succeeded).
-                    let _ = crate::snapshots::submit(
+                    // under their digest. ⛔ A persistence failure is NOT a
+                    // successful acquisition — this arm used to discard the
+                    // error and still set `outcome.acquisition`, so a caller
+                    // was told the document had been acquired while no evidence
+                    // row existed. `.7.4.2` decided that for the R2 arm and this
+                    // one was never migrated onto it (`SIGNOFF-REPAIR.11.14.3.12`).
+                    let stored = crate::snapshots::submit(
                         &state.pool,
                         &crate::snapshots::SnapshotSubmission {
                             reference_id: resource_id.clone(),
@@ -2165,6 +2169,18 @@ async fn resolve_resource(
                         &citer,
                     )
                     .await;
+                    if let Err(error) = stored {
+                        crate::log_event!(
+                            "acquisition_evidence_unstored",
+                            "resource_id" => resource_id.clone(),
+                            "reason" => error.to_string(),
+                        );
+                        outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                            kind: "evidence_unstored".to_owned(),
+                            message: error.to_string(),
+                        });
+                        return Ok(Json(outcome));
+                    }
                     outcome.acquisition = Some(crate::resolvers::Acquisition::Web(receipt));
                 }
                 Err(error) => {
@@ -2220,7 +2236,11 @@ async fn resolve_resource(
                                         &document,
                                         chrono::Utc::now(),
                                     );
-                                    let _ = crate::snapshots::submit(
+                                    // The same rule the R0 arm and `.7.4.2`'s
+                                    // R2 arm apply: evidence that did not
+                                    // persist is not an acquisition
+                                    // (`SIGNOFF-REPAIR.11.14.3.12`).
+                                    let stored = crate::snapshots::submit(
                                         &state.pool,
                                         &crate::snapshots::SnapshotSubmission {
                                             reference_id: resource_id.clone(),
@@ -2252,6 +2272,19 @@ async fn resolve_resource(
                                         &citer,
                                     )
                                     .await;
+                                    if let Err(error) = stored {
+                                        crate::log_event!(
+                                            "acquisition_evidence_unstored",
+                                            "resource_id" => resource_id.clone(),
+                                            "reason" => error.to_string(),
+                                        );
+                                        outcome.acquisition_error =
+                                            Some(crate::resolvers::AcquisitionError {
+                                                kind: "evidence_unstored".to_owned(),
+                                                message: error.to_string(),
+                                            });
+                                        return Ok(Json(outcome));
+                                    }
                                     outcome.acquisition =
                                         Some(crate::resolvers::Acquisition::Authenticated(
                                             Box::new(crate::broker::AuthenticatedReceipt {

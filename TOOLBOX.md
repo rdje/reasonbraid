@@ -252,6 +252,39 @@ at all. Full method and the four failure shapes:
 ⚠️ An instrument's own banner is prose too. One self-test printed a hardcoded `9/9 arms`
 beside nine arms — correct, and one added arm away from publishing a false total.
 
+### Give every census a LIVE-CORPUS arm in its own `--self-test`
+
+A census reads a real corpus. Its `--self-test` reads fixtures. When the corpus changes
+shape — a renamed heading, a retitled bullet, a moved directory — the fixtures do not
+notice, so the instrument can **refuse on every run while its self-test stays green**.
+
+⭐ Measured instance (`SIGNOFF-REPAIR.11.20`): `scripts/census_memory_warnings.py` keys on
+`MEMORY.md`'s next-action bullet. `SIGNOFF-REPAIR.11.4.2.3` renamed that bullet while
+conforming the file to the template that governs it, and did not update the reader. From
+that commit the census exited 1 on every run — and nobody saw it, because nothing runs a
+census on a schedule and its **16 fixture controls passed throughout**. The defect it
+exists to prevent recurred in the meantime: `MEMORY.md` went back to 6,123 of 7,168 bytes.
+
+The remedy is one arm, at the end of the self-test:
+
+```python
+try:
+    warning_text((ROOT / "MEMORY.md").read_text())     # the real file, not a fixture
+except SystemExit as exc:
+    failures.append(f"live-corpus: the real corpus is unreadable to this census ({exc})")
+```
+
+⛔ **Assert almost nothing about the CONTENT** — only that the instrument can still locate
+what it is about. An arm coupled to the live file's wording fails on every honest edit and
+gets waived within a week, which is `SIGNOFF-REPAIR.11.5`'s constraint.
+
+⚠️ **A separate gate was measured and DECLINED.** Running all 12 census instruments in
+their normal mode costs **3.9 s** against an enforcer costing **11.6 s** — a 34% increase
+for a property the one-line arm above already proves inside a self-test that `SELF-TEST`
+runs anyway. ⛔ Honest limit, stated rather than hidden: nothing mechanically requires a
+census to HAVE such an arm, the same shape as `GAP-CLAIM-CENSUS` verifying that a census
+was recorded rather than that it was run.
+
 ### Ask the renderer, not the specification
 
 When a rule is about a DOCUMENT FORMAT, the authority is the tool that publishes the

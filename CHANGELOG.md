@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The instrument guarding `MEMORY.md` had been dead since the commit that reshaped `MEMORY.md` (`SIGNOFF-REPAIR.11.20`)
+
+🔴 **A census refused on every run for dozens of commits while its own `--self-test` reported 16 controls passing — and the defect it exists to prevent recurred in the meantime.**
+
+- **The defect.** `python3 -B scripts/census_memory_warnings.py` exits 1 with `census: MEMORY.md has no '- **Next action:**' bullet`. It keys on a literal bullet name; `6199f43` — `SIGNOFF-REPAIR.11.4.2.3`, *"conform the resume pointer to the template that governs it"* — renamed that bullet to `next_action:` and did not update the reader. ⛔ **The commit that reshaped the file is the commit that blinded its guard.**
+- 🔴 **`SELF-TEST` was green on it throughout.** All 16 controls are built from fixtures carrying the OLD bullet name. `TOOLBOX.md` already says *"a self-test written alongside the code shares its blind spots"*; this is the sharper case, where the blind spot was introduced later, by a commit to a different file.
+- 🔴 **And the defect recurred.** `SIGNOFF-REPAIR.11.4.2.2` cleared `MEMORY.md` from 7,168 of 7,168 bytes to 1,395. One session of closing leaves took it back to **6,123** — 85% of the cap.
+- ⭐ **The recurrence is `.11.16`'s shape, which is why the repair is not eviction.** A per-line byte census: **six standing-lesson bullets hold 3,983 bytes, 65% of the file**, and five of the six were PROMOTED to `docs/knowledge/` in the same session and then restated here in full. A layer-A pointer restating what layer C holds is a mirror nothing derives. ✅ **6,123 → 3,825 bytes with nothing lost** — each lesson is now a named slug, and all nine targets were verified tracked BEFORE the eviction.
+- ⭐ **The arm that would have caught it reads the REAL file**, and asserts almost nothing about its content — only that the census can still locate what it is about. An arm coupled to the live wording fails on every honest edit and gets waived. Falsified by name: with the pre-fix key restored, `SELF-TEST FAIL live-corpus: the real MEMORY.md is unreadable to this census`, while the other 16 pass.
+- ⛔ **The general gate is DECLINED on COST, not on shape.** *Every census still runs against its real corpus* would have fired on **1 of 12** before this commit and **0 of 12** after — `REASON-CODE-DOC`'s shape, which normally ships. It costs **3.9 s** against an enforcer costing **11.6 s**, a 34% increase, and `SELF-TEST` already runs each instrument's self-test — so the same property is free as a one-line arm inside it. ⭐ Compare the measurement that argued `SELF-TEST` in: 1.01 s on a 3.15 s enforcer. Four seconds on eleven is a different argument.
+- ⚠️ **Honest limit:** nothing mechanically requires a census to HAVE a live-corpus arm — the `GAP-CLAIM-CENSUS` archetype. The remedy is a `TOOLBOX.md` statement where the next census author is standing.
+- Routed: the census's model of WHERE warnings live is stale too — it counts 3 in one bullet and cannot see the 3,983 bytes in six others. `.11.20.1`.
+
 ## 2026-09-18 — `init.rs` was never in this repository (`SIGNOFF-REPAIR.11.17.1`)
 
 🔴 **Eight published citations named "a file that no longer exists". It was a dependency's source all along, and every cited line is exact at the pinned version.**

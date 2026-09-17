@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE INSTRUMENT GUARDING `MEMORY.md` HAD BEEN DEAD SINCE THE COMMIT THAT RESHAPED `MEMORY.md` (`.11.20`, REPAIR-0242).**
+
+🔴 **A census refused on every run for dozens of commits while its own `--self-test` reported 16 controls passing — and the defect it prevents recurred in the meantime.**
+
+- **The defect.** It keys on a literal bullet name; `6199f43` (`.11.4.2.3`) renamed that bullet while conforming the file to its template and did not update the reader. ⛔ The commit that reshaped the file is the commit that blinded its guard.
+- 🔴 **`SELF-TEST` stayed green** — all 16 controls are fixtures carrying the old name. The blind spot was introduced LATER, by a commit to a DIFFERENT file, which no care at authoring time covers.
+- 🔴 **The defect recurred:** `.11.4.2.2` cleared this file to 1,395 bytes; one session took it to **6,123** of 7,168.
+- ⭐ **The recurrence is `.11.16`'s shape:** **65% of the file was six standing-lesson bullets restating notes already durable in `docs/knowledge/`**. ✅ **6,123 → 3,825 bytes with nothing lost** — every lesson is a named pointer, all nine targets verified tracked BEFORE eviction.
+- ⭐ **A live-corpus arm now reads the real file**, falsified by name against the pre-fix key.
+- ⛔ **The general gate DECLINED on COST:** 1 of 12 then, 0 of 12 now — `REASON-CODE-DOC`'s shape — but 3.9 s on an 11.6 s enforcer, against the 1.01 s on 3.15 s that argued `SELF-TEST` in.
+
 ✅ **`init.rs` WAS NEVER IN THIS REPOSITORY (`.11.17.1`, REPAIR-0241).**
 
 🔴 **Eight published citations named "a file that no longer exists". It was a dependency's source, and every cited line is exact at the pinned version.**

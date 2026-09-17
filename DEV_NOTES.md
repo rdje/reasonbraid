@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — The commit that reshapes a file is the commit that blinds its guard
+
+- A census keyed on a literal heading in the file it guards. The commit that RESTRUCTURED that file renamed the heading — correctly, to match the template that governs it — and did not touch the reader. From that moment the census refused on every run, and nothing noticed for dozens of commits.
+- ⭐ **The pairing is the lesson, not the rename.** A structural edit to a document is exactly when its readers break, and it is exactly when nobody is looking at them: the edit's own acceptance is about the document, its diff does not mention the instrument, and the instrument's self-test keeps passing because its fixtures carry the old shape.
+- ⛔ **A self-test made of fixtures cannot see this**, and the reason is worth stating precisely: the blind spot was not introduced by the instrument's author, it was introduced LATER, by a commit to a DIFFERENT file. No amount of care at authoring time covers that.
+- ⭐ **One arm does:** at the end of the self-test, run the instrument's own locator against the REAL corpus and fail if it cannot find what it is about. ⚠️ Assert nothing about the content — an arm coupled to live wording fails on every honest edit and is waived within a week.
+- 🔎 The two-question habit that would have caught it at the rename: *what reads this file's structure?* and *did I run it?* Both are cheap; neither was asked.
+
 ## 2026-09-18 — "A file that no longer exists" is a conclusion, not an observation
 
 - A leaf recorded eight unresolvable citations as naming *"a file that no longer exists"*. ⭐ **Nobody had asked git.** `git log --all --diff-filter=A --name-only -- '*init.rs'` returns nothing: the file had never been tracked, under any name, ever. It was a DEPENDENCY's source.

@@ -69,15 +69,27 @@ _LEAF = re.compile(r"`(\.[0-9]+(?:\.[0-9]+)*)`")
 # the search key is the PRODUCER's words and not the reader's paraphrase.
 _BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
 
-NEXT_ACTION = "- **Next action:**"
+# ⛔ THE BULLET HAS BEEN RENAMED ONCE AND WILL BE AGAIN, so both spellings are
+# accepted rather than one (`SIGNOFF-REPAIR.11.20`). This instrument keyed on the
+# ORIGINAL `- **Next action:**`; `SIGNOFF-REPAIR.11.4.2.3` conformed `MEMORY.md`
+# to the `MEMORY_ARCHITECTURE.md` §6 template, which spells it `- next_action:`,
+# and did not update the reader. From that commit this census REFUSED on every
+# run — and nothing noticed, because nothing runs it and `SELF-TEST` only proves
+# its own fixtures still pass. Its 16 controls were green throughout.
+NEXT_ACTION_KEYS = ("- next_action:", "- **Next action:**")
 
 
 def warning_text(memory: str) -> str:
-    """The Next-action bullet, whose body is the standing-warning list."""
+    """The next-action bullet, whose body is the standing-warning list."""
     for line in memory.splitlines():
-        if line.startswith(NEXT_ACTION):
-            return line[len(NEXT_ACTION) :].strip()
-    raise SystemExit("census: MEMORY.md has no '- **Next action:**' bullet")
+        for key in NEXT_ACTION_KEYS:
+            if line.startswith(key):
+                return line[len(key) :].strip()
+    raise SystemExit(
+        "census: MEMORY.md has no next-action bullet ("
+        + " or ".join(repr(k) for k in NEXT_ACTION_KEYS)
+        + ")"
+    )
 
 
 def segment(body: str) -> list[str]:
@@ -174,7 +186,7 @@ def run(as_json: bool) -> int:
     return 0
 
 
-CONTROL_COUNT = 16
+CONTROL_COUNT = 17
 
 
 def self_test() -> int:
@@ -220,6 +232,21 @@ def self_test() -> int:
     check("dangling-citation", rows[0]["verdict"], "UNCITED")
     # The heading extractor reads real trees, and must find a known leaf.
     check("headings-find-known", ".4.2.3" in leaf_headings(), True)
+
+    # ⭐ THE ARM THAT WOULD HAVE CAUGHT THIS INSTRUMENT DYING, and the reason it
+    # is last: every control above is built from a FIXTURE, and a fixture written
+    # beside the code shares its assumptions. This one reads the REAL `MEMORY.md`
+    # and requires the key to still find its bullet. `SIGNOFF-REPAIR.11.4.2.3`
+    # renamed that bullet while conforming the file to its template; this census
+    # refused on every run from that commit, and the 16 fixture controls stayed
+    # green throughout (`SIGNOFF-REPAIR.11.20`).
+    # ⛔ It deliberately asserts almost nothing about the CONTENT — only that the
+    # instrument can still locate what it is about. A control coupled to the live
+    # file's wording would fail on every honest edit and be waived within a week.
+    try:
+        warning_text((ROOT / "MEMORY.md").read_text())
+    except SystemExit as exc:
+        failures.append(f"live-corpus: the real MEMORY.md is unreadable to this census ({exc})")
 
     if failures:
         for f in failures:

@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The §12.1 reference detail read is bound to its registrants (`SIGNOFF-REPAIR.11.14.3.4`)
+
+🔴 **The leaf expected a locator confirmation. RED returned the whole §12.1 row.**
+
+- **REPRODUCE, RED first.** A second tenant holding a `res_…` id it had never registered, at `GET /v1/resources/{id}`:
+
+```json
+{"reference":{"original_locator":"https://internal.example.org/q3-reserve-review",
+  "expected_digest":"sha256:aaaa…","credential_binding_ref":"the-owner-binding",
+  "purpose":"the reserve review the owner is running","visibility_scope":"tenant",
+  "risk_class":"high"}, "submitted_by":"agt_c06e5644-…", …}
+```
+
+  `45 passed; 1 failed`. ⭐ **Read `visibility_scope` in that payload**: the row declares `"tenant"` and the read ignored it — §12.1 lists the field and nothing consumes it. `POST /v1/resources/{id}/resolve` shares the same lookup and the same gate.
+- **The census, both directions:** 3 routes name a resource (register/replay, detail, resolve), 2 unbound callers of the store's read, **no list verb** — so the last two need the id in hand. An ORACLE, materially weaker than `.11.14.1`'s `GET /v1/snapshots/stale`.
+- ⭐ **DECIDED, and it is TWO answers rather than one** (`docs/decisions/2026-09-17_the-reference-read-is-bound-to-its-registrants.md`, four alternatives rejected). The detail read and the resolve verb are **bound**; the pair replay is **kept and published**.
+- ⛔ **The leaf's own warning was about the WRONG MECHANISM.** *"A per-tenant reference set would break the dedupe the pair key exists for"* is true of a tenant COLUMN and false of a SET — which is exactly why `0062` is a separate table. `migrations/0067` adds `reference_registrations` with the pair key untouched; one shared row still serves every tenant that names it, and the control asserts **2 registrations on one row**.
+- ⭐ **The difference from the snapshot ruling is NAMED rather than inherited**, which is the test `CLAIM_VERIFICATION.md` §3 leg 2 sets: confirming a SNAPSHOT means presenting its **bytes**, so `.11.14.1` closed both halves at once; confirming a REFERENCE means presenting a **locator**, which anyone can type. So the existence half is structural, and `POST /v1/resources` still answers `replayed: true` — published with its width (the caller must already know the locator AND the digest).
+- ⭐ **Binding the detail read costs nothing, measured** by the rule `.11.14.3.8` earned one commit earlier: every route that yields a `res_…` id goes through the pair replay, and the replay now RECORDS the caller's registration. What changes is the **price of admission** — a bare opaque handle used to be the whole predicate, and the locator is now required, which is the very thing the row would have disclosed.
+- **NO BACKFILL**, the fourth time in this family and for `0062`'s measured reason: `submitted_by` is a one-way `Uuid::new_v5` that joins to no identity table and the replay leaves it naming the FIRST registrant for ever. Registering the pair again restores the read, exactly as re-acquiring restores a snapshot's.
+- **Blast radius:** 21 fixture cleanup plans name `resource_references` and every one gains `reference_registrations` before it, because the shared checker validates the whole declared plan before the first deletion.
+- ⚠️ **Routed with its width MEASURED, not assumed — `.11.14.3.10`.** `credential_binding_ref` is a caller-supplied field that SELECTS a credential, the broker's store carries **no tenant at all**, and the pair key makes the field shared. ⛔ But `grep -rn "\.register(" crates/ --include=*.rs | grep -i broker` finds **3 hits, all tests**, `rb-server` builds `Broker::default()` — an empty store — and `RB_ENABLE_R5R3RX` is off by default. So it is **latent, not live**, and publishing it as a live cross-tenant credential path would have been a claim derived by reading.
+
 ## 2026-09-17 — A corrected claim was corrected in the register and left standing in the corpus (`SIGNOFF-REPAIR.13.4`)
 
 🔴 **Two blockers were measured false on 2026-09-15 and 2026-09-17. The book kept asserting both.**

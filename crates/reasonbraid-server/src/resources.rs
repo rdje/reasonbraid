@@ -112,6 +112,23 @@ pub struct SubmitOutcome {
     pub replayed: bool,
 }
 
+/// Who registered a reference — the tenant the DETAIL READ is bound to, plus
+/// the actor handle recorded for the audit trail (`SIGNOFF-REPAIR.11.14.3.4`).
+///
+/// ⭐ A registration is a SET rather than a column, for the reason
+/// `migrations/0067` records: `UNIQUE (original_locator, expected_digest)` makes
+/// one row serve every tenant that names the pair, so the tenant belongs to the
+/// disclosure DECISION rather than to the row. This is [`crate::snapshots::Citer`]'s
+/// shape, applied to the other content-addressed table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Registrant {
+    /// The registering tenant — the detail read compares against this.
+    pub tenant_id: String,
+    /// The actor handle that registered it. An audit breadcrumb; the
+    /// disclosure decision is the TENANT's.
+    pub principal: String,
+}
+
 /// The reference store's refusals — every one names its reason.
 // Only `Debug` derives: the storage variant carries the original SQLx error so
 // it survives to `std::error::Error::source`, and that error is neither `Clone`
@@ -164,6 +181,7 @@ pub async fn submit<'e, E>(
     mut executor: E,
     reference: &ResourceReference,
     submitted_by: &str,
+    registrant: &Registrant,
 ) -> Result<SubmitOutcome, ReferenceError>
 where
     E: std::ops::DerefMut,
@@ -186,6 +204,7 @@ where
         .await
         .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = existing {
+        record_registration(&mut *executor, &resource_id, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
             replayed: true,
@@ -221,6 +240,7 @@ where
     .await
     .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = inserted {
+        record_registration(&mut *executor, &resource_id, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
             replayed: false,
@@ -235,14 +255,80 @@ where
         .fetch_one(&mut *executor)
         .await
         .map_err(ReferenceError::Storage)?;
+    record_registration(&mut *executor, &resource_id, registrant).await?;
     Ok(SubmitOutcome {
         resource_id,
         replayed: true,
     })
 }
 
-/// Read one reference (the inspection).
-pub async fn get(
+/// Record one registration — idempotent, so a re-registration by the same
+/// tenant keeps the original time and actor.
+///
+/// ⛔ Written on the REPLAY as well as on the insert. Without that, the first
+/// tenant to name a pair would own the row's read for ever and every other
+/// tenant citing the same URL would be refused its own reference — the
+/// cross-tenant denial `SIGNOFF-REPAIR.11.14.3.2` retired `locator_digest_conflict`
+/// to remove, reintroduced one layer down.
+async fn record_registration<'e, E>(
+    mut executor: E,
+    resource_id: &str,
+    registrant: &Registrant,
+) -> Result<(), ReferenceError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        "INSERT INTO reference_registrations (resource_id, tenant_id, registered_by) \
+         VALUES ($1, $2, $3) ON CONFLICT (resource_id, tenant_id) DO NOTHING",
+    )
+    .bind(resource_id)
+    .bind(&registrant.tenant_id)
+    .bind(&registrant.principal)
+    .execute(&mut *executor)
+    .await
+    .map_err(ReferenceError::Storage)?;
+    Ok(())
+}
+
+/// Read one reference for a tenant that REGISTERED it — the detail read's gate
+/// (`SIGNOFF-REPAIR.11.14.3.4`).
+///
+/// ⛔ There is deliberately no unbound read in this module. A caller cannot ask
+/// for a reference without naming the tenant the answer is for, which is the
+/// property `crate::snapshots` already holds for the row this one points at.
+pub async fn get_for_tenant(
+    pool: &PgPool,
+    resource_id: &str,
+    tenant_id: &str,
+) -> Result<
+    Option<(
+        String,
+        ResourceReference,
+        String,
+        chrono::DateTime<chrono::Utc>,
+    )>,
+    sqlx::Error,
+> {
+    let registered: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM reference_registrations \
+         WHERE resource_id = $1 AND tenant_id = $2)",
+    )
+    .bind(resource_id)
+    .bind(tenant_id)
+    .fetch_one(pool)
+    .await?;
+    if !registered {
+        return Ok(None);
+    }
+    get(pool, resource_id).await
+}
+
+/// Read one reference, UNBOUND. Private to this module since
+/// `SIGNOFF-REPAIR.11.14.3.4`: every caller outside it goes through
+/// [`get_for_tenant`].
+async fn get(
     pool: &PgPool,
     resource_id: &str,
 ) -> Result<

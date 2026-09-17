@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — A prohibition names a mechanism, and the mechanism may not be the one you are proposing
+
+- A leaf carried a ⛔: *"Do NOT assume the answer is a citation table … a per-tenant reference set would break the dedupe the pair key exists for."* Obeyed literally, it rules out the correct answer.
+- ⭐ **The sentence is true of a COLUMN and false of a SET.** A `tenant_id` column on a table whose identity is `UNIQUE (original_locator, expected_digest)` really does break the dedupe — either the constraint or the sharing has to go. A separate many-to-many table breaks nothing: the row stays shared and the tenant lives in the disclosure decision. That is precisely why the sibling repair three leaves earlier is a separate table, and the leaf's own goal line names that repair by its migration number in the same breath as forbidding it.
+- **The rule:** *a prohibition in a leaf is about a named mechanism. Before obeying it, check that the mechanism you are proposing is the one it names — and if it is not, say so in the leaf rather than quietly proceeding.* Quietly proceeding is the failure mode that matters: it looks identical to ignoring the warning, and it leaves the next reader with a ⛔ that has already been walked past once with no record of why.
+- ⚠️ **The mirror, and it is the more likely error.** A leaf's ⛔ is usually right, and talking yourself past one because the wording is loose is how a decision already taken gets re-taken badly. What makes this case safe is that the difference is STRUCTURAL and checkable — one mechanism alters the unique constraint and the other does not — rather than a matter of emphasis. If the distinction cannot be stated as a checkable fact, the prohibition wins.
+- 🔎 **A second, smaller finding from the same slice: an assertion can be stronger than the property it means.** A control asserted that two refusals were byte-identical, to prove a refusal cannot confirm that an identifier exists. It failed — because both messages echo the id the CALLER supplied, which discloses nothing. The property wanted was *the answer depends only on the caller's own input*, and that is what the corrected assertion states, per request, rather than equality across two different requests.
+- **Promoted:** `docs/knowledge/a-prohibition-names-a-mechanism.md`.
+
 ## 2026-09-17 — A compatibility objection is a claim, and claims get measured
 
 - A repair was held back by a stated cost: *"a principal legitimately assessing evidence another team acquired would start being refused."* It reads like a fact about users. It is a **claim about the product**, and it had never been checked against the product.

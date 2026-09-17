@@ -728,13 +728,55 @@ Both are new: before this change a citation's `uri` and `digest` were free text
 that nothing read. A contribution whose citation is refused commits nothing —
 the event and every reference it registers share one transaction.
 
-⚠️ **Two honest limits, published rather than implied.** Nothing yet checks an
+⚠️ **One honest limit, published rather than implied.** Nothing yet checks an
 acquired snapshot's bytes against its reference's `expected_digest`, so the pin
-records an expectation it does not enforce (`SIGNOFF-REPAIR.11.14.3.6`). And
-`resource_references` stays *site-wide by design*: registering a citation puts
-its locator in a table any enrolled principal can read by `resource_id`, which
-is the same disposition `POST /v1/resources` already had
-(`SIGNOFF-REPAIR.11.14.3.4` owns whether that read should be bound).
+records an expectation it does not enforce (`SIGNOFF-REPAIR.11.14.3.6`).
+
+#### Who may read a reference
+
+The reference ROW is shared, exactly as a snapshot's is:
+`UNIQUE (original_locator, expected_digest)` means two tenants citing one URL at
+one digest hold the same row. What names the tenant is the decision to disclose
+it — `reference_registrations` records which tenants registered which reference,
+written on the replay as well as on the first registration.
+
+| Surface | A tenant that registered the reference | Any other enrolled tenant |
+| --- | --- | --- |
+| `GET /v1/resources/{resource_id}` | 200 with the §12.1 row | **404**, the same answer an absent id gets |
+| `POST /v1/resources/{resource_id}/resolve` | resolves and acquires | **404** |
+| `POST /v1/resources` with the same locator and digest | `replayed: true`, the same `resource_id` | **the same** `replayed: true` — and it records the second registration |
+
+⛔ **Until `SIGNOFF-REPAIR.11.14.3.4` the first two admitted any enrolled
+principal.** Measured with a second tenant holding a `res_…` id it had never
+registered, the read returned the whole row — `original_locator`,
+`expected_digest`, `credential_binding_ref`, the free-text `purpose` one tenant
+wrote about its own research, `risk_class`, `submitted_by`. ⭐ Including
+`visibility_scope`, which that row declared as `"tenant"` while the read ignored
+it.
+
+⚠️ **The last row of that table is a limit and it is deliberate.** The pair
+replay IS an existence confirmation, and it cannot be closed: §12.6 requires a
+changed page to be a second reference and §12.1 forbids erasing that
+distinction, so the same pair must return the same id. ⭐ The difference from a
+snapshot is nameable — confirming a snapshot means presenting its **bytes**,
+while confirming a reference means presenting a **locator**, which anyone can
+type. What the binding buys is therefore precise rather than total: **the read
+stops disclosing anything the caller did not already hold.** A bare opaque
+handle used to be the whole predicate; the locator is now required, and the
+locator is the thing the row would have disclosed.
+
+⚠️ **A reference registered before this binding has no recorded registrant, so
+no tenant reads it** — and registering the same pair again restores the read,
+exactly as re-acquiring a snapshot restores its. The attribution cannot be
+recovered: `submitted_by` is a one-way hash that joins to no identity table and
+the pair replay leaves it naming the first registrant regardless.
+
+⛔ **What this does not close.** `credential_binding_ref` is still an
+unauthenticated caller field that SELECTS a credential, and a second tenant that
+registers the same pair inherits the shared row's binding. ⚠️ Its reach today is
+measured rather than assumed: the R5 pack is off by default and no production
+code path registers a broker binding, so every shipped deployment runs an empty
+broker store. `SIGNOFF-REPAIR.11.14.3.10` owns it.
 
 ### How a deliberation records an assessment
 

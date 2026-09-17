@@ -83,6 +83,7 @@ async fn pool() -> Option<PgPool> {
             "claim_assessments",
             "derivations",
             "evidence_snapshots",
+            "reference_registrations",
             "resource_references",
             "quota_events",
             "usage_quotas",
@@ -9247,5 +9248,213 @@ async fn a_foreign_administrator_cannot_attest_another_tenants_role() {
         current["profile"]["capabilities"][0]["confidence"],
         json!("self_asserted"),
         "the claim was not upgraded: {current}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.4`: the §12.1 reference detail read is bound to the
+/// tenant that REGISTERED it, and the pair replay is deliberately not.
+///
+/// `.11.14` marked `resource_references` *site-wide by design*, and that verdict
+/// answered the COLUMN question — "can the row carry an owner?", to which
+/// `UNIQUE (original_locator, expected_digest)` says no. It did not answer the
+/// READ one. The three sibling tables got *"site-wide row, TENANT-BOUND READ"*
+/// for a reason that applies here too: the locator is the research trail.
+///
+/// ⭐ **The two halves get different answers, and the difference is nameable.**
+/// A snapshot's existence cannot be confirmed without presenting its BYTES, so
+/// `.11.14.1`'s binding closed both halves at once. A reference's existence is
+/// confirmed by presenting a LOCATOR, which anyone can type — so the replay is
+/// structural and stays, while the detail read is bound.
+///
+/// ⭐ **Binding the detail read breaks no reachable caller**, and that is why it
+/// is not a compatibility cost: every way to obtain a `res_…` id goes through
+/// the pair replay, which now RECORDS the caller's registration. What changes is
+/// the price of admission — a bare opaque handle used to be enough, and the
+/// locator is now required, which is the very thing the row would disclose.
+#[tokio::test]
+async fn the_reference_read_is_bound_to_the_registering_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "reference-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the registering tenant enrols: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "reference-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second tenant enrols: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        owner["tenant_id"].as_str().unwrap(),
+        "the stranger must be a DIFFERENT tenant for this to measure anything"
+    );
+
+    // The reference the owner registers. Every field here is one the read
+    // discloses, and `purpose` is free text one tenant wrote about its own
+    // research.
+    let locator = "https://internal.example.org/q3-reserve-review";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let reference_body = json!({
+        "original_locator": locator,
+        "scheme": "https",
+        "expected_digest": digest,
+        "credential_binding_ref": "the-owner-binding",
+        "purpose": "the reserve review the owner is running",
+        "visibility_scope": "tenant",
+        "risk_class": "high",
+    });
+    let (status, registered) =
+        post(&client, &base, "/v1/resources", &owner_id, &reference_body).await;
+    assert_eq!(status, 200, "the reference registers: {registered}");
+    let resource_id = registered["resource_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        registered["replayed"],
+        json!(false),
+        "the first registration is not a replay: {registered}"
+    );
+
+    // ── The finding: a bare opaque handle used to be the whole predicate ─────
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &stranger_id,
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "a tenant that did not register the reference reads nothing: {read}"
+    );
+    // The two answers must depend only on what the CALLER supplied, never on
+    // whether the reference exists. Both echo the id the request itself named —
+    // the same convention `cited_snapshot` already uses — so the assertion is
+    // over the template rather than over the literal strings.
+    let absent_id = "res_00000000-0000-7000-8000-00000000dead";
+    let (absent_status, absent) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{absent_id}"),
+        &stranger_id,
+    )
+    .await;
+    assert_eq!(absent_status, 404, "an absent id reads nothing: {absent}");
+    assert_eq!(
+        (read["code"].as_str(), read["message"].as_str()),
+        (
+            Some("not_found"),
+            Some(format!("no reference `{resource_id}`").as_str())
+        ),
+        "a registered reference the caller did not register is reported ABSENT: {read}"
+    );
+    assert_eq!(
+        (absent["code"].as_str(), absent["message"].as_str()),
+        (
+            Some("not_found"),
+            Some(format!("no reference `{absent_id}`").as_str())
+        ),
+        "…in exactly the words a truly absent id gets, so the refusal cannot \
+         confirm that an identifier exists: {absent}"
+    );
+
+    // The resolve verb reads the same row and takes the same binding. Without
+    // it, a caller refused the READ could still drive an acquisition off the
+    // reference — and, with the gated R5 pack on, off its credential binding.
+    let (status, resolved) = post(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}/resolve"),
+        &stranger_id,
+        &json!({ "required_sandbox": "none", "required_egress": "public" }),
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "the resolve verb is bound to the same registration: {resolved}"
+    );
+
+    // ── The bound: this is a binding, not a blackout ─────────────────────────
+    let (status, own) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &owner_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the registering tenant still reads: {own}");
+    assert_eq!(
+        own["reference"]["original_locator"],
+        json!(locator),
+        "the owner's own row is unchanged: {own}"
+    );
+
+    // ── The supported path, and the limit that is DELIBERATELY kept ──────────
+    //
+    // The second tenant registers the SAME pair. §12.1's key makes that one
+    // shared row, so it replays — and the replay records the second
+    // registration, exactly as a snapshot re-acquisition records the second
+    // citation. ⚠️ The `replayed: true` IS an existence confirmation, and it
+    // cannot be closed without breaking the pair key §12.1 and §12.6 require.
+    // The caller must already know the locator AND the digest, which is the
+    // width this control pins rather than leaves implicit.
+    let (status, replayed) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &stranger_id,
+        &reference_body,
+    )
+    .await;
+    assert_eq!(status, 200, "the second registration replays: {replayed}");
+    assert_eq!(
+        replayed["resource_id"].as_str().unwrap(),
+        resource_id,
+        "the pair key still yields ONE shared row: {replayed}"
+    );
+    assert_eq!(
+        replayed["replayed"],
+        json!(true),
+        "the pair replay is kept — it is the §12.1 identity, and closing it \
+         would make one tenant's pin uncitable by another: {replayed}"
+    );
+
+    let (status, now_readable) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &stranger_id,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the replay recorded the second registration, so the read is restored: {now_readable}"
+    );
+
+    let registrations: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM reference_registrations WHERE resource_id = $1")
+            .bind(&resource_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the registrations");
+    assert_eq!(
+        registrations, 2,
+        "one shared row, two registering tenants — the dedupe the pair key \
+         exists for is untouched"
+    );
+
+    eprintln!(
+        "reference read binding: a second tenant holding the res_ id reads 404 — the same answer an absent id gets — and its resolve is refused identically; the registering tenant still reads its own row; registering the same pair replays to the SAME resource_id, records the second registration and restores the read; {registrations} registrations on one shared row"
     );
 }

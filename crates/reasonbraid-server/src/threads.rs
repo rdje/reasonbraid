@@ -1608,17 +1608,30 @@ where
                     retention_class: None,
                     risk_class: "low".to_owned(),
                 };
-                let outcome =
-                    match crate::resources::submit(&mut *tx, &reference, &submitted_by).await {
-                        Ok(outcome) => outcome,
-                        // A store fault is the server's problem and must not be
-                        // reported as though the caller's input were wrong
-                        // (`.7.4.2`); every other variant IS about the input.
-                        Err(crate::resources::ReferenceError::Storage(cause)) => {
-                            return Err(ThreadError::CorruptState(cause.to_string()))
-                        }
-                        Err(error) => return Err(ThreadError::InvalidCommand(error.to_string())),
-                    };
+                // The thread's tenant registers the citation's reference, so a
+                // contributor's own tenant can read the §12.1 row it just
+                // created (`SIGNOFF-REPAIR.11.14.3.4`).
+                let registrant = crate::resources::Registrant {
+                    tenant_id: tenant_id.to_string(),
+                    principal: submitted_by.clone(),
+                };
+                let outcome = match crate::resources::submit(
+                    &mut *tx,
+                    &reference,
+                    &submitted_by,
+                    &registrant,
+                )
+                .await
+                {
+                    Ok(outcome) => outcome,
+                    // A store fault is the server's problem and must not be
+                    // reported as though the caller's input were wrong
+                    // (`.7.4.2`); every other variant IS about the input.
+                    Err(crate::resources::ReferenceError::Storage(cause)) => {
+                        return Err(ThreadError::CorruptState(cause.to_string()))
+                    }
+                    Err(error) => return Err(ThreadError::InvalidCommand(error.to_string())),
+                };
                 evidence_refs.push(RegisteredEvidenceRef {
                     uri: citation.uri.clone(),
                     digest: citation.digest.clone(),

@@ -2097,8 +2097,14 @@ async fn resolve_resource(
     // that asked for the resolution is the tenant whose evidence reads must
     // show that row (`.11.14.1`) — an acquisition nobody cites is an
     // acquisition nobody can read.
-    let citer = citer(&principal, tenant);
-    let Some((_, reference, _, _)) = crate::resources::get(&state.pool, &resource_id).await? else {
+    let citer = citer(&principal, tenant.clone());
+    // The same binding the detail read takes (`SIGNOFF-REPAIR.11.14.3.4`).
+    // Without it a caller refused the READ could still drive an acquisition off
+    // the reference — including, with the gated R5 pack on, off the
+    // `credential_binding_ref` another tenant wrote into the shared row.
+    let Some((_, reference, _, _)) =
+        crate::resources::get_for_tenant(&state.pool, &resource_id, &tenant).await?
+    else {
         return Err(ControlApiError::not_found(format!(
             "no reference `{resource_id}`"
         )));
@@ -4083,15 +4089,22 @@ async fn submit_resource(
     Json(reference): Json<crate::resources::ResourceReference>,
 ) -> Result<Json<crate::resources::SubmitOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal submits no reference",
         ));
-    }
+    };
     let submitted_by = actor_handle_for_subject(&principal).to_string();
+    // The tenant that registered the reference is the tenant whose detail read
+    // must show it (`SIGNOFF-REPAIR.11.14.3.4`) — a registration nobody records
+    // is a reference nobody can read. Written on the replay too, so one tenant
+    // naming a pair never makes it unreadable by another.
+    let registrant = crate::resources::Registrant {
+        tenant_id: tenant,
+        principal: submitted_by.clone(),
+    };
     let mut conn = state.pool.acquire().await?;
-    match crate::resources::submit(&mut *conn, &reference, &submitted_by).await {
+    match crate::resources::submit(&mut *conn, &reference, &submitted_by, &registrant).await {
         Ok(outcome) => Ok(Json(outcome)),
         // The ADR-011 digest validation lives in the store, so both writers —
         // this route and a contribution's citation — apply one rule.
@@ -4114,14 +4127,13 @@ async fn get_resource(
     Path(resource_id): Path<String>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no reference",
         ));
-    }
+    };
     let Some((id, reference, submitted_by, created_at)) =
-        crate::resources::get(&state.pool, &resource_id).await?
+        crate::resources::get_for_tenant(&state.pool, &resource_id, &tenant).await?
     else {
         return Err(ControlApiError::not_found(format!(
             "no reference `{resource_id}`"

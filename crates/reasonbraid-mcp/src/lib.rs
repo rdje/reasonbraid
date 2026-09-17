@@ -557,6 +557,7 @@ mod tests {
                 "claim_assessments",
                 "derivations",
                 "evidence_snapshots",
+                "reference_registrations",
                 "resource_references",
                 "quota_events",
                 "usage_quotas",

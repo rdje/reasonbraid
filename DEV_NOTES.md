@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — An injection that does not land is a green run that proves nothing
+
+- I built a commit-time gate and falsified it twice: once against the instrument, once against its registration in `make gate`. The second falsification **passed on the first attempt for the wrong reason** — the `.replace()` I used to inject the defect did not match the file's indentation, so nothing was injected, the gate stayed green, and I briefly read that as the registration working.
+- ⛔ **A green run after an injection is evidence only if the injection landed.** The fix is one command before the assertion: `git diff --stat` on the file, and if it reports no change, the falsification has not started yet.
+- ⭐ This is the same shape as the `pg_stat` instrument discarded earlier today — *a number that does not move is indistinguishable from a number that moved by zero* — moved one layer out. There it was the measurement that could not discriminate; here it was the **stimulus** that was never applied. Both produce a control that passes for a reason unrelated to the thing it claims to test.
+- ⚠️ The same attempt wrote its backup to `/tmp`, which this environment refuses, so the restore silently never ran and the file was left injected until I checked. **`git checkout -- <path>` is the restore that cannot fail this way**, and it needs no backup at all.
+- 🔎 **And the gate itself nearly shipped with the same class of hole.** Its first draft parsed 29 plans from 45 `delete_tables(` call sites. The 16 it skipped were correct exclusions — the helper's own definition and its negative-control tests — but it skipped them **because a regex happened not to match**, not because anything said to. They are now excluded by path with the reason, and the instrument **refuses** rather than skips any call shape or foreign-key form it cannot read. An instrument that silently narrows its own scope is the failure it was built to catch.
+- **Promoted:** `docs/knowledge/an-injection-must-be-shown-to-land.md`.
+
 ## 2026-09-17 — An instrument that reports the same value either way has told you nothing
 
 - A repair removed redundant work inside a handler: N citations naming the same `(uri, digest)` pair registered N times; now once. Every byte the product returns is identical afterwards, **and so is every row it writes** — the store's own replay already returned the existing row, so a row-count assertion was 1 either way.

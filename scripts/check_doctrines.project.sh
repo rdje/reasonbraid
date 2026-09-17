@@ -167,4 +167,17 @@ if ! scripts/check_action_boundary.sh >/dev/null 2>&1; then
     exit 1
 fi
 
+# A cleanup plan that deletes a parent must delete the children that reference it
+# (`SIGNOFF-REPAIR.11.14.1.2`). The shared runtime checker already refuses such a
+# plan — and only when the suite RUNS. `migrations/0062` added a table with a key
+# to `tenants` and swept only the plans naming its other parent; six suites could
+# not start for roughly twenty commits because nothing executed them. Then
+# `migrations/0067` did the same thing, in the session that wrote the rule down.
+# This is the commit-time trigger the runtime checker lacks, and it needs no
+# database: every foreign key in this corpus is inline in a `CREATE TABLE`.
+if ! python3 -B scripts/check_fixture_plan_children.py >/dev/null 2>&1; then
+    python3 -B scripts/check_fixture_plan_children.py >&2
+    exit 1
+fi
+
 exit 0

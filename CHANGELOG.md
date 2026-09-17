@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The plan checker had no commit-time trigger (`SIGNOFF-REPAIR.11.14.1.2`)
+
+⭐ **The failure class that bit three times today is now mechanical — and building the gate produced a fourth instance of it, caught.**
+
+- **The rule is not new and the checker is not wrong.** The shared runtime checker already refuses a cleanup plan whose declared tables omit a real foreign-key child. ⛔ **What was missing is a TRIGGER**: it only runs when a suite runs, so a plan nobody executes is never checked. Six suites were refused for ~20 commits, and the two omissions came from `migrations/0062` and `migrations/0067` — the second in the session that wrote the sweep-key rule down.
+- ⭐ **`.11.6` is satisfied rather than waived.** It forbids proposing a rule before its population is measured; `.11.14.1.1` measured it in the PREVIOUS commit — **16 parent tables, 45 inline foreign keys, 29 declared plans, 6 refused** — and the population is now **0 refused of 29**. The gate ships GREEN, and its value is preventing the class rather than finding a present defect. Said plainly so a green run is not read as evidence of one.
+- **It needs no database**, which is what makes it affordable in a pre-commit hook: `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` appears **0** times, so every key is inline in a `CREATE TABLE` and the graph is readable from the migrations.
+- ⚠️ **IT REFUSES RATHER THAN UNDER-REPORTS.** An unmodelled key form is an ERROR naming that reason; an unreadable `delete_tables(` call shape is an ERROR naming the file. Only two files are excluded — the helper's own definition and its 15 negative-control tests — **by path, with the reason**.
+- 🔴 **That defence was earned, not anticipated.** The first draft parsed **29** plans from **45** call sites, and I nearly published the difference as coverage. The 16 skipped were the right exclusions, reached **by accident** because a regex happened not to match them. A control now asserts the exclusion is by path rather than by luck.
+- **FALSIFIED at both layers.** Against the instrument: the pre-repair `quota` plan restored → RED naming both omissions → byte-identical restore → green. Against the REGISTRATION: two lines removed from `cards.rs` → `make gate` answers `1 doctrine breach(es) — commit blocked`, naming the file and both tables.
+- 🔴 **And the registration's first falsification passed for the WRONG reason.** The scripted edit's indentation did not match, so **nothing was injected** and the gate stayed green — a green run proving nothing, exactly like the `pg_stat` instrument `.11.14.3.7` discarded, one layer out. ⭐ **An injection must be shown to land**: `git diff --stat` before reading the result. The same attempt also wrote its backup to a temporary directory this environment refuses, so the restore never ran; `git checkout --` is the restore that cannot fail that way. Promoted as `docs/knowledge/an-injection-must-be-shown-to-land.md`.
+- **Self-test: 8 controls**, two-sided, and the SELF-TEST harness discovers it (30 instruments now carry one).
+
 ## 2026-09-17 — Six suites could not start, and the second missing child was mine (`SIGNOFF-REPAIR.11.14.1.1`)
 
 🔴 **Six suites could not start, since REPAIR-0213 — and the second missing dependency was mine, added in the session that promoted the rule against exactly this.**

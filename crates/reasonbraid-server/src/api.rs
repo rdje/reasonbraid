@@ -4139,16 +4139,17 @@ async fn submit_resource(
     let mut conn = state.pool.acquire().await?;
     match crate::resources::submit(&mut *conn, &reference, &submitted_by, &registrant).await {
         Ok(outcome) => Ok(Json(outcome)),
-        // The ADR-011 digest validation lives in the store, so both writers —
-        // this route and a contribution's citation — apply one rule.
-        Err(crate::resources::ReferenceError::InvalidDigest(reason)) => {
-            Err(ControlApiError::invalid_command(reason))
-        }
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`).
         Err(crate::resources::ReferenceError::Storage(cause)) => Err(
             ControlApiError::internal_with_log(format!("the reference submit failed: {cause}")),
         ),
+        // Every other variant IS about the input, and it lives in the store so
+        // both writers — this route and a contribution's citation — apply one
+        // rule: the ADR-011 digest (`.11.14.3.2`). ⛔ The declared `scheme` is
+        // deliberately NOT among them; `.11.14.3.5` measured that it is the
+        // resolver-selection key rather than the locator's URI scheme.
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
 

@@ -44,6 +44,26 @@ type ResourceRow = (
 #[serde(deny_unknown_fields)]
 pub struct ResourceReference {
     pub original_locator: String,
+    /// The RESOLVER-SELECTION key §12.2 ranks on — **not** the locator's URI
+    /// scheme, and `SIGNOFF-REPAIR.11.14.3.5` measured the difference rather
+    /// than inferring it from the name.
+    ///
+    /// `resolvers::resolve` selects on `resolver_capabilities.schemes @>
+    /// [$scheme]`, and two SHIPPED packs pair a non-URI scheme with an
+    /// `https://*` locator pattern: `r1-git-fetcher` advertises `["git"]`
+    /// (`migrations/0026`) and the R3 browser pack advertises `["web+render"]`.
+    /// A Git repository and a rendered page are both reached over HTTPS — the
+    /// field is how a caller asks for a CAPABILITY.
+    ///
+    /// ⛔ So it is NOT validated against the locator, and a leaf that tried
+    /// found both packs' own controls refusing. ⚠️ It is validated against
+    /// nothing else either: §3.7 says accepting a reference is not a promise the
+    /// core can resolve it, so an unknown scheme yields `resource_unresolvable_now`
+    /// rather than a registration refusal, deliberately.
+    ///
+    /// [`scheme_of`] exists for the CITATION path, where a contributor supplies
+    /// a bare URI and the reference needs some scheme; that writer derives one
+    /// and this one is told.
     pub scheme: String,
     #[serde(default)]
     pub media_type_hint: Option<String>,
@@ -57,14 +77,35 @@ pub struct ResourceReference {
     pub credential_binding_ref: Option<String>,
     #[serde(default)]
     pub owning_node_or_capability: Option<String>,
-    #[serde(default)]
+    /// Defaults to `network` — the value `migrations/0023` declares as this
+    /// column's `NOT NULL DEFAULT` (`SIGNOFF-REPAIR.11.14.3.5`).
+    ///
+    /// ⛔ A bare `#[serde(default)]` here was `String::default()`, the EMPTY
+    /// STRING, and `submit` binds the field explicitly — so the schema's own
+    /// default never applied and every reference submitted without the field
+    /// held `''`. The citation path already wrote the declared value, so the two
+    /// writers produced different rows for the same omission.
+    #[serde(default = "network_scope")]
     pub visibility_scope: String,
     #[serde(default)]
     pub purpose: Option<String>,
     #[serde(default)]
     pub retention_class: Option<String>,
-    #[serde(default)]
+    /// Defaults to `low` — `migrations/0023`'s declared default, for the reason
+    /// above. ⚠️ That is the PERMISSIVE direction, and it is adopted because the
+    /// migration already recorded it and the citation path already writes it,
+    /// not because it was chosen here. §12.2's risk filter does not exist yet;
+    /// when it is built it owns whether `low` may be a default at all.
+    #[serde(default = "low_risk")]
     pub risk_class: String,
+}
+
+fn network_scope() -> String {
+    "network".to_owned()
+}
+
+fn low_risk() -> String {
+    "low".to_owned()
 }
 
 impl ResourceReference {
@@ -89,9 +130,14 @@ impl ResourceReference {
 ///
 /// A contribution cites evidence as a bare URI (`SIGNOFF-REPAIR.11.14.3.2`),
 /// and the §12.1 reference it registers needs a scheme. Deriving it from the
-/// locator is what stops the two from disagreeing. ⚠️ `POST /v1/resources`
-/// still takes `scheme` as an unvalidated caller field — owned by
-/// `SIGNOFF-REPAIR.11.14.3.5`, not by this function.
+/// locator is what gives that writer one at all.
+///
+/// ⛔ This is NOT a validator for `POST /v1/resources`'s declared `scheme`, and
+/// `SIGNOFF-REPAIR.11.14.3.5` established that by measurement: that field is the
+/// resolver-selection key, whose vocabulary includes `git` and `web+render` for
+/// `https://` locators. A citation has no way to ask for a capability, so
+/// deriving the URI scheme is the only thing it CAN do — which is a property of
+/// that writer, not a rule about the field.
 pub fn scheme_of(uri: &str) -> Option<&str> {
     let (scheme, _) = uri.split_once(':')?;
     let mut characters = scheme.chars();

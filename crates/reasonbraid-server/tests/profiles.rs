@@ -3099,10 +3099,20 @@ async fn restore_r2_schemes(pool: &PgPool, shipped: &Value) {
     .expect("the shipped R2 schemes are restored");
 }
 
-/// Submit an R2-hinted reference to the origin, with the scheme its locator
-/// actually carries. `resource_references.scheme` is caller-supplied and is NOT
-/// validated against the locator, so a control that wrote `https` here would be
-/// routed on data that is simply false.
+/// Submit an R2-hinted reference to the origin, naming the scheme this
+/// deployment's R2 pack advertises — which for this control is `http`, the
+/// origin's own.
+///
+/// ⚠️ **The earlier wording of this comment caused a wrong repair, so it is
+/// corrected rather than tidied** (`SIGNOFF-REPAIR.11.14.3.5`). It said the
+/// field "is NOT validated against the locator, so a control that wrote `https`
+/// here would be routed on data that is simply false", and a leaf read that as a
+/// missing check. The field is the RESOLVER-SELECTION key `resolvers::resolve`
+/// matches against `resolver_capabilities.schemes`, not a claim about the
+/// locator: `r1-git-fetcher` advertises `["git"]` and the R3 pack advertises
+/// `["web+render"]`, both for `https://*` locators. What writing `https` here
+/// would actually do is select a DIFFERENT pack — which is why this helper names
+/// the one it means.
 async fn submit_hinted(
     client: &reqwest::Client,
     base: &str,
@@ -10098,5 +10108,207 @@ async fn a_snapshot_names_the_locator_its_reference_names() {
 
     eprintln!(
         "snapshot locator: a snapshot naming a document its reference does not is refused (400, naming both, 0 rows written); the agreeing submission is accepted and keeps a DIFFERENT final_locator, which a redirect legitimately moves"
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.5`: the §12.1 fields `POST /v1/resources` used to
+/// take on trust — the `scheme` nothing validated, and the omissions that
+/// bypassed `migrations/0023`'s declared column defaults.
+///
+/// Three mechanisms sit in that leaf's goal line and each gets its own arm here,
+/// because a leaf that reproduces two of three and decides all three is the
+/// over-reporting `.11.15` exists to catch.
+///
+/// 🔴 **Two of the three are REFUTATIONS rather than repairs**, and the first is
+/// the one to read: `scheme` is the resolver-selection key, not the locator's URI
+/// scheme, and a repair that treated it as the latter was written and then
+/// refused by two of this suite's own controls.
+#[tokio::test]
+async fn a_reference_s_declared_fields_are_checked_or_defaulted() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "fields-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submit = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move { post(&client, &base, "/v1/resources", &human_id, &body).await }
+    };
+
+    // ── (1) `scheme` is the RESOLVER-SELECTION key, not the locator's ───────
+    //
+    // 🔴 This arm asserts a REFUTATION. The leaf was opened on a test helper's
+    // comment — *"`resource_references.scheme` is caller-supplied and is NOT
+    // validated against the locator"* — read as a defect, and the repair that
+    // followed from it (refuse a scheme that is not `scheme_of(locator)`) was
+    // written, shipped into a RED/GREEN cycle, and then refused by two of this
+    // suite's own controls.
+    //
+    // Measured instead of inferred: `resolvers::resolve` selects on
+    // `resolver_capabilities.schemes @> [$scheme]`, and two SHIPPED packs pair a
+    // non-URI scheme with an `https://*` locator pattern — `r1-git-fetcher`
+    // advertises `["git"]` (`migrations/0026`) and the R3 browser pack
+    // advertises `["web+render"]`. A Git repository and a rendered page are both
+    // reached over HTTPS; the field is how a caller asks for a CAPABILITY.
+    //
+    // So these two register, and a repair that validated the field against the
+    // locator would refuse both:
+    for (locator, scheme) in [
+        ("https://127.0.0.1/repo.git#main", "git"),
+        ("https://127.0.0.1/page", "web+render"),
+    ] {
+        let (status, capability) =
+            submit(json!({ "original_locator": locator, "scheme": scheme })).await;
+        assert_eq!(
+            status, 200,
+            "`{scheme}` selects a CAPABILITY for an https locator: {capability}"
+        );
+    }
+
+    // ⚠️ And the field is validated against nothing else either, deliberately:
+    // §3.7 says accepting a reference is not a promise the core can resolve it,
+    // so an unknown scheme is `resource_unresolvable_now` at RESOLUTION rather
+    // than a refusal at registration. This arm pins that, so a later reader does
+    // not re-derive the repair this one refutes.
+    let (status, unknown) = submit(json!({
+        "original_locator": "ftp://example.org/archive.tar",
+        "scheme": "no-pack-advertises-this",
+    }))
+    .await;
+    assert_eq!(
+        status, 200,
+        "an unresolvable reference stays submitted (§3.7): {unknown}"
+    );
+
+    // ── (2) an omitted field takes the schema's DECLARED default ────────────
+    //
+    // `#[serde(default)]` was `String::default()` — the empty string — and
+    // `submit` binds the field explicitly, so `migrations/0023`'s
+    // `NOT NULL DEFAULT 'network'` / `'low'` never applied.
+    let (status, defaulted) = submit(json!({
+        "original_locator": "https://example.org/defaults",
+        "scheme": "https",
+    }))
+    .await;
+    assert_eq!(status, 200, "the reference registers: {defaulted}");
+    let defaulted_id = defaulted["resource_id"].as_str().unwrap().to_string();
+    let (scope, risk): (String, String) = sqlx::query_as(
+        "SELECT visibility_scope, risk_class FROM resource_references WHERE resource_id = $1",
+    )
+    .bind(&defaulted_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read the stored defaults");
+    assert_eq!(
+        (scope.as_str(), risk.as_str()),
+        ("network", "low"),
+        "the omitted fields take the values `migrations/0023` declares, not `''`"
+    );
+
+    // And the two writers now agree. A contribution's citation has always
+    // written the declared values; the route used to write `''`.
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "fields-create",
+            "body": {
+                "tenant_id": human["tenant_id"].as_str().unwrap(),
+                "subject": "field defaults",
+                "objective": "compare the two reference writers",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let cited = "https://example.org/cited-defaults";
+    let (status, contributed) = post(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.contribute",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "fields-contribute",
+            "body": {
+                "tenant_id": human["tenant_id"].as_str().unwrap(),
+                "content": "the position this citation supports",
+                "kind": "evidence_reference",
+                "evidence_refs": [ { "uri": cited } ],
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the citation contributes: {contributed}");
+    let (cited_scope, cited_risk): (String, String) = sqlx::query_as(
+        "SELECT visibility_scope, risk_class FROM resource_references \
+         WHERE original_locator = $1",
+    )
+    .bind(cited)
+    .fetch_one(&pool)
+    .await
+    .expect("read the citation path's row");
+    assert_eq!(
+        (cited_scope, cited_risk),
+        (scope, risk),
+        "the two writers produce the SAME row for the same omitted field"
+    );
+
+    // ── (3) the fragment stays in the locator, and that is DECIDED ──────────
+    //
+    // §12.1 lists `fragment_or_selector` beside `original_locator`, which
+    // implies the locator excludes the fragment. ⛔ Splitting it IS
+    // canonicalization, and §12.1 says canonicalization is scheme-specific and
+    // "must not erase security-relevant distinctions" — merging three locators
+    // onto one row is exactly such an erasure. So the conservative choice is
+    // kept, and this arm pins the behaviour rather than a repair.
+    let page = "https://example.org/page";
+    let mut ids = Vec::new();
+    for locator in [
+        page,
+        "https://example.org/page#section-a",
+        "https://example.org/page#section-b",
+    ] {
+        let (status, body) =
+            submit(json!({ "original_locator": locator, "scheme": "https" })).await;
+        assert_eq!(
+            status, 200,
+            "the fragment-bearing reference registers: {body}"
+        );
+        ids.push(body["resource_id"].as_str().unwrap().to_string());
+    }
+    ids.sort();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        3,
+        "a fragment is part of the locator: three spellings are three references, \
+         because merging them would erase a distinction §12.1 protects"
+    );
+
+    eprintln!(
+        "reference fields: `scheme` is the RESOLVER-SELECTION key — `git` and `web+render` register for https locators, and an unadvertised scheme stays submitted per §3.7 — so the locator check this leaf was opened on is REFUTED; an omitted visibility_scope/risk_class takes `network`/`low`, the values migrations/0023 declares, and the citation path writes the SAME row; and three fragment spellings remain three references, decided rather than defaulted"
     );
 }

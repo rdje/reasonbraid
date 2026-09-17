@@ -717,6 +717,57 @@ locator made that locator **uncitable by every other tenant**, in any form,
 including without a digest. A client that branched on the code should treat the
 citation as accepted.
 
+#### What `scheme` is, and what it is not
+
+`scheme` on a §12.1 reference is the **resolver-selection key** §12.2 ranks on —
+not the locator's URI scheme. Two shipped packs make the difference concrete:
+
+| Pack | advertises `schemes` | for locators matching |
+| --- | --- | --- |
+| `r1-git-fetcher` | `git` | `https://*` |
+| the R3 browser pack | `web+render` | `https://*` |
+
+A Git repository and a rendered page are both reached over HTTPS. The field is
+how you ask for a **capability**, so `{"original_locator":
+"https://…/repo.git", "scheme": "git"}` is correct, not a contradiction.
+
+⚠️ **It is validated against nothing, deliberately.** §3.7: accepting a reference
+is not a promise the core can resolve it, and unsupported references stay durable
+for later. So a scheme no installed pack advertises registers fine and answers
+`resource_unresolvable_now` at resolution — an explicit failure at the point where
+resolution is actually attempted.
+
+⛔ `SIGNOFF-REPAIR.11.14.3.5` tried to validate this field against its locator and
+was **refused by the two packs' own controls**. The attempt is recorded because
+the wrong reading is a natural one: a caller-supplied routing field that nothing
+checks describes a defect and this design equally well, and only the consumer —
+one `WHERE schemes @> …` lookup — tells them apart.
+
+#### Omitted fields take the schema's declared defaults
+
+`visibility_scope` defaults to `network` and `risk_class` to `low` — the values
+`migrations/0023` declares.
+
+⛔ They used to default to the **empty string**, because the typed field's
+`#[serde(default)]` is `String::default()` and the store binds it explicitly, so
+the column default never applied. A contribution's citation had always written
+the declared values, so the two writers produced different rows for the same
+omission. They now agree.
+
+⚠️ `low` is the permissive direction, and it is adopted rather than chosen — it is
+what the schema already declared. Nothing in the product reads either column to
+make a decision yet; §12.2's risk filter, when it is built, owns whether `low` may
+be a default at all.
+
+#### A fragment stays in the locator
+
+`…/page`, `…/page#a` and `…/page#b` are **three** references. §12.1 lists
+`fragment_or_selector` beside `original_locator`, which invites the opposite
+reading — but splitting the fragment out *is* canonicalization, and §12.1 says
+canonicalization is scheme-specific and must not erase security-relevant
+distinctions. Merging three locators onto one row is exactly such an erasure, so
+the distinction is kept.
+
 #### What a citation is refused for
 
 | The citation | Refused because |

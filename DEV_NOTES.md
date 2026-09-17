@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — I shipped a wrong repair into a RED/GREEN cycle, and the product's own controls caught it
+
+- A field called `scheme` sat on a §12.1 reference, and a test helper's comment said it "is caller-supplied and is NOT validated against the locator". The validator that would check it existed a few lines away with one caller. I read that as a missing check, wrote the repair, reproduced RED against it and went GREEN on my own control.
+- 🔴 **Two of the suite's existing controls then refused it**, and they were right. `resolvers::resolve` selects on `resolver_capabilities.schemes @> [$scheme]`, and two SHIPPED registry rows pair a non-URI scheme with an `https://*` locator pattern: the Git pack advertises `["git"]`, the browser pack advertises `["web+render"]`. Both are reached over HTTPS. The field is how a caller asks for a **capability**, and was never a claim about the locator.
+- ⭐ **The rule: a field's name is not its contract — its consumer is.** Before repairing a field, find every site that READS it and say what each does with the value. If the answer is one lookup keyed on it, that lookup's key space *is* the vocabulary, and it is one grep away.
+- ⛔ **The trap is that the wrong reading also explains the evidence.** "A caller-supplied routing field that nothing validates" describes the defect and the design equally well; only the consumer separates them. That is `CLAIM_VERIFICATION.md` §3 leg 2 — evidence consistent with both hypotheses is an illustration, not a test.
+- ⚠️ **Where the premise came from matters more than the premise.** It came from a comment in a test helper that was accurate about its own control and misleading as a general statement. A finding resting on someone else's prose inherits its scope. So the comment is corrected **at its source** in the same change — tidying the repair and leaving the sentence fixes the instance and not the cause.
+- 🔎 **What went right is worth naming too.** The controls that refused it were `the_r1_resolver_resolves_git_…` and `the_gated_packs_resolve_only_while_the_gate_is_open`, neither of which is about references: they exercise the packs, and the packs are the consumer. **A repair is falsified by the code that USES the thing, which is the same place its contract lives.** Running the affected suites broadly rather than only the leaf's own control is what surfaced it — the narrow run was green.
+- **Promoted:** `docs/knowledge/a-fields-name-is-not-its-contract.md`.
+
 ## 2026-09-17 — A census is only as wide as the key it enumerates on
 
 - I bound two routes that read a reference, and published the census that justified it: `grep -n '"/v1/resources' api.rs` → three routes, two of them unbound, both now bound. One commit later, a different leaf walked past `POST /v1/snapshots`, which names a `reference_id` **in its body**. The census could not see it, because it enumerated on a *route prefix* and the surface is not under that prefix.

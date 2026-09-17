@@ -41,12 +41,27 @@ pub struct AllowedCapabilities {
 
 impl AllowedCapabilities {
     /// The dev profile's ceilings (the shipped adapters' shapes).
+    ///
+    /// ⛔ `tool_support` is **false**, and it used to be `true`
+    /// (`SIGNOFF-REPAIR.13.1.1`). This constructor is the crate's ONLY ceiling,
+    /// its own doc line says it describes "the shipped adapters' shapes", and
+    /// every shipped adapter declares `tool_support: false` — a fact
+    /// `scripts/check_action_boundary.sh` pins across five files. So the
+    /// ceiling was permitting something no adapter declares and the doc line
+    /// was false about its own field.
+    ///
+    /// ⚠️ **This changes no runtime behaviour today, and must not be described
+    /// as closing anything.** [`verify_ladder`] has no production caller, so
+    /// nothing consults this ceiling at run time. What it changes is the
+    /// DIRECTION the ladder fails if it is ever wired: closed rather than open.
+    /// A tool-using adapter then needs a deliberate profile, which is where a
+    /// grant of that size belongs.
     pub fn dev() -> Self {
         Self {
             cancellation: CancellationStrength::Confirmed,
             streaming: true,
             status_lookup: true,
-            tool_support: true,
+            tool_support: false,
             policy_injection: crate::PolicyInjectionMode::Structured,
         }
     }
@@ -141,6 +156,24 @@ pub fn capabilities_within(declared: &AdapterCapabilities, allowed: &AllowedCapa
         && mode_rank(declared.policy_injection) <= mode_rank(allowed.policy_injection)
 }
 
+/// ⛔ **NO PRODUCTION CALLER — this ladder is ahead of its call site, and that
+/// is recorded here because a `pub` control with no caller and no note is
+/// exactly what produced `SIGNOFF-REPAIR.13.1.1`.** Measured crate-wide by
+/// `scripts/census_adapter_public_api.py`: of 102 `pub` items, this one,
+/// [`capabilities_within`] and [`AllowedCapabilities`] have exactly one
+/// non-test mention outside their own file, and it is the SAME line — the
+/// `pub use` in `lib.rs`. A re-export is not a caller, and it is also why
+/// `dead_code` cannot see this.
+///
+/// ⚠️ **Deliberately not wired.** No adapter load path exists: adapters are
+/// compiled in, and `git grep -nE "libloading|dlopen|Library::new|load_adapter"`
+/// over `crates` returns nothing. Wiring a verification into a path that never
+/// runs buys no safety and creates a second false assurance. What holds the
+/// action boundary today is declaration-side and narrower — every `Adapter`
+/// declares `tool_support: false` and the two real adapters pass
+/// `--restricted --tools ''` and `--sandbox read-only` — which
+/// `scripts/check_action_boundary.sh` pins at commit time.
+///
 /// Run the five-rung ladder for one candidate adapter. The inputs: the
 /// adapter's id, its qualification record (the digest-pinned form), the
 /// signature bytes (the `.sig` the release tool's `certify sign`
@@ -255,6 +288,56 @@ mod tests {
             key.public_key().as_ref().to_vec(),
             signature.as_ref().to_vec(),
         )
+    }
+
+    /// The dev ceiling REFUSES a tool-declaring adapter (`SIGNOFF-REPAIR.13.1.1`).
+    ///
+    /// ⛔ Before that leaf, `AllowedCapabilities::dev()` set `tool_support:
+    /// true` — the crate's only ceiling permitting the one capability no
+    /// shipped adapter declares and on whose absence B3's whole deferral rests.
+    /// Rung 5 is `!declared.tool_support || allowed.tool_support`, so under the
+    /// shipped profile a tool-declaring adapter PASSED.
+    ///
+    /// ⚠️ This proves the ceiling, not the boundary: [`verify_ladder`] still has
+    /// no production caller, so nothing consults it at run time. The control is
+    /// that the ladder now fails CLOSED if it is ever wired.
+    #[test]
+    fn the_dev_ceiling_refuses_a_tool_declaring_adapter() {
+        let report = record(SDK_VERSION);
+        let (public, signature) = key_and_signature(&report);
+        let mut tooled = caps();
+        tooled.tool_support = true;
+        let refusal = verify_ladder(
+            "vendor:test",
+            &report,
+            &signature,
+            &public,
+            true,
+            &AllowedCapabilities::dev(),
+            &tooled,
+        )
+        .expect_err("a tool-declaring adapter must not pass the dev ceiling");
+        assert_eq!(refusal.rung(), 5, "{refusal}");
+        assert!(
+            refusal.to_string().contains("capabilities"),
+            "the refusal names its rung: {refusal}"
+        );
+        // And the same adapter is admitted by a ceiling that DELIBERATELY grants
+        // it, so the test distinguishes "refused" from "always refuses".
+        let granting = AllowedCapabilities {
+            tool_support: true,
+            ..AllowedCapabilities::dev()
+        };
+        verify_ladder(
+            "vendor:test",
+            &report,
+            &signature,
+            &public,
+            true,
+            &granting,
+            &tooled,
+        )
+        .expect("an explicit grant admits it");
     }
 
     /// The full ladder passes with the REAL identity: the signed record

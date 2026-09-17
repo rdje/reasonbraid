@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The adapter ladder is ahead of its caller, and the ceiling permitted what nothing declares (`SIGNOFF-REPAIR.13.1.1`)
+
+✅ **A security control measured crate-wide rather than at the two items already suspected — and the census found a third.**
+
+- **The census, in a tracked instrument** (`scripts/census_adapter_public_api.py`, two-sided `--self-test`): **102 `pub` items, 17 with no non-test caller.** The leaf named two; the answer is **three** — `AllowedCapabilities` joins `verify_ladder` and `capabilities_within`.
+- 🔴 **All three have exactly ONE non-test mention outside their file, and it is the same `pub use` line.** ⭐ A re-export is not a caller — and it is the mechanism that blinds `dead_code`: without it the items would be crate-private, unused, and the compiler would have said so on the first build. ⚠️ A mention census over-counts by one per re-export, and **one is the most dangerous answer**, because it reads as a caller where a zero would prompt a second look.
+- **The other 14 are CLASSIFIED, not published as defects**: 1 test-support, 13 over-exposed helpers used only within their own file. Publishing "17 with no caller" would have been wrong in 14 cases.
+- **(a) Stated, not wired.** No adapter load path exists — `git grep -nE "libloading|dlopen|Library::new|load_adapter|from_path"` returns nothing. Wiring a check into a path that never runs creates a second false assurance; the fact is recorded **at the definition** so a reader cannot repeat the mistake.
+- **(b) `AllowedCapabilities::dev()` now declares `tool_support: false`** — it was `true`, in the crate's only ceiling, whose own doc says it describes "the shipped adapters' shapes" while every shipped adapter declares `false`. ⚠️ **No runtime behaviour changes and none is claimed**; what changes is the direction the ladder fails if ever wired — closed rather than open.
+- **(c) Already satisfied, verified rather than assumed**: the book cites the ladder **0** times; `.13.1.2` had corrected it. Nothing edited.
+- 🔎 **The self-test caught a defect in its own assertion** — the mirror of `.13.1.2`, where a weak assertion passed a broken parser. Here a wrong assertion failed a working stripper: it matched the bare name, which the probe's own definition line contains.
+- ⛔ **B3 is NOT advanced.** It remains an external blocker; the boundary is still held declaration-side, pinned by `ACTION-BOUNDARY`.
+- **Verification:** 14 adapter lib tests (incl. a new two-sided ceiling control) + 38 across the crate's other targets, 0 failed; clippy exit 0 zero diagnostics; `make gate` 18/18; `make book` rc=0.
+
 ## 2026-09-17 — The assessment namespace is part of the row (`SIGNOFF-REPAIR.11.14.3.3`)
 
 ✅ **The leaf was opened on a namespace tidiness question. The control found a live aliasing defect, and that is what shipped.**

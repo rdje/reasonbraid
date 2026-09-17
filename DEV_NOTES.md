@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — `dead_code` proves public reachability, not that anything runs
+
+- A five-rung adapter-verification ladder is implemented, tested and `pub`. The compiler is silent about it. It has **no production caller**: six call sites, all inside its own file's `#[cfg(test)]` module, plus one `pub use` in `lib.rs`.
+- ⭐ **The re-export is the mechanism, not a detail.** Without it the item would be crate-private and unused, and `dead_code` would have said so on the first build. Making something `pub` satisfies that lint permanently, whichever way the code goes afterwards.
+- **The rule:** for anything whose value is that it RUNS — an admission check, a validator, a guard — count call sites in non-test code, excluding its own defining file **and excluding re-exports**. A `pub use` is a visibility statement, not a use.
+- ⚠️ **A mention-counting census over-counts by exactly one per re-export**, and one is the most dangerous possible answer: it reads as "it has a caller". Three separate items each showed exactly one non-test mention outside their own file — the SAME `pub use` line for all three. A zero would have prompted a second look; a one did not.
+- 🔎 **Classify before concluding.** The same census returned 17 of 102 items with no caller, and they were three different things: one inert control at an admission point, one test-support surface, and 15 over-exposed helpers used only inside their own file. Publishing 17 as a defect count would have been wrong in 14 cases.
+- **Promoted:** `docs/knowledge/a-re-export-is-not-a-caller.md`.
+
 ## 2026-09-17 — Two instruments in one session, both unable to report what I needed
 
 - A census: `find . -name PG_VERSION -not -path "./target/*"` returned nothing and I published "no cluster exists anywhere in the repository". ⛔ The runner RETAINS a failed run's cluster under `target/` — the exclusion pointed exactly at the only place a positive result could live. Without it: 32 hits, three retained clusters, one of them the same session's own RED run.

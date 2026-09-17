@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Twelve verification-log rows had lost their first two cells (`SIGNOFF-REPAIR.11.19.1`)
+
+🔴 **An insert-at-top edit re-emitted the row it displaced without its date and leaf id — twelve times, over twelve commits — and asking the renderer why found two defects in the gate shipped one commit earlier.**
+
+- **The defect.** Twelve rows of `docs/tasks/PHASE-2.md`'s Verification Log render with their columns SHIFTED LEFT and padded with two empty cells: the date and the leaf id are simply gone from the page. `git show e7a829c` has the `PHASE-2.4.3` row added well-formed; `git show bb42f65` has the hunk that dropped its first two cells while prepending a new row above it.
+- ✅ **All 12 recovered unambiguously**, by matching each pipe-less line as a SUFFIX of every well-formed `| \`2026-…\` |` row in the file's history. ⭐ Confirmed by a property the match never uses: the recovered leaf ids come out strictly descending and continue the two rows above them.
+- ✅ **Verified by the RENDERER, on a property no other row shares:** rows whose first cell is a date go **21 → 33**, rows ending in two empty cells go **12 → 0**, and the total row count is **76 both ways**. ⛔ That invariance is the point — a row-count check would have reported success before the repair.
+- 🔴 **AND THE SECOND HALF OF THE ACCEPTANCE FOUND TWO DEFECTS IN `BROKEN-TABLE`, ONE COMMIT OLD.** Asked rather than assumed, mdbook says a table body continues across ANY non-blank line — `3 | 4` renders as two cells, bare prose as one, padded. The gate's scanner ended a table at the first pipe-less line, which is wrong in both directions at once: a **FALSE POSITIVE** reporting two adjacent tables separated by a blank line (ordinary Markdown) as 3 orphaned rows, and a **FALSE NEGATIVE** missing a blank line later in a table containing a pipe-less row.
+- ⭐ **The terminators are not uniform and no specification reading would have produced them.** A list item, an ATX heading, a blockquote and an HTML block END a table with no blank line; plain prose and indented continuation text do NOT. Established one construct at a time against the renderer; that distinction took the mirror defect's population from an over-counted 15 to the real 11. All four are self-test arms; the gate now carries **18**.
+- ⭐ **Falsified in situ:** the pre-fix scanner run against the new arms fails 11, 12 and 13 by name (3 / 0 / 0 against 0 / 1 / 1); the two no-regression arms pass both ways and are labelled.
+- 🔴 **CORRECTION to the previous entry.** REPAIR-0238's entry says one of the twelve rows "renders outside the table entirely". It does not — all twelve are rows with shifted columns. That reading came from a probe whose key, the bare phrase *"inventory-groundwork deferral record"*, occurs **7 times** in the file, and `str.find` returned the first, ordinary prose **1,889 lines** above the row it was meant to find. ⚠️ A key too LOOSE fails the opposite way to one too narrow: not an undercount, a wrong instance. The live documents that restated it are swept; this ledger entry carries the correction rather than the previous one being rewritten.
+- Routed: **11 lines of `docs/tasks/PHASE-3.md` are a wrapped closing paragraph ABSORBED into its frontier table** — the mirror of `.11.19`, visible only once the table model was corrected. Neither table gate reaches it. `.11.19.2`.
+
 ## 2026-09-18 — A blank line ENDS a Markdown table, and one sat inside the tree's own frontier (`SIGNOFF-REPAIR.11.19`)
 
 🔴 **52 table rows across 3 tracked files were rendering as paragraphs of literal pipe-text — including all 46 rows of the active tree's Current Frontier, row 1 among them.**

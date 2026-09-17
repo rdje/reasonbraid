@@ -23,6 +23,21 @@ asserted that same false answer. Each rule here was rendered before being writte
   · delimiter cell count ≠ header's       → NOT A TABLE AT ALL (no `<table>`)
   · a table indented 1–3 spaces           → still a table
   · a table indented 4+ spaces            → a code block (`<pre>`), not a table
+  · a body line with NO leading pipe      → STILL A ROW (`3 | 4` renders as two
+                                            cells; bare prose renders as one,
+                                            padded to the header's width)
+  · a list item, heading, blockquote or
+    HTML block with no blank line before → ENDS the table
+  · plain prose, or indented continuation → does NOT end it; both are absorbed
+
+🔴 THAT LAST ONE CORRECTED THIS INSTRUMENT AFTER IT SHIPPED (`SIGNOFF-REPAIR.11.19.1`).
+The first cut ended a table at the first pipe-less line, which produced BOTH
+directions of error: a FALSE NEGATIVE — a blank line later in the same table was
+missed — and, worse, a FALSE POSITIVE, because two adjacent tables separated by a
+blank line were reported as three orphaned rows. That is ordinary Markdown, and
+the gate would have blocked the next author who wrote it. A table body now ends
+only at a blank line or a fence, and a pipe row after a blank is a NEW TABLE
+rather than an orphan when it brings its own header and delimiter pair.
 
 ⛔ The middle one is why this cannot be a variant of `TABLE-ARITY-RATCHET`: that
 gate compares a row's cell count against its header's, and an ORPHANED ROW HAS NO
@@ -49,6 +64,13 @@ ROOT = Path(__file__).resolve().parent.parent
 FENCE = re.compile(r"^(```|~~~)")
 # A delimiter row: cells of dashes with optional alignment colons.
 DELIM_CELL = re.compile(r"^:?-+:?$")
+
+# Block constructs that END a table body even with NO blank line before them.
+# ⛔ Asked of the renderer, one construct at a time (`SIGNOFF-REPAIR.11.19.1`),
+# because the answer is not uniform and guessing it wrong goes BOTH ways: plain
+# prose and indented continuation text are ABSORBED into the table as rows,
+# while a list item, a heading, a blockquote and an HTML block end it.
+ENDS_TABLE = re.compile(r"^(?:[-*+] |\d+[.)] |#{1,6} |> |<!--|<[a-zA-Z])")
 
 
 def _dedent(line: str) -> tuple[str, int]:
@@ -109,6 +131,23 @@ def is_delimiter(row: str) -> int | None:
     return None
 
 
+def _starts_table(lines: list[str], j: int) -> bool:
+    """True when a header + delimiter pair begins at line j (0-based).
+
+    The same test in both places it is needed: opening a table, and deciding
+    whether the pipe row after a blank line is a NEW table rather than an
+    orphaned row.
+    """
+    if j + 1 >= len(lines):
+        return False
+    header, hindent = _dedent(lines[j])
+    delim, dindent = _dedent(lines[j + 1])
+    if hindent >= 4 or dindent >= 4 or "|" not in header:
+        return False
+    n = is_delimiter(delim)
+    return n is not None and len(split_cells(header)) == n
+
+
 def scan(text: str, path: str = "<text>") -> list[dict]:
     """Every blank line inside a table body, with the rows it orphans."""
     lines = text.splitlines()
@@ -140,45 +179,54 @@ def scan(text: str, path: str = "<text>") -> list[dict]:
             continue
 
         if not in_table:
-            n = is_delimiter(stripped)
-            if n is not None and i > 0:
-                header, hindent = _dedent(lines[i - 1])
-                # ⛔ The renderer emits NO table when the counts disagree.
-                if hindent < 4 and "|" in header and len(split_cells(header)) == n:
-                    in_table = True
+            # ⛔ The renderer emits NO table when the header's and delimiter's
+            # cell counts disagree, so the pair is tested together.
+            if i > 0 and _starts_table(lines, i - 1):
+                in_table = True
             i += 1
             continue
 
-        # In a table body.
-        if stripped == "":
-            k = i
-            while k < len(lines) and not lines[k].strip():
-                k += 1
-            if k < len(lines):
-                nxt, nindent = _dedent(lines[k])
-                if nindent < 4 and nxt.startswith("|"):
-                    n = k
-                    while n < len(lines):
-                        cand, cindent = _dedent(lines[n])
-                        if cindent >= 4 or not cand.startswith("|"):
-                            break
-                        n += 1
-                    out.append(
-                        {
-                            "file": path,
-                            "blank_line": i + 1,
-                            "first_orphan": k + 1,
-                            "orphaned_rows": n - k,
-                        }
-                    )
-                    i = n
-                    continue          # more blanks may follow in the same table
-            in_table = False
+        # In a table body. ⛔ A table body continues across ANY non-blank line,
+        # pipes or not — the renderer turns a bare prose line after a row into a
+        # row. Only a blank line (or a fence) ends it. An earlier cut ended the
+        # table at the first pipe-less line and so could MISS a blank line later
+        # in the same table.
+        if stripped != "":
+            if ENDS_TABLE.match(stripped):
+                in_table = False
             i += 1
             continue
-        if not stripped.startswith("|"):
-            in_table = False
-        i += 1
+
+        k = i
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+        in_table = False
+        if k < len(lines):
+            nxt, nindent = _dedent(lines[k])
+            # ⛔ TWO ADJACENT TABLES separated by a blank line are ordinary
+            # Markdown, not a defect. The second one declares itself with its
+            # own header + delimiter pair, which is the same test that STARTS a
+            # table — so ask it here rather than flagging every pipe row that
+            # follows a blank.
+            if nindent < 4 and nxt.startswith("|") and not _starts_table(lines, k):
+                n = k
+                while n < len(lines):
+                    cand, cindent = _dedent(lines[n])
+                    if cindent >= 4 or not cand.strip() or not cand.startswith("|"):
+                        break
+                    n += 1
+                out.append(
+                    {
+                        "file": path,
+                        "blank_line": i + 1,
+                        "first_orphan": k + 1,
+                        "orphaned_rows": n - k,
+                    }
+                )
+                # The orphaned rows are NOT a table, so resume scanning after them.
+                i = n
+                continue
+        i = k if k > i else i + 1
 
     if fence is not None:
         raise ValueError(
@@ -368,7 +416,33 @@ def self_test() -> int:
         1,
     )
 
-    # ── arm 11: refuse, do not guess ─────────────────────────────────────────
+    # ── arms 11–13: what a table BODY is, corrected by the renderer ─────────
+    # 11 — TWO ADJACENT TABLES separated by a blank line are ordinary Markdown.
+    #      The first cut of this gate flagged them as 3 orphaned rows, which
+    #      would have blocked the next author who wrote two tables in a row
+    #      (`SIGNOFF-REPAIR.11.19.1`). This is the arm that refutes it.
+    check(
+        "two adjacent tables separated by a blank are NOT a defect",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 5 | 6 |\n"),
+        0,
+    )
+    # 12 — a body row written WITHOUT a leading pipe is still a row: mdbook
+    #      renders `3 | 4` after a row as `<td>3</td><td>4</td>`. The first cut
+    #      ended the table there and MISSED the blank line below it.
+    check(
+        "a pipe-less body row does not end the table",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\n3 | 4\n\n| 5 | 6 |\n"),
+        1,
+    )
+    # 13 — and so is a line with no pipe at all: mdbook renders `some prose`
+    #      after a row as a one-cell row padded to the header's width.
+    check(
+        "a pipe-less PROSE line does not end the table either",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\nsome prose\n\n| 5 | 6 |\n"),
+        1,
+    )
+
+    # ── arm 14: refuse, do not guess ─────────────────────────────────────────
     try:
         scan("```\n| A | B |\n| --- | --- |\n\n| 1 | 2 |\n", "fixture.md")
         print("BROKEN-TABLE self-test: an unbalanced fence did not refuse", file=sys.stderr)
@@ -376,7 +450,26 @@ def self_test() -> int:
     except ValueError:
         pass
 
-    # ── arm 12: the real corpus is reachable ─────────────────────────────────
+    # ── arms 15–17: what ENDS a table body, one construct at a time ─────────
+    # ⛔ The answer is not uniform, and each of these was rendered separately.
+    # A list item ends a table; the prose line in arm 13 does not.
+    check(
+        "a list item ends the table",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\n- a list item\n\n| 5 | 6 |\n"),
+        0,
+    )
+    check(
+        "a heading ends the table",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\n## A heading\n\n| 5 | 6 |\n"),
+        0,
+    )
+    check(
+        "a blockquote ends the table",
+        n("| A | B |\n| --- | --- |\n| 1 | 2 |\n> quoted\n\n| 5 | 6 |\n"),
+        0,
+    )
+
+    # ── arm 18: the real corpus is reachable ─────────────────────────────────
     real = census()
     if real["files_scanned"] < 50:
         print(
@@ -389,9 +482,10 @@ def self_test() -> int:
     if fails:
         return 1
     print(
-        "BROKEN-TABLE self-test: 12 arms — the defect in two positions, THREE negatives"
-        " (a blank that ends a table, EOF, a fence), the renderer's three answers about"
-        " what is a table, an escaped pipe, an unbalanced fence refused, and"
+        "BROKEN-TABLE self-test: 18 arms — the defect in four positions, SEVEN negatives"
+        " (a blank that ends a table, EOF, a fence, two adjacent tables, a list, a"
+        " heading, a blockquote), the renderer's answers about what a table, a body row"
+        " and a terminator are, an escaped pipe, an unbalanced fence refused, and"
         f" {real['files_scanned']} tracked files reachable"
     )
     return 0

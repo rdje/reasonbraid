@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **TWELVE VERIFICATION-LOG ROWS HAD LOST THEIR FIRST TWO CELLS (`.11.19.1`, REPAIR-0239).**
+
+🔴 **An insert-at-top edit re-emitted the row it displaced without its date and leaf id — twelve times, over twelve commits.**
+
+- **The defect.** Twelve rows of `docs/tasks/PHASE-2.md`'s Verification Log render with their columns shifted left and padded with two empty cells. `e7a829c` added the `PHASE-2.4.3` row well-formed; `bb42f65` dropped its first two cells while prepending a new row above it.
+- ✅ **All 12 recovered unambiguously** by suffix-matching every well-formed row in the file's history. ⭐ The recovered leaf ids come out strictly descending — a property the match never uses, so it is independent confirmation.
+- ✅ **Verified by the RENDERER on a discriminating property:** rows whose first cell is a date **21 → 33**, rows ending in two empty cells **12 → 0**, total rows **76 both ways**. ⛔ That invariance is the point — a row-count check would have reported success before the repair.
+- 🔴 **Two defects found in `BROKEN-TABLE`, one commit old.** mdbook says a table body continues across ANY non-blank line; the scanner ended one at the first pipe-less line — a FALSE POSITIVE flagging two adjacent tables separated by a blank (ordinary Markdown) and a FALSE NEGATIVE missing a later blank line. Both fixed, falsified in situ, **18 arms**.
+- ⭐ **The terminators are not uniform:** a list, heading, blockquote and HTML block END a table with no blank line; plain prose and indented continuation do NOT. Established one construct at a time against the renderer.
+- 🔴 **CORRECTION:** REPAIR-0238 published that one of the twelve "renders outside the table entirely". It does not — all twelve are rows. The probe's key matched an unrelated occurrence 1,889 lines away. Promoted as `a-key-too-loose-returns-the-wrong-instance`.
+- Routed: **11 lines of `docs/tasks/PHASE-3.md` are a closing paragraph ABSORBED into its frontier table** — the mirror of `.11.19`. `.11.19.2`.
+
 ✅ **A BLANK LINE ENDS A MARKDOWN TABLE, AND ONE SAT INSIDE THE TREE'S OWN FRONTIER (`.11.19`, REPAIR-0238).**
 
 🔴 **52 table rows across 3 tracked files rendered as paragraphs of literal pipe-text — including all 46 rows of the active tree's Current Frontier, row 1 among them.**
@@ -15,7 +27,7 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - 🔎 **`TABLE-ARITY-RATCHET` governs all three files and cannot see it** — it compares a row's cells against its header's, and an orphaned row has no header. `BOOK-LINKS`' founding shape a third time.
 - ✅ **All 52 discharged, verified BY THE RENDERER:** `<tr><td>` 157→203, 53→56, 29→32 — **+52 exactly**, matching the census by a different route.
 - ⭐ **`BROKEN-TABLE` SHIPS** — calibrated across 200 commits first: **1 blocked (0.5%)**, and that commit is the one that introduced the defect. Zero false positives. Three of its twelve arms are NEGATIVES, without which the rule degenerates.
-- 🔴 **The leaf published a `0` that measured `12`.** Twelve verification-log rows in `docs/tasks/PHASE-2.md` LOST their first two cells; one renders outside its table entirely, and both table gates are blind to the shape. The superseded claim is kept rather than edited into agreement. `.11.19.1`.
+- 🔴 **The leaf published a `0` that measured `12`.** Twelve verification-log rows in `docs/tasks/PHASE-2.md` LOST their first two cells, so the renderer emits them with their columns shifted left and padded by two empty cells, and both table gates are blind to the shape. The superseded claim is kept rather than edited into agreement. `.11.19.1`.
 
 ✅ **A RESTATED NUMBER NEEDS A PRODUCER, NOT A RULE (`.11.16`, REPAIR-0237).**
 

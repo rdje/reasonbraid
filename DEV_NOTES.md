@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A key too loose fails the opposite way to a key too narrow
+
+- A probe located "the damaged row" with `str.find(phrase)`. The phrase occurred **7 times** in the file and `find` returned the first — ordinary prose **1,889 lines** away from the row it was meant to locate. The conclusion drawn from it ("one row renders outside the table entirely") was published in five documents before it was checked.
+- ⭐ **This is the twin of `a-census-is-as-wide-as-its-key`, and it fails the other way.** A key too NARROW under-counts — you get fewer instances than exist, and the error announces itself the moment someone widens it. A key too LOOSE returns the WRONG instance at full confidence, and nothing about the output looks partial.
+- ⛔ The cheap defence is not a better phrase: it is asking the key how many times it matches BEFORE using its first hit. `grep -c` costs nothing, and a count above 1 means `find` is a coin toss.
+- ⚠️ The second defence is the one that actually caught it here: measure the claim on a property **no other candidate shares**. "Rows whose first cell is a date: 21 → 33" and "rows ending in two empty cells: 12 → 0" cannot match the wrong instance, because prose 1,889 lines away is not a table row at all.
+- 🔎 And the same run showed why the OBVIOUS metric was useless: the table's total row count is **76 before and after**. The rows were always rows; what was broken was which column each value landed in.
+
 ## 2026-09-18 — Three of twelve self-test arms were negatives, and the rule needs them
 
 - A new gate flagged "a blank line inside a Markdown table". ⭐ The three arms that make it a RULE rather than a nuisance are the ones that must NOT fire: a blank line that legitimately ENDS a table, a table at end of file, and a table inside a code fence. An implementation flagging *"a blank line near a table"* passes every positive arm and fires on most of the corpus.

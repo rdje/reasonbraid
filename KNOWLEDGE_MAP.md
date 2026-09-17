@@ -172,6 +172,7 @@
 - [`2026-09-16_internet-qualification-route.md`](docs/decisions/2026-09-16_internet-qualification-route.md)
 - [`2026-09-16_rb-server-bind-exposure.md`](docs/decisions/2026-09-16_rb-server-bind-exposure.md)
 - [`2026-09-16_the-deliberation-flow-owns-the-evidence-chain.md`](docs/decisions/2026-09-16_the-deliberation-flow-owns-the-evidence-chain.md)
+- [`2026-09-17_a-pin-names-its-bytes.md`](docs/decisions/2026-09-17_a-pin-names-its-bytes.md)
 - [`2026-09-17_remote-ci-has-run-and-is-green.md`](docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md)
 - [`2026-09-17_the-assessment-namespace-is-part-of-the-row.md`](docs/decisions/2026-09-17_the-assessment-namespace-is-part-of-the-row.md)
 - [`2026-09-17_the-reference-read-is-bound-to-its-registrants.md`](docs/decisions/2026-09-17_the-reference-read-is-bound-to-its-registrants.md)
@@ -180,6 +181,7 @@
 ## Promoted lessons
 
 - [`a-census-is-an-instrument-not-a-table.md`](docs/knowledge/a-census-is-an-instrument-not-a-table.md) — how do I make a census someone can re-run; why did my reconciliation just re-read the same source; how do I know two censuses taken months apart are comparable; what should a census script do before it reports anything; how do I stop a lexical code census from over-approximating; how should I record that my measuring instrument was wrong
+- [`a-census-is-as-wide-as-its-key.md`](docs/knowledge/a-census-is-as-wide-as-its-key.md) — my census looked complete and missed a surface — why; how do I know an enumeration covered everything that can reach this object; why did a route census miss an endpoint; how wide is a grep over route definitions; how do I scope a security census so it cannot be silently incomplete
 - [`a-claim-of-sameness-is-worth-its-call-graph.md`](docs/knowledge/a-claim-of-sameness-is-worth-its-call-graph.md) — my module says it uses the same authorization as another surface — how do I check; should I add the missing checks to the copy or delete the copy; why did a second implementation drift from the first; how do I stop a doc comment from being the only thing holding an invariant; where should a second surface's authorization live; how do I repair a duplicated read path safely
 - [`a-compatibility-objection-is-a-claim.md`](docs/knowledge/a-compatibility-objection-is-a-claim.md) — is this compatibility break worth taking; how do I check whether removing a permission breaks a real caller; a repair is held because it would break someone — how do I decide; how do I tell a real cost from a plausible one; why did a leaf sit unrepaired for days
 - [`a-control-is-calibrated-against-the-renderer.md`](docs/knowledge/a-control-is-calibrated-against-the-renderer.md) — how do I know my linter agrees with the tool that actually consumes the file; why did my whole-corpus scan report zero defects while the output was visibly broken; what is wrong with writing a checker and its self-test from the same reading of a spec; how should I calibrate a control over a format I did not implement; why is my self-test passing on the exact shape that is broken

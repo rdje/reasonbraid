@@ -9458,3 +9458,172 @@ async fn the_reference_read_is_bound_to_the_registering_tenant() {
         "reference read binding: a second tenant holding the res_ id reads 404 — the same answer an absent id gets — and its resolve is refused identically; the registering tenant still reads its own row; registering the same pair replays to the SAME resource_id, records the second registration and restores the read; {registrations} registrations on one shared row"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.14.3.6`: a reference's `expected_digest` constrains the
+/// snapshots filed against it, and an unpinned reference still holds many.
+///
+/// The pin was a §12.1 field a caller supplied to say *"these are the bytes I
+/// expect"*, and the census found **zero** readers of a STORED one:
+/// `snapshots::submit` asked `SELECT EXISTS … WHERE resource_id = $1` and never
+/// looked at the column. So a reference pinned to one digest accepted a snapshot
+/// of entirely different bytes.
+///
+/// ⭐ **Enforcing it is what makes `.11.14.3.2`'s pair key mean something.** That
+/// leaf made `(original_locator, expected_digest)` the reference's identity so a
+/// changed page would be a SECOND reference rather than an erased distinction.
+/// Without a checkpoint, both rows accepted any bytes and the distinction the
+/// key was created to preserve was preserved nowhere.
+///
+/// ⚠️ **The plural is not forbidden — it is relocated.** `evidence_snapshots`
+/// replays on `(reference_id, raw_digest)`, so one reference holds many
+/// versions; that stays true of an UNPINNED reference, which is what §12.6's
+/// changing page needs. A pin says the opposite about its own reference, and the
+/// two compose.
+#[tokio::test]
+async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pin-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let pinned_bytes = b"the audited figure is 41.2 per cent";
+    let other_bytes = b"the audited figure is 62.8 per cent";
+    let pinned_digest = reasonbraid_server::fetcher::digest_sha256_hex(pinned_bytes);
+    let other_digest = reasonbraid_server::fetcher::digest_sha256_hex(other_bytes);
+    assert_ne!(pinned_digest, other_digest);
+
+    let register = |locator: &'static str, digest: Option<String>| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let mut body = json!({ "original_locator": locator, "scheme": "https" });
+            if let Some(digest) = digest {
+                body["expected_digest"] = json!(digest);
+            }
+            let (status, reference) = post(&client, &base, "/v1/resources", &human_id, &body).await;
+            assert_eq!(status, 200, "the reference registers: {reference}");
+            reference["resource_id"].as_str().unwrap().to_string()
+        }
+    };
+    let snapshot = |reference_id: String, bytes: &'static [u8]| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &human_id,
+                &json!({
+                    "reference_id": reference_id,
+                    "original_locator": "https://example.org/pinned-report",
+                    "final_locator": "https://example.org/pinned-report",
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
+                    "byte_length": bytes.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(bytes),
+                }),
+            )
+            .await
+        }
+    };
+
+    // ── The finding: a pinned reference accepted bytes it does not name ──────
+    let pinned_ref = register(
+        "https://example.org/pinned-report",
+        Some(pinned_digest.clone()),
+    )
+    .await;
+    let (status, refused) = snapshot(pinned_ref.clone(), other_bytes).await;
+    assert_eq!(
+        status, 400,
+        "a snapshot of other bytes is refused against a pinned reference: {refused}"
+    );
+    assert!(
+        refused["message"].as_str().unwrap().contains("pinned to"),
+        "the refusal names the pin as its reason: {refused}"
+    );
+    // ⛔ And it names NEITHER digest. The pinned one belongs to a reference this
+    // route does not check the caller may read, so quoting it would turn the
+    // refusal into an oracle over a `res_…` id.
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        !message.contains(&pinned_digest) && !message.contains(&other_digest),
+        "the refusal carries no digest: {refused}"
+    );
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&pinned_ref)
+            .fetch_one(&pool)
+            .await
+            .expect("count the pinned reference's snapshots");
+    assert_eq!(stored, 0, "the refused snapshot wrote nothing");
+
+    // ── The bound: the pinned bytes themselves are accepted ─────────────────
+    let (status, accepted) = snapshot(pinned_ref.clone(), pinned_bytes).await;
+    assert_eq!(
+        status, 200,
+        "the reference's OWN bytes are accepted: {accepted}"
+    );
+    assert_eq!(accepted["replay"], json!(false), "{accepted}");
+
+    // ── The plural is relocated, not forbidden ──────────────────────────────
+    //
+    // An UNPINNED reference still holds every version §12.6's changing page
+    // produces. A repair that enforced a pin nobody declared would fail here.
+    let unpinned_ref = register("https://example.org/living-report", None).await;
+    for bytes in [pinned_bytes.as_slice(), other_bytes.as_slice()] {
+        let (status, stored) = snapshot(unpinned_ref.clone(), bytes).await;
+        assert_eq!(
+            status, 200,
+            "an unpinned reference holds this version too: {stored}"
+        );
+    }
+    let versions: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&unpinned_ref)
+            .fetch_one(&pool)
+            .await
+            .expect("count the unpinned reference's snapshots");
+    assert_eq!(
+        versions, 2,
+        "one unpinned reference, two versions — the changing page §12.6 describes"
+    );
+
+    // ── And the changed page's own route: a SECOND reference ────────────────
+    //
+    // This is what makes the refusal above a redirection rather than a dead end,
+    // and it is `.11.14.3.2`'s key doing the work it was created for.
+    let second_ref = register(
+        "https://example.org/pinned-report",
+        Some(other_digest.clone()),
+    )
+    .await;
+    assert_ne!(
+        second_ref, pinned_ref,
+        "the same locator at a DIFFERENT digest is a second reference"
+    );
+    let (status, moved) = snapshot(second_ref.clone(), other_bytes).await;
+    assert_eq!(
+        status, 200,
+        "the changed page's bytes are acquired against the reference that names them: {moved}"
+    );
+
+    eprintln!(
+        "reference pin: a pinned reference refuses a snapshot of other bytes (400, no digest quoted, 0 rows written) and accepts its own; an UNPINNED reference still holds {versions} versions; the same locator at the other digest is a second reference and acquires normally"
+    );
+}

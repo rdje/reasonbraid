@@ -5,6 +5,12 @@
 //! (the deletion records the reason and the time — never a silent
 //! disappearance).
 //!
+//! A reference's `expected_digest` is ENFORCED here since
+//! `SIGNOFF-REPAIR.11.14.3.6`: a pinned reference accepts only the bytes it
+//! names, while an unpinned one still holds every version §12.6's changing page
+//! produces. The two compose because `.11.14.3.2` made `(locator, digest)` the
+//! reference's identity, so a changed page is a SECOND reference.
+//!
 //! The row is SHARED and the read is TENANT-BOUND (`SIGNOFF-REPAIR.11.14.1`,
 //! `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md`).
 //! Content-addressing makes one row serve every tenant that cites the same
@@ -150,6 +156,15 @@ pub enum SnapshotError {
         declared: String,
         actual: String,
     },
+    /// The reference declares an `expected_digest` and these bytes are not it
+    /// (`SIGNOFF-REPAIR.11.14.3.6`).
+    ///
+    /// ⛔ Neither digest is carried. The caller already holds the ACTUAL one —
+    /// it hashed the bytes it sent — and the PINNED one belongs to a reference
+    /// this route does not check the caller may read, so quoting it would make
+    /// the refusal an oracle over a `res_…` id. The message says what to do
+    /// instead, which is the part a legitimate caller does not already have.
+    PinMismatch,
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
     Storage(sqlx::Error),
@@ -164,6 +179,12 @@ impl std::fmt::Display for SnapshotError {
             Self::DigestMismatch { declared, actual } => write!(
                 f,
                 "the bytes hash to `{actual}`, not the declared `{declared}`"
+            ),
+            Self::PinMismatch => write!(
+                f,
+                "the bytes do not match the digest this reference is pinned to — \
+                 a page that changed is a SECOND reference (§12.6), so register \
+                 the locator at the new digest and acquire against that"
             ),
         }
     }
@@ -202,15 +223,34 @@ pub async fn submit(
             actual,
         });
     }
-    let reference_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = $1)",
+    // The reference must exist, AND its pin must hold. One query answers both:
+    // the outer `Option` is existence, the inner one is the pin
+    // (`SIGNOFF-REPAIR.11.14.3.6`). Before this, the lookup asked `EXISTS` and
+    // the §12.1 field a caller supplied to say "these are the bytes I expect"
+    // constrained nothing — a reference pinned to one digest accepted a snapshot
+    // of entirely different bytes.
+    let pin: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT expected_digest FROM resource_references WHERE resource_id = $1",
     )
     .bind(&submission.reference_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(SnapshotError::Storage)?;
-    if !reference_exists {
+    let Some(pin) = pin else {
         return Err(SnapshotError::ReferenceMissing);
+    };
+    // ⭐ An UNPINNED reference is unaffected, and that is the whole shape of the
+    // rule rather than an exemption. `evidence_snapshots` replays on
+    // `(reference_id, raw_digest)`, so one reference is designed to hold many
+    // versions — which is what §12.6's changing page needs. A PIN says the
+    // opposite about its own reference: these bytes, this row. The two compose
+    // because `SIGNOFF-REPAIR.11.14.3.2` made `(locator, digest)` the identity,
+    // so the changed page is a second reference rather than a second version of
+    // the pinned one.
+    if let Some(pinned) = pin {
+        if pinned != submission.raw_digest {
+            return Err(SnapshotError::PinMismatch);
+        }
     }
     let snapshot_id = evidence_id("snp");
     sqlx::query(

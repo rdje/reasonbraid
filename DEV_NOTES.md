@@ -1,5 +1,20 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — A census is only as wide as the key it enumerates on
+
+- I bound two routes that read a reference, and published the census that justified it: `grep -n '"/v1/resources' api.rs` → three routes, two of them unbound, both now bound. One commit later, a different leaf walked past `POST /v1/snapshots`, which names a `reference_id` **in its body**. The census could not see it, because it enumerated on a *route prefix* and the surface is not under that prefix.
+- ⭐ **The census was not wrong. It was silent** — correct about every route it enumerated and quiet about a surface that names the same object under a different key. That is the more dangerous failure, because a wrong census invites a second look and a silent one reads as complete.
+- **The rule:** *state the key your census enumerates on, and then ask whether the thing you are protecting can be named some other way.* An object with an identifier is reachable by anything that accepts that identifier — a path segment, a body field, a query parameter, a foreign key in a table someone else writes. Enumerate on the **identifier**, not on the route shape:
+
+```bash
+grep -rn "reference_id\|resource_id" crates/…/src   # the object
+grep -n '"/v1/resources'            crates/…/src     # one of its addresses
+```
+
+- ⚠️ **This is the second instance of the shape in this repository**, and the first is worth naming because it was ruled correct: `.3.5.3` found a read leak that the node-administration census had missed because that census had scoped itself to the *mutations*. It was right about its own scope. So was mine. Two censuses, two different scoping keys, the same silence.
+- 🔎 **What makes it checkable rather than a resolution to be careful:** the scoping key is a written artefact — it is the command in the leaf. Reading it back and asking *"what else could name this object?"* costs one sentence, and it is the sentence neither census contained.
+- **Promoted:** `docs/knowledge/a-census-is-as-wide-as-its-key.md`.
+
 ## 2026-09-17 — A prohibition names a mechanism, and the mechanism may not be the one you are proposing
 
 - A leaf carried a ⛔: *"Do NOT assume the answer is a citation table … a per-tenant reference set would break the dedupe the pair key exists for."* Obeyed literally, it rules out the correct answer.

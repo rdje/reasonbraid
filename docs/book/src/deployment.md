@@ -728,9 +728,44 @@ Both are new: before this change a citation's `uri` and `digest` were free text
 that nothing read. A contribution whose citation is refused commits nothing —
 the event and every reference it registers share one transaction.
 
-⚠️ **One honest limit, published rather than implied.** Nothing yet checks an
-acquired snapshot's bytes against its reference's `expected_digest`, so the pin
-records an expectation it does not enforce (`SIGNOFF-REPAIR.11.14.3.6`).
+#### What a pin does
+
+`expected_digest` is not a note. A reference that declares one **accepts only the
+bytes it names**, and a snapshot of anything else is refused before it is written:
+
+```text
+400 the bytes do not match the digest this reference is pinned to — a page that
+    changed is a SECOND reference (§12.6), so register the locator at the new
+    digest and acquire against that
+```
+
+⛔ Until `SIGNOFF-REPAIR.11.14.3.6` the pin was recorded and read by **nothing**.
+The snapshot store asked its reference table one question — does this
+`resource_id` exist? — so a reference pinned to one digest accepted a snapshot of
+entirely different bytes, and the field a caller supplied to say *"these are the
+bytes I expect"* constrained nothing.
+
+⚠️ **An unpinned reference is unchanged, and that is the shape of the rule rather
+than an exemption.** A snapshot replays on `(reference_id, raw_digest)`, so one
+reference holds many versions — which is what a living page needs. A pin says the
+opposite about its own reference: these bytes, this row. The two compose because
+the same locator at a different digest is a **second reference**, which is where
+the changed page's snapshot belongs:
+
+| The reference | What it holds |
+| --- | --- |
+| no `expected_digest` | every version acquired against it, over time |
+| pinned to `sha256:…` | that one version; anything else is refused |
+| the same locator at a different digest | a separate reference, holding the changed page |
+
+⛔ **The refusal quotes neither digest.** You already have the one you sent, and
+the pinned one belongs to a reference this route does not check you may read.
+
+⚠️ **Two acquisition paths discard the persistence result** — the R0 and R5 arms
+of `POST /v1/resources/{id}/resolve` — so resolving a pinned reference whose page
+has drifted returns an acquisition receipt and **no snapshot**, silently. That
+discard predates the pin and now has a likely cause;
+`SIGNOFF-REPAIR.11.14.3.12` owns it.
 
 #### Who may read a reference
 

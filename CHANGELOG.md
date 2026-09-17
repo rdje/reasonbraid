@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-17 — A reference's `expected_digest` names its bytes (`SIGNOFF-REPAIR.11.14.3.6`)
+
+🔴 **A §12.1 field a caller supplied to say "these are the bytes I expect" constrained nothing, and enforcing it is what makes the pair key mean something.**
+
+- **The census, re-derived on the working tree rather than quoted:** `git grep -n expected_digest -- crates/reasonbraid-server/src` → **20** hits (13 at the pinned commit; the growth is the registration path WRITING the column). `snapshots::submit` asked `SELECT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = $1)`. **Zero sites read a STORED pin.**
+- 🔴 **RED, falsified against the exact unrepaired store** — the production file reverted with `git stash push`, the control run, the file restored. A reference pinned to `sha256(the audited figure is 41.2 per cent)` accepted a snapshot of `the audited figure is 62.8 per cent`: `200 {"replay":false,"snapshot_id":"snp_01a0aec59be97d93af711df98b146e90"}`; `46 passed; 1 failed`.
+- ⭐ **DECIDED: a pinned reference accepts only the bytes it names; an unpinned one is unchanged** (`docs/decisions/2026-09-17_a-pin-names-its-bytes.md`, three alternatives rejected). ⭐ **Enforcement is what makes `.11.14.3.2`'s pair key MEAN something**: that leaf made `(locator, digest)` the reference's identity so §12.6's changed page would be a SECOND reference rather than an erased distinction — and with no checkpoint both rows accepted any bytes, so the distinction the key was created to preserve was preserved nowhere.
+- ⚠️ **The leaf's own worry resolves rather than binds.** It warned that *"a pin enforced at acquisition would forbid exactly that [plural]"*. The plural belongs to the UNPINNED reference: `evidence_snapshots` replays on `(reference_id, raw_digest)`, and the control asserts one unpinned reference holding **2** versions.
+- ⛔ **The refusal carries NEITHER digest.** The caller already holds the actual one — it hashed the bytes it sent — and the pinned one belongs to a reference this route does not check the caller may read, so quoting it would be an oracle over a `res_…` id. The message carries the next step instead: *register the locator at the new digest and acquire against that.* In the STORE rather than at the resolver, for `.11.14.3.8`'s reason — four call sites reach it.
+- ⛔ **CONSEQUENCE, stated rather than discovered.** `api.rs`'s R0 and R5 arms call `let _ = crate::snapshots::submit(…)`, so a pinned reference whose page drifted now returns an acquisition receipt and no snapshot, **silently**. The discard predates the pin (its own comment says so); what changed is that it now has a likely, caller-meaningful cause. Censused to **two** sites — the R2 arm captures its result. `.11.14.3.12` owns it.
+- 🔎 **And a gap in MY OWN census one commit earlier — `.11.14.3.11`.** `.11.14.3.4` enumerated the routes under `/v1/resources` and bound the two that read a reference; `POST /v1/snapshots` names a `reference_id` in its **BODY**, so a route-prefix census cannot see it. ⭐ That is `.3.5.3`'s shape exactly — a census correct about its own scope and silent about what fell outside it — committed by the session that had just written the rule down.
+- **Verification:** `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` → **47 passed / 0 failed**; the RED baseline 46/1.
+
 ## 2026-09-17 — The §12.1 reference detail read is bound to its registrants (`SIGNOFF-REPAIR.11.14.3.4`)
 
 🔴 **The leaf expected a locator confirmation. RED returned the whole §12.1 row.**

@@ -2470,6 +2470,10 @@ async fn resolve_resource(
                             // (a chunk is NEVER the original).
                             {
                                 for chunk in &response.chunks {
+                                    // The parent is the snapshot this
+                                    // acquisition just wrote and cited, so the
+                                    // resolving tenant is a citer by
+                                    // construction (`.11.14.3.15`).
                                     let _ = crate::derivations::submit(
                                         &state.pool,
                                         &crate::derivations::DerivationSubmission {
@@ -2482,6 +2486,7 @@ async fn resolve_resource(
                                             ),
                                             source_selector: None,
                                         },
+                                        &citer.tenant_id,
                                     )
                                     .await;
                                 }
@@ -3880,13 +3885,16 @@ async fn submit_derivation(
     Json(submission): Json<crate::derivations::DerivationSubmission>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal submits no derivation",
         ));
-    }
-    match crate::derivations::submit(&state.pool, &submission).await {
+    };
+    // A derivation is filed against a snapshot THIS TENANT CITED
+    // (`SIGNOFF-REPAIR.11.14.3.15`) — the binding every read of a snapshot
+    // already carries, and the surface `.11.14.3.8`'s census did not see because
+    // the parent is named in the BODY.
+    match crate::derivations::submit(&state.pool, &submission, &tenant).await {
         Ok(derivation_id) => Ok(Json(json!({ "derivation_id": derivation_id }))),
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged

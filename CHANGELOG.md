@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The snapshot census was eight, not seven (`SIGNOFF-REPAIR.11.14.3.15`)
+
+🔴 **A published census was FALSE, and the defect it hid was live. It was found because the maintainer asked whether the findings hold.**
+
+- **What was published.** `.11.14.3.8` (REPAIR-0222) published *"seven surfaces name a `snapshot_id`, six citation-bound, exactly one not. That is the enumeration the finding is made of, not an impression"* — in its leaf, its decision record, `deployment.md`, `CHANGELOG.md` and `LIVE_STATUS.md`.
+- 🔴 **What is true.** Re-derived on the **identifier** rather than on the route table and the `cited_snapshot` call sites: **eight surfaces, six bound, TWO not.** The eighth is `POST /v1/derivations`, which names its parent as `parent_snapshot_id` in the request **BODY** — invisible to a census built from `Path(snapshot_id)` extractors.
+- ⛔ **Graded on all three axes** (`CLAIM_VERIFICATION.md` §4.1) and none survives: the **PROSE** is false rather than imprecise, the **NUMBER** moved 7→8 and 1→2, and the **NAMED INSTANCE** — an enumerated table — omitted a row. ⚠️ Its acceptance test — *"when asked whether you stand by it, the answer is yes, immediately, with no keyboard"* — was **failed**.
+- ⭐ **This is the FIRST instance of the blind spot `docs/knowledge/a-census-is-as-wide-as-its-key.md` describes, and that note was written from the SECOND and never applied backwards.** A rule earned from one instance is worth almost nothing until it is run over the instances that came before it. The note now says so, and carries all three.
+- 🔴 **The defect the false number hid.** `submit_derivation` admitted on enrolment alone; `derivations::submit` checked `SELECT EXISTS (SELECT 1 FROM evidence_snapshots WHERE snapshot_id = $1)` with **no tenant predicate**, and took no tenant at all. Falsified against the exact unrepaired store: a second tenant's derivation against a snapshot it had never cited **SUCCEEDED** — `200 {"derivation_id":"drv_01a0b0c6c1367e22abcd461ab1bf3001"}` — while an absent id was refused.
+- ⚠️ **Width, before it is inflated:** an ORACLE requiring the caller to hold an unguessable `snp_` id, and the written half was bounded by the read — the foreign tenant could not read its own derivation back. ⛔ That bounds the harm and does not excuse it: an invisible write into another tenant's evidence graph is worse evidence than a visible one.
+- **FIX** — the citation binding in the store, as the two before it. ⛔ No new error variant: a parent the caller did not cite answers the `ParentMissing` an absent one gets. ⚠️ The derivation GRAPH stays shared and the control asserts it — once both tenants cite the parent, **both read both children**, which is `.11.14.2`'s disposition. This binds the write without narrowing the read.
+- ⚠️ **A falsification note worth carrying:** reverting the store alone left the call sites passing an argument that no longer existed, so the run failed to COMPILE rather than going red — a falsification that proves nothing. Both files must be reverted together.
+- ⭐ **Every other census this session published was re-derived under the same audit and HOLDS** — the single `WHERE reference_id` site, "nothing reads `evidence_snapshots.original_locator` for a decision", 2 `check_in_tx` callers / 4 scope kinds / 12 `OP_` constants, `axum-core-0.5.6`'s `DEFAULT_LIMIT = 2_097_152`, "no production path registers a broker binding" (3 sites, all `#[cfg(test)]`), `.13.4`'s 13 hits with none bare, and 21 of 21 fixture plans. ⚠️ One instrument artefact: `grep -c 'pub const SCOPE_'` returns **5** because it matches the `SCOPE_KINDS` array itself; the array's type is `[&str; 4]`.
+- **Verification:** eight live suites, **121 tests / 0 failed**, rc=0 (`profiles` 53, `command_api` 39, `node_work` 8, `mcp` 6, `mcp_write` 5, `cli_end_to_end` 5, `evaluation` 3, `routing` 2).
+
 ## 2026-09-17 — What a citation list costs (`SIGNOFF-REPAIR.11.14.3.7`)
 
 ⭐ **Three answers, and the most transferable one is about an instrument I threw away.**

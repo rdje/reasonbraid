@@ -10546,3 +10546,228 @@ async fn a_contribution_registers_each_cited_pair_once() {
         "citation cost: {DISTINCT} distinct citations register {DISTINCT} references (the O(n) inside the thread's locked transaction); the same pair cited {REPEATS} times registers ONE reference — which the row count cannot distinguish, so the de-duplication is falsified in a unit test instead — while all {REPEATS} still ride the event with their own notes; and one locator at two digests stays TWO references"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.14.3.15`: a derivation is filed against a snapshot THIS
+/// TENANT cited — the surface `.11.14.3.8`'s census did not see.
+///
+/// 🔴 That leaf published *"every surface that names a `snapshot_id`: seven, six
+/// citation-bound, exactly one not"*. Re-derived on the IDENTIFIER rather than on
+/// the route table, the population is **eight** and **two** were unbound:
+/// `POST /v1/derivations` names its parent in the request **BODY**, so a census
+/// built from `Path(snapshot_id)` extractors and `cited_snapshot` call sites
+/// cannot see it.
+///
+/// ⭐ This is the FIRST instance of the blind spot
+/// `docs/knowledge/a-census-is-as-wide-as-its-key.md` describes; that note was
+/// written from the second (`.11.14.3.11`) and never applied backwards. The rule
+/// was earned three times before it was used.
+#[tokio::test]
+async fn a_derivation_is_filed_against_a_snapshot_this_tenant_cited() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "derivation-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the acquiring tenant enrols: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "derivation-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second tenant enrols: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        owner["tenant_id"].as_str().unwrap()
+    );
+
+    // The owner acquires the evidence, which records its citation.
+    let locator = "https://example.org/derivation-parent";
+    let payload = b"the acquired report the derivation is taken from";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &owner_id,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference registers: {reference}");
+    let (status, snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &owner_id,
+        &json!({
+            "reference_id": reference["resource_id"].as_str().unwrap(),
+            "original_locator": locator,
+            "final_locator": locator,
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+            "byte_length": payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(payload),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap().to_string();
+
+    let derive = |principal: String, parent: String, content: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/derivations",
+                &principal,
+                &json!({
+                    "parent_snapshot_id": parent,
+                    "derived_kind": "excerpt",
+                    "derived_digest": reasonbraid_server::fetcher::digest_sha256_hex(
+                        content.as_bytes()
+                    ),
+                    "content": content,
+                }),
+            )
+            .await
+        }
+    };
+
+    // ── The finding: a foreign parent answered differently, and SUCCEEDED ────
+    let absent = "snp_00000000-0000-7000-8000-00000000dead";
+    let (foreign_status, foreign) = derive(
+        stranger_id.clone(),
+        snapshot_id.clone(),
+        "the stranger's excerpt",
+    )
+    .await;
+    let (missing_status, missing) = derive(
+        stranger_id.clone(),
+        absent.to_string(),
+        "the stranger's excerpt",
+    )
+    .await;
+    assert_eq!(
+        (foreign_status, missing_status),
+        (400, 400),
+        "a foreign parent and an absent one are refused alike: {foreign} / {missing}"
+    );
+    assert_eq!(
+        (foreign["code"].clone(), foreign["message"].clone()),
+        (missing["code"].clone(), missing["message"].clone()),
+        "…in the SAME words, so the write surface cannot confirm that a `snp_` id \
+         exists: {foreign} / {missing}"
+    );
+    let attached: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM derivations WHERE parent_snapshot_id = $1")
+            .bind(&snapshot_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the parent's derivations");
+    assert_eq!(
+        attached, 0,
+        "the refused submissions attached nothing to another tenant's snapshot"
+    );
+
+    // ── The bound: the citing tenant still derives ──────────────────────────
+    let (status, own) = derive(owner_id.clone(), snapshot_id.clone(), "the owner's excerpt").await;
+    assert_eq!(status, 200, "the citing tenant still derives: {own}");
+
+    // ── The supported path: acquire the same bytes, then derive ─────────────
+    //
+    // The replay records the second citation, exactly as it does for an
+    // assessment — the arm that keeps this a binding rather than a blackout.
+    let (status, replayed_ref) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &stranger_id,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the stranger's reference replays: {replayed_ref}"
+    );
+    let (status, replayed_snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &stranger_id,
+        &json!({
+            "reference_id": replayed_ref["resource_id"].as_str().unwrap(),
+            "original_locator": locator,
+            "final_locator": locator,
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+            "byte_length": payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(payload),
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the stranger's snapshot replays: {replayed_snapshot}"
+    );
+    assert_eq!(
+        replayed_snapshot["snapshot_id"].as_str().unwrap(),
+        snapshot_id,
+        "one shared snapshot row"
+    );
+    let (status, now_allowed) = derive(
+        stranger_id.clone(),
+        snapshot_id.clone(),
+        "the stranger's excerpt",
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the second tenant derives from evidence it has now cited: {now_allowed}"
+    );
+
+    // ⚠️ And the derivation graph stays SHARED, which is the disposition
+    // `.11.14.2` already took: a derivation is content-addressed in the way a
+    // snapshot is, so both tenants read both children.
+    let listed = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let snapshot_id = snapshot_id.clone();
+        async move {
+            let (status, body) = get(
+                &client,
+                &base,
+                &format!("/v1/snapshots/{snapshot_id}/derivations"),
+                &principal,
+            )
+            .await;
+            assert_eq!(status, 200, "the derivations read: {body}");
+            body.as_array().expect("the derivation array").len()
+        }
+    };
+    assert_eq!(listed(owner_id).await, 2, "the owner reads both children");
+    assert_eq!(
+        listed(stranger_id).await,
+        2,
+        "and so does the second tenant, which now cites the parent — derivations \
+         are content-addressed and stay shared (`.11.14.2`)"
+    );
+
+    eprintln!(
+        "derivation write binding: a foreign parent and an absent one are ONE answer and attach nothing; the citing tenant derives normally; the second tenant acquires the same bytes, records its citation and then derives — and the derivation graph stays shared, both tenants reading both children"
+    );
+}

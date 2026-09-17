@@ -4,6 +4,12 @@
 //! the snapshot it came from. A quote, a summary, an OCR result, or a
 //! model-generated caption is NEVER the original — the graph says so, and
 //! the parent stays addressable.
+//!
+//! A derivation is filed against a snapshot THIS TENANT CITED
+//! (`SIGNOFF-REPAIR.11.14.3.15`). A parent it did not cite answers the same
+//! `ParentMissing` an absent one gets, so the write surface stops being an
+//! existence oracle over `snp_…` ids — the binding every READ of a snapshot
+//! already carries.
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -63,7 +69,12 @@ impl std::fmt::Display for DerivationError {
                 f,
                 "the content hashes to `{actual}`, not the declared `{declared}`"
             ),
-            Self::ParentMissing => write!(f, "the parent snapshot does not exist"),
+            // ⛔ One sentence for two cases — absent, and cited by someone else —
+            // because separating them is the oracle (`SIGNOFF-REPAIR.11.14.3.15`).
+            Self::ParentMissing => write!(
+                f,
+                "the parent snapshot does not exist, or this tenant did not cite it"
+            ),
         }
     }
 }
@@ -76,6 +87,7 @@ impl std::error::Error for DerivationError {}
 pub async fn submit(
     pool: &PgPool,
     submission: &DerivationSubmission,
+    citer_tenant: &str,
 ) -> Result<String, DerivationError> {
     if !submission.derived_digest.starts_with("sha256:")
         || submission.derived_digest.len() != 7 + 64
@@ -92,14 +104,29 @@ pub async fn submit(
             actual,
         });
     }
-    let parent_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM evidence_snapshots WHERE snapshot_id = $1)",
+    // The parent must exist AND this tenant must have cited it
+    // (`SIGNOFF-REPAIR.11.14.3.15`). One statement answers both, so a snapshot
+    // the caller never acquired is indistinguishable from one that does not
+    // exist — both are `ParentMissing`, and no new error exists for the
+    // distinction to leak through.
+    //
+    // ⛔ Before this, the check was `SELECT EXISTS … WHERE snapshot_id = $1`
+    // with no tenant predicate, and this function took no tenant at all. A
+    // caller holding a `snp_…` id could tell existence from absence and, on
+    // success, attach a derivation to a snapshot another tenant acquired —
+    // invisibly, because `GET /v1/snapshots/{id}/derivations` is citation-bound
+    // and would not show it back.
+    let parent_cited: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM evidence_snapshots s \
+         JOIN evidence_citations c ON c.snapshot_id = s.snapshot_id AND c.tenant_id = $2 \
+         WHERE s.snapshot_id = $1)",
     )
     .bind(&submission.parent_snapshot_id)
+    .bind(citer_tenant)
     .fetch_one(pool)
     .await
     .map_err(DerivationError::Storage)?;
-    if !parent_exists {
+    if !parent_cited {
         return Err(DerivationError::ParentMissing);
     }
     let existing: Option<String> = sqlx::query_scalar(

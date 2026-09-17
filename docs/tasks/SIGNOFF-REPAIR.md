@@ -4700,6 +4700,44 @@ a_reference_submits_typed_and_the_locator_digest_pair_is_the_key
 - Status: `done`.
 - Verification / commit: `REASONBRAID-REPAIR-0229`.
 
+##### SIGNOFF-REPAIR.11.14.3.15 — `POST /v1/derivations` is the surface `.11.14.3.8`'s census did not see
+
+- Opened: `pending` by the director's audit instruction of 2026-09-17 — *"ensure your findings hold"* — which is the first time this session's own published numbers were re-derived rather than re-read.
+- 🔴 **A PUBLISHED NUMBER IS FALSE, and the defect it hid is live.** `.11.14.3.8` (REPAIR-0222) published a census of *"every surface that names a `snapshot_id`: seven, six citation-bound, exactly one not"*, in its leaf, its decision record, `docs/book/src/deployment.md`, `CHANGELOG.md` and `LIVE_STATUS.md`. Re-derived on the identifier rather than on the route table, the population is **eight**, and **two** were unbound:
+
+| Surface | Citation-bound |
+| --- | --- |
+| `GET /v1/snapshots/{id}` | yes — `snapshots::get_for_tenant` |
+| `DELETE /v1/snapshots/{id}` | yes — `cited_snapshot` |
+| `GET /v1/snapshots/{id}/derivations` | yes — `cited_snapshot` |
+| `GET /v1/snapshots/{id}/assessments` | yes — `cited_snapshot` |
+| `GET /v1/snapshots/stale` | yes — filtered per tenant |
+| `thread.contribute` kind `assessment` | yes — `is_cited_by` |
+| `POST /v1/assessments` | yes **since REPAIR-0222** |
+| **`POST /v1/derivations`** | **NO** |
+
+- ⭐ **The cause is the blind spot this session later diagnosed and promoted a rule for, and the FIRST instance was never corrected.** `POST /v1/derivations` names its parent as `parent_snapshot_id` in the request **BODY**, so a census built from `Path(snapshot_id)` extractors and `cited_snapshot` call sites cannot see it. `docs/knowledge/a-census-is-as-wide-as-its-key.md` was written from the SECOND instance (`.11.14.3.11`); this is the first, and it means the rule was earned three times before it was applied backwards.
+- ⛔ **The honest reading of the grading axes** (`docs/CLAIM_VERIFICATION.md` §4.1): the **PROSE** ("every surface naming a snapshot id is bound but one") is false, not merely imprecise; the **NUMBER** moved 7→8 and 1→2; and the **NAMED INSTANCE** — the enumerated table — omitted a row. All three axes fail, which is the worst of the three outcomes that record contemplates.
+- **The finding.** `submit_derivation` admits on enrolment alone and passes the caller's `parent_snapshot_id` to `derivations::submit`, whose parent check is `SELECT EXISTS (SELECT 1 FROM evidence_snapshots WHERE snapshot_id = $1)` — **no tenant predicate**, and the function takes no tenant at all. So a caller holding a `snp_…` id distinguishes existence from `ParentMissing`, and on success **attaches a derivation to a snapshot another tenant acquired**.
+- ⚠️ **Width, stated before it is inflated.** `snapshot_id` is `snp_`-prefixed and unguessable and no list verb returns another tenant's ids, so it is an ORACLE requiring the caller to hold the id — the same class as the two already repaired. The written half is bounded by the read: `GET /v1/snapshots/{id}/derivations` is citation-bound, so a foreign tenant cannot read its own derivation back. ⛔ That bounds it and does not excuse it: an invisible write into another tenant's evidence graph is worse evidence than a visible one, which is the disposition `.11.14.3.11` already took for the same shape.
+- Owns: repairing the write, correcting the false census everywhere it was published, and stating what an unreadable foreign derivation means.
+- Acceptance: the oracle and the foreign write are reproduced RED first; the binding lives in the store, as `.11.14.3.8` and `.11.14.3.11`'s do, so no future writer inherits the hole; a foreign parent is indistinguishable from an absent one; the corrected census is republished in every place the false one appeared, naming what it used to say; and the existing derivation controls pass.
+- 🔴 **REPRODUCE, falsified against the exact unrepaired store** (`git stash push -- derivations.rs api.rs`, control run, files restored — ⚠️ BOTH files, because reverting the store alone leaves the call sites passing an argument that no longer exists and the run fails to compile rather than going red, which is a falsification that proves nothing). The stranger's derivation against the owner's snapshot, beside an absent id:
+
+```text
+foreign: 200 {"derivation_id":"drv_01a0b0c6c1367e22abcd461ab1bf3001"}
+absent:  400 {"code":"invalid_command","message":"the parent snapshot does not exist"}
+```
+
+  `52 passed; 1 failed`. So it was not only distinguishable — the foreign submission **succeeded**, attaching a derivation to another tenant's evidence graph.
+- **FIX** — `derivations::submit` takes the citing tenant and its parent check becomes one statement joining `evidence_citations`. ⛔ **No new error variant**: a parent the caller did not cite answers the `ParentMissing` an absent one gets, so there is nothing for the distinction to leak through. In the STORE, as `.11.14.3.8`'s and `.11.14.3.11`'s are, and both call sites pass their own tenant — the R2 arm's parent is the snapshot that acquisition just wrote and cited, so it is a citer by construction.
+- **ADDRESSED (verified)** — foreign and absent are refused in the SAME words with **0** rows attached; the citing tenant derives normally; the second tenant acquires the same bytes, records its citation and then derives. ⚠️ And the derivation GRAPH stays shared — the control asserts that both tenants then read **both** children — because a derivation is content-addressed the way a snapshot is (`.11.14.2`'s disposition). This binds the WRITE without narrowing the read.
+- **The correction, republished where the false number appeared**: `docs/decisions/2026-09-17_the-snapshot-census-was-eight-not-seven.md` (which supersedes `.11.14.3.8`'s record rather than editing it), `docs/book/src/deployment.md`, `CHANGELOG.md`, `LIVE_STATUS.md` and this tree. The superseded record is left byte-unchanged.
+- ⭐ **The rest of this session's censuses were re-derived under the same audit and HOLD**: `.11.14.3.11`'s single `WHERE reference_id` site; `.11.14.3.13`'s "nothing reads `evidence_snapshots.original_locator` for a decision"; `.11.14.3.7`'s 2 `check_in_tx` callers, 4 scope kinds and 12 `OP_` constants; `axum-core-0.5.6`'s `DEFAULT_LIMIT = 2_097_152` with 0 `DefaultBodyLimit` in our source; `.11.14.3.10`'s "no production path registers a broker binding" (3 sites, all `#[cfg(test)]`, 0 in `src/bin`); `.13.4`'s 13 hits with no bare assertion; and 21 of 21 fixture plans carrying `reference_registrations`. ⚠️ One instrument artefact worth recording: `grep -c 'pub const SCOPE_'` returns **5** because it matches the `SCOPE_KINDS` array itself — the array's own type is `[&str; 4]`, and publishing the grep count would have been the wrong number.
+- lockstep: README.md unchanged (objective, layout and standard commands untouched; this leaf binds one HTTP write and republishes a corrected census in the book chapter that carried the false one).
+- Status: `done`.
+- Verification / commit: `REASONBRAID-REPAIR-0230`.
+
 ##### SIGNOFF-REPAIR.11.14.3.14 — §16.11's quota machinery reaches two verbs, and which others it should reach is undecided
 
 - Opened: `pending` by `.11.14.3.7`, which measured the machinery while establishing that a quota is **not** the instrument for its own defect.
@@ -6240,7 +6278,9 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 
-| 1 | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | opened by `.11.14.3.4`: `credential_binding_ref` is a caller-supplied field that SELECTS a credential, the broker's store carries **no tenant at all**, and the pair key makes the field shared. ⚠️ **Measured LATENT, not live** — `RB_ENABLE_R5R3RX` is off by default and no production path registers a binding, so every shipped deployment runs an empty broker store. ⭐ `.13.1.1`'s shape: a finished mechanism with no production producer, which is when a design defect is cheapest to fix and least likely to be noticed |
+| 1 | `SIGNOFF-REPAIR.11.14.3.14` | `pending` | §16.11's quota machinery reaches **2** verbs over **2** of **4** scope kinds; `SCOPE_RESOLVER` and `SCOPE_DESTINATION` have no producer at all while §16.11 names resolver abuse and per-destination bounds explicitly. ⛔ It does NOT close `.11.14.3.7` — a call ceiling bounds arrivals, not per-request work. **The director delegated this decision on 2026-09-17** |
+| 1a | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | `credential_binding_ref` SELECTS a credential and the broker's store carries **no tenant at all**. ⚠️ Measured **latent, not live**: the R5 pack is off by default and no production path registers a binding (3 `.register(` sites, all `#[cfg(test)]`; 0 in `src/bin`). ⭐ `.13.1.1`'s shape |
+| 1a0i | `SIGNOFF-REPAIR.11.14.3.15` | `done` | ✅ REPAIR-0230 — `.11.14.3.8`'s census was **eight, not seven**, and the eighth surface was unbound. A rule learned and not swept backwards is a rule applied once |
 | 1a | `SIGNOFF-REPAIR.11.14.3.14` | `pending` | opened by `.11.14.3.7`, which measured §16.11's machinery while establishing that a quota is NOT the instrument for its own defect. ⛔ It does not close that leaf. **2** `check_in_tx` call sites over **2** of **4** scope kinds; `SCOPE_RESOLVER` and `SCOPE_DESTINATION` have no producer at all, and §16.11 names resolver abuse and per-destination bounds explicitly |
 | 1a0h | `SIGNOFF-REPAIR.11.14.3.7` | `done` | ✅ REPAIR-0229 — and the transferable part is the DISCARDED instrument: a scan counter that reported the same value either way, so its assertion could not fail |
 | 1a0g | `SIGNOFF-REPAIR.11.14.3.5` | `done` | ✅ REPAIR-0228 — three mechanisms, three arms, three dispositions |

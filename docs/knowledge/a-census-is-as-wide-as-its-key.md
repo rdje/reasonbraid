@@ -51,18 +51,32 @@ grep -n  '"/v1/resources'            crates/…/src   # one of its addresses
 routes and not about reachability, and a reader cannot tell which claim was meant
 unless the command is there.
 
-## The second instance, and why it matters that the first was ruled correct
+## Three instances, and the third is the one that hurts
 
-⚠️ This shape has now appeared twice in this repository.
+⚠️ This shape has now appeared three times in this repository.
 
 | | The census | What it could not see |
 | --- | --- | --- |
 | `.3.5.3` | the node-administration **mutations** | the inbox **read**, which selected by node id alone |
-| `.11.14.3.4` | the **routes under a prefix** | a route that names the object in its **body** |
+| `.11.14.3.8` | the **`snapshot_id` surfaces**, counted from `Path(…)` extractors and gate call sites | `POST /v1/derivations`, which names its parent in the **body** — and which was **unbound** |
+| `.11.14.3.4` | the **routes under a prefix** | `POST /v1/snapshots`, which names the object in its **body** |
 
-Both were correct about their own scope and said so. Neither was careless. What
-they shared is that the scoping key was chosen for convenience — it is what the
-grep could express — and then not re-examined against the object being protected.
+Each was correct about its own scope and said so. None was careless. What they
+share is that the scoping key was chosen for convenience — it is what the grep
+could express — and then not re-examined against the object being protected.
+
+⛔ **The third row is the expensive one, and it is the reason this section is
+written in this order.** `.11.14.3.8` came FIRST chronologically and published
+*"seven surfaces, six bound, exactly one not"*. This note was written from the
+second instance — and **never applied backwards to the first**. The false number
+stood for seven commits, in five documents, with a live unbound write behind it,
+and was found only when the maintainer asked whether the findings held.
+
+> ⭐ **A rule earned from one instance is worth almost nothing until it is run
+> over the instances that came before it.** Write the note, then immediately
+> re-run its check against every census the project has already published. That
+> sweep is minutes; the alternative is a number that is false for as long as
+> nobody asks.
 
 ## What makes this checkable rather than a resolution to be careful
 

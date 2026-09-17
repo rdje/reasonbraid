@@ -889,6 +889,29 @@ locator immutable and canonicalization separate and scheme-specific, so deciding
 that two spellings mean the same document is a decision this product has not
 taken. Refusing a disagreement takes none of it.
 
+#### Who may file a derivation
+
+`POST /v1/derivations` names a `parent_snapshot_id`, and the parent must be a
+snapshot **this tenant cited**. One it did not cite answers exactly what an
+absent one answers:
+
+```json
+{"code":"invalid_command",
+ "message":"the parent snapshot does not exist, or this tenant did not cite it"}
+```
+
+⛔ Until `SIGNOFF-REPAIR.11.14.3.15` this route admitted any enrolled principal
+and its store asked only whether the parent existed. Measured with a second
+tenant against a snapshot it had never cited, the submission **succeeded** — a
+derivation was attached to another tenant's evidence graph, and the tenant that
+wrote it could not even read it back, because `GET /v1/snapshots/{id}/derivations`
+is citation-bound.
+
+⚠️ **The derivation graph itself stays shared.** Once a tenant cites the parent,
+it reads **every** child of that snapshot, including ones another tenant derived.
+That is deliberate — a derivation is content-addressed the way a snapshot is — and
+this binding governs the write, not the read.
+
 #### Who may file a snapshot against a reference
 
 `POST /v1/snapshots` names a `reference_id`, and the reference must be one **this
@@ -1077,6 +1100,13 @@ holding an `snp_` id it had never cited received three distinguishable answers:
 The first two separate *exists* from *does not exist*. ⭐ The third is stronger:
 a `200` says a **chosen substring appears in bytes the caller was never allowed
 to read**.
+
+⚠️ **The census behind that repair was WRONG, and the correction ships here**
+(`SIGNOFF-REPAIR.11.14.3.15`). It said *seven surfaces name a `snapshot_id`, six
+bound and one not*. Counted on the **identifier** instead of on the route table,
+it is **eight**, and **two** were unbound — `POST /v1/derivations` names its
+parent in the request **body**, so a route-shaped census could not see it. Both
+are bound now; see [who may file a derivation](#who-may-file-a-derivation).
 
 Both writers now ask the same question, in the store rather than at each route,
 so no future writer can be built around it:

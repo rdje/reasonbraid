@@ -178,6 +178,7 @@
 - [`2026-09-17_remote-ci-has-run-and-is-green.md`](docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md)
 - [`2026-09-17_the-assessment-namespace-is-part-of-the-row.md`](docs/decisions/2026-09-17_the-assessment-namespace-is-part-of-the-row.md)
 - [`2026-09-17_the-reference-read-is-bound-to-its-registrants.md`](docs/decisions/2026-09-17_the-reference-read-is-bound-to-its-registrants.md)
+- [`2026-09-17_the-snapshot-census-was-eight-not-seven.md`](docs/decisions/2026-09-17_the-snapshot-census-was-eight-not-seven.md)
 - [`2026-09-17_the-snapshot-write-is-bound-to-the-reference-it-names.md`](docs/decisions/2026-09-17_the-snapshot-write-is-bound-to-the-reference-it-names.md)
 - [`2026-09-17_the-standalone-assessment-is-citation-bound.md`](docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md)
 - [`2026-09-17_what-a-citation-list-costs.md`](docs/decisions/2026-09-17_what-a-citation-list-costs.md)

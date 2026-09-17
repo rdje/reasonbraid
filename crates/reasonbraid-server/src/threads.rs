@@ -45,6 +45,42 @@ use sqlx::Postgres;
 pub const AGGREGATE_TYPE: &str = "thread";
 
 /// Operation names (the `CommandEnvelope.operation` values this module accepts).
+/// For each citation, the index of the FIRST citation naming the same §12.1
+/// reference — its `(uri, digest)` PAIR (`SIGNOFF-REPAIR.11.14.3.7`).
+///
+/// A citation whose answer is its own index is registered; every other one
+/// reuses the `resource_id` that first registration returned. ⭐ De-duplicating
+/// the WORK is derived rather than chosen: a reference's identity is that pair
+/// (`.11.14.3.2`), so a repeat can only fetch back the row the first citation
+/// just wrote.
+///
+/// ⛔ The RECORD is not de-duplicated, and this function is why that is
+/// structural: it returns one answer per citation, so the caller emits one
+/// `RegisteredEvidenceRef` per citation, in order, with its own note.
+///
+/// ⚠️ Keyed on the PAIR, never on the locator. One locator at two digests is two
+/// references (§12.6's changed page), so collapsing them here would erase the
+/// distinction `.11.14.3.2` exists to keep.
+///
+/// It is a free function so it can be falsified directly. The live control can
+/// see the O(n) over DISTINCT citations, but nothing the product exposes reveals
+/// how many times the store was reached for a repeated one — the row count is 1
+/// either way, because the pair replay already returns the existing row. A
+/// PostgreSQL scan-counter instrument was tried and discarded: it read the same
+/// value with and without the de-duplication, so its assertion could not fail.
+fn first_citation_of_each_pair(citations: &[EvidenceRef]) -> Vec<usize> {
+    let mut first: std::collections::HashMap<(&str, Option<&str>), usize> =
+        std::collections::HashMap::with_capacity(citations.len());
+    citations
+        .iter()
+        .enumerate()
+        .map(|(index, citation)| {
+            let pair = (citation.uri.as_str(), citation.digest.as_deref());
+            *first.entry(pair).or_insert(index)
+        })
+        .collect()
+}
+
 pub const OP_CREATE: &str = "thread.create";
 pub const OP_INVITE: &str = "thread.invite";
 pub const OP_CONTRIBUTE: &str = "thread.contribute";
@@ -1582,9 +1618,40 @@ where
             // the flow working
             // (`docs/decisions/2026-09-16_a-citation-registers-the-reference-it-names.md`).
             let submitted_by = crate::resources::actor_handle(principal);
+            let first_of_pair = first_citation_of_each_pair(&body.evidence_refs);
             let mut evidence_refs: Vec<RegisteredEvidenceRef> =
                 Vec::with_capacity(body.evidence_refs.len());
-            for citation in &body.evidence_refs {
+            // ⭐ The registration work is DE-DUPLICATED within one contribution
+            // (`SIGNOFF-REPAIR.11.14.3.7`), and this is derived rather than
+            // chosen: a reference's identity is the `(original_locator,
+            // expected_digest)` PAIR (`.11.14.3.2`), so two citations naming the
+            // same pair name ONE row — the second registration is a lookup that
+            // can only return what the first just wrote.
+            //
+            // ⛔ It de-duplicates the WORK, never the record. Every citation the
+            // contributor wrote still rides the event below, in its own order,
+            // with its own note; only the trip to the store is shared. A
+            // contribution that cites one pair three times with three different
+            // notes still shows three citations.
+            //
+            // ⚠️ This is not a bound. It removes the trivially amplifying case
+            // without inventing a number — the cost of N DISTINCT citations is
+            // unchanged, and what limits that today is the request body, not a
+            // quota. The leaf records the measurement.
+            let mut registered: Vec<Option<String>> = vec![None; body.evidence_refs.len()];
+            for (index, citation) in body.evidence_refs.iter().enumerate() {
+                if first_of_pair[index] != index {
+                    let resource_id = registered[first_of_pair[index]]
+                        .clone()
+                        .expect("the first citation of a pair is registered before its repeats");
+                    evidence_refs.push(RegisteredEvidenceRef {
+                        uri: citation.uri.clone(),
+                        digest: citation.digest.clone(),
+                        note: citation.note.clone(),
+                        resource_id,
+                    });
+                    continue;
+                }
                 let Some(scheme) = crate::resources::scheme_of(&citation.uri) else {
                     return Err(ThreadError::InvalidCommand(format!(
                         "the evidence reference `{}` carries no URI scheme — a citation \
@@ -1632,6 +1699,7 @@ where
                     }
                     Err(error) => return Err(ThreadError::InvalidCommand(error.to_string())),
                 };
+                registered[index] = Some(outcome.resource_id.clone());
                 evidence_refs.push(RegisteredEvidenceRef {
                     uri: citation.uri.clone(),
                     digest: citation.digest.clone(),
@@ -2138,5 +2206,75 @@ mod tests {
             Some(format!("ceil_{thread}").as_str())
         );
         assert_eq!(prepared.event_type, EVENT_CREATED);
+    }
+
+    /// `SIGNOFF-REPAIR.11.14.3.7`: the citation de-duplication, falsified
+    /// directly — because no product surface can see it.
+    ///
+    /// ⚠️ This test exists in this form for a measured reason. The live control
+    /// can observe that N DISTINCT citations register N references, but a
+    /// REPEATED pair produces one row either way: `resources::submit`'s replay
+    /// returns the existing row, so the count is 1 with or without the
+    /// de-duplication. A `pg_stat_user_tables` scan-counter instrument was
+    /// written and discarded — it reported the same value against the repaired
+    /// and the unrepaired handler, so its assertion could not fail, which is a
+    /// control that measures nothing.
+    #[test]
+    fn the_citation_pairs_are_de_duplicated_by_pair_not_by_locator() {
+        let cite = |uri: &str, digest: Option<&str>| EvidenceRef {
+            uri: uri.to_owned(),
+            digest: digest.map(str::to_owned),
+            note: None,
+        };
+
+        // Distinct locators: every citation registers.
+        let distinct = [
+            cite("https://a.example/1", None),
+            cite("https://a.example/2", None),
+            cite("https://a.example/3", None),
+        ];
+        assert_eq!(
+            super::first_citation_of_each_pair(&distinct),
+            vec![0, 1, 2],
+            "distinct pairs each register"
+        );
+
+        // The same pair repeated: one registration, and the repeats point AT it.
+        let repeated = [
+            cite("https://a.example/report", None),
+            cite("https://a.example/report", None),
+            cite("https://a.example/report", None),
+        ];
+        assert_eq!(
+            super::first_citation_of_each_pair(&repeated),
+            vec![0, 0, 0],
+            "a repeated pair registers once"
+        );
+
+        // ⛔ Keyed on the PAIR. One locator at two digests is TWO references
+        // (§12.6's changed page), and an implementation keyed on the locator
+        // alone would answer `[0, 0, 0, 0]` here.
+        let a = "sha256:aaaa";
+        let b = "sha256:bbbb";
+        let pairs = [
+            cite("https://a.example/page", Some(a)),
+            cite("https://a.example/page", Some(b)),
+            cite("https://a.example/page", Some(a)),
+            cite("https://a.example/page", None),
+        ];
+        assert_eq!(
+            super::first_citation_of_each_pair(&pairs),
+            vec![0, 1, 0, 3],
+            "the pair is the key: two digests and the unpinned form are three \
+             references, and the repeat of the first points at it"
+        );
+
+        // The order is preserved and the length matches, which is what keeps the
+        // RECORD undeduplicated: one answer per citation, in order.
+        assert_eq!(super::first_citation_of_each_pair(&[]).len(), 0);
+        assert_eq!(
+            super::first_citation_of_each_pair(&repeated).len(),
+            repeated.len()
+        );
     }
 }

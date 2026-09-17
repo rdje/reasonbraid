@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — An instrument that reports the same value either way has told you nothing
+
+- A repair removed redundant work inside a handler: N citations naming the same `(uri, digest)` pair registered N times; now once. Every byte the product returns is identical afterwards, **and so is every row it writes** — the store's own replay already returned the existing row, so a row-count assertion was 1 either way.
+- ⛔ **I reached for a cleverer external instrument and it was dead.** A `pg_stat_user_tables` scan-counter probe, read either side of the request, reported **0 with the repair and 0 without it**. The control passed both times. A control that passes identically either way measures nothing — and shipping it would have been worse than shipping none, because it converts an unverified change into one that looks verified.
+- ⭐ **The rule that costs: any instrument must be shown to DISCRIMINATE before its verdict is used.** Run it against the unrepaired code. The scan counter was not obviously broken — a plausible number, from a real system view, about the right table. It simply did not move, and *a number that does not move is indistinguishable from a number that moved by zero*.
+- ⭐ **The rule that fixes it: a change no surface can see needs a seam you create for it.** The de-duplication decision became a small pure function (`first_citation_of_each_pair`), falsified directly: injecting a locator-keyed implementation gave `[0, 0, 0, 0]` against the correct `[0, 1, 0, 3]`. Microseconds, deterministic, and the extraction is a refactor the compiler checks.
+- 🔎 **And say so where the control would have been.** The live control keeps the arms the product *can* show and carries a comment naming the unit test and the discarded probe, so the next reader does not re-derive the instrument that failed.
+- ⚠️ **Two control defects of my own in the same slice, both caught by running it:** an assertion keyed on `len() == REPEATS` matched the wrong event because two arms used the same count, and the events payload is `{"events": […]}` rather than an array. Neither was a product defect. **A control is code, and it earns its assertions the same way production does.**
+- **Promoted:** `docs/knowledge/a-change-no-surface-can-see-needs-a-seam.md`.
+
 ## 2026-09-17 — I shipped a wrong repair into a RED/GREEN cycle, and the product's own controls caught it
 
 - A field called `scheme` sat on a §12.1 reference, and a test helper's comment said it "is caller-supplied and is NOT validated against the locator". The validator that would check it existed a few lines away with one caller. I read that as a missing check, wrote the repair, reproduced RED against it and went GREEN on my own control.

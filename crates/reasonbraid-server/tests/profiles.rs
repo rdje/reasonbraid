@@ -10312,3 +10312,237 @@ async fn a_reference_s_declared_fields_are_checked_or_defaulted() {
         "reference fields: `scheme` is the RESOLVER-SELECTION key — `git` and `web+render` register for https locators, and an unadvertised scheme stays submitted per §3.7 — so the locator check this leaf was opened on is REFUTED; an omitted visibility_scope/risk_class takes `network`/`low`, the values migrations/0023 declares, and the citation path writes the SAME row; and three fragment spellings remain three references, decided rather than defaulted"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.14.3.7`: what a contribution's citation list costs, and
+/// the one bound that can be taken without inventing a number.
+///
+/// `.11.14.3.2` made each citation register a §12.1 reference **inside the
+/// thread's aggregate transaction**, which holds `FOR UPDATE` on the thread's
+/// row — so one request became O(n) statements blocking every other command on
+/// that thread. The leaf refused to invent a cap, and this control is why that
+/// was right and what it leaves.
+///
+/// ⭐ **The de-duplication is DERIVED, not chosen.** A reference's identity is
+/// the `(original_locator, expected_digest)` pair, so two citations naming the
+/// same pair name ONE row and the second registration can only return what the
+/// first just wrote. ⛔ It de-duplicates the WORK, never the RECORD: every
+/// citation still rides the event, in order, with its own note.
+///
+/// ⚠️ **A windowed quota is the wrong instrument for this defect, and that is
+/// measured rather than asserted.** The cost is inside ONE request, so a
+/// per-hour call ceiling on `thread.contribute` bounds how many requests arrive
+/// and not how long any one of them holds the row. What bounds a single request
+/// today is its BODY, at `axum-core 0.5.6`'s `DEFAULT_LIMIT = 2_097_152`.
+#[tokio::test]
+async fn a_contribution_registers_each_cited_pair_once() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "citation-cost-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "cost-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "citation cost",
+                "objective": "measure what a citation list registers",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let contribute = |key: String, refs: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        let tenant_id = tenant_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread_id}/commands"),
+                &human_id,
+                &json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": "thread.contribute",
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": {
+                        "tenant_id": tenant_id,
+                        "content": "the position these citations support",
+                        "kind": "evidence_reference",
+                        "evidence_refs": refs,
+                    },
+                    "client_context": {},
+                }),
+            )
+            .await
+        }
+    };
+    let references = |locator_prefix: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM resource_references WHERE original_locator LIKE $1",
+            )
+            .bind(format!("{locator_prefix}%"))
+            .fetch_one(&pool)
+            .await
+            .expect("count the registered references")
+        }
+    };
+
+    // ── The amplification, measured deterministically ───────────────────────
+    //
+    // Statement counts are not observable from here, but the ROWS are, and they
+    // are one-for-one with the registrations: N distinct pairs is N trips to the
+    // store inside the thread's locked transaction. A timing assertion would say
+    // less and be flakier.
+    const DISTINCT: usize = 64;
+    let distinct: Vec<Value> = (0..DISTINCT)
+        .map(|n| json!({ "uri": format!("https://example.org/distinct/{n}") }))
+        .collect();
+    let (status, many) = contribute("cost-distinct".into(), json!(distinct)).await;
+    assert_eq!(status, 200, "the distinct citations contribute: {many}");
+    assert_eq!(
+        references("https://example.org/distinct/").await,
+        DISTINCT as i64,
+        "N distinct citations register N references — the O(n) the leaf measured"
+    );
+
+    // ── The de-duplication is NOT observable here, and that is recorded ─────
+    //
+    // ⚠️ The row count is **1 either way**: `resources::submit`'s pair replay
+    // already returns the existing row, so a repeated citation writes nothing
+    // new with or without the de-duplication. What it removes is the N−1 round
+    // trips inside the locked transaction, and no product surface exposes those.
+    //
+    // ⛔ A `pg_stat_user_tables` scan-counter instrument was written for this
+    // and DISCARDED: it reported the same value against the repaired and the
+    // unrepaired handler, so its assertion could not fail. A control that passes
+    // identically either way measures nothing, and shipping it would have been
+    // worse than shipping none.
+    //
+    // The de-duplication is falsified DIRECTLY instead, as a unit test over the
+    // pure function this handler calls —
+    // `threads::tests::the_citation_pairs_are_de_duplicated_by_pair_not_by_locator`,
+    // observed RED against a locator-keyed implementation. What THIS control
+    // holds is everything the product does expose: the O(n) over distinct
+    // citations above, the record below, and the pair semantics after it.
+    const REPEATS: usize = 48;
+    let repeated: Vec<Value> = (0..REPEATS)
+        .map(|n| {
+            json!({
+                "uri": "https://example.org/repeated/report",
+                "note": format!("the {n}th time this contributor cited it"),
+            })
+        })
+        .collect();
+    let (status, deduped) = contribute("cost-repeated".into(), json!(repeated)).await;
+    assert_eq!(status, 200, "the repeated citations contribute: {deduped}");
+    assert_eq!(
+        references("https://example.org/repeated/").await,
+        1,
+        "one pair, one reference — true before this repair too, which is why the \
+         row count cannot measure it"
+    );
+
+    // ⛔ And the RECORD is not de-duplicated. Every citation the contributor
+    // wrote rides the event, in order, with its own note and the shared
+    // `resource_id`.
+    let (status, events) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the events read: {events}");
+    // ⚠️ Selected by LOCATOR, not by length. An earlier version selected on
+    // `len() == REPEATS` and matched the DISTINCT contribution's event instead,
+    // because both carried 64 — a control defect of this session's own, and the
+    // reason the two arms now differ in both locator and count.
+    let refs = events["events"]
+        .as_array()
+        .expect("the event array")
+        .iter()
+        .filter_map(|event| event["body"]["evidence_refs"].as_array())
+        .find(|refs| {
+            refs.first().and_then(|r| r["uri"].as_str())
+                == Some("https://example.org/repeated/report")
+        })
+        .unwrap_or_else(|| {
+            panic!("the repeated contribution's event carries all {REPEATS}: {events}")
+        });
+    assert_eq!(
+        refs.len(),
+        REPEATS,
+        "every citation the contributor wrote rides the event"
+    );
+    let resource_ids: std::collections::BTreeSet<&str> = refs
+        .iter()
+        .map(|r| r["resource_id"].as_str().expect("the resolved resource id"))
+        .collect();
+    assert_eq!(
+        resource_ids.len(),
+        1,
+        "all {REPEATS} citations resolved to the SAME reference: {refs:?}"
+    );
+    let notes: std::collections::BTreeSet<&str> =
+        refs.iter().filter_map(|r| r["note"].as_str()).collect();
+    assert_eq!(
+        notes.len(),
+        REPEATS,
+        "and each kept its own note — the work is shared, the record is not"
+    );
+
+    // ── The pair, not the locator: one locator at two digests is TWO ────────
+    //
+    // A de-duplication keyed on the locator alone would collapse these, and
+    // §12.6 requires a changed page to stay a second reference.
+    let digest_a = format!("sha256:{}", "a".repeat(64));
+    let digest_b = format!("sha256:{}", "b".repeat(64));
+    let (status, pairs) = contribute(
+        "cost-pairs".into(),
+        json!([
+            { "uri": "https://example.org/pairs/page", "digest": digest_a },
+            { "uri": "https://example.org/pairs/page", "digest": digest_b },
+            { "uri": "https://example.org/pairs/page", "digest": digest_a },
+        ]),
+    )
+    .await;
+    assert_eq!(status, 200, "the pinned citations contribute: {pairs}");
+    assert_eq!(
+        references("https://example.org/pairs/").await,
+        2,
+        "one locator at two digests is TWO references, and the repeat of the \
+         first is one — the de-duplication keys on the PAIR"
+    );
+
+    eprintln!(
+        "citation cost: {DISTINCT} distinct citations register {DISTINCT} references (the O(n) inside the thread's locked transaction); the same pair cited {REPEATS} times registers ONE reference — which the row count cannot distinguish, so the de-duplication is falsified in a unit test instead — while all {REPEATS} still ride the event with their own notes; and one locator at two digests stays TWO references"
+    );
+}

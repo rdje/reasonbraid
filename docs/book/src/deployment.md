@@ -696,6 +696,31 @@ is what `POST /v1/resources` returns for that locator and digest. Citing is not
 acquiring: §13.2 registers at step 2 and acquires at step 6, so a citation of
 something the network has not yet fetched is the flow working, not an error.
 
+#### What a citation list costs
+
+Each citation in a contribution registers its §12.1 reference **inside the
+thread's own transaction**, which holds the thread's row for writing. So the work
+is proportional to the number of **distinct** `(uri, digest)` pairs cited: 64
+distinct citations register 64 references, and every other command on that thread
+waits.
+
+**Citing the same pair repeatedly costs one registration.** A reference's
+identity is the pair, so a repeat can only fetch back the row the first citation
+wrote. ⛔ The de-duplication is of the **work**, never the record: a contribution
+citing one pair 48 times still shows 48 citations in its event, in order, each
+with its own note and all resolving to the same `resource_id`.
+
+⚠️ **This is not a bound**, and the distinction matters if you are sizing a
+client. The cost of N *distinct* citations is unchanged. What limits a single
+request today is its **body size** — 2 MiB, the default the HTTP framework
+applies, which this product has not yet declared for itself.
+
+⛔ **A per-hour quota would not help here**, which is why there is not one. The
+cost is inside one request: a call ceiling bounds how many requests arrive and
+says nothing about how long any one of them holds the thread.
+`SIGNOFF-REPAIR.11.14.3.14` owns which verbs should carry a quota, for the
+separate reasons §16.11 gives.
+
 #### The key is the pair, not the locator
 
 A reference's identity is `(original_locator, expected_digest)` — the key

@@ -6037,8 +6037,8 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 - 🔴 **Why this activity exists, stated as the defect rather than as a process.** Before it, the project's blockers lived in four places and none of them was a register: §16.12's three external gaps were prose inside a closed phase's gate record, the license and name-clearance gates were a sentence in `MEMORY.md`, the one held director decision was frontier row 8, and the never-run remote CI was a cadence note in `COMMIT.md`. Every one was OWNED in the sense §15 means; none was VISIBLE from the director's seat, which is the reply and the book. ⛔ Ownership and surfacing are two obligations and this tree had been meeting only the first.
 - ⭐ **The distinction the register is built around:** a blocker that is owned but unsurfaced is buried on a slower timescale than one that is unowned, and therefore harder to notice. `​.3.5.2.1` had sat correctly held, correctly acceptance-bearing and correctly at frontier row 8 for two days — which is exactly what being buried looks like when every individual rule has been followed.
 - Owns: the register itself — the `Ack?`-bearing table at the head of this tree's `## Blockers` section, the book's [blockers chapter](../book/src/blockers.md), and one child leaf per blocker that has no other owner. ⛔ A blocker already owned by a leaf (A1 → `.3.5.2.1`, C2 → `.11.4.7`) gets a REGISTER ROW, not a duplicate leaf; the register points at the owner rather than re-owning it.
-- ⛔ **The re-surfacing rule is the load-bearing part and it is not mechanizable.** Every stopping-point reply lists every row whose `Ack?` is `no`, as a labelled list rather than a sentence or a link. A row clears only when the director has engaged with THAT row — decided it, deferred it explicitly, or said to stop raising it. ⚠️ A general question about the area does not clear its rows, and neither does answering it: he asked what blocks Internet exposure on 2026-09-15, was answered in full, and B1–B3 stay `no` because he has not acted on any of them.
-- Acceptance: every blocker in the register has an owner — a leaf, or a named external party with the trigger that would clear it; the book chapter lists them all and stays in lockstep with the table; the `Ack?` column reflects actual director engagement and is never advanced on inference; and no blocker is ever removed from the register for being old.
+- ⛔ **The re-surfacing rule is the load-bearing part and it is not mechanizable.** ⚠️ **Its FIRST form was wrong and is superseded by `.13.5` (2026-09-17)**: it made every stopping-point reply list every row whose `Ack?` was `no`, and a row cleared only when the director engaged with THAT row. The column asked a question about the READER, in the maintainer's own register, and the director's answer when he finally saw it was that he had delegated the disposition and therefore *"it is supposed to be you"* who sets it. The corrected rule and the replacement column are at `.13.5`.
+- Acceptance: every blocker in the register has an owner — a leaf, or a named external party with the trigger that would clear it; the book chapter lists them all and stays in lockstep with the table; ⚠️ the third clause read *"the `Ack?` column reflects actual director engagement and is never advanced on inference"* and is **superseded by `.13.5`**, which replaces the column with one the maintainer can set and defend; and no blocker is ever removed from the register for being old.
 - Status: `done`; REPAIR-0194 ships the register. ⛔ The register existing is not the blockers clearing: `.13.1`–`.13.3` stay `pending`, and rows A1 and C2 point at `.3.5.2.1` and `.11.4.7` rather than being re-owned here.
 - **The register as shipped:** eight rows — A1 (the held director decision), B1–B3 (the three external G6 preconditions), B4 (name clearance), B5 (licence), C1 (remote CI never run), C2 (no gate record's shipped count re-derives). Every row carries who it is blocked on, its owner, what it does NOT block, and an `Ack?` column that starts at `no` for all eight.
 - **The public face:** `docs/book/src/blockers.md`, registered in `SUMMARY.md` directly after the qualification chapter, because the director reads the book rather than the frontier. It states the same eight, with a closing section on what C2 means for the Internet gate specifically.
@@ -6158,6 +6158,23 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 - Acceptance (as opened): the first remote run is consumed, not merely triggered; its result is recorded against the local checkpoint it corroborates; and every place this tree calls a gate "passed" is qualified as local until then. ⭐ **Met differently than written**: the runs were already there to consume, and consuming them is what falsified the leaf's own premise.
 - Status: `done`; `REASONBRAID-REPAIR-0220`. Register row **C1 is rewritten to what is true** rather than cleared — the row stays visible because the 167-commit gap is real, but it no longer claims the instrument has never run.
 - Verification / commit: the four `gh` measurements above, each re-derivable; `docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md`; `make gate`; `make book`. `REASONBRAID-REPAIR-0220`.
+
+#### SIGNOFF-REPAIR.13.5 — The register asked a question about its reader
+
+- Opened: `pending` by the director, 2026-09-17: *"Regarding the Blockers what does Ack? means? who decide that it should yes? To me, it is supposed to be you since I delegated that to you!"*
+- 🔴 **THE DEFECT, named rather than apologised for.** `.13` gave the register an `Ack?` column meaning *"has the director engaged with THIS row"*, and a rule that every stopping-point reply re-surface every row whose value was `no`. ⛔ **That is a field whose value is a fact about the READER, in the maintainer's own register.** The register cannot observe it and the maintainer cannot set it, so the only mechanism available was to keep repeating the row until the reader reacted.
+- **Measured, not felt.** `git log -S"Ack? = yes" -- docs/tasks/SIGNOFF-REPAIR.md docs/book/src/blockers.md` returns **nothing**: from 2026-09-15 to 2026-09-17 the column was `no` on every open row and never once anything else. ⭐ A column whose value has never changed in its lifetime carries no information — the same shape as a control never seen RED, which this tree already refuses everywhere else.
+- ⛔ **And it inverted a delegation.** The director had delegated blocker disposition; the column made his attention the precondition for a row to stop being repeated at him. The instrument for *surfacing* became an instrument for *nagging*, which is the failure mode that makes a reader skip the section the register exists to be read.
+- ⭐ **THE REPLACEMENT, and it is a different question rather than a renamed one.** The register must answer *"is there anything left that THIS REPOSITORY can do about this row?"* — the only question that separates a blocker the maintainer should still be working from one genuinely parked on an outsider. The column becomes **`Owed here?`**, set by the maintainer from the owning leaf, beside the named next action.
+- **The re-surfacing rule that follows from it:** a row with `Owed here? = yes` is **work**, belongs in the frontier and is worked like any other leaf; a row with `Owed here? = no` is surfaced **once per session** with its external party and trigger, not in every reply.
+- 🔎 **The replacement paid for itself immediately, and this is the finding rather than the process.** Under `Ack?`, B1–B3 were reported to the director as *"OUTSIDE"* with nothing owed. Under `Owed here?` all three are **yes**: they share one in-repo prerequisite — `SIGNOFF-REPAIR.14`'s frozen exposure candidate — which `docs/book/src/blockers.md` had *already named* under "The route out, decided 2026-09-16". ⛔ **The old column was hiding the maintainer's own work from the maintainer**, and the same reply that listed those rows as external also linked the page that said they were not.
+- **The corrected values, derived from each owning leaf:** B1 **yes** (the threat model exists; its fitness for review is owed, and `.14` is what a reviewer reviews), B2 **yes** (the scope/environment document, and `.14`'s freeze is this row's own stated trigger), B3 **yes** (it lands with `.14`'s first action-bearing surface), B4 **no** (professional clearance in three jurisdictions — the only row with nothing owed here), C1 **no** and relabelled *not a blocker — a limit on what may be CLAIMED*, C2 **yes** (four gate records remain).
+- Owns: the column, the rule that reads it, both copies of the register, and the correction to `.13`'s own acceptance clause.
+- Acceptance: the column is one the maintainer can set and defend from a leaf; `.13`'s superseded clause is marked superseded rather than edited away; both the tree's table and the book chapter carry the new column and agree; the measurement that the old column never changed is recorded; and no row is removed.
+- ⚠️ **What this does NOT change.** No blocker's substance moves: B1, B2 and B4 still require outside parties, and `.14` remains under its standing prohibition against turning the exposure profile on. What changes is which of them the maintainer treats as work.
+- lockstep: README.md unchanged (this leaf changes a register column and the rule that reads it; the README names neither).
+- Status: `done`.
+- Verification / commit: `REASONBRAID-DOC-0043`.
 
 #### SIGNOFF-REPAIR.13.4 — A corrected claim was corrected in the register and left standing in the corpus
 
@@ -6346,25 +6363,43 @@ center and discussed explicitly, **and it keeps being reminded until he actively
 with it**. Owning one in a leaf is necessary and is NOT sufficient; surfacing it once is
 not surfacing it either.
 
-⛔ **THE RULE FOR WHOEVER READS THIS NEXT: re-surface every row whose `Ack?` is `no` in
-EVERY stopping-point reply**, as a labelled list rather than a sentence or a link. Clear a
-row only when the director has engaged with THAT row — decided it, deferred it explicitly,
-or told you to stop raising it. ⚠️ A general question about the area does NOT clear its
-rows, and neither does answering that question: on 2026-09-15 he asked what blocks Internet
-exposure, was answered, and the rows stay `no` because he has not acted on any of them.
+⛔ **THE RULE FOR WHOEVER READS THIS NEXT (`.13.5`, 2026-09-17 — this REPLACES the `Ack?`
+rule, which was wrong):**
+
+- A row with **`Owed here? = yes`** is **work you owe**, not a notification. It belongs in
+  the frontier and is worked like any other leaf. Surface it as work.
+- A row with **`Owed here? = no`** is genuinely parked on someone outside this repository.
+  Surface it **once per session**, with the external party and the trigger that would clear
+  it — not in every reply.
+- **You set the column, from the owning leaf.** ⛔ Never from a feeling about whether the
+  director has noticed.
+
+⚠️ **Why the old rule was wrong, recorded because the shape recurs.** `Ack?` asked whether
+the DIRECTOR had engaged with a row — a fact about the reader, in the maintainer's own
+register, which the register cannot observe and the maintainer cannot set. Measured: it was
+`no` for every open row from 2026-09-15 to 2026-09-17 and `git log -S"Ack? = yes"` returns
+**nothing**, so the column never once carried information. It also inverted a delegation:
+the director had delegated blocker disposition, and the column made his attention the
+precondition for a row to stop being repeated at him.
+
+⭐ **And the replacement immediately paid for itself.** Under `Ack?`, B1–B3 were reported as
+"OUTSIDE" with nothing owed. Under `Owed here?` they are **yes** — all three share one
+in-repo prerequisite (`SIGNOFF-REPAIR.14`, the frozen exposure candidate) that the blockers
+chapter already named. The old column was hiding the maintainer's own work from the
+maintainer.
 
 The narrative below is the historical record; this table is the live answer.
 
-| # | Blocker | Blocked on | Ack? | Owner / leaf | Note |
+| # | Blocker | Blocked on | Owed here? | Owner / leaf | The next action, or the trigger |
 | --- | --- | --- | --- | --- | --- |
-| A1 | ✅ **CLOSED** — the metrics read is audited, and it needed no director decision after all | — | `n/a` (dissolved) | `.3.5.2.1`, done | 🔴 Was held two days for a choice between three route shapes. ⭐ **All three shared a false premise — that the route must NAME a tenant.** `migrations/0007` makes a principal belong to exactly one tenant structurally, so the tenant is derivable from the caller. No wire change, no broken caller, no new selection path |
-| B1 | Externally reviewed threat model (§16.12 line 1) | **OUTSIDE** | `no` | Phase-7 gate record | §2.6: AI review does not satisfy it. Blocks G6 |
-| B2 | Penetration test, critical/high resolved (§16.12 line 9) | **OUTSIDE** | `no` | Phase-7 gate record | §19.6: the release is cancelled, not waived, if findings stand. Blocks G6 |
-| B3 | Prompt-injection action-boundary suite (§16.12 line 5) — ⭐ deferral now MEASURED, with a mechanical trigger | **OUTSIDE** | `no` | Phase-7 gate record | Lands with the exposure profile's first action-bearing surface |
-| B4 | ADR-001 public-name clearance | **OUTSIDE** | `no` | `docs/adr/001-uncleared-working-name.md` | Blocks public branding, not repairs |
-| B5 | ✅ **CLOSED** — the licence is granted: `LICENSE-MIT` + `LICENSE-APACHE` ship, matching all 13 manifests | — | `yes` (2026-09-15) | `.13.2`, done | 🔴 Was: declared in all 13 manifests with no licence text anywhere, so a public repo granted readers nothing. The director supplied the copyright holder (Richard DJE) and that was all that remained. ⛔ B4's name clearance is unaffected — a licence is not a trademark |
-| C1 | The remote gate is **GREEN at `origin/main`**; **167 commits** sit beyond it | nothing — cadence | `no` | `.13.3` | 🔴 **The original row said "remote CI has never run" and that was FALSE** — measured 2026-09-17: **41 runs, 29 success / 12 failure**, and all three workflows green at `c17841c`, which IS `origin/main`. Re-derive with `gh run list --workflow=<wf>.yml --limit 1` and `git rev-list --count origin/main..HEAD` rather than reading this cell. The real limit is the unpushed gap, inside the ~300 cadence; `docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md` |
-| C2 | No gate record's "shipped" count re-derives | nothing | `no` | `.11.4.7` | Five gate records, four counting lines, all counted before the source read |
+| A1 | ✅ **CLOSED** — the metrics read is audited, and it needed no director decision after all | — | — | `.3.5.2.1`, done | 🔴 Was held two days for a choice between three route shapes. ⭐ **All three shared a false premise — that the route must NAME a tenant.** `migrations/0007` makes a principal belong to exactly one tenant structurally, so the tenant is derivable from the caller |
+| B1 | Externally reviewed threat model (§16.12 line 1) | an independent reviewer | **yes** | `.13.1` | **In-repo:** `spec/threat-model.md` EXISTS; what is owed is its fitness for review, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. ⛔ §2.6: AI review does not satisfy it |
+| B2 | Penetration test, critical/high resolved (§16.12 line 9) | an outside engagement | **yes** | `.13.1` | **In-repo:** the scope + environment document, and `.14`'s candidate freeze, which is this row's own stated trigger. ⛔ §19.6: the release is cancelled, not waived, if findings stand |
+| B3 | Prompt-injection action-boundary suite (§16.12 line 5) | — | **yes** | `.13.1.2` | **In-repo:** it lands with `.14`'s first action-bearing surface; the `ACTION-BOUNDARY` gate already fails the commit that ships one |
+| B4 | ADR-001 public-name clearance | professional clearance, US/EU/holder's jurisdiction | **no** | `docs/adr/001-uncleared-working-name.md` | ⭐ **The only row with nothing owed here.** The jurisdictions are decided (`2026-09-16_internet-qualification-route.md`); the rename cost is measured at 67 files / 191 lines. Blocks public branding, not repairs |
+| B5 | ✅ **CLOSED** — the licence is granted: `LICENSE-MIT` + `LICENSE-APACHE` ship, matching all 13 manifests | — | — | `.13.2`, done | 🔴 Was: declared in all 13 manifests with no licence text anywhere. ⛔ B4 is unaffected — a licence is not a trademark |
+| C1 | ⚠️ **Not a blocker — a limit on what may be CLAIMED.** The remote gate is **GREEN at `origin/main`**; local commits sit beyond it | nothing — cadence | **no** | `.13.3`, done | Re-derive with `gh run list --workflow=<wf>.yml --limit 1` and `git rev-list --count origin/main..HEAD` rather than reading this cell. 🔴 The original row said *"remote CI has never run"* and that was FALSE — 41 runs, 29/12, green at `c17841c` |
+| C2 | No gate record's "shipped" count re-derives | nothing | **yes** | `.11.4.7` | **In-repo:** five gate records, four counting lines; the first is re-derived, **four remain** |
 
 ⛔ **B1–B3 are what block Internet exposure**, and no amount of local work produces any of
 them: two are engagements to commission and one is a suite that arrives with a surface that

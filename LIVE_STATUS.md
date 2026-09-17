@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE BLOCKER REGISTER ASKED A QUESTION ABOUT ITS READER (`.13.5`, DOC-0043).**
+
+🔴 **The blocker register asked a question about its reader, and the director had to point it out.**
+
+- **The defect, named rather than apologised for.** `.13` gave the register an `Ack?` column meaning *"has the director engaged with THIS row"*, and a rule that every stopping-point reply re-surface every row whose value was `no`. ⛔ That is **a field whose value is a fact about the READER, in the maintainer's own register** — the register cannot observe it and the maintainer cannot set it, so the only mechanism available was to repeat the row until the reader reacted.
+- **Measured, not felt:** `git log -S"Ack? = yes"` over both copies returns **nothing**. From 2026-09-15 to 2026-09-17 the column was `no` on every open row and never once anything else. ⭐ A column whose value has never changed in its lifetime carries no information — the same shape as a control never seen RED, which this tree refuses everywhere else.
+- ⛔ **And it inverted a delegation.** The director had delegated blocker disposition; the column made his attention the precondition for a row to stop being repeated at him. An instrument for *surfacing* had become one for *nagging*, which trains a reader to skip the section the register exists to be read.
+- ⭐ **The replacement is a different question, not a renamed column: `Owed here?`** — *is there anything left that THIS REPOSITORY can do about this row?* Set by the maintainer from the owning leaf, beside the named next action. A `yes` row is **work** and belongs in the frontier; a `no` row is surfaced **once per session** with its external party and trigger.
+- 🔎 **It paid for itself immediately, and that is the finding.** Under `Ack?`, B1–B3 were reported to the director as *"OUTSIDE"* with nothing owed. Under `Owed here?` all three are **yes** — they share one in-repo prerequisite, `SIGNOFF-REPAIR.14`'s frozen exposure candidate, which `docs/book/src/blockers.md` **had already named**. ⛔ The old column was hiding the maintainer's own work from the maintainer, and the same reply that called those rows external also linked the page that said they were not.
+- **The corrected values:** B1 **yes**, B2 **yes**, B3 **yes**, B4 **no** (the only row with nothing owed here), C1 **no** and relabelled *not a blocker — a limit on what may be CLAIMED*, C2 **yes** (four gate records remain).
+- ⚠️ **No blocker's substance moves.** B1, B2 and B4 still need outside parties; `.14` remains under its standing prohibition against turning the exposure profile on; G6/G7 remains NOT MET. What changes is which rows the maintainer treats as work.
+
 🔴 **THE SNAPSHOT CENSUS WAS EIGHT, NOT SEVEN — A PUBLISHED NUMBER WAS FALSE AND THE DEFECT IT HID WAS LIVE (`.11.14.3.15`, REPAIR-0230).**
 
 🔴 **A published census was FALSE, and the defect it hid was live. It was found because the maintainer asked whether the findings hold.**

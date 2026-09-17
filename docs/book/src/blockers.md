@@ -44,18 +44,34 @@ European Union and the holder's own jurisdiction.
 B1–B4 remain open. What changed is that three of them now have a named next
 action here instead of a wait.
 
-## Blocked on the outside world
+## Who clears each one, and what is owed HERE
 
-No amount of work inside this repository produces any of these. The first three
-are what block **Internet exposure**; §16.12's remaining seven lines shipped with
-measured evidence, subject to the re-derivation noted below.
+⚠️ **This table changed shape on 2026-09-17, and the reason is worth a sentence.**
+It used to carry an `Ack?` column meaning *"has the director engaged with this
+row"* — a field whose value is a fact about the **reader**, which the register
+cannot observe and the maintainer cannot set. Measured: it was `no` on every open
+row for its whole life and never once anything else. The maintainer had been
+given the disposition to decide; the column made the director's attention the
+precondition for a row to stop being repeated at him.
 
-| # | Blocker | Who clears it | Why it cannot be self-supplied |
-| --- | --- | --- | --- |
-| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | §2.6: AI review does not satisfy an independent-review requirement for Internet qualification |
-| **B2** | **Penetration test**, with critical and high findings resolved | An outside engagement | §19.6: the release is *cancelled*, not waived, if findings stand |
-| **B3** | **Prompt-injection action-boundary suite** | Arrives with the exposure profile's first action-bearing surface | There is nothing to attach it to yet — and as of 2026-09-15 that is enforced rather than asserted: the `ACTION-BOUNDARY` gate pins the four facts this deferral rests on, so the commit that lands an action-bearing surface fails and says B3 is due |
-| **B4** | **Public-name clearance** (ADR-001) | Professional trademark, company, package and domain clearance | §2.7: the exact-name screen performed is explicitly *not* legal clearance |
+⭐ The column now answers the question a blocker register must answer: **is there
+anything left that this repository can do?** That is the only thing separating a
+row the maintainer should still be working from one genuinely parked on an
+outsider — and replacing it changed three answers immediately.
+
+| # | Blocker | Who clears it | Owed here? | What is owed, or the trigger |
+| --- | --- | --- | --- | --- |
+| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | **yes** | `spec/threat-model.md` exists; its **fitness for review** is owed, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. §2.6: AI review does not satisfy the requirement |
+| **B2** | **Penetration test**, critical and high findings resolved | An outside engagement | **yes** | The **scope and environment** document, and `.14`'s candidate freeze — which is this row's own stated trigger. §19.6: the release is *cancelled*, not waived, if findings stand |
+| **B3** | **Prompt-injection action-boundary suite** | — | **yes** | It lands with `.14`'s first action-bearing surface. The `ACTION-BOUNDARY` gate already fails the commit that ships one and says B3 is due |
+| **B4** | **Public-name clearance** (ADR-001) | Professional trademark, company, package and domain clearance | **no** | ⭐ The only row with nothing owed here. Jurisdictions decided; the rename cost is measured at 67 files / 191 lines. §2.7: the exact-name screen is explicitly *not* legal clearance |
+
+⛔ **Nothing about the blockers themselves has moved.** B1, B2 and B4 still need
+outside parties, `.14` is still under its standing prohibition against turning
+the exposure profile on, and G6/G7 remains **NOT MET**. What changed is which of
+these rows the maintainer treats as work — and it turns out three of the four
+were being reported as *external with nothing owed* while this very page already
+said they share one in-repo prerequisite.
 
 `ReasonBraid` remains a **working name**. Do not assume the crate, domain or
 handle names are obtainable. This does not affect repository visibility, which is

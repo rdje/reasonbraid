@@ -1681,6 +1681,9 @@ where
                 let registrant = crate::resources::Registrant {
                     tenant_id: tenant_id.to_string(),
                     principal: submitted_by.clone(),
+                    // A contributor cites a URI; it never names a credential,
+                    // which is why the reference above carries `None` too.
+                    credential_binding_ref: None,
                 };
                 let outcome = match crate::resources::submit(
                     &mut *tx,

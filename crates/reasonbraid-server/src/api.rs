@@ -4201,6 +4201,10 @@ async fn submit_resource(
     let registrant = crate::resources::Registrant {
         tenant_id: tenant,
         principal: submitted_by.clone(),
+        // ⛔ The credential selector goes on the REGISTRATION, not the shared
+        // reference (`SIGNOFF-REPAIR.11.14.3.10`). On the shared row it was
+        // inherited by every tenant that replayed the pair.
+        credential_binding_ref: reference.credential_binding_ref.clone(),
     };
     let mut conn = state.pool.acquire().await?;
     match crate::resources::submit(&mut *conn, &reference, &submitted_by, &registrant).await {

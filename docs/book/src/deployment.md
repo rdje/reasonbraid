@@ -1022,12 +1022,59 @@ exactly as re-acquiring a snapshot restores its. The attribution cannot be
 recovered: `submitted_by` is a one-way hash that joins to no identity table and
 the pair replay leaves it naming the first registrant regardless.
 
-⛔ **What this does not close.** `credential_binding_ref` is still an
-unauthenticated caller field that SELECTS a credential, and a second tenant that
-registers the same pair inherits the shared row's binding. ⚠️ Its reach today is
-measured rather than assumed: the R5 pack is off by default and no production
-code path registers a broker binding, so every shipped deployment runs an empty
-broker store. `SIGNOFF-REPAIR.11.14.3.10` owns it.
+### A credential binding belongs to a tenant, not to a locator
+
+✅ **`credential_binding_ref` no longer lives on the shared reference row**
+(`SIGNOFF-REPAIR.11.14.3.10`). It is still a §12.1 request field and the wire
+contract is unchanged, but it is stored on the *registration* — the tenant's own
+row — and read back only from there.
+
+⛔ **What that closed.** `resource_references` is keyed
+`UNIQUE (original_locator, expected_digest)`: its identity is the CONTENT. A
+credential binding is not content, it is the caller's means of ACCESS, and the
+R5 arm feeds it straight to the broker. While the two shared a row, a second
+tenant registering the same pair replayed the first tenant's row, inherited a
+binding it never named, and `POST /v1/resources/{resource_id}/resolve` attached
+the **first tenant's credential** to the second tenant's acquisition — the
+confused deputy ROADMAP §16.3 invariant 5 forbids: *target credentials are
+selected only after authorization for the concrete target and action.*
+
+⭐ **And it closed a limit nobody had stated, in the other direction.** The pair
+key meant two tenants citing one URL could not hold two *different* bindings —
+the second tenant's own value was discarded by the replay. Both tenants may now
+hold their own, because the binding is on the registration the pair key does not
+govern.
+
+⚠️ **The binding is a ranking input, so the effect is wider than a denial.** A
+reference that names a binding ranks only the `credential`-class packs; one that
+names none ranks only the `none`-class packs. A tenant that never named a
+binding is therefore not routed to the credential broker **at all** — it is not
+merely refused the credential.
+
+⚠️ **Re-submitting a reference re-states its binding, including to nothing.** A
+submission is the complete statement of a reference, so omitting the field on a
+later submission clears that tenant's binding. `registered_at` and
+`registered_by` are unaffected — they record when this tenant first registered,
+and a re-registration must not rewrite that.
+
+⚠️ **A binding recorded before this change survives only for the tenant that
+submitted the reference.** `migrations/0069` backfills it by joining
+`reference_registrations.registered_by` to `resource_references.submitted_by` —
+the same value, written from one binding — and every other tenant's registration
+gets nothing. That is the fail-closed direction §16.4 requires for secret access.
+The old column is then dropped, so the read that caused the defect can no longer
+be written.
+
+⛔ **What this still does not close: the broker's namespace is global.** Nothing
+stops a tenant naming a binding an operator created for someone else — it now
+has to name it in its own registration rather than inherit it, but naming it is
+still enough. Authorizing the selection needs an operator-issued, tenant-scoped
+grant, and the authority engine's action vocabulary is thread-scoped today
+(`GrantAction` names no resource or credential action), so it is a new
+authorization surface rather than a wiring change. ⚠️ Its reach today is measured
+rather than assumed: the R5 pack is off by default and no production code path
+registers a broker binding, so every shipped deployment runs an empty broker
+store. `SIGNOFF-REPAIR.11.14.3.10.1` owns it.
 
 ### How a deliberation records an assessment
 

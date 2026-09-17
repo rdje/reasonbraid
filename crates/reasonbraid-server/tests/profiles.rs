@@ -110,6 +110,19 @@ async fn pool() -> Option<PgPool> {
     .execute(&pool)
     .await
     .expect("clear site authority fixtures");
+    // ⛔ The opt-in R3/R5/RX gate is part of the world a test starts in, and it
+    // was the one part this helper did not reset. `sync_gated_entries` writes
+    // `resolver_capabilities` rows, which the migration seeds and the cleanup
+    // plan above deliberately does not touch — so a test that opened the gate
+    // handed it, open, to whichever test ran next, and
+    // `the_gated_packs_resolve_only_while_the_gate_is_open` failed on its CLOSED
+    // phase. Closing it at the END of the opening test is not enough: a test
+    // that PANICS never reaches its own end, which is exactly how this was
+    // found. Normalising it HERE makes the starting state independent of how the
+    // previous test finished, and `false` is the product's own default.
+    reasonbraid_server::sync_gated_entries(&pool, false)
+        .await
+        .expect("normalise the opt-in gate to its default");
     Some(pool)
 }
 
@@ -3840,6 +3853,200 @@ async fn the_gated_packs_resolve_only_while_the_gate_is_open() {
         resolved["unresolvable_now"],
         json!(true),
         "the closed gate has no rows to rank: {resolved}"
+    );
+}
+
+/// `credential_binding_ref` SELECTS a credential, and the reference row it
+/// lived on is SHARED (`SIGNOFF-REPAIR.11.14.3.10`). `UNIQUE (original_locator,
+/// expected_digest)` means a second tenant registering the same pair replays
+/// the FIRST tenant's row — so the binding came with it, and the R5 arm handed
+/// one tenant's credential to another tenant's acquisition. ROADMAP §16.3
+/// invariant 5: *target credentials are selected only after authorization for
+/// the concrete target and action.*
+///
+/// The selection now lives on the tenant's OWN registration, so the four arms
+/// read: the owner reaches its own binding; the replaying tenant that named
+/// none is not even ROUTED to the credential pack (it used to reach the
+/// owner's); a tenant that names its own binding gets ITS name back in the
+/// refusal; and the owner is undisturbed by either — two tenants hold two
+/// different bindings for one shared pair, which the pair key previously made
+/// impossible.
+///
+/// ⭐ The arms DISCRIMINATE by construction, and each names WHICH signal carries
+/// it. Arm 2 turns on the RESOLVER, because the binding is a ranking input:
+/// binding-less ranks the `none`-class packs, so the credential pack is never
+/// selected and the loopback refusal that comes back is R0's. Arms 1, 3 and 4
+/// turn on the error KIND and its message: the owner's binding is registered
+/// with the broker and the stranger's is not, so `destination_refused` (reached
+/// only once a credential resolved) and `credential_unavailable` (the broker
+/// refusing, quoting the binding it was asked for) cannot be confused.
+#[tokio::test]
+async fn a_credential_binding_is_not_inherited_by_another_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else {
+        return;
+    };
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("the gate opens");
+
+    let broker = std::sync::Arc::new(reasonbraid_server::broker::Broker::default());
+    // Only the OWNER's binding exists in the broker. The second tenant's name
+    // is deliberately absent, so a refusal that names it proves which binding
+    // was consulted.
+    broker.register(
+        "cred_owner_only",
+        reasonbraid_server::broker::Credential::new("owner-token-read", "tok_OWNER_SECRET"),
+    );
+    let server = TestServer::start_gated(&pool, true, broker).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "binding-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let owner_tenant = owner["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "binding-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    let stranger_tenant = stranger["tenant_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        owner_tenant, stranger_tenant,
+        "the two principals are two TENANTS — otherwise this control proves nothing"
+    );
+
+    const LOCATOR: &str = "https://127.0.0.1/shared-private";
+    let submit = |principal: String, binding: Option<&'static str>| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let mut body = json!({ "original_locator": LOCATOR, "scheme": "https" });
+            if let Some(binding) = binding {
+                body["credential_binding_ref"] = json!(binding);
+            }
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&body)
+                .send()
+                .await
+                .expect("submit request");
+            let status = response.status().as_u16();
+            let value: Value = response.json().await.expect("submit json");
+            (status, value)
+        }
+    };
+    let resolve = |principal: String, resource_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+                .send()
+                .await
+                .expect("resolve request");
+            response.json::<Value>().await.expect("resolve json")
+        }
+    };
+
+    let (status, owned) = submit(owner_id.clone(), Some("cred_owner_only")).await;
+    assert_eq!(status, 200, "the owner's reference submits: {owned}");
+    let resource_id = owned["resource_id"].as_str().unwrap().to_string();
+
+    // The stranger names the SAME pair and NO binding: the content-addressed
+    // row replays, which is the point — one row, two tenants.
+    let (status, replayed) = submit(stranger_id.clone(), None).await;
+    assert_eq!(status, 200, "the stranger's reference submits: {replayed}");
+    assert_eq!(
+        replayed["resource_id"].as_str().unwrap(),
+        resource_id,
+        "the stranger REPLAYS the owner's shared row — without that this control \
+         is two rows and proves nothing: {replayed}"
+    );
+
+    // Arm 1 — the owner reaches its own binding: the broker resolved it, so the
+    // refusal comes from the loopback pre-flight AFTER the credential attached.
+    let resolved = resolve(owner_id.clone(), resource_id.clone()).await;
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r5-credential-broker"]),
+        "the R5 pack ranks the owner's binding-carrying reference: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the owner's OWN binding resolved and the loopback refused it: {resolved}"
+    );
+
+    // Arm 2 — THE DEFECT, and the repair reaches one layer FURTHER than denying
+    // the credential. `resolvers::resolve` takes the binding as a RANKING input:
+    // a binding ranks only the `credential`-class packs, and a binding-less
+    // reference ranks only the `none`-class ones. So a stranger that names no
+    // binding is not merely refused a credential — the credential pack is never
+    // selected for it at all, and the refusal it gets is the plain R0 fetcher's.
+    //
+    // ⭐ The RESOLVER is the discriminator here, not the error kind: both the
+    // authenticated and the unauthenticated path end at the same loopback
+    // `destination_refused`, and only `resolvers` says which one ran. Before the
+    // repair this arm read `["r5-credential-broker"]` — the stranger driving an
+    // authenticated acquisition with the OWNER's credential.
+    let resolved = resolve(stranger_id.clone(), resource_id.clone()).await;
+    assert_eq!(
+        resolved["resolvers"],
+        json!(["r0-https-fetcher"]),
+        "the stranger named NO binding, so no credential pack may be ranked for \
+         it — `r5-credential-broker` here means it reached the owner's binding: \
+         {resolved}"
+    );
+
+    // Arm 3 — the stranger names its OWN binding, which the broker does not
+    // hold. The refusal quotes that name, so the row consulted was the
+    // stranger's registration and not the owner's.
+    let (status, own_binding) = submit(stranger_id.clone(), Some("cred_stranger_only")).await;
+    assert_eq!(
+        status, 200,
+        "the stranger re-states its reference: {own_binding}"
+    );
+    assert_eq!(
+        own_binding["resource_id"].as_str().unwrap(),
+        resource_id,
+        "still the one shared row: {own_binding}"
+    );
+    let resolved = resolve(stranger_id.clone(), resource_id.clone()).await;
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("credential_unavailable"),
+        "the stranger's own binding is unknown to the broker: {resolved}"
+    );
+    assert!(
+        resolved["acquisition_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("cred_stranger_only"),
+        "the refusal names the STRANGER's binding, proving whose row was read: {resolved}"
+    );
+
+    // Arm 4 — and the owner is undisturbed by all of it. Two tenants now hold
+    // two different bindings for ONE shared pair, which `UNIQUE (original_locator,
+    // expected_digest)` previously made impossible.
+    let resolved = resolve(owner_id, resource_id).await;
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the stranger's registration did not overwrite the owner's binding: {resolved}"
     );
 }
 

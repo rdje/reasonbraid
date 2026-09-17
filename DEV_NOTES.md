@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — A row keyed on content may not hold a tenant's decision
+
+- Fourth instance in one family, and the first where the shared datum was a means of ACCESS rather than a fact about the content. `resource_references` is keyed `UNIQUE (original_locator, expected_digest)`; `credential_binding_ref` sat on it and selects a credential, so a replaying tenant inherited one it never named and the R5 arm attached the owner's credential to its acquisition.
+- ⭐ **The test is one question about the key, and it is mechanical:** *two tenants name the same content and disagree about this column — which one wins?* If the answer is "whichever wrote first, and the other is silently given that value", the column is on the wrong row.
+- ⭐ **Note BOTH halves of the damage.** The second tenant inherits a decision it never made, AND it cannot express its own. They are one defect seen from two sides, and this family had only ever discussed the first — the pair-key limit went unstated for as long as the leak did.
+- ⛔ **Stopping at "stop reading the old column" is not the repair.** A dead column still naming a credential is the next author's mistake, already in the schema. Dropping it makes the schema the gate: the read that caused the defect can no longer be written. This is the first `DROP COLUMN` in 69 migrations, and the reason is stated in the migration header rather than assumed.
+- 🔎 **The backfill decides whether a secret may be moved at all.** There was an exact join here (`registered_by` and `submitted_by` are the same value, written from one binding), so the submitter kept its binding and everyone else got NULL. Without such a join the honest backfill is *nobody* — guessing is not available when §16.4 says secret access fails closed.
+- **Promoted:** `docs/knowledge/a-shared-row-may-not-hold-a-tenant-decision.md`.
+
 ## 2026-09-17 — An injection that does not land is a green run that proves nothing
 
 - I built a commit-time gate and falsified it twice: once against the instrument, once against its registration in `make gate`. The second falsification **passed on the first attempt for the wrong reason** — the `.replace()` I used to inject the defect did not match the file's indentation, so nothing was injected, the gate stayed green, and I briefly read that as the registration working.

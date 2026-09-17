@@ -5,6 +5,22 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A CREDENTIAL BINDING IS TENANT-BOUND (`.11.14.3.10`, REPAIR-0234).**
+
+🔴 **A credential SELECTOR lived on a content-addressed row, and a second tenant drove an authenticated acquisition with the first tenant's credential.**
+
+- **The defect.** `resource_references` is keyed `UNIQUE (original_locator, expected_digest)` — identity by CONTENT. `credential_binding_ref` is not content: the R5 arm hands it to `broker.resolve`. A second tenant replaying the pair inherited a binding it never named, and its resolve attached the OWNER's credential. ⛔ ROADMAP §16.3 invariant 5.
+- **REPRODUCED RED FIRST** (gate open, one registered binding, two tenants, one locator): the stranger answered `resolvers: ["r5-credential-broker"]` → `destination_refused` — the **loopback pre-flight**, reached only once a credential RESOLVED.
+- ⭐ **The discriminator is the RESOLVER, not the error kind.** Both paths end at the same loopback refusal; only `resolvers` says which ran. ⛔ My first draft asserted `credential_unavailable` and would have FAILED against the repaired product.
+- ⭐ **DECIDED: the selector moves to `reference_registrations`; `migrations/0069` DROPS the column.** The shared row keeps CONTENT, the tenant-bound row keeps the DECISION — the **fourth** instance of one shape in this family, now promoted as `a-shared-row-may-not-hold-a-tenant-decision`.
+- ⭐ **Wider than a denial, and measured rather than designed:** the binding is a RANKING input, so a tenant that named none is **not routed to the credential pack at all**.
+- ⭐ **A limit closes in the OTHER direction too, unstated until now:** the pair key meant two tenants citing one URL could not hold two DIFFERENT bindings. Both may now.
+- ⭐ **Structural, not conventional:** the unbound read has no column to read a selector from. Only `get_for_tenant` supplies one, and only the asking tenant's own.
+- ⚠️ **The backfill is EXACT** (`registered_by` and `submitted_by` are literally the same value); every other tenant gets NULL — §16.4's fail-closed rule for secret access.
+- 🔴 **A defect of my own, caught by the neighbours:** the control left the opt-in gate open. ⛔ Closing it at the END of the test was NOT the fix — a PANICKING test never reaches its own end, which is how it was found. Normalised in `pool()`.
+- **FALSIFIED** (stash verified landed; RED at exactly the defect arm; restored). **No regression:** `profiles` 55/55, `migration_upgrade` 4/4, `backup_restore` 1/1, `--lib` 113/113, clippy clean.
+- ⚠️ **NOT closed, and owned:** the broker's namespace is GLOBAL — naming a binding an operator made for someone else is still enough. `GrantAction` is thread-scoped (10 variants, 0 about a resource), so it is a §16.4 authorization surface rather than a wiring change. `.11.14.3.10.1`; measured latent (3 `.register(` sites, all tests; 0 in `src/bin`).
+
 ✅ **THE PLAN CHECKER NOW HAS A COMMIT-TIME TRIGGER (`.11.14.1.2`, REPAIR-0233).**
 
 ⭐ **The failure class that bit three times today is now mechanical — and building the gate produced a fourth instance of it, caught.**

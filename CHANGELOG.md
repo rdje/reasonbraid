@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## 2026-09-17 — A credential binding is tenant-bound (`SIGNOFF-REPAIR.11.14.3.10`)
+
+🔴 **A credential SELECTOR lived on a content-addressed row, so a second tenant drove an authenticated acquisition with the first tenant's credential.**
+
+- **The defect.** `resource_references` is keyed `UNIQUE (original_locator, expected_digest)` — its identity is the CONTENT. `credential_binding_ref` is not content: it is the caller's means of ACCESS, and the R5 arm hands it straight to `broker.resolve`. A second tenant registering the same pair replayed the first tenant's row, inherited a binding it never named, and its resolve attached the OWNER's credential. ⛔ ROADMAP §16.3 invariant 5: *target credentials are selected only after authorization for the concrete target and action.*
+- **REPRODUCED RED FIRST**, gate open, one binding registered, two tenants, one locator: the stranger's resolve answered `resolvers: ["r5-credential-broker"]` → `destination_refused`, and that refusal is the **loopback pre-flight**, reached only once a credential has RESOLVED.
+- ⭐ **The discriminator is the RESOLVER, not the error kind**, and naming it was the difference between a control that proves something and one that passes. Both paths end at the same loopback refusal; only `resolvers` says which ran. ⛔ My first draft asserted `credential_unavailable` and would have FAILED against the repaired product.
+- ⭐ **DECIDED: the selector moves to `reference_registrations`, and `migrations/0069` DROPS the old column.** The shared row keeps the CONTENT; the tenant-bound row keeps the DECISION — this family's own correction for the **fourth** time (citations, assessments, reference reads, now a means of access). Promoted as `docs/knowledge/a-shared-row-may-not-hold-a-tenant-decision.md`.
+- ⭐ **The repair is wider than a denial, and that was measured rather than designed.** The binding is a RANKING input: it ranks only the `credential`-class packs, and a binding-less reference ranks only the `none`-class ones. A tenant that named no binding is **not routed to the credential broker at all**.
+- ⭐ **And a limit closes in the OTHER direction that nobody had stated.** The pair key meant two tenants citing one URL could not hold two DIFFERENT bindings — the second's value was discarded by the replay. Both may now.
+- ⭐ **The strongest part is structural:** the unbound read has no column to read a selector from, so it cannot leak one even by mistake. Only `get_for_tenant` supplies one, and only the asking tenant's own.
+- ⚠️ **The backfill is EXACT, which is the only reason a credential may be moved at all.** `registered_by` and `submitted_by` are literally the same value, so the submitter joins precisely to its own registration and every other tenant's gets NULL — §16.4's fail-closed rule for secret access. ⛔ Had no such join existed, the honest backfill would have been NOBODY.
+- 🔴 **A defect of my own, caught by the neighbours.** The new control left the opt-in gate open and broke `the_gated_packs_resolve_only_while_the_gate_is_open`. ⛔ Closing the gate at the END of my test was NOT the fix — a test that PANICS never reaches its own end, which is exactly how it was found. The gate is now normalised in `pool()` with the other fixtures.
+- **FALSIFIED** — source and migration stashed together, stash verified landed, RED at exactly the defect arm (`r5-credential-broker` where the repair gives `r0-https-fetcher`), restored and re-verified.
+- **No regression:** `profiles` 55/55, `migration_upgrade` 4/4, `backup_restore` 1/1, `--lib` 113/113, clippy clean.
+- ⚠️ **What is NOT closed, and is owned.** The broker's namespace is global: naming a binding an operator created for someone else is still sufficient. It needs an operator-issued tenant-scoped grant, and `GrantAction` is thread-scoped (10 variants, 0 about a resource or credential) — a §16.4 authorization surface, not a wiring change. `.11.14.3.10.1`.
+
 ## 2026-09-17 — The plan checker had no commit-time trigger (`SIGNOFF-REPAIR.11.14.1.2`)
 
 ⭐ **The failure class that bit three times today is now mechanical — and building the gate produced a fourth instance of it, caught.**

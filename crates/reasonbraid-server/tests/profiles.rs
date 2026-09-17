@@ -10771,3 +10771,177 @@ async fn a_derivation_is_filed_against_a_snapshot_this_tenant_cited() {
         "derivation write binding: a foreign parent and an absent one are ONE answer and attach nothing; the citing tenant derives normally; the second tenant acquires the same bytes, records its citation and then derives — and the derivation graph stays shared, both tenants reading both children"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.14.3.14`: §16.11's two unwired quota scopes gain the
+/// producer the section names — the acquisition path — and the fail-closed
+/// contract survives a member space the server does not control.
+///
+/// `resolver` and `destination` shipped in `SCOPE_KINDS`, in migration 0047's
+/// CHECK constraint, and in nothing else. Meanwhile
+/// `POST /v1/resources/{id}/resolve` performed a real network acquisition per
+/// call with no quota, no storm control and no breaker — which is exactly
+/// §16.11's "resolver abuse" and "scraping".
+///
+/// ⭐ **The load-bearing finding is why they sat unwired.** `check_in_tx` is
+/// fail-closed, and that works for the two scopes already bound because their
+/// members are created by a path the server controls and can seed. Neither of
+/// these is: the resolver space grows through `POST /v1/resolvers`, and the
+/// destination space is the open internet. So each tenant gets a DEFAULT row at
+/// the wildcard id, a specific row overrides it, and the absence of BOTH is the
+/// same typed refusal as before.
+#[tokio::test]
+async fn the_acquisition_path_is_bounded_per_resolver_and_per_destination() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "acquisition-quota-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    // ── The tenant is seeded with a DEFAULT row for each open scope ─────────
+    let defaults: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT scope_kind, scope_id, ceiling FROM usage_quotas \
+         WHERE tenant_id = $1 AND scope_kind IN ('resolver', 'destination') \
+         ORDER BY scope_kind",
+    )
+    .bind(&tenant_id)
+    .fetch_all(&pool)
+    .await
+    .expect("read the seeded acquisition quotas");
+    assert_eq!(
+        defaults,
+        vec![
+            ("destination".to_owned(), "*".to_owned(), 1000),
+            ("resolver".to_owned(), "*".to_owned(), 1000),
+        ],
+        "the enrol transaction seeds one DEFAULT row per open scope, not one per member"
+    );
+
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        // ⚠️ A loopback locator on purpose: the R0 pack still RANKS on `https`,
+        // so the quota is checked, and the shipped destination policy then
+        // refuses the class before any socket opens. The control therefore
+        // touches no network and also shows the ordering — the bound is
+        // consumed by the ATTEMPT, ahead of the policy that refuses it.
+        &json!({ "original_locator": "https://127.0.0.1/quota-probe", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference registers: {reference}");
+    let resource_id = reference["resource_id"].as_str().unwrap().to_string();
+
+    let resolve = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let resource_id = resource_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                &format!("/v1/resources/{resource_id}/resolve"),
+                &human_id,
+                &json!({ "required_sandbox": "none", "required_egress": "listed" }),
+            )
+            .await
+        }
+    };
+
+    // ── Under the ceiling: the resolution answers, and records its use ──────
+    let (status, first) = resolve().await;
+    assert_eq!(status, 200, "the first resolution answers: {first}");
+    let uses: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM quota_events e JOIN usage_quotas q USING (quota_id) \
+         WHERE q.tenant_id = $1 AND q.scope_kind IN ('resolver', 'destination') \
+           AND e.kind = 'use'",
+    )
+    .bind(&tenant_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the recorded uses");
+    assert_eq!(
+        uses, 2,
+        "one resolution records one use per scope — the resolver and the destination"
+    );
+
+    // ── A SPECIFIC row overrides the default, and the bound then bites ──────
+    //
+    // ⚠️ A specific row starts its OWN count — `quota_events` is keyed by
+    // `quota_id` — so the use recorded against the default above does not carry
+    // over. That is the correct semantic (a narrowed bound is a new bound, not a
+    // continuation of the old one) and it is why the ceiling here is `0` rather
+    // than the count already spent: the first attempt under it is at the
+    // ceiling. This is also how an operator narrows one noisy host without
+    // touching the rest.
+    sqlx::query(
+        "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+         VALUES ($1, $2, 'destination', '127.0.0.1', 0, 3600)",
+    )
+    .bind(format!("quo_{tenant_id}_loopback"))
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("declare a host-specific bound");
+
+    let (status, refused) = resolve().await;
+    assert_eq!(
+        status, 429,
+        "the host-specific ceiling refuses the next acquisition: {refused}"
+    );
+    assert_eq!(refused["code"], json!("quota_exceeded"), "{refused}");
+    let denials: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM quota_events e JOIN usage_quotas q USING (quota_id) \
+         WHERE q.tenant_id = $1 AND q.scope_id = '127.0.0.1' AND e.kind = 'denial'",
+    )
+    .bind(&tenant_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count the denials");
+    assert_eq!(
+        denials, 1,
+        "the refusal is a RECORDED fact, never silent — the `0047` contract"
+    );
+
+    // ── The fail-closed contract survives: remove BOTH rows, get the refusal ─
+    sqlx::query(
+        "DELETE FROM quota_events WHERE quota_id IN \
+         (SELECT quota_id FROM usage_quotas WHERE tenant_id = $1 AND scope_kind = 'destination')",
+    )
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("clear the destination events");
+    sqlx::query("DELETE FROM usage_quotas WHERE tenant_id = $1 AND scope_kind = 'destination'")
+        .bind(&tenant_id)
+        .execute(&pool)
+        .await
+        .expect("remove both destination rows");
+
+    let (status, unconfigured) = resolve().await;
+    assert_eq!(
+        status, 503,
+        "no specific row AND no default row is still the typed refusal: {unconfigured}"
+    );
+    assert_eq!(
+        unconfigured["code"],
+        json!("quota_unconfigured"),
+        "the fail-closed contract is unchanged — what moved is that the default \
+         is a ROW rather than an absence: {unconfigured}"
+    );
+
+    eprintln!(
+        "acquisition quota: the enrol transaction seeds one DEFAULT row per open scope; one resolution records one use per scope (resolver + destination); a host-specific ceiling overrides the default and refuses with a RECORDED denial (429); and removing both rows is still the typed fail-closed 503"
+    );
+}

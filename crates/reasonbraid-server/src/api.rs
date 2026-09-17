@@ -2118,6 +2118,64 @@ async fn resolve_resource(
         &req.required_egress,
     )
     .await?;
+    // §16.11's acquisition bounds (`SIGNOFF-REPAIR.11.14.3.14`). This is the
+    // surface the section names as "resolver abuse" and "scraping", and until
+    // this leaf it carried no quota, no storm control and no breaker while
+    // performing a real network acquisition per call.
+    //
+    // Two scopes, both per tenant: the RANKED RESOLVER and the locator's HOST.
+    // Each falls back to the tenant's `*` default row when it has no specific
+    // one, which is what makes a fail-closed bound possible over a member space
+    // the server does not control.
+    //
+    // ⚠️ Placed after the ranking and before the match rather than inside each
+    // arm, so an attempt against a gated-off pack is counted too. That is
+    // deliberate: the bound is on ATTEMPTS, and an attempt is what a caller can
+    // repeat. ⚠️ A locator with no host takes the resolver bound only — there is
+    // no destination to bound, and no pack can fetch such a locator anyway.
+    if let Some(ranked) = outcome.resolvers.first().cloned() {
+        let host = url::Url::parse(&reference.original_locator)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_owned));
+        let mut quota_tx = state.pool.begin().await?;
+        let mut refusal = None;
+        for (scope_kind, scope_id) in [
+            (Some(crate::quota::SCOPE_RESOLVER), Some(ranked.clone())),
+            (Some(crate::quota::SCOPE_DESTINATION), host),
+        ] {
+            let (Some(scope_kind), Some(scope_id)) = (scope_kind, scope_id) else {
+                continue;
+            };
+            if let Err(error) = crate::quota::check_open_scope_in_tx(
+                &mut *quota_tx,
+                &tenant,
+                scope_kind,
+                &scope_id,
+                chrono::Utc::now(),
+            )
+            .await
+            {
+                refusal = Some(error);
+                break;
+            }
+        }
+        // The denial row is a recorded fact and must survive the refusal, so the
+        // transaction commits either way — the `.3.5.1` shape.
+        quota_tx.commit().await?;
+        if let Some(error) = refusal {
+            return Err(match error {
+                crate::quota::QuotaError::Exceeded { .. } => {
+                    ControlApiError::quota_exceeded(error.to_string())
+                }
+                crate::quota::QuotaError::Unconfigured { .. } => {
+                    ControlApiError::quota_unconfigured(error.to_string())
+                }
+                crate::quota::QuotaError::Storage(cause) => ControlApiError::internal_with_log(
+                    format!("the acquisition quota check failed: {cause}"),
+                ),
+            });
+        }
+    }
     // The built-in packs execute when they rank first: the acquisition
     // runs under the pack's own ceilings + the `.2.1` policy; a refusal is
     // the NAMED error, and the reference stays submitted either way.

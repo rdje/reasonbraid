@@ -696,6 +696,50 @@ is what `POST /v1/resources` returns for that locator and digest. Citing is not
 acquiring: §13.2 registers at step 2 and acquires at step 6, so a citation of
 something the network has not yet fetched is the flow working, not an error.
 
+#### What an acquisition costs the caller
+
+`POST /v1/resources/{id}/resolve` is bounded by two §16.11 quotas, both per
+tenant: one on the **ranked resolver** and one on the locator's **host**.
+
+| The answer | Means |
+| --- | --- |
+| `200` | the attempt was within both bounds; one `use` is recorded against each |
+| `429 quota_exceeded` | a ceiling is exhausted for this window; the **denial is recorded**, never silent |
+| `503 quota_unconfigured` | the tenant has neither a specific bound nor a default one for that scope — the surface fails closed |
+
+⛔ Until `SIGNOFF-REPAIR.11.14.3.14` this path carried **no quota, no storm
+control and no breaker** while performing a real network acquisition per call —
+which is exactly what §16.11 names as "resolver abuse" and "scraping". The two
+scope kinds it needed had shipped in the vocabulary and in the schema with
+nothing writing them.
+
+**A tenant is seeded with a DEFAULT bound per scope, and a specific bound
+overrides it.** Declaring `(destination, "cdn.example.net")` narrows one noisy
+host without touching the rest; declaring `(resolver, "r1-git-fetcher")` narrows
+one pack.
+
+⚠️ **Why a default row rather than one per member**, since it is the part that
+looks like a shortcut and is not. The two quota scopes already bound — tenant and
+principal — can be seeded per member because the server creates their members. It
+does not create these: the resolver space grows through `POST /v1/resolvers`, and
+the destination space is the open internet. A fail-closed bound over a space you
+cannot enumerate in advance is not a bound, it is an outage. So the default is a
+**row** rather than an **absence**, and the fail-closed contract is unchanged —
+with neither row, you still get the typed refusal.
+
+⚠️ **The bound counts attempts, not successes.** An attempt is what a caller can
+repeat and what reaches the network, so a resolution the destination policy then
+refuses has still consumed its bound. A locator with no host takes the resolver
+bound only.
+
+⚠️ **A specific bound starts its own count.** Usage is recorded against the bound
+that applied, so narrowing a scope begins a fresh window rather than inheriting
+the default's spend.
+
+⛔ **The ceilings are dev-profile defaults and are not production figures.** No
+acquisition volume has ever been measured here; what is decided is the shape of
+the bound, not its number.
+
 #### What a citation list costs
 
 Each citation in a contribution registers its §12.1 reference **inside the

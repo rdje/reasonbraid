@@ -176,6 +176,7 @@
 - [`2026-09-17_a-reference-s-declared-fields-are-checked-or-defaulted.md`](docs/decisions/2026-09-17_a-reference-s-declared-fields-are-checked-or-defaulted.md)
 - [`2026-09-17_a-snapshot-names-the-locator-its-reference-names.md`](docs/decisions/2026-09-17_a-snapshot-names-the-locator-its-reference-names.md)
 - [`2026-09-17_remote-ci-has-run-and-is-green.md`](docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md)
+- [`2026-09-17_the-acquisition-path-takes-the-quota.md`](docs/decisions/2026-09-17_the-acquisition-path-takes-the-quota.md)
 - [`2026-09-17_the-assessment-namespace-is-part-of-the-row.md`](docs/decisions/2026-09-17_the-assessment-namespace-is-part-of-the-row.md)
 - [`2026-09-17_the-reference-read-is-bound-to-its-registrants.md`](docs/decisions/2026-09-17_the-reference-read-is-bound-to-its-registrants.md)
 - [`2026-09-17_the-snapshot-census-was-eight-not-seven.md`](docs/decisions/2026-09-17_the-snapshot-census-was-eight-not-seven.md)

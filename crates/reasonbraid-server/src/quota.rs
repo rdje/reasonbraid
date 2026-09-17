@@ -35,6 +35,29 @@ pub const DEV_DEFAULT_WINDOW_SECS: i64 = 3600;
 /// generous for the demo, still a bound.
 pub const DEV_DEFAULT_PRINCIPAL_CEILING: i64 = 1000;
 
+/// The dev-profile default bound for the two ACQUISITION scopes
+/// (`SIGNOFF-REPAIR.11.14.3.14`): 1000 acquisitions per hour, per tenant, per
+/// resolver and per destination. The same shape as the two above, and the same
+/// honesty — ⛔ this is not a measured production figure, and `.11.6` forbids
+/// proposing one before the population is measured. What this leaf decided is
+/// the SHAPE of the bound, not its number.
+pub const DEV_DEFAULT_ACQUISITION_CEILING: i64 = 1000;
+
+/// The wildcard scope id: a tenant's DEFAULT bound for a scope whose member
+/// space the server does not control (`SIGNOFF-REPAIR.11.14.3.14`).
+///
+/// ⭐ The two WIRED scopes are seeded per member because their members are
+/// created by a path the server controls — a tenant by the enroll transaction, a
+/// principal by enrolment and card import. The two unwired ones are not: the
+/// resolver space grows at runtime through `POST /v1/resolvers`, and the
+/// destination space is the open internet. A fail-closed bound over a space you
+/// cannot enumerate in advance is not a bound, it is an outage.
+///
+/// ⛔ The fail-closed CONTRACT is unchanged: a scope with neither a specific row
+/// nor this default row is still the typed `quota_unconfigured` refusal. What
+/// changes is that the default is a ROW rather than an absence.
+pub const SCOPE_DEFAULT_ID: &str = "*";
+
 /// A quota refusal — always a recorded fact in `quota_events` before the
 /// `Exceeded`/`Unconfigured` error is returned.
 #[derive(Debug)]
@@ -104,6 +127,24 @@ where
     .bind(DEV_DEFAULT_WINDOW_SECS)
     .execute(&mut *tx)
     .await?;
+    // The two acquisition scopes get a DEFAULT row rather than one per member,
+    // because the server controls neither member space
+    // (`SIGNOFF-REPAIR.11.14.3.14`). `migrations/0068` backfills the same two
+    // rows for tenants that existed before this binding.
+    for scope_kind in [SCOPE_RESOLVER, SCOPE_DESTINATION] {
+        sqlx::query(
+            "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (tenant_id, scope_kind, scope_id) DO NOTHING",
+        )
+        .bind(format!("quo_{tenant_id}_{scope_kind}_default"))
+        .bind(tenant_id)
+        .bind(scope_kind)
+        .bind(SCOPE_DEFAULT_ID)
+        .bind(DEV_DEFAULT_ACQUISITION_CEILING)
+        .bind(DEV_DEFAULT_WINDOW_SECS)
+        .execute(&mut *tx)
+        .await?;
+    }
     Ok(())
 }
 
@@ -134,6 +175,39 @@ where
     .execute(&mut *tx)
     .await?;
     Ok(())
+}
+
+/// The check for a scope whose member space the server does not control
+/// (`SIGNOFF-REPAIR.11.14.3.14`): the specific row wins, the tenant's
+/// [`SCOPE_DEFAULT_ID`] row is the fallback, and the absence of BOTH is the same
+/// fail-closed `quota_unconfigured` refusal [`check_in_tx`] already gives.
+///
+/// Most-specific-wins is one extra existence probe rather than a second
+/// counting path, so the window arithmetic, the recorded `use`/`denial` and the
+/// transaction semantics below are reached unchanged whichever row applies.
+pub(crate) async fn check_open_scope_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    scope_kind: &str,
+    scope_id: &str,
+    at: DateTime<Utc>,
+) -> Result<(), QuotaError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let specific: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM usage_quotas \
+         WHERE tenant_id = $1 AND scope_kind = $2 AND scope_id = $3)",
+    )
+    .bind(tenant_id)
+    .bind(scope_kind)
+    .bind(scope_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(QuotaError::Storage)?;
+    let effective = if specific { scope_id } else { SCOPE_DEFAULT_ID };
+    check_in_tx(&mut *tx, tenant_id, scope_kind, effective, at).await
 }
 
 /// The in-transaction check (the budget-machinery pattern): count the

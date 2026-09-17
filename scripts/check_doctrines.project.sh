@@ -197,4 +197,22 @@ if ! python3 -B scripts/census_positional_refs.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# A blank line ENDS a GFM table (`.11.19`), so every row after it renders as
+# literal pipe-text rather than a row — and the source looks perfectly fine,
+# which is why this survived every review that read the file instead of the
+# page. It was live in this tree's OWN Current Frontier table: 46 rows,
+# including row 1, the cell INDEX-FRONTIER and BOOK-FRONTIER both exist to
+# police. ⛔ `TABLE-ARITY-RATCHET` governs these same files and cannot see it:
+# it compares a row's cell count against its header's, and an ORPHANED ROW HAS
+# NO HEADER to disagree with — `BOOK-LINKS`' founding shape a third time.
+# Calibrated across 200 commits before it was proposed (`.11.6`): it would have
+# blocked exactly 1 commit (0.5%), and that commit is the one that INTRODUCED
+# the defect. Zero false positives over the window; the standing population of
+# 5 blanks / 52 rows across 3 files was discharged to 0 first, so it ships
+# green and fires only on the next one.
+if ! python3 -B scripts/census_broken_tables.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_broken_tables.py --check >&2
+    exit 1
+fi
+
 exit 0

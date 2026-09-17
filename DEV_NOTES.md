@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Three of twelve self-test arms were negatives, and the rule needs them
+
+- A new gate flagged "a blank line inside a Markdown table". ⭐ The three arms that make it a RULE rather than a nuisance are the ones that must NOT fire: a blank line that legitimately ENDS a table, a table at end of file, and a table inside a code fence. An implementation flagging *"a blank line near a table"* passes every positive arm and fires on most of the corpus.
+- ⛔ They are labelled as negatives in the source, because an unlabelled arm that passes both ways is indistinguishable from a broken one — the correction this session's `.11.18` earned.
+- ⚠️ **And the leaf published a number it had not measured.** Its boundary read *"0 such rows exist in this corpus"*; there are **12**. Asserting a number from the SHAPE of a corpus rather than from a command is leg 1's exact failure, and it happened inside a leaf whose whole subject is claims about tables. Checking it is what found the next defect.
+- ⭐ The habit that pays: when a leaf states a limit in the form *"and there are N of those"*, that N is a claim like any other. Run it.
+
 ## 2026-09-18 — A restated number needs a producer, not a rule
 
 - A document restated a count something else computes, and it drifted. The obvious response is a gate — *"a number in the mirror must match its census"* — and it loses, because it has to tell a FROZEN historical measurement from a LIVE claim about the current tree, and only the second can be wrong. That separation is a judgement over prose.

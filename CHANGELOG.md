@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A blank line ENDS a Markdown table, and one sat inside the tree's own frontier (`SIGNOFF-REPAIR.11.19`)
+
+🔴 **52 table rows across 3 tracked files were rendering as paragraphs of literal pipe-text — including all 46 rows of the active tree's Current Frontier, row 1 among them.**
+
+- **The defect.** A blank line TERMINATES a GFM table. Every row after it stops being a row and comes back as one paragraph. ⛔ The SOURCE looks perfectly fine, which is why this survived every review that read the file rather than the page.
+- ⭐ **Asked of the RENDERER, not the specification** — `TABLE-ARITY-RATCHET`'s practice, and it corrected two rules the ad-hoc probe had wrong: a delimiter row whose cell count differs from its header is **not a table at all**, and four spaces of indent is a **code block** while three is still a table. Each rule is rendered before being asserted, and each is a self-test arm.
+- ⚠️ **The narrow key found 1; the wide key found 51.** Keyed on *"a blank right after the delimiter row"* the census reports one instance. Keyed on *"a blank anywhere in the body"* — the shape that actually ends a table — it reports **5 blanks across 3 files**. `a-census-is-as-wide-as-its-key` for the third time in one session, and by far the widest miss.
+- 🔎 **`TABLE-ARITY-RATCHET` governs all three files and cannot see it**: it compares a row's cell count against its header's, and an ORPHANED ROW HAS NO HEADER to disagree with. `BOOK-LINKS`' founding shape a third time — *the doctrine's intent was satisfied and the rendering broke*.
+- **The five blanks were decided MECHANICALLY, not by eye.** A stray blank and a deliberate separator between two tables differ observably: cells on each side, and whether a second header + delimiter follows. All five measured **4 cells before, 4 after, no delimiter after the blank** — so none is a second table, and deletion is right for all five.
+- ✅ **All 52 discharged, verified by the RENDERER**: `<tr><td>` counts go `157 → 203`, `53 → 56`, `29 → 32` — **+52 exactly**, matching the census by a different route.
+- ⭐ **`BROKEN-TABLE` SHIPS, calibrated across 200 commits before it was proposed** (`.11.6`): it would have blocked **1 commit (0.5%)**, and that commit is the one that INTRODUCED the defect. Zero false positives — `REASON-CODE-DOC`'s shape, not the backlog shape rejected at 87% and 93%. ⚠️ Three of its twelve arms are NEGATIVES (a blank that legitimately ends a table, a table at EOF, a table in a fence); without them the rule degenerates into "no blank line near a table".
+- 🔎 **`86dd272` is the same commit that introduced `.11.16`'s stale `SELF-TEST` numbers** — one commit, two defects of different families, found by two instruments two leaves apart, neither visible in its diff.
+- 🔴 **The leaf published a `0` that measured `12`, and checking it is what found the next defect.** Its boundary bullet claimed no table row in the corpus lacks a leading pipe. Twelve do, all in `docs/tasks/PHASE-2.md`, and they are verification-log rows that LOST their first two cells — one renders outside the table entirely. Both table gates are blind to the shape. The superseded claim is kept rather than edited into agreement. `.11.19.1`.
+
 ## 2026-09-18 — A restated number needs a PRODUCER, not a rule (`SIGNOFF-REPAIR.11.16`)
 
 🔴 **The file that documents this project's gates calls itself "the human-readable mirror of the registry", and four of the numbers it mirrored had gone stale with nothing deriving them.**

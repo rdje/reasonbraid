@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-17 — Six suites could not start, and the second missing child was mine (`SIGNOFF-REPAIR.11.14.1.1`)
+
+🔴 **Six suites could not start, since REPAIR-0213 — and the second missing dependency was mine, added in the session that promoted the rule against exactly this.**
+
+- **Found because a broad verification run stopped dead** at a suite this session had not run before. Attributed by command rather than by reading: `evidence_citations` landed in `b4d6201` (REPAIR-0213); the `quota` plan was last touched in the **earlier** `40155d1` (REPAIR-0154); and with this session's working changes stashed, the suite fails identically at committed HEAD.
+- **The mechanism.** The shared checker validates a plan BEFORE the first deletion and requires dependents to precede parents, cascading ones included. `evidence_citations` declares `tenant_id … REFERENCES tenants ON DELETE CASCADE`, and six plans delete `tenants` without naming it: `cards`, `classification`, `federation`, `mcp_listen`, `quarantine`, `quota`.
+- 🔴 **AND I DID THE SAME THING, TODAY.** `migrations/0067` added `reference_registrations` with foreign keys to **both** `resource_references` and `tenants`. I swept the 21 plans naming the first — the table I was thinking about — and not the plans naming the second. So all six were missing **two** children and the second was mine, added in the very session in which I wrote `docs/knowledge/a-census-is-as-wide-as-its-key.md`. ⛔ **Knowing the rule is not applying it: the sweep must be keyed on the NEW TABLE'S OWN constraints, every one of them, computed rather than recalled.**
+- ⚠️ **"SIX" is a correction to this leaf's own first number, made inside one session.** It opened saying **TEN**, from a loose census — `grep -l '"tenants"'` matches a row-count tuple in `authority_transaction.rs:346`, a bare list entry in `migration_upgrade.rs:118`, and files with no cleanup plan at all. The tightened instrument parses each `delete_tables(…, &[…])` array: **16 tables carry a direct FK to `tenants`, 27 declared plans delete it, 6 were refused.** ⭐ Catching the wrong number inside the session is the point of the audit; publishing it in a committed leaf first is what it cost.
+- ⭐ **The rule, derived before the edit.** The runtime checker already computes the right thing. What is missing is not a rule but a **trigger** — it only runs when a suite runs, so a plan nobody executes is never checked. The census above is that trigger made cheap: it needs no database, because the constraint it depends on is declared in the migrations.
+- ⛔ **Whether it becomes a GATE is decided: not yet, and `.11.6` is the reason.** Its population was measured for the first time in this commit, and a rule proposed in the same commit that first measured its population is a rule proposed before the population settles.
+- ⚠️ **What this means for a published claim:** the full-checkpoint record's *"40 of 40 database suites, 291 tests, no failures"* predates `migrations/0062`. Six of those suites could not run today. `.11.4.7` re-derives the gate records and now has one more reason to distrust a count taken before the source review.
+- **Verification:** all six RUN and pass — **14 tests / 0 failed**, rc=0; the census re-derives to **0 refused of 27**.
+
 ## 2026-09-17 — The acquisition path takes the quota (`SIGNOFF-REPAIR.11.14.3.14`)
 
 ⭐ **The director delegated this call on 2026-09-17. Taken in full, and the finding is why the two scopes had sat unwired since `0047`.**

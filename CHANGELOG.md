@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-18 — `init.rs` was never in this repository (`SIGNOFF-REPAIR.11.17.1`)
+
+🔴 **Eight published citations named "a file that no longer exists". It was a dependency's source all along, and every cited line is exact at the pinned version.**
+
+- **The leaf's own premise was wrong**, and history says so rather than inference: `git log --all --diff-filter=A --name-only -- '*init.rs'` returns NOTHING. No such file has ever been tracked here under any name. The citations name `gix-0.87.1/src/config/cache/init.rs`, cited to explain how `gix` loads git configuration.
+- ⭐ **And every one of the seven cited lines resolves to the code its prose quotes** at the version `Cargo.lock` pins — `:229` is `system: use_system,`, `:243` is `gix_config::file::includes::Options::follow(`, and so on. That is what makes the repair a completion rather than a guess.
+- ⛔ **17 citations qualified, not the 8 the leaf counted.** Its census keyed on the bare basename `init.rs` and missed the partially-pathed `src/init.rs`, `src/lib.rs` and `src/open/permissions.rs` in the same tables — `a-census-is-as-wide-as-its-key`, inside the leaf that cites it.
+- ⭐ **DECIDED: a dependency citation is written crate-and-version qualified.** It resolves for a reader AND dates itself, which a bare basename never could: a line number into a dependency moves on every upgrade, and the version is the only thing that says which source it was exact against. Rejected: annotating with this repo's commit (wrong axis — the drift is the dependency's), accepting it as a property of dated records (the `.11.17` precedent refuses it), and exempting third-party references (an exemption list to maintain, and it would have left the one genuinely unresolvable instance uncaught).
+- ✅ **THE EXAMPLE-VERSUS-CITATION OBSTACLE IS ANSWERED, AND NOT BY TELLING THEM APART.** The leaf named it as the real design problem: the placeholder in `POSITIONAL-REF`'s own registry row is indistinguishable from a broken reference by basename alone. No instrument can make that distinction, so the gate does not try — **an illustrative example may not be WRITTEN in the positional form**, and the row is reworded rather than excluded. The fourth time this doctrine has policed its own description.
+- ✅ **`unresolved` 9 → 0, and the arm ships**, calibrated before it was proposed: **2 of 200 commits (1.0%)**, and both are the instances discharged here. Zero false positives.
+- ⚠️ **The first calibration did not finish** — re-classifying all tracked Markdown at every commit is ~70,000 blob reads; abandoned after nine minutes. `--calibrate` is now incremental and lives on the tracked instrument, so the number is re-derivable rather than believed.
+- 🔴 **The new arm flagged this leaf's own closing prose on its first run** — writing the decision required naming both offending shapes, and naming them reproduced them. Both reworded.
+- 🔎 **Routed: measuring this class measured the one next to it, and it is larger.** `pathed` is assigned on the presence of a slash alone, with no check that the path exists: of **251** `pathed` occurrences **39 do not resolve**, and one is a suffix of **three** tracked files — an ambiguous reference waved through by the gate whose purpose is refusing one. `.11.17.2`.
+
 ## 2026-09-18 — A table SWALLOWS the block that abuts it (`SIGNOFF-REPAIR.11.19.2`)
 
 🔴 **`PHASE-3`'s eleven-line closing statement was rendering as eleven table rows, under a table header that had no rows of its own — and the gate that now catches it would have blocked every one of the nineteen commits in this project's history that introduced a table defect.**

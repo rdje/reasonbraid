@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — "A file that no longer exists" is a conclusion, not an observation
+
+- A leaf recorded eight unresolvable citations as naming *"a file that no longer exists"*. ⭐ **Nobody had asked git.** `git log --all --diff-filter=A --name-only -- '*init.rs'` returns nothing: the file had never been tracked, under any name, ever. It was a DEPENDENCY's source.
+- ⛔ The wrong premise was expensive in the specific way wrong premises are: it made the obvious repair *"annotate each citation with the commit it was exact at"* — the wrong axis entirely, because the drift comes from the dependency's version, not this repository's history. The right repair, crate-and-version qualification, is invisible while you believe the file was deleted.
+- ⚠️ **"Unresolvable" has at least four causes and they take different repairs:** renamed, deleted, never existed (a typo), and never ours (a third party). A classifier that lumps them reports a population; only reading history splits it.
+- ⭐ The cheap discriminator is one command per candidate: `git log --all --diff-filter=A --name-only -- '*<name>'`. An empty result means the file was never here — which is information the file's ABSENCE today cannot give you.
+- 🔎 And the same leaf's key was too narrow a second time: it counted 8 bare `init.rs` and missed 9 more partially-pathed citations of the same crate in the same tables. Seventeen, not eight.
+
 ## 2026-09-18 — Calibrate over the history that CONTAINS the instance, not a fixed window
 
 - The project's habit is to price a candidate gate across the last 200 commits. ⭐ That habit has a blind spot worth naming: **if the defect the rule is for is older than the window, the window reports the rule catching nothing** — 1 commit blocked, entirely from a different arm — and the calibration looks like evidence the arm is unnecessary.

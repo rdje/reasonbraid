@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **`init.rs` WAS NEVER IN THIS REPOSITORY (`.11.17.1`, REPAIR-0241).**
+
+🔴 **Eight published citations named "a file that no longer exists". It was a dependency's source, and every cited line is exact at the pinned version.**
+
+- **The premise was wrong, by command:** `git log --all --diff-filter=A --name-only -- '*init.rs'` returns NOTHING. The citations name `gix-0.87.1/src/config/cache/init.rs`, and all seven cited lines resolve to the code their prose quotes.
+- ⛔ **17 citations qualified, not the 8 the leaf counted** — its key missed the partially-pathed ones in the same tables.
+- ⭐ **DECIDED: a dependency citation carries its crate and version.** It resolves AND dates itself; a line number into a dependency moves on every upgrade.
+- ✅ **The example-versus-citation obstacle is answered by NOT telling them apart** — no instrument can, so an example may not be written in the positional form, and the registry row is reworded. The fourth time this doctrine has policed its own description.
+- ✅ **`unresolved` 9 → 0**, arm calibrated at **2 of 200 commits (1.0%)**, both the instances discharged. 🔴 It then flagged this leaf's own closing prose.
+- 🔎 **Routed:** `pathed` is assigned on a slash alone — **39 of 251 do not resolve**, and one is a suffix of **three** tracked files. `.11.17.2`.
+
 ✅ **A TABLE SWALLOWS THE BLOCK THAT ABUTS IT (`.11.19.2`, REPAIR-0240).**
 
 🔴 **`PHASE-3`'s eleven-line closing statement rendered as eleven table rows, under a header that had no rows of its own.**

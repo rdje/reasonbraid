@@ -7,7 +7,8 @@ tolerance band. A reference is only exact if a reader can resolve it, and a BARE
 BASENAME resolves only when that basename names exactly one tracked file.
 
     python3 -B scripts/census_positional_refs.py            # the classified census
-    python3 -B scripts/census_positional_refs.py --check    # gate: no AMBIGUOUS reference
+    python3 -B scripts/census_positional_refs.py --check    # gate: AMBIGUOUS or UNRESOLVED
+    python3 -B scripts/census_positional_refs.py --calibrate [N]
     python3 -B scripts/census_positional_refs.py --json
     python3 -B scripts/census_positional_refs.py --self-test
 
@@ -119,6 +120,96 @@ def collect(read=None, md_files=None, src_files=None) -> list[dict]:
     return classify(md_files, basename_index(src_files), read)
 
 
+def calibrate(depth: int) -> dict:
+    """What an `unresolved` gate would have blocked, commit by commit.
+
+    `SIGNOFF-REPAIR.11.6`'s standing requirement, and `SIGNOFF-REPAIR.11.17`'s
+    own method — a rule is priced against its population before it is proposed.
+
+    ⛔ INCREMENTAL ON PURPOSE. Re-classifying every tracked Markdown file at every
+    commit is 200 x ~350 blobs and does not finish in a usable time; the first cut
+    was abandoned after nine minutes (`SIGNOFF-REPAIR.11.17.1`). Only two things
+    can change a file's `unresolved` count: the file itself changing, or a source
+    basename appearing/disappearing from the tree. Both are tracked here, and the
+    second triggers a full re-scan precisely because it is rare.
+    """
+    def run(*args: str) -> str:
+        return subprocess.run(list(args), cwd=ROOT, capture_output=True, text=True).stdout
+
+    shas = run("git", "rev-list", "--reverse", "-n", str(depth + 1), "HEAD").split()
+    if not shas:
+        return {"commits_examined": 0, "commits_blocked": 0, "blocked_pct": 0.0, "detail": []}
+
+    def tree(sha: str) -> list[str]:
+        return run("git", "ls-tree", "-r", "--name-only", sha).split()
+
+    def blob(sha: str, path: str) -> str:
+        r = subprocess.run(["git", "show", f"{sha}:{path}"], cwd=ROOT,
+                           capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else ""
+
+    base = shas[0]
+    files = tree(base)
+    src = Counter(f.rsplit("/", 1)[-1] for f in files if f.endswith(SOURCE_SUFFIXES))
+    index = {b: ["x"] * n for b, n in src.items()}          # only len() is consulted
+
+    def count(sha: str, md: str) -> int:
+        rows = classify([md], index, lambda p: blob(sha, p))
+        return sum(1 for r in rows if r["kind"] == "unresolved")
+
+    state = {f: count(base, f) for f in files if f.endswith(".md")}
+    state = {k: v for k, v in state.items() if v}
+
+    blocked, detail = 0, []
+    for a, b in zip(shas, shas[1:]):
+        changed = run("git", "diff", "--name-status", a, b).splitlines()
+        md_changed, src_moved = [], False
+        for row in changed:
+            parts = row.split("\t")
+            if len(parts) < 2:
+                continue
+            status, path = parts[0], parts[-1]
+            if path.endswith(".md"):
+                md_changed.append((status, path))
+            elif path.endswith(SOURCE_SUFFIXES):
+                name = path.rsplit("/", 1)[-1]
+                was = src[name]
+                src[name] += -1 if status.startswith("D") else (1 if status.startswith("A") else 0)
+                if (was == 0) != (src[name] == 0):
+                    src_moved = True                        # a basename entered or left the tree
+        if src_moved:
+            index = {bn: ["x"] * n for bn, n in src.items() if n}
+            scan_all = [f for f in tree(b) if f.endswith(".md")]
+        else:
+            index = {bn: ["x"] * n for bn, n in src.items() if n}
+            scan_all = None
+
+        prev = dict(state)
+        if scan_all is not None:
+            state = {f: c for f in scan_all if (c := count(b, f))}
+        else:
+            for status, path in md_changed:
+                if status.startswith("D"):
+                    state.pop(path, None)
+                else:
+                    c = count(b, path)
+                    if c:
+                        state[path] = c
+                    else:
+                        state.pop(path, None)
+        gained = sorted(f for f, c in state.items() if c > prev.get(f, 0))
+        if gained:
+            blocked += 1
+            detail.append({"commit": b[:7], "files": gained})
+    n = len(shas) - 1
+    return {
+        "commits_examined": n,
+        "commits_blocked": blocked,
+        "blocked_pct": round(100 * blocked / n, 1) if n else 0.0,
+        "detail": detail,
+    }
+
+
 def report(rows: list[dict]) -> None:
     distinct = {r["ref"] for r in rows}
     counts = Counter(r["kind"] for r in rows)
@@ -137,10 +228,29 @@ def report(rows: list[dict]) -> None:
 
 def check(rows: list[dict]) -> int:
     amb = [r for r in rows if r["kind"] == "ambiguous"]
-    if not amb:
-        print(f"POSITIONAL-REF: OK — no ambiguous positional reference "
+    unres = [r for r in rows if r["kind"] == "unresolved"]
+    if not amb and not unres:
+        print(f"POSITIONAL-REF: OK — every positional reference resolves "
               f"({len(rows)} occurrence(s) classified)")
         return 0
+    if unres:
+        # ⛔ The EXAMPLE-versus-CITATION problem, and how it is answered
+        # (`SIGNOFF-REPAIR.11.17.1`): NOT by telling them apart, which no
+        # instrument can do from a basename. An illustrative example simply may
+        # not be WRITTEN in the positional form — this gate's own registry row
+        # carried `file.rs` and a line number, and was reworded rather than
+        # excluded, the same way it reworded itself twice before.
+        print("POSITIONAL-REF: tracked Markdown cites a source position whose basename names NO "
+              "tracked file — a reader cannot resolve it at all, and it is indistinguishable "
+              "from a typo.", file=sys.stderr)
+        for r in sorted(unres, key=lambda r: (r["md"], r["md_line"])):
+            print(f"  {r['md']}:{r['md_line']}  cites  {r['ref']}", file=sys.stderr)
+        print("\n  If it names a DEPENDENCY, write it crate-and-version qualified, e.g. "
+              "`gix-0.87.1/src/config/cache/init.rs:229` — that resolves AND dates itself.\n"
+              "  If it is an illustrative example, reword it so it is not a positional "
+              "reference at all.", file=sys.stderr)
+        if not amb:
+            return 1
     print("POSITIONAL-REF: tracked Markdown cites a source position by a BARE BASENAME that names "
           "more than one tracked file — a reader cannot resolve it, and `docs/CLAIM_VERIFICATION.md` "
           "§4.1 grades a NAMED INSTANCE as exact with no tolerance band.", file=sys.stderr)
@@ -205,6 +315,25 @@ def self_test() -> int:
     arms.append(("a dotted version is not a source position",
                  [r["ref"] for r in rows] == ["Cargo.toml:14"]))
 
+    # 10 ⭐ THE SECOND ARM, in the direction that BLOCKS. Arm 5 proves the
+    #    CLASSIFIER calls it unresolved; this proves the GATE refuses it. Before
+    #    `SIGNOFF-REPAIR.11.17.1` the classifier said `unresolved` and `--check`
+    #    returned 0, so the class was measured and not enforced.
+    rows = run("`deleted_thing.rs:9` names nothing")
+    arms.append(("an UNRESOLVED reference is refused by the gate", quiet(check, rows) == 1))
+    # 11 and the negative half: a resolvable corpus must still pass, or arm 10
+    #    is satisfied by a gate that refuses everything.
+    rows = run("`crates/reasonbraid-server/tests/profiles.rs:5696` and `only_here.py:12`")
+    arms.append(("a fully resolvable corpus still passes", quiet(check, rows) == 0))
+    # 12 ⛔ A DEPENDENCY citation resolves when it is crate-and-version qualified,
+    #    which is the repair this class actually needs: `init.rs:229` named no
+    #    tracked file for eight occurrences and was `gix-0.87.1/src/config/cache/
+    #    init.rs` all along. Qualified, it carries its own version, so a later
+    #    reader knows which source the line number was exact against.
+    rows = run("`gix-0.87.1/src/config/cache/init.rs:229` sets `system: use_system`")
+    arms.append(("a crate-and-version qualified dependency citation is pathed",
+                 [r["kind"] for r in rows] == ["pathed"]))
+
     passed = sum(1 for _, ok in arms if ok)
     for name, ok in arms:
         print(f"census_positional_refs: {'arm ok' if ok else 'arm FAILED'} — {name}")
@@ -216,6 +345,14 @@ def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else ""
     if mode == "--self-test":
         return self_test()
+    if mode == "--calibrate":
+        depth = int(argv[2]) if len(argv) > 2 and argv[2].isdigit() else 200
+        c = calibrate(depth)
+        print(f"an `unresolved` gate, over {c['commits_examined']} commits")
+        print(f"  commits it would have BLOCKED : {c['commits_blocked']}  ({c['blocked_pct']}%)")
+        for d in c["detail"]:
+            print(f"     {d['commit']}  {', '.join(d['files'])}")
+        return 0
     rows = collect()
     if mode == "--check":
         return check(rows)

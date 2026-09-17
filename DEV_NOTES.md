@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — Which way a scoping bug fails is a measurement, not a symmetry
+
+- A parser computed section boundaries wrongly. The leaf reporting it assumed the dangerous case was the silent one — a claim discharging against evidence that is not its own. ⭐ **One sentence settles it instead:** the wrong scope was a strict SUBSET of the right one, and a subset can only withhold a discharge, never invent one. False positives only.
+- ⛔ **"There must be a silent version of this" is a good instinct and a bad conclusion.** A bug's DIRECTION is a claim about the code and is graded like any other — it needs a reproduction, not an argument from symmetry. Getting it wrong is concrete rather than philosophical: an acceptance criterion demanding an arm for a direction that does not exist is met either by pinning the real LIMIT or by writing an arm that asserts nothing.
+- ⭐ **The mechanical check: run the NEW control against the OLD code, in situ.** Put the pre-fix logic back into the current instrument, arms and all, and run its self-test. Every arm claiming to cover the defect must FAIL, by name. Arms that pass both ways are legitimate — no-regression and limit-pinning arms both should — but each must be LABELLED, because an unlabelled pass-both-ways arm is indistinguishable from a broken one.
+- 🔴 **That run paid for itself immediately**: it caught a new arm of mine that discriminated on indentation instead of on the thing it named, passing before and after. Third time this session a control passed for a reason unrelated to what it tested.
+- **Promoted:** `docs/knowledge/a-scoping-defect-errs-in-one-direction.md`.
+
 ## 2026-09-17 — A row keyed on content may not hold a tenant's decision
 
 - Fourth instance in one family, and the first where the shared datum was a means of ACCESS rather than a fact about the content. `resource_references` is keyed `UNIQUE (original_locator, expected_digest)`; `credential_binding_ref` sat on it and selects a credential, so a replaying tenant inherited one it never named and the R5 arm attached the owner's credential to its acquisition.

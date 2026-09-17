@@ -61,11 +61,38 @@ CENSUS_RE='git grep|grep -r|grep -c|grep -l|grep -o|grep -n|grep -w|git ls-files
 
 # Section boundaries are ANY ATX heading, deliberately: "nearest heading above" needs no leaf-id
 # syntax and cannot mis-parse one.
+# ⛔⛔ BUT A FENCED BLOCK IS NOT MARKDOWN (`SIGNOFF-REPAIR.11.18`). That sentence was true of
+#   Markdown headings and false of this corpus, because the corpus contains fenced censuses whose
+#   shell comments start with `#`. Such a line opened a PSEUDO-SECTION strictly INSIDE the real one,
+#   so a claim after it lost every census recorded before it — which is precisely what happened to
+#   `.11.14.3.2`, BLOCKED for a claim censused three lines below it. ⭐ The sibling `HEADING-DEPTH`
+#   had already stated the rule ("Fenced blocks exempt") and implemented it.
+# ⚠️ Fences are recognised with up to 3 leading spaces, because that is what Markdown permits and the
+#   corpus has 20 such lines (all at indent 2); ``` and ~~~ both count. ⛔ A ````-delimited fence
+#   containing a ``` line would still mis-toggle — measured at 0 occurrences and left unhandled
+#   rather than half-handled.
+# ⭐ A SECOND INSTANCE, found while fixing the first and fixed with it because it is the SAME defect —
+#   the scanner's idea of Markdown, not a second mechanism. An ATX heading may also carry up to 3
+#   leading spaces, and the corpus has one (`docs/tasks/BOOTSTRAP.md:27`, the TEMPLATE file), which the
+#   old `line[i]` test did not see at all. Widening a heading test can only ADD boundaries and so only
+#   REMOVE discharges — the direction that newly blocks a commit — so it was measured before it was
+#   taken: over the governed corpus with every line treated as added and the census predicate weakened
+#   to `census:` so that rows actually appear, 82 blocked rows before and 82 after, 0 newly blocked.
+# ⛔ AND AN UNBALANCED FENCE IS AN ERROR, NOT A GUESS. If the markers do not close, everything after
+#   the last one is read as fenced, no heading is recognised, and every later claim silently inherits
+#   the last real section's censuses — an instrument quietly widening its own discharge. It refuses
+#   and names the file instead (`docs/knowledge/an-instrument-must-explain-its-own-failure.md`).
 CLASSIFY_AWK='
   FNR==NR { added[$1+0]=1; next }
   { line[FNR]=$0; low[FNR]=tolower($0) }
   END{
-    for(i=1;i<=FNR;i++){ if(line[i] ~ /^#{1,6} /) cur=i; sec[i]=cur }
+    for(i=1;i<=FNR;i++){
+      s=line[i]; sub(/^[ \t]{0,3}/,"",s)
+      if(s ~ /^(```|~~~)/) fence = !fence
+      else if(!fence && s ~ /^#{1,6} /) cur=i
+      sec[i]=cur
+    }
+    if(fence){ printf "UNBALANCED\t0\tfenced blocks do not close — section boundaries are unknowable\n"; exit }
     for(i=1;i<=FNR;i++){ if(low[i] ~ CENSUS_RE) has[sec[i]]=1 }
     for(i=1;i<=FNR;i++){
       if(added[i] && low[i] ~ CLAIM_RE && !has[sec[i]])
@@ -140,6 +167,38 @@ if [ "$mode" = "--self-test" ]; then
   # 7 a census in a DIFFERENT section does not discharge
   printf '### `.8` — an earlier leaf\n- **CENSUS** — `git grep -c '"'"'@sample'"'"' -- src` returns 0.\n\n### `.9` — the leaf making the claim\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/other.md"; printf '5\n' > "$work/other.nums"
   classify "$work/other.nums" "$work/other.md" | grep -q '^BLOCKED' && arm ok "a census in another section does not discharge" || arm bad "the discharge must be section-scoped"
+  # 9 THE FOUNDING DEFECT (`SIGNOFF-REPAIR.11.18`): a fenced `#` between a claim and its census
+  #   used to open a pseudo-section, and the claim lost the census recorded three lines below it.
+  printf '### `.9` — a leaf whose census is fenced\n- **THE GAP** — nothing reads the `@sample` annotation.\n\n```bash\n# PINNED at deadbeef, so a later reader measures its own tree\ngit grep -n "@sample" -- src | wc -l   # -> 0\n```\n' > "$work/fenced.md"; printf '2\n' > "$work/fenced.nums"
+  [ -z "$(classify "$work/fenced.nums" "$work/fenced.md")" ] && arm ok "a fenced '#' does not split a section away from its census" || arm bad "a shell comment in a fence must not be a heading"
+  # 9b the OTHER side: a REAL heading still splits, so the fix did not simply disable sectioning
+  printf '### `.8` — an earlier leaf\n- **CENSUS** — `git grep -c '"'"'@sample'"'"' -- src` returns 0.\n\n### `.9` — the leaf making the claim\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/realhead.md"; printf '5\n' > "$work/realhead.nums"
+  classify "$work/realhead.nums" "$work/realhead.md" | grep -q '^BLOCKED' && arm ok "a REAL heading still splits sections" || arm bad "the fence fix must not disable sectioning"
+  # 9c an INDENTED fence is a fence — Markdown allows 3 spaces and the corpus has 20 such lines.
+  #    ⛔ The '#' line inside it sits at COLUMN 0 deliberately. An indented '#' is not a heading to
+  #    the OLD scanner either, so a fixture whose comment was also indented would pass before AND
+  #    after and discriminate on the indentation rather than on the fence — which is exactly what the
+  #    first draft of this arm did, and what its falsification caught.
+  printf '### `.9` — a leaf whose fenced census is indented\n- **THE GAP** — nothing reads the `@sample` annotation.\n\n  ```bash\n# an indented fence is still a fence\ngit grep -n "@sample" -- src\n  ```\n' > "$work/indent.md"; printf '2\n' > "$work/indent.nums"
+  [ -z "$(classify "$work/indent.nums" "$work/indent.md")" ] && arm ok "an INDENTED fence is a fence" || arm bad "a fence indented 2 spaces must still be a fence"
+  # 9d a tilde fence is a fence (0 in the corpus today; the arm is what keeps the branch honest)
+  printf '### `.9` — a tilde-fenced census\n- **THE GAP** — nothing reads the `@sample` annotation.\n\n~~~bash\n# a tilde fence\ngit grep -n "@sample" -- src\n~~~\n' > "$work/tilde.md"; printf '2\n' > "$work/tilde.nums"
+  [ -z "$(classify "$work/tilde.nums" "$work/tilde.md")" ] && arm ok "a ~~~ fence is a fence" || arm bad "a tilde fence must toggle like a backtick fence"
+  # 9e the SECOND instance: an ATX heading indented up to 3 spaces IS a heading (BOOTSTRAP.md:27)
+  printf '### `.8` — an earlier leaf\n- **CENSUS** — `git grep -c '"'"'@sample'"'"' -- src` returns 0.\n\n  ### `.9` — an INDENTED heading\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/indhead.md"; printf '5\n' > "$work/indhead.nums"
+  classify "$work/indhead.nums" "$work/indhead.md" | grep -q '^BLOCKED' && arm ok "an INDENTED ATX heading is a heading" || arm bad "a heading indented 2 spaces must split a section"
+  # 9f an UNBALANCED fence REFUSES rather than guessing — everything after it would otherwise read
+  #    as fenced, no heading would be recognised, and later claims would silently inherit discharges.
+  printf '### `.9` — a file whose fence never closes\n\n```bash\ngit grep -n x -- src\n\n### `.10` — a later leaf\n- **THE GAP** — nothing reads the annotation.\n' > "$work/unbal.md"; printf '7\n' > "$work/unbal.nums"
+  classify "$work/unbal.nums" "$work/unbal.md" | grep -q '^UNBALANCED' && arm ok "an unbalanced fence is an ERROR, not a guess" || arm bad "an unclosed fence must refuse"
+  # 9g ⛔ THE DECLARED LIMIT, pinned so the fence fix is not read as closing it. A claim discharges
+  #    against ANY enumerating command in its own section, including one that is not its census.
+  #    That is this gate's stated archetype ("verifies the census was RECORDED, not that it was RUN")
+  #    and it is INDEPENDENT of fences: the pseudo-section a fenced '#' opened was strictly INSIDE the
+  #    real one, so that defect could only SUBTRACT censuses from a claim — i.e. false POSITIVES.
+  #    Measured: this fixture classifies identically before and after the fix.
+  printf '### `.9` — a claim with no census of its own\n- context, and a command belonging to something else:\n\n```bash\n# an explanatory comment\ncargo test -p some-crate\n```\n\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/limit.md"; printf '9\n' > "$work/limit.nums"
+  [ -z "$(classify "$work/limit.nums" "$work/limit.md")" ] && arm ok "DECLARED LIMIT: a foreign command in the same section still discharges" || arm bad "the declared limit changed — re-read the archetype before editing this"
   # 8 hunk arithmetic: added lines resolve to NEW-file numbers
   parsed="$(printf '%s\n' '--- a/x.md' '+++ b/x.md' '@@ -1,0 +2,2 @@' '+alpha' '+beta' '@@ -9,1 +11,1 @@' '-old' '+gamma' | added_line_numbers | tr '\n' ' ')"
   [ "$parsed" = "2 3 11 " ] && arm ok "added-line numbers resolve to NEW-file positions (2 3 11)" || arm bad "hunk arithmetic yields '$parsed'"
@@ -154,6 +213,7 @@ if [ "$mode" = "--all" ]; then
     [ -r "$f" ] || continue
     seq 1 "$(wc -l < "$f")" > "$WORK/all.nums"
     rows="$(awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_RE" "$CLASSIFY_AWK" "$WORK/all.nums" "$f")"
+    case "$rows" in UNBALANCED*) note "$f has an unbalanced fenced block — not classified"; continue ;; esac
     n_claims="$(awk -v CLAIM_RE="$CLAIM_RE" '{ if (tolower($0) ~ CLAIM_RE) c++ } END { print c+0 }' "$f")"
     n_unbacked="$(printf '%s' "$rows" | grep -c '^BLOCKED' || true)"
     total=$((total + n_claims)); unbacked=$((unbacked + n_unbacked))
@@ -175,6 +235,12 @@ for file in $staged; do
   [ -s "$WORK/staged.nums" ] || continue
   checked=$((checked + 1))
   rows="$(awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_RE" "$CLASSIFY_AWK" "$WORK/staged.nums" "$WORK/staged.md")"
+  case "$rows" in
+    UNBALANCED*)
+      note "$file has an unbalanced fenced block — section boundaries are unknowable, so this check REFUSES rather than guessing."
+      note '  Close the fence (or remove the stray marker); every ``` or ~~~ marker must pair.'
+      exit 1 ;;
+  esac
   [ -n "$rows" ] || continue
   [ "$fail" = 0 ] && note "a staged task leaf ADDS a \"nothing checks X\" claim with no census in its own section."
   fail=1

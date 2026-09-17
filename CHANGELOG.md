@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The section scanner did not know what Markdown is (`SIGNOFF-REPAIR.11.18`)
+
+🔴 **A doctrine gate's parser called every `#` line a heading, including shell comments inside the fenced censuses it exists to require — and the leaf's own claim about which way that failed was wrong.**
+
+- **The defect.** `GAP-CLAIM-CENSUS` requires a "nothing checks X" claim to carry a census in its own heading section. Its scanner assigned sections with `/^#{1,6} /`, so a fenced `# PINNED at …` opened a pseudo-section and the claim above it lost the census three lines below. That is exactly how it BLOCKED `.11.14.3.2`.
+- 🔴 **THE LEAF'S OWN DIRECTION CLAIM IS REFUTED, and that is the finding.** It opened asserting *"the dangerous direction is the MIRROR of the one that fired, and it is silent"*. A pseudo-section starts LATER than its real section and ends NO LATER, so it is a strict SUBSET — and a subset can only WITHHOLD a discharge, never invent one. ⛔ **The defect could produce false POSITIVES only.**
+- **Measured, not argued:** a fixture built to exhibit the asserted silent direction classifies **identically before and after the fix**. It is pinned as self-test arm 16 and labelled as the gate's own DECLARED limit — *"verifies the census was RECORDED, not that it was RUN"* — so the repair is not misread as closing it.
+- ⚠️ **The population is 6, not the leaf's 7, and only 3 are governed.** The leaf's probe keyed on `^```` and the corpus has **20 indented fence lines**; re-measured with an indent-tolerant toggle it is 6 in 2 files, of which 3 sit in a nested artifact the gate's `^docs/tasks/[^/]*\.md$` filter never reads. ⚠️ Its two pinned positions had also MOVED, `:4510`/`:4514` → `:4573`/`:4577` — the `.11.17` shape, inside one session.
+- ⭐ **A second instance of the same defect, found while fixing the first and fixed with it:** an ATX heading may carry up to 3 leading spaces too, and the corpus has one (in the TEMPLATE file) the scanner could not see. ⛔ Widening a heading test only ADDS boundaries and so only REMOVES discharges — the direction that newly blocks a commit — so it was measured first: **82 blocked rows before, 82 after, 0 newly blocked.**
+- ⚠️ **An unbalanced fence now REFUSES rather than guessing.** Otherwise every line after the last marker reads as fenced, no heading is recognised, and later claims silently inherit the last real section's discharges — an instrument quietly widening its own scope. Every governed file is balanced today, so it ships inert.
+- **Population unchanged: 94 claim lines across 6 files, 0 unbacked, before AND after.** A prevention, not a correction — said plainly so a green run is not read as evidence of a present defect.
+- **FALSIFIED IN SITU:** the pre-fix classifier put back into the current script, arms and all → `--self-test` reports **12/17**, failing arms 10, 12, 13, 14, 15 by name. Arms 11 and 16 pass both ways deliberately and are labelled (no-regression; declared limit).
+- 🔴 **And that run caught a defect in one of my own arms.** Arm 12's first draft put its fenced `#` at indent 2 — not a heading to the OLD scanner either — so it passed before and after, discriminating on the indentation rather than the fence. The session's third control that passed for an unrelated reason.
+- Promoted: `docs/knowledge/a-scoping-defect-errs-in-one-direction.md`. Routed: the gate's filter excludes nested task artifacts, so its advisory and blocking paths disagree about the corpus — `.11.18.1`.
+
 ## 2026-09-17 — A credential binding is tenant-bound (`SIGNOFF-REPAIR.11.14.3.10`)
 
 🔴 **A credential SELECTOR lived on a content-addressed row, so a second tenant drove an authenticated acquisition with the first tenant's credential.**

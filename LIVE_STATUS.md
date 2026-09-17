@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE SECTION SCANNER DID NOT KNOW WHAT MARKDOWN IS (`.11.18`, REPAIR-0235).**
+
+🔴 **A doctrine gate called every `#` line a heading — including shell comments inside the fenced censuses it exists to require — and the leaf's own claim about which way that failed was wrong.**
+
+- **The defect.** `GAP-CLAIM-CENSUS` wants a claim's census in its own heading section; a fenced `# PINNED at …` opened a pseudo-section, so the claim above it lost the census three lines below. That is how it BLOCKED `.11.14.3.2`.
+- 🔴 **THE LEAF'S DIRECTION CLAIM IS REFUTED.** It asserted the dangerous direction was a SILENT mirror. A pseudo-section starts later than its real section and ends no later — a strict SUBSET — so it can only WITHHOLD a discharge. ⛔ **False positives only.** Measured: the fixture built for the asserted silent direction classifies identically before and after, and is pinned as the gate's DECLARED limit rather than as a fence bug.
+- ⚠️ **The population is 6, not 7, and only 3 are governed** — the leaf's probe keyed on `^```` while the corpus holds 20 indented fences, and 3 of the 6 sit in a nested artifact the gate's filter never reads. Its two pinned line numbers had already moved (`.11.17`'s shape, inside one session).
+- ⭐ **A second instance fixed with the first** (an indented ATX heading, one in the corpus): measured before it was taken, because widening a heading test only REMOVES discharges — **82 → 82, 0 newly blocked**.
+- ⚠️ **An unbalanced fence now REFUSES rather than guessing**, since otherwise later claims silently inherit the last real section's discharges. Every governed file is balanced today, so it ships inert.
+- **Population unchanged: 94 claims, 0 unbacked, before and after** — a prevention, not a correction.
+- **FALSIFIED IN SITU:** pre-fix classifier back in the current script → `--self-test` 12/17, failing arms 10, 12, 13, 14, 15 by name. 🔴 And it caught one of MY arms discriminating on indentation rather than on the fence — the session's third control passing for an unrelated reason.
+
 ✅ **A CREDENTIAL BINDING IS TENANT-BOUND (`.11.14.3.10`, REPAIR-0234).**
 
 🔴 **A credential SELECTOR lived on a content-addressed row, and a second tenant drove an authenticated acquisition with the first tenant's credential.**

@@ -787,6 +787,33 @@ so a client already handling it from R2 handles it from R0 and R5 unchanged.
 (`acquisition_evidence_unstored`, with the resource id and the reason). What the
 caller no longer receives is a receipt implying evidence that is not there.
 
+#### Who may file a snapshot against a reference
+
+`POST /v1/snapshots` names a `reference_id`, and the reference must be one **this
+tenant registered**. A reference it did not register answers exactly what an
+absent one answers:
+
+```json
+{"code":"invalid_command",
+ "message":"the reference does not exist, or this tenant did not register it"}
+```
+
+One sentence for two cases, deliberately — separating them would confirm that a
+`res_…` id exists.
+
+⛔ **Until `SIGNOFF-REPAIR.11.14.3.11` this route admitted any enrolled
+principal, and the consequence was a write rather than a read.** Measured with a
+second tenant against a reference it had never registered, the submission
+**succeeded**: a snapshot was attached to another tenant's reference. Nothing
+could list it — no route returns a reference's snapshots — so the attachment was
+invisible to the reference's own registrants.
+
+⚠️ **The supported path is the one the submission already carries.** A snapshot
+submission names its `original_locator`, so a caller that can make one can
+register that locator, receive the **same** reference id back, and file. The
+registration is recorded on the replay, exactly as a snapshot re-acquisition
+records the second citation.
+
 #### Who may read a reference
 
 The reference ROW is shared, exactly as a snapshot's is:

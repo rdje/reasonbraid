@@ -9815,3 +9815,167 @@ async fn a_resolution_says_when_its_evidence_was_not_persisted() {
         "resolution persistence: a pinned reference whose page drifted answers `evidence_unstored` with NO acquisition receipt and 0 snapshots, instead of a silent receipt; the unpinned reference through the same deployment acquires, persists 1 snapshot and names no error"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.14.3.11`: a snapshot is filed against a reference THIS
+/// TENANT registered, and a reference it did not register is indistinguishable
+/// from one that does not exist.
+///
+/// ⭐ **This is a gap in `.11.14.3.4`'s own census, one commit earlier.** That
+/// census enumerated the routes under `/v1/resources` — three, two of them
+/// unbound, both bound — and `POST /v1/snapshots` names a `reference_id` in its
+/// **body**, so a route-prefix enumeration cannot see it. The census was not
+/// wrong; it was silent, which is the more dangerous failure.
+/// (`docs/knowledge/a-census-is-as-wide-as-its-key.md`.)
+///
+/// ⚠️ **The leaf's own warning is answered rather than obeyed.** It said the
+/// asymmetry that made the snapshot family's replay safe — a submission carries
+/// the BYTES — cuts the other way here. It does, and it is still not a reason to
+/// leave the write open: a `SnapshotSubmission` also carries `original_locator`,
+/// so a caller submitting one already holds everything registration needs. The
+/// bound arm below is that path.
+#[tokio::test]
+async fn a_snapshot_is_filed_against_a_reference_this_tenant_registered() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "snapshot-write-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the registering tenant enrols: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "snapshot-write-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second tenant enrols: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        owner["tenant_id"].as_str().unwrap()
+    );
+
+    let locator = "https://example.org/write-bound-report";
+    let payload = b"the acquired report states the write surface was open";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &owner_id,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference registers: {reference}");
+    let resource_id = reference["resource_id"].as_str().unwrap().to_string();
+
+    let submit = |principal: String, reference_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &principal,
+                &json!({
+                    "reference_id": reference_id,
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await
+        }
+    };
+
+    // ── The finding: a foreign reference answered differently from an absent one
+    let absent_id = "res_00000000-0000-7000-8000-00000000dead";
+    let (foreign_status, foreign) = submit(stranger_id.clone(), resource_id.clone()).await;
+    let (missing_status, missing) = submit(stranger_id.clone(), absent_id.to_string()).await;
+    assert_eq!(
+        (foreign_status, missing_status),
+        (400, 400),
+        "a foreign reference and an absent one are refused alike: {foreign} / {missing}"
+    );
+    assert_eq!(
+        (foreign["code"].clone(), foreign["message"].clone()),
+        (missing["code"].clone(), missing["message"].clone()),
+        "…in the SAME words, so the write surface cannot confirm that a `res_` id \
+         exists: {foreign} / {missing}"
+    );
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&resource_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the reference's snapshots");
+    assert_eq!(
+        stored, 0,
+        "the refused submissions attached nothing to another tenant's reference"
+    );
+
+    // ── The bound: the registering tenant files its own snapshot ────────────
+    let (status, own) = submit(owner_id.clone(), resource_id.clone()).await;
+    assert_eq!(status, 200, "the registering tenant still files: {own}");
+    let snapshot_id = own["snapshot_id"].as_str().unwrap().to_string();
+
+    // ── The supported path for the second tenant ────────────────────────────
+    //
+    // A submission carries `original_locator`, so a caller that can make one can
+    // register the pair — which returns the SAME reference and records the
+    // registration. This is the arm that makes the binding a binding rather than
+    // a blackout.
+    let (status, replayed) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &stranger_id,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second registration replays: {replayed}");
+    assert_eq!(
+        replayed["resource_id"].as_str().unwrap(),
+        resource_id,
+        "one shared reference row: {replayed}"
+    );
+    let (status, now_allowed) = submit(stranger_id.clone(), resource_id.clone()).await;
+    assert_eq!(
+        status, 200,
+        "the registered second tenant files against the shared reference: {now_allowed}"
+    );
+    assert_eq!(
+        now_allowed["snapshot_id"].as_str().unwrap(),
+        snapshot_id,
+        "the same reference and digest is the REPLAY — one shared snapshot row"
+    );
+    assert_eq!(now_allowed["replay"], json!(true), "{now_allowed}");
+
+    let citations: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_citations WHERE snapshot_id = $1")
+            .bind(&snapshot_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the citations");
+    assert_eq!(
+        citations, 2,
+        "both tenants cite the shared row — the replay records the second citation"
+    );
+
+    eprintln!(
+        "snapshot write binding: a foreign reference and an absent one are ONE answer and attach nothing; the registering tenant files normally; the second tenant registers the same locator, replays to the same reference and then files — one shared snapshot row with {citations} citations"
+    );
+}

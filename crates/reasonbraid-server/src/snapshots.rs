@@ -5,6 +5,12 @@
 //! (the deletion records the reason and the time — never a silent
 //! disappearance).
 //!
+//! A snapshot is filed against a reference THIS TENANT REGISTERED
+//! (`SIGNOFF-REPAIR.11.14.3.11`). A reference it did not register answers the
+//! same `ReferenceMissing` an absent id gets, so the write surface stops being
+//! an existence oracle over `res_…` ids — the binding the READ surfaces already
+//! carry.
+//!
 //! A reference's `expected_digest` is ENFORCED here since
 //! `SIGNOFF-REPAIR.11.14.3.6`: a pinned reference accepts only the bytes it
 //! names, while an unpinned one still holds every version §12.6's changing page
@@ -175,7 +181,13 @@ impl std::fmt::Display for SnapshotError {
         match self {
             Self::Storage(_) => write!(f, "the evidence store is unavailable"),
             Self::InvalidDigest(reason) => write!(f, "the raw digest is invalid: {reason}"),
-            Self::ReferenceMissing => write!(f, "the reference does not exist"),
+            // ⛔ One sentence for two cases — absent, and registered by someone
+            // else — because separating them is the oracle
+            // (`SIGNOFF-REPAIR.11.14.3.11`).
+            Self::ReferenceMissing => write!(
+                f,
+                "the reference does not exist, or this tenant did not register it"
+            ),
             Self::DigestMismatch { declared, actual } => write!(
                 f,
                 "the bytes hash to `{actual}`, not the declared `{declared}`"
@@ -223,16 +235,29 @@ pub async fn submit(
             actual,
         });
     }
-    // The reference must exist, AND its pin must hold. One query answers both:
-    // the outer `Option` is existence, the inner one is the pin
-    // (`SIGNOFF-REPAIR.11.14.3.6`). Before this, the lookup asked `EXISTS` and
-    // the §12.1 field a caller supplied to say "these are the bytes I expect"
-    // constrained nothing — a reference pinned to one digest accepted a snapshot
-    // of entirely different bytes.
+    // The reference must exist, THIS TENANT must have registered it, AND its
+    // pin must hold. One query answers all three: the outer `Option` is the
+    // first two together, the inner one is the pin.
+    //
+    // ⛔ The registration predicate is in the SAME statement as the lookup
+    // (`SIGNOFF-REPAIR.11.14.3.11`), so a reference the caller did not register
+    // is indistinguishable from one that does not exist — both are
+    // `ReferenceMissing`, and no new error exists for the distinction to leak
+    // through. Before it, `POST /v1/snapshots` admitted on enrolment alone and a
+    // caller holding a `res_…` id could tell the two apart.
+    //
+    // ⛔ And the pin (`SIGNOFF-REPAIR.11.14.3.6`): before it, the lookup asked
+    // `EXISTS` and the §12.1 field a caller supplied to say "these are the bytes
+    // I expect" constrained nothing — a reference pinned to one digest accepted
+    // a snapshot of entirely different bytes.
     let pin: Option<Option<String>> = sqlx::query_scalar(
-        "SELECT expected_digest FROM resource_references WHERE resource_id = $1",
+        "SELECT r.expected_digest FROM resource_references r \
+         JOIN reference_registrations g \
+           ON g.resource_id = r.resource_id AND g.tenant_id = $2 \
+         WHERE r.resource_id = $1",
     )
     .bind(&submission.reference_id)
+    .bind(&citer.tenant_id)
     .fetch_optional(pool)
     .await
     .map_err(SnapshotError::Storage)?;

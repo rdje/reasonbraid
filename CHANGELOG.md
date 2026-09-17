@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## 2026-09-17 — A snapshot is filed against a reference its own tenant registered (`SIGNOFF-REPAIR.11.14.3.11`)
+
+🔴 **Not merely an oracle — a WRITE. And it was missed by my own census one commit earlier.**
+
+- **REPRODUCE, RED first.** A second tenant's submission against a reference it had never registered, beside an absent id:
+
+```text
+foreign: 200 {"replay":false,"snapshot_id":"snp_01a0aee3660d7d32906d5524d6423f98"}
+absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
+```
+
+  The foreign submission **succeeded** — a snapshot was attached to another tenant's reference. `48 passed; 1 failed`.
+- ⛔ **And nothing could see it.** `grep -rn "WHERE reference_id" crates/reasonbraid-server/src/*.rs` returns **1** — the replay lookup inside `submit` itself. No route lists a reference's snapshots, so the attachment is invisible to the reference's own registrants. That bounds the harm and does not excuse it: an invisible write is worse evidence than a visible one.
+- ⭐ **How it was missed.** `.11.14.3.4`'s census, one commit earlier, was `grep -n '"/v1/resources' api.rs` → three routes, two unbound, both bound. `POST /v1/snapshots` names a `reference_id` in its **BODY**, so a route-prefix enumeration cannot see it. The census was not wrong; it was **silent**, which is the more dangerous failure. Rule promoted: **enumerate on the identifier, not on the address shape** (`docs/knowledge/a-census-is-as-wide-as-its-key.md`) — second instance of the shape, after `.3.5.3`.
+- ⭐ **DECIDED: the write takes the read's registration binding** (`docs/decisions/2026-09-17_the-snapshot-write-is-bound-to-the-reference-it-names.md`, three alternatives rejected). A predicate in the SAME statement, and ⛔ **no new error variant**: a foreign reference answers the `ReferenceMissing` an absent id gets, so there is nothing for the distinction to leak through.
+- ⭐ **The leaf's warning is ANSWERED rather than obeyed.** It said the asymmetry that made the snapshot replay safe — a submission carries the BYTES — cuts the other way here. It does, and it is still not a reason to leave the write open: a submission also carries `original_locator`, so a caller that can make one can register the pair, receive the SAME reference id and file. That is a control arm, not an assertion.
+- **ADDRESSED** — foreign and absent are refused in the same words with **0** rows attached; the registering tenant files normally; the second tenant registers the same locator, replays to the same reference, files, and the submission replays to **one** shared snapshot row carrying **2** citations.
+- ⚠️ **Routed with its measurement — `.11.14.3.13`:** a snapshot still records an `original_locator` its reference need not carry. ⛔ Not an obvious equality check — §12.1 keeps canonicalization separate and scheme-specific, so an equality check is a canonicalization decision wearing a different name.
+- **Verification:** six live suites, **104 tests / 0 failed**, rc=0, cluster removed: `profiles` 49, `command_api` 39, `evaluation` 3, `routing` 2, `mcp_write` 5, `mcp` 6.
+
 ## 2026-09-17 — A resolution says when its evidence was not persisted (`SIGNOFF-REPAIR.11.14.3.12`)
 
 ⭐ **The leaf named three candidate dispositions. Reading the neighbour's call site showed the decision had already been taken.**

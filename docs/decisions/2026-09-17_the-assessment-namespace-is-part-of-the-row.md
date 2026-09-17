@@ -214,6 +214,14 @@ authoring gate already admits both of them to that row — so it is a
 deduplication question, not a security one. The security dimension is the tenant
 boundary, and that is closed.
 
+⚠️ **Leg named rather than hidden (§4).** *Re-derived and falsified for the
+cross-tenant case; the INTRA-tenant "not a disclosure" half is **reasoned, not
+separately measured**.* It rests on `assessments_of_claim` filtering on
+`authored_by_tenant`, which `an_assessment_is_read_by_the_tenant_that_authored_it`
+covers — but no control drives two principals of ONE tenant at one key. ⛔ That is
+the same reading-not-measuring move this record spent its length correcting, and
+it is published as a named gap rather than restated as a measurement.
+
 ⚠️ `POST /v1/assessments` still has **no citation gate**. `claims::submit` reads
 `snapshot_objects.bytes` for any `snapshot_id` with no tenant predicate and
 reports whether the excerpt appears in it — while the `assess` step refuses a

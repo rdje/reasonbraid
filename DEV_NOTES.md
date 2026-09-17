@@ -1,5 +1,35 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — Two instruments in one session, both unable to report what I needed
+
+- A census: `find . -name PG_VERSION -not -path "./target/*"` returned nothing and I published "no cluster exists anywhere in the repository". ⛔ The runner RETAINS a failed run's cluster under `target/` — the exclusion pointed exactly at the only place a positive result could live. Without it: 32 hits, three retained clusters, one of them the same session's own RED run.
+- A gate: a strict lint reported exit 1 through `| tail -8`, and all eight captured lines were dependency progress. The cause was unrecoverable from the log; the run had to be repeated in full, and reported **zero** diagnostics the second time.
+- ⭐ **Same defect, two dresses: the instrument discarded the evidence its own conclusion depended on.** One could not go red when the answer was bad; the other could not say why when it did.
+- **The two rules, stated so they are checkable.** For a census that returned nothing: *name the place a positive result would have been, and confirm the command looked there.* For any gate: *capture in full to a file, then filter the file — filter the artifact, never the stream.* The file costs nothing and can be re-questioned with a different filter, which matters because you do not know which filter you need until it fails.
+- ⚠️ **The lint failure is recorded as UNEXPLAINED.** It failed once, passed on re-run, and left no evidence; "flaky" and "fixed" are both causes and neither was established. Inventing one would be worse than the missing log, because the next reader stops looking.
+- **Promoted:** `docs/knowledge/an-instrument-must-explain-its-own-failure.md`.
+
+## 2026-09-17 — A replay key whose last column is caller-supplied is an aliasing primitive
+
+- `claim_assessments_replay_idx` is `(claim_id, snapshot_id, assessment, author)` and reads as a dedupe rule: the same assertion by the same author about the same evidence is one row. It had been that for two phases.
+- 🔴 **`author` is caller-supplied**, which `.11.14.2` established explicitly when it added `authored_by_tenant` precisely *because* `author` cannot be trusted for authorization. Nobody asked the next question: if `author` cannot be trusted for authorization, what is it doing carrying a quarter of the row's identity?
+- ⭐ **The generalizable check is one question about any replay, dedupe or idempotency key: which of its columns can the CALLER choose, and which rows can it reach by choosing them?** If that reachable set contains rows belonging to another writer, another principal or another tenant, the key needs the corresponding SERVER-set column added to it.
+- 🔴 **I first wrote that rule as "caller-controlled columns are harmless with ONE writer — the caller can only alias itself", and that is false.** One writer plus two TENANTS is enough: on the standalone route the caller types `author`, so a second tenant presenting the first tenant's label matched every other column — the new namespace included — and was handed that tenant's row id. ⛔ The "number of writers" framing is a proxy; the real condition is whether the key space is already partitioned by something the server sets. Two writers is one way to break it, two tenants is another, and a rule stated on the proxy missed the second entirely.
+- ⚠️ **The index alone would not have fixed it**, and that is worth separating from the schema change. `claims::submit` pre-selects on the key and returns early; an insert that would now conflict is never reached. **A uniqueness constraint constrains the WRITE; it does not constrain a read that is standing in front of the write.** Both had to move in the same commit.
+- 🔎 Found by writing the control for a different question. The leaf was opened to decide a namespace, and the RED assertion I added to characterize "two rows or one?" is what surfaced the aliasing.
+- ⚠️ **And the second half was found only because the finding was AUDITED rather than restated.** Applying `docs/CLAIM_VERIFICATION.md` to my own published sentence — "bounded to one tenant" — showed it had been derived by reading the SQL instead of measuring it. ⭐ **Write one control arm per caller-set column.** One arm proved the two-writer case and left the two-tenant case to inference, and the inference was wrong in the direction that makes a defect look smaller.
+- 🔎 **The control that should have caught it could not.** The existing two-tenant control has each tenant submit its own principal as `author`, so the two separate naturally — it ILLUSTRATED the separation rather than testing it. Two hypotheses predicting the same observation are not distinguished by more of that observation.
+- **Promoted:** `docs/knowledge/a-replay-key-is-an-addressing-scheme.md`.
+
+## 2026-09-17 — Making two identifiers look alike destroys the only thing that distinguished them
+
+- Two writers put `claim_id` into one column: the `assess` step writes a server-computed claim digest, `POST /v1/assessments` writes a caller's label. The obvious uniformity repair is to mint a digest on both paths, and I costed it as the principled option for a while.
+- ⛔ **It is the wrong answer, and the reason is the one that generalizes.** What makes the deliberation's identifier trustworthy is not that it is a hash — it is `claim_exists_in_thread`, the membership check the server runs before accepting it. Hashing is the *shape*; the check is the *property*. A standalone route has no thread to check membership against, so a digest there would be a hash of a caller's own string: exactly as invented as the label it replaced, but now **indistinguishable from a trustworthy one by construction**.
+- ⭐ **The rule: when two paths produce "the same kind of identifier", ask what makes one of them trustworthy, then ask whether the other path can perform that same act.** If it cannot, matching the shapes deletes the last signal a reader had and calls it consistency.
+- ⚠️ **The symmetric instinct is strong and it is what a reviewer will ask for.** "Why does one route mint and the other not?" sounds like an inconsistency to fix. The honest answer is that the asymmetry is real — one path is inside a deliberation and one is not — and the repair is to **record** the asymmetry, not to erase it.
+- ⭐ **Third option worth naming because it was tempting and also wrong:** filter the claim-keyed read down to the trustworthy namespace. That yields a route that can write rows nothing can read — a shape nobody would ever choose deliberately, reached by a sequence of individually reasonable steps.
+- **Promoted:** `docs/knowledge/trust-comes-from-the-check-not-the-shape.md`.
+
 ## 2026-09-16 — A refusal whose input is another tenant's row is a disclosure decision wearing a validation's clothes
 
 - `resources::submit` refused a second digest for a locator and called it `locator_digest_conflict`: *"the locator's digest is immutable — the same locator with a different digest conflicts"*. It reads as input validation — your field disagrees with the stored one — and I read it that way for most of an hour while designing around it.

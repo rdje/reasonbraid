@@ -563,15 +563,16 @@ rows the reading tenant wrote:
 | Surface | Returns |
 | --- | --- |
 | `GET /v1/snapshots/{id}/assessments` | the reader's own assessments of a snapshot it cited; 404 if it did not cite the snapshot |
-| `GET /v1/claims/{claim_id}/assessments` | the reader's own assessments of that claim |
+| `GET /v1/claims/{claim_id}/assessments` | the reader's own assessments of that claim, each labelled with its `claim_namespace` |
 
 The claim-keyed read has no citation gate and cannot have one — a claim spans
 snapshots and the route names none. That matters because `claim_id` is
 caller-supplied text the server never mints: there is no claims table, and the
 identifier is whatever the submitter typed. Before this binding the route
 answered any enrolled principal for any identifier it could guess. The authoring
-gate is what makes a guessed identifier useless; whether the namespace should be
-free at all is open under `SIGNOFF-REPAIR.11.14.3`.
+gate is what makes a guessed identifier useless; which writer minted a given
+identifier is recorded on the row itself, and is described under
+[the two assessment namespaces](#the-two-assessment-namespaces).
 
 Two tenants that cite the *same* snapshot each read their own assessments of it
 and not the other's. Their `derivations` of it remain shared, because a
@@ -597,6 +598,12 @@ Two limits are published rather than implied:
 - **An assessment written before its binding has no recorded author tenant** and
   is likewise read by no one. There is nothing to recover it from: `author` is a
   caller label, not a principal.
+- **An assessment written before the namespace column has no recorded
+  namespace**, and nothing backfills one. Which writer produced such a row is not
+  recoverable even in principle: the only evidence would be the *shape* of its
+  `claim_id`, and a caller could always type the minted shape — which is the
+  collision the column exists to record. The row keeps its `null` namespace and
+  is read as unattributed.
 
 Run the control in the owned disposable PostgreSQL environment:
 
@@ -772,12 +779,76 @@ The contribution event and the assessment row commit in **one transaction**, so
 a deliberation never records an assessment the evidence store did not accept,
 and never accepts one the timeline does not show. The resulting row is readable
 through `GET /v1/claims/{claim_digest}/assessments` by the tenant that authored
-it.
+it — ⚠️ alongside any assessment the same tenant asserted on that claim through
+the non-deliberation route, which the next section describes. That read is not a
+list of what the deliberation recorded; each row says which it is.
 
-⛔ `POST /v1/assessments` still exists and still takes a free-text `claim_id`.
-It is the non-deliberation path, and its identifier is a label rather than a
-minted digest — bound only by the authoring tenant. Unifying that namespace is
-open under `SIGNOFF-REPAIR.11.14.3.3`.
+### The two assessment namespaces
+
+`POST /v1/assessments` still exists and still takes a free-text `claim_id`. It is
+the **non-deliberation path**: an assessment asserted outside any thread, whose
+identifier is a caller's label rather than a digest the server minted and
+membership-checked. Both writers reach one table, so every row records **which
+namespace its identifier belongs to**:
+
+| `claim_namespace` | Written by | What `claim_id` is |
+| --- | --- | --- |
+| `thread` | a contribution of kind `assessment`, on the `assess` step | a claim digest the server computed and checked against that thread |
+| `external` | `POST /v1/assessments` | a caller label, bound only by the authoring tenant |
+
+Both columns are recorded by the server. A row written before them carries
+`null` in each and is read as unattributed; nothing backfills them, because
+which writer minted an older row is not recoverable — the only evidence would be
+the *shape* of its `claim_id`, and a caller can always type the minted shape.
+
+The namespace is **part of the row's identity**, not a label beside it: it joins
+the replay key, so the same claim, snapshot, kind and author in two namespaces
+are two assertions and two rows.
+
+It is one of **two** server-set columns in that key, and the rule behind both is
+worth stating once:
+
+> Every column of a replay key must be a value the submitter is entitled to
+> assert. A caller-set column is safe only where the key space is already
+> partitioned by something the server sets.
+
+`author` on the standalone route is a caller-supplied string — the authorization
+never reads it — so before those two columns it could be aimed, twice over:
+
+| What a caller supplied | What it was handed back | Closed by |
+| --- | --- | --- |
+| a real thread's claim digest, its snapshot, its kind and its author | **the deliberation's own `assessment_id`**, for an assessment it never contributed | `claim_namespace` |
+| another tenant's claim, snapshot, kind and `author` label | **that tenant's `assessment_id`** | `authored_by_tenant` |
+
+Both now write their own row and read their own id back.
+
+⚠️ One case is left open and stated rather than implied: **two principals inside
+one tenant can still alias each other** on the standalone route. That is not a
+disclosure — the authoring gate already admits both of them to that row — so it
+is a deduplication question. Making `author` itself trustworthy is open under
+`SIGNOFF-REPAIR.7.4`.
+
+Both namespaces ride `GET /v1/claims/{claim_id}/assessments`, labelled. Nothing
+is filtered out: a read that returned only `thread` rows would make the
+standalone route write-only, which is a worse outcome than removing it. What a
+reader gets instead is the ability to tell an assessment a deliberation's gates
+admitted from one asserted beside it.
+
+⚠️ One limit is published rather than implied. `POST /v1/assessments` applies
+**no citation gate**: it reports whether an excerpt appears in the bytes of any
+`snapshot_id` a caller names, while the `assess` step refuses a snapshot the
+tenant did not cite. Closing that is open under `SIGNOFF-REPAIR.11.14.3.8`.
+
+Run the control in the owned disposable PostgreSQL environment:
+
+```bash
+RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
+```
+
+`the_two_assessment_writers_are_two_namespaces` drives both writers onto one
+claim digest, then drives a **second tenant** onto the first tenant's row by
+presenting its `author` label. Three labelled rows where two aliased ones used to
+be.
 
 ## Public repository and publication checks
 

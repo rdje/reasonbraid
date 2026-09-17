@@ -44,11 +44,45 @@ fn unassessed() -> String {
     "unassessed".to_owned()
 }
 
+/// Which writer minted a row's `claim_id` (`SIGNOFF-REPAIR.11.14.3.3`).
+///
+/// `claim_id` is one column holding two kinds of identifier, and before this
+/// type nothing said which kind a row carried. It is part of the row's IDENTITY
+/// rather than a label beside it: it joins the replay key in `migrations/0066`
+/// and the pre-check below, because an identifier two writers mint differently
+/// is not one identifier.
+///
+/// ⛔ Server-set, and deliberately not a field of [`AssessmentSubmission`]. A
+/// caller that could choose its own namespace would reopen exactly the
+/// collision the column closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimNamespace {
+    /// The identifier is a claim digest the SERVER computed and
+    /// membership-checked against the thread (`SIGNOFF-REPAIR.11.14.3.1`).
+    Thread,
+    /// The identifier is a caller label carried by `POST /v1/assessments`, the
+    /// non-deliberation path. Bound only by the authoring tenant.
+    External,
+}
+
+impl ClaimNamespace {
+    /// The stored spelling — the vocabulary `migrations/0066`'s CHECK pins.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Thread => "thread",
+            Self::External => "external",
+        }
+    }
+}
+
 /// The stored assessment (the read surface).
 #[derive(Debug, Clone, Serialize)]
 pub struct StoredAssessment {
     pub assessment_id: String,
     pub claim_id: String,
+    /// Which writer minted `claim_id`; `None` for a row written before
+    /// `migrations/0066` (`SIGNOFF-REPAIR.11.14.3.3`).
+    pub claim_namespace: Option<String>,
     pub snapshot_id: String,
     pub assessment: String,
     pub author: String,
@@ -97,7 +131,7 @@ impl std::error::Error for AssessmentError {}
 
 /// Submit an assessment: the kind must be one of the five; the citation is
 /// VALIDATED — the excerpt must appear in the snapshot's raw bytes. The
-/// same claim + snapshot + kind + author is the REPLAY.
+/// same claim + snapshot + kind + author IN THE SAME NAMESPACE is the REPLAY.
 ///
 /// The AUTHORING tenant is recorded by the server and is what the read
 /// surfaces are bound to (`SIGNOFF-REPAIR.11.14.2`). ⛔ It is not
@@ -107,10 +141,28 @@ impl std::error::Error for AssessmentError {}
 /// is: the `assess` step records an assessment inside the thread's own
 /// transaction, so the contribution event and the row it produces commit
 /// together or not at all (`SIGNOFF-REPAIR.11.14.3.1`).
+///
+/// ⛔ The `namespace` is the CALLER SITE's, never the submission's
+/// (`SIGNOFF-REPAIR.11.14.3.3`). It joins the replay pre-check below for the
+/// same reason it joins `claim_assessments_replay_idx`: without it, a caller
+/// naming a deliberation's minted claim digest, its snapshot, its kind and its
+/// author matched all four columns and was handed the DELIBERATION's
+/// `assessment_id` — a row it never contributed. The index alone would not
+/// close that, because this pre-check short-circuits before the insert runs.
+///
+/// ⛔ `authored_by_tenant` is in the pre-check for the SAME reason and it is a
+/// separate defect. `author` is caller-supplied here, so a second TENANT
+/// presenting the first tenant's label matched every other column — the
+/// namespace included — and was handed that tenant's row id. `migrations/0066`
+/// records the premise in `0064` this corrects. ⚠️ Two principals inside ONE
+/// tenant can still alias each other on the standalone route; that is a
+/// deduplication question rather than a disclosure, because the authoring gate
+/// already admits both of them to the row.
 pub async fn submit<'e, E>(
     mut executor: E,
     submission: &AssessmentSubmission,
     authored_by_tenant: &str,
+    namespace: ClaimNamespace,
 ) -> Result<String, AssessmentError>
 where
     E: std::ops::DerefMut,
@@ -135,12 +187,15 @@ where
     }
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT assessment_id FROM claim_assessments \
-         WHERE claim_id = $1 AND snapshot_id = $2 AND assessment = $3 AND author = $4 LIMIT 1",
+         WHERE claim_id = $1 AND snapshot_id = $2 AND assessment = $3 AND author = $4 \
+           AND claim_namespace = $5 AND authored_by_tenant = $6 LIMIT 1",
     )
     .bind(&submission.claim_id)
     .bind(&submission.snapshot_id)
     .bind(&submission.assessment)
     .bind(&submission.author)
+    .bind(namespace.as_str())
+    .bind(authored_by_tenant)
     .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
@@ -152,8 +207,8 @@ where
         "INSERT INTO claim_assessments \
          (assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
           selector, rationale, source_authority, freshness, independence, uncertainty, \
-          authored_by_tenant) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+          authored_by_tenant, claim_namespace) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
     .bind(&assessment_id)
     .bind(&submission.claim_id)
@@ -169,6 +224,7 @@ where
     .bind(&submission.independence)
     .bind(&submission.uncertainty)
     .bind(authored_by_tenant)
+    .bind(namespace.as_str())
     .execute(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
@@ -177,8 +233,9 @@ where
 
 /// The stored assessment's columns — one definition for both bound reads.
 const ASSESSMENT_COLUMNS: &str =
-    "assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
-     selector, rationale, source_authority, freshness, independence, uncertainty, created_at";
+    "assessment_id, claim_id, claim_namespace, snapshot_id, assessment, author, verifier, \
+     excerpt, selector, rationale, source_authority, freshness, independence, uncertainty, \
+     created_at";
 
 /// The read surface: the snapshot's assessments THIS TENANT AUTHORED (oldest
 /// first).
@@ -209,9 +266,13 @@ pub async fn assessments_for_snapshot(
 /// The read surface: the claim's assessments THIS TENANT AUTHORED (oldest
 /// first).
 ///
-/// ⛔ `claim_id` is caller-supplied text the server never mints, so this read
-/// is keyed on a guessable identifier. The binding is what makes that
-/// harmless; the namespace itself is `SIGNOFF-REPAIR.11.14.3`'s.
+/// ⛔ `claim_id` is not one namespace: the `assess` step mints a digest and
+/// membership-checks it against a thread, while `POST /v1/assessments` takes a
+/// caller label. Both land here, because filtering one out would make the
+/// standalone route write-only — worse than the removal `SIGNOFF-REPAIR.11.14.3.3`
+/// declined. Each row carries `claim_namespace`, so a reader can tell an
+/// assessment a deliberation's gates admitted from one asserted beside it. The
+/// authoring binding (`.11.14.2`) is what makes a GUESSED identifier useless.
 pub async fn assessments_of_claim(
     pool: &PgPool,
     claim_id: &str,
@@ -247,6 +308,7 @@ async fn rows(
 struct AssessmentRow {
     assessment_id: String,
     claim_id: String,
+    claim_namespace: Option<String>,
     snapshot_id: String,
     assessment: String,
     author: String,
@@ -266,6 +328,7 @@ impl From<AssessmentRow> for StoredAssessment {
         Self {
             assessment_id: row.assessment_id,
             claim_id: row.claim_id,
+            claim_namespace: row.claim_namespace,
             snapshot_id: row.snapshot_id,
             assessment: row.assessment,
             author: row.author,

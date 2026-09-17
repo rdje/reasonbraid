@@ -4375,10 +4375,16 @@ async fn the_claim_assessments_validate_the_citation() {
     )
     .await;
     assert_eq!(status, 200, "the claim assessments read: {claim_side}");
+    let claim_side = claim_side.as_array().expect("the array");
+    assert_eq!(claim_side.len(), 1, "{claim_side:?}");
+    // `.11.14.3.3`: this route is the NON-deliberation writer, so its rows say
+    // so. `clm_budget` is the free-text identifier that made this namespace a
+    // guessable one; the label is what keeps it from being mistaken for a claim
+    // digest a thread's gates admitted.
     assert_eq!(
-        claim_side.as_array().expect("the array").len(),
-        1,
-        "{claim_side:?}"
+        claim_side[0]["claim_namespace"],
+        json!("external"),
+        "the standalone route writes the external namespace: {claim_side:?}"
     );
 }
 
@@ -5929,6 +5935,368 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
     assert_eq!(total, 1, "only the accepted assessment exists");
     eprintln!(
         "assess step: the shipped evidence_review profile records an assessment keyed by a minted claim digest over a cited snapshot; forged digest, uncited snapshot, fake excerpt, misplaced payload, wrong step and unknown kind each refused by name; {total} row written"
+    );
+}
+
+/// The two assessment writers are two NAMESPACES, and the row says which
+/// (`SIGNOFF-REPAIR.11.14.3.3`,
+/// `docs/decisions/2026-09-17_the-assessment-namespace-is-part-of-the-row.md`).
+///
+/// `.11.14.3.1` made a deliberation's `claim_id` the SERVER-MINTED claim digest,
+/// membership-checked against the thread. `POST /v1/assessments` was left
+/// standing deliberately — an assessment made outside any deliberation may be
+/// legitimate — and still takes a free-text `claim_id`. So one column holds two
+/// kinds of identifier, and before this leaf nothing said which kind a row was.
+///
+/// Two consequences, and the second is the one that made this a defect rather
+/// than an untidiness. A caller who types a real thread's digest into the
+/// standalone route lands a row in that deliberation's claim-keyed read, having
+/// passed neither the thread-membership gate nor the citation gate. And because
+/// the replay key `(claim_id, snapshot_id, assessment, author)` did not carry
+/// the namespace either, naming the deliberation's own author ALIASED its row:
+/// the standalone route returned the deliberation's `assessment_id` to a caller
+/// who never contributed to the thread.
+///
+/// The namespace joins the row's identity for the same reason the
+/// `(locator, digest)` pair became the reference's in `.11.14.3.2`: an
+/// identifier two writers mint differently is not one identifier.
+#[tokio::test]
+async fn the_two_assessment_writers_are_two_namespaces() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "namespace-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "ns-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "ns-assess",
+                "objective": "probe the assessment namespaces",
+                "workflow_profile": "evidence_review",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the evidence_review thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let command = |key: String, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, value)
+        }
+    };
+
+    // The evidence this deliberation assesses, cited by this tenant (`.11.14.1`).
+    let payload = b"the acquired report states the ledger balanced to the cent";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({ "original_locator": "https://example.org/ns-evidence", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference submits: {reference}");
+    let (status, snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &human_id,
+        &json!({
+            "reference_id": reference["resource_id"].as_str().unwrap(),
+            "original_locator": "https://example.org/ns-evidence",
+            "final_locator": "https://example.org/ns-evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+            "byte_length": payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(payload),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap().to_string();
+
+    // The claim whose digest the deliberation's assessment names.
+    let claim_content = "the ledger balanced to the cent";
+    let claim_digest = reasonbraid_server::fetcher::digest_sha256_hex(claim_content.as_bytes());
+    let (status, claimed) = command(
+        "ns-claim".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the claim under review",
+            "kind": "claim",
+            "claims": [ { "content": claim_content } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the claim contributes: {claimed}");
+
+    // solicit → evidence_request → assess.
+    for key in ["ns-advance-1", "ns-advance-2"] {
+        let (status, advanced) = command(
+            key.to_string(),
+            "thread.advance_round",
+            json!({ "tenant_id": tenant_id }),
+        )
+        .await;
+        assert_eq!(status, 200, "the round advances: {advanced}");
+    }
+
+    let (status, assessed) = command(
+        "ns-assess".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the evidence supports the claim",
+            "kind": "assessment",
+            "assessment": {
+                "claim_digest": claim_digest,
+                "snapshot_id": snapshot_id,
+                "assessment": "supports",
+                "excerpt": "balanced to the cent",
+                "rationale": "the report states it in the acquired bytes",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the assess step records: {assessed}");
+    let deliberated: String =
+        sqlx::query_scalar("SELECT assessment_id FROM claim_assessments WHERE claim_id = $1")
+            .bind(&claim_digest)
+            .fetch_one(&pool)
+            .await
+            .expect("the deliberation's assessment row");
+
+    // ── The finding: the standalone route, on the deliberation's own key ──
+    //
+    // Every field matches what the `assess` step wrote, `author` included —
+    // which is the shape that ALIASED the deliberation's row through the
+    // four-column replay key. The namespace is what makes these two rows two
+    // assertions rather than one.
+    let (status, external) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &human_id,
+        &json!({
+            "claim_id": claim_digest,
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "author": human_id,
+            "excerpt": "balanced to the cent",
+            "rationale": "asserted outside the deliberation",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the standalone assessment submits: {external}");
+    let external_id = external["assessment_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        external_id, deliberated,
+        "the standalone route aliased the deliberation's own row and returned its \
+         assessment_id — the replay key does not carry the namespace"
+    );
+
+    // Both rows exist, and each says which writer minted its identifier.
+    let namespaces: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT assessment_id, claim_namespace FROM claim_assessments \
+         WHERE claim_id = $1 ORDER BY created_at",
+    )
+    .bind(&claim_digest)
+    .fetch_all(&pool)
+    .await
+    .expect("read both rows");
+    assert_eq!(
+        namespaces.len(),
+        2,
+        "two assertions, two rows: {namespaces:?}"
+    );
+    assert_eq!(
+        namespaces
+            .iter()
+            .find(|(id, _)| id == &deliberated)
+            .and_then(|(_, ns)| ns.as_deref()),
+        Some("thread"),
+        "the deliberation's row is in the thread namespace: {namespaces:?}"
+    );
+    assert_eq!(
+        namespaces
+            .iter()
+            .find(|(id, _)| id == &external_id)
+            .and_then(|(_, ns)| ns.as_deref()),
+        Some("external"),
+        "the standalone row is in the external namespace: {namespaces:?}"
+    );
+
+    // The claim-keyed read returns both and DISTINGUISHES them, so a reader can
+    // tell an assessment the deliberation's gates admitted from one asserted
+    // beside it. Nothing is filtered: filtering would make the standalone route
+    // write-only, which is worse than the removal this leaf declined.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/claims/{claim_digest}/assessments"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the claim's assessments read: {listed}");
+    let rows = listed.as_array().expect("the assessment array");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let mut seen: Vec<&str> = rows
+        .iter()
+        .map(|r| {
+            r["claim_namespace"]
+                .as_str()
+                .expect("the namespace rides the read")
+        })
+        .collect();
+    seen.sort_unstable();
+    assert_eq!(seen, vec!["external", "thread"], "{rows:?}");
+
+    // The replay still holds WITHIN a namespace: the same standalone submission
+    // returns the same id rather than a second row.
+    let (status, replayed) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &human_id,
+        &json!({
+            "claim_id": claim_digest,
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "author": human_id,
+            "excerpt": "balanced to the cent",
+            "rationale": "asserted outside the deliberation",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the standalone replay submits: {replayed}");
+    assert_eq!(
+        replayed["assessment_id"],
+        json!(external_id),
+        "the standalone replay returns its own id: {replayed}"
+    );
+
+    // ── The second finding, MEASURED rather than read ──
+    //
+    // The namespace alone does not bound the aliasing, because the replay
+    // pre-check carries no tenant predicate: `.11.14.2`'s authoring gate binds
+    // the two READS and never this. `migrations/0064` reasoned that the key
+    // "carries the AUTHOR, so two tenants asserting the same thing about the
+    // same evidence already hold two separate rows" — and stated eight lines
+    // later, in the same file, that `author` is an unauthenticated caller
+    // string. ⛔ Both cannot be true: on this route the CALLER types `author`,
+    // so a second tenant can simply present the first tenant's label.
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "namespace-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second tenant enrols: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        tenant_id,
+        "the stranger must be a DIFFERENT tenant for this to measure anything"
+    );
+
+    // Every field is the first tenant's, `author` included. ⛔ The stranger
+    // never cited this snapshot, and reaches the excerpt check anyway because
+    // `POST /v1/assessments` has no citation gate (`SIGNOFF-REPAIR.11.14.3.8`) —
+    // so this arm also demonstrates that leaf's gap concretely.
+    let (status, forged) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &stranger_id,
+        &json!({
+            "claim_id": claim_digest,
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "author": human_id,
+            "excerpt": "balanced to the cent",
+            "rationale": "asserted outside the deliberation",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger's assessment submits: {forged}");
+    assert_ne!(
+        forged["assessment_id"].as_str().unwrap(),
+        external_id,
+        "a SECOND TENANT was handed the first tenant's assessment_id — the replay \
+         key carries a caller-supplied `author` and no server-set tenant"
+    );
+
+    // Three assertions by two tenants in two namespaces: three rows, each
+    // attributed to the tenant the SERVER recorded.
+    let attributed: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT assessment_id, claim_namespace, authored_by_tenant \
+         FROM claim_assessments WHERE claim_id = $1",
+    )
+    .bind(&claim_digest)
+    .fetch_all(&pool)
+    .await
+    .expect("read all three rows");
+    assert_eq!(attributed.len(), 3, "three assertions: {attributed:?}");
+    assert!(
+        attributed
+            .iter()
+            .all(|(_, ns, tenant)| ns.is_some() && tenant.is_some()),
+        "every row carries both server-set columns: {attributed:?}"
+    );
+
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM claim_assessments")
+        .fetch_one(&pool)
+        .await
+        .expect("count the assessments");
+    assert_eq!(total, 3, "the replay wrote no extra row");
+    eprintln!(
+        "assessment namespaces: the deliberation's row and the standalone row share a claim digest, a snapshot, a kind and an author and are TWO rows in two namespaces; a SECOND TENANT presenting the first's author label gets its own row rather than the first's assessment_id; the standalone replay still returns its own id; {total} rows"
     );
 }
 

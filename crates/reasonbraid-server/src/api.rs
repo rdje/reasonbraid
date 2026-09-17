@@ -3733,6 +3733,13 @@ async fn mark_policy_review_done(
 /// `POST /v1/assessments` — submit the assessment (any enrolled principal;
 /// the citation is VALIDATED: the excerpt must appear in the snapshot's
 /// raw bytes — citation existence alone never satisfies an evidence gate).
+///
+/// This is the NON-DELIBERATION path, and its rows are recorded in the
+/// `external` namespace (`SIGNOFF-REPAIR.11.14.3.3`): `claim_id` here is a
+/// caller label rather than the digest the `assess` step mints and
+/// membership-checks against a thread. The namespace is part of the row's
+/// identity, so a caller naming a real thread's claim digest writes its own
+/// row and reads its own id back instead of aliasing the deliberation's.
 async fn submit_assessment(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -3745,7 +3752,14 @@ async fn submit_assessment(
         ));
     };
     let mut conn = state.pool.acquire().await?;
-    match crate::claims::submit(&mut *conn, &submission, &tenant).await {
+    match crate::claims::submit(
+        &mut *conn,
+        &submission,
+        &tenant,
+        crate::claims::ClaimNamespace::External,
+    )
+    .await
+    {
         Ok(assessment_id) => Ok(Json(json!({ "assessment_id": assessment_id }))),
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged

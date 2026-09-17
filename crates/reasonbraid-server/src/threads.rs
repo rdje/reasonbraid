@@ -1691,7 +1691,18 @@ where
                     independence: input.independence.clone(),
                     uncertainty: input.uncertainty.clone(),
                 };
-                match crate::claims::submit(&mut *tx, &submission, &tenant_id.to_string()).await {
+                // The `thread` namespace: this identifier is a digest the server
+                // minted and membership-checked above, which is what makes it
+                // a different kind of identifier from the standalone route's
+                // caller label (`.11.14.3.3`).
+                match crate::claims::submit(
+                    &mut *tx,
+                    &submission,
+                    &tenant_id.to_string(),
+                    crate::claims::ClaimNamespace::Thread,
+                )
+                .await
+                {
                     Ok(assessment_id) => Some(assessment_id),
                     // A store fault is the server's problem and must not be
                     // reported as though the caller's input were wrong
